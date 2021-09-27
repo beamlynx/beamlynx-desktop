@@ -1,8 +1,7 @@
-# TODO: update this file using `DEV.md`
 version: "2"
 services:
   app:
-    image: "clojure:lein-2.8.1"
+    image: "clojure:lein-2.8.3"
     command: "lein trampoline ring server-headless"
     user: "${UID}:${GID}"
     ports:
