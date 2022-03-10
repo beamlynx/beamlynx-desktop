@@ -1,11 +1,13 @@
 import type { NextPage } from 'next'
 import Container from '@mui/material/Container';
-import PineExpressionTextField from './PineExpressionInput';
+import PineExpression from './PineExpression';
+import Connection from './Connection';
 
 const Home: NextPage = () => {
   return (
   <Container maxWidth="xl">
-    <PineExpressionTextField></PineExpressionTextField>
+    <Connection></Connection>
+    <PineExpression></PineExpression>
   </Container>
 
   )
