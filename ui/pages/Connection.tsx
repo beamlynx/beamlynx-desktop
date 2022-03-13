@@ -1,5 +1,7 @@
 import React from "react";
 import { Box } from "@mui/material";
+import ActiveConnection from "./ActiveConnection";
+import { useStores } from "./store/container";
 
 interface Props {}
 interface State {
@@ -23,23 +25,25 @@ class Connection extends React.Component {
   }
 
   componentDidMount = async () => {
-    const res = await fetch('http://localhost:33333/connection', {
-    method: 'GET',
-    headers: {
-        'Content-Type': 'application/json',
-        },
-    })
-    if (res.status === 200) {
-        const response: Response = await res.json();
-        this.setState({response});
-    }
+    // const { connectionStore } = useStores();
+    // await connectionStore.getDefaultConnection();
+
+    // const res = await fetch('http://localhost:33333/connection', {
+    // method: 'GET',
+    // headers: {
+    //     'Content-Type': 'application/json',
+    //     },
+    // })
+    // if (res.status === 200) {
+    //     const response: Response = await res.json();
+    //     this.setState({response});
+    // }
   }
 
   render() {
+
     return (
-        <Box sx={{ my: 2}}>
-          Connection: {this.state.response.result}
-        </Box>
+        <ActiveConnection />
     );
   }
 };
