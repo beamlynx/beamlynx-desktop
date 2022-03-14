@@ -9,9 +9,6 @@ import PineError from './PineError';
 
 
 const Home: NextPage = () => {
-  const x = "test";
-  const y = 10;
-  
   return (
   <Container maxWidth="xl">
     <Grid container spacing={10}>

@@ -6,6 +6,7 @@ type Column = {
     field: string;
     headerName: string;
     flex: number;
+    editable: boolean;
 }
 
 type Row = { [key: string]: any; };
@@ -78,6 +79,9 @@ export class Store {
                 field: header,
                 headerName: header,
                 flex: 1,
+                editable: true,
+                minWidth: 200,
+                maxWidth: 400,
             };
         });
         this.columns = columns;
