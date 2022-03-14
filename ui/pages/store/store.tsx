@@ -1,56 +1,84 @@
 import { makeAutoObservable } from "mobx";
 import { format } from "sql-formatter";
+import { Http, Response } from "./http";
 
-// TODO: extract to a common class
-type Response = {
-  result: string;
-  'connection-id': string;
-  query: string;
-};
+type Column = {
+    field: string;
+    headerName: string;
+    flex: number;
+}
+
+type Row = { [key: string]: any; };
 
 export class Store {
     connection = '';
     expression = '';
     query = '';
+    error = '';
+    columns: Column[] = [];
+    rows: Row[] = [];
 
     constructor() {
         makeAutoObservable(this);
     }
 
     getActiveConnection = async () => {
-        const res = await fetch('http://localhost:33333/connection', {
-        method: 'GET',
-        headers: {
-            'Content-Type': 'application/json',
-            },
-        })
-        if (res.status !== 200) {
-            return;
-        }
-        const response: Response = await res.json();
-        
-        this.connection = response.result;
+        const response = await Http.get('connection');
+        if (!response) return;
+        this.connection = response.result as string;
         return this.connection;
     }
 
     buildQuery = async () => {
-      const res = await fetch('http://localhost:33333/build', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+        const response = await Http.post('build', {
           expression: this.expression
-        })});
+        });
 
-        if (!res.ok) {
-            this.query = '?';
-        }
+        if (!response) return;
+        this.handleError(response);
+        this.setConnection(response);
+        this.setQuery(response);
+    }
 
-        const response: Response = await res.json();
+    handleError = (response: Response) => {
+        this.error = response.error || '';
+    }
+
+    setConnection = (response: Response) => {
+        if (!response["connection-id"]) return;
+        this.connection = response["connection-id"];
+    }
+
+    setQuery = (response: Response) => {
+        if (!response.query) return;
         this.query = format(response.query, {
             language: 'postgresql'
         });
-        this.connection = response["connection-id"];
+    }
+
+    evaluate = async () => {
+        const response = await Http.post('eval', {
+          expression: this.expression
+        });
+
+        if (!response) return;
+        this.handleError(response);
+        this.setConnection(response);
+        this.setQuery(response);
+        if (!response.result) return;
+
+        const rows = response.result as Row[];
+        if (rows.length < 1) {
+            return;
+        }
+        const columns = Object.keys(rows[0]).map(header => { 
+            return {
+                field: header,
+                headerName: header,
+                flex: 1,
+            };
+        });
+        this.columns = columns;
+        this.rows = rows;
     }
 }

@@ -7,19 +7,18 @@ import { useStores } from "./store/container";
 
 const PineInput = observer(() => {
     const { store } = useStores();
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
       store.expression = e.target.value;
+      await store.buildQuery();
     } 
     const handleEnter = async (e: React.KeyboardEvent) => {
         if (e.key !== 'Enter') {
           return;
         }
-        await store.buildQuery();
+        await store.evaluate();
     }
     return (
-        <Box sx={{ my: 2}}>
-            <TextField autoFocus variant='outlined' fullWidth onChange={handleChange} onKeyDown={handleEnter}></TextField>
-        </Box>
+        <TextField autoFocus variant='outlined' fullWidth onChange={handleChange} onKeyDown={handleEnter} />
     );
   });
 
