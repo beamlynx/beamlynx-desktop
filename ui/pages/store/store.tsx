@@ -69,6 +69,8 @@ export class Store {
 
         const rows = response.result as Row[];
         if (rows.length < 1) {
+            this.columns = [];
+            this.rows = [];
             return;
         }
         const columns = Object.keys(rows[0]).map(header => { 
