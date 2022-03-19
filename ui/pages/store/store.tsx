@@ -10,11 +10,11 @@ type Column = {
 }
 
 type Row = { [key: string]: any; };
-
 export class Store {
     connection = '';
     expression = '';
     query = '';
+    loaded = false;
     error = '';
     columns: Column[] = [];
     rows: Row[] = [];
@@ -55,6 +55,7 @@ export class Store {
         this.query = format(response.query, {
             language: 'postgresql'
         });
+        this.loaded = false;
     }
 
     evaluate = async () => {
@@ -86,5 +87,6 @@ export class Store {
         });
         this.columns = columns;
         this.rows = rows;
+        this.loaded = true;
     }
 }
