@@ -76,23 +76,23 @@ export class Store {
         if (!response.result) return;
 
         const rows = response.result as Row[];
-        if (rows.length < 1) {
+        if (rows.length < 2) {
             this.columns = [];
             this.rows = [];
             return;
         }
-        const columns = Object.keys(rows[0]).map(header => { 
+        const columns = rows[0].map((header: Row, index: number) => {
             return {
-                field: header,
+                field: index,
                 headerName: header,
                 flex: 1,
                 editable: true,
                 minWidth: 200,
                 maxWidth: 400,
             };
-        });
+        })
         this.columns = columns;
-        this.rows = rows;
+        this.rows = rows.splice(1);
         this.loaded = true;
     }
 }
