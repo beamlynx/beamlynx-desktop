@@ -3,9 +3,9 @@ import React, { ReactElement } from "react";
 import TextField from '@mui/material/TextField';
 import { Box, TextareaAutosize } from "@mui/material";
 import { observer } from "mobx-react-lite";
-import { useStores } from "./store/container";
+import { useStores } from "../store/container";
 
-const PineInput = observer(() => {
+const Input = observer(() => {
     const { store } = useStores();
     const handleChange = async (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       store.expression = e.target.value;
@@ -34,19 +34,12 @@ const PineInput = observer(() => {
         }
     }
     return (
-        // <TextareaAutosize
-        //   autoFocus
-        //   minRows="10"
-        //   maxRows="10"
-        //   onChange={handleChange}
-        //   onKeyDown={handleEnter}
-        //   />
         <TextField
           variant="outlined"
           autoFocus
           multiline
           fullWidth
-          minRows="10"
+          minRows="3"
           maxRows="10"
           onChange={handleChange}
           onKeyDown={handleEnter}
@@ -54,4 +47,4 @@ const PineInput = observer(() => {
     );
   });
 
-export default PineInput;
+export default Input;

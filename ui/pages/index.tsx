@@ -1,37 +1,38 @@
 import type { NextPage } from 'next'
 import Container from '@mui/material/Container';
-import PineQuery from './PineQuery';
-import ActiveConnection from './ActiveConnection';
-import PineInput from './PineInput';
-import PineResult from './PineResult';
+import Query from './components/Query';
+import ActiveConnection from './components/ActiveConnection';
+import Input from './components/Input';
+import Result from './components/Result';
 import { Box, Grid } from '@mui/material';
-import PineMessage from './PineMessage';
+import Message from './components/Message';
+import Suggestions from './components/Suggestions';
 
 
 const Home: NextPage = () => {
   return (
   <Container maxWidth="xl">
     <Grid container >
-      {/* <Grid item xs={12} sx={{ mt: 1, ml: 1}}>
-          <PineMessage />
-      </Grid> */}
       <Grid item xs={4}>
         <Box sx={{ m: 1}}>
-          <PineMessage />
+          <Message />
         </Box>
         <Box sx={{ m: 1}}>
-          <PineInput />
+          <Input />
+        </Box>
+        <Box sx={{ m: 1}}>
+          <Suggestions />
         </Box>
       </Grid>
       <Grid item xs={8}>
         <Box sx={{ m: 1}}>
           <ActiveConnection />
-          <PineQuery />
+          <Query />
         </Box>
       </Grid>
     </Grid>
     <Box sx={{ m: 1}}>
-      <PineResult/>
+      <Result/>
     </Box>
   </Container>
   )

@@ -11,11 +11,12 @@ type Column = {
 
 type Row = { [key: string]: any; };
 export class Store {
-    connection = '';
+    connectionName = '';
     expression = '';
     query = '';
     loaded = false;
     error = '';
+    hints: string = '';
     columns: Column[] = [];
     rows: Row[] = [];
 
@@ -26,8 +27,8 @@ export class Store {
     getActiveConnection = async () => {
         const response = await Http.get('connection');
         if (!response) return;
-        this.connection = response.result as string;
-        return this.connection;
+        this.connectionName = response.result as string;
+        return this.connectionName;
     }
 
     buildQuery = async () => {
@@ -39,6 +40,7 @@ export class Store {
         this.handleError(response);
         this.setConnection(response);
         this.setQuery(response);
+        this.setHints(response);
     }
 
     handleError = (response: Response) => {
@@ -47,7 +49,7 @@ export class Store {
 
     setConnection = (response: Response) => {
         if (!response["connection-id"]) return;
-        this.connection = response["connection-id"];
+        this.connectionName = response["connection-id"];
     }
 
     setQuery = (response: Response) => {
@@ -56,6 +58,10 @@ export class Store {
             language: 'postgresql'
         });
         this.loaded = false;
+    }
+
+    setHints = (response: Response) => {
+        this.hints = response.hints ? JSON.stringify(response.hints) : '';
     }
 
     evaluate = async () => {

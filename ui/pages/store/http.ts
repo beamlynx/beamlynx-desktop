@@ -1,10 +1,10 @@
 const base = 'http://localhost:33333';
 
-// TODO: extract to a common class
 export type Response = {
   result: unknown;
   'connection-id': string;
   query: string;
+  hints: string;
   error: string;
 };
 
@@ -34,5 +34,4 @@ export const Http = {
         }
         return await res.json();
     }
-
-    }
+}

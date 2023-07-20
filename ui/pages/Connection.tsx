@@ -1,6 +1,6 @@
 import React from "react";
 import { Box } from "@mui/material";
-import ActiveConnection from "./ActiveConnection";
+import ActiveConnection from "./components/ActiveConnection";
 import { useStores } from "./store/container";
 
 interface Props {}

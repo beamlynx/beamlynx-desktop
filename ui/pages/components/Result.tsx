@@ -1,11 +1,10 @@
-import React from "react";
-
-import { observer } from "mobx-react-lite";
-import { useStores } from "./store/container";
 import { DataGrid } from '@mui/x-data-grid';
 import { toJS } from "mobx";
+import { observer } from "mobx-react-lite";
+import React from "react";
+import { useStores } from '../store/container';
 
-const PineResult = observer(() => {
+const Result = observer(() => {
     const { store } = useStores();
     const rows = toJS(store.rows); 
     const columns = toJS(store.columns); 
@@ -22,4 +21,4 @@ const PineResult = observer(() => {
     );
   });
 
-export default PineResult;
+export default Result;
