@@ -9,15 +9,18 @@ const Result = observer(() => {
     const rows = toJS(store.rows); 
     const columns = toJS(store.columns); 
     return (
-        <div style={{ height: 470, width: '100%'}}>
-            <DataGrid
-                density="compact"
-                rows={rows}
-                columns={columns}
-                pageSize={10}
-                getRowId={() => Math.random()*100000}
-            />
-        </div>
+            <div>
+                    {!store.loaded ||
+                        <DataGrid
+                            autoHeight={true}
+                            density="compact"
+                            rows={rows}
+                            columns={columns}
+                            getRowId={() => Math.random()*100000}
+                            
+                        />
+                    }
+            </div>
     );
   });
 

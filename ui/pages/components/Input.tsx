@@ -12,37 +12,42 @@ const Input = observer(() => {
       await store.buildQuery();
     } 
     
-    // Return the updated string and the new position of the cursor
-    const addPipe = (target: HTMLTextAreaElement): [string, number] => {
-        const index = target.selectionStart
-        const v = target.value;
-        const updated = v.slice(0, index) + "\n | " + v.slice(index);
-        return [updated, index + 4];
-    }
+    // // Return the updated string and the new position of the cursor
+    // const addPipe = (target: HTMLTextAreaElement): [string, number] => {
+    //     const index = target.selectionStart
+    //     const v = target.value;
+    //     const updated = v.slice(0, index) + "\n | " + v.slice(index);
+    //     return [updated, index + 4];
+    // }
 
-    const handleEnter = async (e: React.KeyboardEvent) => {
-        if (e.key === '|') {
-          e.preventDefault();
-          const target = e.target as HTMLTextAreaElement;
-          const [value, index] = addPipe(target);
-          target.value = value;
-          target.selectionEnd = index
-        }
+    const handleKeyPress = async (e: React.KeyboardEvent) => {
+        // if (e.key === '|') {
+        //   e.preventDefault();
+        //   const target = e.target as HTMLTextAreaElement;
+        //   const [value, index] = addPipe(target);
+        //   target.value = value;
+        //   target.selectionEnd = index
+        // }
+
         if (e.key === 'Enter') {
           e.preventDefault();
           await store.evaluate();
         }
     }
+
     return (
         <TextField
+          label="Pine expression... "
+          hiddenLabel={true}
+          size="small"
           variant="outlined"
           autoFocus
-          multiline
+          // multiline
           fullWidth
-          minRows="3"
-          maxRows="10"
+          // minRows="1"
+          maxRows="1"
           onChange={handleChange}
-          onKeyDown={handleEnter}
+          onKeyDown={handleKeyPress}
           />
     );
   });

@@ -5,7 +5,7 @@ import { useStores } from "../store/container";
 const Query = observer(() => {
     const { store } = useStores();
     return (
-      <pre>{store.query}</pre>
+      <pre>{store.loaded ? '' : store.query}</pre>
     );
   });
 

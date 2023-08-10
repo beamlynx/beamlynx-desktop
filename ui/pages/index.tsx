@@ -6,32 +6,36 @@ import Input from './components/Input';
 import Result from './components/Result';
 import { Box, Grid } from '@mui/material';
 import Message from './components/Message';
-import Suggestions from './components/Suggestions';
 
 
 const Home: NextPage = () => {
   return (
-  <Container maxWidth="xl">
-    <Grid container >
-      <Grid item xs={4}>
+  <Container maxWidth={false} disableGutters={true}>
+    <Grid container>
+      <Grid item xs={2}>
+        <Box sx={{ m: 2, mt: 1 }}>
+          <ActiveConnection />
+        </Box>
+      </Grid>
+
+      <Grid item xs={10}>
         <Box sx={{ m: 1}}>
           <Message />
-        </Box>
-        <Box sx={{ m: 1}}>
-          <Input />
-        </Box>
-        <Box sx={{ m: 1}}>
-          <Suggestions />
-        </Box>
+        </Box> 
       </Grid>
-      <Grid item xs={8}>
-        <Box sx={{ m: 1}}>
-          <ActiveConnection />
-          <Query />
-        </Box>
-      </Grid>
+
     </Grid>
-    <Box sx={{ m: 1}}>
+
+    <Box sx={{ ml: 1, mr: 1}}>
+      <Input />
+    </Box>
+
+
+    <Box sx={{ ml: 2}}>
+      <Query />
+    </Box>
+
+    <Box>
       <Result/>
     </Box>
   </Container>

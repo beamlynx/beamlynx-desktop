@@ -61,7 +61,9 @@ export class Store {
     }
 
     setHints = (response: Response) => {
-        this.hints = response.hints ? JSON.stringify(response.hints) : '';
+        this.hints = response.hints
+          ? JSON.stringify(response.hints, null, 1).substring(0, 180)
+          : '';
     }
 
     evaluate = async () => {
@@ -72,7 +74,7 @@ export class Store {
         if (!response) return;
         this.handleError(response);
         this.setConnection(response);
-        this.setQuery(response);
+        this.setQuery('');
         if (!response.result) return;
 
         const rows = response.result as Row[];
