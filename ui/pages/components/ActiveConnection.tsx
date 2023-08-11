@@ -7,7 +7,7 @@ const ActiveConnection = observer(({}) =>
         {
             const { store } = useStores();
             return (
-                <Typography variant="caption" component="code" color="gray">{"⚡ " + (store.connectionName || "not connected")}</Typography>
+                <Typography variant="caption" component="code" color="gray">{store.connectionName  ? `⚡ ${store.connectionName}` : "🔌 Not connected!"}</Typography>
             )
         });
 
