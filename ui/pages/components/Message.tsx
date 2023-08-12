@@ -1,6 +1,6 @@
 import { Typography } from "@mui/material";
 import { observer } from "mobx-react-lite";
-import React from "react";
+import React, { useEffect } from "react";
 import { useStores } from "../store/container";
 
 const SuccessMessages = [
@@ -29,6 +29,8 @@ const pickSuccessMessage = () => {
 
 const Message = observer(() => {
     const { store } = useStores();
+    
+
     if (!store.expression) {
       return <Typography/>
     }
