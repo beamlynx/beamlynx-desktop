@@ -5,7 +5,11 @@ import { useStores } from "../store/container";
 const Query = observer(() => {
     const { store } = useStores();
     return (
-      <pre>{store.loaded ? '' : store.query}</pre>
+      <pre>
+        <code style={{ color: 'gray', fontFamily: 'monospace', fontSize: '12px'}}>
+          {store.loaded ? '' : store.query}
+        </code>
+      </pre>
     );
   });
 
