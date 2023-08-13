@@ -4,7 +4,7 @@ import ReactFlow, { ConnectionLineType, Position, useEdgesState, useNodesState }
 
 import { observer } from 'mobx-react-lite';
 import 'reactflow/dist/style.css';
-import { useStores } from '../store/container';
+import { useStores } from '../store/store-container';
 import { Metadata } from './model';
 import { Box } from '@mui/material';
 
@@ -48,30 +48,29 @@ const getLayoutedElements = (metadata: Metadata, direction = 'TB') => {
 };
 
 const Graph = observer(() => {
-  const { store, settings } = useStores();
+  const { global: store, graph: settings, dummyGraph } = useStores();
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
   useEffect(() => {
     const fetchGraph = async () => {
-      await settings.getDummyMetadata();
+      await settings.getDummyGraph();
       setNodes(nodes);
       setEdges(edges);
     };
-
     fetchGraph().catch(e => {
       alert(`some error: ${e}`);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
   useEffect(() => {
-    const { nodes, edges } = getLayoutedElements(settings.metadata);
+    const { nodes, edges } = getLayoutedElements(settings.graph);
     setNodes(nodes);
     setEdges(edges);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.metadata]);
+  }, [settings.graph]);
+
 
   return store.loaded ? (
     <></>
@@ -79,7 +78,8 @@ const Graph = observer(() => {
     <Box
       height={400}
       sx={{
-        mt: 2,
+        m: 2,
+        ml: 1,
         border: '1px solid lightgray',
         borderRadius: 1,
       }}

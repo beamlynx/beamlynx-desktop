@@ -3,10 +3,10 @@ import React, { ReactElement } from "react";
 import TextField from '@mui/material/TextField';
 import { Box, TextareaAutosize } from "@mui/material";
 import { observer } from "mobx-react-lite";
-import { useStores } from "../store/container";
+import { useStores } from "../store/store-container";
 
 const Input = observer(() => {
-    const { store } = useStores();
+    const { global: store } = useStores();
     const handleChange = async (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       store.expression = e.target.value;
       await store.buildQuery();

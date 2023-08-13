@@ -1,9 +1,9 @@
 import { observer } from "mobx-react-lite";
 import React, { useEffect } from "react";
-import { useStores } from "../store/container";
+import { useStores } from "../store/store-container";
 
 const Query = observer(() => {
-    const { store } = useStores();
+    const { global: store } = useStores();
 
     return (
       <pre>

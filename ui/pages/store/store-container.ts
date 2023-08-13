@@ -1,12 +1,12 @@
 import { createContext, useContext } from 'react';
-import { Store } from './store';
-import { SettingsStore } from './settings-store';
+import { GlobalStore } from './global.store';
+import { GraphStore } from './graph.store';
 
 class StoreContainer {
-  store = new Store();
-  settings = new SettingsStore();
-
+  global = new GlobalStore();
+  graph = new GraphStore();
 }
+
 const container = new StoreContainer();
 const StoresContext = createContext(container);
 export const useStores = () => useContext(StoresContext);

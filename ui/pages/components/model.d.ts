@@ -6,7 +6,7 @@ export type PineNode = Node<{
 export type PineEdge = Edge;
 
 
-export type Metadata = {
+export type Graph = {
   nodes: PineNode[];
   edges: PineEdge[];
 };

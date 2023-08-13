@@ -1,7 +1,6 @@
 import { Typography } from "@mui/material";
 import { observer } from "mobx-react-lite";
-import React, { useEffect } from "react";
-import { useStores } from "../store/container";
+import { useStores } from "../store/store-container";
 
 const SuccessMessages = [
   '💣 Boom!',
@@ -9,7 +8,7 @@ const SuccessMessages = [
   '🙌 Yes!', 
   '🤝 Nice work!', 
   '🧐 Impressive!', 
-  '💥 💣 Baboom!', 
+  '💣 💥  Baboom!', 
   `🛼 That's how we roll!`, 
   '🥁 Drum roll!', 
   '🦸 Super!', 
@@ -28,9 +27,8 @@ const pickSuccessMessage = () => {
 
 
 const Message = observer(() => {
-    const { store } = useStores();
+    const { global: store } = useStores();
     
-
     if (!store.expression) {
       return <Typography/>
     }

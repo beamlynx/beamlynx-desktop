@@ -10,7 +10,7 @@ type Column = {
 }
 
 type Row = { [key: string]: any; };
-export class Store {
+export class GlobalStore {
     connectionName = '';
     expression = '';
     query = '';
