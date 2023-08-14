@@ -65,7 +65,7 @@ export class GlobalStore {
     // alert('setting the hints')
     this.graphStore.convertHintsToGraph(this.metadata, response.hints, response.context);
     this.hintsMessage = response.hints
-      ? JSON.stringify(response.hints, null, 1).substring(0, 200)
+      ? JSON.stringify(response.hints, null, 1).substring(0, 180)
       : '';
   };
 

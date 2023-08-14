@@ -98,7 +98,7 @@ const GraphBox = observer(() => {
     <></>
   ) : (
     <Box
-      height={600}
+      height={550}
       sx={{
         m: 2,
         ml: 1,
