@@ -1,7 +1,7 @@
 
 import { observer } from "mobx-react-lite";
 import React from "react";
-import { useStores } from "../store/store-container";
+import { useStores } from "../../store/store-container";
 import { Button } from "@mui/material";
 
 const Settings = observer(() => {

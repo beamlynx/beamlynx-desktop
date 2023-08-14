@@ -1,7 +1,5 @@
 import React from "react";
-import { Box } from "@mui/material";
 import ActiveConnection from "./components/ActiveConnection";
-import { useStores } from "./store/store-container";
 
 interface Props {}
 interface State {

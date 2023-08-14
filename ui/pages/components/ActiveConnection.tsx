@@ -1,7 +1,7 @@
 import { Typography } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useEffect } from 'react';
-import { useStores } from '../store/store-container';
+import { useStores } from '../../store/store-container';
 const ActiveConnection = observer(({}) => {
   const { global: store } = useStores();
 

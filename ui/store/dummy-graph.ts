@@ -1,4 +1,4 @@
-import { PineEdge, PineNode } from "../components/model";
+import { PineEdge, PineNode } from "../model";
 
 const position = { x: 0, y: 0 };
 export const nodes: PineNode[] = [

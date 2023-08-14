@@ -1,8 +1,8 @@
 import { makeAutoObservable } from 'mobx';
 import { format } from 'sql-formatter';
-import { Hints, Http, Response } from './http';
 import { GraphStore } from './graph.store';
-import { Metadata } from '../components/model';
+import { Http, Response } from './http';
+import { Metadata } from '../model';
 
 type Column = {
   field: string;
@@ -22,7 +22,7 @@ export class GlobalStore {
   hintsMessage: string = '';
   columns: Column[] = [];
   rows: Row[] = [];
-  metadata: Metadata = {};
+  metadata: Metadata = { "db/references": { table: {}}};
 
   constructor(private readonly graphStore: GraphStore) {
     makeAutoObservable(this);

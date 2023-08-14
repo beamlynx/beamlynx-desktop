@@ -1,5 +1,5 @@
 import { makeAutoObservable } from 'mobx';
-import { Metadata, PineEdge, PineNode } from '../components/model';
+import { Metadata, PineEdge, PineNode } from '../model';
 import { edges as dummyEdges, nodes as dummyNodes } from './dummy-graph';
 import { Context, Hints } from './http';
 

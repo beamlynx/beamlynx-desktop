@@ -1,5 +1,5 @@
 
-import { PineNode } from "../components/model";
+import { PineNode } from "../../model";
 
 const position = { x: 0, y: 0 };
 const edgeType = 'smoothstep';
