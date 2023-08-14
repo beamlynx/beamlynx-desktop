@@ -1,16 +1,20 @@
 const base = 'http://localhost:33333';
 
+export type Hints = { table: string[] };
+export type Context = string[];
+
 export type Response = {
   result: unknown;
   'connection-id': string;
   query: string;
-  hints: string;
+  hints: Hints;
+  context: string[];
   error: string;
 };
 
 export const Http = {
     get: async (path: string): Promise<Response | undefined> => {
-    const res = await fetch(`${base}/${path}`, {
+    const res = await fetch(`${base}/api/v1/${path}`, {
         method: 'GET',
         headers: {
             'Content-Type': 'application/json',
@@ -23,7 +27,7 @@ export const Http = {
     },
 
     post: async (path: string, body: object): Promise<Response | undefined> => {
-      const res = await fetch(`${base}/${path}`, {
+      const res = await fetch(`${base}/api/v1/${path}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

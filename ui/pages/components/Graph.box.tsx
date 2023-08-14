@@ -1,21 +1,34 @@
 import dagre from 'dagre';
 import { useEffect } from 'react';
-import ReactFlow, { ConnectionLineType, Position, useEdgesState, useNodesState } from 'reactflow';
+import ReactFlow, {
+  ConnectionLineType,
+  Controls,
+  Position,
+  ReactFlowInstance,
+  ReactFlowProvider,
+  useEdgesState,
+  useNodesState,
+  useReactFlow,
+} from 'reactflow';
 
+import { Box } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import 'reactflow/dist/style.css';
 import { useStores } from '../store/store-container';
-import { Metadata } from './model';
-import { Box } from '@mui/material';
-
-const dagreGraph = new dagre.graphlib.Graph();
-dagreGraph.setDefaultEdgeLabel(() => ({}));
+import { PineEdge, PineNode } from './model';
 
 const nodeWidth = 172;
-const nodeHeight = 36;
+const nodeHeight = 0; // 36;
 
-const getLayoutedElements = (metadata: Metadata, direction = 'TB') => {
-  const { nodes, edges } = metadata;
+const getLayoutedElements = (
+  nodes: PineNode[],
+  edges: PineEdge[],
+  direction: 'TB' | 'LR' = 'LR',
+) => {
+  // should we create a new graph every single time?
+  const dagreGraph = new dagre.graphlib.Graph();
+  dagreGraph.setDefaultEdgeLabel(() => ({}));
+
   const isHorizontal = direction === 'LR';
   dagreGraph.setGraph({ rankdir: direction });
 
@@ -47,36 +60,45 @@ const getLayoutedElements = (metadata: Metadata, direction = 'TB') => {
   return { nodes, edges };
 };
 
-const Graph = observer(() => {
-  const { global: store, graph: settings, dummyGraph } = useStores();
+const Flow = observer(() => {
+  const { graph } = useStores();
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const reactFlowInstance = useReactFlow();
 
   useEffect(() => {
-    const fetchGraph = async () => {
-      await settings.getDummyGraph();
-      setNodes(nodes);
-      setEdges(edges);
-    };
-    fetchGraph().catch(e => {
-      alert(`some error: ${e}`);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  useEffect(() => {
-    const { nodes, edges } = getLayoutedElements(settings.graph);
+    const { nodes, edges } = getLayoutedElements(graph.nodes, graph.edges);
     setNodes(nodes);
     setEdges(edges);
+    reactFlowInstance.fitView();
+    // TODO: how can I avoid disabling the eslint rule?
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.graph]);
+  }, [graph.nodes, graph.edges]);
 
+  return (
+    <ReactFlow
+      nodes={nodes}
+      edges={edges}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
+      connectionLineType={ConnectionLineType.Bezier}
+      nodesConnectable={false}
+      elementsSelectable={false}
+      fitView
+    >
+      <Controls />
+    </ReactFlow>
+  );
+});
 
-  return store.loaded ? (
+const GraphBox = observer(() => {
+  const { global } = useStores();
+  return global.loaded ? (
     <></>
   ) : (
     <Box
-      height={400}
+      height={600}
       sx={{
         m: 2,
         ml: 1,
@@ -84,16 +106,11 @@ const Graph = observer(() => {
         borderRadius: 1,
       }}
     >
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        connectionLineType={ConnectionLineType.SmoothStep}
-        fitView
-      ></ReactFlow>
+      <ReactFlowProvider>
+        <Flow />
+      </ReactFlowProvider>
     </Box>
   );
 });
 
-export default Graph;
+export default GraphBox;

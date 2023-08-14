@@ -3,8 +3,8 @@ import { GlobalStore } from './global.store';
 import { GraphStore } from './graph.store';
 
 class StoreContainer {
-  global = new GlobalStore();
   graph = new GraphStore();
+  global = new GlobalStore(this.graph);
 }
 
 const container = new StoreContainer();

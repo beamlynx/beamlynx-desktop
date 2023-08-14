@@ -38,7 +38,7 @@ const Message = observer(() => {
     if (store.loaded) {
       return <Typography variant="caption" color="gray">{pickSuccessMessage()}</Typography>;
     } else {
-      return <Typography variant="caption" color="gray">{store.hints}</Typography>;
+      return <Typography variant="caption" color="gray">{store.hintsMessage}</Typography>;
     }
 
   });
