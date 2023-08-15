@@ -14,7 +14,8 @@ type Column = {
 type Row = { [key: string]: any };
 
 export class GlobalStore {
-  connectionName = '';
+  connected  = false;
+  connection = '';
   expression = '';
   query = '';
   loaded = false;
@@ -32,21 +33,15 @@ export class GlobalStore {
     const response = await Http.get('connection');
     if (!response) return;
     const result = response.result as { 'connection-id': string; metadata: Metadata };
-    this.connectionName = result['connection-id'];
+    this.connection = result['connection-id'];
     this.metadata = result.metadata;
-    return this.connectionName;
+    return this.connection;
   };
 
-  buildQuery = async () => {
-    const response = await Http.post('build', {
-      expression: this.expression,
-    });
-
-    if (!response) return;
-    this.handleError(response);
-    this.setQuery(response);
-    this.setHints(response);
-  };
+  setConnectionName = (response: Response) => {
+    if (!response['connection-id']) return;
+    this.connection = response['connection-id'];
+  }
 
   handleError = (response: Response) => {
     this.error = response.error || '';
@@ -62,14 +57,33 @@ export class GlobalStore {
 
   setHints = (response: Response) => {
     if (!response.hints) return;
-    // alert('setting the hints')
     this.graphStore.convertHintsToGraph(this.metadata, response.hints, response.context);
     this.hintsMessage = response.hints
       ? JSON.stringify(response.hints, null, 1).substring(0, 180)
       : '';
   };
 
+  buildQuery = async () => {
+    if (!this.connected) {
+      this.handleError({ error: 'Not connected' } as Response);
+      return;
+    }
+    const response = await Http.post('build', {
+      expression: this.expression,
+    });
+
+    if (!response) return;
+    this.handleError(response);
+    this.setConnectionName(response);
+    this.setQuery(response);
+    this.setHints(response);
+  };
+
   evaluate = async () => {
+    if (!this.connected) {
+      this.handleError({ error: 'Not connected' } as Response);
+      return;
+    }
     const response = await Http.post('eval', {
       expression: this.expression,
     });
