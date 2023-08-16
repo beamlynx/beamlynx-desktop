@@ -69,7 +69,8 @@ export class GraphStore {
   };
 
   convertHintsToGraph = (metadata: Metadata, hints: Hints, context: Context) => {
-    const { table: tableHints } = hints;
+    const { table } = hints;
+    const tableHints = table || [];
     const selected = context ? context.map(addDummySchema).map(makeNode) : [];
     const suggested = tableHints.map(addDummySchema).map(makeNode);
     this.nodes = selected.concat(suggested);

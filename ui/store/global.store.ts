@@ -93,11 +93,6 @@ export class GlobalStore {
     if (!response.result) return;
 
     const rows = response.result as Row[];
-    if (rows.length < 2) {
-      this.columns = [];
-      this.rows = [];
-      return;
-    }
     const columns = rows[0].map((header: Row, index: number) => {
       return {
         field: index,
