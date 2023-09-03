@@ -1,13 +1,9 @@
 import { makeAutoObservable } from 'mobx';
 import { Metadata, PineEdge, PineNode } from '../model';
 import { edges as dummyEdges, nodes as dummyNodes } from './dummy-graph';
-import { Context, Hints } from './http';
+import { Context, Hints, QualifiedTable } from './http';
 
-type N = {
-  schema: string;
-  table: string;
-};
-
+type N = QualifiedTable;
 type E = {
   from: N;
   to: N;
@@ -20,29 +16,43 @@ const makeEdgeId = ({ from, to }: E) => {
   return `${schema}.${table} -> ${fSchema}.${fTable}`;
 };
 
-const makeNode = (n: N) => {
-  const { table } = n;
+// Variations of 'Colombia Blue' i.e B9D9EB
+// https://coolors.co/b9d9eb
+// https://maketintsandshades.com/#B9D9EB
+const Colors = [
+  '#b9d9eb',
+  '#a7c3d4',
+  '#94aebc',
+  '#8298a5',
+]
+const makeNode = (n: QualifiedTable) => {
+  const { schema, table } = n;
+  // TODO: this probably has collisions. Keep track of the schemas and the colors assigned and avoid collisions.
+  const hash = n.schema.split('').reduce((acc, x) => acc + x.charCodeAt(0), 0);
+  const color = schema === 'public' ? '#FFF' : Colors[hash % Colors.length];
+
   return {
     id: makeNodeId(n),
-    data: { label: table },
+    data: { label: n.table },
+    style: { backgroundColor: color, borderColor: '#000'},
     position: { x: 0, y: 0 },
   };
 };
-const addDummySchema = (table: string) => ({ schema: 'unknown', table });
 
-const makeEdge = (metadata: Metadata, from: string, to: string, animated = false): PineEdge | undefined => {
+const makeEdge = (metadata: Metadata, from: N, to: N, animated = false): PineEdge | undefined => {
   let x, y;
   const tables = metadata['db/references'].table;
-  if (tables[from] && tables[from]['refers-to'] && tables[from]['refers-to'][to]) {
+  // TODO: use the schema to check the conditions instead of just the tables
+  if (tables[from.table] && tables[from.table]['refers-to'] && tables[from.table]['refers-to'][to.table]) {
     x = from;
     y = to;
-  } else if (tables[to] && tables[to]['refers-to'] && tables[to]['refers-to'][from]) {
+  } else if (tables[to.table] && tables[to.table]['refers-to'] && tables[to.table]['refers-to'][from.table]) {
     x = to;
     y = from;
   } else {
     return;
   }
-  const e = { from: addDummySchema(y), to: addDummySchema(x) };
+  const e = { from: y, to: x };
   return {
     id: makeEdgeId(e),
     source: makeNodeId(e.from),
@@ -69,10 +79,9 @@ export class GraphStore {
   };
 
   convertHintsToGraph = (metadata: Metadata, hints: Hints, context: Context) => {
-    const { table } = hints;
-    const tableHints = table || [];
-    const selected = context ? context.map(addDummySchema).map(makeNode) : [];
-    const suggested = tableHints.map(addDummySchema).map(makeNode);
+    const tableHints = hints.table || [];
+    const selected = context ? context.map(makeNode) : [];
+    const suggested = tableHints.map(makeNode);
     this.nodes = selected.concat(suggested);
 
     if (context.length < 1) {
@@ -104,15 +113,4 @@ export class GraphStore {
 
     this.edges = Object.values(indexedEdges).concat(Object.values(suggestedEdges));
   };
-
-  // getDatabaseGraph = async () => {
-  //   const response = await Http.get('connection/graph');
-  //   if (!response) return;
-  //   this.graph = response.result as Graph;
-  //   const from = { schema: 'public', table: 'user' };
-  //   const to = { schema: 'public', table: 'tenant' };
-  //   this.graph.nodes = [from, to].map(makeNode);
-  //   this.graph.edges = [{ from, to }].map(makeEdge);
-  //   return this.graph;
-  // };
 }

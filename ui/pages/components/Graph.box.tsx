@@ -60,6 +60,7 @@ const getLayoutedElements = (
   return { nodes, edges };
 };
 
+
 const Flow = observer(() => {
   const { graph } = useStores();
 
@@ -71,7 +72,13 @@ const Flow = observer(() => {
     const { nodes, edges } = getLayoutedElements(graph.nodes, graph.edges);
     setNodes(nodes);
     setEdges(edges);
-    reactFlowInstance.fitView();
+    
+    // TODO: when the number of nodes change drastically, the fit view doesn't
+    // work as expected. Using a setTimeout is a workaround.
+    setTimeout(() => {
+      reactFlowInstance.fitView({duration: 800 });
+    }, 800);
+
     // TODO: how can I avoid disabling the eslint rule?
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graph.nodes, graph.edges]);

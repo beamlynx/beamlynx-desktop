@@ -1,14 +1,15 @@
 const base = 'http://localhost:33333';
 
-export type Hints = { table: string[] };
-export type Context = string[];
+export type QualifiedTable = { schema: string; table: string }
+export type Hints = { table: QualifiedTable[] };
+export type Context = QualifiedTable[];
 
 export type Response = {
   result: unknown;
   'connection-id': string;
   query: string;
   hints: Hints;
-  context: string[];
+  context: Context;
   error: string;
 };
 
