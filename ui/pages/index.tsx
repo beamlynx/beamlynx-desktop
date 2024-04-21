@@ -1,4 +1,4 @@
-import { ClerkProvider, UserButton } from '@clerk/nextjs';
+import { ClerkProvider } from '@clerk/nextjs';
 import { Box, Grid } from '@mui/material';
 import Container from '@mui/material/Container';
 import type { NextPage } from 'next';
@@ -8,6 +8,7 @@ import Input from './components/Input';
 import Message from './components/Message';
 import Query from './components/Query';
 import Result from './components/Result';
+import UserBox from './components/UserBox';
 
 const Home: NextPage = () => {
   return (
@@ -27,9 +28,7 @@ const Home: NextPage = () => {
           </Grid>
 
           <Grid item xs={1}>
-            <Box sx={{ m: 1, ml: 2 }}>
-              <UserButton  userProfileMode='modal'/>
-            </Box>
+            <UserBox />
           </Grid>
         </Grid>
 

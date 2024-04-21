@@ -25,6 +25,10 @@ export class GlobalStore {
   rows: Row[] = [];
   metadata: Metadata = { "db/references": { table: {}}};
 
+  // User
+  email = '';
+  domain = '';
+
   constructor(private readonly graphStore: GraphStore) {
     makeAutoObservable(this);
   }
@@ -41,6 +45,13 @@ export class GlobalStore {
   setConnectionName = (response: Response) => {
     if (!response['connection-id']) return;
     this.connection = response['connection-id'];
+  }
+
+  setEmail = (email: string) => {
+    if (!email) return;
+    this.email = email;
+    const [,domain] = email?.split('@');
+    this.domain = domain;
   }
 
   handleError = (response: Response) => {
