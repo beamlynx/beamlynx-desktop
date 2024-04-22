@@ -16,16 +16,16 @@ const makeEdgeId = ({ from, to }: E) => {
   return `${schema}.${table} -> ${fSchema}.${fTable}`;
 };
 
-// Variations of 'Colombia Blue' i.e B9D9EB
-// https://coolors.co/b9d9eb
-// https://maketintsandshades.com/#B9D9EB
+// Generate a pallette of constrasting modern colors
 const Colors = [
-  '#b9d9eb',
-  '#a7c3d4',
-  '#94aebc',
-  '#8298a5',
+  '#ff4e50',
+  '#ff9f51',
+  '#ffea51',
+  '#4caf50',
+  '#64b6ac',
 ]
-const makeNode = (n: QualifiedTable) => {
+
+const makeNode = (n: QualifiedTable): PineNode => {
   const { schema, table } = n;
   // TODO: this probably has collisions. Keep track of the schemas and the colors assigned and avoid collisions.
   const hash = n.schema.split('').reduce((acc, x) => acc + x.charCodeAt(0), 0);
@@ -33,11 +33,28 @@ const makeNode = (n: QualifiedTable) => {
 
   return {
     id: makeNodeId(n),
-    data: { label: n.table },
-    style: { backgroundColor: color, borderColor: '#000'},
+    type: 'pineNode',
+    data: { 
+      schema,
+      table,
+      borderColor: 'darkgray',
+      backgroundColor: color,
+     },
     position: { x: 0, y: 0 },
   };
 };
+
+const makeSelectedNode = (n: QualifiedTable): PineNode => {
+  const node = makeNode(n);
+  node.data.borderColor = 'darkgray';
+  return node;
+}
+
+const makeSuggestedNode = (n: QualifiedTable): PineNode => {
+  const node = makeNode(n);
+  node.data.borderColor = 'orange';
+  return node;
+}
 
 const makeEdge = (metadata: Metadata, from: N, to: N, animated = false): PineEdge | undefined => {
   let x, y;
@@ -80,8 +97,8 @@ export class GraphStore {
 
   convertHintsToGraph = (metadata: Metadata, hints: Hints, context: Context) => {
     const tableHints = hints.table || [];
-    const selected = context ? context.map(makeNode) : [];
-    const suggested = tableHints.map(makeNode);
+    const selected = context ? context.map(makeSelectedNode) : [];
+    const suggested = tableHints.map(makeSuggestedNode);
     this.nodes = selected.concat(suggested);
 
     if (context.length < 1) {

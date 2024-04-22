@@ -1,8 +1,14 @@
 import { Edge, Node } from 'reactflow';
 
-export type PineNode = Node<{
-  label: string;
-}>;
+export type PineNodeData = {
+  table: string;
+  schema?: string;
+  borderColor?: string;
+  backgroundColor?: string;
+};
+
+export type PineNode = Node<PineNodeData>;
+
 export type PineEdge = Edge;
 
 export type Metadata = {

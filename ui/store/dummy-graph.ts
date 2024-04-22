@@ -4,56 +4,56 @@ const position = { x: 0, y: 0 };
 export const nodes: PineNode[] = [
   {
     id: '1',
-    data: { label: 'input' },
+    data: { table: 'input' },
     position,
   },
   {
     id: '2',
-    data: { label: 'node 2' },
+    data: { table: 'node 2' },
     position,
   },
   {
     id: '2a',
-    data: { label: 'node 2a' },
+    data: { table: 'node 2a' },
     position,
   },
   {
     id: '2b',
-    data: { label: 'node 2b' },
+    data: { table: 'node 2b' },
     position,
   },
   {
     id: '2c',
-    data: { label: 'node 2c' },
+    data: { table: 'node 2c' },
     position,
   },
   {
     id: '2d',
-    data: { label: 'node 2d' },
+    data: { table: 'node 2d' },
     position,
   },
   {
     id: '3',
-    data: { label: 'node 3' },
+    data: { table: 'node 3' },
     position,
   },
   {
     id: '4',
-    data: { label: 'node 4' },
+    data: { table: 'node 4' },
     position,
   },
   {
     id: '5',
-    data: { label: 'node 5' },
+    data: { table: 'node 5' },
     position,
   },
   {
     id: '6',
     type: 'output',
-    data: { label: 'output' },
+    data: { table: 'output' },
     position,
   },
-  { id: '7', type: 'output', data: { label: 'output' }, position },
+  { id: '7', type: 'output', data: { table: 'output' }, position },
 ];
 
 export const edges: PineEdge[] = [

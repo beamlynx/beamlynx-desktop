@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import ReactFlow, {
   ConnectionLineType,
   Controls,
+  NodeTypes,
   Position,
   ReactFlowInstance,
   ReactFlowProvider,
@@ -16,9 +17,14 @@ import { observer } from 'mobx-react-lite';
 import 'reactflow/dist/style.css';
 import { useStores } from '../../store/store-container';
 import { PineEdge, PineNode } from '../../model';
+import PineNodeComponent from './PineNodeComponent';
 
 const nodeWidth = 172;
 const nodeHeight = 0; // 36;
+
+const nodeTypes: NodeTypes = {
+  pineNode: PineNodeComponent,
+};
 
 const getLayoutedElements = (
   nodes: PineNode[],
@@ -87,6 +93,7 @@ const Flow = observer(() => {
     <ReactFlow
       nodes={nodes}
       edges={edges}
+      nodeTypes={nodeTypes}
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
       connectionLineType={ConnectionLineType.Bezier}
