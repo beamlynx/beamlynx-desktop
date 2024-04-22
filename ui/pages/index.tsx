@@ -2,13 +2,13 @@ import { ClerkProvider } from '@clerk/nextjs';
 import { Box, Grid } from '@mui/material';
 import Container from '@mui/material/Container';
 import type { NextPage } from 'next';
-import ActiveConnection from './components/ActiveConnection';
-import GraphBox from './components/Graph.box';
-import Input from './components/Input';
-import Message from './components/Message';
-import Query from './components/Query';
-import Result from './components/Result';
-import UserBox from './components/UserBox';
+import ActiveConnection from '../components/ActiveConnection';
+import GraphBox from '../components/Graph.box';
+import Input from '../components/Input';
+import Message from '../components/Message';
+import Query from '../components/Query';
+import Result from '../components/Result';
+import UserBox from '../components/UserBox';
 
 const Home: NextPage = () => {
   return (

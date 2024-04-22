@@ -2,7 +2,7 @@ import { DataGrid } from '@mui/x-data-grid';
 import { toJS } from "mobx";
 import { observer } from "mobx-react-lite";
 import React from "react";
-import { useStores } from '../../store/store-container';
+import { useStores } from '../store/store-container';
 
 const Result = observer(() => {
     const { global: store } = useStores();

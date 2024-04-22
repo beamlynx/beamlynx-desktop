@@ -1,7 +1,7 @@
 import { UserButton, useUser } from "@clerk/nextjs";
 import { Box, Tooltip, Typography } from "@mui/material";
 import { observer } from "mobx-react-lite";
-import { useStores } from "../../store/store-container";
+import { useStores } from "../store/store-container";
 
 const UserBox = observer(() => {
 const { user } = useUser();

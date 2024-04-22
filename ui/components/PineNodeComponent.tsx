@@ -1,6 +1,6 @@
 import React from 'react';
 import { Handle, NodeProps, Position } from 'reactflow';
-import { PineNode, PineNodeData } from '../../model';
+import { PineNodeData } from '../model';
 
 const handleStyle = {
     width: '2px',

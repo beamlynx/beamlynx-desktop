@@ -15,9 +15,9 @@ import ReactFlow, {
 import { Box } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import 'reactflow/dist/style.css';
-import { useStores } from '../../store/store-container';
-import { PineEdge, PineNode } from '../../model';
 import PineNodeComponent from './PineNodeComponent';
+import { PineNode, PineEdge } from '../model';
+import { useStores } from '../store/store-container';
 
 const nodeWidth = 172;
 const nodeHeight = 0; // 36;

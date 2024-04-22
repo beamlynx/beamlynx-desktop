@@ -1,5 +1,5 @@
 import React from "react";
-import ActiveConnection from "./components/ActiveConnection";
+import ActiveConnection from "../components/ActiveConnection";
 
 interface Props {}
 interface State {
