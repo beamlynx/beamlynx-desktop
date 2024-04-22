@@ -3,8 +3,8 @@ import { Edge, Node } from 'reactflow';
 export type PineNodeData = {
   table: string;
   schema?: string;
-  borderColor?: string;
-  backgroundColor?: string;
+  type: 'selected' | 'suggested';
+  color: string,
 };
 
 export type PineNode = Node<PineNodeData>;
