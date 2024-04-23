@@ -38,7 +38,7 @@ const makeNode = (n: QualifiedTable, type: 'selected' | 'suggested'): PineNode =
   };
 };
 
-const makeEdge = (
+const updateEdgeLookup = (
   edgeLookup: { [id: string]: PineEdge },
   metadata: Metadata,
   fromNode: PineNode,
@@ -122,27 +122,13 @@ export class GraphStore {
     }, []);
 
     const edgeLookup = {};
-
-    const selectedEdges = pairs
-      .map(([x, y]) => makeEdge(edgeLookup, metadata, x, y))
-      .filter(Boolean) as PineEdge[];
-
-    const [x] = selected.reverse();
-
-    const suggestedEdges = suggested
-      .map(h => makeEdge(edgeLookup, metadata, x, h))
-      .filter(Boolean) as PineEdge[];
-
-    // const edgeLookup = selectedEdges.concat(suggestedEdges).reduce(
-    //   (acc, edge) => {
-    //     if (!edge) return acc;
-    //     if (!acc[edge.id]) {
-    //       acc[edge.id] = edge;
-    //     }
-    //     return acc;
-    //   },
-    //   {} as { [id: string]: PineEdge },
-    // );
+    for (const [x, y] of pairs) {
+      updateEdgeLookup(edgeLookup, metadata, x, y);
+    }
+    const [current] = selected.reverse();
+    for (const y of suggested) {
+      updateEdgeLookup(edgeLookup, metadata, current, y);
+    }
 
     this.edges = Object.values(edgeLookup);
   };
