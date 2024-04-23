@@ -1,24 +1,25 @@
 import { makeAutoObservable } from 'mobx';
-import { Metadata, PineEdge, PineNode, PineNodeData } from '../model';
+import { Metadata, PineEdge, PineNode } from '../model';
 import { edges as dummyEdges, nodes as dummyNodes } from './dummy-graph';
 import { Hints, QualifiedTable } from './http';
 
-type N = QualifiedTable;
 type E = {
-  from: N;
-  to: N;
+  from: PineNode;
+  to: PineNode;
 };
 
-const makeNodeId = ({ schema, table, alias }: N) => alias ?? `${schema}.${table}`;
+const makeNodeId = ({  schema, table, alias  }: QualifiedTable) => {
+  return alias ?? `${schema}.${table}`;
+};
 const makeEdgeId = ({ from, to }: E) => {
-  return `${makeNodeId(from)} -> ${makeNodeId(to)}`;
+  return `${makeNodeId(from.data)} -> ${makeNodeId(to.data)}`;
 };
 
 // Generate a pallette of constrasting modern colors
 const Colors = ['#ff4e50', '#ff9f51', '#ffea51', '#4caf50', '#64b6ac'];
 
 const makeNode = (n: QualifiedTable, type: 'selected' | 'suggested'): PineNode => {
-  const { schema, table } = n;
+  const { schema, table, alias } = n;
   // TODO: this probably has collisions. Keep track of the schemas and the colors assigned and avoid collisions.
   const hash = n.schema.split('').reduce((acc, x) => acc + x.charCodeAt(0), 0);
   const color = schema === 'public' ? '#FFF' : Colors[hash % Colors.length];
@@ -29,6 +30,7 @@ const makeNode = (n: QualifiedTable, type: 'selected' | 'suggested'): PineNode =
     data: {
       schema,
       table,
+      alias,
       type,
       color,
     },
@@ -36,7 +38,13 @@ const makeNode = (n: QualifiedTable, type: 'selected' | 'suggested'): PineNode =
   };
 };
 
-const makeEdge = (metadata: Metadata, from: N, to: N, animated = false): PineEdge | undefined => {
+const makeEdge = (
+  metadata: Metadata,
+  fromNode: PineNode,
+  toNode: PineNode,
+): PineEdge | undefined => {
+  const from = fromNode.data;
+  const to = toNode.data;
   let x, y;
   const tables = metadata['db/references'].table;
   // TODO: use the schema to check the conditions instead of just the tables
@@ -45,30 +53,26 @@ const makeEdge = (metadata: Metadata, from: N, to: N, animated = false): PineEdg
     tables[from.table]['refers-to'] &&
     tables[from.table]['refers-to'][to.table]
   ) {
-    x = from;
-    y = to;
+    x = fromNode;
+    y = toNode;
   } else if (
     tables[to.table] &&
     tables[to.table]['refers-to'] &&
     tables[to.table]['refers-to'][from.table]
   ) {
-    x = to;
-    y = from;
+    x = toNode;
+    y = fromNode;
   } else {
     return;
   }
   const e = { from: y, to: x };
   return {
     id: makeEdgeId(e),
-    source: makeNodeId(e.from),
-    target: makeNodeId(e.to),
-    animated,
+    source: makeNodeId(e.from.data),
+    target: makeNodeId(e.to.data),
+    animated: fromNode.data.type === 'suggested' || toNode.data.type === 'suggested',
   };
 };
-
-let edgeLookup: {
-  [id: string]: PineEdge;
-} = {};
 
 export class GraphStore {
   nodes: PineNode[] = [];
@@ -94,6 +98,7 @@ export class GraphStore {
     this.nodes = selected.concat(suggested);
 
     // If there are no selected tables, there are no edges
+    // TODO: should we do this always?
     if (context.length < 1) {
       this.edges = [];
       return;
@@ -102,25 +107,29 @@ export class GraphStore {
     // The context is an array of objects e.g. [ {schema: 'public', table: 'users'}, {schema: 'public', table: 'orders'}]
     // Create pairs of items from the context e.g. [ x, y, z] => [ [x, y], [x, z], [y, z] ]
 
-    const pairs = context.reduce(
-      (acc: [QualifiedTable, QualifiedTable][], current, index, array) => {
-        if (index < array.length - 1) {
-          // Check to ensure we don't go out of bounds
-          acc.push([current, array[index + 1]]);
-        }
-        return acc;
-      },
-      [],
-    );
+    const pairs = selected.reduce((acc: [PineNode, PineNode][], current, index, array) => {
+      if (index < array.length - 1) {
+        // Check to ensure we don't go out of bounds
+        acc.push([current, array[index + 1]]);
+      }
+      return acc;
+    }, []);
 
     const selectedEdges = pairs
       .map(([x, y]) => makeEdge(metadata, x, y, false))
       .filter(Boolean) as PineEdge[];
 
-    const [x] = context.reverse();
+    const [x] = selected.reverse();
 
-    const suggestedEdges = hints
-      .map(h => makeEdge(metadata, x, h, true))
+    const suggestedEdges = suggested
+      .map(h =>
+        makeEdge(
+          metadata,
+          x,
+          h,
+          true,
+        ),
+      )
       .filter(Boolean) as PineEdge[];
 
     const edgeLookup = selectedEdges.concat(suggestedEdges).reduce(
