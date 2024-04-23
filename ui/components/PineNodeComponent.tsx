@@ -9,6 +9,26 @@ const handleStyle: React.CSSProperties = {
   borderRadius: '50%',
 };
 
+const maroon = '#800000';
+
+const orderChipStyle: React.CSSProperties = {
+  position: 'absolute',
+  left: 0,
+  top: 0,
+  transform: 'translate(-50%, -50%)', // Centers the chip on the corner
+  width: '20px', // Diameter of the chip
+  height: '20px', // Diameter of the chip
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderRadius: '50%', // Makes it circular
+  background: maroon, // Background color of the chip
+  color: 'white', // Text color
+  fontSize: '12px', // Adjust based on your preference
+  boxShadow: '0 2px 4px rgba(0,0,0,0.25)', // Optional shadow for better visibility
+  fontWeight: 'bold', // Optional: makes the text bold
+};
+
 type PineNodeProps = NodeProps<PineNodeData>;
 
 const PineNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
@@ -25,6 +45,7 @@ const PineNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
         borderRadius: '5px',
       }}
     >
+      {data.order != null && <div style={orderChipStyle}>{data.order}</div>}
       <div>{data.table}</div>
       {data.schema !== 'public' && (
         <div

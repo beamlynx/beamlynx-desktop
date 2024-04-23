@@ -18,7 +18,7 @@ const makeEdgeId = ({ from, to }: E) => {
 // Generate a pallette of constrasting modern colors
 const Colors = ['#ff4e50', '#ff9f51', '#ffea51', '#4caf50', '#64b6ac'];
 
-const makeNode = (n: QualifiedTable, type: 'selected' | 'suggested'): PineNode => {
+const makeNode = (n: QualifiedTable, type: 'selected' | 'suggested', order?: number | null): PineNode => {
   const { schema, table, alias } = n;
   // TODO: this probably has collisions. Keep track of the schemas and the colors assigned and avoid collisions.
   const hash = n.schema.split('').reduce((acc, x) => acc + x.charCodeAt(0), 0);
@@ -33,6 +33,7 @@ const makeNode = (n: QualifiedTable, type: 'selected' | 'suggested'): PineNode =
       alias,
       type,
       color,
+      order,
     },
     position: { x: 0, y: 0 },
   };
@@ -100,7 +101,7 @@ export class GraphStore {
     hints: QualifiedTable[],
   ) => {
     // Create nodes for the selected and suggested tables
-    const selected: PineNode[] = context ? context.map(x => makeNode(x, 'selected')) : [];
+    const selected: PineNode[] = context ? context.map((x, i) => makeNode(x, 'selected', i+1)) : [];
     const suggested: PineNode[] = hints ? hints.map(x => makeNode(x, 'suggested')) : [];
     this.nodes = selected.concat(suggested);
 

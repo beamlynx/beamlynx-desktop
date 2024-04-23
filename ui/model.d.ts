@@ -6,6 +6,7 @@ export type PineNodeData = {
   alias?: string | null;
   type: 'selected' | 'suggested';
   color?: string | null;
+  order?: number | null;
 };
 
 export type PineNode = Node<PineNodeData>;
