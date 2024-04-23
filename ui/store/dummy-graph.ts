@@ -4,56 +4,100 @@ const position = { x: 0, y: 0 };
 export const nodes: PineNode[] = [
   {
     id: '1',
-    data: { table: 'input' },
+    data: {
+      table: 'input',
+      schema: "public",
+      type: "selected"
+    },
     position,
   },
   {
     id: '2',
-    data: { table: 'node 2' },
+    data: {
+      table: 'node 2',
+      schema: "public",
+      type: "selected"
+    },
     position,
   },
   {
     id: '2a',
-    data: { table: 'node 2a' },
+    data: {
+      table: 'node 2a',
+      schema: "public",
+      type: "selected"
+    },
     position,
   },
   {
     id: '2b',
-    data: { table: 'node 2b' },
+    data: {
+      table: 'node 2b',
+      schema: "public",
+      type: "selected"
+    },
     position,
   },
   {
     id: '2c',
-    data: { table: 'node 2c' },
+    data: {
+      table: 'node 2c',
+      schema: "public",
+      type: "selected"
+    },
     position,
   },
   {
     id: '2d',
-    data: { table: 'node 2d' },
+    data: {
+      table: 'node 2d',
+      schema: "public",
+      type: "selected"
+    },
     position,
   },
   {
     id: '3',
-    data: { table: 'node 3' },
+    data: {
+      table: 'node 3',
+      schema: "public",
+      type: "selected"
+    },
     position,
   },
   {
     id: '4',
-    data: { table: 'node 4' },
+    data: {
+      table: 'node 4',
+      schema: "public",
+      type: "selected"
+    },
     position,
   },
   {
     id: '5',
-    data: { table: 'node 5' },
+    data: {
+      table: 'node 5',
+      schema: "public",
+      type: "selected"
+    },
     position,
   },
   {
     id: '6',
     type: 'output',
-    data: { table: 'output' },
+    data: {
+      table: 'output',
+      schema: "public",
+      type: "selected"
+    },
     position,
   },
-  { id: '7', type: 'output', data: { table: 'output' }, position },
+  { id: '7', type: 'output', data: {
+    table: 'output',
+    schema: "public",
+    type: "selected"
+  }, position },
 ];
 
 export const edges: PineEdge[] = [
