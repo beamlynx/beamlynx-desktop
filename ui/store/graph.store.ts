@@ -8,7 +8,7 @@ type E = {
   to: PineNode;
 };
 
-const makeNodeId = ({  schema, table, alias  }: QualifiedTable) => {
+const makeNodeId = ({ schema, table, alias }: QualifiedTable) => {
   return alias ?? `${schema}.${table}`;
 };
 const makeEdgeId = ({ from, to }: E) => {
@@ -39,6 +39,7 @@ const makeNode = (n: QualifiedTable, type: 'selected' | 'suggested'): PineNode =
 };
 
 const makeEdge = (
+  edgeLookup: { [id: string]: PineEdge },
   metadata: Metadata,
   fromNode: PineNode,
   toNode: PineNode,
@@ -66,12 +67,18 @@ const makeEdge = (
     return;
   }
   const e = { from: y, to: x };
-  return {
-    id: makeEdgeId(e),
+  const id = makeEdgeId(e);
+  if (edgeLookup[id]) {
+    return edgeLookup[id];
+  }
+  const edge = {
+    id,
+    animated: fromNode.data.type === 'suggested' || toNode.data.type === 'suggested',
     source: makeNodeId(e.from.data),
     target: makeNodeId(e.to.data),
-    animated: fromNode.data.type === 'suggested' || toNode.data.type === 'suggested',
   };
+  edgeLookup[id] = edge;
+  return edge;
 };
 
 export class GraphStore {
@@ -106,7 +113,6 @@ export class GraphStore {
 
     // The context is an array of objects e.g. [ {schema: 'public', table: 'users'}, {schema: 'public', table: 'orders'}]
     // Create pairs of items from the context e.g. [ x, y, z] => [ [x, y], [x, z], [y, z] ]
-
     const pairs = selected.reduce((acc: [PineNode, PineNode][], current, index, array) => {
       if (index < array.length - 1) {
         // Check to ensure we don't go out of bounds
@@ -115,33 +121,28 @@ export class GraphStore {
       return acc;
     }, []);
 
+    const edgeLookup = {};
+
     const selectedEdges = pairs
-      .map(([x, y]) => makeEdge(metadata, x, y, false))
+      .map(([x, y]) => makeEdge(edgeLookup, metadata, x, y))
       .filter(Boolean) as PineEdge[];
 
     const [x] = selected.reverse();
 
     const suggestedEdges = suggested
-      .map(h =>
-        makeEdge(
-          metadata,
-          x,
-          h,
-          true,
-        ),
-      )
+      .map(h => makeEdge(edgeLookup, metadata, x, h))
       .filter(Boolean) as PineEdge[];
 
-    const edgeLookup = selectedEdges.concat(suggestedEdges).reduce(
-      (acc, edge) => {
-        if (!edge) return acc;
-        if (!acc[edge.id]) {
-          acc[edge.id] = edge;
-        }
-        return acc;
-      },
-      {} as { [id: string]: PineEdge },
-    );
+    // const edgeLookup = selectedEdges.concat(suggestedEdges).reduce(
+    //   (acc, edge) => {
+    //     if (!edge) return acc;
+    //     if (!acc[edge.id]) {
+    //       acc[edge.id] = edge;
+    //     }
+    //     return acc;
+    //   },
+    //   {} as { [id: string]: PineEdge },
+    // );
 
     this.edges = Object.values(edgeLookup);
   };
