@@ -1,7 +1,7 @@
 import { makeAutoObservable } from 'mobx';
 import { Metadata, PineEdge, PineNode, PineNodeData } from '../model';
 import { edges as dummyEdges, nodes as dummyNodes } from './dummy-graph';
-import { Context, Hints, QualifiedTable } from './http';
+import { Hints, QualifiedTable } from './http';
 
 type N = QualifiedTable;
 type E = {
@@ -9,11 +9,9 @@ type E = {
   to: N;
 };
 
-const makeNodeId = ({ schema, table }: N) => `${schema}.${table}`;
+const makeNodeId = ({ schema, table, alias }: N) => alias ?? `${schema}.${table}`;
 const makeEdgeId = ({ from, to }: E) => {
-  const { schema, table } = from;
-  const { schema: fSchema, table: fTable } = to;
-  return `${schema}.${table} -> ${fSchema}.${fTable}`;
+  return `${makeNodeId(from)} -> ${makeNodeId(to)}`;
 };
 
 // Generate a pallette of constrasting modern colors
@@ -36,16 +34,6 @@ const makeNode = (n: QualifiedTable, type: 'selected' | 'suggested'): PineNode =
     },
     position: { x: 0, y: 0 },
   };
-};
-
-const makeSelectedNode = (n: QualifiedTable): PineNode => {
-  const node = makeNode(n, 'selected');
-  return node;
-};
-
-const makeSuggestedNode = (n: QualifiedTable): PineNode => {
-  const node = makeNode(n, 'suggested');
-  return node;
 };
 
 const makeEdge = (metadata: Metadata, from: N, to: N, animated = false): PineEdge | undefined => {
@@ -78,7 +66,7 @@ const makeEdge = (metadata: Metadata, from: N, to: N, animated = false): PineEdg
   };
 };
 
-let indexedEdges: {
+let edgeLookup: {
   [id: string]: PineEdge;
 } = {};
 
@@ -95,39 +83,57 @@ export class GraphStore {
     this.edges = dummyEdges.map(e => ({ ...e, selectable: false, animated: false }));
   };
 
-  convertHintsToGraph = (metadata: Metadata, hints: Hints, context: Context) => {
-    const tableHints = hints.table || [];
-    const selected = context ? context.map(makeSelectedNode) : [];
-    const suggested = tableHints.map(makeSuggestedNode);
+  convertHintsToGraph = (
+    metadata: Metadata,
+    context: QualifiedTable[],
+    hints: QualifiedTable[],
+  ) => {
+    // Create nodes for the selected and suggested tables
+    const selected: PineNode[] = context ? context.map(x => makeNode(x, 'selected')) : [];
+    const suggested: PineNode[] = hints ? hints.map(x => makeNode(x, 'suggested')) : [];
     this.nodes = selected.concat(suggested);
 
+    // If there are no selected tables, there are no edges
     if (context.length < 1) {
-      indexedEdges = {};
       this.edges = [];
       return;
     }
 
-    const [x, y] = context.reverse();
-    if (y) {
-      const edge = makeEdge(metadata, y, x, false);
-      if (edge && !indexedEdges[edge.id]) {
-        indexedEdges[edge.id] = edge;
-      }
-    }
+    // The context is an array of objects e.g. [ {schema: 'public', table: 'users'}, {schema: 'public', table: 'orders'}]
+    // Create pairs of items from the context e.g. [ x, y, z] => [ [x, y], [x, z], [y, z] ]
 
-    const suggestedEdges = tableHints
+    const pairs = context.reduce(
+      (acc: [QualifiedTable, QualifiedTable][], current, index, array) => {
+        if (index < array.length - 1) {
+          // Check to ensure we don't go out of bounds
+          acc.push([current, array[index + 1]]);
+        }
+        return acc;
+      },
+      [],
+    );
+
+    const selectedEdges = pairs
+      .map(([x, y]) => makeEdge(metadata, x, y, false))
+      .filter(Boolean) as PineEdge[];
+
+    const [x] = context.reverse();
+
+    const suggestedEdges = hints
       .map(h => makeEdge(metadata, x, h, true))
-      .reduce(
-        (acc, edge) => {
-          if (!edge) return acc;
-          if (!indexedEdges[edge.id] && !acc[edge.id]) {
-            acc[edge.id] = edge;
-          }
-          return acc;
-        },
-        {} as { [id: string]: PineEdge },
-      );
+      .filter(Boolean) as PineEdge[];
 
-    this.edges = Object.values(indexedEdges).concat(Object.values(suggestedEdges));
+    const edgeLookup = selectedEdges.concat(suggestedEdges).reduce(
+      (acc, edge) => {
+        if (!edge) return acc;
+        if (!acc[edge.id]) {
+          acc[edge.id] = edge;
+        }
+        return acc;
+      },
+      {} as { [id: string]: PineEdge },
+    );
+
+    this.edges = Object.values(edgeLookup);
   };
 }

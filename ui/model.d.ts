@@ -4,7 +4,7 @@ export type PineNodeData = {
   table: string;
   schema?: string;
   type: 'selected' | 'suggested';
-  color: string,
+  color: string;
 };
 
 export type PineNode = Node<PineNodeData>;

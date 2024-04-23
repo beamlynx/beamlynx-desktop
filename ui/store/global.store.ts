@@ -14,7 +14,7 @@ type Column = {
 type Row = { [key: string]: any };
 
 export class GlobalStore {
-  connected  = false;
+  connected = false;
   connection = '';
   expression = '';
   query = '';
@@ -23,7 +23,7 @@ export class GlobalStore {
   hintsMessage: string = '';
   columns: Column[] = [];
   rows: Row[] = [];
-  metadata: Metadata = { "db/references": { table: {}}};
+  metadata: Metadata = { 'db/references': { table: {} } };
 
   // User
   email = '';
@@ -45,14 +45,14 @@ export class GlobalStore {
   setConnectionName = (response: Response) => {
     if (!response['connection-id']) return;
     this.connection = response['connection-id'];
-  }
+  };
 
   setEmail = (email: string) => {
     if (!email) return;
     this.email = email;
-    const [,domain] = email?.split('@');
+    const [, domain] = email?.split('@');
     this.domain = domain;
-  }
+  };
 
   handleError = (response: Response) => {
     this.error = response.error || '';
@@ -68,7 +68,11 @@ export class GlobalStore {
 
   setHints = (response: Response) => {
     if (!response.hints) return;
-    this.graphStore.convertHintsToGraph(this.metadata, response.hints, response.context);
+    this.graphStore.convertHintsToGraph(
+      this.metadata,
+      response.context,
+      response.hints.table,
+    );
     this.hintsMessage = response.hints
       ? JSON.stringify(response.hints, null, 1).substring(0, 180)
       : '';
