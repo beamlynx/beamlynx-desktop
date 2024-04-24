@@ -18,7 +18,11 @@ const makeEdgeId = ({ from, to }: E) => {
 // Generate a pallette of constrasting modern colors
 const Colors = ['#ff4e50', '#ff9f51', '#ffea51', '#4caf50', '#64b6ac'];
 
-const makeNode = (n: QualifiedTable, type: 'selected' | 'suggested', order?: number | null): PineNode => {
+const makeNode = (
+  n: QualifiedTable,
+  type: 'selected' | 'suggested' | 'candidate',
+  order?: number | null,
+): PineNode => {
   const { schema, table, alias } = n;
   // TODO: this probably has collisions. Keep track of the schemas and the colors assigned and avoid collisions.
   const hash = n.schema.split('').reduce((acc, x) => acc + x.charCodeAt(0), 0);
@@ -86,6 +90,15 @@ export class GraphStore {
   nodes: PineNode[] = [];
   edges: PineEdge[] = [];
 
+  // For redrawing
+  metadata: Metadata = { 'db/references': { table: {} } };
+  context: QualifiedTable[] = [];
+  hints: QualifiedTable[] = [];
+
+  // Candidate
+  candidateIndex: number | undefined = undefined;
+  candidate: PineNode | null = null;
+
   constructor() {
     makeAutoObservable(this);
   }
@@ -95,14 +108,62 @@ export class GraphStore {
     this.edges = dummyEdges.map(e => ({ ...e, selectable: false, animated: false }));
   };
 
-  convertHintsToGraph = (
+  selectNextCandidate = (offset: number) => {
+    if (this.candidateIndex === undefined) {
+      this.candidateIndex = 0;
+    } else {
+      this.candidateIndex = this.candidateIndex + offset;
+    }
+    this.generateGraph(this.metadata, this.context, this.hints);
+  };
+
+  getCandidate() {
+    if (this.candidateIndex === undefined) {
+      return null;
+    }
+    return this.hints[this.candidateIndex % this.hints.length];
+  }
+
+  resetCandidate() {
+    this.candidateIndex = undefined;
+    this.candidate = null;
+    this.generateGraph(this.metadata, this.context, this.hints);
+  }
+
+  generateGraph = (
     metadata: Metadata,
     context: QualifiedTable[],
     hints: QualifiedTable[],
   ) => {
+    this.metadata = metadata;
+    this.context = context;
+    this.hints = hints;
+
     // Create nodes for the selected and suggested tables
-    const selected: PineNode[] = context ? context.map((x, i) => makeNode(x, 'selected', i+1)) : [];
-    const suggested: PineNode[] = hints ? hints.map(x => makeNode(x, 'suggested')) : [];
+    const selected: PineNode[] = context
+      ? context.map((x, i) => makeNode(x, 'selected', i + 1))
+      : [];
+
+    // Update the candidate index
+    // Make sure it doesn't go out of bounds
+    let ci = this.candidateIndex;
+    if (ci !== undefined) {
+      ci = ci < 0 ? hints.length + ci : ci;
+      ci = ci % hints.length;
+      this.candidateIndex = ci;
+    }
+
+    // Create suggested nodes
+    // Keep track of the candidate node
+    const suggested: PineNode[] = []; 
+    for (const { h, i } of hints.map((h, i) => ({ h, i }))) {
+      const isCandidate = this.candidateIndex !== undefined && i === ci;
+      const node = makeNode(h, isCandidate ? 'candidate' : 'suggested');
+      suggested.push(node);
+      if (isCandidate) {
+        this.candidate = node;
+      }
+    }
     this.nodes = selected.concat(suggested);
 
     // If there are no selected tables, there are no edges

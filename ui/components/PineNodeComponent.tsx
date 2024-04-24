@@ -32,9 +32,12 @@ const orderChipStyle: React.CSSProperties = {
 type PineNodeProps = NodeProps<PineNodeData>;
 
 const PineNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
+  const lightOrange = '#FFD700';
   const selected = data.type === 'selected';
-  const background = selected ? 'lightgray' : 'white';
-  const border = selected ? `2px solid black` : `2px solid orange`;
+  const candidate = data.type === 'candidate';
+  const background = selected ? 'lightgray' : candidate ? lightOrange : 'white';
+  const border = selected ? `2px solid black` : candidate ? `2px solid orange` : `2px solid orange`;
+
   return (
     <div
       style={{

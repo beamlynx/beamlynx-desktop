@@ -1,7 +1,7 @@
 import { makeAutoObservable } from 'mobx';
 import { format } from 'sql-formatter';
 import { GraphStore } from './graph.store';
-import { Http, Response } from './http';
+import { Http, QualifiedTable, Response } from './http';
 import { Metadata } from '../model';
 
 type Column = {
@@ -68,7 +68,7 @@ export class GlobalStore {
 
   setHints = (response: Response) => {
     if (!response.hints) return;
-    this.graphStore.convertHintsToGraph(
+    this.graphStore.generateGraph(
       this.metadata,
       response.context,
       response.hints.table,
@@ -100,7 +100,7 @@ export class GlobalStore {
       return;
     }
     const response = await Http.post('eval', {
-      expression: this.expression,
+      expression: this.cleanExpression(this.expression),
     });
 
     if (!response) return;
@@ -122,4 +122,17 @@ export class GlobalStore {
     this.rows = rows.splice(1);
     this.loaded = true;
   };
+
+  updateExpressionUsingCandidate = (schema: string, table: string) => {
+    const parts = this.expression.split('|');
+    parts.pop();
+    parts.push(`${schema}.${table}`);
+    this.expression = parts.map(x => x.trim()).join(' | ') + ' |';
+  };
+
+  cleanExpression = (expression: string) => {
+    const e = expression.trim();
+    return e.endsWith('|') ?  e.slice(0, -1) : e 
+  }
+
 }

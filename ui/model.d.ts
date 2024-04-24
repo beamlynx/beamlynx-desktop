@@ -4,7 +4,7 @@ export type PineNodeData = {
   table: string;
   schema: string;
   alias?: string | null;
-  type: 'selected' | 'suggested';
+  type: 'selected' | 'suggested' | 'candidate';
   color?: string | null;
   order?: number | null;
 };

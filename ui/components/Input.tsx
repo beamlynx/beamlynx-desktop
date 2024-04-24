@@ -1,37 +1,54 @@
-import React from "react";
+import React from 'react';
 import TextField from '@mui/material/TextField';
-import { observer } from "mobx-react-lite";
-import { useStores } from "../store/store-container";
+import { observer } from 'mobx-react-lite';
+import { useStores } from '../store/store-container';
 
 const Input = observer(() => {
-    const { global: store } = useStores();
-    const handleChange = async (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      store.expression = e.target.value;
-      await store.buildQuery();
-    } 
+  const { global, graph } = useStores();
 
-    const handleKeyPress = async (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          await store.evaluate();
-        }
+  const handleChange = async (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const expression = e.target.value;
+    global.expression = expression;
+    await global.buildQuery();
+  };
+
+  const handleKeyPress = async (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+
+      const candidate = graph.getCandidate();
+      if (candidate) {
+        const { schema, table } = candidate;
+        global.updateExpressionUsingCandidate(schema, table);
+        await global.buildQuery();
+      } else {
+        await global.evaluate();
+      }
+      graph.resetCandidate();
     }
 
-    return (
-        <TextField
-          label="Pine expression... "
-          // hiddenLabel={true}
-          size="small"
-          variant="outlined"
-          autoFocus
-          // multiline
-          fullWidth
-          minRows="1"
-          maxRows="1"
-          onChange={handleChange}
-          onKeyDown={handleKeyPress}
-          />
-    );
-  });
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      graph.selectNextCandidate(e.shiftKey ? -1 : 1);
+    }
+  };
+
+  return (
+    <TextField
+      label="Pine expression... "
+      value={global.expression}
+      // hiddenLabel={true}
+      size="small"
+      variant="outlined"
+      autoFocus
+      // multiline
+      fullWidth
+      minRows="1"
+      maxRows="1"
+      onChange={handleChange}
+      onKeyDown={handleKeyPress}
+    />
+  );
+});
 
 export default Input;
