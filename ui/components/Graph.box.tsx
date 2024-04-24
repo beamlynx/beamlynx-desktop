@@ -82,8 +82,8 @@ const Flow = observer(() => {
     // TODO: when the number of nodes change drastically, the fit view doesn't
     // work as expected. Using a setTimeout is a workaround.
     setTimeout(() => {
-      reactFlowInstance.fitView({duration: 800 });
-    }, 800);
+      reactFlowInstance.fitView({duration: 200 });
+    }, 250);
 
     // TODO: how can I avoid disabling the eslint rule?
     // eslint-disable-next-line react-hooks/exhaustive-deps
