@@ -27,9 +27,18 @@ const Input = observer(() => {
       graph.resetCandidate();
     }
 
+    // Navigate the candidates
     if (e.key === 'Tab') {
       e.preventDefault();
       graph.selectNextCandidate(e.shiftKey ? -1 : 1);
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      graph.selectNextCandidate(-1);
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      graph.selectNextCandidate(1);
     }
   };
 
