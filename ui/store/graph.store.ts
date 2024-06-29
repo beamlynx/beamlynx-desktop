@@ -23,9 +23,10 @@ const makeNode = (
   type: 'selected' | 'suggested' | 'candidate',
   order?: number | null,
 ): PineNode => {
-  const { schema, table, alias } = n;
+  const { table, alias } = n;
+  const schema = n.schema ?? 'public';
   // TODO: this probably has collisions. Keep track of the schemas and the colors assigned and avoid collisions.
-  const hash = n.schema.split('').reduce((acc, x) => acc + x.charCodeAt(0), 0);
+  const hash = schema.split('').reduce((acc, x) => acc + x.charCodeAt(0), 0);
   const color = schema === 'public' ? '#FFF' : Colors[hash % Colors.length];
 
   return {
