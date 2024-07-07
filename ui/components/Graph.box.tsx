@@ -12,7 +12,7 @@ import ReactFlow, {
   useReactFlow,
 } from 'reactflow';
 
-import { Box } from '@mui/material';
+import { Box, BoxProps } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import 'reactflow/dist/style.css';
 import PineNodeComponent from './PineNodeComponent';
@@ -106,19 +106,24 @@ const Flow = observer(() => {
   );
 });
 
-const GraphBox = observer(() => {
+// Define the props for the GraphBox component
+interface GraphBoxProps extends BoxProps {}
+
+const GraphBox: React.FC<GraphBoxProps> = observer(({ sx, ...props }) => {
   const { global } = useStores();
   return global.loaded ? (
     <></>
   ) : (
     <Box
-      height={550}
+      height="100%"
       sx={{
         m: 2,
         ml: 1,
         border: '1px solid lightgray',
         borderRadius: 1,
+        ...sx,
       }}
+      {...props}
     >
       <ReactFlowProvider>
         <Flow />

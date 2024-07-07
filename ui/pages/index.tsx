@@ -13,7 +13,11 @@ import UserBox from '../components/UserBox';
 const Home: NextPage = () => {
   return (
     <ClerkProvider>
-      <Container maxWidth={false} disableGutters={true}>
+      <Container 
+        maxWidth={false} 
+        disableGutters={true} 
+        sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}
+      >
         <Grid container>
           <Grid item xs={2}>
             <Box sx={{ m: 2, mt: 1 }}>
@@ -37,18 +41,15 @@ const Home: NextPage = () => {
             <Box sx={{ ml: 1, mr: 2 }}>
               <Input />
             </Box>
-
           </Grid>
           <Grid item xs={3}>
-            <Box sx={{ m: 2 }}>
-            </Box>
+            <Box sx={{ m: 2 }} />
           </Grid>
         </Grid>
 
-
-        <Grid container>
-          <Grid item xs={9}>
-            <GraphBox />
+        <Grid container sx={{ flexGrow: 1 }}>
+          <Grid item xs={9} sx={{ display: 'flex', flexDirection: 'column' }}>
+            <GraphBox sx={{ flexGrow: 1 }} />
           </Grid>
           <Grid item xs={3}>
             <Box sx={{ m: 2 }}>
