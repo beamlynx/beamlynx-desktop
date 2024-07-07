@@ -117,7 +117,7 @@ const GraphBox: React.FC<GraphBoxProps> = observer(({ sx, ...props }) => {
     <Box
       height="100%"
       sx={{
-        m: 2,
+        mr: 2,
         ml: 1,
         border: '1px solid lightgray',
         borderRadius: 1,

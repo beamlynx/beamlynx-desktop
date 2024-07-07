@@ -47,20 +47,21 @@ const Home: NextPage = () => {
           </Grid>
         </Grid>
 
+        <Box sx={{ m: 1 }}>
+          <Result />
+        </Box>
+
         <Grid container sx={{ flexGrow: 1 }}>
           <Grid item xs={9} sx={{ display: 'flex', flexDirection: 'column' }}>
             <GraphBox sx={{ flexGrow: 1 }} />
           </Grid>
           <Grid item xs={3}>
-            <Box sx={{ m: 2 }}>
+            <Box sx={{ ml: 1 }}>
               <Query />
             </Box>
           </Grid>
         </Grid>
 
-        <Box>
-          <Result />
-        </Box>
       </Container>
     </ClerkProvider>
   );
