@@ -2,28 +2,6 @@ import { Typography } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
 
-const SuccessMessages = [
-  '💣 Boom!',
-  '💥 Babbamm!',
-  '🙌 Yes!',
-  '🤝 Nice work!',
-  '🧐 Impressive!',
-  '💣 💥  Baboom!',
-  `🛼 That's how we roll!`,
-  '🥁 Drum roll!',
-  '🦸 Super!',
-  '😎  Sublime!',
-  '😌 Noice!',
-  '😌 Nice!',
-  '💥 Hulk Smash!',
-  `🧻🧻 You're on a roll!`,
-  `💆 Well didn't that feel nice...`,
-  '🤤 Nerdgasm!',
-];
-
-const pickSuccessMessage = () => {
-  return SuccessMessages[Math.floor(Math.random() * SuccessMessages.length)];
-};
 
 const Message = observer(() => {
   const { global: store } = useStores();
@@ -41,7 +19,7 @@ const Message = observer(() => {
   if (store.loaded) {
     return (
       <Typography variant="caption" color="gray">
-        {pickSuccessMessage()}
+        {store.message}
       </Typography>
     );
   } else {

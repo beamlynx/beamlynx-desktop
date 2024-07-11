@@ -3,12 +3,15 @@ import { format } from 'sql-formatter';
 import { GraphStore } from './graph.store';
 import { Http, QualifiedTable, Response } from './http';
 import { Metadata } from '../model';
+import { pickSuccessMessage } from './success-messages';
 
 type Column = {
   field: string;
   headerName: string;
   flex: number;
   editable: boolean;
+  minWidth: number;
+  maxWidth: number;
 };
 
 type Row = { [key: string]: any };
@@ -20,6 +23,7 @@ export class GlobalStore {
   query = '';
   loaded = false;
   error = '';
+  message = '';
   hintsMessage: string = '';
   columns: Column[] = [];
   rows: Row[] = [];
@@ -68,11 +72,7 @@ export class GlobalStore {
 
   setHints = (response: Response) => {
     if (!response.hints) return;
-    this.graphStore.generateGraph(
-      this.metadata,
-      response.context,
-      response.hints.table,
-    );
+    this.graphStore.generateGraph(this.metadata, response.context, response.hints.table);
     this.hintsMessage = response.hints
       ? JSON.stringify(response.hints, null, 1).substring(0, 180)
       : '';
@@ -108,18 +108,24 @@ export class GlobalStore {
     if (!response.result) return;
 
     const rows = response.result as Row[];
-    const columns = rows[0].map((header: Row, index: number) => {
+    const columns: Column[] = rows[0].map((header: string, index: number): Column => {
       return {
-        field: index,
+        field: index.toString(),
         headerName: header,
         flex: 1,
-        editable: true,
-        minWidth: 200,
+        editable: false,
+        minWidth: 100,
         maxWidth: 400,
       };
     });
     this.columns = columns;
-    this.rows = rows.splice(1);
+    this.rows = rows.splice(1).map((row, index) => {
+      return {
+        ...row,
+        _id: index,
+      };
+    });
+    this.message = pickSuccessMessage();
     this.loaded = true;
   };
 
@@ -132,7 +138,6 @@ export class GlobalStore {
 
   cleanExpression = (expression: string) => {
     const e = expression.trim();
-    return e.endsWith('|') ?  e.slice(0, -1) : e 
-  }
-
+    return e.endsWith('|') ? e.slice(0, -1) : e;
+  };
 }
