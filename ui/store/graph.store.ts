@@ -110,9 +110,11 @@ export class GraphStore {
   };
 
   selectNextCandidate = (offset: number) => {
+    console.log(offset);
+    console.log(this.candidateIndex)
     if (this.candidateIndex === undefined) {
       this.candidateIndex = 0;
-    } else {
+    } else if (offset) {
       this.candidateIndex = this.candidateIndex + offset;
     }
     this.generateGraph(this.metadata, this.context, this.hints);
@@ -148,7 +150,7 @@ export class GraphStore {
     // Update the candidate index
     // Make sure it doesn't go out of bounds
     let ci = this.candidateIndex;
-    if (ci !== undefined) {
+    if (ci !== undefined && hints.length) {
       ci = ci < 0 ? hints.length + ci : ci;
       ci = ci % hints.length;
       this.candidateIndex = ci;
