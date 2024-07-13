@@ -4,6 +4,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+- Clerk is not needed in development more
+
 ## [0.2.0] - 2024-07-11
 ### Added
 - Clicking on a cell copies the value to the clipboard
