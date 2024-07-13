@@ -24,7 +24,6 @@ export class GlobalStore {
   loaded = false;
   error = '';
   message = '';
-  hintsMessage: string = '';
   columns: Column[] = [];
   rows: Row[] = [];
   metadata: Metadata = { 'db/references': { table: {} } };
@@ -73,7 +72,7 @@ export class GlobalStore {
   setHints = (response: Response) => {
     if (!response.hints) return;
     this.graphStore.generateGraph(this.metadata, response.context, response.hints.table);
-    this.hintsMessage = response.hints
+    this.message = response.hints
       ? JSON.stringify(response.hints, null, 1).substring(0, 180)
       : '';
   };
@@ -99,6 +98,7 @@ export class GlobalStore {
       this.handleError({ error: 'Not connected' } as Response);
       return;
     }
+    this.message = '⏳ Fetching rows ...';
     const response = await Http.post('eval', {
       expression: this.cleanExpression(this.expression),
     });

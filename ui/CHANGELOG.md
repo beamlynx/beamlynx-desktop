@@ -5,6 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ## [Unreleased]
 
 ### Changed
+- `⏳ Fetching rows ...` message is shown during query execution
 - Clerk is not needed in development more
 
 ## [0.2.0] - 2024-07-11
