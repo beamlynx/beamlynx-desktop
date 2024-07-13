@@ -1,5 +1,5 @@
 import { ClerkProvider } from '@clerk/nextjs';
-import { Box, Grid } from '@mui/material';
+import { Box, Grid, Typography } from '@mui/material';
 import Container from '@mui/material/Container';
 import type { NextPage } from 'next';
 import ActiveConnection from '../components/ActiveConnection';
@@ -33,7 +33,13 @@ const AppContent = () => {
         </Grid>
 
         <Grid item xs={1}>
-          {isDevelopment ? <div /> : <UserBox />}
+          {isDevelopment ? (
+            <Typography variant="caption" color="gray">
+              Dev Mode
+            </Typography>
+          ) : (
+            <UserBox />
+          )}
         </Grid>
       </Grid>
 

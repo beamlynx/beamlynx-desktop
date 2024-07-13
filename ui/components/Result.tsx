@@ -21,7 +21,7 @@ const Result = observer(() => {
             navigator.clipboard.writeText(v);
             console.log(x);
             console.log(y);
-            store.message = `📋 Copied '${v}' to clipboard`;
+            store.message = `📋 Copied: '${v}'`;
           }}
         />
       )}

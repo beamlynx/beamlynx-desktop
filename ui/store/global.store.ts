@@ -19,6 +19,7 @@ type Row = { [key: string]: any };
 export class GlobalStore {
   connected = false;
   connection = '';
+  version = '';
   expression = '';
   query = '';
   loaded = false;
@@ -39,9 +40,18 @@ export class GlobalStore {
   loadConnectionMetadata = async () => {
     const response = await Http.get('connection');
     if (!response) return;
-    const result = response.result as { 'connection-id': string; metadata: Metadata };
+    const result = response.result as {
+      version: string;
+      'connection-id': string;
+      metadata: Metadata;
+    };
     this.connection = result['connection-id'];
+    this.version = result.version;
     this.metadata = result.metadata;
+
+    if (!this.version) {
+      this.error = '🚨 Server version is not compatible. Upgrade to the latest version.';
+    }
     return this.connection;
   };
 

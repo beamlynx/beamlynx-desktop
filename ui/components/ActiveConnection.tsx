@@ -9,20 +9,27 @@ const ActiveConnection = observer(({}) => {
   // Load Active Connection and Metadata
   useEffect(() => {
     setLoading(true);
-    store.loadConnectionMetadata().then(() => {
-      store.connected = true;
-      setLoading(false);
-    }).catch(err => {
-      store.connected = false;
-      setLoading(false);
-      console.error(err);
-    });
+    store
+      .loadConnectionMetadata()
+      .then(() => {
+        store.connected = true;
+        setLoading(false);
+      })
+      .catch(err => {
+        store.connected = false;
+        setLoading(false);
+        console.error(err);
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
     <Typography variant="caption" component="code" color="gray">
-      {loading ? 'Connecting...' : store.connection ? `⚡ ${store.connection}` : `🔌 No connection! `}
+      {loading
+        ? 'Connecting...'
+        : store.connection
+          ? `⚡ [${store.version ?? 'obsolete'}] ${store.connection}`
+          : `🔌 No connection! `}
     </Typography>
   );
 });

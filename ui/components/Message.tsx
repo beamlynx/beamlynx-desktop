@@ -5,9 +5,9 @@ import { useStores } from '../store/store-container';
 const Message = observer(() => {
   const { global: store } = useStores();
 
-  if (!store.expression) {
-    return <Typography />;
-  }
+  // if (!store.expression) {
+  //   return <Typography />;
+  // }
   if (store.error) {
     return (
       <Typography variant="caption" color="red">

@@ -5,6 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ## [Unreleased]
 
 ### Changed
+- Obsolete version message is shown if version is not returned from the server
 - `⏳ Fetching rows ...` message is shown during query execution
 - Clerk is not needed in development more
 
