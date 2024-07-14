@@ -14,3 +14,8 @@ a {
 * {
   box-sizing: border-box;
 }
+
+/* When hovering over a data grid cell, show a pointer instead of a cursor */
+.copy-data-grid .MuiDataGrid-cell {
+  cursor: pointer;
+}
