@@ -4,10 +4,14 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- Copy the query on click
+
 ### Changed
 - Obsolete version message is shown if version is not returned from the server
 - `⏳ Fetching rows ...` message is shown during query execution
 - Clerk is not needed in development more
+- Sql query is indented:`tabular-right`
 
 ## [0.2.0] - 2024-07-11
 ### Added

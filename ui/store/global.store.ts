@@ -1,5 +1,5 @@
 import { makeAutoObservable } from 'mobx';
-import { format } from 'sql-formatter';
+import { format, formatDialect } from 'sql-formatter';
 import { GraphStore } from './graph.store';
 import { Http, QualifiedTable, Response } from './http';
 import { Metadata } from '../model';
@@ -75,6 +75,8 @@ export class GlobalStore {
     if (!response.query) return;
     this.query = format(response.query, {
       language: 'postgresql',
+      indentStyle: 'tabularRight',
+      denseOperators: false,
     });
     this.loaded = false;
   };
@@ -82,9 +84,7 @@ export class GlobalStore {
   setHints = (response: Response) => {
     if (!response.hints) return;
     this.graphStore.generateGraph(this.metadata, response.context, response.hints.table);
-    this.message = response.hints
-      ? JSON.stringify(response.hints, null, 1).substring(0, 180)
-      : '';
+    this.message = response.hints ? JSON.stringify(response.hints, null, 1).substring(0, 180) : '';
   };
 
   buildQuery = async () => {
@@ -149,5 +149,9 @@ export class GlobalStore {
   cleanExpression = (expression: string) => {
     const e = expression.trim();
     return e.endsWith('|') ? e.slice(0, -1) : e;
+  };
+
+  setCopiedMessage = (v: string) => {
+    this.message = `📋 Copied: ${v}`;
   };
 }

@@ -10,10 +10,18 @@ import Query from '../components/Query';
 import Result from '../components/Result';
 import UserBox from '../components/UserBox';
 
-const isDevelopment = process.env.NODE_ENV === 'development';
+const Home: NextPage = () => {
+  const isDevelopment = process.env.NODE_ENV === 'development';
 
-const AppContent = () => {
-  return (
+  const UserContent = isDevelopment ? (
+    <Typography variant="caption" color="gray">
+      Dev Mode
+    </Typography>
+  ) : (
+    <UserBox />
+  );
+
+  const AppContent = (
     <Container
       maxWidth={false}
       disableGutters={true}
@@ -33,13 +41,7 @@ const AppContent = () => {
         </Grid>
 
         <Grid item xs={1}>
-          {isDevelopment ? (
-            <Typography variant="caption" color="gray">
-              Dev Mode
-            </Typography>
-          ) : (
-            <UserBox />
-          )}
+          {UserContent}
         </Grid>
       </Grid>
 
@@ -70,20 +72,8 @@ const AppContent = () => {
       </Grid>
     </Container>
   );
-};
 
-const Home: NextPage = () => {
-  return (
-    <>
-      {isDevelopment ? (
-        <AppContent />
-      ) : (
-        <ClerkProvider>
-          <AppContent />
-        </ClerkProvider>
-      )}
-    </>
-  );
+  return isDevelopment ? AppContent : <ClerkProvider>{AppContent}</ClerkProvider>;
 };
 
 export default Home;

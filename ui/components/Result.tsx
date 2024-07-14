@@ -9,19 +9,18 @@ const Result = observer(() => {
   const rows = toJS(store.rows);
   const columns = toJS(store.columns);
   return (
-    <div>
+    <div className='copy-data-grid'>
       {!store.loaded || (
         <DataGrid
           density="compact"
           rows={rows}
           columns={columns}
-          getRowId={row => row._id ?? ""}
+          getRowId={row => row._id ?? ''}
           onCellClick={(x, y) => {
             const v = x.row[x.field];
-            navigator.clipboard.writeText(v);
-            console.log(x);
-            console.log(y);
-            store.message = `📋 Copied: '${v}'`;
+            navigator.clipboard.writeText(v).then(() => {
+              store.setCopiedMessage(v);
+            });
           }}
         />
       )}
