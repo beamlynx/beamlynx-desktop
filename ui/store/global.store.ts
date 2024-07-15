@@ -151,7 +151,10 @@ export class GlobalStore {
     return e.endsWith('|') ? e.slice(0, -1) : e;
   };
 
-  setCopiedMessage = (v: string) => {
+  setCopiedMessage = (v: string, quote = false) => {
+    if (quote) {
+      v = `'${v.replace(/'/g, "\'")}'`;
+    }
     this.message = `📋 Copied: ${v}`;
   };
 }
