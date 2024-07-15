@@ -4,6 +4,9 @@ import { GraphStore } from './graph.store';
 import { Http, QualifiedTable, Response } from './http';
 import { Metadata } from '../model';
 import { pickSuccessMessage } from './success-messages';
+import { lt } from 'semver';
+
+const requiredVersion = '0.5.0';
 
 type Column = {
   field: string;
@@ -19,7 +22,7 @@ type Row = { [key: string]: any };
 export class GlobalStore {
   connected = false;
   connection = '';
-  version = '';
+  version: string | undefined = undefined;
   expression = '';
   query = '';
   loaded = false;
@@ -46,11 +49,11 @@ export class GlobalStore {
       metadata: Metadata;
     };
     this.connection = result['connection-id'];
-    this.version = result.version;
+    this.version = result.version ?? '0.0.0';
     this.metadata = result.metadata;
 
-    if (!this.version) {
-      this.error = '🚨 Server version is not compatible. Upgrade to the latest version.';
+    if (lt(this.version, requiredVersion)) {
+      this.error = `🚨 You are running version ${this.version}. Upgrade the server to the latest version (i.e. >= ${requiredVersion}).`;
     }
     return this.connection;
   };
@@ -153,7 +156,7 @@ export class GlobalStore {
 
   setCopiedMessage = (v: string, quote = false) => {
     if (quote) {
-      v = `'${v.replace(/'/g, "\'")}'`;
+      v = `'${v.replace(/'/g, "'")}'`;
     }
     this.message = `📋 Copied: ${v}`;
   };
