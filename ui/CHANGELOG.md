@@ -5,6 +5,12 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2024-07-22
+
+### Changed
+
+- Show sql query besides the pine input
+
 ## [0.3.0] - 2024-07-22
 
 ### Added

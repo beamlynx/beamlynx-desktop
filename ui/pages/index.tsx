@@ -46,13 +46,15 @@ const Home: NextPage = () => {
       </Grid>
 
       <Grid container>
-        <Grid item xs={9}>
+        <Grid item xs={5}>
           <Box sx={{ ml: 1, mr: 2 }}>
             <Input />
           </Box>
         </Grid>
-        <Grid item xs={3}>
-          <Box sx={{ m: 2 }} />
+        <Grid item xs={6}>
+          <Box sx={{ ml: 1 }}>
+            <Query />
+          </Box>
         </Grid>
       </Grid>
 
@@ -61,13 +63,8 @@ const Home: NextPage = () => {
       </Box>
 
       <Grid container sx={{ flexGrow: 1 }}>
-        <Grid item xs={9} sx={{ display: 'flex', flexDirection: 'column' }}>
+        <Grid item xs={12} sx={{ display: 'flex', flexDirection: 'column' }}>
           <GraphBox sx={{ flexGrow: 1 }} />
-        </Grid>
-        <Grid item xs={3}>
-          <Box sx={{ ml: 1 }}>
-            <Query />
-          </Box>
         </Grid>
       </Grid>
     </Container>

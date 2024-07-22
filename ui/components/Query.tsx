@@ -17,11 +17,8 @@ const Query = observer(() => {
 
   return (
     <pre onClick={onClick} style={{ cursor: 'pointer' }}>
-      <code
-        ref={codeRef}
-        style={{ color: 'gray', fontFamily: 'monospace', fontSize: '12px' }}
-      >
-        {store.loaded ? '' : store.query}
+      <code ref={codeRef} style={{ color: 'gray', fontFamily: 'monospace', fontSize: '12px' }}>
+        {store.query}
       </code>
     </pre>
   );
