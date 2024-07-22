@@ -1,13 +1,24 @@
 import { makeAutoObservable } from 'mobx';
-import { Metadata, PineEdge, PineNode } from '../model';
+import {
+  Metadata,
+  PineEdge,
+  PineNode,
+  PineSelectedNode,
+  PineSuggestedNode,
+  SelectedNode,
+} from '../model';
 import { edges as dummyEdges, nodes as dummyNodes } from './dummy-graph';
-import { Hints, QualifiedTable } from './http';
+import { Hints, QualifiedTable, State, Table, TableHint } from './http';
+import { Edge } from 'reactflow';
 
 type E = {
   from: PineNode;
   to: PineNode;
 };
 
+/**
+ * @deprecated Node id generation is different for selected and suggested nodes
+ */
 const makeNodeId = ({ schema, table, alias }: QualifiedTable) => {
   return alias ?? `${schema}.${table}`;
 };
@@ -18,33 +29,91 @@ const makeEdgeId = ({ from, to }: E) => {
 // Generate a pallette of constrasting modern colors
 const Colors = ['#ff4e50', '#ff9f51', '#ffea51', '#4caf50', '#64b6ac'];
 
+/**
+ * @deprecated Use `makeSelectedNode` and `makeSuggestedNode` instead.
+ */
 const makeNode = (
   n: QualifiedTable,
   type: 'selected' | 'suggested' | 'candidate',
   order?: number | null,
 ): PineNode => {
-  const { table, alias } = n;
-  const schema = n.schema ?? 'public';
-  // TODO: this probably has collisions. Keep track of the schemas and the colors assigned and avoid collisions.
-  const hash = schema.split('').reduce((acc, x) => acc + x.charCodeAt(0), 0);
-  const color = schema === 'public' ? '#FFF' : Colors[hash % Colors.length];
+  const { schema, table, alias } = n;
+  const { color } = getColor(schema);
 
+  const data =
+    type === 'selected'
+      ? {
+          schema,
+          table,
+          color,
+          type,
+          joinOn: 'unknown',
+          alias: alias!,
+          order: order!,
+        }
+      : {
+          schema,
+          table,
+          color,
+          type,
+          joinOn: 'unknown',
+          pine: `${table}`,
+        };
   return {
     id: makeNodeId(n),
+    type: 'pineNode',
+    data,
+    position: { x: 0, y: 0 },
+  };
+};
+
+const makeSelectedNode = (n: Table, order: number): PineNode => {
+  const { schema, table, alias } = n;
+  const { color } = getColor(n.schema);
+  const id = alias;
+  return {
+    id,
     type: 'pineNode',
     data: {
       schema,
       table,
-      alias,
-      type,
+      joinOn: 'unknown',
       color,
+      type: 'selected',
+      alias,
       order,
     },
     position: { x: 0, y: 0 },
   };
 };
 
-const updateEdgeLookup = (
+const makeSuggestedNode = (n: TableHint, candidate = false): PineSuggestedNode => {
+  const { schema, table, column, pine, parent } = n;
+  const { color } = getColor(schema);
+
+  // Pine doesn't support directionality at the moment.
+  const id = pine;
+
+  return {
+    id,
+    type: 'pineNode',
+    data: {
+      schema,
+      table,
+      joinOn: column,
+      color,
+      type: candidate ? 'candidate' : 'suggested',
+      pine,
+      parent,
+    },
+    position: { x: 0, y: 0 },
+  };
+};
+
+/**
+ * @deprecated Use updateEdgeLookup
+ */
+const updateEdgeLookupLegacy = (
   edgeLookup: { [id: string]: PineEdge },
   metadata: Metadata,
   fromNode: PineNode,
@@ -92,9 +161,25 @@ export class GraphStore {
   edges: PineEdge[] = [];
 
   // For redrawing
+  /**
+   * @deprecated We should use `state.joins` instead of using `metadata`.
+   */
   metadata: Metadata = { 'db/references': { table: {} } };
-  context: QualifiedTable[] = [];
-  hints: QualifiedTable[] = [];
+  /**
+   * @deprecated
+   */
+  selectedTables: Table[] = [];
+  /**
+   * deprecated
+   */
+  suggestedTables: TableHint[] = [];
+  state: State = {
+    hints: {
+      table: [],
+    },
+    'selected-tables': [],
+    joins: {},
+  };
 
   // Candidate
   candidateIndex: number | undefined = undefined;
@@ -104,81 +189,174 @@ export class GraphStore {
     makeAutoObservable(this);
   }
 
-  loadDummyNodesAndEdges = async () => {
+  public loadDummyNodesAndEdges = async () => {
     this.nodes = dummyNodes.map(x => ({ ...x, selectable: false }));
     this.edges = dummyEdges.map(e => ({ ...e, selectable: false, animated: false }));
   };
 
-  selectNextCandidate = (offset: number) => {
-    console.log(offset);
-    console.log(this.candidateIndex)
+  public selectNextCandidate = (offset: number) => {
     if (this.candidateIndex === undefined) {
       this.candidateIndex = 0;
     } else if (offset) {
       this.candidateIndex = this.candidateIndex + offset;
     }
-    this.generateGraph(this.metadata, this.context, this.hints);
+    this.generateGraphWrapper(this.state, this.metadata, this.selectedTables, this.suggestedTables);
   };
 
-  getCandidate() {
+  public getCandidate() {
     if (this.candidateIndex === undefined) {
       return null;
     }
-    return this.hints[this.candidateIndex % this.hints.length];
+    // TODO: use suggestedNodes?
+    return this.suggestedTables[this.candidateIndex % this.suggestedTables.length];
   }
 
-  resetCandidate() {
+  public resetCandidate() {
     this.candidateIndex = undefined;
     this.candidate = null;
-    this.generateGraph(this.metadata, this.context, this.hints);
+    this.generateGraphWrapper(this.state, this.metadata, this.selectedTables, this.suggestedTables);
   }
 
-  generateGraph = (
+  /**
+   * 1. Calculate candidate index (this could be moved to another function)
+   * 2. Make selected nodes using `selectedTables: Table[]`
+   * 3. Make suggested nodes using `suggestedTables: TableHint[]`
+   */
+  public generateGraphWrapper = (
+    state: State,
     metadata: Metadata,
-    context: QualifiedTable[],
-    hints: QualifiedTable[],
+    selectedTables: Table[],
+    suggestedTables: TableHint[],
   ) => {
-    this.metadata = metadata;
-    this.context = context;
-    this.hints = hints;
+    // this.generateGraphDeprecated(metadata, selectedTables, suggestedTables);
+
+    this.state = state;
+    this.suggestedTables = suggestedTables;
+    this.generateGraph();
+  };
+
+  public generateGraph = () => {
+    const {
+      hints: { table: suggestedTables },
+      'selected-tables': selectedTables,
+      joins,
+    } = this.state;
+
+    // TODO: move index calculation before the graph generation. Pass candidate index as argumnet
+    this.candidateIndex = this.getCandidateIndex(suggestedTables, this.candidateIndex);
 
     // Create nodes for the selected and suggested tables
-    const selected: PineNode[] = context
-      ? context.map((x, i) => makeNode(x, 'selected', i + 1))
+    const selectedNodes: PineNode[] = selectedTables
+      ? selectedTables.map((x, i) => makeSelectedNode(x, i + 1))
       : [];
 
-    // Update the candidate index
-    // Make sure it doesn't go out of bounds
-    let ci = this.candidateIndex;
-    if (ci !== undefined && hints.length) {
-      ci = ci < 0 ? hints.length + ci : ci;
-      ci = ci % hints.length;
-      this.candidateIndex = ci;
-    }
-
-    // Create suggested nodes
-    // Keep track of the candidate node
-    const suggested: PineNode[] = []; 
-    for (const { h, i } of hints.map((h, i) => ({ h, i }))) {
-      const isCandidate = this.candidateIndex !== undefined && i === ci;
-      const node = makeNode(h, isCandidate ? 'candidate' : 'suggested');
-      suggested.push(node);
+    const suggestedNodes: PineSuggestedNode[] = [];
+    for (const { h, i } of suggestedTables.map((h, i) => ({ h, i }))) {
+      const isCandidate = this.candidateIndex !== undefined && i === this.candidateIndex;
+      const node = makeSuggestedNode(h, isCandidate);
+      suggestedNodes.push(node);
       if (isCandidate) {
         this.candidate = node;
       }
     }
-    this.nodes = selected.concat(suggested);
+    this.nodes = selectedNodes.concat(suggestedNodes);
 
     // If there are no selected tables, there are no edges
-    // TODO: should we do this always?
-    if (context.length < 1) {
+    if (selectedTables.length < 1) {
       this.edges = [];
       return;
     }
 
-    // The context is an array of objects e.g. [ {schema: 'public', table: 'users'}, {schema: 'public', table: 'orders'}]
+    // `selectedNodes` is an array of objects e.g. [ {schema: 'public', table: 'users'}, {schema: 'public', table: 'orders'}]
     // Create pairs of items from the context e.g. [ x, y, z] => [ [x, y], [x, z], [y, z] ]
-    const pairs = selected.reduce((acc: [PineNode, PineNode][], current, index, array) => {
+    const pairs = selectedNodes.reduce((acc: [PineNode, PineNode][], current, index, array) => {
+      // Check to ensure we don't go out of bounds
+      if (index < array.length - 1) {
+        acc.push([current, array[index + 1]]);
+      }
+      return acc;
+    }, []);
+
+    if (suggestedNodes.length === 0) {
+      this.edges = [];
+    }
+
+    // TODO: we don't always have to regenerate the lookup. This can be cached
+    const edgeLookup: Record<string, Edge> = {};
+
+    const makeId = ({ from: x, to: y }: { from: PineNode; to: PineNode }) => `${x.id} ${y.id}`;
+    for (const [x, y] of pairs) {
+      debugger;
+      const r =
+        joins[(x as any as PineSelectedNode).data.alias][(y as any as PineSelectedNode).data.alias];
+      const e = r[2] === 'has' ? { from: x, to: y } : { from: y, to: x };
+      const id = makeId(e);
+      if (!edgeLookup[id]) {
+        edgeLookup[id] = {
+          id,
+          source: e.from.id,
+          target: e.to.id,
+        };
+      }
+    }
+    const [current] = selectedNodes.reverse();
+    for (const y of suggestedNodes) {
+      const isParent = y.data.parent;
+      const e = { to: isParent ? current : y, from: isParent ? y : current };
+      const id = makeId(e);
+      if (!edgeLookup[id]) {
+        edgeLookup[id] = {
+          id,
+          source: e.from.id,
+          target: e.to.id,
+        };
+      }
+    }
+
+    this.edges = Object.values(edgeLookup);
+  };
+
+  /**
+   * @deprecated
+   */
+  public generateGraphDeprecated = (
+    metadata: Metadata,
+    selectedTables: Table[],
+    suggestedTables: TableHint[],
+  ) => {
+    this.metadata = metadata;
+    this.selectedTables = selectedTables;
+    this.suggestedTables = suggestedTables;
+
+    // Create nodes for the selected and suggested tables
+    const selectedNodes: PineNode[] = selectedTables
+      ? selectedTables.map((x, i) => makeNode(x, 'selected', i + 1))
+      : [];
+
+    this.candidateIndex = this.getCandidateIndex(suggestedTables, this.candidateIndex);
+
+    // Create suggested nodes
+    // Keep track of the candidate node
+    const suggestedNodes: PineNode[] = [];
+    for (const { h, i } of suggestedTables.map((h, i) => ({ h, i }))) {
+      const isCandidate = this.candidateIndex !== undefined && i === this.candidateIndex;
+      const node = makeNode(h, isCandidate ? 'candidate' : 'suggested');
+      suggestedNodes.push(node);
+      if (isCandidate) {
+        this.candidate = node;
+      }
+    }
+    this.nodes = selectedNodes.concat(suggestedNodes);
+
+    // If there are no selected tables, there are no edges
+    if (selectedTables.length < 1) {
+      this.edges = [];
+      return;
+    }
+
+    // `selectedNodes` is an array of objects e.g. [ {schema: 'public', table: 'users'}, {schema: 'public', table: 'orders'}]
+    // Create pairs of items from the context e.g. [ x, y, z] => [ [x, y], [x, z], [y, z] ]
+    const pairs = selectedNodes.reduce((acc: [PineNode, PineNode][], current, index, array) => {
       if (index < array.length - 1) {
         // Check to ensure we don't go out of bounds
         acc.push([current, array[index + 1]]);
@@ -188,13 +366,40 @@ export class GraphStore {
 
     const edgeLookup = {};
     for (const [x, y] of pairs) {
-      updateEdgeLookup(edgeLookup, metadata, x, y);
+      updateEdgeLookupLegacy(edgeLookup, metadata, x, y);
     }
-    const [current] = selected.reverse();
-    for (const y of suggested) {
-      updateEdgeLookup(edgeLookup, metadata, current, y);
+    const [current] = selectedNodes.reverse();
+    for (const y of suggestedNodes) {
+      updateEdgeLookupLegacy(edgeLookup, metadata, current, y);
     }
 
     this.edges = Object.values(edgeLookup);
   };
+
+  /**
+   * Recalculate the candidate index
+   * Make sure it doesn't go out of bounds
+   */
+  private getCandidateIndex(suggestedTables: TableHint[], ci: number | undefined) {
+    if (ci === undefined) return; // No candidate selected
+
+    // No suggestions - reset the index
+    if (!suggestedTables.length) {
+      return 0;
+    }
+    // Make sure that the index is within bounds i.e. the candidate selection
+    // should cycle up or down
+    return (ci < 0 ? suggestedTables.length + ci : ci) % suggestedTables.length;
+  }
+}
+
+/**
+ * Get the color for the schema. Note: this function probably has collisions.
+ * TODO: Keep track of the schemas and colors to avoid collisions.
+ */
+function getColor(schema: string) {
+  if (!schema) schema = 'public';
+  const hash = schema.split('').reduce((acc, x) => acc + x.charCodeAt(0), 0);
+  const color = schema === 'public' ? '#FFF' : Colors[hash % Colors.length];
+  return { schema, color };
 }

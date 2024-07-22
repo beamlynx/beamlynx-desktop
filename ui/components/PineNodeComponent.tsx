@@ -48,7 +48,7 @@ const PineNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
         borderRadius: '5px',
       }}
     >
-      {data.order != null && <div style={orderChipStyle}>{data.order}</div>}
+      {data.type === 'selected' && <div style={orderChipStyle}>{data.order}</div>}
       <div>{data.table}</div>
       {data.schema !== 'public' && (
         <div
