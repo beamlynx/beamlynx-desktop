@@ -12,14 +12,19 @@ const Input = observer(() => {
     await global.buildQuery();
   };
 
+  const selectNextCandidate = (index: number) => {
+    graph.selectNextCandidate(index);
+    const candidate = graph.getCandidate();
+    global.message = candidate ? candidate.pine : '';
+  }
+
   const handleKeyPress = async (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault();
 
       const candidate = graph.getCandidate();
       if (candidate) {
-        const { schema, table } = candidate;
-        global.updateExpressionUsingCandidate(schema, table);
+        global.updateExpressionUsingCandidate(candidate);
         await global.buildQuery();
       } else {
         await global.evaluate();
@@ -30,15 +35,15 @@ const Input = observer(() => {
     // Navigate the candidates
     if (e.key === 'Tab') {
       e.preventDefault();
-      graph.selectNextCandidate(e.shiftKey ? -1 : 1);
+      selectNextCandidate(e.shiftKey ? -1 : 1);
     }
     if (e.key === 'ArrowUp') {
       e.preventDefault();
-      graph.selectNextCandidate(-1);
+      selectNextCandidate(-1);
     }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      graph.selectNextCandidate(1);
+      selectNextCandidate(1);
     }
   };
 
@@ -50,10 +55,10 @@ const Input = observer(() => {
       size="small"
       variant="outlined"
       autoFocus
-      // multiline
+      multiline
       fullWidth
       minRows="1"
-      maxRows="1"
+      maxRows="5"
       onChange={handleChange}
       onKeyDown={handleKeyPress}
     />

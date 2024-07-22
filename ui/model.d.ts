@@ -1,18 +1,35 @@
 import { Edge, Node } from 'reactflow';
 
-export type PineNodeData = {
-  table: string;
+type BaseNode = {
   schema: string;
-  alias?: string | null;
-  type: 'selected' | 'suggested' | 'candidate';
+  table: string;
+  joinOn: string;
   color?: string | null;
-  order?: number | null;
 };
 
-export type PineNode = Node<PineNodeData>;
+type SelectedNode = BaseNode & {
+  type: 'selected';
+  alias: string;
+  order: number;
+};
+
+type SuggestedNode = BaseNode & {
+  type: 'suggested' | 'candidate';
+  pine: string;
+  parent: boolean;
+};
+
+export type PineNodeData = SelectedNode | SuggestedNode;
+
+export type PineSelectedNode = Node<SelectedNode>
+export type PineSuggestedNode = Node<SuggestedNode>;
+export type PineNode = PineSelectedNode | PineSuggestedNode;
 
 export type PineEdge = Edge;
 
+/**
+ * @deprecated
+ */
 export type Metadata = {
   'db/references': {
     table: {

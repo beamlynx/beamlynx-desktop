@@ -1,12 +1,12 @@
 import { makeAutoObservable } from 'mobx';
-import { format, formatDialect } from 'sql-formatter';
+import { format } from 'sql-formatter';
 import { GraphStore } from './graph.store';
-import { Http, QualifiedTable, Response } from './http';
+import { Http, Response, TableHint } from './http';
 import { Metadata } from '../model';
 import { pickSuccessMessage } from './success-messages';
 import { lt } from 'semver';
 
-const requiredVersion = '0.5.0';
+const requiredVersion = '0.6.0';
 
 type Column = {
   field: string;
@@ -85,9 +85,15 @@ export class GlobalStore {
   };
 
   setHints = (response: Response) => {
-    if (!response.hints) return;
-    this.graphStore.generateGraph(this.metadata, response.context, response.hints.table);
-    this.message = response.hints ? JSON.stringify(response.hints, null, 1).substring(0, 180) : '';
+    if (!response.state?.hints) return;
+    this.graphStore.generateGraphWrapper(
+      response.state,
+      this.metadata,
+      response.context,
+      response.hints.table,
+    );
+    const expressions = response.state.hints.table.map(h => h.pine);
+    this.message = expressions ? expressions.join(', ').substring(0, 180) : '';
   };
 
   buildQuery = async () => {
@@ -142,11 +148,12 @@ export class GlobalStore {
     this.loaded = true;
   };
 
-  updateExpressionUsingCandidate = (schema: string, table: string) => {
+  updateExpressionUsingCandidate = (candidate: TableHint) => {
+    const { pine } = candidate;
     const parts = this.expression.split('|');
     parts.pop();
-    parts.push(`${schema}.${table}`);
-    this.expression = parts.map(x => x.trim()).join(' | ') + ' |';
+    parts.push(pine);
+    this.expression = parts.map(x => x.trim()).join('\n | ') + '\n | ';
   };
 
   cleanExpression = (expression: string) => {
