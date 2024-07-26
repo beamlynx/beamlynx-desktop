@@ -16,7 +16,7 @@ const Input = observer(() => {
     graph.selectNextCandidate(index);
     const candidate = graph.getCandidate();
     global.message = candidate ? candidate.pine : '';
-  }
+  };
 
   const handleKeyPress = async (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
@@ -57,8 +57,8 @@ const Input = observer(() => {
       autoFocus
       multiline
       fullWidth
-      minRows="1"
-      maxRows="5"
+      minRows="8"
+      maxRows="15"
       onChange={handleChange}
       onKeyDown={handleKeyPress}
     />

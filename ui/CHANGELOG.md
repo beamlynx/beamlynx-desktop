@@ -5,6 +5,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+
+- Syntax erros are shown where the query is shown
+
 ## [0.3.1] - 2024-07-22
 
 ### Changed

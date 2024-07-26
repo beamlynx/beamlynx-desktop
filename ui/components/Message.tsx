@@ -12,7 +12,7 @@ const errorStyle = {
 const Message = observer(() => {
   const { global: store } = useStores();
 
-  if (store.error) {
+  if (store.error && store.errorType !== 'parse') {
     return (
       <Typography
         variant="caption"

@@ -1,26 +1,33 @@
 const base = 'http://localhost:33333';
 
 /**
- * @deprecated use `Table` 
+ * @deprecated use `Table`
  */
 export type QualifiedTable = { schema: string; table: string; alias?: string | null };
 
 export type Table = { schema: string; table: string; alias: string };
-export type TableHint = { schema: string; table: string; column: string; parent: boolean; pine: string };
+export type TableHint = {
+  schema: string;
+  table: string;
+  column: string;
+  parent: boolean;
+  pine: string;
+};
 
 export type Hints = { table: TableHint[] };
 
 export type State = {
-    hints: Hints;
-    'selected-tables': Table[];
-    joins: Record<string, Record<string, string[]>>;
-  };
+  hints: Hints;
+  'selected-tables': Table[];
+  joins: Record<string, Record<string, string[]>>;
+};
 
 export type Response = {
   result: unknown;
   'connection-id': string;
   query: string;
   error: string;
+  'error-type': string;
   state: State;
   /**
    * @deprecated

@@ -27,6 +27,7 @@ export class GlobalStore {
   query = '';
   loaded = false;
   error = '';
+  errorType: string = '';
   message = '';
   columns: Column[] = [];
   rows: Row[] = [];
@@ -72,6 +73,7 @@ export class GlobalStore {
 
   handleError = (response: Response) => {
     this.error = response.error || '';
+    this.errorType = response['error-type'] || '';
   };
 
   setQuery = (response: Response) => {
