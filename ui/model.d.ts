@@ -21,27 +21,8 @@ type SuggestedNode = BaseNode & {
 
 export type PineNodeData = SelectedNode | SuggestedNode;
 
-export type PineSelectedNode = Node<SelectedNode>
+export type PineSelectedNode = Node<SelectedNode>;
 export type PineSuggestedNode = Node<SuggestedNode>;
 export type PineNode = PineSelectedNode | PineSuggestedNode;
 
 export type PineEdge = Edge;
-
-/**
- * @deprecated
- */
-export type Metadata = {
-  'db/references': {
-    table: {
-      [table: string]: {
-        'refers-to': {
-          [foreignTable: string]: {
-            via: {
-              [col: string]: string[]; // [s, t, c, := , s, t, c]
-            };
-          };
-        };
-      };
-    };
-  };
-};

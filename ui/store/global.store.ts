@@ -2,7 +2,6 @@ import { makeAutoObservable } from 'mobx';
 import { format } from 'sql-formatter';
 import { GraphStore } from './graph.store';
 import { Http, Response, TableHint } from './http';
-import { Metadata } from '../model';
 import { pickSuccessMessage } from './success-messages';
 import { lt } from 'semver';
 
@@ -31,7 +30,6 @@ export class GlobalStore {
   message = '';
   columns: Column[] = [];
   rows: Row[] = [];
-  metadata: Metadata = { 'db/references': { table: {} } };
 
   // User
   email = '';
@@ -47,11 +45,9 @@ export class GlobalStore {
     const result = response.result as {
       version: string;
       'connection-id': string;
-      metadata: Metadata;
     };
     this.connection = result['connection-id'];
     this.version = result.version ?? '0.0.0';
-    this.metadata = result.metadata;
 
     if (lt(this.version, requiredVersion)) {
       this.error = `🚨 You are running version ${this.version}. Upgrade the server to the latest version (i.e. >= ${requiredVersion}).`;
@@ -88,12 +84,7 @@ export class GlobalStore {
 
   setHints = (response: Response) => {
     if (!response.state?.hints) return;
-    this.graphStore.generateGraphWrapper(
-      response.state,
-      this.metadata,
-      response.context,
-      response.hints.table,
-    );
+    this.graphStore.generateGraphWrapper(response.state);
     const expressions = response.state.hints.table.map(h => h.pine);
     this.message = expressions ? expressions.join(', ').substring(0, 180) : '';
   };

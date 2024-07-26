@@ -1,29 +1,7 @@
 import { makeAutoObservable } from 'mobx';
-import {
-  Metadata,
-  PineEdge,
-  PineNode,
-  PineSelectedNode,
-  PineSuggestedNode,
-  SelectedNode,
-} from '../model';
-import { Hints, QualifiedTable, State, Table, TableHint } from './http';
+import { PineEdge, PineNode, PineSelectedNode, PineSuggestedNode, SelectedNode } from '../model';
+import { State, Table, TableHint } from './http';
 import { Edge } from 'reactflow';
-
-type E = {
-  from: PineNode;
-  to: PineNode;
-};
-
-/**
- * @deprecated Node id generation is different for selected and suggested nodes
- */
-const makeNodeId = ({ schema, table, alias }: QualifiedTable) => {
-  return alias ?? `${schema}.${table}`;
-};
-const makeEdgeId = ({ from, to }: E) => {
-  return `${makeNodeId(from.data)} -> ${makeNodeId(to.data)}`;
-};
 
 // Generate a pallette of constrasting modern colors
 const Colors = ['#ff4e50', '#ff9f51', '#ffea51', '#4caf50', '#64b6ac'];
@@ -71,68 +49,12 @@ const makeSuggestedNode = (n: TableHint, candidate = false): PineSuggestedNode =
   };
 };
 
-/**
- * @deprecated Use updateEdgeLookup
- */
-const updateEdgeLookupLegacy = (
-  edgeLookup: { [id: string]: PineEdge },
-  metadata: Metadata,
-  fromNode: PineNode,
-  toNode: PineNode,
-): PineEdge | undefined => {
-  const from = fromNode.data;
-  const to = toNode.data;
-  let x, y;
-  const tables = metadata['db/references'].table;
-  // TODO: use the schema to check the conditions instead of just the tables
-  if (
-    tables[from.table] &&
-    tables[from.table]['refers-to'] &&
-    tables[from.table]['refers-to'][to.table]
-  ) {
-    x = fromNode;
-    y = toNode;
-  } else if (
-    tables[to.table] &&
-    tables[to.table]['refers-to'] &&
-    tables[to.table]['refers-to'][from.table]
-  ) {
-    x = toNode;
-    y = fromNode;
-  } else {
-    return;
-  }
-  const e = { from: y, to: x };
-  const id = makeEdgeId(e);
-  if (edgeLookup[id]) {
-    return edgeLookup[id];
-  }
-  const edge = {
-    id,
-    animated: fromNode.data.type === 'suggested' || toNode.data.type === 'suggested',
-    source: makeNodeId(e.from.data),
-    target: makeNodeId(e.to.data),
-  };
-  edgeLookup[id] = edge;
-  return edge;
-};
-
 export class GraphStore {
   nodes: PineNode[] = [];
   edges: PineEdge[] = [];
 
   // For redrawing
-  /**
-   * @deprecated We should use `state.joins` instead of using `metadata`.
-   */
-  metadata: Metadata = { 'db/references': { table: {} } };
-  /**
-   * @deprecated
-   */
   selectedTables: Table[] = [];
-  /**
-   * deprecated
-   */
   suggestedTables: TableHint[] = [];
   state: State = {
     hints: {
@@ -156,7 +78,7 @@ export class GraphStore {
     } else if (offset) {
       this.candidateIndex = this.candidateIndex + offset;
     }
-    this.generateGraphWrapper(this.state, this.metadata, this.selectedTables, this.suggestedTables);
+    this.generateGraphWrapper(this.state);
   };
 
   public getCandidate() {
@@ -170,7 +92,7 @@ export class GraphStore {
   public resetCandidate() {
     this.candidateIndex = undefined;
     this.candidate = null;
-    this.generateGraphWrapper(this.state, this.metadata, this.selectedTables, this.suggestedTables);
+    this.generateGraphWrapper(this.state);
   }
 
   /**
@@ -178,14 +100,9 @@ export class GraphStore {
    * 2. Make selected nodes using `selectedTables: Table[]`
    * 3. Make suggested nodes using `suggestedTables: TableHint[]`
    */
-  public generateGraphWrapper = (
-    state: State,
-    metadata: Metadata,
-    selectedTables: Table[],
-    suggestedTables: TableHint[],
-  ) => {
+  public generateGraphWrapper = (state: State) => {
     this.state = state;
-    this.suggestedTables = suggestedTables;
+    this.suggestedTables = state.hints.table;
     this.generateGraph();
   };
 

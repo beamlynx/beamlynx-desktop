@@ -1,10 +1,5 @@
 const base = 'http://localhost:33333';
 
-/**
- * @deprecated use `Table`
- */
-export type QualifiedTable = { schema: string; table: string; alias?: string | null };
-
 export type Table = { schema: string; table: string; alias: string };
 export type TableHint = {
   schema: string;
@@ -29,14 +24,6 @@ export type Response = {
   error: string;
   'error-type': string;
   state: State;
-  /**
-   * @deprecated
-   */
-  hints: Hints;
-  /**
-   * @deprecated use state.aliases
-   */
-  context: Table[];
 };
 
 export const Http = {
