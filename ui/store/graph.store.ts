@@ -61,7 +61,8 @@ export class GraphStore {
       table: [],
     },
     'selected-tables': [],
-    joins: {},
+    joins: [],
+    context: '',
   };
 
   // Candidate
@@ -111,6 +112,7 @@ export class GraphStore {
       hints: { table: suggestedTables },
       'selected-tables': selectedTables,
       joins,
+      context,
     } = this.state;
 
     // TODO: move index calculation before the graph generation. Pass candidate index as argumnet
@@ -121,6 +123,9 @@ export class GraphStore {
       ? selectedTables.map((x, i) => makeSelectedNode(x, i + 1))
       : [];
 
+    // TODO: there can be a better way
+    const contextNode: PineNode = selectedNodes.find(n => n.id === context)!;
+
     const suggestedNodes: PineSuggestedNode[] = [];
     for (const { h, i } of suggestedTables.map((h, i) => ({ h, i }))) {
       const isCandidate = this.candidateIndex !== undefined && i === this.candidateIndex;
@@ -130,23 +135,22 @@ export class GraphStore {
         this.candidate = node;
       }
     }
-    this.nodes = selectedNodes.concat(suggestedNodes);
+    const nodes = selectedNodes.concat(suggestedNodes);
+    const selectedNodesLookup = selectedNodes.reduce(
+      (acc, x) => {
+        acc[x.id] = x;
+        return acc;
+      },
+      {} as Record<string, PineNode>,
+    );
+
+    this.nodes = nodes;
 
     // If there are no selected tables, there are no edges
     if (selectedTables.length < 1) {
       this.edges = [];
       return;
     }
-
-    // `selectedNodes` is an array of objects e.g. [ {schema: 'public', table: 'users'}, {schema: 'public', table: 'orders'}]
-    // Create pairs of items from the context e.g. [ x, y, z] => [ [x, y], [x, z], [y, z] ]
-    const pairs = selectedNodes.reduce((acc: [PineNode, PineNode][], current, index, array) => {
-      // Check to ensure we don't go out of bounds
-      if (index < array.length - 1) {
-        acc.push([current, array[index + 1]]);
-      }
-      return acc;
-    }, []);
 
     if (suggestedNodes.length === 0) {
       this.edges = [];
@@ -156,10 +160,14 @@ export class GraphStore {
     const edgeLookup: Record<string, Edge> = {};
 
     const makeId = ({ from: x, to: y }: { from: PineNode; to: PineNode }) => `${x.id} ${y.id}`;
-    for (const [x, y] of pairs) {
-      const r =
-        joins[(x as any as PineSelectedNode).data.alias][(y as any as PineSelectedNode).data.alias];
-      const e = r[2] === 'has' ? { from: x, to: y } : { from: y, to: x };
+
+    for (const [fromAlias, toAlias, relation] of joins) {
+      const x = selectedNodesLookup[fromAlias];
+      const y = selectedNodesLookup[toAlias];
+      if (!x || !y || !relation) {
+        continue;
+      }
+      const e = relation[2] === 'has' ? { from: x, to: y } : { from: y, to: x };
       const id = makeId(e);
       if (!edgeLookup[id]) {
         edgeLookup[id] = {
@@ -169,10 +177,10 @@ export class GraphStore {
         };
       }
     }
-    const [current] = selectedNodes.reverse();
+
     for (const y of suggestedNodes) {
       const isParent = y.data.parent;
-      const e = { to: isParent ? current : y, from: isParent ? y : current };
+      const e = { to: isParent ? contextNode : y, from: isParent ? y : contextNode };
       const id = makeId(e);
       if (!edgeLookup[id]) {
         edgeLookup[id] = {

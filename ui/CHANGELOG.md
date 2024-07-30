@@ -5,6 +5,12 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2024-07-30
+
+### Added
+
+- Support for `from: <alias>`. This lets us set the context for joins.
+
 ## [0.3.2] - 2024-07-26
 
 ### Changed
