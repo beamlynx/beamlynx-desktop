@@ -5,7 +5,7 @@ import { Http, Response, TableHint } from './http';
 import { pickSuccessMessage } from './success-messages';
 import { lt } from 'semver';
 
-const requiredVersion = '0.6.0';
+const requiredVersion = '0.7.1';
 
 type Column = {
   field: string;
@@ -74,11 +74,15 @@ export class GlobalStore {
 
   setQuery = (response: Response) => {
     if (!response.query) return;
-    this.query = format(response.query, {
-      language: 'postgresql',
-      indentStyle: 'tabularRight',
-      denseOperators: false,
-    });
+    let query = '-';
+    try {
+      query = format(response.query, {
+        language: 'postgresql',
+        indentStyle: 'tabularRight',
+        denseOperators: false,
+      });
+    } catch (e) {}
+    this.query = query;
     this.loaded = false;
   };
 
