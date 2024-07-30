@@ -14,7 +14,8 @@ export type Hints = { table: TableHint[] };
 export type State = {
   hints: Hints;
   'selected-tables': Table[];
-  joins: Record<string, Record<string, string[]>>;
+  joins: string[][];
+  context: string;
 };
 
 export type Response = {
