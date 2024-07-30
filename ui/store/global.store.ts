@@ -5,7 +5,7 @@ import { Http, Response, TableHint } from './http';
 import { pickSuccessMessage } from './success-messages';
 import { lt } from 'semver';
 
-const requiredVersion = '0.8.0';
+const requiredVersion = '0.8.1';
 
 type Column = {
   field: string;
