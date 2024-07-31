@@ -5,6 +5,12 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2024-07-31
+
+- Fetch results using `Ctrl + Enter` instead of just `Enter`.
+
+### Added
+
 ## [0.4.0] - 2024-07-30
 
 ### Added

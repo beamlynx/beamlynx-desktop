@@ -23,12 +23,15 @@ const Input = observer(() => {
       e.preventDefault();
 
       const candidate = graph.getCandidate();
-      if (candidate) {
+      if (e.ctrlKey) {
+        await global.evaluate();
+      } else if (candidate) {
         global.updateExpressionUsingCandidate(candidate);
         await global.buildQuery();
       } else {
-        await global.evaluate();
+        global.message = '💡 Are you trying to get the results? Use `Ctrl + Enter` instead!';
       }
+
       graph.resetCandidate();
     }
 
