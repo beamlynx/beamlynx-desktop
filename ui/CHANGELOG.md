@@ -7,7 +7,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [0.5.0] - 2024-07-31
 
-- Fetch results using `Ctrl + Enter` instead of just `Enter`.
+### Breaking
+
+- Fetch results using `Ctrl + Enter` instead of `Enter`.
 
 ### Added
 
