@@ -2,8 +2,18 @@ html,
 body {
   padding: 0;
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen,
-    Ubuntu, Cantarell, Fira Sans, Droid Sans, Helvetica Neue, sans-serif;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    Segoe UI,
+    Roboto,
+    Oxygen,
+    Ubuntu,
+    Cantarell,
+    Fira Sans,
+    Droid Sans,
+    Helvetica Neue,
+    sans-serif;
 }
 
 a {
@@ -18,4 +28,14 @@ a {
 /* When hovering over a data grid cell, show a pointer instead of a cursor */
 .copy-data-grid .MuiDataGrid-cell {
   cursor: pointer;
+}
+
+/* Focus */
+
+.unfocussed {
+  border: 2px solid lightgray;
+}
+
+.focussed {
+  border: 2px solid rgb(25, 118, 210);
 }

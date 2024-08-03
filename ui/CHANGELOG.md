@@ -5,6 +5,17 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2024-08-02
+
+### Breaking
+
+Changed how navigation works:
+
+- `Tab` to focus on the graph. `Esc` or `Shift + Tab` to focus back on the input
+- The focused frame is highlighted with a border
+- When focused on the input, `Enter` fetches the results.
+- When focused on the graph, `Enter` selects the current candidate. Any other character brings you back to the input.
+
 ## [0.5.0] - 2024-07-31
 
 ### Breaking

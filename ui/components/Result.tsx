@@ -9,8 +9,8 @@ const Result = observer(() => {
   const rows = toJS(store.rows);
   const columns = toJS(store.columns);
   return (
-    <div className='copy-data-grid'>
-      {!store.loaded || (
+    <div className="copy-data-grid">
+      {store.mode === 'result' && (
         <DataGrid
           density="compact"
           rows={rows}

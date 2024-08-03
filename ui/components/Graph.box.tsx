@@ -5,7 +5,6 @@ import ReactFlow, {
   Controls,
   NodeTypes,
   Position,
-  ReactFlowInstance,
   ReactFlowProvider,
   useEdgesState,
   useNodesState,
@@ -66,7 +65,6 @@ const getLayoutedElements = (
   return { nodes, edges };
 };
 
-
 const Flow = observer(() => {
   const { graph } = useStores();
 
@@ -78,11 +76,11 @@ const Flow = observer(() => {
     const { nodes, edges } = getLayoutedElements(graph.nodes, graph.edges);
     setNodes(nodes);
     setEdges(edges);
-    
+
     // TODO: when the number of nodes change drastically, the fit view doesn't
     // work as expected. Using a setTimeout is a workaround.
     setTimeout(() => {
-      reactFlowInstance.fitView({duration: 200 });
+      reactFlowInstance.fitView({ duration: 200 });
     }, 250);
 
     // TODO: how can I avoid disabling the eslint rule?
@@ -116,6 +114,7 @@ const GraphBox: React.FC<GraphBoxProps> = observer(({ sx, ...props }) => {
   ) : (
     <Box
       height="100%"
+      className={global.mode === 'graph' ? 'focussed' : 'unfocussed'}
       sx={{
         mr: 2,
         ml: 1,

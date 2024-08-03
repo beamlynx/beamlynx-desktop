@@ -19,34 +19,51 @@ const Input = observer(() => {
   };
 
   const handleKeyPress = async (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
+    const candidate = graph.getCandidate();
 
-      const candidate = graph.getCandidate();
-      if (e.ctrlKey) {
+    if (global.mode === 'result') {
+      global.setMode('input');
+    } else if (global.mode === 'input') {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        global.setMode('graph');
+        if (!candidate) {
+          selectNextCandidate(1);
+        }
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
         await global.evaluate();
-      } else if (candidate) {
-        global.updateExpressionUsingCandidate(candidate);
-        await global.buildQuery();
-      } else {
-        global.message = '💡 Are you trying to get the results? Use `Ctrl + Enter` instead!';
       }
-
-      graph.resetCandidate();
-    }
-
-    // Navigate the candidates
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      selectNextCandidate(e.shiftKey ? -1 : 1);
-    }
-    if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      selectNextCandidate(-1);
-    }
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      selectNextCandidate(1);
+    } else if (global.mode === 'graph') {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        global.setMode('input');
+      } else if (e.key === 'Tab' && e.shiftKey) {
+        e.preventDefault();
+        global.setMode('input');
+      } else if (e.shiftKey) {
+        e.preventDefault();
+      } else if (e.key === 'Tab') {
+        e.preventDefault();
+        // selectNextCandidate(e.shiftKey ? -1 : 1);
+        selectNextCandidate(1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        selectNextCandidate(-1);
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        selectNextCandidate(1);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (candidate) {
+          global.updateExpressionUsingCandidate(candidate);
+          await global.buildQuery();
+          global.setMode('input');
+        }
+      } else {
+        e.preventDefault();
+        global.setMode('input');
+      }
     }
   };
 
@@ -54,10 +71,12 @@ const Input = observer(() => {
     <TextField
       label="Pine expression... "
       value={global.expression}
-      // hiddenLabel={true}
       size="small"
       variant="outlined"
-      autoFocus
+      focused={global.mode === 'input'}
+      onFocus={() => {
+        global.setMode('input');
+      }}
       multiline
       fullWidth
       minRows="8"

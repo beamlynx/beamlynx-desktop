@@ -17,6 +17,7 @@ type Column = {
 };
 
 type Row = { [key: string]: any };
+type Mode = 'input' | 'graph' | 'result' | 'none';
 
 export class GlobalStore {
   connected = false;
@@ -30,7 +31,7 @@ export class GlobalStore {
   message = '';
   columns: Column[] = [];
   rows: Row[] = [];
-
+  mode: Mode = 'none';
   // User
   email = '';
   domain = '';
@@ -143,6 +144,7 @@ export class GlobalStore {
     });
     this.message = pickSuccessMessage();
     this.loaded = true;
+    this.setMode('result');
   };
 
   updateExpressionUsingCandidate = (candidate: TableHint) => {
@@ -164,4 +166,9 @@ export class GlobalStore {
     }
     this.message = `📋 Copied: ${v}`;
   };
+
+  setMode(mode: Mode) {
+    this.mode = mode;
+    this.graphStore.resetCandidate();
+  }
 }
