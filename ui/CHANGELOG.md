@@ -5,6 +5,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+
+- Prettify the expression when a pipe `|` is entered
+
 ## [0.6.0] - 2024-08-02
 
 ### Breaking

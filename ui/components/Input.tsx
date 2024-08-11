@@ -30,6 +30,10 @@ const Input = observer(() => {
         if (!candidate) {
           selectNextCandidate(1);
         }
+      } else if (e.key === '|') {
+        e.preventDefault();
+        global.prettifyExpression();
+        await global.buildQuery();
       } else if (e.key === 'Enter') {
         e.preventDefault();
         await global.evaluate();

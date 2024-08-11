@@ -152,7 +152,17 @@ export class GlobalStore {
     const parts = this.expression.split('|');
     parts.pop();
     parts.push(pine);
-    this.expression = parts.map(x => x.trim()).join('\n | ') + '\n | ';
+    this.expression = parts.join(' | ');
+    this.prettifyExpression();
+  };
+
+  prettifyExpression = () => {
+    const parts = this.expression.split('|');
+    this.expression =
+      parts
+        .map(x => x.trim())
+        .filter(Boolean)
+        .join('\n | ') + '\n | ';
   };
 
   cleanExpression = (expression: string) => {
