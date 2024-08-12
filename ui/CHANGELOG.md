@@ -9,6 +9,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 - Prettify the expression when a pipe `|` is entered
 
+### Fixed
+
+- Focusing out and back in the input hides the results
+
 ## [0.6.0] - 2024-08-02
 
 ### Breaking
