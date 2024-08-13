@@ -5,6 +5,8 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.6.1] - 2024-08-13
+
 ### Changed
 
 - Prettify the expression when a pipe `|` is entered
