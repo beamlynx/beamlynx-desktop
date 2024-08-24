@@ -7,22 +7,20 @@ type BaseNode = {
   color?: string | null;
 };
 
-type SelectedNode = BaseNode & {
+type SelectedNodeData = BaseNode & {
   type: 'selected';
   alias: string;
   order: number;
 };
 
-type SuggestedNode = BaseNode & {
+type SuggestedNodeData = BaseNode & {
   type: 'suggested' | 'candidate';
   pine: string;
   parent: boolean;
 };
 
-export type PineNodeData = SelectedNode | SuggestedNode;
-
-export type PineSelectedNode = Node<SelectedNode>;
-export type PineSuggestedNode = Node<SuggestedNode>;
+export type PineSelectedNode = Node<SelectedNodeData>;
+export type PineSuggestedNode = Node<SuggestedNodeData>;
 export type PineNode = PineSelectedNode | PineSuggestedNode;
 
 export type PineEdge = Edge;

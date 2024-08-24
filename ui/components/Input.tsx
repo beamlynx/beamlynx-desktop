@@ -67,12 +67,14 @@ const Input = observer(() => {
       } else {
         e.preventDefault();
         global.setMode('input');
+        global.expression += e.key;
       }
     }
   };
 
   return (
     <TextField
+      id="input"
       label="Pine expression... "
       value={global.expression}
       size="small"

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Handle, NodeProps, Position } from 'reactflow';
-import { PineNodeData } from '../model';
+import { SuggestedNodeData } from '../model';
 
 const handleStyle: React.CSSProperties = {
   width: '2px',
@@ -29,35 +29,34 @@ const orderChipStyle: React.CSSProperties = {
   fontWeight: 'bold', // Optional: makes the text bold
 };
 
-type PineNodeProps = NodeProps<PineNodeData>;
+type PineNodeProps = NodeProps<SuggestedNodeData>;
 
-const PineNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
+const SuggestedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
   const lightOrange = '#FFD700';
-  const selected = data.type === 'selected';
   const candidate = data.type === 'candidate';
-  const background = selected ? 'lightgray' : candidate ? lightOrange : 'white';
-  const border = selected ? `2px solid black` : candidate ? `2px solid orange` : `2px solid orange`;
+  const background = candidate ? lightOrange : 'white';
+  const border = candidate ? `2px solid orange` : `2px solid orange`;
 
   return (
     <div
       style={{
         position: 'relative',
-        padding: 10,
+
+        padding: '12px 10px 12px 10px',
         border,
         background,
         borderRadius: '5px',
       }}
     >
-      {data.type === 'selected' && <div style={orderChipStyle}>{data.order}</div>}
       <div>{data.table}</div>
       {data.schema !== 'public' && (
         <div
           style={{
             position: 'absolute',
             right: 0,
-            top: -2, // Position above the node
+            top: -1, // Position above the node
             padding: '2px 5px',
-            fontSize: '10px', // Smaller font size
+            fontSize: '8px', // Smaller font size
             background: data.color ?? '#fff', // Different colors for selected and suggested
             borderRadius: '5px', // Rounded corners for the schema label
             transform: 'translateY(-100%)', // Move up fully above the node
@@ -73,4 +72,4 @@ const PineNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
   );
 };
 
-export default PineNodeComponent;
+export default SuggestedNodeComponent;

@@ -1,7 +1,8 @@
 import { makeAutoObservable } from 'mobx';
-import { PineEdge, PineNode, PineSelectedNode, PineSuggestedNode, SelectedNode } from '../model';
+import { PineEdge, PineNode, PineSuggestedNode } from '../model';
 import { State, Table, TableHint } from './http';
 import { Edge } from 'reactflow';
+import { NodeType } from '../components/Graph.box';
 
 // Generate a pallette of constrasting modern colors
 const Colors = ['#ff4e50', '#ff9f51', '#ffea51', '#4caf50', '#64b6ac'];
@@ -12,7 +13,7 @@ const makeSelectedNode = (n: Table, order: number): PineNode => {
   const id = alias;
   return {
     id,
-    type: 'pineNode',
+    type: NodeType.Selected,
     data: {
       schema,
       table,
@@ -35,7 +36,7 @@ const makeSuggestedNode = (n: TableHint, candidate = false): PineSuggestedNode =
 
   return {
     id,
-    type: 'pineNode',
+    type: NodeType.Suggested,
     data: {
       schema,
       table,

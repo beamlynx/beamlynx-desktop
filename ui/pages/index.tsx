@@ -2,6 +2,7 @@ import { ClerkProvider } from '@clerk/nextjs';
 import { Box, Grid, Typography } from '@mui/material';
 import Container from '@mui/material/Container';
 import type { NextPage } from 'next';
+import { useEffect } from 'react';
 import ActiveConnection from '../components/ActiveConnection';
 import GraphBox from '../components/Graph.box';
 import Input from '../components/Input';
@@ -9,9 +10,24 @@ import Message from '../components/Message';
 import Query from '../components/Query';
 import Result from '../components/Result';
 import UserBox from '../components/UserBox';
+import { useStores } from '../store/store-container';
 
 const Home: NextPage = () => {
   const isDevelopment = process.env.NODE_ENV === 'development';
+
+  const { global } = useStores();
+
+  useEffect(() => {
+    const fn = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      global.setMode('input');
+    };
+    document.addEventListener('keydown', fn);
+    return () => {
+      document.removeEventListener('keydown', fn);
+    };
+  }, [global]);
 
   const UserContent = isDevelopment ? (
     <Typography variant="caption" color="gray">

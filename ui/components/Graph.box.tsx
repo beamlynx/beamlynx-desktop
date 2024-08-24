@@ -14,15 +14,21 @@ import ReactFlow, {
 import { Box, BoxProps } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import 'reactflow/dist/style.css';
-import PineNodeComponent from './PineNodeComponent';
+import SuggestedNodeComponent from './SuggestedNodeComponent';
 import { PineNode, PineEdge } from '../model';
 import { useStores } from '../store/store-container';
+import SelectedNodeComponent from './SelectedNodeComponent';
 
 const nodeWidth = 172;
 const nodeHeight = 0; // 36;
 
+export const NodeType = {
+  Selected: 'selectedNode',
+  Suggested: 'pineNode',
+};
 const nodeTypes: NodeTypes = {
-  pineNode: PineNodeComponent,
+  [NodeType.Suggested]: SuggestedNodeComponent,
+  [NodeType.Selected]: SelectedNodeComponent,
 };
 
 const getLayoutedElements = (
