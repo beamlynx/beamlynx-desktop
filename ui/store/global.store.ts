@@ -180,5 +180,8 @@ export class GlobalStore {
   setMode(mode: Mode) {
     this.mode = mode;
     this.graphStore.resetCandidate();
+    if (mode === 'input') {
+      document.getElementById('input')!.focus();
+    }
   }
 }

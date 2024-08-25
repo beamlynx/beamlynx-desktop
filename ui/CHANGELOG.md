@@ -5,6 +5,16 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2024-08-23
+
+### Added
+
+- Show aliases for selected tables
+
+### Changed
+
+- Focus on the input when `Escape` is pressed
+
 ## [0.6.1] - 2024-08-13
 
 ### Changed
