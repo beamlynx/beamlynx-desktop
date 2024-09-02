@@ -23,7 +23,6 @@ export const Navigation = (
       </ul>
     </p>
     <p>
-      -{' '}
       <b>
         <code>ENTER</code>
       </b>{' '}
