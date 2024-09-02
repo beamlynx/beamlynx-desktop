@@ -18,6 +18,7 @@ import SuggestedNodeComponent from './SuggestedNodeComponent';
 import { PineNode, PineEdge } from '../model';
 import { useStores } from '../store/store-container';
 import SelectedNodeComponent from './SelectedNodeComponent';
+import { Documentation } from './docs/docs';
 
 const nodeWidth = 172;
 const nodeHeight = 0; // 36;
@@ -72,7 +73,7 @@ const getLayoutedElements = (
 };
 
 const Flow = observer(() => {
-  const { graph } = useStores();
+  const { global, graph } = useStores();
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -93,7 +94,9 @@ const Flow = observer(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graph.nodes, graph.edges]);
 
-  return (
+  return !global.expression ? (
+    Documentation
+  ) : (
     <ReactFlow
       nodes={nodes}
       edges={edges}
