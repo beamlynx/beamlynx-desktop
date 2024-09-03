@@ -14,11 +14,10 @@ import ReactFlow, {
 import { Box, BoxProps } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import 'reactflow/dist/style.css';
-import SuggestedNodeComponent from './SuggestedNodeComponent';
-import { PineNode, PineEdge } from '../model';
+import { PineEdge, PineNode } from '../model';
 import { useStores } from '../store/store-container';
 import SelectedNodeComponent from './SelectedNodeComponent';
-import { Documentation } from './docs/docs';
+import SuggestedNodeComponent from './SuggestedNodeComponent';
 
 const nodeWidth = 172;
 const nodeHeight = 0; // 36;
@@ -94,9 +93,7 @@ const Flow = observer(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graph.nodes, graph.edges]);
 
-  return !global.expression ? (
-    Documentation
-  ) : (
+  return (
     <ReactFlow
       nodes={nodes}
       edges={edges}
@@ -121,22 +118,9 @@ const GraphBox: React.FC<GraphBoxProps> = observer(({ sx, ...props }) => {
   return global.loaded ? (
     <></>
   ) : (
-    <Box
-      height="100%"
-      className={global.mode === 'graph' ? 'focussed' : 'unfocussed'}
-      sx={{
-        mr: 2,
-        ml: 1,
-        border: '1px solid lightgray',
-        borderRadius: 1,
-        ...sx,
-      }}
-      {...props}
-    >
-      <ReactFlowProvider>
-        <Flow />
-      </ReactFlowProvider>
-    </Box>
+    <ReactFlowProvider>
+      <Flow />
+    </ReactFlowProvider>
   );
 });
 

@@ -11,6 +11,8 @@ import Query from '../components/Query';
 import Result from '../components/Result';
 import UserBox from '../components/UserBox';
 import { useStores } from '../store/store-container';
+import Session from '../components/Session';
+import PineTabs from '../components/PineTabs';
 
 const Home: NextPage = () => {
   const isDevelopment = process.env.NODE_ENV === 'development';
@@ -44,13 +46,13 @@ const Home: NextPage = () => {
       sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}
     >
       <Grid container>
-        <Grid item xs={2}>
+        <Grid item xs={3}>
           <Box sx={{ m: 2, mt: 1 }}>
             <ActiveConnection />
           </Box>
         </Grid>
 
-        <Grid item xs={9}>
+        <Grid item xs={8}>
           <Box sx={{ m: 1 }}>
             <Message />
           </Box>
@@ -61,28 +63,9 @@ const Home: NextPage = () => {
         </Grid>
       </Grid>
 
-      <Grid container>
-        <Grid item xs={5}>
-          <Box sx={{ ml: 1, mr: 2 }}>
-            <Input />
-          </Box>
-        </Grid>
-        <Grid item xs={6}>
-          <Box sx={{ ml: 1 }}>
-            <Query />
-          </Box>
-        </Grid>
-      </Grid>
-
-      <Box sx={{ m: 1 }}>
-        <Result />
+      <Box sx={{ m: 1, display: 'flex', flexDirection: 'column' }}>
+        <PineTabs></PineTabs>
       </Box>
-
-      <Grid container sx={{ flexGrow: 1 }}>
-        <Grid item xs={12} sx={{ display: 'flex', flexDirection: 'column' }}>
-          <GraphBox sx={{ flexGrow: 1 }} />
-        </Grid>
-      </Grid>
     </Container>
   );
 

@@ -1,6 +1,8 @@
 export const Navigation = (
   <div>
     {/* Navigate */}
+    <br />
+    <br />
     <b>🎯 Rules of the game</b>
     <br />
     <br />
