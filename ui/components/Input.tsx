@@ -26,9 +26,11 @@ const Input = observer(() => {
     } else if (global.mode === 'input') {
       if (e.key === 'Tab') {
         e.preventDefault();
-        global.setMode('graph');
-        if (!candidate) {
-          selectNextCandidate(1);
+        if (global.expression) {
+          global.setMode('graph');
+          if (!candidate) {
+            selectNextCandidate(1);
+          }
         }
       } else if (e.key === '|') {
         e.preventDefault();

@@ -2,7 +2,7 @@ export const Introduction = (
   <div>
     {/* Intro */}
     <b>🌲 Welcome to Pine!</b>
-    <p>Type a Pine expression above ☝ and see relations as a graph.</p>
+    <p>Type a Pine expression above 👆 and interact with your database. See how to navigate 👉</p>
     <br />
     <p>
       <b>🧐 What is a pine expression?</b>
