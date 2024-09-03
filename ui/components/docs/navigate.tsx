@@ -27,7 +27,7 @@ export const Navigation = (
         <code>ENTER</code>
       </b>{' '}
       <ul>
-        <li>Select the focused candidate / enter autocomplete mode</li>
+        <li>Select the focused candidate</li>
         <li>Execute the query i.e. get the results</li>
       </ul>
     </p>
