@@ -47,7 +47,7 @@ export class GlobalStore {
   };
 
   getSessionName = () => {
-    const length = this.connection.length;
+    const length = this.expression.length;
     const maxLength = 10;
 
     // Skip the schema when naming the session
