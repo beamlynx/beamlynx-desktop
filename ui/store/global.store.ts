@@ -56,7 +56,7 @@ export class GlobalStore {
 
     return length > maxLength
       ? expression.substring(0, maxLength).replaceAll('|', '') + '...'
-      : this.connection;
+      : expression || '...';
   };
 
   loadConnectionMetadata = async () => {
