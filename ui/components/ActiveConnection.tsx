@@ -28,7 +28,7 @@ const ActiveConnection = observer(({}) => {
       {loading
         ? 'Connecting...'
         : store.connection
-          ? `⚡ [${store.version ?? 'obsolete'}] ${store.connection}`
+          ? `⚡ [${store.version ?? 'obsolete'}] ${store.getConnectionName()}`
           : `🔌 No connection! `}
     </Typography>
   );

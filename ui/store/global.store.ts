@@ -40,6 +40,25 @@ export class GlobalStore {
     makeAutoObservable(this);
   }
 
+  getConnectionName = () => {
+    const length = this.connection.length;
+    const maxLength = 50;
+    return length > maxLength ? this.connection.substring(0, maxLength) + '...' : this.connection;
+  };
+
+  getSessionName = () => {
+    const length = this.connection.length;
+    const maxLength = 10;
+
+    // Skip the schema when naming the session
+    const [x, y] = this.expression.split('.');
+    const expression = y || x;
+
+    return length > maxLength
+      ? expression.substring(0, maxLength).replaceAll('|', '') + '...'
+      : expression || '...';
+  };
+
   loadConnectionMetadata = async () => {
     const response = await Http.get('connection');
     if (!response) return;
@@ -91,7 +110,7 @@ export class GlobalStore {
     if (!response.state?.hints) return;
     this.graphStore.generateGraphWrapper(response.state);
     const expressions = response.state.hints.table.map(h => h.pine);
-    this.message = expressions ? expressions.join(', ').substring(0, 180) : '';
+    this.message = expressions ? expressions.join(', ').substring(0, 140) : '';
   };
 
   buildQuery = async () => {
