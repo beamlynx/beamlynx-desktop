@@ -42,7 +42,7 @@ export class GlobalStore {
 
   getConnectionName = () => {
     const length = this.connection.length;
-    const maxLength = 50;
+    const maxLength = 24;
     return length > maxLength ? this.connection.substring(0, maxLength) + '...' : this.connection;
   };
 
