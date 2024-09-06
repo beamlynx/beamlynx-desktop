@@ -12,10 +12,15 @@ import { AddCircle } from '@mui/icons-material';
 const PineTabs = observer(() => {
   const { global } = useStores();
   const [tabs, setTabs] = React.useState([{ sessionId: '0' }]); // Initial tabs
-  const [sessionId, setSessionId] = React.useState('0'); // Active tab
+  const [sessionId, setSessionId] = React.useState('0'); // Active session
+
+  const setActiveTab = (newSessionId: string) => {
+    global.activeSessionId = newSessionId;
+    setSessionId(newSessionId);
+  };
 
   const handleChange = (event: React.SyntheticEvent, newSessionId: string) => {
-    setSessionId(newSessionId);
+    setActiveTab(newSessionId);
   };
 
   const addTab = () => {
@@ -23,7 +28,7 @@ const PineTabs = observer(() => {
     setTabs([...tabs, { sessionId: newSessionId }]); // Add new tab
     global.createSession(newSessionId); // Create a new session
 
-    setSessionId(newSessionId); // Set the new tab as active
+    setActiveTab(newSessionId);
   };
 
   return (

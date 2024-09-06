@@ -13,10 +13,10 @@ const Home: NextPage = () => {
   const isDevelopment = process.env.NODE_ENV === 'development';
 
   const { global } = useStores();
-  const sessionId = global.getActiveSessionId();
 
   // TODO: this should go to the session?
   useEffect(() => {
+    const sessionId = global.activeSessionId;
     const fn = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.preventDefault();
@@ -26,7 +26,7 @@ const Home: NextPage = () => {
     return () => {
       document.removeEventListener('keydown', fn);
     };
-  }, [global, sessionId]);
+  }, [global]);
 
   const UserContent = isDevelopment ? (
     <Typography variant="caption" color="gray">
@@ -51,7 +51,7 @@ const Home: NextPage = () => {
 
         <Grid item xs={8}>
           <Box sx={{ m: 1 }}>
-            <Message sessionId={sessionId} />
+            <Message />
           </Box>
         </Grid>
 

@@ -66,10 +66,6 @@ export class GlobalStore {
     return length > maxLength ? this.connection.substring(0, maxLength) + '...' : this.connection;
   };
 
-  getActiveSessionId = () => {
-    return this.activeSessionId;
-  };
-
   createSession = (sessionId: string) => {
     this.sessions[`session-${sessionId}`] = initSession;
     this.graphStore.createSession(sessionId);
@@ -100,7 +96,7 @@ export class GlobalStore {
 
     if (lt(this.version, requiredVersion)) {
       // Use the default session to show the error
-      const session = this.getSession(this.getActiveSessionId());
+      const session = this.getSession(this.activeSessionId);
       session.error = `🚨 You are running version ${this.version}. Upgrade the server to the latest version (i.e. >= ${requiredVersion}).`;
     }
     return this.connection;
