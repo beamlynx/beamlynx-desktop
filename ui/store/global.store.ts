@@ -27,6 +27,7 @@ type Session = {
   columns: Column[];
   rows: Row[];
   mode: Mode;
+  message: string;
 };
 
 const initSession: Session = {
@@ -37,18 +38,17 @@ const initSession: Session = {
   columns: [],
   rows: [],
   mode: 'none',
+  message: '',
 };
 export class GlobalStore {
   connected = false;
   connection = '';
   version: string | undefined = undefined;
   error: string = '';
-  message: string = '';
 
   activeSessionId = '0';
   sessions: Record<string, Session> = {
     'session-0': initSession,
-    'session-1': initSession,
   };
 
   // User
@@ -115,11 +115,12 @@ export class GlobalStore {
     this.domain = domain;
   };
 
-  setCopiedMessage = (v: string, quote = false) => {
+  setCopiedMessage = (sessionId: string, v: string, quote = false) => {
+    const session = this.getSession(sessionId);
     if (quote) {
       v = `'${v.replace(/'/g, "'")}'`;
     }
-    this.message = `📋 Copied: ${v}`;
+    session.message = `📋 Copied: ${v}`;
   };
 
   handleError = (sessionId: string, response: Response) => {
@@ -159,9 +160,10 @@ export class GlobalStore {
 
   setHints = (sessionId: string, response: Response) => {
     if (!response.state?.hints) return;
+    const session = this.getSession(sessionId);
     this.graphStore.generateGraphWrapper(sessionId, response.state);
     const expressions = response.state.hints.table.map(h => h.pine);
-    this.message = expressions ? expressions.join(', ').substring(0, 140) : '';
+    session.message = expressions ? expressions.join(', ').substring(0, 140) : '';
   };
 
   buildQuery = async (sessionId: string) => {
@@ -187,8 +189,8 @@ export class GlobalStore {
       this.handleError(sessionId, { error: 'Not connected' } as Response);
       return;
     }
-    this.message = '⏳ Fetching rows ...';
     const session = this.getSession(sessionId);
+    session.message = '⏳ Fetching rows ...';
     const response = await Http.post('eval', {
       expression: this.cleanExpression(session.expression),
     });
@@ -215,7 +217,7 @@ export class GlobalStore {
         _id: index,
       };
     });
-    this.message = pickSuccessMessage();
+    session.message = pickSuccessMessage();
     session.loaded = true;
     this.setMode(sessionId, 'result');
   };

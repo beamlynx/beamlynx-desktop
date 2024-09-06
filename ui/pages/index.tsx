@@ -4,15 +4,10 @@ import Container from '@mui/material/Container';
 import type { NextPage } from 'next';
 import { useEffect } from 'react';
 import ActiveConnection from '../components/ActiveConnection';
-import GraphBox from '../components/Graph.box';
-import Input from '../components/Input';
 import Message from '../components/Message';
-import Query from '../components/Query';
-import Result from '../components/Result';
+import PineTabs from '../components/PineTabs';
 import UserBox from '../components/UserBox';
 import { useStores } from '../store/store-container';
-import Session from '../components/Session';
-import PineTabs from '../components/PineTabs';
 
 const Home: NextPage = () => {
   const isDevelopment = process.env.NODE_ENV === 'development';
@@ -56,7 +51,7 @@ const Home: NextPage = () => {
 
         <Grid item xs={8}>
           <Box sx={{ m: 1 }}>
-            <Message />
+            <Message sessionId={sessionId} />
           </Box>
         </Grid>
 

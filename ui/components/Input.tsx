@@ -17,13 +17,15 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
     await global.buildQuery(sessionId);
   };
 
-  const selectNextCandidate = (index: number) => {
+  const selectNextCandidate = (sessionId: string, index: number) => {
+    const session = global.getSession(sessionId);
     graph.selectNextCandidate(sessionId, index);
     const candidate = graph.getCandidate();
-    global.message = candidate ? candidate.pine : '';
+    session.message = candidate ? candidate.pine : '';
   };
 
-  const handleKeyPress = async (e: React.KeyboardEvent) => {
+  const handleKeyPress = async (sessionId: string, e: React.KeyboardEvent) => {
+    const session = global.getSession(sessionId);
     const candidate = graph.getCandidate();
 
     if (session.mode === 'result') {
@@ -34,7 +36,7 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
         if (session.expression) {
           global.setMode(sessionId, 'graph');
           if (!candidate) {
-            selectNextCandidate(1);
+            selectNextCandidate(sessionId, 1);
           }
         }
       } else if (e.key === '|') {
@@ -57,13 +59,13 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
       } else if (e.key === 'Tab') {
         e.preventDefault();
         // selectNextCandidate(e.shiftKey ? -1 : 1);
-        selectNextCandidate(1);
+        selectNextCandidate(sessionId, 1);
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        selectNextCandidate(-1);
+        selectNextCandidate(sessionId, -1);
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
-        selectNextCandidate(1);
+        selectNextCandidate(sessionId, 1);
       } else if (e.key === 'Enter') {
         e.preventDefault();
         if (candidate) {
@@ -95,7 +97,9 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
       minRows="8"
       maxRows="15"
       onChange={handleChange}
-      onKeyDown={handleKeyPress}
+      onKeyDown={e => {
+        handleKeyPress(sessionId, e);
+      }}
     />
   );
 });

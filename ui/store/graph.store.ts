@@ -62,7 +62,6 @@ export class GraphStore {
   activeSessionId: string = '0';
   sessions: Record<string, Session> = {
     'session-0': initSession,
-    'session-1': initSession,
   };
 
   // For redrawing

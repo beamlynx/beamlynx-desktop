@@ -17,7 +17,7 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
     if (codeRef.current) {
       const v = codeRef.current.innerText;
       navigator.clipboard.writeText(v).then(() => {
-        store.setCopiedMessage(v);
+        store.setCopiedMessage(sessionId, v);
       });
     }
   };
