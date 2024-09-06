@@ -28,6 +28,7 @@ type Session = {
   rows: Row[];
   mode: Mode;
   message: string;
+  error: string;
 };
 
 const initSession: Session = {
@@ -39,12 +40,12 @@ const initSession: Session = {
   rows: [],
   mode: 'none',
   message: '',
+  error: '',
 };
 export class GlobalStore {
   connected = false;
   connection = '';
   version: string | undefined = undefined;
-  error: string = '';
 
   activeSessionId = '0';
   sessions: Record<string, Session> = {
@@ -98,7 +99,9 @@ export class GlobalStore {
     this.version = result.version ?? '0.0.0';
 
     if (lt(this.version, requiredVersion)) {
-      this.error = `🚨 You are running version ${this.version}. Upgrade the server to the latest version (i.e. >= ${requiredVersion}).`;
+      // Use the default session to show the error
+      const session = this.getSession(this.getActiveSessionId());
+      session.error = `🚨 You are running version ${this.version}. Upgrade the server to the latest version (i.e. >= ${requiredVersion}).`;
     }
     return this.connection;
   };
@@ -125,7 +128,7 @@ export class GlobalStore {
 
   handleError = (sessionId: string, response: Response) => {
     const session = this.getSession(sessionId);
-    this.error = response.error || '';
+    session.error = response.error || '';
     session.errorType = response['error-type'] || '';
   };
 
@@ -195,7 +198,11 @@ export class GlobalStore {
       expression: this.cleanExpression(session.expression),
     });
 
-    if (!response) return;
+    if (!response) {
+      session.message = '🤷 No response';
+      return;
+    }
+
     this.handleError(sessionId, response);
     if (!response.result) return;
 

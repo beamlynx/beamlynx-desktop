@@ -24,7 +24,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
           onCellClick={(x, y) => {
             const v = x.row[x.field];
             navigator.clipboard.writeText(v).then(() => {
-              store.setCopiedMessage(v, true);
+              store.setCopiedMessage(sessionId, v, true);
             });
           }}
         />

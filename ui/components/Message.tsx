@@ -17,7 +17,7 @@ const Message: React.FC<MessageProps> = observer(({ sessionId }) => {
   const { global: store } = useStores();
   const session = store.getSession(sessionId);
 
-  if (store.error && session.errorType !== 'parse') {
+  if (session.error && session.errorType !== 'parse') {
     return (
       <Typography
         variant="caption"
@@ -28,7 +28,7 @@ const Message: React.FC<MessageProps> = observer(({ sessionId }) => {
           color: 'red',
         }}
       >
-        {'🤦 ' + store.error}
+        {'🤦 ' + session.error}
       </Typography>
     );
   }

@@ -34,7 +34,7 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
             color: 'red',
           }}
         >
-          {store.error}
+          {session.error}
         </Typography>
       </Box>
     );
