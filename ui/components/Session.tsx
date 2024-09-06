@@ -7,26 +7,32 @@ import Result from './Result';
 import { useStores } from '../store/store-container';
 import { Documentation } from './docs/docs';
 
-const Session = observer(() => {
+interface SessionProps {
+  sessionId: string;
+}
+
+const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
   const { global } = useStores();
+  const session = global.getSession(sessionId);
+
   return (
     <Box sx={{ mt: 2 }}>
       <Grid container>
         <Grid item xs={5}>
-          <Input />
+          <Input sessionId={sessionId} />
         </Grid>
         <Grid item xs={6}>
-          <Query />
+          <Query sessionId={sessionId} />
         </Grid>
       </Grid>
       <Box sx={{ mt: 1 }}>
-        <Result />
+        <Result sessionId={sessionId} />
       </Box>
 
       {/* Only show the graph if the expression isn't executed i.e. results are not loaded */}
-      {!global.loaded && (
+      {!session.loaded && (
         <Box
-          className={global.mode === 'graph' ? 'focussed' : 'unfocussed'}
+          className={session.mode === 'graph' ? 'focussed' : 'unfocussed'}
           sx={{
             borderRadius: 1,
             // Unable to use flex to maximuze the height of the graph
@@ -35,7 +41,7 @@ const Session = observer(() => {
             overflow: 'hidden',
           }}
         >
-          {global.expression ? <GraphBox /> : Documentation}
+          {session.expression ? <GraphBox sessionId={sessionId} /> : Documentation}
         </Box>
       )}
     </Box>

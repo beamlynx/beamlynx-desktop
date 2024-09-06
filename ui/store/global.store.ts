@@ -19,19 +19,38 @@ type Column = {
 type Row = { [key: string]: any };
 type Mode = 'input' | 'graph' | 'result' | 'none';
 
+type Session = {
+  expression: string;
+  query: string;
+  loaded: boolean;
+  errorType: string;
+  columns: Column[];
+  rows: Row[];
+  mode: Mode;
+};
+
+const initSession: Session = {
+  expression: '',
+  query: '',
+  loaded: false,
+  errorType: '',
+  columns: [],
+  rows: [],
+  mode: 'none',
+};
 export class GlobalStore {
   connected = false;
   connection = '';
   version: string | undefined = undefined;
-  expression = '';
-  query = '';
-  loaded = false;
-  error = '';
-  errorType: string = '';
-  message = '';
-  columns: Column[] = [];
-  rows: Row[] = [];
-  mode: Mode = 'none';
+  error: string = '';
+  message: string = '';
+
+  activeSessionId = '0';
+  sessions: Record<string, Session> = {
+    'session-0': initSession,
+    'session-1': initSession,
+  };
+
   // User
   email = '';
   domain = '';
@@ -46,17 +65,26 @@ export class GlobalStore {
     return length > maxLength ? this.connection.substring(0, maxLength) + '...' : this.connection;
   };
 
-  getSessionName = () => {
-    const length = this.expression.length;
-    const maxLength = 10;
+  getActiveSessionId = () => {
+    return this.activeSessionId;
+  };
 
-    // Skip the schema when naming the session
-    const [x, y] = this.expression.split('.');
-    const expression = y || x;
+  createSession = (sessionId: string) => {
+    this.sessions[`session-${sessionId}`] = initSession;
+    this.graphStore.createSession(sessionId);
+  };
 
-    return length > maxLength
-      ? expression.substring(0, maxLength).replaceAll('|', '') + '...'
-      : expression || '...';
+  deleteSession = (sessionId: string) => {
+    delete this.sessions[`session-${sessionId}`];
+    this.graphStore.deleteSession(sessionId);
+  };
+
+  getSession = (sessionId: string): Session => {
+    const session = this.sessions[`session-${sessionId}`];
+    if (!session) {
+      throw new Error('Session with id ' + sessionId + ' not found');
+    }
+    return session;
   };
 
   loadConnectionMetadata = async () => {
@@ -87,12 +115,35 @@ export class GlobalStore {
     this.domain = domain;
   };
 
-  handleError = (response: Response) => {
-    this.error = response.error || '';
-    this.errorType = response['error-type'] || '';
+  setCopiedMessage = (v: string, quote = false) => {
+    if (quote) {
+      v = `'${v.replace(/'/g, "'")}'`;
+    }
+    this.message = `📋 Copied: ${v}`;
   };
 
-  setQuery = (response: Response) => {
+  handleError = (sessionId: string, response: Response) => {
+    const session = this.getSession(sessionId);
+    this.error = response.error || '';
+    session.errorType = response['error-type'] || '';
+  };
+
+  getSessionName = (sessionId: string) => {
+    const session = this.getSession(sessionId);
+    const length = session.expression.length;
+    const maxLength = 10;
+
+    // Skip the schema when naming the session
+    const [x, y] = session.expression.split('.');
+    const expression = y || x;
+
+    return length > maxLength
+      ? expression.substring(0, maxLength).replaceAll('|', '') + '...'
+      : expression || '...';
+  };
+
+  setQuery = (sessionId: string, response: Response) => {
+    const session = this.getSession(sessionId);
     if (!response.query) return;
     let query = '-';
     try {
@@ -102,45 +153,48 @@ export class GlobalStore {
         denseOperators: false,
       });
     } catch (e) {}
-    this.query = query;
-    this.loaded = false;
+    session.query = query;
+    session.loaded = false;
   };
 
-  setHints = (response: Response) => {
+  setHints = (sessionId: string, response: Response) => {
     if (!response.state?.hints) return;
-    this.graphStore.generateGraphWrapper(response.state);
+    this.graphStore.generateGraphWrapper(sessionId, response.state);
     const expressions = response.state.hints.table.map(h => h.pine);
     this.message = expressions ? expressions.join(', ').substring(0, 140) : '';
   };
 
-  buildQuery = async () => {
+  buildQuery = async (sessionId: string) => {
     if (!this.connected) {
-      this.handleError({ error: 'Not connected' } as Response);
+      this.handleError(sessionId, { error: 'Not connected' } as Response);
       return;
     }
+
+    const session = this.getSession(sessionId);
     const response = await Http.post('build', {
-      expression: this.expression,
+      expression: session.expression,
     });
 
     if (!response) return;
-    this.handleError(response);
+    this.handleError(sessionId, response);
     this.setConnectionName(response);
-    this.setQuery(response);
-    this.setHints(response);
+    this.setQuery(sessionId, response);
+    this.setHints(sessionId, response);
   };
 
-  evaluate = async () => {
+  evaluate = async (sessionId: string) => {
     if (!this.connected) {
-      this.handleError({ error: 'Not connected' } as Response);
+      this.handleError(sessionId, { error: 'Not connected' } as Response);
       return;
     }
     this.message = '⏳ Fetching rows ...';
+    const session = this.getSession(sessionId);
     const response = await Http.post('eval', {
-      expression: this.cleanExpression(this.expression),
+      expression: this.cleanExpression(session.expression),
     });
 
     if (!response) return;
-    this.handleError(response);
+    this.handleError(sessionId, response);
     if (!response.result) return;
 
     const rows = response.result as Row[];
@@ -154,30 +208,32 @@ export class GlobalStore {
         maxWidth: 400,
       };
     });
-    this.columns = columns;
-    this.rows = rows.splice(1).map((row, index) => {
+    session.columns = columns;
+    session.rows = rows.splice(1).map((row, index) => {
       return {
         ...row,
         _id: index,
       };
     });
     this.message = pickSuccessMessage();
-    this.loaded = true;
-    this.setMode('result');
+    session.loaded = true;
+    this.setMode(sessionId, 'result');
   };
 
-  updateExpressionUsingCandidate = (candidate: TableHint) => {
+  updateExpressionUsingCandidate = (sessionId: string, candidate: TableHint) => {
+    const session = this.getSession(sessionId);
     const { pine } = candidate;
-    const parts = this.expression.split('|');
+    const parts = session.expression.split('|');
     parts.pop();
     parts.push(pine);
-    this.expression = parts.join(' | ');
-    this.prettifyExpression();
+    session.expression = parts.join(' | ');
+    this.prettifyExpression(sessionId);
   };
 
-  prettifyExpression = () => {
-    const parts = this.expression.split('|');
-    this.expression =
+  prettifyExpression = (sessionId: string) => {
+    const session = this.getSession(sessionId);
+    const parts = session.expression.split('|');
+    session.expression =
       parts
         .map(x => x.trim())
         .filter(Boolean)
@@ -189,16 +245,10 @@ export class GlobalStore {
     return e.endsWith('|') ? e.slice(0, -1) : e;
   };
 
-  setCopiedMessage = (v: string, quote = false) => {
-    if (quote) {
-      v = `'${v.replace(/'/g, "'")}'`;
-    }
-    this.message = `📋 Copied: ${v}`;
-  };
-
-  setMode(mode: Mode) {
-    this.mode = mode;
-    this.graphStore.resetCandidate();
+  setMode(sessionId: string, mode: Mode) {
+    const session = this.getSession(sessionId);
+    session.mode = mode;
+    this.graphStore.resetCandidate(sessionId);
     if (mode === 'input') {
       document.getElementById('input')!.focus();
     }

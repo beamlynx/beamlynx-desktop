@@ -4,13 +4,18 @@ import { observer } from 'mobx-react-lite';
 import React from 'react';
 import { useStores } from '../store/store-container';
 
-const Result = observer(() => {
+interface ResultProps {
+  sessionId: string;
+}
+
+const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const { global: store } = useStores();
-  const rows = toJS(store.rows);
-  const columns = toJS(store.columns);
+  const session = store.getSession(sessionId);
+  const rows = toJS(session.rows);
+  const columns = toJS(session.columns);
   return (
     <div className="copy-data-grid">
-      {store.loaded && (
+      {session.loaded && (
         <DataGrid
           density="compact"
           rows={rows}

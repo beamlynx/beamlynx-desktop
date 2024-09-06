@@ -3,8 +3,14 @@ import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
 import { Box, Typography } from '@mui/material';
 
-const Query = observer(() => {
+interface QueryProps {
+  sessionId: string;
+}
+
+const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
   const { global: store } = useStores();
+  const session = store.getSession(sessionId);
+
   const codeRef = useRef<HTMLElement>(null);
 
   const onClick = () => {
@@ -16,7 +22,7 @@ const Query = observer(() => {
     }
   };
 
-  if (store.errorType === 'parse') {
+  if (session.errorType === 'parse') {
     return (
       <Box sx={{ ml: 2 }}>
         <Typography
@@ -37,7 +43,7 @@ const Query = observer(() => {
   return (
     <pre onClick={onClick} style={{ cursor: 'pointer' }}>
       <code ref={codeRef} style={{ color: 'gray', fontFamily: 'monospace', fontSize: '12px' }}>
-        {store.query}
+        {session.query}
       </code>
     </pre>
   );

@@ -18,18 +18,20 @@ const Home: NextPage = () => {
   const isDevelopment = process.env.NODE_ENV === 'development';
 
   const { global } = useStores();
+  const sessionId = global.getActiveSessionId();
 
+  // TODO: this should go to the session?
   useEffect(() => {
     const fn = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.preventDefault();
-      global.setMode('input');
+      global.setMode(sessionId, 'input');
     };
     document.addEventListener('keydown', fn);
     return () => {
       document.removeEventListener('keydown', fn);
     };
-  }, [global]);
+  }, [global, sessionId]);
 
   const UserContent = isDevelopment ? (
     <Typography variant="caption" color="gray">
