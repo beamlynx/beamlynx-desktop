@@ -11,7 +11,7 @@ import ReactFlow, {
   useReactFlow,
 } from 'reactflow';
 
-import { Box, BoxProps } from '@mui/material';
+import { BoxProps } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import 'reactflow/dist/style.css';
 import { PineEdge, PineNode } from '../model';
@@ -71,27 +71,30 @@ const getLayoutedElements = (
   return { nodes, edges };
 };
 
-const Flow = observer(() => {
-  const { global, graph } = useStores();
+interface FlowProps {
+  sessionId: string;
+}
+
+const Flow: React.FC<FlowProps> = observer(({ sessionId }) => {
+  const { graph } = useStores();
+  const session = graph.getSession(sessionId);
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const reactFlowInstance = useReactFlow();
 
   useEffect(() => {
-    const { nodes, edges } = getLayoutedElements(graph.nodes, graph.edges);
+    const { nodes, edges } = getLayoutedElements(session.nodes, session.edges);
     setNodes(nodes);
     setEdges(edges);
 
-    // TODO: when the number of nodes change drastically, the fit view doesn't
-    // work as expected. Using a setTimeout is a workaround.
     setTimeout(() => {
       reactFlowInstance.fitView({ duration: 200 });
     }, 250);
 
     // TODO: how can I avoid disabling the eslint rule?
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graph.nodes, graph.edges]);
+  }, [session.nodes, session.edges]);
 
   return (
     <ReactFlow
@@ -110,16 +113,19 @@ const Flow = observer(() => {
   );
 });
 
-// Define the props for the GraphBox component
-interface GraphBoxProps extends BoxProps {}
+interface GraphBoxProps extends BoxProps {
+  sessionId: string;
+}
 
-const GraphBox: React.FC<GraphBoxProps> = observer(({ sx, ...props }) => {
+const GraphBox: React.FC<GraphBoxProps> = observer(({ sessionId }) => {
   const { global } = useStores();
-  return global.loaded ? (
+  const session = global.getSession(sessionId);
+
+  return session.loaded ? (
     <></>
   ) : (
     <ReactFlowProvider>
-      <Flow />
+      <Flow sessionId={sessionId} />
     </ReactFlowProvider>
   );
 });

@@ -4,26 +4,23 @@ import Container from '@mui/material/Container';
 import type { NextPage } from 'next';
 import { useEffect } from 'react';
 import ActiveConnection from '../components/ActiveConnection';
-import GraphBox from '../components/Graph.box';
-import Input from '../components/Input';
 import Message from '../components/Message';
-import Query from '../components/Query';
-import Result from '../components/Result';
+import PineTabs from '../components/PineTabs';
 import UserBox from '../components/UserBox';
 import { useStores } from '../store/store-container';
-import Session from '../components/Session';
-import PineTabs from '../components/PineTabs';
 
 const Home: NextPage = () => {
   const isDevelopment = process.env.NODE_ENV === 'development';
 
   const { global } = useStores();
 
+  // TODO: this should go to the session?
   useEffect(() => {
+    const sessionId = global.activeSessionId;
     const fn = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.preventDefault();
-      global.setMode('input');
+      global.setMode(sessionId, 'input');
     };
     document.addEventListener('keydown', fn);
     return () => {

@@ -50,9 +50,19 @@ const makeSuggestedNode = (n: TableHint, candidate = false): PineSuggestedNode =
   };
 };
 
+type Session = {
+  nodes: PineNode[];
+  edges: PineEdge[];
+};
+const initSession = {
+  nodes: [],
+  edges: [],
+};
 export class GraphStore {
-  nodes: PineNode[] = [];
-  edges: PineEdge[] = [];
+  activeSessionId: string = '0';
+  sessions: Record<string, Session> = {
+    'session-0': initSession,
+  };
 
   // For redrawing
   selectedTables: Table[] = [];
@@ -74,13 +84,21 @@ export class GraphStore {
     makeAutoObservable(this);
   }
 
-  public selectNextCandidate = (offset: number) => {
+  createSession = (sessionId: string) => {
+    this.sessions[`session-${sessionId}`] = initSession;
+  };
+
+  deleteSession = (sessionId: string) => {
+    delete this.sessions[`session-${sessionId}`];
+  };
+
+  public selectNextCandidate = (sessionId: string, offset: number) => {
     if (this.candidateIndex === undefined) {
       this.candidateIndex = 0;
     } else if (offset) {
       this.candidateIndex = this.candidateIndex + offset;
     }
-    this.generateGraphWrapper(this.state);
+    this.generateGraphWrapper(sessionId, this.state);
   };
 
   public getCandidate() {
@@ -91,10 +109,10 @@ export class GraphStore {
     return this.suggestedTables[this.candidateIndex % this.suggestedTables.length];
   }
 
-  public resetCandidate() {
+  public resetCandidate(sessionId: string) {
     this.candidateIndex = undefined;
     this.candidate = null;
-    this.generateGraphWrapper(this.state);
+    this.generateGraphWrapper(sessionId, this.state);
   }
 
   /**
@@ -102,13 +120,23 @@ export class GraphStore {
    * 2. Make selected nodes using `selectedTables: Table[]`
    * 3. Make suggested nodes using `suggestedTables: TableHint[]`
    */
-  public generateGraphWrapper = (state: State) => {
+  public generateGraphWrapper = (sessionId: string, state: State) => {
     this.state = state;
     this.suggestedTables = state.hints.table;
-    this.generateGraph();
+    this.generateGraph(sessionId);
   };
 
-  public generateGraph = () => {
+  getSession = (sessionId: string): Session => {
+    const session = this.sessions[`session-${sessionId}`];
+    if (!session) {
+      throw new Error('Session with id ' + sessionId + ' not found');
+    }
+    return session;
+  };
+
+  public generateGraph = (sessionId: string) => {
+    const session = this.getSession(sessionId);
+
     const {
       hints: { table: suggestedTables },
       'selected-tables': selectedTables,
@@ -145,16 +173,16 @@ export class GraphStore {
       {} as Record<string, PineNode>,
     );
 
-    this.nodes = nodes;
+    session.nodes = nodes;
 
     // If there are no selected tables, there are no edges
     if (selectedTables.length < 1) {
-      this.edges = [];
+      session.edges = [];
       return;
     }
 
     if (suggestedNodes.length === 0) {
-      this.edges = [];
+      session.edges = [];
     }
 
     // TODO: we don't always have to regenerate the lookup. This can be cached
@@ -192,7 +220,7 @@ export class GraphStore {
       }
     }
 
-    this.edges = Object.values(edgeLookup);
+    session.edges = Object.values(edgeLookup);
   };
 
   /**

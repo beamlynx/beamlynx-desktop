@@ -1,18 +1,21 @@
 import { Typography } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
+import React, { useEffect } from 'react';
 
-const errorStyle = {
-  fontFamily: 'Courier, Courier New, monospace', // Use a monospaced font
-  whiteSpace: 'pre-line', // Respect whitespace and new lines
-  lineHeight: 1.2, // Adjust the line height to reduce space between lines
-  color: 'red', // Color the text red
-};
+interface MessageProps {}
 
-const Message = observer(() => {
-  const { global: store } = useStores();
+const Message: React.FC<MessageProps> = observer(({}) => {
+  const { global } = useStores();
+  const [session, setSession] = React.useState(global.getSession(global.activeSessionId));
 
-  if (store.error && store.errorType !== 'parse') {
+  useEffect(() => {
+    const sessionId = global.activeSessionId;
+    const session = global.getSession(sessionId);
+    setSession(session);
+  }, [global, global.activeSessionId]);
+
+  if (session.error && session.errorType !== 'parse') {
     return (
       <Typography
         variant="caption"
@@ -23,13 +26,13 @@ const Message = observer(() => {
           color: 'red',
         }}
       >
-        {'🤦 ' + store.error}
+        {'🤦 ' + session.error}
       </Typography>
     );
   }
   return (
     <Typography variant="caption" color="gray">
-      {store.message}
+      {session.message}
     </Typography>
   );
 });
