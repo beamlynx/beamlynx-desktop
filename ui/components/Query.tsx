@@ -40,12 +40,18 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
     );
   }
 
-  return (
+  return session.expression ? (
     <pre onClick={onClick} style={{ cursor: 'pointer' }}>
       <code ref={codeRef} style={{ color: 'gray', fontFamily: 'monospace', fontSize: '12px' }}>
         {session.query}
       </code>
     </pre>
+  ) : (
+    <div style={{ margin: 30 }}>
+      <code ref={codeRef} style={{ color: 'gray', fontFamily: 'monospace', fontSize: '12px' }}>
+        SQL will appear here as you type.
+      </code>
+    </div>
   );
 });
 
