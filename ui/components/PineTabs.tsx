@@ -69,8 +69,8 @@ const PineTabs = observer(() => {
                       style={{ marginLeft: '5px' }}
                       size="small"
                       component="span"
-                      onClick={event => {
-                        event.stopPropagation(); // Prevent triggering tab switch
+                      onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
+                        event.stopPropagation();
                         removeTab(tab.sessionId);
                       }}
                     >
