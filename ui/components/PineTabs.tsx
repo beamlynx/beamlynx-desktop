@@ -7,7 +7,8 @@ import TabPanel from '@mui/lab/TabPanel';
 import Session from './Session';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
-import { AddCircle } from '@mui/icons-material';
+import { AddCircle, CloseOutlined } from '@mui/icons-material';
+import { IconButton } from '@mui/material';
 
 const PineTabs = observer(() => {
   const { global } = useStores();
@@ -24,11 +25,31 @@ const PineTabs = observer(() => {
   };
 
   const addTab = () => {
-    const newSessionId = `${tabs.length}`; // Generate new sessionId as string
+    const newSessionId = Math.random().toString(36).substring(7);
     setTabs([...tabs, { sessionId: newSessionId }]); // Add new tab
     global.createSession(newSessionId); // Create a new session
 
     setActiveTab(newSessionId);
+  };
+
+  const removeTab = (sessionIdToRemove: string) => {
+    // Reset the session if it is the last tab
+    if (tabs.length === 1) {
+      global.createSession(sessionIdToRemove);
+      return;
+    }
+
+    // Remove the tab from the list
+    const updatedTabs = tabs.filter(tab => tab.sessionId !== sessionIdToRemove);
+    setTabs(updatedTabs);
+
+    // If the active tab is removed, switch to another tab (the first one, or if no tabs remain, handle gracefully)
+    if (sessionId === sessionIdToRemove && updatedTabs.length > 0) {
+      setActiveTab(updatedTabs[0].sessionId);
+    }
+
+    // Remove the session from global store
+    global.deleteSession(sessionIdToRemove);
   };
 
   return (
@@ -41,7 +62,22 @@ const PineTabs = observer(() => {
             {tabs.map((tab, index) => (
               <Tab
                 key={tab.sessionId}
-                label={global.getSessionName(tab.sessionId)}
+                label={
+                  <span>
+                    {global.getSessionName(tab.sessionId)}
+                    <IconButton
+                      style={{ marginLeft: '5px' }}
+                      size="small"
+                      component="span"
+                      onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
+                        event.stopPropagation();
+                        removeTab(tab.sessionId);
+                      }}
+                    >
+                      <CloseOutlined sx={{ fontSize: '14px' }} /> {/* Adjust icon size here */}
+                    </IconButton>
+                  </span>
+                }
                 value={tab.sessionId}
               />
             ))}
