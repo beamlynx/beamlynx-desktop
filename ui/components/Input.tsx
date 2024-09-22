@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import TextField from '@mui/material/TextField';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
@@ -8,6 +8,8 @@ interface InputProps {
 }
 
 const Input: React.FC<InputProps> = observer(({ sessionId }) => {
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+
   const { global, graph } = useStores();
   const session = global.getSession(sessionId);
 
@@ -24,9 +26,17 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
     session.message = candidate ? candidate.pine : '';
   };
 
+  const shouldPrettify = () => {
+    const cursorPosition = inputRef.current ? inputRef.current.selectionStart : 0;
+    const expressionLength = session.expression.length;
+    return cursorPosition === expressionLength;
+  };
+
   const handleKeyPress = async (sessionId: string, e: React.KeyboardEvent) => {
     const session = global.getSession(sessionId);
     const candidate = graph.getCandidate();
+
+    console.log(session.mode);
 
     if (session.mode === 'result') {
       global.setMode(sessionId, 'input');
@@ -40,8 +50,10 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
           }
         }
       } else if (e.key === '|') {
-        e.preventDefault();
-        global.prettifyExpression(sessionId);
+        if (shouldPrettify()) {
+          e.preventDefault();
+          global.prettifyExpression(sessionId);
+        }
         await global.buildQuery(sessionId);
       } else if (e.key === 'Enter') {
         e.preventDefault();
@@ -51,14 +63,18 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         global.setMode(sessionId, 'input');
+      } else if (e.key === 'Enter' || e.key === '|') {
+        e.preventDefault();
+        if (candidate) {
+          global.updateExpressionUsingCandidate(sessionId, candidate);
+          await global.buildQuery(sessionId);
+          global.setMode(sessionId, 'input');
+        }
       } else if (e.key === 'Tab' && e.shiftKey) {
         e.preventDefault();
-        global.setMode(sessionId, 'input');
-      } else if (e.shiftKey) {
-        e.preventDefault();
+        selectNextCandidate(sessionId, -1);
       } else if (e.key === 'Tab') {
         e.preventDefault();
-        // selectNextCandidate(e.shiftKey ? -1 : 1);
         selectNextCandidate(sessionId, 1);
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
@@ -66,14 +82,7 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
         selectNextCandidate(sessionId, 1);
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        if (candidate) {
-          global.updateExpressionUsingCandidate(sessionId, candidate);
-          await global.buildQuery(sessionId);
-          global.setMode(sessionId, 'input');
-        }
-      } else {
+      } else if (e.key.length === 1) {
         e.preventDefault();
         global.setMode(sessionId, 'input');
         session.expression += e.key;
@@ -96,6 +105,7 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
       fullWidth
       minRows="8"
       maxRows="15"
+      inputRef={inputRef}
       onChange={handleChange}
       onKeyDown={e => {
         handleKeyPress(sessionId, e);

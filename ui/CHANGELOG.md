@@ -5,6 +5,13 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.7.1] - 2024-09-22
+
+### Fixed
+
+- When adding a pipe `|`, the expression was always being prettified. This wasn't allowing for adding pipes in the middle of the expression.
+- When a candidate is selected in the graph, entering a non-printable character was entering the name of that character to the expression.
+
 ## [0.7.0] - 2024-08-23
 
 ### Added
