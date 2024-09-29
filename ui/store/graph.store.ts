@@ -50,6 +50,7 @@ const makeSuggestedNode = (n: TableHint, candidate = false): PineSuggestedNode =
   };
 };
 
+// TODO: move to the session
 type Session = {
   nodes: PineNode[];
   edges: PineEdge[];
@@ -74,6 +75,7 @@ export class GraphStore {
     'selected-tables': [],
     joins: [],
     context: '',
+    operation: { type: 'ui-op', value: '-' },
   };
 
   // Candidate
@@ -85,11 +87,11 @@ export class GraphStore {
   }
 
   createSession = (sessionId: string) => {
-    this.sessions[`session-${sessionId}`] = initSession;
+    this.sessions[sessionId] = initSession;
   };
 
   deleteSession = (sessionId: string) => {
-    delete this.sessions[`session-${sessionId}`];
+    delete this.sessions[sessionId];
   };
 
   public selectNextCandidate = (sessionId: string, offset: number) => {
@@ -127,7 +129,7 @@ export class GraphStore {
   };
 
   getSession = (sessionId: string): Session => {
-    const session = this.sessions[`session-${sessionId}`];
+    const session = this.sessions[sessionId];
     if (!session) {
       throw new Error('Session with id ' + sessionId + ' not found');
     }

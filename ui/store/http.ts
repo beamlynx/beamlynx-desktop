@@ -10,12 +10,17 @@ export type TableHint = {
 };
 
 export type Hints = { table: TableHint[] };
+export type OperationName = 'ui-op';
+const NoOpOperationNames = ['-', 'delete-recursive'] as const;
+export type NoOpOperationName = (typeof NoOpOperationNames)[number];
+export type Operation = { type: OperationName; value: NoOpOperationName };
 
 export type State = {
   hints: Hints;
   'selected-tables': Table[];
   joins: string[][];
   context: string;
+  operation: Operation;
 };
 
 export type Response = {
@@ -27,6 +32,9 @@ export type Response = {
   state: State;
 };
 
+/**
+ * @deprecated Use `Client' class
+ */
 export const Http = {
   get: async (path: string): Promise<Response | undefined> => {
     const res = await fetch(`${base}/api/v1/${path}`, {
@@ -55,3 +63,14 @@ export const Http = {
     return await res.json();
   },
 };
+
+export class Client {
+  private cleanExpression(expression: string): string {
+    const e = expression.trim();
+    return e.endsWith('|') ? e.slice(0, -1) : e;
+  }
+
+  public async eval(expression: string): Promise<Response | undefined> {
+    return await Http.post('eval', { expression: this.cleanExpression(expression) });
+  }
+}

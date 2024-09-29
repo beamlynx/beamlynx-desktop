@@ -1,7 +1,9 @@
-import React, { useRef } from 'react';
 import TextField from '@mui/material/TextField';
 import { observer } from 'mobx-react-lite';
+import React, { useRef } from 'react';
+import { evaluate } from '../plugin/plugin';
 import { useStores } from '../store/store-container';
+import { Response } from '../store/http';
 
 interface InputProps {
   sessionId: string;
@@ -57,7 +59,12 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
         await global.buildQuery(sessionId);
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        await global.evaluate(sessionId);
+
+        if (!global.connected) {
+          global.handleError(sessionId, { error: 'Not connected' } as Response);
+          return;
+        }
+        await evaluate(session, global);
       }
     } else if (session.mode === 'graph') {
       if (e.key === 'Escape') {

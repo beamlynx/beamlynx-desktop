@@ -2,54 +2,21 @@ import { makeAutoObservable } from 'mobx';
 import { format } from 'sql-formatter';
 import { GraphStore } from './graph.store';
 import { Http, Response, TableHint } from './http';
-import { pickSuccessMessage } from './success-messages';
 import { lt } from 'semver';
+import { createSession, Mode, Session } from './session';
 
 const requiredVersion = '0.11.0';
 
-type Column = {
-  field: string;
-  headerName: string;
-  flex: number;
-  editable: boolean;
-  minWidth: number;
-  maxWidth: number;
-};
+const initSession = createSession('0');
 
-type Row = { [key: string]: any };
-type Mode = 'input' | 'graph' | 'result' | 'none';
-
-type Session = {
-  expression: string;
-  query: string;
-  loaded: boolean;
-  errorType: string;
-  columns: Column[];
-  rows: Row[];
-  mode: Mode;
-  message: string;
-  error: string;
-};
-
-const initSession: Session = {
-  expression: '',
-  query: '',
-  loaded: false,
-  errorType: '',
-  columns: [],
-  rows: [],
-  mode: 'none',
-  message: '',
-  error: '',
-};
 export class GlobalStore {
   connected = false;
   connection = '';
   version: string | undefined = undefined;
 
-  activeSessionId = '0';
+  activeSessionId = 'session-0';
   sessions: Record<string, Session> = {
-    'session-0': initSession,
+    [initSession.id]: initSession,
   };
 
   // User
@@ -66,20 +33,22 @@ export class GlobalStore {
     return length > maxLength ? this.connection.substring(0, maxLength) + '...' : this.connection;
   };
 
-  createSession = (sessionId: string) => {
-    this.sessions[`session-${sessionId}`] = initSession;
-    this.graphStore.createSession(sessionId);
+  createSession = (id: string) => {
+    const session = createSession(id);
+    this.sessions[session.id] = session;
+    this.graphStore.createSession(session.id);
+    return session;
   };
 
   deleteSession = (sessionId: string) => {
-    delete this.sessions[`session-${sessionId}`];
+    delete this.sessions[sessionId];
     this.graphStore.deleteSession(sessionId);
   };
 
-  getSession = (sessionId: string): Session => {
-    const session = this.sessions[`session-${sessionId}`];
+  getSession = (id: string): Session => {
+    const session = this.sessions[id];
     if (!session) {
-      throw new Error('Session with id ' + sessionId + ' not found');
+      throw new Error('Session with id ' + id + ' not found');
     }
     return session;
   };
@@ -165,6 +134,15 @@ export class GlobalStore {
     session.message = expressions ? expressions.join(', ').substring(0, 140) : '';
   };
 
+  setOperation = (sessionId: string, response: Response) => {
+    const session = this.getSession(sessionId);
+    if (!response.state?.operation) {
+      session.operation = { type: 'ui-op', value: '-' };
+      return;
+    }
+    session.operation = response.state.operation;
+  };
+
   buildQuery = async (sessionId: string) => {
     if (!this.connected) {
       this.handleError(sessionId, { error: 'Not connected' } as Response);
@@ -181,48 +159,7 @@ export class GlobalStore {
     this.setConnectionName(response);
     this.setQuery(sessionId, response);
     this.setHints(sessionId, response);
-  };
-
-  evaluate = async (sessionId: string) => {
-    if (!this.connected) {
-      this.handleError(sessionId, { error: 'Not connected' } as Response);
-      return;
-    }
-    const session = this.getSession(sessionId);
-    session.message = '⏳ Fetching rows ...';
-    const response = await Http.post('eval', {
-      expression: this.cleanExpression(session.expression),
-    });
-
-    if (!response) {
-      session.message = '🤷 No response';
-      return;
-    }
-
-    this.handleError(sessionId, response);
-    if (!response.result) return;
-
-    const rows = response.result as Row[];
-    const columns: Column[] = rows[0].map((header: string, index: number): Column => {
-      return {
-        field: index.toString(),
-        headerName: header,
-        flex: 1,
-        editable: false,
-        minWidth: 100,
-        maxWidth: 400,
-      };
-    });
-    session.columns = columns;
-    session.rows = rows.splice(1).map((row, index) => {
-      return {
-        ...row,
-        _id: index,
-      };
-    });
-    session.message = pickSuccessMessage();
-    session.loaded = true;
-    this.setMode(sessionId, 'result');
+    this.setOperation(sessionId, response);
   };
 
   updateExpressionUsingCandidate = (sessionId: string, candidate: TableHint) => {
@@ -245,6 +182,9 @@ export class GlobalStore {
         .join('\n | ') + '\n | ';
   };
 
+  /**
+   * @deprecated
+   */
   cleanExpression = (expression: string) => {
     const e = expression.trim();
     return e.endsWith('|') ? e.slice(0, -1) : e;
