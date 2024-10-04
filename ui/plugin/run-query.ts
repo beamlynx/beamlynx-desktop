@@ -4,14 +4,19 @@ import { Column, Row, Session } from '../store/session';
 import { pickSuccessMessage } from '../store/success-messages';
 import { PluginInterface } from './plugin.interface';
 
-const client = new Client();
-
 export class RunQueryPlugin implements PluginInterface {
-  constructor(private global: GlobalStore) {}
+  private readonly client: Client;
+  constructor(
+    private session: Session,
+    private global: GlobalStore,
+  ) {
+    this.client = new Client();
+  }
 
-  public async evaluate(session: Session): Promise<void> {
+  public async evaluate(): Promise<void> {
+    const session = this.session;
     session.message = '⏳ Fetching rows ...';
-    const response = await client.eval(session.expression);
+    const response = await this.client.eval(session.expression);
 
     if (!response) {
       session.message = '🤷 No response';

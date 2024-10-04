@@ -39,5 +39,5 @@ export const createSession: (id: string) => Session = (id: string) => ({
   mode: 'none',
   message: '',
   error: '',
-  operation: { type: 'ui-op', value: '-' },
+  operation: { type: 'table' },
 });

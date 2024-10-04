@@ -1,7 +1,7 @@
 import { makeAutoObservable } from 'mobx';
 import { format } from 'sql-formatter';
 import { GraphStore } from './graph.store';
-import { Http, Response, TableHint } from './http';
+import { Http, Response, State, TableHint } from './http';
 import { lt } from 'semver';
 import { createSession, Mode, Session } from './session';
 
@@ -56,7 +56,7 @@ export class GlobalStore {
   loadConnectionMetadata = async () => {
     const response = await Http.get('connection');
     if (!response) return;
-    const result = response.result as {
+    const result = response.result as unknown as {
       version: string;
       'connection-id': string;
     };
@@ -126,18 +126,18 @@ export class GlobalStore {
     session.loaded = false;
   };
 
-  setHints = (sessionId: string, response: Response) => {
-    if (!response.state?.hints) return;
-    const session = this.getSession(sessionId);
-    this.graphStore.generateGraphWrapper(sessionId, response.state);
-    const expressions = response.state.hints.table.map(h => h.pine);
+  setHints = (session: Session, state: State) => {
+    // In case of an error, we don't get any state or hints
+    if (!state || !state.hints) return;
+    this.graphStore.generateGraphWrapper(session.id, state);
+    const expressions = state.hints.table.map(h => h.pine);
     session.message = expressions ? expressions.join(', ').substring(0, 140) : '';
   };
 
   setOperation = (sessionId: string, response: Response) => {
     const session = this.getSession(sessionId);
     if (!response.state?.operation) {
-      session.operation = { type: 'ui-op', value: '-' };
+      session.operation = { type: 'table' };
       return;
     }
     session.operation = response.state.operation;
@@ -158,7 +158,7 @@ export class GlobalStore {
     this.handleError(sessionId, response);
     this.setConnectionName(response);
     this.setQuery(sessionId, response);
-    this.setHints(sessionId, response);
+    this.setHints(session, response.state);
     this.setOperation(sessionId, response);
   };
 

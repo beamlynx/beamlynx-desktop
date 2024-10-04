@@ -38,8 +38,6 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
     const session = global.getSession(sessionId);
     const candidate = graph.getCandidate();
 
-    console.log(session.mode);
-
     if (session.mode === 'result') {
       global.setMode(sessionId, 'input');
     } else if (session.mode === 'input') {

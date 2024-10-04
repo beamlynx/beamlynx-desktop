@@ -125,7 +125,9 @@ export class GraphStore {
   public generateGraphWrapper = (sessionId: string, state: State) => {
     this.state = state;
     this.suggestedTables = state.hints.table;
-    this.generateGraph(sessionId);
+
+    const session = this.getSession(sessionId);
+    this.generateGraph(session);
   };
 
   getSession = (sessionId: string): Session => {
@@ -136,9 +138,7 @@ export class GraphStore {
     return session;
   };
 
-  public generateGraph = (sessionId: string) => {
-    const session = this.getSession(sessionId);
-
+  public generateGraph = (session: Session) => {
     const {
       hints: { table: suggestedTables },
       'selected-tables': selectedTables,
