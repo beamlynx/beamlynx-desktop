@@ -2,6 +2,8 @@ import TextField from '@mui/material/TextField';
 import { observer } from 'mobx-react-lite';
 import React, { useRef } from 'react';
 import { useStores } from '../store/store-container';
+import { prettifyExpression } from '../store/util';
+import { Session } from '../store/session';
 
 interface InputProps {
   sessionId: string;
@@ -17,9 +19,16 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
     session.expression = e.target.value;
   };
 
-  const handleKeyPress = async (sessionId: string, e: React.KeyboardEvent) => {
-    const session = global.getSession(sessionId);
+  /**
+   * Only prettify if `|` is added at the end of the expression
+   */
+  const shouldPrettify = () => {
+    const cursorPosition = inputRef.current ? inputRef.current.selectionStart : 0;
+    const expressionLength = session.expression.length;
+    return cursorPosition === expressionLength;
+  };
 
+  const handleKeyPress = async (sessionId: string, e: React.KeyboardEvent) => {
     if (!global.connected) {
       session.error = 'Not connected';
       return;
@@ -33,6 +42,11 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
         e.preventDefault();
         session.mode = 'graph';
         session.selectNextCandidate(1);
+      } else if (e.key === '|') {
+        if (shouldPrettify()) {
+          e.preventDefault();
+          session.expression = prettifyExpression(session.expression);
+        }
       } else if (e.key === 'Enter') {
         e.preventDefault();
         session.evaluate();

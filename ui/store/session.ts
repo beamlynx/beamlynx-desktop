@@ -5,6 +5,7 @@ import { generateGraph, Graph } from './graph.util';
 import { format } from 'sql-formatter';
 import { RecursiveDeletePlugin } from '../plugin/recursive-delete.plugin';
 import { DefaultPlugin } from '../plugin/default.plugin';
+import { prettifyExpression } from './util';
 
 export type Mode = 'input' | 'graph' | 'result' | 'none';
 
@@ -187,16 +188,6 @@ export class Session {
   }
 }
 
-const prettifyExpression = (expression: string): string => {
-  const parts = expression.split('|');
-  return (
-    parts
-      .map(x => x.trim())
-      .filter(Boolean)
-      .join('\n | ') + '\n | '
-  );
-};
-
 const getMessageFromHints = (hints: Hints): string => {
   const expressions = hints.table.map(h => h.pine);
   return expressions ? expressions.join(', ').substring(0, 140) : '';
@@ -227,12 +218,3 @@ const formatQuery = (query: string): string => {
   } catch (e) {}
   return '';
 };
-
-// Copied from the global store
-// TODO: enable prettify if `|` is added at the end
-//
-// const shouldPrettify = () => {
-//   const cursorPosition = inputRef.current ? inputRef.current.selectionStart : 0;
-//   const expressionLength = session.expression.length;
-//   return cursorPosition === expressionLength;
-// };

@@ -1,7 +1,6 @@
 import { makeAutoObservable } from 'mobx';
 import { lt } from 'semver';
-import { format } from 'sql-formatter';
-import { Http, Response } from './http';
+import { Http } from './http';
 import { Session } from './session';
 
 const requiredVersion = '0.11.0';
@@ -68,11 +67,6 @@ export class GlobalStore {
     return this.connection;
   };
 
-  setConnectionName = (response: Response) => {
-    if (!response['connection-id']) return;
-    this.connection = response['connection-id'];
-  };
-
   setEmail = (email: string) => {
     if (!email) return;
     this.email = email;
@@ -88,12 +82,6 @@ export class GlobalStore {
     session.message = `📋 Copied: ${v}`;
   };
 
-  handleError = (sessionId: string, response: Response) => {
-    const session = this.getSession(sessionId);
-    session.error = response.error || '';
-    session.errorType = response['error-type'] || '';
-  };
-
   getSessionName = (sessionId: string) => {
     const session = this.getSession(sessionId);
     const length = session.expression.length;
@@ -106,20 +94,5 @@ export class GlobalStore {
     return length > maxLength
       ? expression.substring(0, maxLength).replaceAll('|', '') + '...'
       : expression || '...';
-  };
-
-  setQuery = (sessionId: string, response: Response) => {
-    const session = this.getSession(sessionId);
-    if (!response.query) return;
-    let query = '-';
-    try {
-      query = format(response.query, {
-        language: 'postgresql',
-        indentStyle: 'tabularRight',
-        denseOperators: false,
-      });
-    } catch (e) {}
-    session.query = query;
-    session.loaded = false;
   };
 }
