@@ -21,18 +21,6 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
     });
   };
 
-  if (session.query) {
-    return (
-      <Box sx={{ ml: 2 }}>
-        <pre onClick={onClick} style={{ cursor: 'pointer' }}>
-          <code style={{ color: 'gray', fontFamily: 'monospace', fontSize: '12px' }}>
-            {session.query.length > 450 ? session.query.substring(0, 450) + ' ...' : session.query}
-          </code>
-        </pre>
-      </Box>
-    );
-  }
-
   if (session.error) {
     return (
       <Box sx={{ ml: 2 }}>
@@ -47,6 +35,18 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
         >
           {session.error}
         </Typography>
+      </Box>
+    );
+  }
+
+  if (session.query) {
+    return (
+      <Box sx={{ ml: 2 }}>
+        <pre onClick={onClick} style={{ cursor: 'pointer' }}>
+          <code style={{ color: 'gray', fontFamily: 'monospace', fontSize: '12px' }}>
+            {session.query.length > 450 ? session.query.substring(0, 450) + ' ...' : session.query}
+          </code>
+        </pre>
       </Box>
     );
   }

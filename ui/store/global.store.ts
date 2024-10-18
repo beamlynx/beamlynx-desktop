@@ -1,9 +1,8 @@
 import { makeAutoObservable } from 'mobx';
-import { format } from 'sql-formatter';
-import { GraphStore } from './graph.store';
-import { Ast, Http, Response, State, TableHint } from './http';
 import { lt } from 'semver';
-import { Mode, Session } from './session';
+import { format } from 'sql-formatter';
+import { Http, Response } from './http';
+import { Session } from './session';
 
 const requiredVersion = '0.11.0';
 
@@ -23,7 +22,7 @@ export class GlobalStore {
   email = '';
   domain = '';
 
-  constructor(private readonly graphStore: GraphStore) {
+  constructor() {
     makeAutoObservable(this);
   }
 
@@ -122,64 +121,5 @@ export class GlobalStore {
     } catch (e) {}
     session.query = query;
     session.loaded = false;
-  };
-
-  setHints = (session: Session, ast: Ast) => {
-    // In case of an error, we don't get any state or hints
-    if (!ast || !ast.hints) return;
-    this.graphStore.generateGraphWrapper(session, ast);
-    const expressions = ast.hints.table.map(h => h.pine);
-    session.message = expressions ? expressions.join(', ').substring(0, 140) : '';
-  };
-
-  setOperation = (sessionId: string, response: Response) => {
-    const session = this.getSession(sessionId);
-    if (!response.state?.operation) {
-      session.operation = { type: 'table' };
-      return;
-    }
-    session.operation = response.state.operation;
-  };
-
-  /**
-   * @deprecated This shouldb be handled by the session store
-   */
-  buildQuery = async (sessionId: string) => {
-    // Disabled as the functionality is moving to session.ts
-    //
-    // if (!this.connected) {
-    //   this.handleError(sessionId, { error: 'Not connected' } as Response);
-    //   return;
-    // }
-    // const session = this.getSession(sessionId);
-    // const response = await Http.post('build', {
-    //   expression: session.expression,
-    // });
-    // if (!response) return;
-    // this.handleError(sessionId, response);
-    // this.setConnectionName(response);
-    // this.setQuery(sessionId, response);
-    // this.setHints(session, response.state);
-    // this.setOperation(sessionId, response);
-  };
-
-  updateExpressionUsingCandidate = (sessionId: string, candidate: TableHint) => {
-    const session = this.getSession(sessionId);
-    const { pine } = candidate;
-    const parts = session.expression.split('|');
-    parts.pop();
-    parts.push(pine);
-    session.expression = parts.join(' | ');
-    this.prettifyExpression(sessionId);
-  };
-
-  prettifyExpression = (sessionId: string) => {
-    const session = this.getSession(sessionId);
-    const parts = session.expression.split('|');
-    session.expression =
-      parts
-        .map(x => x.trim())
-        .filter(Boolean)
-        .join('\n | ') + '\n | ';
   };
 }

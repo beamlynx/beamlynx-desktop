@@ -9,7 +9,7 @@ export type Graph = {
 };
 
 type R = {
-  candidate: PineSuggestedNode | null;
+  candidate: TableHint | null;
   graph: Graph;
 };
 
@@ -115,7 +115,7 @@ export const generateGraph = (ast: Ast, candidateIndex?: number): R => {
     const node = makeSuggestedNode(h, isCandidate);
     suggestedNodes.push(node);
     if (isCandidate) {
-      r.candidate = node;
+      r.candidate = h;
     }
   }
   const nodes = selectedNodes.concat(suggestedNodes);

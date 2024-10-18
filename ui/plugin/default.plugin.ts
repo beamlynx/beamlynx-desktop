@@ -4,12 +4,9 @@ import { Column, Row, Session } from '../store/session';
 import { pickSuccessMessage } from '../store/success-messages';
 import { PluginInterface } from './plugin.interface';
 
-export class RunQueryPlugin implements PluginInterface {
+export class DefaultPlugin implements PluginInterface {
   private readonly client: Client;
-  constructor(
-    private session: Session,
-    private global: GlobalStore,
-  ) {
+  constructor(private session: Session) {
     this.client = new Client();
   }
 
@@ -23,7 +20,6 @@ export class RunQueryPlugin implements PluginInterface {
       return;
     }
 
-    this.global.handleError(session.id, response);
     if (!response.result) return;
 
     const rows = response.result as Row[];

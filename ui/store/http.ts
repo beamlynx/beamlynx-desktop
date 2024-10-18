@@ -1,5 +1,3 @@
-import { Session } from './session';
-
 const base = 'http://localhost:33333';
 
 export type Table = { schema: string; table: string; alias: string };
@@ -15,9 +13,6 @@ export type Hints = { table: TableHint[] };
 // There are more operations. I'll add them as we need to handle them here
 export type Operation = { type: 'table' | 'delete' };
 
-/**
- * TODO: move to Session
- */
 export type Ast = {
   hints: Hints;
   'selected-tables': Table[];
@@ -25,7 +20,6 @@ export type Ast = {
   context: string;
   operation: Operation;
 };
-export type State = Ast;
 
 export type Response = {
   result: (string | number)[][];
@@ -37,13 +31,7 @@ export type Response = {
   ast: Ast;
 };
 
-/**
- * @deprecated Use `HttpClient'
- */
 export const Http = {
-  /**
-   * @deprecated Use `HttpClient`
-   */
   get: async (path: string): Promise<Response | undefined> => {
     const res = await fetch(`${base}/api/v1/${path}`, {
       method: 'GET',
@@ -57,9 +45,6 @@ export const Http = {
     return await res.json();
   },
 
-  /**
-   * @deprecated Use `HttpClient`
-   */
   post: async (path: string, body: object): Promise<Response | undefined> => {
     const res = await fetch(`${base}/api/v1/${path}`, {
       method: 'POST',
@@ -76,7 +61,7 @@ export const Http = {
 };
 
 export class Client {
-  constructor(private readonly onBuild?: (state: State) => void) {}
+  constructor(private readonly onBuild?: (ast: Ast) => void) {}
 
   private cleanExpression(expression: string): string {
     const e = expression.trim();
@@ -94,16 +79,14 @@ export class Client {
   /**
    * The first column is usually the primary key
    */
-  public async getFirstColumnName(
-    expression: string,
-  ): Promise<{ columnName: string; state: State }> {
+  public async getFirstColumnName(expression: string): Promise<{ columnName: string; ast: Ast }> {
     const response = await Http.post('eval', {
       expression: this.cleanExpression(`${expression} | 1`),
     });
     if (!response) {
       throw new Error('No response when trying to get the first column name');
     }
-    return { columnName: response.result[0][0] as string, state: response.state };
+    return { columnName: response.result[0][0] as string, ast: response.state };
   }
 
   private async build(expression: string): Promise<Response> {
@@ -129,7 +112,7 @@ export class Client {
 
   public async makeChildExpressions(
     expression: string,
-  ): Promise<{ expressions: string[]; state: State }> {
+  ): Promise<{ expressions: string[]; ast: Ast }> {
     // Here we can't use the `build` function as it cleans the expression and
     // hence removing the trailing `|`, but we want to keep it. So we clean the
     // expression and add it explicitly
@@ -142,13 +125,13 @@ export class Client {
     const expressions = response.state.hints.table
       .filter(h => !h.parent)
       .map(h => `${x} ${h.pine}`);
-    return { expressions, state: response.state };
+    return { expressions, ast: response.state };
   }
 
   public async buildDeleteQuery(
     expression: string,
     limit: number,
-  ): Promise<{ query: string; state: State }> {
+  ): Promise<{ query: string; ast: Ast }> {
     const { columnName } = await this.getFirstColumnName(expression);
     const x = `${expression} | limit: ${limit} | delete! .${columnName}`;
     const response = await this.build(x);

@@ -2,7 +2,9 @@ import { makeAutoObservable, reaction } from 'mobx';
 import { Ast, Hints, Operation, Response, State, TableHint } from './http';
 import { HttpClient } from './client';
 import { generateGraph, Graph } from './graph.util';
-import { PineSuggestedNode } from '../model';
+import { format } from 'sql-formatter';
+import { RecursiveDeletePlugin } from '../plugin/recursive-delete.plugin';
+import { DefaultPlugin } from '../plugin/default.plugin';
 
 export type Mode = 'input' | 'graph' | 'result' | 'none';
 
@@ -17,7 +19,6 @@ export type Column = {
 
 export type Row = { [key: string]: any };
 
-// TODO: should this go to another place?
 const client = new HttpClient();
 
 export class Session {
@@ -53,13 +54,16 @@ export class Session {
   hints: Hints | null = null; // observable
 
   // Graph
-  candidateIndex: number | undefined = undefined;
-  candidate: PineSuggestedNode | null = null;
+  candidateIndex: number | undefined = undefined; // observable
+  candidate: TableHint | null = null;
 
   graph: Graph = {
     nodes: [],
     edges: [],
   };
+
+  // Evaluation plugins
+  plugins: { delete: RecursiveDeletePlugin; default: DefaultPlugin };
 
   constructor(id: string) {
     this.id = `session-${id}`;
@@ -67,13 +71,25 @@ export class Session {
     // TODO: explicitly mark the observables, actions, computables
     makeAutoObservable(this);
 
+    this.plugins = {
+      delete: new RecursiveDeletePlugin(this),
+      default: new DefaultPlugin(this),
+    };
     /**
      * Build the expression i.e. get the http repsonse
      */
     reaction(
       () => this.expression,
       async expression => {
-        this.response = await client.build(expression);
+        // reset the candidate
+        this.candidateIndex = undefined;
+
+        // response
+        try {
+          this.response = await client.build(expression);
+        } catch (e) {
+          this.error = (e as any).message || 'Failed to build';
+        }
       },
     );
 
@@ -97,13 +113,13 @@ export class Session {
         this.ast = response.ast;
 
         // query
-        this.query = response.query;
+        this.query = formatQuery(response.query);
 
         // operation
-        this.operation = this.handleOperation(response);
+        this.operation = handleOperation(response);
 
         // error
-        const { error, errorType } = this.handleError(response);
+        const { error, errorType } = handleError(response);
         this.error = error;
         this.errorType = errorType;
       },
@@ -121,7 +137,7 @@ export class Session {
 
         if (ast.hints) {
           const hints = ast.hints;
-          this.message = this.getMessageFromHints(hints);
+          this.message = getMessageFromHints(hints);
         }
 
         const { candidate, graph } = generateGraph(ast, this.candidateIndex);
@@ -132,33 +148,91 @@ export class Session {
 
     reaction(
       () => this.candidateIndex,
-      async index => {
-        console.log(index);
+      async ci => {
         const ast = this.ast;
         if (!ast?.hints) return;
-        const { candidate, graph } = generateGraph(ast, index);
+        const { candidate, graph } = generateGraph(ast, ci);
         this.candidate = candidate;
         this.graph = graph;
       },
     );
   }
 
-  private getMessageFromHints(hints: Hints): string {
-    const expressions = hints.table.map(h => h.pine);
-    return expressions ? expressions.join(', ').substring(0, 140) : '';
+  public selectNextCandidate(offset: number) {
+    this.candidateIndex = this.candidateIndex === undefined ? 0 : this.candidateIndex + offset;
   }
 
-  private handleError(response: Response): { error: string; errorType: string } {
-    return {
-      error: response.error || '',
-      errorType: response['error-type'] || '',
-    };
-  }
-
-  private handleOperation(response: Response): Operation {
-    if (!response.state?.operation) {
-      return { type: 'table' };
+  public updateExpressionUsingCandidate() {
+    if (!this.candidate) {
+      throw new Error('Unable to update the expression as no candidate is selected.');
     }
-    return response.state.operation;
+    const { pine } = this.candidate;
+    const parts = this.expression.split('|');
+    parts.pop();
+    parts.push(pine);
+    const expression = parts.join(' | ');
+    this.expression = prettifyExpression(expression);
+  }
+
+  public async evaluate() {
+    const { type } = this.operation;
+    switch (type) {
+      case 'delete':
+        return await this.plugins.delete.evaluate();
+      case 'table':
+      // intentional fall through
+      default:
+        return await this.plugins.default.evaluate();
+    }
   }
 }
+
+const prettifyExpression = (expression: string): string => {
+  const parts = expression.split('|');
+  return (
+    parts
+      .map(x => x.trim())
+      .filter(Boolean)
+      .join('\n | ') + '\n | '
+  );
+};
+
+const getMessageFromHints = (hints: Hints): string => {
+  const expressions = hints.table.map(h => h.pine);
+  return expressions ? expressions.join(', ').substring(0, 140) : '';
+};
+
+const handleOperation = (response: Response): Operation => {
+  if (!response.state?.operation) {
+    return { type: 'table' };
+  }
+  return response.state.operation;
+};
+
+const handleError = (response: Response): { error: string; errorType: string } => {
+  return {
+    error: response.error || '',
+    errorType: response['error-type'] || '',
+  };
+};
+
+const formatQuery = (query: string): string => {
+  if (!query) return '';
+  try {
+    return format(query, {
+      language: 'postgresql',
+      indentStyle: 'tabularRight',
+      denseOperators: false,
+    });
+  } catch (e) {}
+  return '';
+};
+
+// Copied from the global store
+// TODO: enable prettify if `|` is added at the end
+//
+// const shouldPrettify = () => {
+//   const cursorPosition = inputRef.current ? inputRef.current.selectionStart : 0;
+//   const expressionLength = session.expression.length;
+//   return cursorPosition === expressionLength;
+// };

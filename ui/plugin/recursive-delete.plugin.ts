@@ -1,25 +1,22 @@
 import { format } from 'sql-formatter';
-import { GlobalStore } from '../store/global.store';
-import { Client, State } from '../store/http';
+import { Ast, Client } from '../store/http';
 import { Session } from '../store/session';
 import { PluginInterface } from './plugin.interface';
 
 export class RecursiveDeletePlugin implements PluginInterface {
   private readonly client: Client;
-  constructor(
-    private session: Session,
-    global: GlobalStore,
-  ) {
-    this.client = new Client(async (state: State) => {
+  constructor(private session: Session) {
+    this.client = new Client(async (ast: Ast) => {
       // wait for 500 ms before setting the hints
       await new Promise(resolve => setTimeout(resolve, 500));
-      global.setHints(session, state);
+      this.session.ast = ast;
     });
   }
   public async evaluate(): Promise<void> {
     const expression = this.session.expression.split('|').slice(0, -1).join('|');
 
-    const queries: string[] = [];
+    this.session.query = '/* Recursive deletion in progress ... */';
+    const queries: string[] = ['/* DELETE queries */'];
     await this.collectDeleteQueries(expression, queries);
     this.session.query = queries
       .map(q => {
