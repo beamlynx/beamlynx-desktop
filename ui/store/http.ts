@@ -27,7 +27,6 @@ export type Response = {
   query: string;
   error: string;
   'error-type': string;
-  state: Ast;
   ast: Ast;
 };
 
@@ -86,7 +85,7 @@ export class Client {
     if (!response) {
       throw new Error('No response when trying to get the first column name');
     }
-    return { columnName: response.result[0][0] as string, ast: response.state };
+    return { columnName: response.result[0][0] as string, ast: response.ast };
   }
 
   private async build(expression: string): Promise<Response> {
@@ -95,7 +94,7 @@ export class Client {
     if (!response) {
       throw new Error('No response when trying to build');
     }
-    this.onBuild && (await this.onBuild(response.state));
+    this.onBuild && (await this.onBuild(response.ast));
     return response;
   }
 
@@ -121,11 +120,9 @@ export class Client {
     if (!response) {
       throw new Error('No response when trying to make child Expressions');
     }
-    this.onBuild && (await this.onBuild(response.state));
-    const expressions = response.state.hints.table
-      .filter(h => !h.parent)
-      .map(h => `${x} ${h.pine}`);
-    return { expressions, ast: response.state };
+    this.onBuild && (await this.onBuild(response.ast));
+    const expressions = response.ast.hints.table.filter(h => !h.parent).map(h => `${x} ${h.pine}`);
+    return { expressions, ast: response.ast };
   }
 
   public async buildDeleteQuery(

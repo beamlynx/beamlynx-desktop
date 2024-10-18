@@ -1,4 +1,4 @@
-import { Ast, State } from './http';
+import { Ast } from './http';
 
 const base = 'http://localhost:33333';
 
@@ -8,10 +8,6 @@ type Response = {
   query: string;
   error: string;
   'error-type': string;
-  /**
-   * @deprecated
-   */
-  state: State;
   ast: Ast;
 };
 
@@ -48,16 +44,14 @@ export class HttpClient {
   /**
    * The first column is usually the primary key
    */
-  public async getFirstColumnName(
-    expression: string,
-  ): Promise<{ columnName: string; state: State }> {
+  public async getFirstColumnName(expression: string): Promise<{ columnName: string; ast: Ast }> {
     const response = await this.post('eval', {
       expression: this.cleanExpression(`${expression} | 1`),
     });
     if (!response) {
       throw new Error('No response when trying to get the first column name');
     }
-    return { columnName: response.result[0][0] as string, state: response.state };
+    return { columnName: response.result[0][0] as string, ast: response.ast };
   }
 
   public async build(expression: string): Promise<Response> {
@@ -83,7 +77,7 @@ export class HttpClient {
 
   public async makeChildExpressions(
     expression: string,
-  ): Promise<{ expressions: string[]; state: State }> {
+  ): Promise<{ expressions: string[]; ast: Ast }> {
     // Here we can't use the `build` function as it cleans the expression and
     // hence removing the trailing `|`, but we want to keep it. So we clean the
     // expression and add it explicitly
@@ -93,16 +87,14 @@ export class HttpClient {
       throw new Error('No response when trying to make child Expressions');
     }
     // this.onBuild && (await this.onBuild(response.state));
-    const expressions = response.state.hints.table
-      .filter(h => !h.parent)
-      .map(h => `${x} ${h.pine}`);
-    return { expressions, state: response.state };
+    const expressions = response.ast.hints.table.filter(h => !h.parent).map(h => `${x} ${h.pine}`);
+    return { expressions, ast: response.ast };
   }
 
   public async buildDeleteQuery(
     expression: string,
     limit: number,
-  ): Promise<{ query: string; state: State }> {
+  ): Promise<{ query: string; ast: Ast }> {
     const { columnName } = await this.getFirstColumnName(expression);
     const x = `${expression} | limit: ${limit} | delete! .${columnName}`;
     const response = await this.build(x);

@@ -1,5 +1,5 @@
 import { makeAutoObservable, reaction } from 'mobx';
-import { Ast, Hints, Operation, Response, State, TableHint } from './http';
+import { Ast, Hints, Operation, Response, TableHint } from './http';
 import { HttpClient } from './client';
 import { generateGraph, Graph } from './graph.util';
 import { format } from 'sql-formatter';
@@ -203,10 +203,10 @@ const getMessageFromHints = (hints: Hints): string => {
 };
 
 const handleOperation = (response: Response): Operation => {
-  if (!response.state?.operation) {
+  if (!response.ast?.operation) {
     return { type: 'table' };
   }
-  return response.state.operation;
+  return response.ast.operation;
 };
 
 const handleError = (response: Response): { error: string; errorType: string } => {
