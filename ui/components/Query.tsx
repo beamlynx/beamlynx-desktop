@@ -21,7 +21,19 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
     });
   };
 
-  if (session.errorType === 'parse') {
+  if (session.query) {
+    return (
+      <Box sx={{ ml: 2 }}>
+        <pre onClick={onClick} style={{ cursor: 'pointer' }}>
+          <code style={{ color: 'gray', fontFamily: 'monospace', fontSize: '12px' }}>
+            {session.query.length > 450 ? session.query.substring(0, 450) + ' ...' : session.query}
+          </code>
+        </pre>
+      </Box>
+    );
+  }
+
+  if (session.error) {
     return (
       <Box sx={{ ml: 2 }}>
         <Typography
@@ -39,18 +51,10 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
     );
   }
 
-  return session.expression ? (
-    <Box sx={{ ml: 2 }}>
-      <pre onClick={onClick} style={{ cursor: 'pointer' }}>
-        <code style={{ color: 'gray', fontFamily: 'monospace', fontSize: '12px' }}>
-          {session.query.length > 450 ? session.query.substring(0, 450) + ' ...' : session.query}
-        </code>
-      </pre>
-    </Box>
-  ) : (
+  return (
     <div style={{ margin: 30 }}>
       <code style={{ color: 'gray', fontFamily: 'monospace', fontSize: '12px' }}>
-        SQL will appear here as you type.
+        SQL shows here for a valid pine expression.
       </code>
     </div>
   );

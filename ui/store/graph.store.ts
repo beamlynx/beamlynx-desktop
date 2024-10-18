@@ -1,12 +1,19 @@
 import { makeAutoObservable } from 'mobx';
-import { PineEdge, PineNode, PineSuggestedNode } from '../model';
+import { PineNode, PineSuggestedNode } from '../model';
 import { State, Table, TableHint } from './http';
 import { Edge } from 'reactflow';
 import { NodeType } from '../components/Graph.box';
+import { Session } from './session';
 
 // Generate a pallette of constrasting modern colors
+/**
+ * @deprecated Moved to graph.util.ts
+ */
 const Colors = ['#ff4e50', '#ff9f51', '#ffea51', '#4caf50', '#64b6ac'];
 
+/**
+ * @deprecated Moved to graph.util.ts
+ */
 const makeSelectedNode = (n: Table, order: number): PineNode => {
   const { schema, table, alias } = n;
   const { color } = getColor(n.schema);
@@ -27,6 +34,9 @@ const makeSelectedNode = (n: Table, order: number): PineNode => {
   };
 };
 
+/**
+ * @deprecated Moved to graph.util.ts
+ */
 const makeSuggestedNode = (n: TableHint, candidate = false): PineSuggestedNode => {
   const { schema, table, column, pine, parent } = n;
   const { color } = getColor(schema);
@@ -50,20 +60,8 @@ const makeSuggestedNode = (n: TableHint, candidate = false): PineSuggestedNode =
   };
 };
 
-// TODO: move to the session
-type Session = {
-  nodes: PineNode[];
-  edges: PineEdge[];
-};
-const initSession = {
-  nodes: [],
-  edges: [],
-};
 export class GraphStore {
   activeSessionId: string = '0';
-  sessions: Record<string, Session> = {
-    'session-0': initSession,
-  };
 
   // For redrawing
   selectedTables: Table[] = [];
@@ -75,7 +73,7 @@ export class GraphStore {
     'selected-tables': [],
     joins: [],
     context: '',
-    operation: { type: 'ui-op', value: '-' },
+    operation: { type: 'table' },
   };
 
   // Candidate
@@ -83,24 +81,16 @@ export class GraphStore {
   candidate: PineNode | null = null;
 
   constructor() {
-    makeAutoObservable(this);
+    // makeAutoObservable(this);
   }
 
-  createSession = (sessionId: string) => {
-    this.sessions[sessionId] = initSession;
-  };
-
-  deleteSession = (sessionId: string) => {
-    delete this.sessions[sessionId];
-  };
-
-  public selectNextCandidate = (sessionId: string, offset: number) => {
+  public selectNextCandidate = (session: Session, offset: number) => {
     if (this.candidateIndex === undefined) {
       this.candidateIndex = 0;
     } else if (offset) {
       this.candidateIndex = this.candidateIndex + offset;
     }
-    this.generateGraphWrapper(sessionId, this.state);
+    this.generateGraphWrapper(session, this.state);
   };
 
   public getCandidate() {
@@ -111,10 +101,10 @@ export class GraphStore {
     return this.suggestedTables[this.candidateIndex % this.suggestedTables.length];
   }
 
-  public resetCandidate(sessionId: string) {
+  public resetCandidate(session: Session) {
     this.candidateIndex = undefined;
     this.candidate = null;
-    this.generateGraphWrapper(sessionId, this.state);
+    this.generateGraphWrapper(session, this.state);
   }
 
   /**
@@ -122,23 +112,15 @@ export class GraphStore {
    * 2. Make selected nodes using `selectedTables: Table[]`
    * 3. Make suggested nodes using `suggestedTables: TableHint[]`
    */
-  public generateGraphWrapper = (sessionId: string, state: State) => {
+  public generateGraphWrapper = (session: Session, state: State) => {
     this.state = state;
     this.suggestedTables = state.hints.table;
 
-    const session = this.getSession(sessionId);
     this.generateGraph(session);
   };
 
-  getSession = (sessionId: string): Session => {
-    const session = this.sessions[sessionId];
-    if (!session) {
-      throw new Error('Session with id ' + sessionId + ' not found');
-    }
-    return session;
-  };
-
   public generateGraph = (session: Session) => {
+    const { graph } = session;
     const {
       hints: { table: suggestedTables },
       'selected-tables': selectedTables,
@@ -175,16 +157,16 @@ export class GraphStore {
       {} as Record<string, PineNode>,
     );
 
-    session.nodes = nodes;
+    graph.nodes = nodes;
 
     // If there are no selected tables, there are no edges
     if (selectedTables.length < 1) {
-      session.edges = [];
+      graph.edges = [];
       return;
     }
 
     if (suggestedNodes.length === 0) {
-      session.edges = [];
+      graph.edges = [];
     }
 
     // TODO: we don't always have to regenerate the lookup. This can be cached
@@ -222,7 +204,7 @@ export class GraphStore {
       }
     }
 
-    session.edges = Object.values(edgeLookup);
+    graph.edges = Object.values(edgeLookup);
   };
 
   /**
@@ -245,6 +227,8 @@ export class GraphStore {
 /**
  * Get the color for the schema. Note: this function probably has collisions.
  * TODO: Keep track of the schemas and colors to avoid collisions.
+ *
+ * @deprecated Moved to graph.util.ts
  */
 function getColor(schema: string) {
   if (!schema) schema = 'public';

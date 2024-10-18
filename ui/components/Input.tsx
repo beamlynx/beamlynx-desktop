@@ -18,14 +18,17 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
   const handleChange = async (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const expression = e.target.value;
     session.expression = expression;
+    /**
+     * TODO: This should automatically be handled by the session store
+     */
     await global.buildQuery(sessionId);
   };
 
-  const selectNextCandidate = (sessionId: string, index: number) => {
+  const selectNextCandidate = (sessionId: string, offset: number) => {
     const session = global.getSession(sessionId);
-    graph.selectNextCandidate(sessionId, index);
-    const candidate = graph.getCandidate();
-    session.message = candidate ? candidate.pine : '';
+    if (!session.expression) return;
+    session.candidateIndex =
+      session.candidateIndex !== undefined ? session.candidateIndex + offset : 0;
   };
 
   const shouldPrettify = () => {
@@ -34,27 +37,29 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
     return cursorPosition === expressionLength;
   };
 
+  /**
+   *  Disabled:
+   *  - prettify if the `|` is added at the end of the expression
+   */
   const handleKeyPress = async (sessionId: string, e: React.KeyboardEvent) => {
     const session = global.getSession(sessionId);
     const candidate = graph.getCandidate();
 
+    console.log(session.mode);
     if (session.mode === 'result') {
-      global.setMode(sessionId, 'input');
+      session.loaded = false;
+      session.mode = 'input';
     } else if (session.mode === 'input') {
       if (e.key === 'Tab') {
         e.preventDefault();
-        if (session.expression) {
-          global.setMode(sessionId, 'graph');
-          if (!candidate) {
-            selectNextCandidate(sessionId, 1);
-          }
-        }
-      } else if (e.key === '|') {
-        if (shouldPrettify()) {
-          e.preventDefault();
-          global.prettifyExpression(sessionId);
-        }
-        await global.buildQuery(sessionId);
+        session.mode = 'graph';
+        selectNextCandidate(sessionId, 1);
+        // } else if (e.key === '|') {
+        //   if (shouldPrettify()) {
+        //     e.preventDefault();
+        //     global.prettifyExpression(sessionId);
+        //   }
+        //   await global.buildQuery(sessionId);
       } else if (e.key === 'Enter') {
         e.preventDefault();
 
@@ -67,13 +72,13 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
     } else if (session.mode === 'graph') {
       if (e.key === 'Escape') {
         e.preventDefault();
-        global.setMode(sessionId, 'input');
+        session.mode = 'input';
       } else if (e.key === 'Enter' || e.key === '|') {
         e.preventDefault();
         if (candidate) {
           global.updateExpressionUsingCandidate(sessionId, candidate);
           await global.buildQuery(sessionId);
-          global.setMode(sessionId, 'input');
+          session.mode = 'input';
         }
       } else if (e.key === 'Tab' && e.shiftKey) {
         e.preventDefault();
@@ -89,7 +94,7 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
         selectNextCandidate(sessionId, 1);
       } else if (e.key.length === 1) {
         e.preventDefault();
-        global.setMode(sessionId, 'input');
+        session.mode = 'input';
         session.expression += e.key;
       }
     }
@@ -104,7 +109,7 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
       variant="outlined"
       focused={session.mode === 'input'}
       onFocus={() => {
-        global.setMode(sessionId, 'input');
+        session.mode = 'input';
       }}
       multiline
       fullWidth

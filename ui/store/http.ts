@@ -15,13 +15,17 @@ export type Hints = { table: TableHint[] };
 // There are more operations. I'll add them as we need to handle them here
 export type Operation = { type: 'table' | 'delete' };
 
-export type State = {
+/**
+ * TODO: move to Session
+ */
+export type Ast = {
   hints: Hints;
   'selected-tables': Table[];
   joins: string[][];
   context: string;
   operation: Operation;
 };
+export type State = Ast;
 
 export type Response = {
   result: (string | number)[][];
@@ -29,13 +33,17 @@ export type Response = {
   query: string;
   error: string;
   'error-type': string;
-  state: State;
+  state: Ast;
+  ast: Ast;
 };
 
 /**
- * @deprecated Use `Client' class
+ * @deprecated Use `HttpClient'
  */
 export const Http = {
+  /**
+   * @deprecated Use `HttpClient`
+   */
   get: async (path: string): Promise<Response | undefined> => {
     const res = await fetch(`${base}/api/v1/${path}`, {
       method: 'GET',
@@ -49,6 +57,9 @@ export const Http = {
     return await res.json();
   },
 
+  /**
+   * @deprecated Use `HttpClient`
+   */
   post: async (path: string, body: object): Promise<Response | undefined> => {
     const res = await fetch(`${base}/api/v1/${path}`, {
       method: 'POST',

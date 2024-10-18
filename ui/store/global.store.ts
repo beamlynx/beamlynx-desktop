@@ -1,13 +1,13 @@
 import { makeAutoObservable } from 'mobx';
 import { format } from 'sql-formatter';
 import { GraphStore } from './graph.store';
-import { Http, Response, State, TableHint } from './http';
+import { Ast, Http, Response, State, TableHint } from './http';
 import { lt } from 'semver';
-import { createSession, Mode, Session } from './session';
+import { Mode, Session } from './session';
 
 const requiredVersion = '0.11.0';
 
-const initSession = createSession('0');
+const initSession = new Session('0');
 
 export class GlobalStore {
   connected = false;
@@ -34,15 +34,13 @@ export class GlobalStore {
   };
 
   createSession = (id: string) => {
-    const session = createSession(id);
+    const session = new Session(id);
     this.sessions[session.id] = session;
-    this.graphStore.createSession(session.id);
     return session;
   };
 
   deleteSession = (sessionId: string) => {
     delete this.sessions[sessionId];
-    this.graphStore.deleteSession(sessionId);
   };
 
   getSession = (id: string): Session => {
@@ -126,11 +124,11 @@ export class GlobalStore {
     session.loaded = false;
   };
 
-  setHints = (session: Session, state: State) => {
+  setHints = (session: Session, ast: Ast) => {
     // In case of an error, we don't get any state or hints
-    if (!state || !state.hints) return;
-    this.graphStore.generateGraphWrapper(session.id, state);
-    const expressions = state.hints.table.map(h => h.pine);
+    if (!ast || !ast.hints) return;
+    this.graphStore.generateGraphWrapper(session, ast);
+    const expressions = ast.hints.table.map(h => h.pine);
     session.message = expressions ? expressions.join(', ').substring(0, 140) : '';
   };
 
@@ -143,23 +141,26 @@ export class GlobalStore {
     session.operation = response.state.operation;
   };
 
+  /**
+   * @deprecated This shouldb be handled by the session store
+   */
   buildQuery = async (sessionId: string) => {
-    if (!this.connected) {
-      this.handleError(sessionId, { error: 'Not connected' } as Response);
-      return;
-    }
-
-    const session = this.getSession(sessionId);
-    const response = await Http.post('build', {
-      expression: session.expression,
-    });
-
-    if (!response) return;
-    this.handleError(sessionId, response);
-    this.setConnectionName(response);
-    this.setQuery(sessionId, response);
-    this.setHints(session, response.state);
-    this.setOperation(sessionId, response);
+    // Disabled as the functionality is moving to session.ts
+    //
+    // if (!this.connected) {
+    //   this.handleError(sessionId, { error: 'Not connected' } as Response);
+    //   return;
+    // }
+    // const session = this.getSession(sessionId);
+    // const response = await Http.post('build', {
+    //   expression: session.expression,
+    // });
+    // if (!response) return;
+    // this.handleError(sessionId, response);
+    // this.setConnectionName(response);
+    // this.setQuery(sessionId, response);
+    // this.setHints(session, response.state);
+    // this.setOperation(sessionId, response);
   };
 
   updateExpressionUsingCandidate = (sessionId: string, candidate: TableHint) => {
@@ -181,21 +182,4 @@ export class GlobalStore {
         .filter(Boolean)
         .join('\n | ') + '\n | ';
   };
-
-  /**
-   * @deprecated
-   */
-  cleanExpression = (expression: string) => {
-    const e = expression.trim();
-    return e.endsWith('|') ? e.slice(0, -1) : e;
-  };
-
-  setMode(sessionId: string, mode: Mode) {
-    const session = this.getSession(sessionId);
-    session.mode = mode;
-    this.graphStore.resetCandidate(sessionId);
-    if (mode === 'input') {
-      document.getElementById('input')!.focus();
-    }
-  }
 }

@@ -46,6 +46,6 @@ export class RunQueryPlugin implements PluginInterface {
     });
     session.message = pickSuccessMessage();
     session.loaded = true;
-    this.global.setMode(session.id, 'result');
+    session.mode = 'result';
   }
 }
