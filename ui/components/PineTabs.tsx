@@ -12,8 +12,8 @@ import { IconButton } from '@mui/material';
 
 const PineTabs = observer(() => {
   const { global } = useStores();
-  const [tabs, setTabs] = React.useState([{ sessionId: '0' }]); // Initial tabs
-  const [sessionId, setSessionId] = React.useState('0'); // Active session
+  const [tabs, setTabs] = React.useState([{ sessionId: 'session-0' }]); // Initial tabs
+  const [sessionId, setSessionId] = React.useState('session-0'); // Active session
 
   const setActiveTab = (newSessionId: string) => {
     global.activeSessionId = newSessionId;
@@ -25,11 +25,10 @@ const PineTabs = observer(() => {
   };
 
   const addTab = () => {
-    const newSessionId = Math.random().toString(36).substring(7);
-    setTabs([...tabs, { sessionId: newSessionId }]); // Add new tab
-    global.createSession(newSessionId); // Create a new session
-
-    setActiveTab(newSessionId);
+    const id = Math.random().toString(36).substring(7);
+    const session = global.createSession(id);
+    setTabs([...tabs, { sessionId: session.id }]);
+    setActiveTab(session.id);
   };
 
   const removeTab = (sessionIdToRemove: string) => {

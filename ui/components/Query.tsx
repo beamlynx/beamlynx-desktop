@@ -11,18 +11,17 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
   const { global: store } = useStores();
   const session = store.getSession(sessionId);
 
-  const codeRef = useRef<HTMLElement>(null);
-
   const onClick = () => {
-    if (codeRef.current) {
-      const v = codeRef.current.innerText;
-      navigator.clipboard.writeText(v).then(() => {
-        store.setCopiedMessage(sessionId, v);
-      });
+    if (!session.query) {
+      return;
     }
+    const v = session.query;
+    navigator.clipboard.writeText(v).then(() => {
+      store.setCopiedMessage(sessionId, v);
+    });
   };
 
-  if (session.errorType === 'parse') {
+  if (session.error && session.errorType === 'parse') {
     return (
       <Box sx={{ ml: 2 }}>
         <Typography
@@ -40,16 +39,22 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
     );
   }
 
-  return session.expression ? (
-    <pre onClick={onClick} style={{ cursor: 'pointer' }}>
-      <code ref={codeRef} style={{ color: 'gray', fontFamily: 'monospace', fontSize: '12px' }}>
-        {session.query}
-      </code>
-    </pre>
-  ) : (
+  if (session.query) {
+    return (
+      <Box sx={{ ml: 2 }}>
+        <pre onClick={onClick} style={{ cursor: 'pointer' }}>
+          <code style={{ color: 'gray', fontFamily: 'monospace', fontSize: '12px' }}>
+            {session.query.length > 450 ? session.query.substring(0, 450) + ' ...' : session.query}
+          </code>
+        </pre>
+      </Box>
+    );
+  }
+
+  return (
     <div style={{ margin: 30 }}>
-      <code ref={codeRef} style={{ color: 'gray', fontFamily: 'monospace', fontSize: '12px' }}>
-        SQL will appear here as you type.
+      <code style={{ color: 'gray', fontFamily: 'monospace', fontSize: '12px' }}>
+        SQL shows here for a valid pine expression.
       </code>
     </div>
   );

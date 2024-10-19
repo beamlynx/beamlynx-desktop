@@ -17,10 +17,11 @@ const Home: NextPage = () => {
   // TODO: this should go to the session?
   useEffect(() => {
     const sessionId = global.activeSessionId;
+    const session = global.getSession(sessionId);
     const fn = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.preventDefault();
-      global.setMode(sessionId, 'input');
+      session.mode = 'input';
     };
     document.addEventListener('keydown', fn);
     return () => {

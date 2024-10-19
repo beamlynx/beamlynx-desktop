@@ -1,7 +1,9 @@
-import React, { useRef } from 'react';
 import TextField from '@mui/material/TextField';
 import { observer } from 'mobx-react-lite';
+import React, { useRef } from 'react';
 import { useStores } from '../store/store-container';
+import { prettifyExpression } from '../store/util';
+import { Session } from '../store/session';
 
 interface InputProps {
   sessionId: string;
@@ -10,22 +12,16 @@ interface InputProps {
 const Input: React.FC<InputProps> = observer(({ sessionId }) => {
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const { global, graph } = useStores();
+  const { global } = useStores();
   const session = global.getSession(sessionId);
 
   const handleChange = async (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const expression = e.target.value;
-    session.expression = expression;
-    await global.buildQuery(sessionId);
+    session.expression = e.target.value;
   };
 
-  const selectNextCandidate = (sessionId: string, index: number) => {
-    const session = global.getSession(sessionId);
-    graph.selectNextCandidate(sessionId, index);
-    const candidate = graph.getCandidate();
-    session.message = candidate ? candidate.pine : '';
-  };
-
+  /**
+   * Only prettify if `|` is added at the end of the expression
+   */
   const shouldPrettify = () => {
     const cursorPosition = inputRef.current ? inputRef.current.selectionStart : 0;
     const expressionLength = session.expression.length;
@@ -33,58 +29,51 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
   };
 
   const handleKeyPress = async (sessionId: string, e: React.KeyboardEvent) => {
-    const session = global.getSession(sessionId);
-    const candidate = graph.getCandidate();
-
-    console.log(session.mode);
+    if (!global.connected) {
+      session.error = 'Not connected';
+      return;
+    }
 
     if (session.mode === 'result') {
-      global.setMode(sessionId, 'input');
+      session.loaded = false;
+      session.mode = 'input';
     } else if (session.mode === 'input') {
       if (e.key === 'Tab') {
         e.preventDefault();
-        if (session.expression) {
-          global.setMode(sessionId, 'graph');
-          if (!candidate) {
-            selectNextCandidate(sessionId, 1);
-          }
-        }
+        session.mode = 'graph';
+        session.selectNextCandidate(1);
       } else if (e.key === '|') {
         if (shouldPrettify()) {
           e.preventDefault();
-          global.prettifyExpression(sessionId);
+          session.expression = prettifyExpression(session.expression);
         }
-        await global.buildQuery(sessionId);
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        await global.evaluate(sessionId);
+        session.evaluate();
       }
     } else if (session.mode === 'graph') {
       if (e.key === 'Escape') {
         e.preventDefault();
-        global.setMode(sessionId, 'input');
+        session.mode = 'input';
       } else if (e.key === 'Enter' || e.key === '|') {
         e.preventDefault();
-        if (candidate) {
-          global.updateExpressionUsingCandidate(sessionId, candidate);
-          await global.buildQuery(sessionId);
-          global.setMode(sessionId, 'input');
-        }
+        session.mode = 'input';
+        session.updateExpressionUsingCandidate();
       } else if (e.key === 'Tab' && e.shiftKey) {
         e.preventDefault();
-        selectNextCandidate(sessionId, -1);
+        session.selectNextCandidate(-1);
       } else if (e.key === 'Tab') {
         e.preventDefault();
-        selectNextCandidate(sessionId, 1);
+        session.selectNextCandidate(1);
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        selectNextCandidate(sessionId, -1);
+        session.selectNextCandidate(-1);
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
-        selectNextCandidate(sessionId, 1);
+        session.selectNextCandidate(1);
       } else if (e.key.length === 1) {
         e.preventDefault();
-        global.setMode(sessionId, 'input');
+        session.mode = 'input';
         session.expression += e.key;
       }
     }
@@ -99,7 +88,7 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
       variant="outlined"
       focused={session.mode === 'input'}
       onFocus={() => {
-        global.setMode(sessionId, 'input');
+        session.mode = 'input';
       }}
       multiline
       fullWidth
@@ -110,6 +99,7 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
       onKeyDown={e => {
         handleKeyPress(sessionId, e);
       }}
+      disabled={!global.connected}
     />
   );
 });
