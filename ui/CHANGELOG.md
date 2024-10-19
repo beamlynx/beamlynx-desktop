@@ -5,6 +5,16 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.8.0] - 2024-10-19
+
+### Added
+
+- Support for recursive deletes e.g.
+
+```
+company | id='...' | delete:
+```
+
 ## [0.7.1] - 2024-09-22
 
 ### Fixed
