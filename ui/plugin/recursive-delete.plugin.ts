@@ -1,12 +1,13 @@
 import { format } from 'sql-formatter';
-import { Ast, Client } from '../store/http';
+import { Ast } from '../store/http';
 import { Session } from '../store/session';
 import { PluginInterface } from './plugin.interface';
+import { HttpClient } from '../store/client';
 
 export class RecursiveDeletePlugin implements PluginInterface {
-  private readonly client: Client;
+  private readonly client: HttpClient;
   constructor(private session: Session) {
-    this.client = new Client(async (ast: Ast) => {
+    this.client = new HttpClient(async (ast: Ast) => {
       // wait for 500 ms before setting the hints
       await new Promise(resolve => setTimeout(resolve, 500));
       this.session.ast = ast;

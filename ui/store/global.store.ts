@@ -2,11 +2,13 @@ import { makeAutoObservable } from 'mobx';
 import { lt } from 'semver';
 import { Http } from './http';
 import { Session } from './session';
+import { HttpClient } from './client';
 
 const requiredVersion = '0.11.0';
 
 const initSession = new Session('0');
 
+const client = new HttpClient();
 export class GlobalStore {
   connected = false;
   connection = '';
@@ -20,7 +22,6 @@ export class GlobalStore {
   // User
   email = '';
   domain = '';
-
   constructor() {
     makeAutoObservable(this);
   }
@@ -50,7 +51,7 @@ export class GlobalStore {
   };
 
   loadConnectionMetadata = async () => {
-    const response = await Http.get('connection');
+    const response = await client.get('connection');
     if (!response) return;
     const result = response.result as unknown as {
       version: string;

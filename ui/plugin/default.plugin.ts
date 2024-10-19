@@ -1,13 +1,12 @@
-import { GlobalStore } from '../store/global.store';
-import { Client } from '../store/http';
+import { HttpClient } from '../store/client';
 import { Column, Row, Session } from '../store/session';
 import { pickSuccessMessage } from '../store/success-messages';
 import { PluginInterface } from './plugin.interface';
 
 export class DefaultPlugin implements PluginInterface {
-  private readonly client: Client;
+  private readonly client: HttpClient;
   constructor(private session: Session) {
-    this.client = new Client();
+    this.client = new HttpClient();
   }
 
   public async evaluate(): Promise<void> {

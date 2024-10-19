@@ -1,10 +1,9 @@
 import { makeAutoObservable, reaction } from 'mobx';
-import { Ast, Hints, Operation, Response, TableHint } from './http';
-import { HttpClient } from './client';
-import { generateGraph, Graph } from './graph.util';
 import { format } from 'sql-formatter';
-import { RecursiveDeletePlugin } from '../plugin/recursive-delete.plugin';
 import { DefaultPlugin } from '../plugin/default.plugin';
+import { RecursiveDeletePlugin } from '../plugin/recursive-delete.plugin';
+import { Ast, Hints, HttpClient, Operation, Response, TableHint } from './client';
+import { generateGraph, Graph } from './graph.util';
 import { prettifyExpression } from './util';
 
 export type Mode = 'input' | 'graph' | 'result' | 'none';
@@ -22,6 +21,36 @@ export type Row = { [key: string]: any };
 
 const client = new HttpClient();
 
+/**
+ * ! A note on evaluation of the pine expressions !
+ *
+ * The expressions are evaluated in 2 ways:
+ * - Build the expression i.e. get the AST and SQL
+ * - Run the SQL
+ *
+ * The expressions are built for each character inserted i.e. if the pine
+ * expression is updated, it is automatically being built using mobx reactions.
+ *
+ * The evaluation is explicit. A function is called to evaluate the expressoin.
+ *
+ * Depending on the operatoin type, we are using the appropriate plugin i.e.
+ * default vs recursive delete.
+ *
+ * I would like to merge the logic for all invokations the the backend i.e.
+ * build the expression, get the results, or evaluate in the recursive delete
+ * mode.
+ *
+ * Right now, I need to keep the evaluation of recursive delete separate as it
+ * lets me update parts of the session and not everything e.g. only update the
+ * graph while keeping the pine expressions and the sql query the same. If I add
+ * functionality for tabs within sessions, then each tab could hold a separate
+ * pine expression and the related query for each data set that needs to be
+ * deleted - but that requires more work to copy all the delete queries (and not
+ * go throw each tab in the session and manually copy the queries).
+ *
+ * For now I'll keep it like this and let it perculate until I am convinced of a
+ * way to refactor is in a better way.
+ */
 export class Session {
   id: string;
   expression: string = ''; // observable
@@ -72,10 +101,12 @@ export class Session {
     // TODO: explicitly mark the observables, actions, computables
     makeAutoObservable(this);
 
+    // Evaluation plugins
     this.plugins = {
       delete: new RecursiveDeletePlugin(this),
       default: new DefaultPlugin(this),
     };
+
     /**
      * Build the expression i.e. get the http repsonse
      */
