@@ -1,10 +1,9 @@
 import { makeAutoObservable } from 'mobx';
 import { lt } from 'semver';
-import { Http } from './http';
-import { Session } from './session';
 import { HttpClient } from './client';
+import { Session } from './session';
 
-const requiredVersion = '0.11.0';
+const requiredVersion = '0.12.0';
 
 const initSession = new Session('0');
 
