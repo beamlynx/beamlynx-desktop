@@ -21,7 +21,7 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
     });
   };
 
-  if (session.error) {
+  if (session.error && session.errorType === 'parse') {
     return (
       <Box sx={{ ml: 2 }}>
         <Typography

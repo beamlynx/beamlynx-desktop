@@ -1,7 +1,7 @@
 import { Edge } from 'reactflow';
 import { PineEdge, PineNode, PineSuggestedNode } from '../model';
-import { Ast, Table, TableHint } from './http';
 import { NodeType } from '../components/Graph.box';
+import { Ast, Table, TableHint } from './client';
 
 export type Graph = {
   nodes: PineNode[];

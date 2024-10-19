@@ -1,8 +1,7 @@
 import { format } from 'sql-formatter';
-import { Ast } from '../store/http';
 import { Session } from '../store/session';
 import { PluginInterface } from './plugin.interface';
-import { HttpClient } from '../store/client';
+import { Ast, HttpClient } from '../store/client';
 
 export class RecursiveDeletePlugin implements PluginInterface {
   private readonly client: HttpClient;
