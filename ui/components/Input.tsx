@@ -3,7 +3,6 @@ import { observer } from 'mobx-react-lite';
 import React, { useRef } from 'react';
 import { useStores } from '../store/store-container';
 import { prettifyExpression } from '../store/util';
-import { Session } from '../store/session';
 
 interface InputProps {
   sessionId: string;

@@ -87,8 +87,7 @@ export class HttpClient {
   }
 
   public async build(expression: string): Promise<Response> {
-    const x = this.cleanExpression(expression);
-    const response = await this.post('build', { expression: x });
+    const response = await this.post('build', { expression });
     if (!response) {
       throw new Error('No response when trying to build');
     }
