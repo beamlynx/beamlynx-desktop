@@ -8,6 +8,14 @@ const requiredVersion = '0.12.0';
 const initSession = new Session('0');
 
 const client = new HttpClient();
+type ConnectionParams = {
+  dbHost: string;
+  dbPort: string;
+  dbName: string;
+  dbUser: string;
+  dbPassword: string;
+};
+
 export class GlobalStore {
   connected = false;
   connection = '';
@@ -21,14 +29,34 @@ export class GlobalStore {
   // User
   email = '';
   domain = '';
+
+  // Settings
+  showSettings = false;
+
   constructor() {
     makeAutoObservable(this);
   }
 
   getConnectionName = () => {
+    if (!this.connection) return '';
     const length = this.connection.length;
     const maxLength = 24;
     return length > maxLength ? this.connection.substring(0, maxLength) + '...' : this.connection;
+  };
+
+  connect = async (params: ConnectionParams): Promise<string> => {
+    const connectionId = await client.createConnection(params);
+    if (!connectionId) {
+      throw new Error("Connection wasn't created");
+    }
+    const { id, version } = await client.useConnection(connectionId);
+    if (!id) {
+      this.connection = '';
+      throw new Error('Failed to connect');
+    }
+    this.connection = id;
+    this.version = version ?? '0.0.0';
+    return id;
   };
 
   createSession = (id: string) => {
@@ -58,6 +86,7 @@ export class GlobalStore {
     };
     this.connection = result['connection-id'];
     this.version = result.version ?? '0.0.0';
+    this.connected = true;
 
     if (lt(this.version, requiredVersion)) {
       // Use the default session to show the error
@@ -94,5 +123,9 @@ export class GlobalStore {
     return length > maxLength
       ? expression.substring(0, maxLength).replaceAll('|', '') + '...'
       : expression || '...';
+  };
+
+  setShowSettings = (show: boolean) => {
+    this.showSettings = show;
   };
 }
