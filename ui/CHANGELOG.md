@@ -5,6 +5,12 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.9.0] - 2024-10-25
+
+### Added
+
+- Support for db connections
+
 ## [0.8.0] - 2024-10-19
 
 ### Added

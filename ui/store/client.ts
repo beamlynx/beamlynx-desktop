@@ -24,6 +24,7 @@ export type Ast = {
 export type Response = {
   result: (string | number)[][];
   'connection-id': string;
+  version: string;
   query: string;
   error: string;
   'error-type': string;
@@ -133,5 +134,52 @@ export class HttpClient {
       throw new Error('No response when trying to build the delete query');
     }
     return response;
+  }
+
+  public async createConnection(connection: {
+    dbHost: string;
+    dbPort: string;
+    dbName: string;
+    dbUser: string;
+    dbPassword: string;
+  }): Promise<string> {
+    type ServerConnectionParams = {
+      host: string;
+      port: string;
+      dbtype: string;
+      dbname: string;
+      user: string;
+      password: string;
+      schema: string | null;
+    };
+
+    const connectionParams: ServerConnectionParams = {
+      host: connection.dbHost,
+      port: connection.dbPort,
+      dbtype: 'postgres', // Assuming postgres as default
+      dbname: connection.dbName,
+      user: connection.dbUser,
+      password: connection.dbPassword,
+      schema: null, // We don't have this in the current params, so setting to null
+    };
+    const response = await this.post('connections', connectionParams);
+    if (!response) {
+      throw new Error('No response when trying to create connection');
+    }
+    if (response.error) {
+      throw new Error(response.error);
+    }
+    return response['connection-id'] as string;
+  }
+
+  public async useConnection(connectionId: string): Promise<{ id: string; version: string }> {
+    const response = await this.post(`connections/${connectionId}/connect`, {});
+    if (!response) {
+      throw new Error('No response when trying to test connection');
+    }
+    if (response.error) {
+      throw new Error(response.error);
+    }
+    return { id: response['connection-id'], version: response.version };
   }
 }

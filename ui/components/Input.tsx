@@ -27,7 +27,7 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
     return cursorPosition === expressionLength;
   };
 
-  const handleKeyPress = async (sessionId: string, e: React.KeyboardEvent) => {
+  const handleKeyPress = async (e: React.KeyboardEvent) => {
     if (!global.connected) {
       session.error = 'Not connected';
       return;
@@ -95,9 +95,7 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
       maxRows="15"
       inputRef={inputRef}
       onChange={handleChange}
-      onKeyDown={e => {
-        handleKeyPress(sessionId, e);
-      }}
+      onKeyDown={handleKeyPress}
       disabled={!global.connected}
     />
   );

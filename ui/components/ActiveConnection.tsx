@@ -1,37 +1,57 @@
-import { Typography } from '@mui/material';
+import { Box, Typography } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
 import { useStores } from '../store/store-container';
-const ActiveConnection = observer(({}) => {
-  const { global: store } = useStores();
+import Settings from '../pages/settings';
+const ActiveConnection = () => {
+  const { global } = useStores();
   const [loading, setLoading] = useState(false);
+  const [connectionDisplay, setConnectionDisplay] = useState('🔌 No connection!');
 
   // Load Active Connection and Metadata
   useEffect(() => {
     setLoading(true);
-    store
+    global
       .loadConnectionMetadata()
       .then(() => {
-        store.connected = true;
+        global.connected = true;
         setLoading(false);
       })
       .catch(err => {
-        store.connected = false;
+        global.connected = false;
         setLoading(false);
         console.error(err);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return (
-    <Typography variant="caption" component="code" color="gray">
-      {loading
-        ? 'Connecting...'
-        : store.connection
-          ? `⚡ [${store.version ?? 'obsolete'}] ${store.getConnectionName()}`
-          : `🔌 No connection! `}
-    </Typography>
-  );
-});
+  useEffect(() => {
+    if (!global.connected) {
+      setConnectionDisplay('🔌 No connection!');
+    } else {
+      const serverVersion = global.version ?? 'obsolete';
+      const dbConnectionName = global.getConnectionName();
+      const status = dbConnectionName ? '⚡' : '🔌';
+      setConnectionDisplay(
+        `${status} [${serverVersion}] ${dbConnectionName || 'Click here to configure db connection'}`,
+      );
+    }
+  }, [global, global.connected, global.connection, global.version]);
 
-export default ActiveConnection;
+  return (
+    <Box>
+      {global.showSettings && <Settings />}
+      <Typography
+        variant="caption"
+        component="code"
+        color="gray"
+        onClick={() => global.setShowSettings(!global.showSettings)}
+        style={{ cursor: 'pointer' }}
+      >
+        {loading ? 'Connecting...' : connectionDisplay}
+      </Typography>
+    </Box>
+  );
+};
+
+export default observer(ActiveConnection);
