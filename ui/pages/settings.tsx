@@ -49,10 +49,12 @@ const Settings = () => {
   const [dbUser, setDbUser] = useState('');
   const [dbPassword, setDbPassword] = useState('');
   const [error, setError] = useState('');
+  const [connecting, setConnecting] = useState(false);
   const [connected, setConnected] = useState(false);
 
   const handleConnect = async () => {
     try {
+      setConnecting(true);
       const connectionId = await global.connect({
         dbHost,
         dbPort,
@@ -63,9 +65,16 @@ const Settings = () => {
       console.debug('Database connection created with ID:', connectionId);
       setError('');
       setConnected(true);
+
+      // Wait for 1 second and then close the settings
+      setTimeout(() => {
+        global.setShowSettings(false);
+      }, 1000);
     } catch (error) {
       const message = (error as Error)?.message ?? 'Unknown error';
       setError(message);
+    } finally {
+      setConnecting(false);
     }
   };
 
@@ -176,9 +185,9 @@ const Settings = () => {
                 variant="contained"
                 color="primary"
                 onClick={handleConnect}
-                disabled={!!connected}
+                disabled={!!connected || connecting}
               >
-                Connect
+                {connected ? 'Connected' : connecting ? 'Connecting...' : 'Connect'}
               </Button>
             </Box>
           </Box>
