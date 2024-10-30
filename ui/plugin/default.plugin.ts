@@ -19,6 +19,12 @@ export class DefaultPlugin implements PluginInterface {
       return;
     }
 
+    if (response.error) {
+      session.message = '';
+      session.error = response.error;
+      return;
+    }
+
     if (!response.result) return;
 
     const rows = response.result as Row[];
