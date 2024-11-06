@@ -37,6 +37,7 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
       session.loaded = false;
       session.mode = 'input';
     } else if (session.mode === 'input') {
+      session.loaded = false;
       if (e.key === 'Tab') {
         e.preventDefault();
         session.mode = 'graph';
@@ -70,7 +71,7 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
         session.selectNextCandidate(1);
-      } else if (e.key.length === 1) {
+      } else if (e.key.length > 0) {
         e.preventDefault();
         session.mode = 'input';
         session.expression += e.key;
