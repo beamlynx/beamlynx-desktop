@@ -27,9 +27,39 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
     return cursorPosition === expressionLength;
   };
 
+  const isPrintableChar = (key: string) => {
+    return key.length === 1;
+  };
+
+  /**
+   * TODO: instead of creating the expression manually, let's get the value of
+   * the input from the text field and adjust accordingly.
+   * The key characters that need special handling are for navigation:
+   *
+   * Input mode:
+   * - TAB: switch to graph mode
+   * - Enter: evaluate the expression
+   *
+   * Graph mode:
+   * - Arrow keys: select next/previous candidate
+   * - TAB: select next candidate
+   * - Shift + TAB: select previous candidate
+   * - Escape: switch to input mode
+   *
+   * Result mode:
+   * - Escape: switch to input mode
+   *
+   * Globally:
+   * - |: prettify the expression
+   */
   const handleKeyPress = async (e: React.KeyboardEvent) => {
     if (!global.connected) {
       session.error = 'Not connected';
+      return;
+    }
+
+    if (e.ctrlKey) {
+      // Allow control key combinations to pass through
       return;
     }
 
@@ -37,7 +67,6 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
       session.loaded = false;
       session.mode = 'input';
     } else if (session.mode === 'input') {
-      session.loaded = false;
       if (e.key === 'Tab') {
         e.preventDefault();
         session.mode = 'graph';
@@ -50,6 +79,11 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
       } else if (e.key === 'Enter') {
         e.preventDefault();
         session.evaluate();
+      } else if (isPrintableChar(e.key)) {
+        e.preventDefault();
+        session.loaded = false;
+        session.expression = session.expression + e.key;
+        session.mode = 'input';
       }
     } else if (session.mode === 'graph') {
       if (e.key === 'Escape') {
@@ -71,7 +105,7 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
         session.selectNextCandidate(1);
-      } else if (e.key.length > 0) {
+      } else if (isPrintableChar(e.key)) {
         e.preventDefault();
         session.mode = 'input';
         session.expression += e.key;
