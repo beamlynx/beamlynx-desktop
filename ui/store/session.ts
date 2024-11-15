@@ -194,7 +194,7 @@ export class Session {
     this.candidateIndex = this.candidateIndex === undefined ? 0 : this.candidateIndex + offset;
   }
 
-  public updateExpressionUsingCandidate() {
+  public getExpressionUsingCandidate() {
     if (!this.candidate) {
       throw new Error('Unable to update the expression as no candidate is selected.');
     }
@@ -203,7 +203,7 @@ export class Session {
     parts.pop();
     parts.push(pine);
     const expression = parts.join(' | ');
-    this.expression = prettifyExpression(expression);
+    return prettifyExpression(expression);
   }
 
   public async evaluate() {

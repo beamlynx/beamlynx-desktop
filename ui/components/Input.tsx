@@ -1,6 +1,6 @@
 import TextField from '@mui/material/TextField';
 import { observer } from 'mobx-react-lite';
-import React, { useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useStores } from '../store/store-container';
 import { prettifyExpression } from '../store/util';
 
@@ -10,47 +10,57 @@ interface InputProps {
 
 const Input: React.FC<InputProps> = observer(({ sessionId }) => {
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const [expression, setExpression] = React.useState('');
 
   const { global } = useStores();
   const session = global.getSession(sessionId);
 
-  const handleChange = async (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    session.expression = e.target.value;
-  };
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      session.expression = expression;
+    }, 150); // 150ms debounce delay
+
+    return () => clearTimeout(timer);
+  }, [expression, session]);
 
   /**
    * Only prettify if `|` is added at the end of the expression
    */
   const shouldPrettify = () => {
     const cursorPosition = inputRef.current ? inputRef.current.selectionStart : 0;
-    const expressionLength = session.expression.length;
-    return cursorPosition === expressionLength;
+    return cursorPosition === expression.length;
   };
 
   const isPrintableChar = (key: string) => {
     return key.length === 1;
   };
+  const isModifierKeyCombo = (e: React.KeyboardEvent) => {
+    return e.ctrlKey || e.metaKey;
+  };
 
   /**
-   * TODO: instead of creating the expression manually, let's get the value of
-   * the input from the text field and adjust accordingly.
-   * The key characters that need special handling are for navigation:
-   *
-   * Input mode:
-   * - TAB: switch to graph mode
-   * - Enter: evaluate the expression
-   *
-   * Graph mode:
-   * - Arrow keys: select next/previous candidate
-   * - TAB: select next candidate
-   * - Shift + TAB: select previous candidate
-   * - Escape: switch to input mode
+   * Handles all keyboard interactions in the input component.
+   * The behavior changes based on the current mode (result, input, or graph)
    *
    * Result mode:
-   * - Escape: switch to input mode
+   * - Any key press switches back to input mode
    *
-   * Globally:
-   * - |: prettify the expression
+   * Input mode:
+   * - `Tab`: Switches to graph mode and selects first candidate
+   * - `|`: Prettifies the expression if cursor is at the end
+   * - `Enter`: Evaluates the current expression
+   * - Any other key: Marks results as not loaded
+   *
+   * Graph mode:
+   * - `Escape`: Returns to input mode
+   * - `Enter` / `|`: Selects current candidate and returns to input mode
+   * - `Tab`: Cycles through candidates (`Shift+Tab` for reverse)
+   * - `Arrow Up`/`Down`: Navigate between candidates
+   * - Printable chars: Append to expression and switch to input mode
+   *
+   * Global behaviors:
+   * - Blocks all actions if not connected
+   * - Allows modifier key combinations (`Ctrl` / `Cmd`) to pass through
    */
   const handleKeyPress = async (e: React.KeyboardEvent) => {
     if (!global.connected) {
@@ -58,58 +68,71 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
       return;
     }
 
-    if (e.ctrlKey) {
-      // Allow control key combinations to pass through
+    if (isModifierKeyCombo(e)) {
       return;
     }
 
-    if (session.mode === 'result') {
-      session.loaded = false;
-      session.mode = 'input';
-    } else if (session.mode === 'input') {
-      if (e.key === 'Tab') {
-        e.preventDefault();
-        session.mode = 'graph';
-        session.selectNextCandidate(1);
-      } else if (e.key === '|') {
-        if (shouldPrettify()) {
-          e.preventDefault();
-          session.expression = prettifyExpression(session.expression);
-        }
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        session.evaluate();
-      } else if (isPrintableChar(e.key)) {
-        e.preventDefault();
+    switch (session.mode) {
+      case 'result':
         session.loaded = false;
-        session.expression = session.expression + e.key;
         session.mode = 'input';
-      }
-    } else if (session.mode === 'graph') {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        session.mode = 'input';
-      } else if (e.key === 'Enter' || e.key === '|') {
-        e.preventDefault();
-        session.mode = 'input';
-        session.updateExpressionUsingCandidate();
-      } else if (e.key === 'Tab' && e.shiftKey) {
-        e.preventDefault();
-        session.selectNextCandidate(-1);
-      } else if (e.key === 'Tab') {
-        e.preventDefault();
-        session.selectNextCandidate(1);
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        session.selectNextCandidate(-1);
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        session.selectNextCandidate(1);
-      } else if (isPrintableChar(e.key)) {
-        e.preventDefault();
-        session.mode = 'input';
-        session.expression += e.key;
-      }
+        return;
+
+      case 'input':
+        switch (e.key) {
+          case 'Tab':
+            e.preventDefault();
+            session.mode = 'graph';
+            session.selectNextCandidate(1);
+            return;
+          case '|':
+            if (!shouldPrettify()) return;
+            e.preventDefault();
+            setExpression(prettifyExpression(expression));
+            return;
+          case 'Enter':
+            e.preventDefault();
+            session.evaluate();
+            return;
+          default:
+            session.loaded = false;
+            return;
+        }
+
+      case 'graph':
+        switch (e.key) {
+          case 'Escape':
+            e.preventDefault();
+            session.mode = 'input';
+            return;
+          case 'Enter':
+          case '|':
+            e.preventDefault();
+            session.mode = 'input';
+            setExpression(session.getExpressionUsingCandidate());
+            return;
+          case 'Tab':
+            e.preventDefault();
+            session.selectNextCandidate(e.shiftKey ? -1 : 1);
+            return;
+          case 'ArrowUp':
+            e.preventDefault();
+            session.selectNextCandidate(-1);
+            return;
+          case 'ArrowDown':
+            e.preventDefault();
+            session.selectNextCandidate(1);
+            return;
+          default:
+            if (!isPrintableChar(e.key)) {
+              return;
+            }
+            e.preventDefault();
+            session.mode = 'input';
+            session.loaded = false;
+            setExpression(expression + e.key);
+            return;
+        }
     }
   };
 
@@ -117,7 +140,7 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
     <TextField
       id="input"
       label="Pine expression... "
-      value={session.expression}
+      value={expression}
       size="small"
       variant="outlined"
       focused={session.mode === 'input'}
@@ -129,7 +152,7 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
       minRows="8"
       maxRows="15"
       inputRef={inputRef}
-      onChange={handleChange}
+      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setExpression(e.target.value)}
       onKeyDown={handleKeyPress}
       disabled={!global.connected}
     />
