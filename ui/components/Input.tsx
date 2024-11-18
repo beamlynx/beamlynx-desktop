@@ -10,25 +10,19 @@ interface InputProps {
 
 const Input: React.FC<InputProps> = observer(({ sessionId }) => {
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const [expression, setExpression] = React.useState('');
-
   const { global } = useStores();
   const session = global.getSession(sessionId);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      session.expression = expression;
-    }, 150); // 150ms debounce delay
-
-    return () => clearTimeout(timer);
-  }, [expression, session]);
+  const setExpression = (expression: string) => {
+    session.expression = expression;
+  };
 
   /**
    * Only prettify if `|` is added at the end of the expression
    */
   const shouldPrettify = () => {
     const cursorPosition = inputRef.current ? inputRef.current.selectionStart : 0;
-    return cursorPosition === expression.length;
+    return cursorPosition === session.expression.length;
   };
 
   const isPrintableChar = (key: string) => {
@@ -88,7 +82,7 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
           case '|':
             if (!shouldPrettify()) return;
             e.preventDefault();
-            setExpression(prettifyExpression(expression));
+            setExpression(prettifyExpression(session.expression));
             return;
           case 'Enter':
             e.preventDefault();
@@ -130,7 +124,7 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
             e.preventDefault();
             session.mode = 'input';
             session.loaded = false;
-            setExpression(expression + e.key);
+            setExpression(session.expression + e.key);
             return;
         }
     }
@@ -140,7 +134,7 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
     <TextField
       id="input"
       label="Pine expression... "
-      value={expression}
+      value={session.expression}
       size="small"
       variant="outlined"
       focused={session.mode === 'input'}

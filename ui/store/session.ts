@@ -4,7 +4,7 @@ import { DefaultPlugin } from '../plugin/default.plugin';
 import { RecursiveDeletePlugin } from '../plugin/recursive-delete.plugin';
 import { Ast, Hints, HttpClient, Operation, Response, TableHint } from './client';
 import { generateGraph, Graph } from './graph.util';
-import { prettifyExpression } from './util';
+import { debounce, prettifyExpression } from './util';
 
 export type Mode = 'input' | 'graph' | 'result' | 'none';
 
@@ -112,7 +112,7 @@ export class Session {
      */
     reaction(
       () => this.expression,
-      async expression => {
+      debounce(async expression => {
         // reset the candidate
         this.candidateIndex = undefined;
 
@@ -122,7 +122,7 @@ export class Session {
         } catch (e) {
           this.error = (e as any).message || 'Failed to build';
         }
-      },
+      }, 150),
     );
 
     /**
