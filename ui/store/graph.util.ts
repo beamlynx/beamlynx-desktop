@@ -145,7 +145,7 @@ export const generateGraph = (ast: Ast, candidateIndex?: number): R => {
       r.candidate = h;
     }
   }
-  const nodes = selectedNodes.concat(suggestedNodes);
+  const nodes = [...selectedNodes, ...suggestedNodes];
   const selectedNodesLookup = selectedNodes.reduce(
     (acc, x) => {
       acc[x.id] = x;
