@@ -12,6 +12,7 @@ export type TableHint = {
 export type Hints = { table: TableHint[] };
 // There are more operations. I'll add them as we need to handle them here
 export type Operation = { type: 'table' | 'delete' };
+export type Column = { column: string; alias: string };
 
 export type Ast = {
   hints: Hints;
@@ -19,6 +20,7 @@ export type Ast = {
   joins: string[][];
   context: string;
   operation: Operation;
+  columns: Column[];
 };
 
 export type Response = {
