@@ -7,13 +7,14 @@ type BaseNode = {
   color?: string | null;
 };
 
-type SelectedNodeData = BaseNode & {
+export type SelectedNodeData = BaseNode & {
   type: 'selected';
   alias: string;
   order: number;
+  columns: string[];
 };
 
-type SuggestedNodeData = BaseNode & {
+export type SuggestedNodeData = BaseNode & {
   type: 'suggested' | 'candidate';
   pine: string;
   parent: boolean;

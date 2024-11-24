@@ -20,7 +20,9 @@ import SelectedNodeComponent from './SelectedNodeComponent';
 import SuggestedNodeComponent from './SuggestedNodeComponent';
 
 const nodeWidth = 172;
-const nodeHeight = 0; // 36;
+const getNodeHeight = (node: PineNode) => {
+  return node.data.type === 'selected' ? 60 : 20;
+};
 
 export const NodeType = {
   Selected: 'selectedNode',
@@ -31,20 +33,17 @@ const nodeTypes: NodeTypes = {
   [NodeType.Selected]: SelectedNodeComponent,
 };
 
-const getLayoutedElements = (
-  nodes: PineNode[],
-  edges: PineEdge[],
-  direction: 'TB' | 'LR' = 'LR',
-) => {
+const getLayoutedElements = (nodes: PineNode[], edges: PineEdge[]) => {
   // should we create a new graph every single time?
   const dagreGraph = new dagre.graphlib.Graph();
   dagreGraph.setDefaultEdgeLabel(() => ({}));
 
-  const isHorizontal = direction === 'LR';
-  dagreGraph.setGraph({ rankdir: direction });
+  dagreGraph.setGraph({
+    rankdir: 'LR',
+  });
 
   nodes.forEach(node => {
-    dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight });
+    dagreGraph.setNode(node.id, { width: nodeWidth, height: getNodeHeight(node) });
   });
 
   edges.forEach(edge => {
@@ -55,14 +54,14 @@ const getLayoutedElements = (
 
   nodes.forEach(node => {
     const nodeWithPosition = dagreGraph.node(node.id);
-    node.targetPosition = isHorizontal ? Position.Left : Position.Top;
-    node.sourcePosition = isHorizontal ? Position.Right : Position.Bottom;
+    node.targetPosition = Position.Left;
+    node.sourcePosition = Position.Right;
 
     // We are shifting the dagre node position (anchor=center center) to the top left
     // so it matches the React Flow node anchor point (top left).
     node.position = {
       x: nodeWithPosition.x - nodeWidth / 2,
-      y: nodeWithPosition.y - nodeHeight / 2,
+      y: nodeWithPosition.y - getNodeHeight(node) / 2,
     };
 
     return node;

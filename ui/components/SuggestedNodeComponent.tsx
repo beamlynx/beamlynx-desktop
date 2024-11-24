@@ -34,7 +34,7 @@ const SuggestedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
           style={{
             position: 'absolute',
             right: 0,
-            top: -1, // Position above the node
+            top: -5, // Position above the node
             padding: '2px 5px',
             fontSize: '8px', // Smaller font size
             background: data.color ?? '#fff', // Different colors for selected and suggested

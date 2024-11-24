@@ -149,6 +149,12 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
       onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setExpression(e.target.value)}
       onKeyDown={handleKeyPress}
       disabled={!global.connected}
+      InputProps={{
+        style: {
+          fontFamily: 'monospace',
+          fontSize: '0.875rem', // 14px, smaller than default 16px
+        },
+      }}
     />
   );
 });
