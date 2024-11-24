@@ -132,9 +132,15 @@ export const generateGraph = (ast: Ast, candidateIndex?: number): R => {
 
   // Create nodes for the selected and suggested tables
   const selectedNodes = getSelectedNodes(ast);
+  const selectedNodesLookup = selectedNodes.reduce(
+    (acc, x) => {
+      acc[x.id] = x;
+      return acc;
+    },
+    {} as Record<string, PineNode>,
+  );
 
-  // TODO: there can be a better way
-  const contextNode: PineNode = selectedNodes.find(n => n.id === context)!;
+  const contextNode: PineNode = selectedNodesLookup[context];
 
   const suggestedNodes: PineSuggestedNode[] = [];
   for (const { h, i } of suggestedTables.map((h, i) => ({ h, i }))) {
@@ -146,13 +152,6 @@ export const generateGraph = (ast: Ast, candidateIndex?: number): R => {
     }
   }
   const nodes = [...selectedNodes, ...suggestedNodes];
-  const selectedNodesLookup = selectedNodes.reduce(
-    (acc, x) => {
-      acc[x.id] = x;
-      return acc;
-    },
-    {} as Record<string, PineNode>,
-  );
 
   r.graph.nodes = nodes;
 
