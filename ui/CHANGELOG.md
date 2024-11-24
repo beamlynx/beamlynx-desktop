@@ -5,6 +5,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- Show selected columns in selected nodes
+
 ## [0.9.0] - 2024-10-25
 
 ### Added
