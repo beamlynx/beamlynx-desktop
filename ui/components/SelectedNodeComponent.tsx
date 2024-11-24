@@ -48,8 +48,8 @@ const TableNode = ({
       onMouseEnter={() => setShowOptions(true)}
       onMouseLeave={() => setShowOptions(false)}
     >
-      {/* Options */}
-      <div
+      {/* Options i.e. toggle column candidates */}
+      {/* <div
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -77,7 +77,7 @@ const TableNode = ({
         }}
       >
         {expanded ? '-' : '+'}
-      </div>
+      </div> */}
 
       {/* Node */}
       <div
