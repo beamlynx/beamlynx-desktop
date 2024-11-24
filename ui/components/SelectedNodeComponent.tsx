@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Handle, NodeProps, Position } from 'reactflow';
 import { SelectedNodeData } from '../model';
+import { useStores } from '../store/store-container';
 
 type PineNodeProps = NodeProps<SelectedNodeData>;
 
@@ -33,139 +34,148 @@ const TableNode = ({
   schema: string;
   color?: string | null;
   alias: string;
-}) => (
-  <div
-    style={{
-      padding: '12px 10px 5px 10px',
-      display: 'flex',
-      flexDirection: 'row',
-      alignItems: 'center',
-    }}
-    onMouseEnter={() => setShowOptions(true)}
-    onMouseLeave={() => setShowOptions(false)}
-  >
-    {/* Options */}
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        margin: '5px 4px',
-        cursor: 'pointer',
-        fontSize: '12px',
-        color: '#666',
-        opacity: showOptions ? 1 : 0,
-        backgroundColor: '#fff',
-        border: '1px solid #ddd',
-        borderRadius: '4px',
-        width: '20px',
-        minWidth: '20px',
-        padding: '0 8px',
-        height: '20px',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-        fontWeight: 'bold',
-      }}
-      onClick={() => setExpanded(!expanded)}
-    >
-      {expanded ? '-' : '+'}
-    </div>
+}) => {
+  const { global } = useStores();
 
-    {/* Node */}
+  return (
     <div
       style={{
-        position: 'relative',
         padding: '12px 10px 5px 10px',
-        border: '2px solid black',
-        background: 'lightgray',
-        borderRadius: '5px',
+        display: 'flex',
+        flexDirection: 'row',
+        alignItems: 'center',
       }}
+      onMouseEnter={() => setShowOptions(true)}
+      onMouseLeave={() => setShowOptions(false)}
     >
-      {/* Table */}
-      <div>
-        {table}
-        <div
-          style={{
-            textAlign: 'right',
-            fontSize: '8px',
-            fontFamily: 'Courier, monospace',
-          }}
-        >
-          {alias}
-        </div>
+      {/* Options */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          margin: '5px 4px',
+          cursor: 'pointer',
+          fontSize: '12px',
+          color: '#666',
+          opacity: showOptions ? 1 : 0,
+          backgroundColor: '#fff',
+          border: '1px solid #ddd',
+          borderRadius: '4px',
+          width: '20px',
+          minWidth: '20px',
+          padding: '0 8px',
+          height: '20px',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+          fontWeight: 'bold',
+        }}
+        onClick={() => {
+          const session = global.getSession(global.activeSessionId);
+          session.message =
+            '🚧 Column support is coming soon. You can see some hard coded columns.';
+          setExpanded(!expanded);
+        }}
+      >
+        {expanded ? '-' : '+'}
       </div>
 
-      {/* Order */}
-      {
-        <div
+      {/* Node */}
+      <div
+        style={{
+          position: 'relative',
+          padding: '12px 10px 5px 10px',
+          border: '2px solid black',
+          background: 'lightgray',
+          borderRadius: '5px',
+        }}
+      >
+        {/* Table */}
+        <div>
+          {table}
+          <div
+            style={{
+              textAlign: 'right',
+              fontSize: '8px',
+              fontFamily: 'Courier, monospace',
+            }}
+          >
+            {alias}
+          </div>
+        </div>
+
+        {/* Order */}
+        {
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              transform: 'translate(-50%, -50%)',
+              width: '20px',
+              height: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: '50%',
+              background: '#800000',
+              color: 'white',
+              fontSize: '12px',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.25)',
+              fontWeight: 'bold',
+            }}
+          >
+            {order}
+          </div>
+        }
+
+        {/* Schema */}
+        {schema !== 'public' && (
+          <div
+            style={{
+              position: 'absolute',
+              right: 0,
+              top: -5,
+              padding: '2px 5px',
+              fontSize: '8px',
+              borderRadius: '5px',
+              transform: 'translateY(-100%)',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+              background: color ?? '#fff',
+            }}
+          >
+            {schema}
+          </div>
+        )}
+
+        <Handle
+          type="target"
+          position={Position.Left}
           style={{
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            transform: 'translate(-50%, -50%)',
-            width: '20px',
-            height: '20px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            width: '2px',
+            height: '2px',
+            background: 'darkgray',
             borderRadius: '50%',
-            background: '#800000',
-            color: 'white',
-            fontSize: '12px',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.25)',
-            fontWeight: 'bold',
           }}
-        >
-          {order}
-        </div>
-      }
-
-      {/* Schema */}
-      {schema !== 'public' && (
-        <div
+        />
+        <Handle
+          type="source"
+          position={Position.Right}
           style={{
-            position: 'absolute',
-            right: 0,
-            top: -5,
-            padding: '2px 5px',
-            fontSize: '8px',
-            borderRadius: '5px',
-            transform: 'translateY(-100%)',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-            background: color ?? '#fff',
+            width: '2px',
+            height: '2px',
+            background: 'darkgray',
+            borderRadius: '50%',
           }}
-        >
-          {schema}
-        </div>
-      )}
-
-      <Handle
-        type="target"
-        position={Position.Left}
-        style={{
-          width: '2px',
-          height: '2px',
-          background: 'darkgray',
-          borderRadius: '50%',
-        }}
-      />
-      <Handle
-        type="source"
-        position={Position.Right}
-        style={{
-          width: '2px',
-          height: '2px',
-          background: 'darkgray',
-          borderRadius: '50%',
-        }}
-      />
+        />
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
-const Columns = ({ expanded, columns }: { expanded: boolean; columns: string[] }) => (
+const SelectedColumns = ({ columns }: { columns: string[] }) => (
   <div
     style={{
-      maxHeight: expanded ? '500px' : '0',
+      maxHeight: '500px',
       overflow: 'hidden',
     }}
   >
@@ -197,13 +207,69 @@ const Columns = ({ expanded, columns }: { expanded: boolean; columns: string[] }
   </div>
 );
 
+const CandidateColumns = ({ expanded, columns }: { expanded: boolean; columns: string[] }) => (
+  <div
+    style={{
+      maxHeight: expanded ? '500px' : '0',
+      overflow: 'hidden',
+      width: '100%',
+    }}
+  >
+    <div
+      style={{
+        width: '100%',
+        height: '1px',
+        background: '#ddd',
+        margin: '4px 0',
+      }}
+    />
+    <div
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: '4px',
+        justifyContent: 'center',
+        padding: '4px',
+        width: '100%',
+      }}
+    >
+      {columns.map(column => (
+        <div
+          key={column}
+          style={{
+            fontSize: '8px',
+            fontFamily: 'Courier, monospace',
+            background: '#f0f0f0',
+            padding: '2px 6px',
+            borderRadius: '8px',
+            border: '1px solid #ddd',
+          }}
+        >
+          {column}
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+const Columns = ({ expanded, columns }: { expanded: boolean; columns: string[] }) => {
+  const candidateColumns = ['id', 'name', 'created_at', 'updated_at', 'tenant_id'];
+
+  return (
+    <div style={{ width: 150 }}>
+      <SelectedColumns columns={columns} />
+      <CandidateColumns expanded={expanded} columns={candidateColumns} />
+    </div>
+  );
+};
+
 const SelectedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
   const { order, table, schema, color, alias, columns } = data;
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
 
   return (
-    <div>
+    <div style={{ width: 150 }}>
       <TableNode
         showOptions={showOptions}
         setShowOptions={setShowOptions}
@@ -215,7 +281,6 @@ const SelectedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
         color={color}
         alias={alias}
       />
-
       <Columns expanded={expanded} columns={columns} />
     </div>
   );
