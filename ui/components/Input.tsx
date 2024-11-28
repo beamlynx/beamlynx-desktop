@@ -29,7 +29,7 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
     return key.length === 1;
   };
   const isModifierKeyCombo = (e: React.KeyboardEvent) => {
-    return e.ctrlKey || e.metaKey;
+    return e.ctrlKey || e.metaKey || e.altKey || e.key === 'Meta';
   };
 
   /**
