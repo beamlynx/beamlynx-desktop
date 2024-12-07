@@ -188,6 +188,15 @@ export class Session {
         this.graph = graph;
       },
     );
+
+    reaction(
+      () => this.candidate,
+      async candidate => {
+        if (!candidate) return;
+        const { pine } = candidate;
+        this.message = pine;
+      },
+    );
   }
 
   public selectNextCandidate(offset: number) {
