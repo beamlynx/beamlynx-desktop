@@ -1,42 +1,22 @@
 import React, { useState } from 'react';
 import { Handle, NodeProps, Position } from 'reactflow';
 import { SelectedNodeData } from '../model';
-import { useStores } from '../store/store-container';
 
 type PineNodeProps = NodeProps<SelectedNodeData>;
 
-/**
- * Container for:
- * - Table node
- * - Options (i.e. show columns)
- *
- * The options are shown on the left of the table node.
- * The options are hidden by default and shown when the user hovers over
- * the node.
- */
 const TableNode = ({
-  showOptions,
-  setShowOptions,
-  expanded,
-  setExpanded,
   order,
   table,
   schema,
   color,
   alias,
 }: {
-  showOptions: boolean;
-  setShowOptions: (show: boolean) => void;
-  expanded: boolean;
-  setExpanded: (expanded: boolean) => void;
   order: number;
   table: string;
   schema: string;
   color?: string | null;
   alias: string;
 }) => {
-  const { global } = useStores();
-
   return (
     <div
       style={{
@@ -45,40 +25,7 @@ const TableNode = ({
         flexDirection: 'row',
         alignItems: 'center',
       }}
-      onMouseEnter={() => setShowOptions(true)}
-      onMouseLeave={() => setShowOptions(false)}
     >
-      {/* Options i.e. toggle column candidates */}
-      {/* <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          margin: '5px 4px',
-          cursor: 'pointer',
-          fontSize: '12px',
-          color: '#666',
-          opacity: showOptions ? 1 : 0,
-          backgroundColor: '#fff',
-          border: '1px solid #ddd',
-          borderRadius: '4px',
-          width: '20px',
-          minWidth: '20px',
-          padding: '0 8px',
-          height: '20px',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-          fontWeight: 'bold',
-        }}
-        onClick={() => {
-          const session = global.getSession(global.activeSessionId);
-          session.message =
-            '🚧 Column support is coming soon. You can see some hard coded columns.';
-          setExpanded(!expanded);
-        }}
-      >
-        {expanded ? '-' : '+'}
-      </div> */}
-
       {/* Node */}
       <div
         style={{
@@ -185,7 +132,6 @@ const SelectedColumns = ({ columns }: { columns: string[] }) => (
         flexWrap: 'wrap',
         gap: '4px',
         justifyContent: 'center',
-        padding: '4px',
       }}
     >
       {columns.map(column => (
@@ -217,19 +163,10 @@ const CandidateColumns = ({ expanded, columns }: { expanded: boolean; columns: s
   >
     <div
       style={{
-        width: '100%',
-        height: '1px',
-        background: '#ddd',
-        margin: '4px 0',
-      }}
-    />
-    <div
-      style={{
         display: 'flex',
         flexWrap: 'wrap',
         gap: '4px',
         justifyContent: 'center',
-        padding: '4px',
         width: '100%',
       }}
     >
@@ -239,10 +176,11 @@ const CandidateColumns = ({ expanded, columns }: { expanded: boolean; columns: s
           style={{
             fontSize: '8px',
             fontFamily: 'Courier, monospace',
-            background: '#f0f0f0',
+            background: 'transparent',
             padding: '2px 6px',
             borderRadius: '8px',
-            border: '1px solid #ddd',
+            border: '1px solid #ccc',
+            color: '#666',
           }}
         >
           {column}
@@ -252,11 +190,22 @@ const CandidateColumns = ({ expanded, columns }: { expanded: boolean; columns: s
   </div>
 );
 
-const Columns = ({ expanded, columns }: { expanded: boolean; columns: string[] }) => {
-  const candidateColumns = ['id', 'name', 'created_at', 'updated_at', 'tenant_id'];
+const Columns = ({ columns, expanded }: { columns: string[]; expanded: boolean }) => {
+  const selectedColumnsSet = new Set(columns);
+  const candidateColumns = ['id', 'name', 'created_at', 'updated_at', 'tenant_id'].filter(
+    col => !selectedColumnsSet.has(col),
+  );
 
   return (
-    <div style={{ width: 150 }}>
+    <div
+      style={{
+        width: 100,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: '8px',
+      }}
+    >
       <SelectedColumns columns={columns} />
       <CandidateColumns expanded={expanded} columns={candidateColumns} />
     </div>
@@ -266,22 +215,14 @@ const Columns = ({ expanded, columns }: { expanded: boolean; columns: string[] }
 const SelectedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
   const { order, table, schema, color, alias, columns } = data;
   const [expanded, setExpanded] = useState(false);
-  const [showOptions, setShowOptions] = useState(false);
-
   return (
-    <div style={{ width: 150 }}>
-      <TableNode
-        showOptions={showOptions}
-        setShowOptions={setShowOptions}
-        expanded={expanded}
-        setExpanded={setExpanded}
-        order={order}
-        table={table}
-        schema={schema}
-        color={color}
-        alias={alias}
-      />
-      <Columns expanded={expanded} columns={columns} />
+    <div
+      style={{ width: 150 }}
+      onMouseEnter={() => setExpanded(true)}
+      onMouseLeave={() => setExpanded(false)}
+    >
+      <TableNode order={order} table={table} schema={schema} color={color} alias={alias} />
+      <Columns columns={columns} expanded={expanded} />
     </div>
   );
 };
