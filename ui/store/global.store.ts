@@ -3,7 +3,7 @@ import { lt } from 'semver';
 import { HttpClient } from './client';
 import { Session } from './session';
 
-const requiredVersion = '0.13.0';
+const requiredVersion = '0.14.0';
 
 const initSession = new Session('0');
 
@@ -107,6 +107,9 @@ export class GlobalStore {
     const session = this.getSession(sessionId);
     if (quote) {
       v = `'${v.replace(/'/g, "'")}'`;
+    }
+    if (v.length > 150) {
+      v = v.substring(0, 147) + '...';
     }
     session.message = `📋 Copied: ${v}`;
   };

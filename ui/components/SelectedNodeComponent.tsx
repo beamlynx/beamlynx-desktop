@@ -1,42 +1,22 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Handle, NodeProps, Position } from 'reactflow';
 import { SelectedNodeData } from '../model';
-import { useStores } from '../store/store-container';
 
 type PineNodeProps = NodeProps<SelectedNodeData>;
 
-/**
- * Container for:
- * - Table node
- * - Options (i.e. show columns)
- *
- * The options are shown on the left of the table node.
- * The options are hidden by default and shown when the user hovers over
- * the node.
- */
 const TableNode = ({
-  showOptions,
-  setShowOptions,
-  expanded,
-  setExpanded,
   order,
   table,
   schema,
   color,
   alias,
 }: {
-  showOptions: boolean;
-  setShowOptions: (show: boolean) => void;
-  expanded: boolean;
-  setExpanded: (expanded: boolean) => void;
   order: number;
   table: string;
   schema: string;
   color?: string | null;
   alias: string;
 }) => {
-  const { global } = useStores();
-
   return (
     <div
       style={{
@@ -45,40 +25,7 @@ const TableNode = ({
         flexDirection: 'row',
         alignItems: 'center',
       }}
-      onMouseEnter={() => setShowOptions(true)}
-      onMouseLeave={() => setShowOptions(false)}
     >
-      {/* Options i.e. toggle column candidates */}
-      {/* <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          margin: '5px 4px',
-          cursor: 'pointer',
-          fontSize: '12px',
-          color: '#666',
-          opacity: showOptions ? 1 : 0,
-          backgroundColor: '#fff',
-          border: '1px solid #ddd',
-          borderRadius: '4px',
-          width: '20px',
-          minWidth: '20px',
-          padding: '0 8px',
-          height: '20px',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-          fontWeight: 'bold',
-        }}
-        onClick={() => {
-          const session = global.getSession(global.activeSessionId);
-          session.message =
-            '🚧 Column support is coming soon. You can see some hard coded columns.';
-          setExpanded(!expanded);
-        }}
-      >
-        {expanded ? '-' : '+'}
-      </div> */}
-
       {/* Node */}
       <div
         style={{
@@ -185,7 +132,6 @@ const SelectedColumns = ({ columns }: { columns: string[] }) => (
         flexWrap: 'wrap',
         gap: '4px',
         justifyContent: 'center',
-        padding: '4px',
       }}
     >
       {columns.map(column => (
@@ -207,29 +153,20 @@ const SelectedColumns = ({ columns }: { columns: string[] }) => (
   </div>
 );
 
-const CandidateColumns = ({ expanded, columns }: { expanded: boolean; columns: string[] }) => (
+const CandidateColumns = ({ columns }: { columns: string[] }) => (
   <div
     style={{
-      maxHeight: expanded ? '500px' : '0',
+      maxHeight: columns.length > 0 ? '500px' : '0',
       overflow: 'hidden',
       width: '100%',
     }}
   >
     <div
       style={{
-        width: '100%',
-        height: '1px',
-        background: '#ddd',
-        margin: '4px 0',
-      }}
-    />
-    <div
-      style={{
         display: 'flex',
         flexWrap: 'wrap',
         gap: '4px',
         justifyContent: 'center',
-        padding: '4px',
         width: '100%',
       }}
     >
@@ -239,10 +176,11 @@ const CandidateColumns = ({ expanded, columns }: { expanded: boolean; columns: s
           style={{
             fontSize: '8px',
             fontFamily: 'Courier, monospace',
-            background: '#f0f0f0',
+            background: 'transparent',
             padding: '2px 6px',
             borderRadius: '8px',
-            border: '1px solid #ddd',
+            border: '1px solid #ccc',
+            color: '#666',
           }}
         >
           {column}
@@ -252,36 +190,41 @@ const CandidateColumns = ({ expanded, columns }: { expanded: boolean; columns: s
   </div>
 );
 
-const Columns = ({ expanded, columns }: { expanded: boolean; columns: string[] }) => {
-  const candidateColumns = ['id', 'name', 'created_at', 'updated_at', 'tenant_id'];
+const Columns = ({ columns, suggested }: { columns: string[]; suggested: string[] }) => {
+  const selectedColumnsSet = new Set(columns);
+  const candidateColumns = suggested.filter(
+    col => !selectedColumnsSet.has(col),
+  );
 
   return (
-    <div style={{ width: 150 }}>
+    <div
+      style={{
+        width: 200,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px',
+      }}
+    >
       <SelectedColumns columns={columns} />
-      <CandidateColumns expanded={expanded} columns={candidateColumns} />
+      <CandidateColumns columns={candidateColumns} />
     </div>
   );
 };
 
 const SelectedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
-  const { order, table, schema, color, alias, columns } = data;
-  const [expanded, setExpanded] = useState(false);
-  const [showOptions, setShowOptions] = useState(false);
-
+  const { order, table, schema, color, alias, columns, suggestedColumns } = data;
+  const showBorder = suggestedColumns.length > 0;
   return (
-    <div style={{ width: 150 }}>
-      <TableNode
-        showOptions={showOptions}
-        setShowOptions={setShowOptions}
-        expanded={expanded}
-        setExpanded={setExpanded}
-        order={order}
-        table={table}
-        schema={schema}
-        color={color}
-        alias={alias}
-      />
-      <Columns expanded={expanded} columns={columns} />
+    <div
+      style={{
+        border: '1px solid #ccc',
+        borderRadius: showBorder ? '8px' : '0',
+        borderColor: showBorder ? '#ccc' : 'transparent',
+        padding: '12px',
+      }}
+    >
+      <TableNode order={order} table={table} schema={schema} color={color} alias={alias} />
+      <Columns columns={columns} suggested={suggestedColumns} />
     </div>
   );
 };

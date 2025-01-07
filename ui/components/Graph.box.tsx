@@ -84,7 +84,8 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId }) => {
   const reactFlowInstance = useReactFlow();
 
   useEffect(() => {
-    const { nodes, edges } = getLayoutedElements(graph.nodes, graph.edges);
+    const n = [...graph.selectedNodes, ...graph.suggestedNodes];
+    const { nodes, edges } = getLayoutedElements(n, graph.edges);
     setNodes(nodes);
     setEdges(edges);
 
@@ -94,7 +95,7 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId }) => {
 
     // TODO: how can I avoid disabling the eslint rule?
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graph.nodes, graph.edges]);
+  }, [graph.selectedNodes, graph.suggestedNodes, graph.edges]);
 
   return (
     <ReactFlow

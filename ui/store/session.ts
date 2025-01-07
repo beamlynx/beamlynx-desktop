@@ -88,7 +88,9 @@ export class Session {
   candidate: TableHint | null = null;
 
   graph: Graph = {
-    nodes: [],
+    candidate: null,
+    selectedNodes: [],
+    suggestedNodes: [],
     edges: [],
   };
 
@@ -108,7 +110,8 @@ export class Session {
     };
 
     /**
-     * Build the expression i.e. get the http repsonse
+     * Handle the expression
+     * - Get the http repsonse
      */
     reaction(
       () => this.expression,
@@ -159,8 +162,9 @@ export class Session {
 
     /**
      * Handle the ast
-     * - message from hints
-     * - graph from ast
+     * - Graph
+     * - Message from the hints
+     * - Current
      */
     reaction(
       () => this.ast,
@@ -169,23 +173,43 @@ export class Session {
 
         if (ast.hints) {
           const hints = ast.hints;
-          this.message = getMessageFromHints(hints);
+          const message = getMessageFromHints(ast.operation, hints);
+          if (message) {
+            this.message = message;
+          }
         }
 
-        const { candidate, graph } = generateGraph(ast, this.candidateIndex);
-        this.candidate = candidate;
+        const graph = generateGraph(ast, this.candidateIndex);
+        this.candidate = graph.candidate;
         this.graph = graph;
       },
     );
 
+    /**
+     * Handle the candidate index
+     * - Graph
+     */
     reaction(
       () => this.candidateIndex,
       async ci => {
         const ast = this.ast;
         if (!ast?.hints) return;
-        const { candidate, graph } = generateGraph(ast, ci);
-        this.candidate = candidate;
+        const graph = generateGraph(ast, ci);
+        this.candidate = graph.candidate;
         this.graph = graph;
+      },
+    );
+
+    /**
+     * Handle the candidate
+     * - Suggested Pine Expression
+     */
+    reaction(
+      () => this.candidate,
+      async candidate => {
+        if (!candidate) return;
+        const { pine } = candidate;
+        this.message = pine;
       },
     );
   }
@@ -219,9 +243,15 @@ export class Session {
   }
 }
 
-const getMessageFromHints = (hints: Hints): string => {
-  const expressions = hints.table.map(h => h.pine);
-  return expressions ? expressions.join(', ').substring(0, 140) : '';
+const getMessageFromHints = (operation: Operation, hints: Hints): string | undefined => {
+  switch (operation.type) {
+    case 'table':
+      const tableExpressions = hints.table.map(h => h.pine);
+      return tableExpressions ? tableExpressions.join(', ').substring(0, 140) : '';
+    case 'select-partial':
+      const columns = hints['select-partial']?.map(h => h.column);
+      return columns ? columns.join(', ').substring(0, 140) : '';
+  }
 };
 
 const handleOperation = (response: Response): Operation => {
