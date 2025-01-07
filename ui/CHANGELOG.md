@@ -5,7 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
-## [0.10.0] - 2025-01-07
+## [0.10.1] - 2025-01-07
 
 ### Added
 
