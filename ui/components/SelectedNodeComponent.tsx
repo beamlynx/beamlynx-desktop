@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Handle, NodeProps, Position } from 'reactflow';
 import { SelectedNodeData } from '../model';
 
@@ -153,10 +153,10 @@ const SelectedColumns = ({ columns }: { columns: string[] }) => (
   </div>
 );
 
-const CandidateColumns = ({ expanded, columns }: { expanded: boolean; columns: string[] }) => (
+const CandidateColumns = ({ columns }: { columns: string[] }) => (
   <div
     style={{
-      maxHeight: expanded ? '500px' : '0',
+      maxHeight: columns.length > 0 ? '500px' : '0',
       overflow: 'hidden',
       width: '100%',
     }}
@@ -190,39 +190,41 @@ const CandidateColumns = ({ expanded, columns }: { expanded: boolean; columns: s
   </div>
 );
 
-const Columns = ({ columns, expanded }: { columns: string[]; expanded: boolean }) => {
+const Columns = ({ columns, suggested }: { columns: string[]; suggested: string[] }) => {
   const selectedColumnsSet = new Set(columns);
-  const candidateColumns = ['id', 'name', 'created_at', 'updated_at', 'tenant_id'].filter(
+  const candidateColumns = suggested.filter(
     col => !selectedColumnsSet.has(col),
   );
 
   return (
     <div
       style={{
-        width: 100,
+        width: 200,
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center',
         gap: '8px',
       }}
     >
       <SelectedColumns columns={columns} />
-      <CandidateColumns expanded={expanded} columns={candidateColumns} />
+      <CandidateColumns columns={candidateColumns} />
     </div>
   );
 };
 
 const SelectedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
-  const { order, table, schema, color, alias, columns } = data;
-  const [expanded, setExpanded] = useState(false);
+  const { order, table, schema, color, alias, columns, suggestedColumns } = data;
+  const showBorder = suggestedColumns.length > 0;
   return (
     <div
-      style={{ width: 150 }}
-      onMouseEnter={() => setExpanded(true)}
-      onMouseLeave={() => setExpanded(false)}
+      style={{
+        border: '1px solid #ccc',
+        borderRadius: showBorder ? '8px' : '0',
+        borderColor: showBorder ? '#ccc' : 'transparent',
+        padding: '12px',
+      }}
     >
       <TableNode order={order} table={table} schema={schema} color={color} alias={alias} />
-      <Columns columns={columns} expanded={expanded} />
+      <Columns columns={columns} suggested={suggestedColumns} />
     </div>
   );
 };

@@ -12,6 +12,8 @@ export type SelectedNodeData = BaseNode & {
   alias: string;
   order: number;
   columns: string[];
+  // Current node
+  suggestedColumns: string[];
 };
 
 export type SuggestedNodeData = BaseNode & {

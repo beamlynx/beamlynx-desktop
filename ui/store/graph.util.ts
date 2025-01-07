@@ -4,13 +4,13 @@ import { NodeType } from '../components/Graph.box';
 import { Ast, Table, TableHint } from './client';
 
 export type Graph = {
-  nodes: PineNode[];
-  edges: PineEdge[];
-};
-
-type R = {
+  // Metadata
   candidate: TableHint | null;
-  graph: Graph;
+
+  // Reactflow nodes and edges - this is ready to be rendered
+  selectedNodes: PineSelectedNode[];
+  suggestedNodes: PineSuggestedNode[];
+  edges: PineEdge[];
 };
 
 const getCandidateIndex = (suggestedTables: TableHint[], ci: number | undefined) => {
@@ -39,7 +39,12 @@ const getColor = (schema: string) => {
   return { schema, color };
 };
 
-const makeSelectedNode = (n: Table, order: number, columns: string[]): PineSelectedNode => {
+const makeSelectedNode = (
+  n: Table,
+  order: number,
+  columns: string[],
+  suggestedColumns: string[],
+): PineSelectedNode => {
   const { schema, table, alias } = n;
   const { color } = getColor(n.schema);
   const id = alias;
@@ -55,6 +60,7 @@ const makeSelectedNode = (n: Table, order: number, columns: string[]): PineSelec
       alias,
       order,
       columns,
+      suggestedColumns,
     },
     position: { x: 0, y: 0 },
   };
@@ -64,7 +70,6 @@ const makeSuggestedNode = (n: TableHint, candidate = false): PineSuggestedNode =
   const { schema, table, column, pine, parent } = n;
   const { color } = getColor(schema);
 
-  // Pine doesn't support directionality at the moment.
   const id = pine;
 
   return {
@@ -83,8 +88,13 @@ const makeSuggestedNode = (n: TableHint, candidate = false): PineSuggestedNode =
   };
 };
 
-const getSelectedNodes = (ast: Ast): PineSelectedNode[] => {
-  const { 'selected-tables': selectedTables, columns } = ast;
+const makeSelectedNodes = (ast: Ast): PineSelectedNode[] => {
+  const {
+    'selected-tables': selectedTables,
+    columns,
+    current,
+    hints: { select: suggestedColumns },
+  } = ast;
 
   const columnsLookup = columns.reduce(
     (acc, x) => {
@@ -102,36 +112,53 @@ const getSelectedNodes = (ast: Ast): PineSelectedNode[] => {
     ? selectedTables.map((x, i) => {
         const order = i + 1;
         const columns = columnsLookup[x.alias] ?? (order === count ? ['*'] : []);
-        return makeSelectedNode(x, order, columns);
+        const isCurrent = x.alias === current;
+        return makeSelectedNode(
+          x,
+          order,
+          columns,
+          isCurrent ? suggestedColumns.map(c => c.column) : [],
+        );
       })
     : [];
 
   return selectedNodes;
 };
 
-export const generateGraph = (ast: Ast, candidateIndex?: number): R => {
+const makeSuggestedNodes = (ast: Ast, candidate: TableHint | null): PineSuggestedNode[] => {
+  const {
+    hints: { table: suggestedTables },
+  } = ast;
+  const suggestedNodes: PineSuggestedNode[] = [];
+  for (const h of suggestedTables) {
+    const node = makeSuggestedNode(h, h === candidate);
+    suggestedNodes.push(node);
+  }
+  return suggestedNodes;
+};
+
+export const generateGraph = (ast: Ast, candidateIndex?: number): Graph => {
   const {
     hints: { table: suggestedTables },
     'selected-tables': selectedTables,
     joins,
     context,
-    columns,
   } = ast;
 
-  // TODO: move index calculation before the graph generation. Pass candidate
-  // index as argument
-  const r: R = {
+  const graph: Graph = {
     candidate: null,
-    graph: {
-      edges: [],
-      nodes: [],
-    },
+    selectedNodes: [],
+    suggestedNodes: [],
+    edges: [],
   };
 
-  const sanitizedCandidateIndex = getCandidateIndex(suggestedTables, candidateIndex);
+  /**
+   * 1. Selected Nodes
+   */
 
-  // Create nodes for the selected and suggested tables
-  const selectedNodes = getSelectedNodes(ast);
+  const selectedNodes = makeSelectedNodes(ast);
+
+  // Find the context node
   const selectedNodesLookup = selectedNodes.reduce(
     (acc, x) => {
       acc[x.id] = x;
@@ -139,30 +166,42 @@ export const generateGraph = (ast: Ast, candidateIndex?: number): R => {
     },
     {} as Record<string, PineNode>,
   );
-
   const contextNode: PineNode = selectedNodesLookup[context];
 
-  const suggestedNodes: PineSuggestedNode[] = [];
-  for (const { h, i } of suggestedTables.map((h, i) => ({ h, i }))) {
-    const isCandidate = sanitizedCandidateIndex !== undefined && i === sanitizedCandidateIndex;
-    const node = makeSuggestedNode(h, isCandidate);
-    suggestedNodes.push(node);
-    if (isCandidate) {
-      r.candidate = h;
+  /**
+   * 2. Candidate
+   */
+
+  const sanitizedCandidateIndex = getCandidateIndex(suggestedTables, candidateIndex);
+  if (sanitizedCandidateIndex !== undefined) {
+    for (const { h, i } of suggestedTables.map((h, i) => ({ h, i }))) {
+      if (i === sanitizedCandidateIndex) {
+        graph.candidate = h;
+      }
     }
   }
-  const nodes = [...selectedNodes, ...suggestedNodes];
 
-  r.graph.nodes = nodes;
+  /**
+   * 3. Suggested Nodes
+   */
+
+  const suggestedNodes = makeSuggestedNodes(ast, graph.candidate);
+
+  graph.selectedNodes = selectedNodes;
+  graph.suggestedNodes = suggestedNodes;
+
+  /**
+   * 4. Edges
+   */
 
   // If there are no selected tables, there are no edges
   if (selectedTables.length < 1) {
-    r.graph.edges = [];
-    return r;
+    graph.edges = [];
+    return graph;
   }
 
   if (suggestedNodes.length === 0) {
-    r.graph.edges = [];
+    graph.edges = [];
   }
 
   // TODO: we don't always have to regenerate the lookup. This can be cached
@@ -200,7 +239,7 @@ export const generateGraph = (ast: Ast, candidateIndex?: number): R => {
     }
   }
 
-  r.graph.edges = Object.values(edgeLookup);
+  graph.edges = Object.values(edgeLookup);
 
-  return r;
+  return graph;
 };
