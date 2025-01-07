@@ -249,7 +249,7 @@ const getMessageFromHints = (operation: Operation, hints: Hints): string | undef
       const tableExpressions = hints.table.map(h => h.pine);
       return tableExpressions ? tableExpressions.join(', ').substring(0, 140) : '';
     case 'select-partial':
-      const columns = hints['select-partial']?.map(h => h.column);
+      const columns = hints.select?.map(h => h.column);
       return columns ? columns.join(', ').substring(0, 140) : '';
   }
 };
