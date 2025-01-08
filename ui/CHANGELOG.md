@@ -5,6 +5,14 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Show the suggested columns for the relevant table when alias is used e.g.
+
+```
+company as c | document | select: c.id
+```
+
 ## [0.10.1] - 2025-01-07
 
 ### Added
