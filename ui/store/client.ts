@@ -11,6 +11,7 @@ export type TableHint = {
 
 export type ColumnHint = {
   column: string;
+  alias: string;
 };
 
 export type Hints = { table: TableHint[]; select: ColumnHint[] };

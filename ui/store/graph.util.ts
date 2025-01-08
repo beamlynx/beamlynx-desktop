@@ -108,17 +108,23 @@ const makeSelectedNodes = (ast: Ast): PineSelectedNode[] => {
   );
   const count = selectedTables.length;
 
+  // index suggested columns by alias
+  const suggestedColumnsLookup = suggestedColumns.reduce(
+    (acc, x) => {
+      if (!acc[x.alias]) {
+        acc[x.alias] = [];
+      }
+      acc[x.alias].push(x.column);
+      return acc;
+    },
+    {} as Record<string, string[]>,
+  );
+
   const selectedNodes: PineSelectedNode[] = selectedTables
     ? selectedTables.map((x, i) => {
         const order = i + 1;
         const columns = columnsLookup[x.alias] ?? (order === count ? ['*'] : []);
-        const isCurrent = x.alias === current;
-        return makeSelectedNode(
-          x,
-          order,
-          columns,
-          isCurrent ? suggestedColumns.map(c => c.column) : [],
-        );
+        return makeSelectedNode(x, order, columns, suggestedColumnsLookup[x.alias] ?? []);
       })
     : [];
 
