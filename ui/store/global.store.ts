@@ -3,7 +3,7 @@ import { lt } from 'semver';
 import { HttpClient } from './client';
 import { Session } from './session';
 
-const requiredVersion = '0.14.0';
+const requiredVersion = '0.14.1';
 
 const initSession = new Session('0');
 
