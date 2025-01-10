@@ -5,6 +5,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- Arranged the layout so that the graph can take more space
+
+## [0.10.2] - 2025-01-08
 ### Fixed
 
 - Show the suggested columns for the relevant table when alias is used e.g.
