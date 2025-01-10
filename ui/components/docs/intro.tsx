@@ -2,21 +2,14 @@ export const Introduction = (
   <div>
     {/* Intro */}
     <b>🌲 Welcome to Pine!</b>
-    <p>Type a Pine expression above 👆 and interact with your database. See how to navigate 👉</p>
     <br />
     <p>
-      <b>🧐 What is a pine expression?</b>
-      <br />
-      <br />
-      The simplest expression is a table name e.g. <code>your_table</code>. Use pipes i.e.{' '}
-      <code>|</code> to join the tables.
+      Start by typing the name of a table (e.g. <code>company</code>, <code>document</code>).
     </p>
-    <br />
+    <p>
+      Use pipes (<code>|</code>) to compose queries. See examples:
+    </p>
 
-    {/* Examples */}
-    <b>💡 Examples</b>
-    <br />
-    <br />
     {/* Select  */}
     <b>
       <code>SELECT</code>
@@ -28,15 +21,24 @@ export const Introduction = (
       <li>
         <code>company | select: id, name</code>
       </li>
+      <li>
+        <code>company | s: id, name</code>
+      </li>
     </ul>
-    {/* Join  */}
+
+    {/* Where */}
     <b>
-      <code>JOIN</code>
+      <code>WHERE</code>
     </b>
-    {': '}
     <ul>
       <li>
-        <code>company | company_document</code>
+        <code>company | where: name = &apos;Acme&apos;</code>
+      </li>
+      <li>
+        <code>company | w: name = &apos;Acme&apos;</code>
+      </li>
+      <li>
+        <code>company | w: active = true</code>
       </li>
     </ul>
 
@@ -44,10 +46,15 @@ export const Introduction = (
     <b>
       <code>LIMIT</code>
     </b>
-    {': '}
     <ul>
       <li>
-        <code>company | limit: 1</code>
+        <code>company | limit: 24</code>
+      </li>
+      <li>
+        <code>company | l: 24</code>
+      </li>
+      <li>
+        <code>company | 24</code>
       </li>
     </ul>
 
@@ -55,10 +62,22 @@ export const Introduction = (
     <b>
       <code>ORDER</code>
     </b>
-    {': '}
     <ul>
       <li>
         <code>company | order: created_at desc</code>
+      </li>
+      <li>
+        <code>company | o: created_at desc</code>
+      </li>
+    </ul>
+
+    {/* Join  */}
+    <b>
+      <code>JOIN</code>
+    </b>
+    <ul>
+      <li>
+        <code>company | company_document</code>
       </li>
     </ul>
   </div>

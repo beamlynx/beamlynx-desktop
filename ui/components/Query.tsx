@@ -23,7 +23,7 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
 
   if (session.error && session.errorType === 'parse') {
     return (
-      <Box sx={{ ml: 2 }}>
+      <Box sx={{ margin: 1 }}>
         <Typography
           variant="caption"
           sx={{
@@ -41,10 +41,19 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
 
   if (session.query) {
     return (
-      <Box sx={{ ml: 2 }}>
-        <pre onClick={onClick} style={{ cursor: 'pointer' }}>
-          <code style={{ color: 'gray', fontFamily: 'monospace', fontSize: '12px' }}>
-            {session.query.length > 450 ? session.query.substring(0, 450) + ' ...' : session.query}
+      <Box sx={{ m: 1, overflow: 'auto' }}>
+        <pre
+          onClick={onClick}
+          style={{ cursor: 'pointer', margin: 0, paddingTop: 20, paddingBottom: 20 }}
+        >
+          <code
+            style={{
+              color: 'gray',
+              fontFamily: 'monospace',
+              fontSize: '0.75rem', // 12px
+            }}
+          >
+            {session.query}
           </code>
         </pre>
       </Box>
@@ -52,7 +61,7 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
   }
 
   return (
-    <div style={{ margin: 30 }}>
+    <div style={{ margin: 10 }}>
       <code style={{ color: 'gray', fontFamily: 'monospace', fontSize: '12px' }}>
         SQL shows here for a valid pine expression.
       </code>

@@ -1,40 +1,37 @@
 export const Navigation = (
   <div>
-    {/* Navigate */}
-    <br />
-    <br />
-    <b>🎯 Rules of the game</b>
+    {/* Keyboard shortcuts */}
+    <b>⌨️ Keyboard shortcuts</b>
     <br />
     <br />
     <b>
-      <code>TAB</code>
+      <code>⇥ TAB</code>
     </b>{' '}
     <ul>
-      <li>Focus on a candidate</li>
+      <li>Show graph view and select first suggestion</li>
     </ul>
     <b>
-      <code>UP</code>
+      <code>⬆️ UP</code>
     </b>{' '}
     or{' '}
     <b>
-      <code>DOWN</code>
+      <code>⬇️ DOWN</code>
     </b>{' '}
     <ul>
-      <li>Focus on the previous or next candidate</li>
+      <li>Navigate between suggestions in graph view</li>
     </ul>
     <b>
-      <code>ENTER</code>
+      <code>↵ ENTER</code>
     </b>{' '}
     <ul>
-      <li>Select the focused candidate</li>
-      <li>Execute the query i.e. get the results</li>
+      <li>In graph view: Select current suggestion and return focus to input</li>
+      <li>In input: Execute the query</li>
     </ul>
-    <br />
     <b>
-      <code>ESCAPE</code>
+      <code>ESC</code>
     </b>{' '}
     <ul>
-      <li>Focus on the pine expression</li>
+      <li>Return focus to input</li>
     </ul>
     <br />
   </div>

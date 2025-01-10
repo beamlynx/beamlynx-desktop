@@ -36,3 +36,15 @@ export const debounce = (func: (...args: any[]) => void, wait: number) => {
     }, wait);
   };
 };
+
+/**
+ * Shows text only in development mode
+ * @param text - The text to show in development mode
+ * @returns The text if in development mode, empty string otherwise
+ * 
+ * @example
+ * console.log(devOnly('Debug info')); // Shows 'Debug info' in development, '' in production
+ */
+export const devOnly = (text: string): string => {
+  return process.env.NODE_ENV === 'development' ? text : '';
+};

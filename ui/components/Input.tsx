@@ -89,7 +89,9 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
             session.evaluate();
             return;
           default:
-            session.loaded = false;
+            if (!isPrintableChar(e.key)) {
+              session.loaded = false;
+            }
             return;
         }
 
@@ -130,11 +132,13 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
     }
   };
 
+  const isConnected = global.connected && global.getConnectionName();
+
   return (
     <TextField
       id="input"
       label="Pine expression... "
-      value={session.expression}
+      value={isConnected ? session.expression : '\n - not connected - '}
       size="small"
       variant="outlined"
       focused={session.mode === 'input'}
@@ -148,11 +152,11 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
       inputRef={inputRef}
       onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setExpression(e.target.value)}
       onKeyDown={handleKeyPress}
-      disabled={!global.connected}
+      disabled={!isConnected}
       InputProps={{
         style: {
           fontFamily: 'monospace',
-          fontSize: '0.875rem', // 14px, smaller than default 16px
+          fontSize: '0.875rem', // 14px
         },
       }}
     />

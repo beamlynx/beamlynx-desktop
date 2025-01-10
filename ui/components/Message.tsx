@@ -2,6 +2,7 @@ import { Typography } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
 import React, { useEffect } from 'react';
+import { devOnly } from '../store/util';
 
 interface MessageProps {}
 
@@ -32,6 +33,7 @@ const Message: React.FC<MessageProps> = observer(({}) => {
   }
   return (
     <Typography variant="caption" color="gray">
+      {devOnly(`${session.mode} | `)}
       {session.message}
     </Typography>
   );

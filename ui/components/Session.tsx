@@ -11,40 +11,73 @@ interface SessionProps {
   sessionId: string;
 }
 
+const Sidebar = ({ sessionId }: { sessionId: string }) => (
+  <Box
+    sx={{
+      height: '100%',
+    }}
+  >
+    <Input sessionId={sessionId} />
+    <Box sx={{ border: '1px solid lightgray', borderRadius: 1, mt: 1 }}>
+      <Query sessionId={sessionId} />
+    </Box>
+  </Box>
+);
+
+const MainView = ({
+  sessionId,
+  session,
+  loaded,
+  expression,
+  mode,
+}: {
+  sessionId: string;
+  session: any;
+  loaded: boolean;
+  expression: string;
+  mode: string;
+}) => (
+  <Box sx={{ flex: 1, ml: 1 }}>
+    {!expression ? (
+      Documentation
+    ) : loaded ? (
+      <Result sessionId={sessionId} />
+    ) : (
+      <Box
+        className={mode === 'graph' ? 'focussed' : 'unfocussed'}
+        sx={{
+          borderRadius: 1,
+          height: 'calc(100vh - 122px)',
+          overflow: 'hidden',
+        }}
+      >
+        <GraphBox sessionId={sessionId} />
+      </Box>
+    )}
+  </Box>
+);
+
 const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
   const { global } = useStores();
   const session = global.getSession(sessionId);
 
   return (
-    <Box sx={{ mt: 2 }}>
-      <Grid container>
-        <Grid item xs={5}>
-          <Input sessionId={sessionId} />
+    <Grid container>
+      <Grid container sx={{ mt: 2, height: 'calc(100vh - 122px)' }}>
+        <Grid item xs={2}>
+          <Sidebar sessionId={sessionId} />
         </Grid>
-        <Grid item xs={6}>
-          <Query sessionId={sessionId} />
+        <Grid item xs={10}>
+          <MainView
+            sessionId={sessionId}
+            session={session}
+            loaded={session.loaded}
+            expression={session.expression}
+            mode={session.mode}
+          />
         </Grid>
       </Grid>
-      <Box sx={{ mt: 1 }}>
-        <Result sessionId={sessionId} />
-      </Box>
-
-      {/* Only show the graph if the expression isn't executed i.e. results are not loaded */}
-      {!session.loaded && (
-        <Box
-          className={session.mode === 'graph' ? 'focussed' : 'unfocussed'}
-          sx={{
-            borderRadius: 1,
-            // Unable to use flex to maximuze the height of the graph
-            // Falling back on hardcoded height
-            height: 'calc(100vh - 330px)',
-            overflow: 'hidden',
-          }}
-        >
-          {session.expression ? <GraphBox sessionId={sessionId} /> : Documentation}
-        </Box>
-      )}
-    </Box>
+    </Grid>
   );
 });
 

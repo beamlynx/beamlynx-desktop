@@ -61,6 +61,7 @@ const PineTabs = observer(() => {
             {tabs.map((tab, index) => (
               <Tab
                 key={tab.sessionId}
+                tabIndex={-1} // Prevent tab focus
                 label={
                   <span>
                     {global.getSessionName(tab.sessionId)}
@@ -68,12 +69,13 @@ const PineTabs = observer(() => {
                       style={{ marginLeft: '5px' }}
                       size="small"
                       component="span"
+                      tabIndex={-1} // Prevent tab focus
                       onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
                         event.stopPropagation();
                         removeTab(tab.sessionId);
                       }}
                     >
-                      <CloseOutlined sx={{ fontSize: '14px' }} /> {/* Adjust icon size here */}
+                      <CloseOutlined sx={{ fontSize: '14px' }} tabIndex={-1} />
                     </IconButton>
                   </span>
                 }

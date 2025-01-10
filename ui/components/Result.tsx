@@ -15,20 +15,19 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const columns = toJS(session.columns);
   return (
     <div className="copy-data-grid">
-      {session.loaded && (
-        <DataGrid
-          density="compact"
-          rows={rows}
-          columns={columns}
-          getRowId={row => row._id ?? ''}
-          onCellClick={(x, y) => {
-            const v = x.row[x.field];
-            navigator.clipboard.writeText(v).then(() => {
-              store.setCopiedMessage(sessionId, v, true);
-            });
-          }}
-        />
-      )}
+      <DataGrid
+        density="compact"
+        autoHeight={true}
+        rows={rows}
+        columns={columns}
+        getRowId={row => row._id ?? ''}
+        onCellClick={(x, y) => {
+          const v = x.row[x.field];
+          navigator.clipboard.writeText(v).then(() => {
+            store.setCopiedMessage(sessionId, v, true);
+          });
+        }}
+      />
     </div>
   );
 });
