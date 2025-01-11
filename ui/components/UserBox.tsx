@@ -13,7 +13,7 @@ const UserBox = observer(() => {
   }
 
   return (
-    <Box sx={{ m: 1, ml: 2 }}>
+    <Box sx={{ m: 1, ml: 2 }} tabIndex={-1}>
       {/* <Typography variant="caption" color="gray">
             {store.email ? store.email : '-'}
         </Typography> */}
