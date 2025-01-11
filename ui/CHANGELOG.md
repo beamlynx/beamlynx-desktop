@@ -5,7 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
-## [0.10.3] - 2025-01-11
+## [0.11.0] - 2025-01-11
 ### Added
 - Arranged the layout so that the graph can take more space
 
