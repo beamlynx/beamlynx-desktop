@@ -3,7 +3,7 @@ import { Edge, Node } from 'reactflow';
 type BaseNode = {
   schema: string;
   table: string;
-  joinOn: string;
+  column: string; // TODO: rename to joinOn column
   color?: string | null;
 };
 

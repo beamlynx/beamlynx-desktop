@@ -3,7 +3,7 @@ import { format } from 'sql-formatter';
 import { DefaultPlugin } from '../plugin/default.plugin';
 import { RecursiveDeletePlugin } from '../plugin/recursive-delete.plugin';
 import { Ast, Hints, HttpClient, Operation, Response, TableHint } from './client';
-import { generateGraph, Graph } from './graph.util';
+import { generateGraph, getCandidateIndex, Graph } from './graph.util';
 import { debounce, prettifyExpression } from './util';
 
 export type Mode = 'input' | 'graph' | 'result' | 'none';
@@ -85,7 +85,6 @@ export class Session {
 
   // Graph
   candidateIndex: number | undefined = undefined; // observable
-  candidate: TableHint | null = null;
 
   graph: Graph = {
     candidate: null,
@@ -164,7 +163,6 @@ export class Session {
      * Handle the ast
      * - Graph
      * - Message from the hints
-     * - Current
      */
     reaction(
       () => this.ast,
@@ -179,24 +177,33 @@ export class Session {
           }
         }
 
-        const graph = generateGraph(ast, this.candidateIndex);
-        this.candidate = graph.candidate;
+        const graph = generateGraph(ast);
         this.graph = graph;
       },
     );
 
     /**
      * Handle the candidate index
-     * - Graph
+     * - Candidate
      */
     reaction(
       () => this.candidateIndex,
       async ci => {
+        if (ci === undefined) return;
         const ast = this.ast;
         if (!ast?.hints) return;
-        const graph = generateGraph(ast, ci);
-        this.candidate = graph.candidate;
-        this.graph = graph;
+
+        const {
+          hints: { table: suggestedTables },
+        } = ast;
+
+        const sanitizedCandidateIndex = getCandidateIndex(suggestedTables, ci);
+        for (const { h, i } of suggestedTables.map((h, i) => ({ h, i }))) {
+          if (i === sanitizedCandidateIndex) {
+            this.graph.candidate = h;
+            break;
+          }
+        }
       },
     );
 
@@ -205,7 +212,7 @@ export class Session {
      * - Suggested Pine Expression
      */
     reaction(
-      () => this.candidate,
+      () => this.graph.candidate,
       async candidate => {
         if (!candidate) return;
         const { pine } = candidate;
@@ -219,10 +226,10 @@ export class Session {
   }
 
   public getExpressionUsingCandidate() {
-    if (!this.candidate) {
+    if (!this.graph.candidate) {
       throw new Error('Unable to update the expression as no candidate is selected.');
     }
-    const { pine } = this.candidate;
+    const { pine } = this.graph.candidate;
     const parts = this.expression.split('|');
     parts.pop();
     parts.push(pine);

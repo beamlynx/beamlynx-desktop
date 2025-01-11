@@ -13,9 +13,7 @@ export type Graph = {
   edges: PineEdge[];
 };
 
-const getCandidateIndex = (suggestedTables: TableHint[], ci: number | undefined) => {
-  if (ci === undefined) return; // No candidate selected
-
+export const getCandidateIndex = (suggestedTables: TableHint[], ci: number) => {
   // No suggestions - reset the index
   if (!suggestedTables.length) {
     return 0;
@@ -54,7 +52,7 @@ const makeSelectedNode = (
     data: {
       schema,
       table,
-      joinOn: 'unknown',
+      column: 'unknown',
       color,
       type: 'selected',
       alias,
@@ -66,7 +64,7 @@ const makeSelectedNode = (
   };
 };
 
-const makeSuggestedNode = (n: TableHint, candidate = false): PineSuggestedNode => {
+export const makeSuggestedNode = (n: TableHint, candidate = false): PineSuggestedNode => {
   const { schema, table, column, pine, parent } = n;
   const { color } = getColor(schema);
 
@@ -78,7 +76,7 @@ const makeSuggestedNode = (n: TableHint, candidate = false): PineSuggestedNode =
     data: {
       schema,
       table,
-      joinOn: column,
+      column,
       color,
       type: candidate ? 'candidate' : 'suggested',
       pine,
@@ -92,7 +90,6 @@ const makeSelectedNodes = (ast: Ast): PineSelectedNode[] => {
   const {
     'selected-tables': selectedTables,
     columns,
-    current,
     hints: { select: suggestedColumns },
   } = ast;
 
@@ -131,19 +128,19 @@ const makeSelectedNodes = (ast: Ast): PineSelectedNode[] => {
   return selectedNodes;
 };
 
-const makeSuggestedNodes = (ast: Ast, candidate: TableHint | null): PineSuggestedNode[] => {
+const makeSuggestedNodes = (ast: Ast): PineSuggestedNode[] => {
   const {
     hints: { table: suggestedTables },
   } = ast;
   const suggestedNodes: PineSuggestedNode[] = [];
   for (const h of suggestedTables) {
-    const node = makeSuggestedNode(h, h === candidate);
+    const node = makeSuggestedNode(h);
     suggestedNodes.push(node);
   }
   return suggestedNodes;
 };
 
-export const generateGraph = (ast: Ast, candidateIndex?: number): Graph => {
+export const generateGraph = (ast: Ast): Graph => {
   const {
     hints: { table: suggestedTables },
     'selected-tables': selectedTables,
@@ -175,29 +172,16 @@ export const generateGraph = (ast: Ast, candidateIndex?: number): Graph => {
   const contextNode: PineNode = selectedNodesLookup[context];
 
   /**
-   * 2. Candidate
+   * 2. Suggested Nodes
    */
 
-  const sanitizedCandidateIndex = getCandidateIndex(suggestedTables, candidateIndex);
-  if (sanitizedCandidateIndex !== undefined) {
-    for (const { h, i } of suggestedTables.map((h, i) => ({ h, i }))) {
-      if (i === sanitizedCandidateIndex) {
-        graph.candidate = h;
-      }
-    }
-  }
-
-  /**
-   * 3. Suggested Nodes
-   */
-
-  const suggestedNodes = makeSuggestedNodes(ast, graph.candidate);
+  const suggestedNodes = makeSuggestedNodes(ast);
 
   graph.selectedNodes = selectedNodes;
   graph.suggestedNodes = suggestedNodes;
 
   /**
-   * 4. Edges
+   * 3. Edges
    */
 
   // If there are no selected tables, there are no edges

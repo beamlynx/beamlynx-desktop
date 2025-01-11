@@ -1,5 +1,5 @@
 import dagre from 'dagre';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import ReactFlow, {
   ConnectionLineType,
   Controls,
@@ -14,10 +14,11 @@ import ReactFlow, {
 import { BoxProps } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import 'reactflow/dist/style.css';
-import { PineEdge, PineNode } from '../model';
+import { PineEdge, PineNode, PineSuggestedNode } from '../model';
 import { useStores } from '../store/store-container';
 import SelectedNodeComponent from './SelectedNodeComponent';
 import SuggestedNodeComponent from './SuggestedNodeComponent';
+import { makeSuggestedNode } from '../store/graph.util';
 
 const nodeWidth = 172;
 const getNodeHeight = (node: PineNode) => {
@@ -82,7 +83,9 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const reactFlowInstance = useReactFlow();
+  const [candidate, setCandidate] = useState<PineSuggestedNode | null>(null);
 
+  // Render graph
   useEffect(() => {
     const n = [...graph.selectedNodes, ...graph.suggestedNodes];
     const { nodes, edges } = getLayoutedElements(n, graph.edges);
@@ -92,10 +95,45 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId }) => {
     setTimeout(() => {
       reactFlowInstance.fitView({ duration: 200 });
     }, 250);
+  }, [
+    graph.selectedNodes,
+    graph.suggestedNodes,
+    graph.edges,
+    setNodes,
+    setEdges,
+    reactFlowInstance,
+  ]);
 
-    // TODO: how can I avoid disabling the eslint rule?
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graph.selectedNodes, graph.suggestedNodes, graph.edges]);
+  // Update candidate
+  useEffect(() => {
+    if (!graph.candidate) {
+      return;
+    }
+    const pine = graph.candidate.pine;
+
+    const node = nodes.find(n => n.id === pine && n.data.type !== 'candidate');
+    if (!node) {
+      return;
+    }
+
+    setCandidate(node);
+  }, [graph.candidate, nodes]);
+
+  // Render candidate
+  useEffect(() => {
+    if (!candidate) {
+      return;
+    }
+
+    setNodes(nds =>
+      nds.map((n: PineSuggestedNode) => {
+        const isCandidate = n.id === candidate.id;
+        const node = makeSuggestedNode(n.data, isCandidate);
+        const result = { ...n, data: { ...n.data, ...node.data } };
+        return result;
+      }),
+    );
+  }, [candidate, setNodes]);
 
   return (
     <ReactFlow
@@ -108,6 +146,8 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId }) => {
       nodesConnectable={false}
       elementsSelectable={false}
       fitView
+      minZoom={0.1}
+      proOptions={{ hideAttribution: true }}
     >
       <Controls />
     </ReactFlow>
