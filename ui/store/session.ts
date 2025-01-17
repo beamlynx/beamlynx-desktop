@@ -56,7 +56,7 @@ export class Session {
   expression: string = ''; // observable
 
   // Result
-  loaded: boolean = false;
+  loaded: boolean = false; // observable
   columns: Column[] = [];
   rows: Row[] = [];
 

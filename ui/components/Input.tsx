@@ -25,8 +25,20 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
     return cursorPosition === session.expression.length;
   };
 
+  /**
+   * Checks if a key is a printable character.
+   *
+   * Control characters are in these Unicode ranges:
+   * - \u0000-\u001F: C0 controls (tab, newline, backspace, etc)
+   * - \u007F: Delete
+   * - \u0080-\u009F: C1 controls (additional control codes like single-shift characters,
+   *                  private use characters, etc - rarely used in modern systems)
+   *
+   * @param key The key to check
+   * @returns True if the key is a printable character, false if it's a control character
+   */
   const isPrintableChar = (key: string) => {
-    return key.length === 1;
+    return key.length === 1 && !key.match(/[\u0000-\u001F\u007F-\u009F]/);
   };
   const isModifierKeyCombo = (e: React.KeyboardEvent) => {
     return e.ctrlKey || e.metaKey || e.altKey || e.key === 'Meta';

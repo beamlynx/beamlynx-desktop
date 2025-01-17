@@ -26,13 +26,11 @@ const Sidebar = ({ sessionId }: { sessionId: string }) => (
 
 const MainView = ({
   sessionId,
-  session,
   loaded,
   expression,
   mode,
 }: {
   sessionId: string;
-  session: any;
   loaded: boolean;
   expression: string;
   mode: string;
@@ -70,7 +68,6 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
         <Grid item xs={10}>
           <MainView
             sessionId={sessionId}
-            session={session}
             loaded={session.loaded}
             expression={session.expression}
             mode={session.mode}

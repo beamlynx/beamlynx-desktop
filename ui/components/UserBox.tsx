@@ -1,5 +1,5 @@
 import { UserButton, useUser } from '@clerk/nextjs';
-import { Box, Tooltip, Typography } from '@mui/material';
+import { Box } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
 
@@ -13,10 +13,7 @@ const UserBox = observer(() => {
   }
 
   return (
-    <Box sx={{ m: 1, ml: 2 }} tabIndex={-1}>
-      {/* <Typography variant="caption" color="gray">
-            {store.email ? store.email : '-'}
-        </Typography> */}
+    <Box sx={{ m: 1, ml: 2 }}>
       <UserButton userProfileMode="modal" />
     </Box>
   );
