@@ -5,6 +5,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+- The graph was not being showing on modifying the expression that just ran.
+
 ## [0.11.0] - 2025-01-11
 ### Added
 - Arranged the layout so that the graph can take more space
