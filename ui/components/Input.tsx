@@ -101,7 +101,7 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
             session.evaluate();
             return;
           default:
-            if (!isPrintableChar(e.key)) {
+            if (isPrintableChar(e.key)) {
               session.loaded = false;
             }
             return;
