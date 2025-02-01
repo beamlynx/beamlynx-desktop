@@ -62,10 +62,10 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
   return (
     <Grid container>
       <Grid container sx={{ mt: 2, height: 'calc(100vh - 122px)' }}>
-        <Grid item xs={2}>
+        <Grid item xs={4} md={3} lg={2}>
           <Sidebar sessionId={sessionId} />
         </Grid>
-        <Grid item xs={10}>
+        <Grid item xs={8} md={9} lg={10}>
           <MainView
             sessionId={sessionId}
             loaded={session.loaded}

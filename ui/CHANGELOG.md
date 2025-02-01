@@ -5,11 +5,21 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.12.0] - 2025-02-02
+### Added
+
+- Show the selected and suggested columns for the `order` operation
+
 ### Fixed
+
 - The graph was not being showing on modifying the expression that just ran.
+- The graph was not being shown when a printable character was pressed.
+- Sidebar width for smaller screens i.e. adjust the width when the dev console is opened
 
 ## [0.11.0] - 2025-01-11
+
 ### Added
+
 - Arranged the layout so that the graph can take more space
 
 ### Fixed
