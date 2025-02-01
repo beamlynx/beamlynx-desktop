@@ -99,7 +99,6 @@ export class Session {
   constructor(id: string) {
     this.id = `session-${id}`;
 
-    // TODO: explicitly mark the observables, actions, computables
     makeAutoObservable(this);
 
     // Evaluation plugins
@@ -124,7 +123,7 @@ export class Session {
         } catch (e) {
           this.error = (e as any).message || 'Failed to build';
         }
-      }, 150),
+      }, 200),
     );
 
     /**

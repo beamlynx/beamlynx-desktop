@@ -1,7 +1,7 @@
 import { Edge } from 'reactflow';
 import { PineEdge, PineNode, PineSelectedNode, PineSuggestedNode } from '../model';
 import { NodeType } from '../components/Graph.box';
-import { Ast, Table, TableHint } from './client';
+import { Ast, Column, Table, TableHint } from './client';
 
 export type Graph = {
   // Metadata
@@ -41,7 +41,9 @@ const makeSelectedNode = (
   n: Table,
   order: number,
   columns: string[],
+  orderColumns: string[],
   suggestedColumns: string[],
+  suggestedOrderColumns: string[],
 ): PineSelectedNode => {
   const { schema, table, alias } = n;
   const { color } = getColor(n.schema);
@@ -58,7 +60,9 @@ const makeSelectedNode = (
       alias,
       order,
       columns,
+      orderColumns,
       suggestedColumns,
+      suggestedOrderColumns,
     },
     position: { x: 0, y: 0 },
   };
@@ -86,14 +90,8 @@ export const makeSuggestedNode = (n: TableHint, candidate = false): PineSuggeste
   };
 };
 
-const makeSelectedNodes = (ast: Ast): PineSelectedNode[] => {
-  const {
-    'selected-tables': selectedTables,
-    columns,
-    hints: { select: suggestedColumns },
-  } = ast;
-
-  const columnsLookup = columns.reduce(
+const makeColumnsLookup = (columns: Column[]): Record<string, string[]> => {
+  return columns.reduce(
     (acc, x) => {
       if (!acc[x.alias]) {
         acc[x.alias] = [];
@@ -103,25 +101,44 @@ const makeSelectedNodes = (ast: Ast): PineSelectedNode[] => {
     },
     {} as Record<string, string[]>,
   );
+};
+
+const makeSelectedNodes = (ast: Ast): PineSelectedNode[] => {
+  const {
+    'selected-tables': selectedTables,
+    columns: selectedColumns,
+    order: orderColumns,
+    hints: { select, order },
+    operation: { type },
+  } = ast;
+
   const count = selectedTables.length;
 
-  // index suggested columns by alias
-  const suggestedColumnsLookup = suggestedColumns.reduce(
-    (acc, x) => {
-      if (!acc[x.alias]) {
-        acc[x.alias] = [];
-      }
-      acc[x.alias].push(x.column);
-      return acc;
-    },
-    {} as Record<string, string[]>,
+  const columnsLookup = makeColumnsLookup(selectedColumns);
+  const orderLookup = makeColumnsLookup(orderColumns);
+
+  const suggestedColumnsLookup = makeColumnsLookup(
+    type === 'select' || type === 'select-partial' ? select : [],
+  );
+  const suggestedOrderColsLookup = makeColumnsLookup(
+    type === 'order' || type === 'order-partial' ? order : [],
   );
 
   const selectedNodes: PineSelectedNode[] = selectedTables
     ? selectedTables.map((x, i) => {
         const order = i + 1;
-        const columns = columnsLookup[x.alias] ?? (order === count ? ['*'] : []);
-        return makeSelectedNode(x, order, columns, suggestedColumnsLookup[x.alias] ?? []);
+        const selectedColumns = columnsLookup[x.alias] ?? (order === count ? ['*'] : []);
+        const orderColumns = orderLookup[x.alias] ?? [];
+        const suggestedColumns = suggestedColumnsLookup[x.alias] ?? [];
+        const suggestedOrderColumns = suggestedOrderColsLookup[x.alias] ?? [];
+        return makeSelectedNode(
+          x,
+          order,
+          selectedColumns,
+          orderColumns,
+          suggestedColumns,
+          suggestedOrderColumns,
+        );
       })
     : [];
 

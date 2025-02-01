@@ -124,6 +124,7 @@ const SelectedColumns = ({ columns }: { columns: string[] }) => (
     style={{
       maxHeight: '500px',
       overflow: 'hidden',
+      flex: 1,
     }}
   >
     <div
@@ -131,7 +132,6 @@ const SelectedColumns = ({ columns }: { columns: string[] }) => (
         display: 'flex',
         flexWrap: 'wrap',
         gap: '4px',
-        justifyContent: 'center',
       }}
     >
       {columns.map(column => (
@@ -190,11 +190,18 @@ const CandidateColumns = ({ columns }: { columns: string[] }) => (
   </div>
 );
 
-const Columns = ({ columns, suggested }: { columns: string[]; suggested: string[] }) => {
-  const selectedColumnsSet = new Set(columns);
-  const candidateColumns = suggested.filter(
-    col => !selectedColumnsSet.has(col),
-  );
+const Columns = ({
+  columns,
+  suggested,
+  type,
+}: {
+  columns: string[];
+  suggested: string[];
+  type: 'select' | 'order';
+}) => {
+  const selectedColumnsSet = new Set(columns.filter(Boolean));
+  const candidateColumns = suggested.filter(col => !selectedColumnsSet.has(col));
+  const showOperationName = selectedColumnsSet.size > 0 || candidateColumns.length > 0;
 
   return (
     <div
@@ -202,29 +209,60 @@ const Columns = ({ columns, suggested }: { columns: string[]; suggested: string[
         width: 200,
         display: 'flex',
         flexDirection: 'column',
-        gap: '8px',
       }}
     >
-      <SelectedColumns columns={columns} />
-      <CandidateColumns columns={candidateColumns} />
+      {showOperationName && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <span
+            style={{
+              fontFamily: 'Courier, monospace',
+              fontSize: '8px',
+              color: '#666',
+              whiteSpace: 'nowrap',
+              fontWeight: 'bold',
+            }}
+          >
+            {type.charAt(0)}:
+          </span>
+          {selectedColumnsSet.size > 0 && (
+            <SelectedColumns columns={Array.from(selectedColumnsSet)} />
+          )}
+        </div>
+      )}
+      {candidateColumns.length > 0 && (
+        <div
+          style={{
+            border: '1px solid #eee',
+            borderRadius: '8px',
+            borderColor: '#eee',
+            padding: '12px',
+            margin: '8px',
+          }}
+        >
+          <CandidateColumns columns={candidateColumns} />
+        </div>
+      )}
     </div>
   );
 };
 
 const SelectedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
-  const { order, table, schema, color, alias, columns, suggestedColumns } = data;
-  const showBorder = suggestedColumns.length > 0;
+  const {
+    order,
+    table,
+    schema,
+    color,
+    alias,
+    columns: selectedColumns,
+    orderColumns,
+    suggestedColumns,
+    suggestedOrderColumns,
+  } = data;
   return (
-    <div
-      style={{
-        border: '1px solid #ccc',
-        borderRadius: showBorder ? '8px' : '0',
-        borderColor: showBorder ? '#ccc' : 'transparent',
-        padding: '12px',
-      }}
-    >
+    <div>
       <TableNode order={order} table={table} schema={schema} color={color} alias={alias} />
-      <Columns columns={columns} suggested={suggestedColumns} />
+      <Columns columns={selectedColumns} suggested={suggestedColumns} type="select" />
+      <Columns columns={orderColumns} suggested={suggestedOrderColumns} type="order" />
     </div>
   );
 };

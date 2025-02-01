@@ -14,9 +14,11 @@ export type ColumnHint = {
   alias: string;
 };
 
-export type Hints = { table: TableHint[]; select: ColumnHint[] };
+export type Hints = { table: TableHint[]; select: ColumnHint[]; order: ColumnHint[] };
 // There are more operations. I'll add them as we need to handle them here
-export type Operation = { type: 'table' | 'delete' | 'select-partial' };
+export type Operation = {
+  type: 'table' | 'delete' | 'select' | 'select-partial' | 'order' | 'order-partial';
+};
 export type Column = { column: string; alias: string };
 
 export type Ast = {
@@ -27,6 +29,7 @@ export type Ast = {
   current: string;
   operation: Operation;
   columns: Column[];
+  order: Column[];
 };
 
 export type Response = {
