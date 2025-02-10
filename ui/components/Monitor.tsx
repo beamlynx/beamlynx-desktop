@@ -13,12 +13,38 @@ export const Monitor = observer(({ sessionId }: { sessionId: string }) => {
 
   // Set up the interval when monitoring is active
   useEffect(() => {
-    let intervalId: NodeJS.Timeout;
+    let intervalId: NodeJS.Timeout | undefined;
 
-    if (session.mode === 'monitor') {
+    if (session.mode === 'monitor' && document.visibilityState === 'visible') {
       intervalId = setInterval(() => {
         session.updateConnectionLogs();
       }, 1000);
+
+      // Set up visibility change listener
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'hidden') {
+          if (!intervalId) return;
+          clearInterval(intervalId);
+          intervalId = undefined;
+          return;
+        }
+
+        if (document.visibilityState !== 'visible') return;
+        if (session.mode !== 'monitor') return;
+
+        intervalId = setInterval(() => {
+          session.updateConnectionLogs();
+        }, 1000);
+      };
+
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+
+      return () => {
+        if (intervalId) {
+          clearInterval(intervalId);
+        }
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
     }
 
     return () => {
