@@ -5,8 +5,9 @@ import { RecursiveDeletePlugin } from '../plugin/recursive-delete.plugin';
 import { Ast, Hints, HttpClient, Operation, Response, TableHint } from './client';
 import { generateGraph, getCandidateIndex, Graph } from './graph.util';
 import { debounce, prettifyExpression } from './util';
+import { MAX_COUNT, TOTAL_BARS } from '../constants';
 
-export type Mode = 'input' | 'graph' | 'result' | 'none';
+export type Mode = 'input' | 'graph' | 'result' | 'monitor' | 'none';
 
 export type Column = {
   field: string;
@@ -52,10 +53,17 @@ const client = new HttpClient();
  * way to refactor is in a better way.
  */
 export class Session {
+  /** Session id */
   id: string;
+
+  /** Pine expression to be evaluated */
   expression: string = ''; // observable
 
-  // Result
+  /** Database connection monitoring */
+  monitor: boolean = false;
+  connectionCountLogs: { time: string; count: number }[] = [];
+
+  /** Result */
   loaded: boolean = false; // observable
   columns: Column[] = [];
   rows: Row[] = [];
@@ -77,13 +85,14 @@ export class Session {
   connection: string = '-';
   error: string = '';
   errorType: string = '';
-  // Ast
+
+  /** Ast */
   operation: Operation = { type: 'table' };
   ast: Ast | null = null; // observable
   query: string = '';
   hints: Hints | null = null; // observable
 
-  // Graph
+  /** Graph */
   candidateIndex: number | undefined = undefined; // observable
 
   graph: Graph = {
@@ -93,7 +102,7 @@ export class Session {
     edges: [],
   };
 
-  // Evaluation plugins
+  /** Evaluation plugins */
   plugins: { delete: RecursiveDeletePlugin; default: DefaultPlugin };
 
   constructor(id: string) {
@@ -101,7 +110,7 @@ export class Session {
 
     makeAutoObservable(this);
 
-    // Evaluation plugins
+    /** Evaluation plugins */
     this.plugins = {
       delete: new RecursiveDeletePlugin(this),
       default: new DefaultPlugin(this),
@@ -247,16 +256,33 @@ export class Session {
         return await this.plugins.default.evaluate();
     }
   }
+
+  async updateConnectionLogs() {
+    const stats = await client.getConnectionStats();
+    if (!stats) return;
+
+    const newLog = {
+      time: stats.time.toTimeString().split(' ')[0],
+      count: stats.connectionCount,
+    };
+
+    // Update logs array
+    if (this.connectionCountLogs.length >= TOTAL_BARS) {
+      this.connectionCountLogs = [...this.connectionCountLogs.slice(1), newLog];
+    } else {
+      this.connectionCountLogs = [...this.connectionCountLogs, newLog];
+    }
+  }
 }
 
 const getMessageFromHints = (operation: Operation, hints: Hints): string | undefined => {
   switch (operation.type) {
     case 'table':
       const tableExpressions = hints.table.map(h => h.pine);
-      return tableExpressions ? tableExpressions.join(', ').substring(0, 140) : '';
+      return tableExpressions ? tableExpressions.join(', ').substring(0, 120) : '';
     case 'select-partial':
       const columns = hints.select?.map(h => h.column);
-      return columns ? columns.join(', ').substring(0, 140) : '';
+      return columns ? columns.join(', ').substring(0, 120) : '';
   }
 };
 
