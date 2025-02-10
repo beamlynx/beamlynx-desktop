@@ -42,10 +42,15 @@ export type Response = {
   ast: Ast;
 };
 
+export type ConnectionStatsResponse = {
+  connectionCount: number;
+  time: Date;
+};
+
 export class HttpClient {
   constructor(private readonly onBuild?: (ast: Ast) => void) {}
 
-  public async get(path: string): Promise<Response | undefined> {
+  private async baseGet<T>(path: string): Promise<T | undefined> {
     const res = await fetch(`${base}/api/v1/${path}`, {
       method: 'GET',
       headers: {
@@ -56,6 +61,23 @@ export class HttpClient {
       return;
     }
     return await res.json();
+  }
+
+  public async get(path: string): Promise<Response | undefined> {
+    return this.baseGet<Response>(path);
+  }
+
+  public async getConnectionStats(): Promise<ConnectionStatsResponse | undefined> {
+    const res = await this.baseGet<{ 'connection-count': number; time: string }>(
+      'connection/stats',
+    );
+    if (!res) {
+      return;
+    }
+    return {
+      connectionCount: res['connection-count'],
+      time: new Date(res.time),
+    };
   }
 
   private async post(path: string, body: object): Promise<Response | undefined> {

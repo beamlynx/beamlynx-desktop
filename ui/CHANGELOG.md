@@ -5,6 +5,11 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.13.0] - 2025-02-09
+
+### Added
+- Database connection monitor
+
 ## [0.12.0] - 2025-02-02
 ### Added
 
