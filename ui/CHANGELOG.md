@@ -5,6 +5,14 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+
+## [0.14.0] - 2025-02-26
+
+### Added
+
+- Remember the positions when previously selected nodes in the graph are moved
+
+
 ## [0.13.0] - 2025-02-09
 
 ### Added
