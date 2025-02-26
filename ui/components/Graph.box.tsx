@@ -14,7 +14,7 @@ import ReactFlow, {
 import { BoxProps } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import 'reactflow/dist/style.css';
-import { PineEdge, PineNode, PineSuggestedNode } from '../model';
+import { PineEdge, PineNode, PineSelectedNode, PineSuggestedNode } from '../model';
 import { useStores } from '../store/store-container';
 import SelectedNodeComponent from './SelectedNodeComponent';
 import SuggestedNodeComponent from './SuggestedNodeComponent';
@@ -34,8 +34,9 @@ const nodeTypes: NodeTypes = {
   [NodeType.Selected]: SelectedNodeComponent,
 };
 
+const nodePositionCache: Record<string, { x: number; y: number }> = {};
+
 const getLayoutedElements = (nodes: PineNode[], edges: PineEdge[]) => {
-  // should we create a new graph every single time?
   const dagreGraph = new dagre.graphlib.Graph();
   dagreGraph.setDefaultEdgeLabel(() => ({}));
 
@@ -43,6 +44,13 @@ const getLayoutedElements = (nodes: PineNode[], edges: PineEdge[]) => {
     rankdir: 'LR',
   });
 
+  // Count total selected nodes and find max order
+  const selectedNodes = nodes.filter(
+    (node): node is PineSelectedNode => node.data.type === 'selected',
+  );
+  const maxOrder = Math.max(...selectedNodes.map(node => node.data.order));
+
+  // First pass to set nodes and edges
   nodes.forEach(node => {
     dagreGraph.setNode(node.id, { width: nodeWidth, height: getNodeHeight(node) });
   });
@@ -58,12 +66,19 @@ const getLayoutedElements = (nodes: PineNode[], edges: PineEdge[]) => {
     node.targetPosition = Position.Left;
     node.sourcePosition = Position.Right;
 
-    // We are shifting the dagre node position (anchor=center center) to the top left
-    // so it matches the React Flow node anchor point (top left).
-    node.position = {
-      x: nodeWithPosition.x - nodeWidth / 2,
-      y: nodeWithPosition.y - getNodeHeight(node) / 2,
-    };
+    // Use cache only if it's not the last node by order
+    if (
+      node.data.type === 'selected' &&
+      nodePositionCache[node.data.alias] &&
+      node.data.order !== maxOrder
+    ) {
+      node.position = nodePositionCache[node.data.alias];
+    } else {
+      node.position = {
+        x: nodeWithPosition.x - nodeWidth / 2,
+        y: nodeWithPosition.y - getNodeHeight(node) / 2,
+      };
+    }
 
     return node;
   });
@@ -135,6 +150,14 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId }) => {
     );
   }, [candidate, setNodes]);
 
+  // Add handler for node movement
+  const onNodeDragStop = (event: React.MouseEvent, node: PineNode) => {
+    if (node.data.type === 'selected') {
+      // Cache the position using the node's alias as the key
+      nodePositionCache[node.data.alias] = node.position;
+    }
+  };
+
   return (
     <ReactFlow
       nodes={nodes}
@@ -142,9 +165,11 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId }) => {
       nodeTypes={nodeTypes}
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
+      onNodeDragStop={onNodeDragStop}
       connectionLineType={ConnectionLineType.Bezier}
       nodesConnectable={false}
-      elementsSelectable={false}
+      draggable={true}
+      elementsSelectable={true}
       fitView
       minZoom={0.1}
       proOptions={{ hideAttribution: true }}

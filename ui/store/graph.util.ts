@@ -158,12 +158,7 @@ const makeSuggestedNodes = (ast: Ast): PineSuggestedNode[] => {
 };
 
 export const generateGraph = (ast: Ast): Graph => {
-  const {
-    hints: { table: suggestedTables },
-    'selected-tables': selectedTables,
-    joins,
-    context,
-  } = ast;
+  const { 'selected-tables': selectedTables, joins, context } = ast;
 
   const graph: Graph = {
     candidate: null,

@@ -206,6 +206,7 @@ const Columns = ({
   return (
     <div
       style={{
+        marginBottom: 5,
         width: 200,
         display: 'flex',
         flexDirection: 'column',
@@ -219,10 +220,10 @@ const Columns = ({
               fontSize: '8px',
               color: '#666',
               whiteSpace: 'nowrap',
-              fontWeight: 'bold',
+              // fontWeight: 'bold',
             }}
           >
-            {type.charAt(0)}:
+            {`${type.padStart(8, '\u00A0')} :`}
           </span>
           {selectedColumnsSet.size > 0 && (
             <SelectedColumns columns={Array.from(selectedColumnsSet)} />
