@@ -5,6 +5,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- Sidebar width can be adjusted by dragging the divider
 
 ## [0.14.0] - 2025-02-26
 

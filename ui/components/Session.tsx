@@ -1,4 +1,4 @@
-import { Box, Grid, IconButton, Tooltip, Typography } from '@mui/material';
+import { Box, Grid, IconButton, Tooltip, Typography, Divider, SxProps } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import GraphBox from './Graph.box';
 import Input from './Input';
@@ -9,18 +9,15 @@ import { Documentation } from './docs/docs';
 import { Monitor } from './Monitor';
 import { BarChart } from '@mui/icons-material';
 import { Session as SessionType } from '../store/session';
+import { useState } from 'react';
 
 interface SessionProps {
   sessionId: string;
 }
 
-const Sidebar = ({ session }: { session: SessionType }) => {
+const Sidebar = ({ session, sx }: { session: SessionType; sx: SxProps }) => {
   return (
-    <Box
-      sx={{
-        height: '100%',
-      }}
-    >
+    <Box sx={sx}>
       <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
         <Tooltip
           title={`${session.mode === 'monitor' ? 'Disable' : 'Enable'} connection monitoring`}
@@ -57,7 +54,7 @@ const MainView = ({
   expression: string;
   mode: string;
 }) => (
-  <Box sx={{ flex: 1, ml: 1 }}>
+  <Box sx={{ flex: 1 }}>
     {mode === 'monitor' ? (
       <Monitor sessionId={sessionId} />
     ) : !expression ? (
@@ -82,15 +79,70 @@ const MainView = ({
 const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
   const { global } = useStores();
   const session = global.getSession(sessionId);
+  const [sidebarWidth, setSidebarWidth] = useState(240);
+  const [isResizing, setIsResizing] = useState(false);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsResizing(true);
+
+    const startX = e.pageX;
+    const startWidth = sidebarWidth;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = startWidth + e.pageX - startX;
+      // Constrain width between 200px and 50% of window width
+      setSidebarWidth(Math.min(Math.max(newWidth, 200), window.innerWidth * 0.5));
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
 
   return (
     <Grid container>
-      <Grid container sx={{ mt: 2, height: 'calc(100vh - 122px)' }}>
-        <Grid item xs={4} md={3} lg={2}>
-          <Sidebar session={session} />
+      <Grid
+        container
+        sx={{
+          mt: 2,
+          height: 'calc(100vh - 122px)',
+          userSelect: isResizing ? 'none' : 'auto',
+        }}
+      >
+        <Grid item style={{ width: sidebarWidth, position: 'relative' }}>
+          <Sidebar session={session} sx={{ mr: '10px' }} />
+
+          <Divider
+            orientation="vertical"
+            sx={{
+              position: 'absolute',
+              right: 0,
+              top: 0,
+              bottom: 0,
+              cursor: 'col-resize',
+              width: '10px',
+              opacity: 0,
+              '&:hover': {
+                backgroundColor: 'action.hover',
+                transition: 'background-color 0.2s',
+                opacity: 1,
+              },
+              ...(isResizing && {
+                backgroundColor: 'lightgray',
+                width: '14px',
+                opacity: 1,
+              }),
+            }}
+            onMouseDown={handleMouseDown}
+          />
         </Grid>
 
-        <Grid item xs={8} md={9} lg={10}>
+        <Grid item style={{ width: `calc(100% - ${sidebarWidth}px)` }}>
           <MainView
             sessionId={sessionId}
             loaded={session.loaded}
