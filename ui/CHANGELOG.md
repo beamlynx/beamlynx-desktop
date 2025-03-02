@@ -5,9 +5,11 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.15.0] - 2025-03-02
 ### Added
 
 - Sidebar width can be adjusted by dragging the divider
+- User preferences using local storage: sidebar width is supported to begin with
 
 ## [0.14.0] - 2025-02-26
 
