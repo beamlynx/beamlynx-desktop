@@ -187,9 +187,7 @@ const GraphBox: React.FC<GraphBoxProps> = observer(({ sessionId }) => {
   const { global } = useStores();
   const session = global.getSession(sessionId);
 
-  return session.loaded ? (
-    <></>
-  ) : (
+  return (
     <ReactFlowProvider>
       <Flow sessionId={sessionId} />
     </ReactFlowProvider>

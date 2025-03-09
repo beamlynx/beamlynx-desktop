@@ -47,6 +47,7 @@ export class DefaultPlugin implements PluginInterface {
     });
     session.message = pickSuccessMessage();
     session.loaded = true;
-    session.mode = 'input';
+    session.input = true;
+    session.mode = 'result';
   }
 }
