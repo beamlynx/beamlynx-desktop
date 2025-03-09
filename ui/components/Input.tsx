@@ -79,6 +79,10 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
     }
 
     if (session.input) {
+      if (session.mode === 'documentation') {
+        session.mode = 'graph';
+      }
+
       switch (e.key) {
         case 'Tab':
           e.preventDefault();
