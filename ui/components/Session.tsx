@@ -197,7 +197,7 @@ const ResizableDivider = ({
         },
         ...(isResizing && {
           backgroundColor: 'lightgray',
-          width: '14px',
+          width: '10px',
           opacity: 1,
         }),
       }}
