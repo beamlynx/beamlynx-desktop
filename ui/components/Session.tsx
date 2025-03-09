@@ -190,6 +190,9 @@ const ResizableDivider = ({
         cursor: 'col-resize',
         width: '10px',
         opacity: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
         '&:hover': {
           backgroundColor: 'action.hover',
           transition: 'background-color 0.2s',
@@ -202,7 +205,25 @@ const ResizableDivider = ({
         }),
       }}
       onMouseDown={handleMouseDown}
-    />
+    >
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '8px',
+        }}
+      >
+        <Box
+          sx={{
+            width: '4px',
+            height: '24px',
+            backgroundColor: 'gray',
+            borderRadius: '2px',
+          }}
+        />
+      </Box>
+    </Divider>
   );
 };
 
