@@ -21,7 +21,7 @@ const Home: NextPage = () => {
     const fn = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.preventDefault();
-      session.mode = 'input';
+      session.input = true;
     };
     document.addEventListener('keydown', fn);
     return () => {

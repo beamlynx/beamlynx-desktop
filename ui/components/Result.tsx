@@ -13,6 +13,11 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const session = store.getSession(sessionId);
   const rows = toJS(session.rows);
   const columns = toJS(session.columns);
+
+  if (columns.length === 0) {
+    return <div style={{ textAlign: 'center', color: 'gray', padding: '20px' }}>No results</div>;
+  }
+
   return (
     <div className="copy-data-grid">
       <DataGrid

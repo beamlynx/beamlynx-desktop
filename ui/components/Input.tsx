@@ -78,45 +78,48 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
       return;
     }
 
+    if (session.input) {
+      if (session.mode === 'documentation') {
+        session.mode = 'graph';
+      }
+
+      switch (e.key) {
+        case 'Tab':
+          e.preventDefault();
+          session.mode = 'graph';
+          session.input = false;
+          session.selectNextCandidate(1);
+          return;
+        case '|':
+          if (!shouldPrettify()) return;
+          e.preventDefault();
+          setExpression(prettifyExpression(session.expression));
+          return;
+        case 'Enter':
+          e.preventDefault();
+          session.evaluate();
+          return;
+      }
+      session.loaded = false;
+      return;
+    }
+
     switch (session.mode) {
       case 'result':
         session.loaded = false;
-        session.mode = 'input';
+        session.input = true;
         return;
-
-      case 'input':
-        switch (e.key) {
-          case 'Tab':
-            e.preventDefault();
-            session.mode = 'graph';
-            session.selectNextCandidate(1);
-            return;
-          case '|':
-            if (!shouldPrettify()) return;
-            e.preventDefault();
-            setExpression(prettifyExpression(session.expression));
-            return;
-          case 'Enter':
-            e.preventDefault();
-            session.evaluate();
-            return;
-          default:
-            if (isPrintableChar(e.key)) {
-              session.loaded = false;
-            }
-            return;
-        }
 
       case 'graph':
         switch (e.key) {
           case 'Escape':
             e.preventDefault();
-            session.mode = 'input';
+            session.input = true;
             return;
           case 'Enter':
           case '|':
             e.preventDefault();
-            session.mode = 'input';
+            session.input = true;
             setExpression(session.getExpressionUsingCandidate());
             return;
           case 'Tab':
@@ -136,7 +139,7 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
               return;
             }
             e.preventDefault();
-            session.mode = 'input';
+            session.input = true;
             session.loaded = false;
             setExpression(session.expression + e.key);
             return;
@@ -153,9 +156,9 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
       value={isConnected ? session.expression : '\n - not connected - '}
       size="small"
       variant="outlined"
-      focused={session.mode === 'input'}
+      focused={session.input}
       onFocus={() => {
-        session.mode = 'input';
+        session.input = true;
       }}
       multiline
       fullWidth

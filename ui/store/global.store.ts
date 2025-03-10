@@ -108,8 +108,8 @@ export class GlobalStore {
     if (quote) {
       v = `'${v.replace(/'/g, "'")}'`;
     }
-    if (v.length > 150) {
-      v = v.substring(0, 147) + '...';
+    if (v.length > 120) {
+      v = v.substring(0, 120) + '...';
     }
     session.message = `📋 Copied: ${v}`;
   };

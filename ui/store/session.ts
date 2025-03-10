@@ -7,7 +7,7 @@ import { generateGraph, getCandidateIndex, Graph } from './graph.util';
 import { debounce, prettifyExpression } from './util';
 import { MAX_COUNT, TOTAL_BARS } from '../constants';
 
-export type Mode = 'input' | 'graph' | 'result' | 'monitor' | 'none';
+export type Mode = 'documentation' | 'graph' | 'result' | 'monitor';
 
 export type Column = {
   field: string;
@@ -68,8 +68,12 @@ export class Session {
   columns: Column[] = [];
   rows: Row[] = [];
 
-  mode: Mode = 'none';
+  /** Mode - controls the main view */
+  mode: Mode = 'documentation';
   message: string = '';
+
+  /** Flag to determine if the input is focused */
+  input: boolean = false;
 
   /**
    * Resonse

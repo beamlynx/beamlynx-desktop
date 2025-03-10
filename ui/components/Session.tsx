@@ -1,4 +1,16 @@
-import { Box, Grid, IconButton, Tooltip, Typography, Divider, SxProps } from '@mui/material';
+import {
+  Box,
+  Grid,
+  IconButton,
+  Tooltip,
+  Typography,
+  Divider,
+  SxProps,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
+} from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import GraphBox from './Graph.box';
 import Input from './Input';
@@ -7,7 +19,7 @@ import Result from './Result';
 import { useStores } from '../store/store-container';
 import { Documentation } from './docs/docs';
 import { Monitor } from './Monitor';
-import { BarChart } from '@mui/icons-material';
+import { AccountTree, BarChart, TableChart, MoreVert, Description } from '@mui/icons-material';
 import { Session as SessionType } from '../store/session';
 import { useState, useEffect } from 'react';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from '../store/preferences';
@@ -17,29 +29,90 @@ interface SessionProps {
   sessionId: string;
 }
 
-const Sidebar = ({ session, sx }: { session: SessionType; sx: SxProps }) => {
-  return (
-    <Box sx={sx}>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <Tooltip
-          title={`${session.mode === 'monitor' ? 'Disable' : 'Enable'} connection monitoring`}
-        >
-          <IconButton
-            size="small"
-            onClick={() => (session.mode = session.mode === 'monitor' ? 'none' : 'monitor')}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <BarChart sx={{ color: session.mode === 'monitor' ? '#4caf50' : '#9e9e9e' }} />
-            </Box>
-          </IconButton>
-        </Tooltip>
-      </Box>
+const Sidebar = ({ session }: { session: SessionType }) => {
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const highlightColor = '#4caf50';
+  const defaultColor = '#9e9e9e';
 
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-        <Input sessionId={session.id} />
-      </Box>
-      <Box sx={{ border: '1px solid lightgray', borderRadius: 1, mt: 1 }}>
-        <Query sessionId={session.id} />
+  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleMenuClose = () => {
+    setAnchorEl(null);
+  };
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', flexDirection: 'row' }}>
+        {/* Left column: Input and Query */}
+        <Box sx={{ flex: 1, mr: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+            <Input sessionId={session.id} />
+          </Box>
+          <Box sx={{ border: '1px solid lightgray', borderRadius: 1, mt: 1 }}>
+            <Query sessionId={session.id} />
+          </Box>
+        </Box>
+
+        {/* Right column: Icons */}
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 1,
+            mr: 1,
+            width: 'auto',
+          }}
+        >
+          <Tooltip title="Documentation">
+            <IconButton size="small" onClick={() => (session.mode = 'documentation')}>
+              <Description
+                sx={{ color: session.mode === 'documentation' ? highlightColor : defaultColor }}
+              />
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title="Visualize Relations">
+            <IconButton size="small" onClick={() => (session.mode = 'graph')}>
+              <AccountTree
+                sx={{ color: session.mode === 'graph' ? highlightColor : defaultColor }}
+              />
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title="Results">
+            <IconButton size="small" onClick={() => (session.mode = 'result')}>
+              <TableChart
+                sx={{ color: session.mode === 'result' ? highlightColor : defaultColor }}
+              />
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title="More options">
+            <IconButton size="small" onClick={handleMenuOpen}>
+              <MoreVert />
+            </IconButton>
+          </Tooltip>
+
+          <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}>
+            <MenuItem
+              onClick={() => {
+                if (session.mode === 'monitor') return;
+                session.mode = 'monitor';
+                handleMenuClose();
+              }}
+            >
+              <ListItemIcon>
+                <BarChart
+                  sx={{ color: session.mode === 'monitor' ? highlightColor : defaultColor }}
+                />
+              </ListItemIcon>
+              <ListItemText primary="Connection monitoring" />
+            </MenuItem>
+          </Menu>
+        </Box>
       </Box>
     </Box>
   );
@@ -47,34 +120,39 @@ const Sidebar = ({ session, sx }: { session: SessionType; sx: SxProps }) => {
 
 const MainView = ({
   sessionId,
-  loaded,
-  expression,
   mode,
+  input,
 }: {
   sessionId: string;
-  loaded: boolean;
-  expression: string;
   mode: string;
+  input: boolean;
 }) => (
   <Box sx={{ flex: 1 }}>
-    {mode === 'monitor' ? (
-      <Monitor sessionId={sessionId} />
-    ) : !expression ? (
-      Documentation
-    ) : loaded ? (
-      <Result sessionId={sessionId} />
-    ) : (
-      <Box
-        className={mode === 'graph' ? 'focussed' : 'unfocussed'}
-        sx={{
-          borderRadius: 1,
-          height: 'calc(100vh - 122px)',
-          overflow: 'hidden',
-        }}
-      >
-        <GraphBox sessionId={sessionId} />
-      </Box>
-    )}
+    {(() => {
+      switch (mode) {
+        case 'monitor':
+          return <Monitor sessionId={sessionId} />;
+        case 'result':
+          return <Result sessionId={sessionId} />;
+        case 'graph':
+          return (
+            <Box
+              className={input ? 'unfocussed' : 'focussed'}
+              sx={{
+                borderRadius: 1,
+                height: 'calc(100vh - 122px)',
+                overflow: 'hidden',
+              }}
+            >
+              <GraphBox sessionId={sessionId} />
+            </Box>
+          );
+        case 'documentation':
+        // intentional fall through
+        default:
+          return Documentation;
+      }
+    })()}
   </Box>
 );
 
@@ -124,19 +202,35 @@ const ResizableDivider = ({
         cursor: 'col-resize',
         width: '10px',
         opacity: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
         '&:hover': {
           backgroundColor: 'action.hover',
           transition: 'background-color 0.2s',
           opacity: 1,
         },
-        ...(isResizing && {
-          backgroundColor: 'lightgray',
-          width: '14px',
-          opacity: 1,
-        }),
       }}
       onMouseDown={handleMouseDown}
-    />
+    >
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '8px',
+        }}
+      >
+        <Box
+          sx={{
+            width: '4px',
+            height: '24px',
+            backgroundColor: 'gray',
+            borderRadius: '2px',
+          }}
+        />
+      </Box>
+    </Divider>
   );
 };
 
@@ -161,17 +255,12 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
         }}
       >
         <Grid item style={{ width: sidebarWidth, position: 'relative' }}>
-          <Sidebar session={session} sx={{ mr: '10px' }} />
+          <Sidebar session={session} />
           <ResizableDivider sidebarWidth={sidebarWidth} setSidebarWidth={setSidebarWidth} />
         </Grid>
 
         <Grid item style={{ width: `calc(100% - ${sidebarWidth}px)` }}>
-          <MainView
-            sessionId={sessionId}
-            loaded={session.loaded}
-            expression={session.expression}
-            mode={session.mode}
-          />
+          <MainView sessionId={sessionId} mode={session.mode} input={session.input} />
         </Grid>
       </Grid>
     </Grid>
