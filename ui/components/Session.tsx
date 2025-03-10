@@ -29,7 +29,7 @@ interface SessionProps {
   sessionId: string;
 }
 
-const Sidebar = ({ session, sx }: { session: SessionType; sx: SxProps }) => {
+const Sidebar = ({ session }: { session: SessionType }) => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const highlightColor = '#4caf50';
   const defaultColor = '#9e9e9e';
@@ -43,64 +43,76 @@ const Sidebar = ({ session, sx }: { session: SessionType; sx: SxProps }) => {
   };
 
   return (
-    <Box sx={sx}>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-        <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}>
-          <MenuItem
-            onClick={() => {
-              if (session.mode === 'monitor') return;
-              session.mode = 'monitor';
-              handleMenuClose();
-            }}
-          >
-            <ListItemIcon>
-              <BarChart
-                sx={{ color: session.mode === 'monitor' ? highlightColor : defaultColor }}
-              />
-            </ListItemIcon>
-            <ListItemText primary="Connection monitoring" />
-          </MenuItem>
-        </Menu>
+    <Box>
+      <Box sx={{ display: 'flex', flexDirection: 'row' }}>
+        {/* Left column: Input and Query */}
+        <Box sx={{ flex: 1, mr: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+            <Input sessionId={session.id} />
+          </Box>
+          <Box sx={{ border: '1px solid lightgray', borderRadius: 1, mt: 1 }}>
+            <Query sessionId={session.id} />
+          </Box>
+        </Box>
 
-        <Tooltip title="Documentation">
-          <IconButton size="small" onClick={() => (session.mode = 'documentation')}>
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+        {/* Right column: Icons */}
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 1,
+            mr: 1,
+            width: 'auto',
+          }}
+        >
+          <Tooltip title="Documentation">
+            <IconButton size="small" onClick={() => (session.mode = 'documentation')}>
               <Description
                 sx={{ color: session.mode === 'documentation' ? highlightColor : defaultColor }}
               />
-            </Box>
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Visualize Relations">
-          <IconButton size="small" onClick={() => (session.mode = 'graph')}>
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title="Visualize Relations">
+            <IconButton size="small" onClick={() => (session.mode = 'graph')}>
               <AccountTree
                 sx={{ color: session.mode === 'graph' ? highlightColor : defaultColor }}
               />
-            </Box>
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Results">
-          <IconButton size="small" onClick={() => (session.mode = 'result')}>
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title="Results">
+            <IconButton size="small" onClick={() => (session.mode = 'result')}>
               <TableChart
                 sx={{ color: session.mode === 'result' ? highlightColor : defaultColor }}
               />
-            </Box>
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="More options">
-          <IconButton size="small" onClick={handleMenuOpen}>
-            <MoreVert />
-          </IconButton>
-        </Tooltip>
-      </Box>
+            </IconButton>
+          </Tooltip>
 
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-        <Input sessionId={session.id} />
-      </Box>
-      <Box sx={{ border: '1px solid lightgray', borderRadius: 1, mt: 1 }}>
-        <Query sessionId={session.id} />
+          <Tooltip title="More options">
+            <IconButton size="small" onClick={handleMenuOpen}>
+              <MoreVert />
+            </IconButton>
+          </Tooltip>
+
+          <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}>
+            <MenuItem
+              onClick={() => {
+                if (session.mode === 'monitor') return;
+                session.mode = 'monitor';
+                handleMenuClose();
+              }}
+            >
+              <ListItemIcon>
+                <BarChart
+                  sx={{ color: session.mode === 'monitor' ? highlightColor : defaultColor }}
+                />
+              </ListItemIcon>
+              <ListItemText primary="Connection monitoring" />
+            </MenuItem>
+          </Menu>
+        </Box>
       </Box>
     </Box>
   );
@@ -198,11 +210,6 @@ const ResizableDivider = ({
           transition: 'background-color 0.2s',
           opacity: 1,
         },
-        ...(isResizing && {
-          backgroundColor: 'lightgray',
-          width: '10px',
-          opacity: 1,
-        }),
       }}
       onMouseDown={handleMouseDown}
     >
@@ -248,7 +255,7 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
         }}
       >
         <Grid item style={{ width: sidebarWidth, position: 'relative' }}>
-          <Sidebar session={session} sx={{ mr: '10px' }} />
+          <Sidebar session={session} />
           <ResizableDivider sidebarWidth={sidebarWidth} setSidebarWidth={setSidebarWidth} />
         </Grid>
 

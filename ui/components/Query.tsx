@@ -41,22 +41,22 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
 
   if (session.query) {
     return (
-      <Box sx={{ m: 1, overflow: 'auto' }}>
-        <pre
+      <div style={{ margin: 10 }}>
+        <code
           onClick={onClick}
-          style={{ cursor: 'pointer', margin: 0, paddingTop: 20, paddingBottom: 20 }}
+          style={{
+            color: 'gray',
+            fontFamily: 'monospace',
+            fontSize: '12px',
+            whiteSpace: 'pre-wrap', // Use pre-wrap to preserve formatting and wrap
+            display: 'block',
+            wordWrap: 'break-word', // Handle long words
+            cursor: 'pointer', // Use mouse pointer to make it obvious
+          }}
         >
-          <code
-            style={{
-              color: 'gray',
-              fontFamily: 'monospace',
-              fontSize: '0.75rem', // 12px
-            }}
-          >
-            {session.query}
-          </code>
-        </pre>
-      </Box>
+          {session.query}
+        </code>
+      </div>
     );
   }
 
