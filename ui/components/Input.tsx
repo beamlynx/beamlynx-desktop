@@ -13,10 +13,6 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
   const { global } = useStores();
   const session = global.getSession(sessionId);
 
-  const setExpression = (expression: string) => {
-    session.expression = expression;
-  };
-
   /**
    * Only prettify if `|` is added at the end of the expression
    */
@@ -93,7 +89,7 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
         case '|':
           if (!shouldPrettify()) return;
           e.preventDefault();
-          setExpression(prettifyExpression(session.expression));
+          session.expression = prettifyExpression(session.expression);
           return;
         case 'Enter':
           e.preventDefault();
@@ -120,7 +116,7 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
           case '|':
             e.preventDefault();
             session.input = true;
-            setExpression(session.getExpressionUsingCandidate());
+            session.updateExpressionUsingCandidate();
             return;
           case 'Tab':
             e.preventDefault();
@@ -141,7 +137,7 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
             e.preventDefault();
             session.input = true;
             session.loaded = false;
-            setExpression(session.expression + e.key);
+            session.expression = session.expression + e.key;
             return;
         }
     }
@@ -165,7 +161,9 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
       minRows="8"
       maxRows="15"
       inputRef={inputRef}
-      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setExpression(e.target.value)}
+      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+        (session.expression = e.target.value)
+      }
       onKeyDown={handleKeyPress}
       disabled={!isConnected}
       InputProps={{

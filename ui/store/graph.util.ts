@@ -5,7 +5,7 @@ import { Ast, Column, Table, TableHint } from './client';
 
 export type Graph = {
   // Metadata
-  candidate: TableHint | null;
+  candidate: { pine: string } | null;
 
   // Reactflow nodes and edges - this is ready to be rendered
   selectedNodes: PineSelectedNode[];

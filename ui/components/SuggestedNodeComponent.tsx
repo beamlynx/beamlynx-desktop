@@ -20,8 +20,8 @@ const SuggestedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
   return (
     <div
       style={{
+        cursor: 'pointer',
         position: 'relative',
-
         padding: '12px 10px 12px 10px',
         border,
         background,

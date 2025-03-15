@@ -237,16 +237,33 @@ export class Session {
     this.candidateIndex = this.candidateIndex === undefined ? 0 : this.candidateIndex + offset;
   }
 
-  public getExpressionUsingCandidate() {
+  private getExpressionUsingCandidate() {
     if (!this.graph.candidate) {
       throw new Error('Unable to update the expression as no candidate is selected.');
     }
     const { pine } = this.graph.candidate;
+    return this.composeExpression(pine);
+  }
+
+  private composeExpression(pine: string) {
     const parts = this.expression.split('|');
     parts.pop();
     parts.push(pine);
     const expression = parts.join(' | ');
     return prettifyExpression(expression);
+  }
+
+  public updateExpressionUsingCandidate() {
+    this.expression = this.getExpressionUsingCandidate();
+  }
+
+  public composeAndUpdateExpression(pine: string) {
+    this.expression = this.composeExpression(pine);
+  }
+
+  public setContext(alias: string) {
+    const pine = `from: ${alias}`;
+    this.expression = this.composeExpression(pine);
   }
 
   public async evaluate() {

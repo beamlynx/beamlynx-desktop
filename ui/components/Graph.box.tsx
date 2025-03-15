@@ -14,7 +14,13 @@ import ReactFlow, {
 import { BoxProps } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import 'reactflow/dist/style.css';
-import { PineEdge, PineNode, PineSelectedNode, PineSuggestedNode } from '../model';
+import {
+  PineEdge,
+  PineNode,
+  PineSelectedNode,
+  PineSuggestedNode,
+  SelectedNodeData,
+} from '../model';
 import { useStores } from '../store/store-container';
 import SelectedNodeComponent from './SelectedNodeComponent';
 import SuggestedNodeComponent from './SuggestedNodeComponent';
@@ -26,8 +32,8 @@ const getNodeHeight = (node: PineNode) => {
 };
 
 export const NodeType = {
-  Selected: 'selectedNode',
-  Suggested: 'pineNode',
+  Selected: 'selected-node',
+  Suggested: 'suggested-node',
 };
 const nodeTypes: NodeTypes = {
   [NodeType.Suggested]: SuggestedNodeComponent,
@@ -158,6 +164,23 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId }) => {
     }
   };
 
+  // Add handler for node click
+  const onNodeClick = (_: React.MouseEvent, node: PineNode) => {
+    switch (node.type) {
+      case NodeType.Selected:
+        const n = node.data as SelectedNodeData;
+        session.setContext(n.alias);
+        break;
+
+      case NodeType.Suggested:
+        session.composeAndUpdateExpression(node.id);
+        break;
+      default:
+        console.log('Click not supported for node', node.type);
+        return;
+    }
+  };
+
   return (
     <ReactFlow
       nodes={nodes}
@@ -166,6 +189,7 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId }) => {
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
       onNodeDragStop={onNodeDragStop}
+      onNodeClick={onNodeClick}
       connectionLineType={ConnectionLineType.Bezier}
       nodesConnectable={false}
       draggable={true}
