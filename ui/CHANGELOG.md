@@ -5,6 +5,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.17.0] - 2025-03-15
+### Added
+- The suggested nodes can be clicked to select them
+
 ## [0.16.0] - 2025-03-10
 ### Added
 - Show the icons for the main view mode i.e. documentation, graph and results
