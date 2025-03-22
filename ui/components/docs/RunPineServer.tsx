@@ -59,7 +59,7 @@ export const RunPineServer = () => {
         </button>
       </div>
 
-      <p>Connect to the database by clicking on the top left icon.</p>
+      <p>Once that is done, you will be able to connect to a database.</p>
     </div>
   );
 };
