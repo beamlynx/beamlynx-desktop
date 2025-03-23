@@ -5,6 +5,13 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.18.0] - 2025-03-23
+### Added
+- Clicking on a suggested column (select or order) in the selected node updates the expression
+
+### Changed
+- UX for setting up pine server and connecting to the database is improved
+
 ## [0.17.0] - 2025-03-15
 ### Added
 - The suggested nodes can be clicked to select them

@@ -44,6 +44,7 @@ const makeSelectedNode = (
   orderColumns: string[],
   suggestedColumns: string[],
   suggestedOrderColumns: string[],
+  sessionId: string,
 ): PineSelectedNode => {
   const { schema, table, alias } = n;
   const { color } = getColor(n.schema);
@@ -63,12 +64,17 @@ const makeSelectedNode = (
       orderColumns,
       suggestedColumns,
       suggestedOrderColumns,
+      sessionId,
     },
     position: { x: 0, y: 0 },
   };
 };
 
-export const makeSuggestedNode = (n: TableHint, candidate = false): PineSuggestedNode => {
+export const makeSuggestedNode = (
+  n: TableHint,
+  sessionId: string,
+  candidate = false,
+): PineSuggestedNode => {
   const { schema, table, column, pine, parent } = n;
   const { color } = getColor(schema);
 
@@ -85,6 +91,7 @@ export const makeSuggestedNode = (n: TableHint, candidate = false): PineSuggeste
       type: candidate ? 'candidate' : 'suggested',
       pine,
       parent,
+      sessionId,
     },
     position: { x: 0, y: 0 },
   };
@@ -103,7 +110,7 @@ const makeColumnsLookup = (columns: Column[]): Record<string, string[]> => {
   );
 };
 
-const makeSelectedNodes = (ast: Ast): PineSelectedNode[] => {
+const makeSelectedNodes = (ast: Ast, sessionId: string): PineSelectedNode[] => {
   const {
     'selected-tables': selectedTables,
     columns: selectedColumns,
@@ -138,6 +145,7 @@ const makeSelectedNodes = (ast: Ast): PineSelectedNode[] => {
           orderColumns,
           suggestedColumns,
           suggestedOrderColumns,
+          sessionId,
         );
       })
     : [];
@@ -145,19 +153,19 @@ const makeSelectedNodes = (ast: Ast): PineSelectedNode[] => {
   return selectedNodes;
 };
 
-const makeSuggestedNodes = (ast: Ast): PineSuggestedNode[] => {
+const makeSuggestedNodes = (ast: Ast, sessionId: string): PineSuggestedNode[] => {
   const {
     hints: { table: suggestedTables },
   } = ast;
   const suggestedNodes: PineSuggestedNode[] = [];
   for (const h of suggestedTables) {
-    const node = makeSuggestedNode(h);
+    const node = makeSuggestedNode(h, sessionId, false);
     suggestedNodes.push(node);
   }
   return suggestedNodes;
 };
 
-export const generateGraph = (ast: Ast): Graph => {
+export const generateGraph = (ast: Ast, sessionId: string): Graph => {
   const { 'selected-tables': selectedTables, joins, context } = ast;
 
   const graph: Graph = {
@@ -171,7 +179,7 @@ export const generateGraph = (ast: Ast): Graph => {
    * 1. Selected Nodes
    */
 
-  const selectedNodes = makeSelectedNodes(ast);
+  const selectedNodes = makeSelectedNodes(ast, sessionId);
 
   // Find the context node
   const selectedNodesLookup = selectedNodes.reduce(
@@ -187,7 +195,7 @@ export const generateGraph = (ast: Ast): Graph => {
    * 2. Suggested Nodes
    */
 
-  const suggestedNodes = makeSuggestedNodes(ast);
+  const suggestedNodes = makeSuggestedNodes(ast, sessionId);
 
   graph.selectedNodes = selectedNodes;
   graph.suggestedNodes = suggestedNodes;

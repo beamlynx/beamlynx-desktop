@@ -149,35 +149,18 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId }) => {
     setNodes(nds =>
       nds.map((n: PineSuggestedNode) => {
         const isCandidate = n.id === candidate.id;
-        const node = makeSuggestedNode(n.data, isCandidate);
+        const node = makeSuggestedNode(n.data, sessionId, isCandidate);
         const result = { ...n, data: { ...n.data, ...node.data } };
         return result;
       }),
     );
-  }, [candidate, setNodes]);
+  }, [candidate, setNodes, sessionId]);
 
   // Add handler for node movement
   const onNodeDragStop = (event: React.MouseEvent, node: PineNode) => {
     if (node.data.type === 'selected') {
       // Cache the position using the node's alias as the key
       nodePositionCache[node.data.alias] = node.position;
-    }
-  };
-
-  // Add handler for node click
-  const onNodeClick = (_: React.MouseEvent, node: PineNode) => {
-    switch (node.type) {
-      case NodeType.Selected:
-        const n = node.data as SelectedNodeData;
-        session.setContext(n.alias);
-        break;
-
-      case NodeType.Suggested:
-        session.composeAndUpdateExpression(node.id);
-        break;
-      default:
-        console.log('Click not supported for node', node.type);
-        return;
     }
   };
 
@@ -189,7 +172,6 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId }) => {
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
       onNodeDragStop={onNodeDragStop}
-      onNodeClick={onNodeClick}
       connectionLineType={ConnectionLineType.Bezier}
       nodesConnectable={false}
       draggable={true}
@@ -208,9 +190,6 @@ interface GraphBoxProps extends BoxProps {
 }
 
 const GraphBox: React.FC<GraphBoxProps> = observer(({ sessionId }) => {
-  const { global } = useStores();
-  const session = global.getSession(sessionId);
-
   return (
     <ReactFlowProvider>
       <Flow sessionId={sessionId} />
