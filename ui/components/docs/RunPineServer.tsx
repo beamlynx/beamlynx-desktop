@@ -22,14 +22,15 @@ export const RunPineServer = () => {
           marginBottom: 20,
           display: 'flex',
           alignItems: 'center',
+          maxWidth: '400px',
         }}
       >
         <span style={{ marginRight: 10, color: '#ff9800' }}>⚠️</span>
-        <span>Seems like you are not connected!</span>
+        <span className="text-warning">Seems like Pine server isn&apos;t running!</span>
       </div>
 
-      <p>Run the pine server:</p>
-      <div style={{ marginBottom: 20, position: 'relative' }}>
+      <p className="text-primary">Run the pine server:</p>
+      <div style={{ marginBottom: 20, position: 'relative', maxWidth: '400px' }}>
         <div
           style={{
             padding: 15,
@@ -38,10 +39,23 @@ export const RunPineServer = () => {
             borderRadius: 5,
             border: '1px solid #ddd',
             fontFamily: 'monospace',
+            whiteSpace: 'pre',
           }}
         >
-          docker run -p 33333:33333 --add-host host.docker.internal:host-gateway
-          ahmadnazir/pine:latest
+          <code>
+            <span style={{ color: '#666' }}>docker</span> <span style={{ color: '#666' }}>run</span>{' '}
+            <span style={{ color: '#aaa' }}>\</span>
+            {'\n  '}
+            <span style={{ color: '#666' }}>-p</span>{' '}
+            <span style={{ color: '#999' }}>33333:33333</span>{' '}
+            <span style={{ color: '#aaa' }}>\</span>
+            {'\n  '}
+            <span style={{ color: '#666' }}>--add-host</span>{' '}
+            <span style={{ color: '#999' }}>host.docker.internal:host-gateway</span>{' '}
+            <span style={{ color: '#aaa' }}>\</span>
+            {'\n  '}
+            <span style={{ color: '#666' }}>ahmadnazir/pine:latest</span>
+          </code>
         </div>
         <button
           onClick={copyToClipboard}
@@ -59,7 +73,7 @@ export const RunPineServer = () => {
         </button>
       </div>
 
-      <p>Once that is done, you will be able to connect to a database.</p>
+      <p className="text-primary">Once that is done, you will be able to connect to a database.</p>
     </div>
   );
 };

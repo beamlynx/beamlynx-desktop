@@ -28,13 +28,20 @@ const ActiveConnection = () => {
   useEffect(() => {
     if (!global.connected) {
       setConnectionDisplay('🔌 No connection!');
-    } else {
-      const serverVersion = global.version ?? 'obsolete';
-      const dbConnectionName = global.getConnectionName();
-      const status = dbConnectionName ? '⚡' : '🔌';
-      setConnectionDisplay(
-        `${status} [${serverVersion}] ${dbConnectionName || 'Click here to configure db connection'}`,
-      );
+      return;
+    }
+
+    const serverVersion = global.version ?? 'obsolete';
+    const dbConnectionName = global.getConnectionName();
+    const status = dbConnectionName ? '⚡' : '🔌';
+
+    setConnectionDisplay(
+      `${status} [${serverVersion}] ${dbConnectionName || 'Not connected to database'}`,
+    );
+
+    // Show the database connection settings if no database is connected
+    if (!dbConnectionName) {
+      global.setShowSettings(true);
     }
   }, [global, global.connected, global.connection, global.version]);
 
@@ -45,8 +52,10 @@ const ActiveConnection = () => {
         variant="caption"
         component="code"
         color="gray"
-        onClick={() => global.setShowSettings(!global.showSettings)}
-        style={{ cursor: 'pointer' }}
+        {...(global.connected && {
+          onClick: () => global.setShowSettings(!global.showSettings),
+          style: { cursor: 'pointer' },
+        })}
       >
         {loading ? 'Connecting...' : connectionDisplay}
       </Typography>
