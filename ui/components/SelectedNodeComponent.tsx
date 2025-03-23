@@ -9,8 +9,12 @@ const onSelectedNodeClick = (session: Session, alias: string) => {
   session.setContext(alias);
 };
 
-const onCandidateColumnClick = (session: Session, column: string) => {
-  session.appendAndUpdateExpression(`${column}, `);
+const onCandidateColumnClick = (session: Session, column: string, type: 'select' | 'order') => {
+  if (type === 'select') {
+    session.appendAndUpdateExpression(`${column}, `);
+  } else {
+    session.appendAndUpdateExpression(`${column} desc, `);
+  }
 };
 
 const TableNode = ({
@@ -168,7 +172,15 @@ const SelectedColumns = ({ columns }: { columns: string[] }) => (
   </div>
 );
 
-const CandidateColumns = ({ columns, sessionId }: { columns: string[]; sessionId: string }) => {
+const CandidateColumns = ({
+  columns,
+  sessionId,
+  type,
+}: {
+  columns: string[];
+  sessionId: string;
+  type: 'select' | 'order';
+}) => {
   const { global } = useStores();
   const session = global.getSession(sessionId);
   return (
@@ -191,7 +203,7 @@ const CandidateColumns = ({ columns, sessionId }: { columns: string[]; sessionId
         {columns.map(column => (
           <div
             key={column}
-            onClick={() => onCandidateColumnClick(session, column)}
+            onClick={() => onCandidateColumnClick(session, column, type)}
             style={{
               fontSize: '8px',
               fontFamily: 'Courier, monospace',
@@ -263,7 +275,7 @@ const Columns = ({
             margin: '8px',
           }}
         >
-          <CandidateColumns columns={candidateColumns} sessionId={sessionId} />
+          <CandidateColumns columns={candidateColumns} sessionId={sessionId} type={type} />
         </div>
       )}
     </div>
