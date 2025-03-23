@@ -18,6 +18,7 @@ type ConnectionParams = {
 
 export class GlobalStore {
   connected = false;
+  connecting = false;
   connection = '';
   version: string | undefined = undefined;
 

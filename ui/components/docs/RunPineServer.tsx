@@ -29,7 +29,7 @@ export const RunPineServer = () => {
         <span className="text-warning">Seems like Pine server isn&apos;t running!</span>
       </div>
 
-      <p className="text-primary">Run the pine server:</p>
+      <p className="text-primary">Run the server:</p>
       <div style={{ marginBottom: 20, position: 'relative', maxWidth: '400px' }}>
         <div
           style={{
@@ -72,8 +72,6 @@ export const RunPineServer = () => {
           {copied ? '✓' : '📋'}
         </button>
       </div>
-
-      <p className="text-primary">Once that is done, you will be able to connect to a database.</p>
     </div>
   );
 };

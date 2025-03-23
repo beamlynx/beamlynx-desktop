@@ -48,3 +48,5 @@ export const debounce = (func: (...args: any[]) => void, wait: number) => {
 export const devOnly = (text: string): string => {
   return process.env.NODE_ENV === 'development' ? text : '';
 };
+
+export const isDevelopment = process.env.NODE_ENV === 'development';

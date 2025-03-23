@@ -24,7 +24,6 @@ import { Session as SessionType } from '../store/session';
 import { useState, useEffect } from 'react';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from '../store/preferences';
 import { MIN_SIDEBAR_WIDTH, DEFAULT_SIDEBAR_WIDTH } from '../constants';
-import { RunPineServer } from './docs/RunPineServer';
 
 interface SessionProps {
   sessionId: string;
@@ -261,13 +260,7 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
         </Grid>
 
         <Grid item style={{ width: `calc(100% - ${sidebarWidth}px)` }}>
-          {!global.connected ? (
-            <Box sx={{ p: 2 }}>
-              <RunPineServer />
-            </Box>
-          ) : (
-            <MainView sessionId={sessionId} mode={session.mode} input={session.input} />
-          )}
+          <MainView sessionId={sessionId} mode={session.mode} input={session.input} />
         </Grid>
       </Grid>
     </Grid>

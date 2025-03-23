@@ -5,25 +5,7 @@ import { useStores } from '../store/store-container';
 import Settings from '../pages/settings';
 const ActiveConnection = () => {
   const { global } = useStores();
-  const [loading, setLoading] = useState(false);
   const [connectionDisplay, setConnectionDisplay] = useState('🔌 No connection!');
-
-  // Load Active Connection and Metadata
-  useEffect(() => {
-    setLoading(true);
-    global
-      .loadConnectionMetadata()
-      .then(() => {
-        global.connected = true;
-        setLoading(false);
-      })
-      .catch(err => {
-        global.connected = false;
-        setLoading(false);
-        console.error(err);
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   useEffect(() => {
     if (!global.connected) {
@@ -57,7 +39,7 @@ const ActiveConnection = () => {
           style: { cursor: 'pointer' },
         })}
       >
-        {loading ? 'Connecting...' : connectionDisplay}
+        {connectionDisplay}
       </Typography>
     </Box>
   );
