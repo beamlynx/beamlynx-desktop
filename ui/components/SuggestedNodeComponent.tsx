@@ -1,6 +1,8 @@
 import React from 'react';
 import { Handle, NodeProps, Position } from 'reactflow';
 import { SuggestedNodeData } from '../model';
+import { Session } from '../store/session';
+import { useStores } from '../store/store-container';
 
 const handleStyle: React.CSSProperties = {
   width: '2px',
@@ -11,7 +13,13 @@ const handleStyle: React.CSSProperties = {
 
 type PineNodeProps = NodeProps<SuggestedNodeData>;
 
+const onSuggestedNodeClick = (session: Session, pine: string) => {
+  session.pipeAndUpdateExpression(pine);
+};
+
 const SuggestedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
+  const { global } = useStores();
+  const session = global.getSession(data.sessionId);
   const lightOrange = '#FFD700';
   const candidate = data.type === 'candidate';
   const background = candidate ? lightOrange : 'white';
@@ -19,6 +27,7 @@ const SuggestedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
 
   return (
     <div
+      onClick={() => onSuggestedNodeClick(session, data.pine)}
       style={{
         cursor: 'pointer',
         position: 'relative',

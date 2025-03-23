@@ -1,6 +1,7 @@
 import { Edge, Node } from 'reactflow';
 
 type BaseNode = {
+  sessionId: string;
   schema: string;
   table: string;
   column: string; // TODO: rename to joinOn column

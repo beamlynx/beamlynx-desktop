@@ -189,7 +189,7 @@ export class Session {
           }
         }
 
-        const graph = generateGraph(ast);
+        const graph = generateGraph(ast, this.id);
         this.graph = graph;
       },
     );
@@ -242,10 +242,10 @@ export class Session {
       throw new Error('Unable to update the expression as no candidate is selected.');
     }
     const { pine } = this.graph.candidate;
-    return this.composeExpression(pine);
+    return this.pipeExpression(pine);
   }
 
-  private composeExpression(pine: string) {
+  private pipeExpression(pine: string) {
     const parts = this.expression.split('|');
     parts.pop();
     parts.push(pine);
@@ -257,13 +257,17 @@ export class Session {
     this.expression = this.getExpressionUsingCandidate();
   }
 
-  public composeAndUpdateExpression(pine: string) {
-    this.expression = this.composeExpression(pine);
+  public appendAndUpdateExpression(string: string) {
+    this.expression = this.expression + string;
+  }
+
+  public pipeAndUpdateExpression(pine: string) {
+    this.expression = this.pipeExpression(pine);
   }
 
   public setContext(alias: string) {
     const pine = `from: ${alias}`;
-    this.expression = this.composeExpression(pine);
+    this.expression = this.pipeExpression(pine);
   }
 
   public async evaluate() {
