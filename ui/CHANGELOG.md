@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.18.0] - 2025-03-23
 ### Added
 - Clicking on a suggested column (select or order) in the selected node updates the expression
 
