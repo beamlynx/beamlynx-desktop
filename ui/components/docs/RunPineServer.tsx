@@ -1,11 +1,14 @@
 import { useState } from 'react';
+import { useStores } from '../../store/store-container';
+import { RequiredVersion } from '../../constants';
 
 export const RunPineServer = () => {
   const [copied, setCopied] = useState(false);
+  const { global } = useStores();
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(
-      'docker run -p 33333:33333 --add-host host.docker.internal:host-gateway ahmadnazir/pine:latest',
+      `docker run -p 33333:33333 --add-host host.docker.internal:host-gateway ahmadnazir/pine:${RequiredVersion}`,
     );
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -54,7 +57,7 @@ export const RunPineServer = () => {
             <span style={{ color: '#999' }}>host.docker.internal:host-gateway</span>{' '}
             <span style={{ color: '#aaa' }}>\</span>
             {'\n  '}
-            <span style={{ color: '#666' }}>ahmadnazir/pine:latest</span>
+            <span style={{ color: '#666' }}>ahmadnazir/pine:{RequiredVersion}</span>
           </code>
         </div>
         <button

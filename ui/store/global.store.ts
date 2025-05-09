@@ -2,8 +2,7 @@ import { makeAutoObservable } from 'mobx';
 import { lt } from 'semver';
 import { HttpClient } from './client';
 import { Session } from './session';
-
-const requiredVersion = '0.16.0';
+import { RequiredVersion } from '../constants';
 
 const initSession = new Session('0');
 
@@ -89,10 +88,10 @@ export class GlobalStore {
     this.version = result.version ?? '0.0.0';
     this.connected = true;
 
-    if (lt(this.version, requiredVersion)) {
+    if (lt(this.version, RequiredVersion)) {
       // Use the default session to show the error
       const session = this.getSession(this.activeSessionId);
-      session.error = `🚨 You are running version ${this.version}. Upgrade the server to the latest version (i.e. >= ${requiredVersion}).`;
+      session.error = `🚨 You are running version ${this.version}. Upgrade the server to the latest version (i.e. >= ${RequiredVersion}).`;
     }
     return this.connection;
   };

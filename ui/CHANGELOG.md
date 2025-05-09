@@ -5,6 +5,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.18.1] - 2025-05-09
+### Added
+- If the pine server isn't running, then the correct version is shown instead of `latest`.
+
 ## [0.18.0] - 2025-03-23
 ### Added
 - Clicking on a suggested column (select or order) in the selected node updates the expression
