@@ -5,6 +5,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.18.2] - 2025-05-13
+### Fixed
+- The delete queries use the correct column name i.e. column used in the previous join than the first column of the table
+
 ## [0.18.1] - 2025-05-09
 ### Added
 - If the pine server isn't running, then the correct version is shown instead of `latest`.

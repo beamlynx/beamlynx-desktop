@@ -142,7 +142,7 @@ export class HttpClient {
 
   public async makeChildExpressions(
     expression: string,
-  ): Promise<{ expressions: string[]; ast: Ast }> {
+  ): Promise<{ expressions: { expression: string; column: string }[]; ast: Ast }> {
     // Here we can't use the `build` function as it cleans the expression and
     // hence removing the trailing `|`, but we want to keep it. So we clean the
     // expression and add it explicitly
@@ -152,16 +152,21 @@ export class HttpClient {
       throw new Error('No response when trying to make child Expressions');
     }
     this.onBuild && (await this.onBuild(response.ast));
-    const expressions = response.ast.hints.table.filter(h => !h.parent).map(h => `${x} ${h.pine}`);
+    const expressions = response.ast.hints.table
+      .filter(h => !h.parent)
+      .map((h: TableHint) => ({
+        expression: `${x} ${h.pine}`,
+        column: h.column,
+      }));
     return { expressions, ast: response.ast };
   }
 
   public async buildDeleteQuery(
     expression: string,
+    column: string,
     limit: number,
   ): Promise<{ query: string; ast: Ast }> {
-    const { columnName } = await this.getFirstColumnName(expression);
-    const x = `${expression} | limit: ${limit} | delete! .${columnName}`;
+    const x = `${expression} | limit: ${limit} | delete! .${column}`;
     const response = await this.build(x);
     if (!response) {
       throw new Error('No response when trying to build the delete query');

@@ -16,8 +16,13 @@ export class RecursiveDeletePlugin implements PluginInterface {
     const expression = this.session.expression.split('|').slice(0, -1).join('|');
 
     this.session.query = '/* Recursive deletion in progress ... */';
-    const queries: string[] = ['/* DELETE queries */'];
-    await this.collectDeleteQueries(expression, queries);
+    
+    // Create the delete queries
+    const queries: string[] = ['/* DELETE queries */', 'BEGIN;'];
+    await this.collectDeleteQueries(expression, 'id', queries);
+    queries.push('COMMIT;');
+
+    // Format the queries
     this.session.query = queries
       .map(q => {
         return format(q, {
@@ -28,10 +33,11 @@ export class RecursiveDeletePlugin implements PluginInterface {
       })
       .join('\n\n');
 
+
     return Promise.resolve();
   }
 
-  private async collectDeleteQueries(expression: string, deleteQueries: string[]): Promise<void> {
+  private async collectDeleteQueries(expression: string, column: string, deleteQueries: string[]): Promise<void> {
     const count = await this.client.count(expression);
 
     if (count === 0) {
@@ -41,12 +47,12 @@ export class RecursiveDeletePlugin implements PluginInterface {
     // Recurse to process children first
     const { expressions } = await this.client.makeChildExpressions(expression);
 
-    for (const childExpr of expressions) {
-      await this.collectDeleteQueries(childExpr, deleteQueries);
+    for (const { expression: childExpression, column: childColumn } of expressions) {
+      await this.collectDeleteQueries(childExpression, childColumn, deleteQueries);
     }
 
     // After processing children, add the delete query for the current expression
-    const { query } = await this.client.buildDeleteQuery(expression, count);
+    const { query } = await this.client.buildDeleteQuery(expression, column, count);
     deleteQueries.push(query);
   }
 }
