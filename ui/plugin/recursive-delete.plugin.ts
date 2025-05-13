@@ -19,6 +19,9 @@ export class RecursiveDeletePlugin implements PluginInterface {
     
     // Create the delete queries
     const queries: string[] = ['/* DELETE queries */', 'BEGIN;'];
+    // FIXME: The column name is hardcoded to `id`. This means that if a table
+    // that doesn't have `id` as the primary column won't be deleted using the
+    // recursive delete method.
     await this.collectDeleteQueries(expression, 'id', queries);
     queries.push('COMMIT;');
 
