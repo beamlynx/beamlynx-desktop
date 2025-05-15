@@ -6,17 +6,9 @@ import { Ast, Hints, HttpClient, Operation, Response, TableHint } from './client
 import { generateGraph, getCandidateIndex, Graph } from './graph.util';
 import { debounce, prettifyExpression } from './util';
 import { MAX_COUNT, TOTAL_BARS } from '../constants';
+import { GridColDef } from '@mui/x-data-grid';
 
 export type Mode = 'documentation' | 'graph' | 'result' | 'monitor';
-
-export type Column = {
-  field: string;
-  headerName: string;
-  flex: number;
-  editable: boolean;
-  minWidth: number;
-  maxWidth: number;
-};
 
 export type Row = { [key: string]: any };
 
@@ -64,8 +56,8 @@ export class Session {
   connectionCountLogs: { time: string; count: number }[] = [];
 
   /** Result */
-  loaded: boolean = false; // observable
-  columns: Column[] = [];
+  loading: boolean = false; // observable
+  columns: GridColDef[] = [];
   rows: Row[] = [];
 
   /** Mode - controls the main view */
@@ -242,12 +234,15 @@ export class Session {
       throw new Error('Unable to update the expression as no candidate is selected.');
     }
     const { pine } = this.graph.candidate;
-    return this.pipeExpression(pine);
+    return this.pipeExpression(pine, true);
   }
 
-  private pipeExpression(pine: string) {
-    const parts = this.expression.split('|');
-    parts.pop();
+  private pipeExpression(pine: string, overwriteLastOperation: boolean) {
+    const parts = this.expression.split('|').map(p => p.trim());
+    const last = parts.pop();
+    if (!overwriteLastOperation && last) {
+      parts.push(last);
+    }
     parts.push(pine);
     const expression = parts.join(' | ');
     return prettifyExpression(expression);
@@ -261,13 +256,13 @@ export class Session {
     this.expression = this.expression + string;
   }
 
-  public pipeAndUpdateExpression(pine: string) {
-    this.expression = this.pipeExpression(pine);
+  public pipeAndUpdateExpression(pine: string, overwriteLastOperation: boolean) {
+    this.expression = this.pipeExpression(pine, overwriteLastOperation);
   }
 
   public setContext(alias: string) {
     const pine = `from: ${alias}`;
-    this.expression = this.pipeExpression(pine);
+    this.expression = this.pipeExpression(pine, true);
   }
 
   public async evaluate() {

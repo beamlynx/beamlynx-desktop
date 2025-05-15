@@ -34,7 +34,7 @@ const Message: React.FC<MessageProps> = observer(({}) => {
   return (
     <Typography variant="caption" color="gray">
       {devOnly(`mode: ${session.mode} | `)}
-      {devOnly(`loaded: ${session.loaded} | `)}
+      {devOnly(`loading: ${session.loading} | `)}
       {session.message}
     </Typography>
   );

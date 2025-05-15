@@ -3,7 +3,8 @@ import { observer } from 'mobx-react-lite';
 import React, { useEffect, useRef } from 'react';
 import { useStores } from '../store/store-container';
 import { prettifyExpression } from '../store/util';
-
+import { Box, Button } from '@mui/material';
+import { KeyboardReturn, Loop } from '@mui/icons-material';
 interface InputProps {
   sessionId: string;
 }
@@ -93,16 +94,16 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
           return;
         case 'Enter':
           e.preventDefault();
-          session.evaluate();
+          await handleEvaluate();
           return;
       }
-      session.loaded = false;
+
+      session.mode = 'graph';
       return;
     }
 
     switch (session.mode) {
       case 'result':
-        session.loaded = false;
         session.input = true;
         return;
 
@@ -136,43 +137,59 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
             }
             e.preventDefault();
             session.input = true;
-            session.loaded = false;
             session.expression = session.expression + e.key;
             return;
         }
     }
   };
 
+  const handleExpressionChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    session.expression = e.target.value;
+  };
+
+  const handleEvaluate = async () => {
+    await session.evaluate();
+  };
+
   const isConnected = global.connected && global.getConnectionName();
 
   return (
-    <TextField
-      id="input"
-      label="Pine expression... "
-      value={isConnected ? session.expression : '\n - not connected - '}
-      size="small"
-      variant="outlined"
-      focused={session.input}
-      onFocus={() => {
-        session.input = true;
-      }}
-      multiline
-      fullWidth
-      minRows="8"
-      maxRows="15"
-      inputRef={inputRef}
-      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-        (session.expression = e.target.value)
-      }
-      onKeyDown={handleKeyPress}
-      disabled={!isConnected}
-      InputProps={{
-        style: {
-          fontFamily: 'monospace',
-          fontSize: '0.875rem', // 14px
-        },
-      }}
-    />
+    <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+      <TextField
+        id="input"
+        label="Pine expression... "
+        value={isConnected ? session.expression : '\n - not connected - '}
+        size="small"
+        variant="outlined"
+        focused={session.input}
+        onFocus={() => {
+          session.input = true;
+        }}
+        multiline
+        fullWidth
+        minRows="8"
+        maxRows="15"
+        inputRef={inputRef}
+        onChange={handleExpressionChange}
+        onKeyDown={handleKeyPress}
+        disabled={!isConnected}
+        InputProps={{
+          style: {
+            fontFamily: 'monospace',
+            fontSize: '0.875rem', // 14px
+          },
+        }}
+      />
+      <Button
+        variant="contained"
+        onClick={handleEvaluate}
+        disabled={!session.expression || session.loading}
+        sx={{ alignSelf: 'flex-end', mt: 1 }}
+        startIcon={session.loading ? <Loop /> : <KeyboardReturn />}
+      >
+        Run
+      </Button>
+    </Box>
   );
 });
 

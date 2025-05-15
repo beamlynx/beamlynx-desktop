@@ -14,7 +14,7 @@ const handleStyle: React.CSSProperties = {
 type PineNodeProps = NodeProps<SuggestedNodeData>;
 
 const onSuggestedNodeClick = (session: Session, pine: string) => {
-  session.pipeAndUpdateExpression(pine);
+  session.pipeAndUpdateExpression(pine, true);
 };
 
 const SuggestedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {

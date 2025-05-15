@@ -1,29 +1,27 @@
+import { AccountTree, BarChart, Description, MoreVert, TableChart } from '@mui/icons-material';
 import {
   Box,
+  Divider,
   Grid,
   IconButton,
-  Tooltip,
-  Typography,
-  Divider,
-  SxProps,
-  Menu,
-  MenuItem,
   ListItemIcon,
   ListItemText,
+  Menu,
+  MenuItem,
+  Tooltip,
 } from '@mui/material';
 import { observer } from 'mobx-react-lite';
-import GraphBox from './Graph.box';
-import Input from './Input';
-import Query from './Query';
-import Result from './Result';
+import { useEffect, useState } from 'react';
+import { DEFAULT_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from '../constants';
+import { getUserPreference, setUserPreference, STORAGE_KEYS } from '../store/preferences';
+import { Session as SessionType } from '../store/session';
 import { useStores } from '../store/store-container';
 import { Documentation } from './docs/docs';
+import GraphBox from './Graph.box';
+import Input from './Input';
 import { Monitor } from './Monitor';
-import { AccountTree, BarChart, TableChart, MoreVert, Description } from '@mui/icons-material';
-import { Session as SessionType } from '../store/session';
-import { useState, useEffect } from 'react';
-import { getUserPreference, setUserPreference, STORAGE_KEYS } from '../store/preferences';
-import { MIN_SIDEBAR_WIDTH, DEFAULT_SIDEBAR_WIDTH } from '../constants';
+import Query from './Query';
+import Result from './Result';
 
 interface SessionProps {
   sessionId: string;

@@ -13,34 +13,45 @@ export class RecursiveDeletePlugin implements PluginInterface {
     });
   }
   public async evaluate(): Promise<void> {
-    const expression = this.session.expression.split('|').slice(0, -1).join('|');
+    try {
+      this.session.loading = true;
+      const expression = this.session.expression.split('|').slice(0, -1).join('|');
 
-    this.session.query = '/* Recursive deletion in progress ... */';
-    
-    // Create the delete queries
-    const queries: string[] = ['/* DELETE queries */', 'BEGIN;'];
-    // FIXME: The column name is hardcoded to `id`. This means that if a table
-    // that doesn't have `id` as the primary column won't be deleted using the
-    // recursive delete method.
-    await this.collectDeleteQueries(expression, 'id', queries);
-    queries.push('COMMIT;');
+      this.session.query = '/* Recursive deletion in progress ... */';
 
-    // Format the queries
-    this.session.query = queries
-      .map(q => {
-        return format(q, {
-          language: 'postgresql',
-          indentStyle: 'tabularRight',
-          denseOperators: false,
-        });
-      })
-      .join('\n\n');
+      // Create the delete queries
+      const queries: string[] = ['/* DELETE queries */', 'BEGIN;'];
+      // FIXME: The column name is hardcoded to `id`. This means that if a table
+      // that doesn't have `id` as the primary column won't be deleted using the
+      // recursive delete method.
+      await this.collectDeleteQueries(expression, 'id', queries);
+      queries.push('COMMIT;');
 
+      // Format the queries
+      this.session.query = queries
+        .map(q => {
+          return format(q, {
+            language: 'postgresql',
+            indentStyle: 'tabularRight',
+            denseOperators: false,
+          });
+        })
+        .join('\n\n');
+    } catch (e) {
+      this.session.error = e instanceof Error ? e.message : 'Unknown error';
+    } finally {
+      this.session.loading = false;
+    }
 
     return Promise.resolve();
   }
 
-  private async collectDeleteQueries(expression: string, column: string, deleteQueries: string[]): Promise<void> {
+  private async collectDeleteQueries(
+    expression: string,
+    column: string,
+    deleteQueries: string[],
+  ): Promise<void> {
+    await this.client.build(expression);
     const count = await this.client.count(expression);
 
     if (count === 0) {

@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- A button to evaluate the pine expressions
+- The id column in the results are clickable. This adds a where condition and limits the results to the row clicked.
+
+### Fixed
+- Handling errors when building recursive delete queries
+- The graph is rendered for each table being evaluated when doing recursive deletes
+
+### Changed
+- The graph is rendered as soon as the expression is modified
 
 ## [0.18.2] - 2025-05-13
 ### Fixed
