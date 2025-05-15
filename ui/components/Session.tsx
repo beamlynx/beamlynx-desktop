@@ -264,54 +264,52 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
   }, []);
 
   return (
-    <Grid container>
-      <Grid
-        container
-        sx={{
-          mt: 2,
-        }}
-      >
-        {!isSmallScreen && (
-          <>
-            <Grid item style={{ width: sidebarWidth, position: 'relative' }}>
-              <Sidebar
-                session={session}
-                firstView={<Input sessionId={sessionId} />}
-                secondView={<Query sessionId={sessionId} />}
-              />
-              <ResizableDivider sidebarWidth={sidebarWidth} setSidebarWidth={setSidebarWidth} />
-            </Grid>
-
-            <Grid item style={{ width: `calc(100% - ${sidebarWidth}px)` }}>
-              {
-                <MainView
-                  sessionId={sessionId}
-                  mode={session.mode}
-                  input={session.input}
-                  height="calc(100vh - 126px)"
-                />
-              }
-            </Grid>
-          </>
-        )}
-
-        {isSmallScreen && (
-          <Grid item style={{ width: '100%' }}>
+    <Grid
+      container
+      sx={{
+        mt: 2,
+      }}
+    >
+      {!isSmallScreen && (
+        <>
+          <Grid item style={{ width: sidebarWidth, position: 'relative' }}>
             <Sidebar
               session={session}
               firstView={<Input sessionId={sessionId} />}
-              secondView={
-                <MainView
-                  sessionId={sessionId}
-                  mode={session.mode}
-                  input={session.input}
-                  height="calc(100vh - 366px)"
-                />
-              }
+              secondView={<Query sessionId={sessionId} />}
             />
+            <ResizableDivider sidebarWidth={sidebarWidth} setSidebarWidth={setSidebarWidth} />
           </Grid>
-        )}
-      </Grid>
+
+          <Grid item style={{ width: `calc(100% - ${sidebarWidth}px)` }}>
+            {
+              <MainView
+                sessionId={sessionId}
+                mode={session.mode}
+                input={session.input}
+                height="calc(100vh - 126px)"
+              />
+            }
+          </Grid>
+        </>
+      )}
+
+      {isSmallScreen && (
+        <Grid item xs={12} sx={{ flexGrow: 1, width: 'max-content' }}>
+          <Sidebar
+            session={session}
+            firstView={<Input sessionId={sessionId} />}
+            secondView={
+              <MainView
+                sessionId={sessionId}
+                mode={session.mode}
+                input={session.input}
+                height="calc(100vh - 366px)"
+              />
+            }
+          />
+        </Grid>
+      )}
     </Grid>
   );
 });
