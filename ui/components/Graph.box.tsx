@@ -14,17 +14,11 @@ import ReactFlow, {
 import { BoxProps } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import 'reactflow/dist/style.css';
-import {
-  PineEdge,
-  PineNode,
-  PineSelectedNode,
-  PineSuggestedNode,
-  SelectedNodeData,
-} from '../model';
+import { PineEdge, PineNode, PineSelectedNode, PineSuggestedNode } from '../model';
+import { makeSuggestedNode } from '../store/graph.util';
 import { useStores } from '../store/store-container';
 import SelectedNodeComponent from './SelectedNodeComponent';
 import SuggestedNodeComponent from './SuggestedNodeComponent';
-import { makeSuggestedNode } from '../store/graph.util';
 
 const nodeWidth = 172;
 const getNodeHeight = (node: PineNode) => {
@@ -115,7 +109,7 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId }) => {
 
     setTimeout(() => {
       reactFlowInstance.fitView({ duration: 200 });
-    }, 250);
+    }, 100);
   }, [
     graph.selectedNodes,
     graph.suggestedNodes,
@@ -138,7 +132,12 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId }) => {
     }
 
     setCandidate(node);
-  }, [graph.candidate, nodes]);
+
+    // Focus on the candidate node
+    setTimeout(() => {
+      reactFlowInstance.setCenter(node.position.x, node.position.y, { duration: 200, zoom: 1 });
+    }, 100);
+  }, [graph.candidate, nodes, reactFlowInstance]);
 
   // Render candidate
   useEffect(() => {
@@ -177,7 +176,8 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId }) => {
       draggable={true}
       elementsSelectable={true}
       fitView
-      minZoom={0.1}
+      minZoom={0.5}
+      maxZoom={1.2}
       proOptions={{ hideAttribution: true }}
     >
       <Controls />

@@ -17,6 +17,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ### Changed
 - The graph is rendered as soon as the expression is modified
+- The focus goes to the node that is selected as the candidate
 
 ## [0.18.2] - 2025-05-13
 ### Fixed
