@@ -299,10 +299,10 @@ const getMessageFromHints = (operation: Operation, hints: Hints): string | undef
   switch (operation.type) {
     case 'table':
       const tableExpressions = hints.table.map(h => h.pine);
-      return tableExpressions ? tableExpressions.join(', ').substring(0, 120) : '';
+      return tableExpressions ? tableExpressions.join(', ') : '';
     case 'select-partial':
       const columns = hints.select?.map(h => h.column);
-      return columns ? columns.join(', ').substring(0, 120) : '';
+      return columns ? columns.join(', ') : '';
   }
 };
 

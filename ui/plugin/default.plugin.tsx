@@ -16,9 +16,6 @@ export class DefaultPlugin implements PluginInterface {
     session.message = '⏳ Fetching rows ...';
     session.loading = true;
 
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-
     const response = await this.client.eval(session.expression);
 
     if (!response) {

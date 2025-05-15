@@ -1,4 +1,4 @@
-import { Typography } from '@mui/material';
+import { Typography, useMediaQuery, useTheme } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
 import React, { useEffect } from 'react';
@@ -9,6 +9,8 @@ interface MessageProps {}
 const Message: React.FC<MessageProps> = observer(({}) => {
   const { global } = useStores();
   const [session, setSession] = React.useState(global.getSession(global.activeSessionId));
+  const theme = useTheme();
+  const isSmallScreen = useMediaQuery(theme.breakpoints.down('lg'));
 
   useEffect(() => {
     const sessionId = global.activeSessionId;
@@ -35,7 +37,7 @@ const Message: React.FC<MessageProps> = observer(({}) => {
     <Typography variant="caption" color="gray">
       {devOnly(`mode: ${session.mode} | `)}
       {devOnly(`loading: ${session.loading} | `)}
-      {session.message}
+      {isSmallScreen ? session.message.substring(0, 40) : session.message.substring(0, 150)}
     </Typography>
   );
 });

@@ -167,8 +167,13 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
         }}
         multiline
         fullWidth
+        /**
+         * TODO: min and max rows hardcoded to the same value i.e. 8 has to
+         * match min rows as the height for the parent and related compoents
+         * doesn't adjust accordingly at the moment. Search for #dynamic-height
+         */
         minRows="8"
-        maxRows="15"
+        maxRows="8"
         inputRef={inputRef}
         onChange={handleExpressionChange}
         onKeyDown={handleKeyPress}

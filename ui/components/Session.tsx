@@ -9,6 +9,8 @@ import {
   Menu,
   MenuItem,
   Tooltip,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
@@ -27,7 +29,15 @@ interface SessionProps {
   sessionId: string;
 }
 
-const Sidebar = ({ session }: { session: SessionType }) => {
+const Sidebar = ({
+  session,
+  firstView,
+  secondView,
+}: {
+  session: SessionType;
+  firstView: React.ReactNode;
+  secondView: React.ReactNode;
+}) => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const highlightColor = '#4caf50';
   const defaultColor = '#9e9e9e';
@@ -41,15 +51,19 @@ const Sidebar = ({ session }: { session: SessionType }) => {
   };
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', flexDirection: 'row' }}>
+    <Box sx={{ height: '100%' }}>
+      <Box sx={{ display: 'flex', flexDirection: 'row', height: '100%' }}>
         {/* Left column: Input and Query */}
-        <Box sx={{ flex: 1, mr: 1 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-            <Input sessionId={session.id} />
-          </Box>
-          <Box sx={{ border: '1px solid lightgray', borderRadius: 1, mt: 1 }}>
-            <Query sessionId={session.id} />
+        <Box sx={{ flex: 1, mr: 1, flexDirection: 'column', height: '100%' }}>
+          <Box sx={{ alignItems: 'center', mb: 1 }}>{firstView}</Box>
+          <Box
+            sx={{
+              border: '1px solid lightgray',
+              borderRadius: 1,
+              mt: 2,
+            }}
+          >
+            {secondView}
           </Box>
         </Box>
 
@@ -120,39 +134,43 @@ const MainView = ({
   sessionId,
   mode,
   input,
+  height,
 }: {
   sessionId: string;
   mode: string;
   input: boolean;
-}) => (
-  <Box sx={{ flex: 1 }}>
-    {(() => {
-      switch (mode) {
-        case 'monitor':
-          return <Monitor sessionId={sessionId} />;
-        case 'result':
-          return <Result sessionId={sessionId} />;
-        case 'graph':
-          return (
-            <Box
-              className={input ? 'unfocussed' : 'focussed'}
-              sx={{
-                borderRadius: 1,
-                height: 'calc(100vh - 122px)',
-                overflow: 'hidden',
-              }}
-            >
-              <GraphBox sessionId={sessionId} />
-            </Box>
-          );
-        case 'documentation':
-        // intentional fall through
-        default:
-          return Documentation;
-      }
-    })()}
-  </Box>
-);
+  height: string;
+}) => {
+  return (
+    <Box sx={{ flex: 1 }}>
+      {(() => {
+        switch (mode) {
+          case 'monitor':
+            return <Monitor sessionId={sessionId} height={height} />;
+          case 'result':
+            return <Result sessionId={sessionId} />;
+          case 'graph':
+            return (
+              <Box
+                className={input ? 'unfocussed' : 'focussed'}
+                sx={{
+                  borderRadius: 1,
+                  height,
+                  overflow: 'hidden',
+                }}
+              >
+                <GraphBox sessionId={sessionId} />
+              </Box>
+            );
+          case 'documentation':
+          // intentional fall through
+          default:
+            return Documentation;
+        }
+      })()}
+    </Box>
+  );
+};
 
 const ResizableDivider = ({
   sidebarWidth,
@@ -235,6 +253,8 @@ const ResizableDivider = ({
 const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
   const { global } = useStores();
   const session = global.getSession(sessionId);
+  const theme = useTheme();
+  const isSmallScreen = useMediaQuery(theme.breakpoints.down('lg'));
 
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
 
@@ -249,17 +269,48 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
         container
         sx={{
           mt: 2,
-          height: 'calc(100vh - 122px)',
         }}
       >
-        <Grid item style={{ width: sidebarWidth, position: 'relative' }}>
-          <Sidebar session={session} />
-          <ResizableDivider sidebarWidth={sidebarWidth} setSidebarWidth={setSidebarWidth} />
-        </Grid>
+        {!isSmallScreen && (
+          <>
+            <Grid item style={{ width: sidebarWidth, position: 'relative' }}>
+              <Sidebar
+                session={session}
+                firstView={<Input sessionId={sessionId} />}
+                secondView={<Query sessionId={sessionId} />}
+              />
+              <ResizableDivider sidebarWidth={sidebarWidth} setSidebarWidth={setSidebarWidth} />
+            </Grid>
 
-        <Grid item style={{ width: `calc(100% - ${sidebarWidth}px)` }}>
-          <MainView sessionId={sessionId} mode={session.mode} input={session.input} />
-        </Grid>
+            <Grid item style={{ width: `calc(100% - ${sidebarWidth}px)` }}>
+              {
+                <MainView
+                  sessionId={sessionId}
+                  mode={session.mode}
+                  input={session.input}
+                  height="calc(100vh - 126px)"
+                />
+              }
+            </Grid>
+          </>
+        )}
+
+        {isSmallScreen && (
+          <Grid item style={{ width: '100%' }}>
+            <Sidebar
+              session={session}
+              firstView={<Input sessionId={sessionId} />}
+              secondView={
+                <MainView
+                  sessionId={sessionId}
+                  mode={session.mode}
+                  input={session.input}
+                  height="calc(100vh - 366px)"
+                />
+              }
+            />
+          </Grid>
+        )}
       </Grid>
     </Grid>
   );

@@ -4,9 +4,12 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.19.0] - 2025-05-15
 ### Added
 - A button to evaluate the pine expressions
 - The id column in the results are clickable. This adds a where condition and limits the results to the row clicked.
+- For a screen size less than 1200px (i.e. lg), the we update the layout accordingly. Instead of showing the SQL query, the main view is shown.
 
 ### Fixed
 - Handling errors when building recursive delete queries
