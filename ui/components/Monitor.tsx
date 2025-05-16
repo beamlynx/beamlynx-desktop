@@ -4,7 +4,7 @@ import { useStores } from '../store/store-container';
 import { useEffect } from 'react';
 import { TOTAL_BARS } from '../constants';
 
-export const Monitor = observer(({ sessionId }: { sessionId: string }) => {
+export const Monitor = observer(({ sessionId, height }: { sessionId: string, height: string }) => {
   const { global } = useStores();
   const session = global.getSession(sessionId);
   const data = session.connectionCountLogs;
@@ -55,7 +55,7 @@ export const Monitor = observer(({ sessionId }: { sessionId: string }) => {
   }, [session, session.mode]);
 
   return (
-    <Box sx={{ flex: 1, height: 'calc(80vh - 132px)' }}>
+    <Box sx={{ flex: 1, height }}>
       <Box
         sx={{
           borderRadius: 1,

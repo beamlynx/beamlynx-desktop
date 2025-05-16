@@ -7,40 +7,57 @@ export class RecursiveDeletePlugin implements PluginInterface {
   private readonly client: HttpClient;
   constructor(private session: Session) {
     this.client = new HttpClient(async (ast: Ast) => {
-      // wait for 500 ms before setting the hints
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // wait for 100 ms before setting the hints
+      await new Promise(resolve => setTimeout(resolve, 100));
       this.session.ast = ast;
     });
   }
   public async evaluate(): Promise<void> {
-    const expression = this.session.expression.split('|').slice(0, -1).join('|');
+    const startTime = Date.now();
+    try {
+      this.session.loading = true;
+      const expression = this.session.expression.split('|').slice(0, -1).join('|');
 
-    this.session.query = '/* Recursive deletion in progress ... */';
-    
-    // Create the delete queries
-    const queries: string[] = ['/* DELETE queries */', 'BEGIN;'];
-    // FIXME: The column name is hardcoded to `id`. This means that if a table
-    // that doesn't have `id` as the primary column won't be deleted using the
-    // recursive delete method.
-    await this.collectDeleteQueries(expression, 'id', queries);
-    queries.push('COMMIT;');
+      this.session.query = '/* Recursive deletion in progress ... */';
 
-    // Format the queries
-    this.session.query = queries
-      .map(q => {
-        return format(q, {
-          language: 'postgresql',
-          indentStyle: 'tabularRight',
-          denseOperators: false,
-        });
-      })
-      .join('\n\n');
+      // Create the delete queries
+      const queries: string[] = ['/* DELETE queries */', 'BEGIN;'];
+      // FIXME: The column name is hardcoded to `id`. This means that if a table
+      // that doesn't have `id` as the primary column won't be deleted using the
+      // recursive delete method.
+      await this.collectDeleteQueries(expression, 'id', queries);
+      queries.push('COMMIT;');
 
+      // Format the queries
+      this.session.query = queries
+        .map(q => {
+          return format(q, {
+            language: 'postgresql',
+            indentStyle: 'tabularRight',
+            denseOperators: false,
+          });
+        })
+        .join('\n\n');
+    } catch (e) {
+      this.session.error = e instanceof Error ? e.message : 'Unknown error';
+      this.session.query = `/* Recursive deletion failed */`;
+    } finally {
+      this.session.loading = false;
+      const timeTaken = Date.now() - startTime;
+      const minutes = Math.floor(timeTaken / 60000);
+      const seconds = Math.floor((timeTaken % 60000) / 1000);
+      this.session.message = `⏱️ Time taken: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+    }
 
     return Promise.resolve();
   }
 
-  private async collectDeleteQueries(expression: string, column: string, deleteQueries: string[]): Promise<void> {
+  private async collectDeleteQueries(
+    expression: string,
+    column: string,
+    deleteQueries: string[],
+  ): Promise<void> {
+    await this.client.build(expression);
     const count = await this.client.count(expression);
 
     if (count === 0) {

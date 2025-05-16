@@ -5,6 +5,20 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.19.0] - 2025-05-15
+### Added
+- A button to evaluate the pine expressions
+- The id column in the results are clickable. This adds a where condition and limits the results to the row clicked.
+- For a screen size less than 1200px (i.e. lg), the we update the layout accordingly. Instead of showing the SQL query, the main view is shown.
+
+### Fixed
+- Handling errors when building recursive delete queries
+- The graph is rendered for each table being evaluated when doing recursive deletes
+
+### Changed
+- The graph is rendered as soon as the expression is modified
+- The focus goes to the node that is selected as the candidate
+
 ## [0.18.2] - 2025-05-13
 ### Fixed
 - The delete queries use the correct column name i.e. column used in the previous join than the first column of the table
