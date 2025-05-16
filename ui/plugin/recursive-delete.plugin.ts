@@ -7,12 +7,13 @@ export class RecursiveDeletePlugin implements PluginInterface {
   private readonly client: HttpClient;
   constructor(private session: Session) {
     this.client = new HttpClient(async (ast: Ast) => {
-      // wait for 500 ms before setting the hints
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // wait for 100 ms before setting the hints
+      await new Promise(resolve => setTimeout(resolve, 100));
       this.session.ast = ast;
     });
   }
   public async evaluate(): Promise<void> {
+    const startTime = Date.now();
     try {
       this.session.loading = true;
       const expression = this.session.expression.split('|').slice(0, -1).join('|');
@@ -39,8 +40,13 @@ export class RecursiveDeletePlugin implements PluginInterface {
         .join('\n\n');
     } catch (e) {
       this.session.error = e instanceof Error ? e.message : 'Unknown error';
+      this.session.query = `/* Recursive deletion failed */`;
     } finally {
       this.session.loading = false;
+      const timeTaken = Date.now() - startTime;
+      const minutes = Math.floor(timeTaken / 60000);
+      const seconds = Math.floor((timeTaken % 60000) / 1000);
+      this.session.message = `⏱️ Time taken: ${minutes}:${seconds.toString().padStart(2, '0')}`;
     }
 
     return Promise.resolve();
