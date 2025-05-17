@@ -14,6 +14,20 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
   const { global } = useStores();
   const session = global.getSession(sessionId);
 
+  // Make sure that the input is focused when the escape key is pressed
+  useEffect(() => {
+    const handleEscapeKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (!inputRef.current) return;
+      inputRef.current.focus();
+    };
+
+    window.addEventListener('keydown', handleEscapeKey);
+    return () => {
+      window.removeEventListener('keydown', handleEscapeKey);
+    };
+  }, []);
+
   /**
    * Only prettify if `|` is added at the end of the expression
    */
