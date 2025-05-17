@@ -14,7 +14,12 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
   const { global } = useStores();
   const session = global.getSession(sessionId);
 
-  // Make sure that the input is focused when the escape key is pressed
+  /**
+   * Global keyboard event handler for the input component.
+   * 
+   * This handler ensures that the input field receives focus when the Escape key is pressed,
+   * allowing users to quickly return to typing after navigating away from the input.
+   */
   useEffect(() => {
     const handleEscapeKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;

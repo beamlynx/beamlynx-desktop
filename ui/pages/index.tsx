@@ -9,23 +9,6 @@ import { isDevelopment } from '../store/util';
 const Home: NextPage = () => {
   const { global } = useStores();
 
-  // Global handle for ESC key
-  //
-  // TODO: this should go to the session?
-  useEffect(() => {
-    const sessionId = global.activeSessionId;
-    const session = global.getSession(sessionId);
-    const fn = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      e.preventDefault();
-      session.input = true;
-    };
-    document.addEventListener('keydown', fn);
-    return () => {
-      document.removeEventListener('keydown', fn);
-    };
-  }, [global]);
-
   // Load Connection details
   useEffect(() => {
     global.connecting = true;
