@@ -1,7 +1,7 @@
 import { ClerkProvider } from '@clerk/nextjs';
 import Container from '@mui/material/Container';
 import type { NextPage } from 'next';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import AppView from '../components/AppView';
 import { useStores } from '../store/store-container';
 import { isDevelopment } from '../store/util';

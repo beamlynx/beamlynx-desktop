@@ -1,4 +1,10 @@
-import { AccountTree, BarChart, Description, MoreVert, TableChart } from '@mui/icons-material';
+import {
+  AccountTree,
+  BarChart,
+  Description,
+  MoreVert,
+  TableChart
+} from '@mui/icons-material';
 import {
   Box,
   Divider,
@@ -16,7 +22,7 @@ import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
 import { DEFAULT_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from '../constants';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from '../store/preferences';
-import { Session as SessionType } from '../store/session';
+import { Mode, Session as SessionType } from '../store/session';
 import { useStores } from '../store/store-container';
 import { Documentation } from './docs/docs';
 import GraphBox from './Graph.box';
@@ -137,7 +143,7 @@ const MainView = ({
   height,
 }: {
   sessionId: string;
-  mode: string;
+  mode: Mode;
   input: boolean;
   height: string;
 }) => {
@@ -286,7 +292,7 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
               <MainView
                 sessionId={sessionId}
                 mode={session.mode}
-                input={session.input}
+                input={session.textInputFocused}
                 height="calc(100vh - 126px)"
               />
             }
@@ -303,7 +309,7 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
               <MainView
                 sessionId={sessionId}
                 mode={session.mode}
-                input={session.input}
+                input={session.textInputFocused}
                 height="calc(100vh - 366px)"
               />
             }

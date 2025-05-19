@@ -64,8 +64,13 @@ export class Session {
   mode: Mode = 'documentation';
   message: string = '';
 
-  /** Flag to determine if the input is focused */
-  input: boolean = false;
+  /**
+   * Flags to control the input mode
+   */
+  // TODO: make sure this is a readonly. This should only represent the state.
+  // The actual focus should be done by calling the focus() function
+  textInputFocused: boolean = false;
+  inputMode: 'text' | 'visual' = 'text';
 
   /**
    * Resonse
