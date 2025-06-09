@@ -1,10 +1,8 @@
-import dagre from 'dagre';
 import { useEffect, useState } from 'react';
 import ReactFlow, {
   ConnectionLineType,
   Controls,
   NodeTypes,
-  Position,
   ReactFlowProvider,
   useEdgesState,
   useNodesState,
@@ -14,16 +12,12 @@ import ReactFlow, {
 import { BoxProps } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import 'reactflow/dist/style.css';
-import { PineEdge, PineNode, PineSelectedNode, PineSuggestedNode } from '../model';
-import { makeSuggestedNode } from '../store/graph.util';
+import { PineNode, PineSuggestedNode } from '../model';
+import { getLayoutedElements, makeSuggestedNode } from '../store/graph.util';
 import { useStores } from '../store/store-container';
 import SelectedNodeComponent from './SelectedNodeComponent';
 import SuggestedNodeComponent from './SuggestedNodeComponent';
 
-const nodeWidth = 172;
-const getNodeHeight = (node: PineNode) => {
-  return node.data.type === 'selected' ? 60 : 20;
-};
 
 export const NodeType = {
   Selected: 'selected-node',
@@ -35,56 +29,6 @@ const nodeTypes: NodeTypes = {
 };
 
 const nodePositionCache: Record<string, { x: number; y: number }> = {};
-
-const getLayoutedElements = (nodes: PineNode[], edges: PineEdge[]) => {
-  const dagreGraph = new dagre.graphlib.Graph();
-  dagreGraph.setDefaultEdgeLabel(() => ({}));
-
-  dagreGraph.setGraph({
-    rankdir: 'LR',
-  });
-
-  // Count total selected nodes and find max order
-  const selectedNodes = nodes.filter(
-    (node): node is PineSelectedNode => node.data.type === 'selected',
-  );
-  const maxOrder = Math.max(...selectedNodes.map(node => node.data.order));
-
-  // First pass to set nodes and edges
-  nodes.forEach(node => {
-    dagreGraph.setNode(node.id, { width: nodeWidth, height: getNodeHeight(node) });
-  });
-
-  edges.forEach(edge => {
-    dagreGraph.setEdge(edge.source, edge.target);
-  });
-
-  dagre.layout(dagreGraph);
-
-  nodes.forEach(node => {
-    const nodeWithPosition = dagreGraph.node(node.id);
-    node.targetPosition = Position.Left;
-    node.sourcePosition = Position.Right;
-
-    // Use cache only if it's not the last node by order
-    if (
-      node.data.type === 'selected' &&
-      nodePositionCache[node.data.alias] &&
-      node.data.order !== maxOrder
-    ) {
-      node.position = nodePositionCache[node.data.alias];
-    } else {
-      node.position = {
-        x: nodeWithPosition.x - nodeWidth / 2,
-        y: nodeWithPosition.y - getNodeHeight(node) / 2,
-      };
-    }
-
-    return node;
-  });
-
-  return { nodes, edges };
-};
 
 interface FlowProps {
   sessionId: string;
@@ -103,7 +47,7 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId }) => {
   // Render graph
   useEffect(() => {
     const n = [...graph.selectedNodes, ...graph.suggestedNodes];
-    const { nodes, edges } = getLayoutedElements(n, graph.edges);
+    const { nodes, edges } = getLayoutedElements(nodePositionCache, n, graph.edges);
     setNodes(nodes);
     setEdges(edges);
 

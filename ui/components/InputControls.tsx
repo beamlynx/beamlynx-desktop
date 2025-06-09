@@ -10,8 +10,7 @@ interface InputControlsProps {
 const InputControls: React.FC<InputControlsProps> = observer(({ session }) => {
   return (
     <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
-      <Box />
-      {/* <FormControlLabel
+      <FormControlLabel
         control={
           <Switch
             checked={session.inputMode === 'visual'}
@@ -21,7 +20,7 @@ const InputControls: React.FC<InputControlsProps> = observer(({ session }) => {
           />
         }
         label="Visualize"
-      /> */}
+      />
       <Button
         variant="contained"
         onClick={() => session.evaluate()}

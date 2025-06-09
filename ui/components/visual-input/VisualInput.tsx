@@ -1,17 +1,34 @@
 import { useEffect, useRef, useState } from 'react';
-import ReactFlow, { Controls, Node, ReactFlowProvider, useEdgesState, useNodesState } from 'reactflow';
+import ReactFlow, {
+  Controls,
+  Node,
+  NodeTypes,
+  ReactFlowProvider,
+  useEdgesState,
+  useNodesState,
+  useReactFlow,
+} from 'reactflow';
 import 'reactflow/dist/base.css';
 import 'reactflow/dist/style.css';
-import { InputNode, InputNodeData } from './nodes/InputNode';
+import { observer } from 'mobx-react-lite';
+import { InputNode } from './nodes/InputNode';
 import { useStores } from '../../store/store-container';
+import { getLayoutedElements } from '../../store/graph.util';
+import SuggestedNodeComponent from '../SuggestedNodeComponent';
+import SelectedNodeComponent from '../SelectedNodeComponent';
+import { InputNodeData, PineNode } from '../../model';
 
 // Define node types
 const NodeType = {
-  Input: 'input',
+  Input: 'input-node',
+  Selected: 'selected-node',
+  Suggested: 'suggested-node',
 } as const;
 
-const nodeTypes = {
+const nodeTypes: NodeTypes = {
   [NodeType.Input]: InputNode,
+  [NodeType.Selected]: SelectedNodeComponent,
+  [NodeType.Suggested]: SuggestedNodeComponent,
 };
 
 const createInputNode = (
@@ -27,32 +44,67 @@ const createInputNode = (
   },
   data: {
     sessionId,
-    label: expression,
+    type: 'input',
+    alias: 'input',
+    operation: 'table',
+    expression,
     isFocused,
   },
 });
 
-const Flow = ({ sessionId }: { sessionId: string }) => {
+const nodePositionCache: Record<string, { x: number; y: number }> = {};
+
+const Flow = observer(({ sessionId }: { sessionId: string }) => {
   const [isFocused, setIsFocused] = useState(false);
   const flowRef = useRef<HTMLDivElement>(null);
 
   const { global } = useStores();
   const session = global.getSession(sessionId);
+  const { graph } = session;
 
   // Initialize nodes and edges
-  const [nodes, setNodes, onNodesChange] = useNodesState([
+  // TOOD: fix type
+  const [nodes, setNodes, onNodesChange] = useNodesState<any>([
     createInputNode(sessionId, session.expression, isFocused),
   ]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const reactFlowInstance = useReactFlow();
+
+  // Update nodes
+  // Render graph
+  useEffect(() => {
+    const n = [
+      createInputNode(sessionId, session.expression, isFocused),
+      ...graph.selectedNodes,
+      ...graph.suggestedNodes,
+    ];
+    const { nodes, edges } = getLayoutedElements(nodePositionCache, n, graph.edges);
+    setNodes(nodes);
+    setEdges(edges);
+
+    setTimeout(() => {
+      reactFlowInstance.fitView({ duration: 200 });
+    }, 100);
+  }, [
+    graph.selectedNodes,
+    graph.suggestedNodes,
+    graph.edges,
+    setNodes,
+    setEdges,
+    sessionId,
+    session.expression,
+    isFocused,
+    reactFlowInstance,
+  ]);
 
   // Update nodes when container focus state changes
-  useEffect(() => {
-    setNodes(nodes =>
-      nodes.map(node =>
-        node.id === 'input' ? { ...node, data: { ...node.data, isFocused } } : node,
-      ),
-    );
-  }, [isFocused, setNodes]);
+  // useEffect(() => {
+  //   setNodes(nodes =>
+  //     nodes.map(node =>
+  //       node.id === 'input' ? { ...node, data: { ...node.data, isFocused } } : node,
+  //     ),
+  //   );
+  // }, [isFocused, setNodes]);
 
   /**
    * Global event handler for Ctrl+A
@@ -76,7 +128,7 @@ const Flow = ({ sessionId }: { sessionId: string }) => {
         return;
       }
       // Only handle events without modifier keys
-      if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) {
+      if (event.ctrlKey || event.altKey || event.metaKey) {
         return;
       }
 
@@ -91,24 +143,28 @@ const Flow = ({ sessionId }: { sessionId: string }) => {
       // Handle backspace
       if (event.key === 'Backspace') {
         event.preventDefault();
-        const newExpression = session.expression.slice(0, -1);
-        session.expression = newExpression;
+        const expression = session.expression.slice(0, -1);
+        const operation = session.operation.type;
+        session.expression = expression;
         setNodes(nodes =>
           nodes.map(node =>
-            node.id === 'input' ? { ...node, data: { ...node.data, label: newExpression } } : node,
+            node.id === 'input' ? { ...node, data: { ...node.data, expression, operation } } : node,
           ),
         );
         return;
       }
 
       // Handle other keys
+      console.log(event.key);
       if (event.key.length === 1) {
         event.preventDefault();
-        const newExpression = session.expression + event.key;
-        session.expression = newExpression;
+        const expression = session.expression + event.key;
+        const operation = session.operation.type;
+        session.expression = expression;
+        session.message = session.expression;
         setNodes(nodes =>
           nodes.map(node =>
-            node.id === 'input' ? { ...node, data: { ...node.data, label: newExpression } } : node,
+            node.id === 'input' ? { ...node, data: { ...node.data, expression, operation } } : node,
           ),
         );
         return;
@@ -124,6 +180,13 @@ const Flow = ({ sessionId }: { sessionId: string }) => {
     }
   }, [session, setNodes]);
 
+  const onNodeDragStop = (event: React.MouseEvent, node: PineNode) => {
+    if (node.data.type === 'input') {
+      // Cache the position using the node's id as the key
+      nodePositionCache[node.data.alias] = node.position;
+    }
+  };
+
   return (
     <div
       ref={flowRef}
@@ -137,6 +200,7 @@ const Flow = ({ sessionId }: { sessionId: string }) => {
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onNodeDragStop={onNodeDragStop}
         nodeTypes={nodeTypes}
         fitView
         maxZoom={1.2}
@@ -150,7 +214,7 @@ const Flow = ({ sessionId }: { sessionId: string }) => {
       </ReactFlow>
     </div>
   );
-};
+});
 
 const VisualInput = ({ sessionId }: { sessionId: string }) => {
   return (

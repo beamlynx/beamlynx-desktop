@@ -1,12 +1,6 @@
 import { Handle, NodeProps, Position } from 'reactflow';
+import { InputNodeData, PineInputNode } from '../../../model';
 
-export type InputNodeData = {
-  sessionId: string;
-  label: string;
-  isFocused?: boolean;
-};
-
-type PineNodeProps = NodeProps<InputNodeData>;
 const BlinkingCircle = () => (
   <div
     style={{
@@ -32,8 +26,10 @@ const BlinkingCursor = () => (
   />
 );
 
+
+type PineNodeProps = NodeProps<InputNodeData>;
 export const InputNode: React.FC<PineNodeProps> = ({ data }) => {
-  const { isFocused, label, sessionId } = data;
+  const { isFocused, expression: label, sessionId } = data;
   if (!isFocused && !label) {
     return (
       <div
@@ -73,13 +69,20 @@ export const InputNode: React.FC<PineNodeProps> = ({ data }) => {
       <Handle type="source" position={Position.Bottom} style={{ opacity: 0 }} />
       <Handle type="target" position={Position.Top} style={{ opacity: 0 }} />
 
-      <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '20px' }}>
-        Select table:
+      <div style={{ 
+        fontSize: '14px', 
+        fontWeight: 'bold', 
+        marginBottom: '20px',
+        fontFamily: '"Comic Sans MS", "Comic Sans", cursive',
+        color: '#4a4a4a'
+      }}>
+        {data.operation}
       </div>
       <div
         style={{ fontFamily: 'monospace', fontSize: '14px', display: 'flex', alignItems: 'center' }}
       >
-        {data.label + ''}
+        {/* Replace trailing spaces with a space character that is rendered */}
+        {data.expression.split('|').pop()?.replace(/\s+$/, '\u00A0')}
         {data.isFocused && <BlinkingCursor />}
       </div>
       <style>

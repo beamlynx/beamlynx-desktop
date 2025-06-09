@@ -1,7 +1,8 @@
-import { Edge } from 'reactflow';
+import { Edge, Position } from 'reactflow';
 import { PineEdge, PineNode, PineSelectedNode, PineSuggestedNode } from '../model';
 import { NodeType } from '../components/Graph.box';
 import { Ast, Column, Table, TableHint } from './client';
+import dagre from 'dagre';
 
 export type Graph = {
   // Metadata
@@ -252,4 +253,61 @@ export const generateGraph = (ast: Ast, sessionId: string): Graph => {
   graph.edges = Object.values(edgeLookup);
 
   return graph;
+};
+
+const nodeWidth = 172;
+const getNodeHeight = (node: PineNode) => {
+  return node.data.type === 'selected' ? 60 : 20;
+};
+
+export const getLayoutedElements = (
+  cache: Record<string, { x: number; y: number }>,
+  nodes: PineNode[],
+  edges: PineEdge[],
+) => {
+  const dagreGraph = new dagre.graphlib.Graph();
+  dagreGraph.setDefaultEdgeLabel(() => ({}));
+
+  dagreGraph.setGraph({
+    rankdir: 'LR',
+  });
+
+  // Count total selected nodes and find max order
+  const selectedNodes = nodes.filter(
+    (node): node is PineSelectedNode => node.data.type === 'selected',
+  );
+  const maxOrder = Math.max(...selectedNodes.map(node => node.data.order));
+
+  // First pass to set nodes and edges
+  nodes.forEach(node => {
+    dagreGraph.setNode(node.id, { width: nodeWidth, height: getNodeHeight(node) });
+  });
+
+  edges.forEach(edge => {
+    dagreGraph.setEdge(edge.source, edge.target);
+  });
+
+  dagre.layout(dagreGraph);
+
+  nodes.forEach(node => {
+    const nodeWithPosition = dagreGraph.node(node.id);
+    node.targetPosition = Position.Left;
+    node.sourcePosition = Position.Right;
+
+    // Use cache only if it's not the last node by order
+    if (node.data.type === 'selected' && cache[node.data.alias] && node.data.order !== maxOrder) {
+      node.position = cache[node.data.alias];
+    } else if (node.data.type === 'input' && cache[node.id]) {
+      node.position = cache[node.data.alias];
+    } else {
+      node.position = {
+        x: nodeWithPosition.x - nodeWidth / 2,
+        y: nodeWithPosition.y - getNodeHeight(node) / 2,
+      };
+    }
+
+    return node;
+  });
+
+  return { nodes, edges };
 };

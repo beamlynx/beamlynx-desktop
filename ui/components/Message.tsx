@@ -37,7 +37,7 @@ const Message: React.FC<MessageProps> = observer(({}) => {
     <Typography variant="caption" color="gray">
       {devOnly(`mode: ${session.mode} | `)}
       {devOnly(`loading: ${session.loading} | `)}
-      {isSmallScreen ? session.message.substring(0, 40) : session.message.substring(0, 150)}
+      {session.message.substring(0, isSmallScreen ? 40 : 120)}
     </Typography>
   );
 });
