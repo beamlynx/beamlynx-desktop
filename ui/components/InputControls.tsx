@@ -3,32 +3,40 @@ import { KeyboardReturn, Loop } from '@mui/icons-material';
 import { observer } from 'mobx-react-lite';
 import { Session } from '../store/session';
 
-interface InputControlsProps {
+interface ControlProps {
   session: Session;
 }
 
-const InputControls: React.FC<InputControlsProps> = observer(({ session }) => {
-  return (
-    <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
-      <FormControlLabel
-        control={
-          <Switch
-            checked={session.inputMode === 'visual'}
-            onChange={() => {
-              session.inputMode = session.inputMode === 'visual' ? 'text' : 'visual';
-            }}
-          />
-        }
-        label="Visualize"
+const VisualizeToggle: React.FC<ControlProps> = observer(({ session }) => (
+  <FormControlLabel
+    control={
+      <Switch
+        checked={session.inputMode === 'visual'}
+        onChange={() => {
+          session.inputMode = session.inputMode === 'visual' ? 'text' : 'visual';
+        }}
       />
-      <Button
-        variant="contained"
-        onClick={() => session.evaluate()}
-        disabled={!session.expression || session.loading}
-        startIcon={session.loading ? <Loop /> : <KeyboardReturn />}
-      >
-        Run
-      </Button>
+    }
+    label="Visualize"
+  />
+));
+
+const RunButton: React.FC<ControlProps> = observer(({ session }) => (
+  <Button
+    variant="contained"
+    onClick={() => session.evaluate()}
+    disabled={!session.expression || session.loading}
+    startIcon={session.loading ? <Loop /> : <KeyboardReturn />}
+  >
+    Run
+  </Button>
+));
+
+const InputControls: React.FC<ControlProps> = observer(({ session }) => {
+  return (
+    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
+      {/* <VisualizeToggle session={session} /> */}
+      <RunButton session={session} />
     </Box>
   );
 });
