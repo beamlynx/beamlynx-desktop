@@ -1,9 +1,12 @@
 import CodeMirror, { ReactCodeMirrorRef } from '@uiw/react-codemirror';
 import { oneDark } from '@codemirror/theme-one-dark';
+import { keymap } from '@codemirror/view';
+import { Prec } from '@codemirror/state';
 import React, { useRef, useEffect, useCallback } from 'react';
 import { Session } from '../store/session';
 import { prettifyExpression } from '../store/util';
 import { observer } from 'mobx-react-lite';
+import { pineLanguage } from './pine-language';
 
 interface TextInputProps {
   session: Session;
@@ -178,9 +181,7 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
             }
             e.preventDefault();
             session.textInputFocused = true;
-            console.log('handleKeyPress', session.expression);
             session.expression = session.expression + e.key;
-            console.log('handleKeyPress', session.expression);
             return;
         }
     }
@@ -194,6 +195,21 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
     }
   }, [session]);
 
+  // Create extensions array with Pine language support and custom keymap
+  const extensions = [
+    pineLanguage,
+    Prec.high(keymap.of([
+      {
+        key: 'Enter',
+        run: () => {
+          // Return true to prevent default behavior
+          // Your custom Enter handler in handleKeyPress will still work
+          return true;
+        }
+      }
+    ]))
+  ];
+
   return (
     <CodeMirror
       ref={inputRef}
@@ -201,6 +217,7 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
       value={session.expression}
       height="240px"
       theme={oneDark}
+      extensions={extensions}
       onFocus={() => {
         session.textInputFocused = true;
       }}
