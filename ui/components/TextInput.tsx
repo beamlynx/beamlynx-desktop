@@ -1,5 +1,6 @@
-import TextField from '@mui/material/TextField';
-import React, { useRef, useEffect } from 'react';
+import CodeMirror, { ReactCodeMirrorRef } from '@uiw/react-codemirror';
+import { oneDark } from '@codemirror/theme-one-dark';
+import React, { useRef, useEffect, useCallback } from 'react';
 import { Session } from '../store/session';
 import { prettifyExpression } from '../store/util';
 import { observer } from 'mobx-react-lite';
@@ -9,7 +10,42 @@ interface TextInputProps {
 }
 
 const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const inputRef = useRef<ReactCodeMirrorRef | null>(null);
+  const lastValueRef = useRef<string>(session.expression);
+
+  /**
+   * Optimized value update function that uses CodeMirror's transaction API
+   * for better performance when updating the entire content
+   */
+  const updateEditorValue = useCallback((newValue: string) => {
+    const editor = inputRef.current?.view;
+    if (!editor) return;
+
+    const currentValue = editor.state.doc.toString();
+    if (currentValue === newValue) return;
+
+    // Use a single transaction to replace the entire content
+    // This is more efficient than letting the wrapper component handle it
+    const transaction = editor.state.update({
+      changes: {
+        from: 0,
+        to: editor.state.doc.length,
+        insert: newValue
+      },
+      // Preserve cursor position at the end for prettification
+      selection: { anchor: newValue.length }
+    });
+
+    editor.dispatch(transaction);
+    lastValueRef.current = newValue;
+  }, []);
+
+  // Handle expression changes with optimized updates
+  useEffect(() => {
+    if (session.expression !== lastValueRef.current) {
+      updateEditorValue(session.expression);
+    }
+  }, [session.expression, updateEditorValue]);
 
   /**
    * Global event handler for Ctrl+A
@@ -34,6 +70,12 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
     };
   }, []);
 
+  useEffect(() => {
+    if (session.textInputFocused) {
+      inputRef.current?.view?.focus();
+    }
+  }, [session.textInputFocused]);
+
   /**
    * Global keyboard event handler for the input component.
    *
@@ -44,7 +86,7 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
     const handleEscapeKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       if (!inputRef.current) return;
-      inputRef.current.focus();
+      inputRef.current.view?.focus();
     };
 
     window.addEventListener('keydown', handleEscapeKey);
@@ -52,11 +94,6 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
       window.removeEventListener('keydown', handleEscapeKey);
     };
   }, [session.mode]);
-
-  const shouldPrettify = () => {
-    const cursorPosition = inputRef.current ? inputRef.current.selectionStart : 0;
-    return cursorPosition === session.expression.length;
-  };
 
   const isPrintableChar = (key: string) => {
     return key.length === 1 && !key.match(/[\u0000-\u001F\u007F-\u009F]/);
@@ -71,6 +108,19 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
       return;
     }
 
+    // Handle Ctrl+Shift+F / Cmd+Shift+F for prettification (standard formatting shortcut)
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
+      e.preventDefault();
+      
+      // Prettify the expression using the standard formatting shortcut
+      const prettifiedExpression = prettifyExpression(session.expression);
+      updateEditorValue(prettifiedExpression);
+      
+      // Update session state after DOM update
+      session.expression = prettifiedExpression;
+      return;
+    }
+
     if (isModifierKeyCombo(e)) {
       return;
     }
@@ -82,11 +132,6 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
           session.mode = 'graph';
           session.textInputFocused = false;
           session.selectNextCandidate(1);
-          return;
-        case '|':
-          if (!shouldPrettify()) return;
-          e.preventDefault();
-          session.expression = prettifyExpression(session.expression);
           return;
         case 'Enter':
           e.preventDefault();
@@ -141,35 +186,30 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
     }
   };
 
-  const handleExpressionChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    console.log('handleExpressionChange', e.target.value);
-    session.expression = e.target.value;
-  };
+  // Optimized onChange handler to prevent unnecessary updates
+  const handleChange = useCallback((value: string) => {
+    if (value !== lastValueRef.current) {
+      lastValueRef.current = value;
+      session.expression = value;
+    }
+  }, [session]);
 
   return (
-    <TextField
+    <CodeMirror
+      ref={inputRef}
       id="input"
-      label="Pine expression... "
       value={session.expression}
-      size="small"
-      variant="outlined"
-      focused={session.textInputFocused}
+      height="240px"
+      theme={oneDark}
       onFocus={() => {
         session.textInputFocused = true;
       }}
-      multiline
-      fullWidth
-      minRows="8"
-      maxRows="8"
-      inputRef={inputRef}
-      onChange={handleExpressionChange}
-      onKeyDown={handleKeyPress}
-      InputProps={{
-        style: {
-          fontFamily: 'monospace',
-          fontSize: '0.875rem', // 14px
-        },
+      onBlur={() => {
+        session.textInputFocused = false;
       }}
+      onChange={handleChange}
+      onKeyDown={handleKeyPress}
+      indentWithTab={false}
     />
   );
 });
