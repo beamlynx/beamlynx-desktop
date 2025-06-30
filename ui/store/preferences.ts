@@ -1,5 +1,6 @@
 export const STORAGE_KEYS = {
   SIDEBAR_WIDTH: 'pine-sidebar-width',
+  THEME: 'pine-theme',
 } as const;
 
 export const getUserPreference = (key: string, defaultValue: any) => {

@@ -7,6 +7,7 @@ import { generateGraph, getCandidateIndex, Graph } from './graph.util';
 import { debounce, prettifyExpression } from './util';
 import { MAX_COUNT, TOTAL_BARS } from '../constants';
 import { GridColDef } from '@mui/x-data-grid';
+import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
 
 export type Mode = 'documentation' | 'graph' | 'result' | 'monitor';
 
@@ -113,6 +114,7 @@ export class Session {
 
   constructor(id: string) {
     this.id = `session-${id}`;
+    this.theme = getUserPreference(STORAGE_KEYS.THEME, 'light');
 
     makeAutoObservable(this);
 
@@ -237,6 +239,7 @@ export class Session {
 
   public toggleTheme() {
     this.theme = this.theme === 'light' ? 'dark' : 'light';
+    setUserPreference(STORAGE_KEYS.THEME, this.theme);
   }
 
   public selectNextCandidate(offset: number) {
