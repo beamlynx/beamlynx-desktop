@@ -7,6 +7,7 @@ import { Session } from '../store/session';
 import { prettifyExpression } from '../store/util';
 import { observer } from 'mobx-react-lite';
 import { pineLanguage } from './pine-language';
+import { vim } from '@replit/codemirror-vim';
 
 interface TextInputProps {
   session: Session;
@@ -209,6 +210,10 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
       }
     ]))
   ];
+
+  if (session.vimMode) {
+    extensions.unshift(vim());
+  }
 
   return (
     <CodeMirror

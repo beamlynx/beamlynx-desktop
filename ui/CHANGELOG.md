@@ -8,6 +8,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Added
 - A code editor for writing pine expressions
 - Dark mode
+- Vim mode
 
 ### Fixed
 - Focus on the input when the Escape key is pressed. This wasn't working if the mouse was used to click on other components of the UI.

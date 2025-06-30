@@ -12,7 +12,7 @@ const MyApp = observer(({ Component, pageProps }: AppProps) => {
     if (session) {
       document.documentElement.setAttribute('data-theme', session.theme);
     }
-  }, [session, session?.theme]);
+  }, [session, session.theme]);
 
   return <Component {...pageProps} />
 });
