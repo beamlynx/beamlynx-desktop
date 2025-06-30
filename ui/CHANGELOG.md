@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+### Added
+- A code editor for writing pine expressions
+- Dark mode
+
 ### Fixed
 - Focus on the input when the Escape key is pressed. This wasn't working if the mouse was used to click on other components of the UI.
 
