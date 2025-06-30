@@ -17,27 +17,27 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+      {!isConnected && <Box sx={{ color: 'error.main', mb: 1 }}>Not connected</Box>}
 
-      {!isConnected && (
-        <Box sx={{ color: 'error.main', mb: 1 }}>
-          Not connected
-        </Box>
-      )}
-
-
-      {session.inputMode === 'text' ? (
-        <TextInput session={session}/>
-      ) : (
-        <Box
-          sx={{
-            borderRadius: 1,
-            height: '177px',
-            overflow: 'hidden',
-          }}
-        >
-          <VisualInput sessionId={sessionId} />
-        </Box>
-      )}
+      <Box
+        sx={{
+          border: '1px solid var(--border-color)',
+          borderRadius: 1,
+          overflow: 'hidden',
+        }}
+      >
+        {session.inputMode === 'text' ? (
+          <TextInput session={session} />
+        ) : (
+          <Box
+            sx={{
+              height: '177px',
+            }}
+          >
+            <VisualInput sessionId={sessionId} />
+          </Box>
+        )}
+      </Box>
       <InputControls session={session} />
     </Box>
   );

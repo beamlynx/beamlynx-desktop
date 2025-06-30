@@ -1,4 +1,4 @@
-import { Box, Grid, Typography } from '@mui/material';
+import { Box, Grid, Typography, IconButton } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
 import PineTabs from './PineTabs';
@@ -7,6 +7,8 @@ import ActiveConnection from './ActiveConnection';
 import Message from './Message';
 import UserBox from './UserBox';
 import { isDevelopment } from '../store/util';
+import { Brightness4, Brightness7 } from '@mui/icons-material';
+
 const UserContent = isDevelopment ? (
   <Typography variant="caption" color="gray">
     Dev Mode
@@ -17,6 +19,7 @@ const UserContent = isDevelopment ? (
 
 const AppView = observer(() => {
   const { global } = useStores();
+  const session = global.getSession(global.activeSessionId);
 
   if (global.connecting) {
     return (
@@ -66,7 +69,12 @@ const AppView = observer(() => {
         </Grid>
 
         <Grid item xs={1}>
-          {UserContent}
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+            {UserContent}
+            <IconButton onClick={() => session.toggleTheme()} sx={{ ml: 1 }} color="inherit">
+              {session.theme === 'dark' ? <Brightness7 /> : <Brightness4 />}
+            </IconButton>
+          </Box>
         </Grid>
       </Grid>
 

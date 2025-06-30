@@ -10,6 +10,8 @@ import { GridColDef } from '@mui/x-data-grid';
 
 export type Mode = 'documentation' | 'graph' | 'result' | 'monitor';
 
+export type Theme = 'light' | 'dark';
+
 export type Row = { [key: string]: any };
 
 const client = new HttpClient();
@@ -47,6 +49,9 @@ const client = new HttpClient();
 export class Session {
   /** Session id */
   id: string;
+
+  /** Theme */
+  theme: Theme = 'light';
 
   /** Pine expression to be evaluated */
   expression: string = ''; // observable
@@ -228,6 +233,10 @@ export class Session {
         this.message = pine;
       },
     );
+  }
+
+  public toggleTheme() {
+    this.theme = this.theme === 'light' ? 'dark' : 'light';
   }
 
   public selectNextCandidate(offset: number) {

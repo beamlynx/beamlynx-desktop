@@ -124,7 +124,7 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId }) => {
       maxZoom={1.2}
       proOptions={{ hideAttribution: true }}
     >
-      <Controls />
+      {/* <Controls /> */}
     </ReactFlow>
   );
 });

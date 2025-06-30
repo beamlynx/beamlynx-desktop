@@ -49,10 +49,11 @@ const TableNode = ({
         style={{
           position: 'relative',
           padding: '12px 10px 5px 10px',
-          border: '2px solid black',
-          background: 'lightgray',
+          border: '2px solid var(--node-border)',
+          background: 'var(--node-bg)',
           borderRadius: '5px',
           cursor: 'pointer',
+          color: 'var(--node-text-color)',
         }}
       >
         {/* Table */}
@@ -63,6 +64,7 @@ const TableNode = ({
               textAlign: 'right',
               fontSize: '8px',
               fontFamily: 'Courier, monospace',
+              color: 'var(--node-secondary-text-color)',
             }}
           >
             {alias}
@@ -83,8 +85,8 @@ const TableNode = ({
               alignItems: 'center',
               justifyContent: 'center',
               borderRadius: '50%',
-              background: '#800000',
-              color: 'white',
+              background: 'var(--node-order-bg)',
+              color: 'var(--node-order-text-color)',
               fontSize: '12px',
               boxShadow: '0 2px 4px rgba(0,0,0,0.25)',
               fontWeight: 'bold',
@@ -106,7 +108,8 @@ const TableNode = ({
               borderRadius: '5px',
               transform: 'translateY(-100%)',
               boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-              background: color ?? '#fff',
+              background: color ?? 'var(--node-schema-bg)',
+              color: 'var(--node-schema-text-color)',
             }}
           >
             {schema}
@@ -119,7 +122,7 @@ const TableNode = ({
           style={{
             width: '2px',
             height: '2px',
-            background: 'darkgray',
+            background: 'var(--node-handle-bg)',
             borderRadius: '50%',
           }}
         />
@@ -129,7 +132,7 @@ const TableNode = ({
           style={{
             width: '2px',
             height: '2px',
-            background: 'darkgray',
+            background: 'var(--node-handle-bg)',
             borderRadius: '50%',
           }}
         />
@@ -159,10 +162,11 @@ const SelectedColumns = ({ columns }: { columns: string[] }) => (
           style={{
             fontSize: '8px',
             fontFamily: 'Courier, monospace',
-            background: '#f0f0f0',
+            background: 'var(--node-column-bg)',
             padding: '2px 6px',
             borderRadius: '8px',
-            border: '1px solid #ddd',
+            border: '1px solid var(--node-column-border)',
+            color: 'var(--node-column-text-color)',
           }}
         >
           {column}
@@ -210,8 +214,8 @@ const CandidateColumns = ({
               background: 'transparent',
               padding: '2px 6px',
               borderRadius: '8px',
-              border: '1px solid #ccc',
-              color: '#666',
+              border: '1px solid var(--node-candidate-column-border)',
+              color: 'var(--node-candidate-column-text-color)',
               cursor: 'pointer',
             }}
           >

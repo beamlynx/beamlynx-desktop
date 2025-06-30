@@ -27,6 +27,49 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
       <Box sx={{ flex: 1, position: 'relative' }}>
         <Box sx={{ position: 'absolute', inset: 0 }}>
           <DataGrid
+            sx={{
+              '--DataGrid-containerBackground': 'var(--node-column-bg)',
+              '--DataGrid-rowBorderColor': 'var(--border-color)',
+              color: 'var(--text-color)',
+              border: '1px solid var(--border-color)',
+              borderRadius: 1,
+              overflow: 'hidden',
+              '& .MuiDataGrid-withBorderColor': {
+                borderColor: 'transparent',
+              },
+              '& .MuiDataGrid-columnHeaders': {
+                backgroundColor: 'var(--node-bg)',
+                borderBottom: '1px solid var(--border-color)',
+              },
+              '& .MuiDataGrid-columnHeaderTitle': {
+                color: 'var(--text-color)',
+              },
+              '& .MuiDataGrid-cell': {
+                color: 'var(--text-color)',
+                borderBottom: '1px solid var(--border-color)',
+              },
+              '& .MuiDataGrid-row:hover': {
+                backgroundColor: 'var(--node-bg)',
+              },
+              '& .MuiTablePagination-root, & .MuiTablePagination-root .MuiSvgIcon-root, & .MuiTablePagination-root .MuiIconButton-root':
+                {
+                  color: 'var(--text-color)',
+                },
+              '& ::-webkit-scrollbar': {
+                width: '10px',
+                height: '10px',
+              },
+              '& ::-webkit-scrollbar-track': {
+                background: 'transparent',
+              },
+              '& ::-webkit-scrollbar-thumb': {
+                backgroundColor: 'var(--node-handle-bg)',
+                borderRadius: '5px',
+              },
+              '& ::-webkit-scrollbar-thumb:hover': {
+                background: 'var(--text-color)',
+              },
+            }}
             density="compact"
             autoHeight={true}
             rows={rows}

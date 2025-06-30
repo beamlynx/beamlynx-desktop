@@ -45,8 +45,6 @@ const Sidebar = ({
   secondView: React.ReactNode;
 }) => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const highlightColor = '#4caf50';
-  const defaultColor = '#9e9e9e';
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -61,12 +59,20 @@ const Sidebar = ({
       <Box sx={{ display: 'flex', flexDirection: 'row', height: '100%' }}>
         {/* Left column: Input and Query */}
         <Box sx={{ flex: 1, mr: 1, flexDirection: 'column', height: '100%' }}>
-          <Box sx={{ alignItems: 'center', mb: 1 }}>{firstView}</Box>
           <Box
             sx={{
-              border: '1px solid lightgray',
+              alignItems: 'center',
+              mb: 1,
+            }}
+          >
+            {firstView}
+          </Box>
+          <Box
+            sx={{
+              border: '1px solid var(--border-color)',
               borderRadius: 1,
               mt: 2,
+              backgroundColor: 'var(--node-column-bg)',
             }}
           >
             {secondView}
@@ -87,7 +93,7 @@ const Sidebar = ({
           <Tooltip title="Documentation">
             <IconButton size="small" onClick={() => (session.mode = 'documentation')}>
               <Description
-                sx={{ color: session.mode === 'documentation' ? highlightColor : defaultColor }}
+                sx={{ color: session.mode === 'documentation' ? 'var(--icon-color-highlight)' : 'var(--icon-color)' }}
               />
             </IconButton>
           </Tooltip>
@@ -95,7 +101,7 @@ const Sidebar = ({
           <Tooltip title="Visualize Relations">
             <IconButton size="small" onClick={() => (session.mode = 'graph')}>
               <AccountTree
-                sx={{ color: session.mode === 'graph' ? highlightColor : defaultColor }}
+                sx={{ color: session.mode === 'graph' ? 'var(--icon-color-highlight)' : 'var(--icon-color)' }}
               />
             </IconButton>
           </Tooltip>
@@ -103,7 +109,7 @@ const Sidebar = ({
           <Tooltip title="Results">
             <IconButton size="small" onClick={() => (session.mode = 'result')}>
               <TableChart
-                sx={{ color: session.mode === 'result' ? highlightColor : defaultColor }}
+                sx={{ color: session.mode === 'result' ? 'var(--icon-color-highlight)' : 'var(--icon-color)' }}
               />
             </IconButton>
           </Tooltip>
@@ -124,7 +130,7 @@ const Sidebar = ({
             >
               <ListItemIcon>
                 <BarChart
-                  sx={{ color: session.mode === 'monitor' ? highlightColor : defaultColor }}
+                  sx={{ color: session.mode === 'monitor' ? 'var(--icon-color-highlight)' : 'var(--icon-color)' }}
                 />
               </ListItemIcon>
               <ListItemText primary="Connection monitoring" />
@@ -247,7 +253,7 @@ const ResizableDivider = ({
           sx={{
             width: '4px',
             height: '24px',
-            backgroundColor: 'gray',
+            backgroundColor: 'var(--divider-color)',
             borderRadius: '2px',
           }}
         />

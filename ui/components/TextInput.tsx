@@ -215,7 +215,7 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
       ref={inputRef}
       id="input"
       value={session.expression}
-      height="240px"
+      height="177px"
       theme={oneDark}
       extensions={extensions}
       onFocus={() => {
