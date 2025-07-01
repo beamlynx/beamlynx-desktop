@@ -5,10 +5,12 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.20.0] - 2025-07-01
 ### Added
 - A code editor for writing pine expressions
 - Dark mode
 - Vim mode
+- Syntax highlighting for SQL in dark mode
 
 ### Fixed
 - Focus on the input when the Escape key is pressed. This wasn't working if the mouse was used to click on other components of the UI.

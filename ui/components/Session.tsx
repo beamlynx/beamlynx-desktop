@@ -73,7 +73,6 @@ const Sidebar = ({
               border: '1px solid var(--border-color)',
               borderRadius: 1,
               mt: 2,
-              backgroundColor: 'var(--node-column-bg)',
             }}
           >
             {secondView}
