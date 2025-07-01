@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useCallback } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
 import { Box, Typography } from '@mui/material';
@@ -19,7 +19,7 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
   const editorRef = useRef<HTMLDivElement>(null);
   const [editorView, setEditorView] = useState<EditorView | null>(null);
 
-  const onClick = () => {
+  const onClick = useCallback(() => {
     if (!session.query) {
       return;
     }
@@ -27,7 +27,7 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
     navigator.clipboard.writeText(v).then(() => {
       store.setCopiedMessage(sessionId, v);
     });
-  };
+  }, [session.query, store, sessionId]);
 
   useEffect(() => {
     if (!editorRef.current || !session.query) return;
