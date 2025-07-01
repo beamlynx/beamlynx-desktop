@@ -3,23 +3,23 @@ import { Box, Button, Modal, TextField, Typography } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useState } from 'react';
 import { useStores } from '../store/store-container';
+import { Alert } from '@mui/material';
 
 const SecurityNotice = () => (
   <Box
     sx={{
-      border: '1px solid',
-      borderColor: 'grey.300',
+      border: '1px solid var(--border-color)',
       borderRadius: 1,
       p: 2,
       mb: 2,
-      bgcolor: 'grey.100',
+      bgcolor: 'var(--node-column-bg)',
       display: 'flex',
       alignItems: 'center',
     }}
   >
     <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
-      <SecurityIcon color="action" sx={{ fontSize: 20, mr: 1 }} />
-      <Typography variant="caption" color="text.secondary">
+      <SecurityIcon sx={{ fontSize: 20, mr: 1, color: 'var(--icon-color)' }} />
+      <Typography variant="caption" sx={{ color: 'var(--text-color)' }}>
         Pine never stores credentials. Your connection details are securely held in memory only for
         the duration of the server session.
       </Typography>
@@ -27,16 +27,57 @@ const SecurityNotice = () => (
   </Box>
 );
 
-import { Alert } from '@mui/material';
-
 const SuccessMessage = () => (
-  <Alert severity="success" sx={{ mb: 2 }}>
+  <Alert 
+    severity="success" 
+    sx={{ 
+      mb: 2,
+      '&.MuiAlert-standardSuccess': {
+        backgroundColor: '#e8f5e8',
+        border: '1px solid var(--icon-color-highlight)',
+        color: '#2e7d32',
+        '& .MuiAlert-icon': {
+          color: 'var(--icon-color-highlight)',
+        },
+      },
+      // Override for dark theme
+      '[data-theme="dark"] &': {
+        backgroundColor: 'var(--node-column-bg)',
+        border: '1px solid var(--icon-color-highlight)',
+        color: 'var(--text-color)',
+        '& .MuiAlert-icon': {
+          color: 'var(--icon-color-highlight)',
+        },
+      },
+    }}
+  >
     Connected!
   </Alert>
 );
 
 const ErrorMessage = ({ message }: { message: string }) => (
-  <Alert severity="error" sx={{ mb: 2 }}>
+  <Alert 
+    severity="error" 
+    sx={{ 
+      mb: 2,
+      '&.MuiAlert-standardError': {
+        backgroundColor: 'var(--text-warning-color)',
+        color: '#ffffff',
+        '& .MuiAlert-icon': {
+          color: '#ffffff',
+        },
+      },
+      // Override for dark theme
+      '[data-theme="dark"] &': {
+        backgroundColor: 'var(--node-column-bg)',
+        border: '1px solid var(--text-warning-color)',
+        color: 'var(--text-color)',
+        '& .MuiAlert-icon': {
+          color: 'var(--text-warning-color)',
+        },
+      },
+    }}
+  >
     {message}
   </Alert>
 );
@@ -96,14 +137,15 @@ const Settings = () => {
           left: '50%',
           transform: 'translate(-50%, -50%)',
           width: 400,
-          bgcolor: 'background.paper',
+          bgcolor: 'var(--background-color)',
+          border: '1px solid var(--border-color)',
           boxShadow: 24,
           p: 4,
           borderRadius: 2,
           outline: 'none', // Remove the focus outline
         }}
       >
-        <Typography variant="h6" component="h2" gutterBottom>
+        <Typography variant="h6" component="h2" gutterBottom sx={{ color: 'var(--text-color)' }}>
           Database Connection
         </Typography>
 
@@ -122,6 +164,16 @@ const Settings = () => {
             value={dbUser}
             onChange={e => setDbUser(e.target.value)}
             disabled={connected}
+            sx={{
+              '& .MuiInputLabel-root': { color: 'var(--text-color)' },
+              '& .MuiInputLabel-root.Mui-focused': { color: 'var(--primary-color)' },
+              '& .MuiOutlinedInput-root': {
+                color: 'var(--text-color)',
+                '& fieldset': { borderColor: 'var(--border-color)' },
+                '&:hover fieldset': { borderColor: 'var(--text-color)' },
+                '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
+              },
+            }}
           />
           <TextField
             fullWidth
@@ -134,6 +186,16 @@ const Settings = () => {
             value={dbPassword}
             onChange={e => setDbPassword(e.target.value)}
             disabled={connected}
+            sx={{
+              '& .MuiInputLabel-root': { color: 'var(--text-color)' },
+              '& .MuiInputLabel-root.Mui-focused': { color: 'var(--primary-color)' },
+              '& .MuiOutlinedInput-root': {
+                color: 'var(--text-color)',
+                '& fieldset': { borderColor: 'var(--border-color)' },
+                '&:hover fieldset': { borderColor: 'var(--text-color)' },
+                '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
+              },
+            }}
           />
           <TextField
             fullWidth
@@ -145,6 +207,16 @@ const Settings = () => {
             value={dbHost}
             onChange={e => setDbHost(e.target.value)}
             disabled={connected}
+            sx={{
+              '& .MuiInputLabel-root': { color: 'var(--text-color)' },
+              '& .MuiInputLabel-root.Mui-focused': { color: 'var(--primary-color)' },
+              '& .MuiOutlinedInput-root': {
+                color: 'var(--text-color)',
+                '& fieldset': { borderColor: 'var(--border-color)' },
+                '&:hover fieldset': { borderColor: 'var(--text-color)' },
+                '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
+              },
+            }}
           />
           <TextField
             fullWidth
@@ -156,6 +228,16 @@ const Settings = () => {
             value={dbPort}
             onChange={e => setDbPort(e.target.value)}
             disabled={connected}
+            sx={{
+              '& .MuiInputLabel-root': { color: 'var(--text-color)' },
+              '& .MuiInputLabel-root.Mui-focused': { color: 'var(--primary-color)' },
+              '& .MuiOutlinedInput-root': {
+                color: 'var(--text-color)',
+                '& fieldset': { borderColor: 'var(--border-color)' },
+                '&:hover fieldset': { borderColor: 'var(--text-color)' },
+                '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
+              },
+            }}
           />
           <TextField
             fullWidth
@@ -167,6 +249,16 @@ const Settings = () => {
             value={dbName}
             onChange={e => setDbName(e.target.value)}
             disabled={connected}
+            sx={{
+              '& .MuiInputLabel-root': { color: 'var(--text-color)' },
+              '& .MuiInputLabel-root.Mui-focused': { color: 'var(--primary-color)' },
+              '& .MuiOutlinedInput-root': {
+                color: 'var(--text-color)',
+                '& fieldset': { borderColor: 'var(--border-color)' },
+                '&:hover fieldset': { borderColor: 'var(--text-color)' },
+                '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
+              },
+            }}
           />
           <Box
             sx={{
@@ -177,15 +269,37 @@ const Settings = () => {
               justifyContent: 'space-between',
             }}
           >
-            <Button variant="outlined" color="info" onClick={handleClose}>
+            <Button 
+              variant="outlined" 
+              onClick={handleClose}
+              sx={{
+                borderColor: 'var(--border-color)',
+                color: 'var(--text-color)',
+                '&:hover': {
+                  borderColor: 'var(--primary-color)',
+                  backgroundColor: 'var(--node-column-bg)',
+                },
+              }}
+            >
               Close
             </Button>
             <Box sx={{ display: 'flex', gap: 2 }}>
               <Button
                 variant="contained"
-                color="primary"
                 onClick={handleConnect}
                 disabled={!!connected || connecting}
+                sx={{
+                  backgroundColor: 'var(--primary-color)',
+                  color: 'var(--primary-text-color)',
+                  '&:hover': {
+                    backgroundColor: 'var(--primary-color-hover)',
+                  },
+                  '&:disabled': {
+                    backgroundColor: 'var(--icon-color)',
+                    color: 'var(--text-color)',
+                    opacity: 0.6,
+                  },
+                }}
               >
                 {connected ? 'Connected' : connecting ? 'Connecting...' : 'Connect'}
               </Button>

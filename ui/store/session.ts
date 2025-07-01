@@ -48,9 +48,20 @@ const client = new HttpClient();
  * way to refactor is in a better way.
  */
 export class Session {
-  /** Session id */
+  /**
+   * Unique session id
+   */
   id: string;
 
+  /**
+   * Layout properties
+   */
+  isSmallScreen: boolean = false;
+  forceCompactMode: boolean = false;
+
+  /**
+   * App states
+   */
   /** Theme */
   theme: Theme = 'light';
 

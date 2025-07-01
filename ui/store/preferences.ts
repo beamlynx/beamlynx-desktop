@@ -2,6 +2,7 @@ export const STORAGE_KEYS = {
   SIDEBAR_WIDTH: 'pine-sidebar-width',
   THEME: 'pine-theme',
   VIM_MODE: 'pine-vim-mode',
+  FORCE_COMPACT_MODE: 'pine-force-compact-mode',
 } as const;
 
 export const getUserPreference = (key: string, defaultValue: any) => {

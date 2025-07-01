@@ -57,7 +57,20 @@ const PineTabs = observer(() => {
         <Box
           sx={{ borderBottom: 1, borderColor: 'divider', display: 'flex', alignItems: 'center' }}
         >
-          <TabList onChange={handleChange}>
+          <TabList 
+            onChange={handleChange}
+            sx={{
+              '& .MuiTab-root': {
+                color: 'var(--text-color)',
+                '&.Mui-selected': {
+                  color: 'var(--primary-color)',
+                },
+              },
+              '& .MuiTabs-indicator': {
+                backgroundColor: 'var(--primary-color)',
+              },
+            }}
+          >
             {tabs.map((tab, index) => (
               <Tab
                 key={tab.sessionId}
@@ -74,6 +87,13 @@ const PineTabs = observer(() => {
                         event.stopPropagation();
                         removeTab(tab.sessionId);
                       }}
+                      sx={{
+                        color: 'var(--icon-color)',
+                        '&:hover': {
+                          color: 'var(--text-color)',
+                          backgroundColor: 'var(--node-bg)',
+                        },
+                      }}
                     >
                       <CloseOutlined sx={{ fontSize: '14px' }} tabIndex={-1} />
                     </IconButton>
@@ -85,7 +105,17 @@ const PineTabs = observer(() => {
           </TabList>
 
           {/* Button to add new tab */}
-          <AddCircle color="primary" sx={{ ml: 2, cursor: 'pointer' }} onClick={addTab} />
+          <AddCircle 
+            sx={{ 
+              ml: 2, 
+              cursor: 'pointer',
+              color: 'var(--primary-color)',
+              '&:hover': {
+                color: 'var(--primary-color-hover)',
+              },
+            }} 
+            onClick={addTab} 
+          />
         </Box>
 
         {tabs.map(tab => (

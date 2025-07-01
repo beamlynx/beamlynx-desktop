@@ -1,4 +1,4 @@
-import { Box, Grid, Typography, IconButton, Menu, MenuItem } from '@mui/material';
+import { Box, Grid, Typography, IconButton, Menu, MenuItem, Switch, useTheme, useMediaQuery, ListItemIcon } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
 import PineTabs from './PineTabs';
@@ -7,8 +7,9 @@ import ActiveConnection from './ActiveConnection';
 import Message from './Message';
 import UserBox from './UserBox';
 import { isDevelopment } from '../store/util';
-import { Brightness4, Brightness7, Settings } from '@mui/icons-material';
-import { useState } from 'react';
+import { Settings } from '@mui/icons-material';
+import { useState, useEffect } from 'react';
+import { getUserPreference, setUserPreference, STORAGE_KEYS } from '../store/preferences';
 
 const UserContent = isDevelopment ? (
   <Typography variant="caption" color="gray">
@@ -22,6 +23,21 @@ const AppView = observer(() => {
   const { global } = useStores();
   const session = global.getSession(global.activeSessionId);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+
+  const theme = useTheme();
+  const isSmallScreen = useMediaQuery(theme.breakpoints.down('lg'));
+  const [forceSmallScreen, setForceSmallScreen] = useState(false);
+
+  useEffect(() => {
+    const storedForceSmallScreen = getUserPreference(STORAGE_KEYS.FORCE_COMPACT_MODE, false);
+    setForceSmallScreen(storedForceSmallScreen);
+  }, []);
+
+  const handleToggleForceSmallScreen = () => {
+    const newValue = !forceSmallScreen;
+    setForceSmallScreen(newValue);
+    setUserPreference(STORAGE_KEYS.FORCE_COMPACT_MODE, newValue);
+  };
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -63,6 +79,9 @@ const AppView = observer(() => {
     );
   }
 
+  session.isSmallScreen = isSmallScreen;
+  session.forceCompactMode = forceSmallScreen;
+
   return (
     <>
       <Grid container>
@@ -86,12 +105,32 @@ const AppView = observer(() => {
             </IconButton>
             <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}>
               <MenuItem onClick={() => session.toggleTheme()}>
-                {session.theme === 'dark' ? <Brightness7 sx={{mr:1}} /> : <Brightness4 sx={{mr:1}} />}
-                Toggle Theme
+                <ListItemIcon>
+                  <Switch checked={session.theme === 'dark'} size="small" />
+                </ListItemIcon>
+                Dark Mode
               </MenuItem>
               <MenuItem onClick={() => session.toggleVimMode()}>
-                {session.vimMode ? <Box sx={{mr:1, width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>ON</Box> : <Box sx={{mr:1, width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>OFF</Box>}
+                <ListItemIcon>
+                  <Switch checked={session.vimMode} size="small" />
+                </ListItemIcon>
                 Vim Mode
+              </MenuItem>
+              <MenuItem
+                disabled={isSmallScreen}
+                onClick={() => {
+                  if (isSmallScreen) return;
+                  handleToggleForceSmallScreen();
+                }}
+              >
+                <ListItemIcon>
+                  <Switch
+                    checked={isSmallScreen || forceSmallScreen}
+                    size="small"
+                    disabled={isSmallScreen}
+                  />
+                </ListItemIcon>
+                Compact mode
               </MenuItem>
             </Menu>
           </Box>

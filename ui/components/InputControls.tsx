@@ -27,6 +27,18 @@ const RunButton: React.FC<ControlProps> = observer(({ session }) => (
     onClick={() => session.evaluate()}
     disabled={!session.expression || session.loading}
     startIcon={session.loading ? <Loop /> : <KeyboardReturn />}
+    sx={{
+      backgroundColor: 'var(--primary-color)',
+      color: 'var(--primary-text-color)',
+      '&:hover': {
+        backgroundColor: 'var(--primary-color-hover)',
+      },
+      '&:disabled': {
+        backgroundColor: 'var(--icon-color)',
+        color: 'var(--text-color)',
+        opacity: 0.6,
+      },
+    }}
   >
     Run
   </Button>
