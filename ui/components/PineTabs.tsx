@@ -8,16 +8,17 @@ import Session from './Session';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
 import { AddCircle, CloseOutlined } from '@mui/icons-material';
-import { IconButton } from '@mui/material';
+import { IconButton, CircularProgress } from '@mui/material';
 
 const PineTabs = observer(() => {
   const { global } = useStores();
-  const [tabs, setTabs] = React.useState([{ sessionId: 'session-0' }]); // Initial tabs
-  const [sessionId, setSessionId] = React.useState('session-0'); // Active session
+  
+  // Derive tabs directly from global sessions
+  const tabs = Object.keys(global.sessions).map(sessionId => ({ sessionId }));
+  const sessionId = global.activeSessionId;
 
   const setActiveTab = (newSessionId: string) => {
     global.activeSessionId = newSessionId;
-    setSessionId(newSessionId);
   };
 
   const handleChange = (event: React.SyntheticEvent, newSessionId: string) => {
@@ -25,30 +26,27 @@ const PineTabs = observer(() => {
   };
 
   const addTab = () => {
-    const id = Math.random().toString(36).substring(7);
-    const session = global.createSession(id);
-    setTabs([...tabs, { sessionId: session.id }]);
+    const session = global.createSession();
     setActiveTab(session.id);
   };
 
   const removeTab = (sessionIdToRemove: string) => {
     // Reset the session if it is the last tab
     if (tabs.length === 1) {
-      global.createSession(sessionIdToRemove);
+      global.createSessionUsingId(sessionIdToRemove.replace('session-', ''));
       return;
-    }
-
-    // Remove the tab from the list
-    const updatedTabs = tabs.filter(tab => tab.sessionId !== sessionIdToRemove);
-    setTabs(updatedTabs);
-
-    // If the active tab is removed, switch to another tab (the first one, or if no tabs remain, handle gracefully)
-    if (sessionId === sessionIdToRemove && updatedTabs.length > 0) {
-      setActiveTab(updatedTabs[0].sessionId);
     }
 
     // Remove the session from global store
     global.deleteSession(sessionIdToRemove);
+
+    // If the active tab is removed, switch to another tab
+    if (global.activeSessionId === sessionIdToRemove && tabs.length > 1) {
+      const remainingSessions = Object.keys(global.sessions);
+      if (remainingSessions.length > 0) {
+        setActiveTab(remainingSessions[0]);
+      }
+    }
   };
 
   return (
@@ -71,37 +69,46 @@ const PineTabs = observer(() => {
               },
             }}
           >
-            {tabs.map((tab, index) => (
-              <Tab
-                key={tab.sessionId}
-                tabIndex={-1} // Prevent tab focus
-                label={
-                  <span>
-                    {global.getSessionName(tab.sessionId)}
-                    <IconButton
-                      style={{ marginLeft: '5px' }}
-                      size="small"
-                      component="span"
-                      tabIndex={-1} // Prevent tab focus
-                      onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
-                        event.stopPropagation();
-                        removeTab(tab.sessionId);
-                      }}
-                      sx={{
-                        color: 'var(--icon-color)',
-                        '&:hover': {
-                          color: 'var(--text-color)',
-                          backgroundColor: 'var(--node-bg)',
-                        },
-                      }}
-                    >
-                      <CloseOutlined sx={{ fontSize: '14px' }} tabIndex={-1} />
-                    </IconButton>
-                  </span>
-                }
-                value={tab.sessionId}
-              />
-            ))}
+            {tabs.map((tab, index) => {
+              const session = global.getSession(tab.sessionId);
+              return (
+                <Tab
+                  key={tab.sessionId}
+                  tabIndex={-1} // Prevent tab focus
+                  label={
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      {session.loading && (
+                        <CircularProgress 
+                          size={12} 
+                          sx={{ color: 'inherit' }} 
+                        />
+                      )}
+                      {global.getSessionName(tab.sessionId)}
+                      <IconButton
+                        style={{ marginLeft: '5px' }}
+                        size="small"
+                        component="span"
+                        tabIndex={-1} // Prevent tab focus
+                        onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
+                          event.stopPropagation();
+                          removeTab(tab.sessionId);
+                        }}
+                        sx={{
+                          color: 'var(--icon-color)',
+                          '&:hover': {
+                            color: 'var(--text-color)',
+                            backgroundColor: 'var(--node-bg)',
+                          },
+                        }}
+                      >
+                        <CloseOutlined sx={{ fontSize: '14px' }} tabIndex={-1} />
+                      </IconButton>
+                    </span>
+                  }
+                  value={tab.sessionId}
+                />
+              );
+            })}
           </TabList>
 
           {/* Button to add new tab */}

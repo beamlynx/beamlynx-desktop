@@ -283,27 +283,25 @@ const Settings = () => {
             >
               Close
             </Button>
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <Button
-                variant="contained"
-                onClick={handleConnect}
-                disabled={!!connected || connecting}
-                sx={{
-                  backgroundColor: 'var(--primary-color)',
-                  color: 'var(--primary-text-color)',
-                  '&:hover': {
-                    backgroundColor: 'var(--primary-color-hover)',
-                  },
-                  '&:disabled': {
-                    backgroundColor: 'var(--icon-color)',
-                    color: 'var(--text-color)',
-                    opacity: 0.6,
-                  },
-                }}
-              >
-                {connected ? 'Connected' : connecting ? 'Connecting...' : 'Connect'}
-              </Button>
-            </Box>
+            <Button
+              variant="contained"
+              onClick={handleConnect}
+              disabled={!!connected || connecting}
+              sx={{
+                backgroundColor: 'var(--primary-color)',
+                color: 'var(--primary-text-color)',
+                '&:hover': {
+                  backgroundColor: 'var(--primary-color-hover)',
+                },
+                '&:disabled': {
+                  backgroundColor: 'var(--icon-color)',
+                  color: 'var(--text-color)',
+                  opacity: 0.6,
+                },
+              }}
+            >
+              {connected ? 'Connected' : connecting ? 'Connecting...' : 'Connect'}
+            </Button>
           </Box>
         </Box>
       </Box>

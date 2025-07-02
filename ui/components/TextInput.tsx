@@ -52,17 +52,24 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
   }, [session.expression, updateEditorValue]);
 
   /**
-   * Global event handler for Ctrl+A
+   * Global event handler for Ctrl+A - only prevent when not in Pine text input
    */
   useEffect(() => {
     const fn = (e: KeyboardEvent) => {
       if (!e.ctrlKey) return;
 
+      // Allow Ctrl+A in any regular text input (including modals)
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.contentEditable === 'true')) {
+        return;
+      }
+
+      // Only prevent Ctrl+A when we're in session mode but not focused on the Pine input
       if (session.textInputFocused) {
         return;
       }
 
-      // Disable Ctrl+A
+      // Disable Ctrl+A for general page selection
       if (e.ctrlKey && e.key === 'a') {
         e.preventDefault();
       }
@@ -72,7 +79,7 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
     return () => {
       document.removeEventListener('keydown', fn);
     };
-  }, []);
+  }, [session]);
 
   useEffect(() => {
     if (session.textInputFocused) {

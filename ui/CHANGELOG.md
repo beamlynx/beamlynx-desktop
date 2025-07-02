@@ -5,6 +5,13 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.21.0] - 2025-07-02
+### Added
+- Support for running analysis templates
+
+### Fixed
+- Theme was being set for each tab and not globally
+
 ## [0.20.1] - 2025-07-01
 ### Fixed
 - The SQL view was re-rendering causing a performance issue.

@@ -1,13 +1,11 @@
-import React, { useRef, useCallback } from 'react';
-import { observer } from 'mobx-react-lite';
-import { useStores } from '../store/store-container';
-import { Box, Typography } from '@mui/material';
-import { EditorView, basicSetup } from 'codemirror';
 import { sql } from '@codemirror/lang-sql';
-import { oneDark } from '@codemirror/theme-one-dark';
 import { EditorState } from '@codemirror/state';
-import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
-import { useEffect, useState } from 'react';
+import { oneDark } from '@codemirror/theme-one-dark';
+import { Box, Typography } from '@mui/material';
+import { EditorView } from 'codemirror';
+import { observer } from 'mobx-react-lite';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useStores } from '../store/store-container';
 
 interface QueryProps {
   sessionId: string;
@@ -74,7 +72,7 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
       }),
     ];
 
-    if (session.theme === 'dark') {
+    if (store.theme === 'dark') {
       extensions.push(oneDark);
     }
 
@@ -93,7 +91,7 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
     return () => {
       view.destroy();
     };
-  }, [session.query, session.theme, onClick]);
+  }, [session.query, store.theme, onClick]);
 
   if (session.error && session.errorType === 'parse') {
     return (
@@ -113,24 +111,22 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
     );
   }
 
-      if (session.query) {
-      return (
-        <div ref={editorRef} />
-      );
-    }
+  if (session.query) {
+    return <div ref={editorRef} />;
+  }
 
-      return (
-      <div
-        style={{
-          padding: '8px 12px',
-          fontSize: '12px',
-          fontFamily: 'monospace',
-          color: 'gray',
-        }}
-      >
-        SQL shows here for a valid pine expression.
-      </div>
-    );
+  return (
+    <div
+      style={{
+        padding: '8px 12px',
+        fontSize: '12px',
+        fontFamily: 'monospace',
+        color: 'gray',
+      }}
+    >
+      SQL shows here for a valid pine expression.
+    </div>
+  );
 });
 
 export default Query;

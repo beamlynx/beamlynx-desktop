@@ -6,13 +6,10 @@ import { observer } from 'mobx-react-lite';
 
 const MyApp = observer(({ Component, pageProps }: AppProps) => {
   const { global } = useStores();
-  const session = global.getSession(global.activeSessionId);
 
   useEffect(() => {
-    if (session) {
-      document.documentElement.setAttribute('data-theme', session.theme);
-    }
-  }, [session, session.theme]);
+    document.documentElement.setAttribute('data-theme', global.theme);
+  }, [global.theme]);
 
   return <Component {...pageProps} />
 });

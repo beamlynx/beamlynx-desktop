@@ -1,8 +1,9 @@
 import { makeAutoObservable } from 'mobx';
 import { lt } from 'semver';
 import { HttpClient } from './client';
-import { Session } from './session';
+import { Session, Theme } from './session';
 import { RequiredVersion } from '../constants';
+import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
 
 const initSession = new Session('0');
 
@@ -26,6 +27,9 @@ export class GlobalStore {
     [initSession.id]: initSession,
   };
 
+  // Theme - moved from individual sessions to global
+  theme: Theme = 'light';
+
   // User
   email = '';
   domain = '';
@@ -33,8 +37,17 @@ export class GlobalStore {
   // Settings
   showSettings = false;
 
+  // Analysis
+  showAnalysis = false;
+
   constructor() {
+    this.theme = getUserPreference(STORAGE_KEYS.THEME, 'light');
     makeAutoObservable(this);
+  }
+
+  public toggleTheme() {
+    this.theme = this.theme === 'light' ? 'dark' : 'light';
+    setUserPreference(STORAGE_KEYS.THEME, this.theme);
   }
 
   getConnectionName = () => {
@@ -59,10 +72,15 @@ export class GlobalStore {
     return id;
   };
 
-  createSession = (id: string) => {
+  createSessionUsingId = (id: string) => {
     const session = new Session(id);
     this.sessions[session.id] = session;
     return session;
+  };
+
+  createSession = () => {
+    const id = Math.random().toString(36).substring(7);
+    return this.createSessionUsingId(id);
   };
 
   deleteSession = (sessionId: string) => {
@@ -130,5 +148,9 @@ export class GlobalStore {
 
   setShowSettings = (show: boolean) => {
     this.showSettings = show;
+  };
+
+  setShowAnalysis = (show: boolean) => {
+    this.showAnalysis = show;
   };
 }

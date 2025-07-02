@@ -62,9 +62,6 @@ export class Session {
   /**
    * App states
    */
-  /** Theme */
-  theme: Theme = 'light';
-
   /** Vim mode */
   vimMode: boolean = false;
 
@@ -128,7 +125,6 @@ export class Session {
 
   constructor(id: string) {
     this.id = `session-${id}`;
-    this.theme = getUserPreference(STORAGE_KEYS.THEME, 'light');
     this.vimMode = getUserPreference(STORAGE_KEYS.VIM_MODE, false);
 
     makeAutoObservable(this);
@@ -252,11 +248,6 @@ export class Session {
     );
   }
 
-  public toggleTheme() {
-    this.theme = this.theme === 'light' ? 'dark' : 'light';
-    setUserPreference(STORAGE_KEYS.THEME, this.theme);
-  }
-
   public toggleVimMode() {
     this.vimMode = !this.vimMode;
     setUserPreference(STORAGE_KEYS.VIM_MODE, this.vimMode);
@@ -287,6 +278,10 @@ export class Session {
 
   public updateExpressionUsingCandidate() {
     this.expression = this.getExpressionUsingCandidate();
+  }
+
+  public prettify() {
+    this.expression = prettifyExpression(this.expression);
   }
 
   public appendAndUpdateExpression(string: string) {

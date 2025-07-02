@@ -107,11 +107,12 @@ const Flow = observer(({ sessionId }: { sessionId: string }) => {
   // }, [isFocused, setNodes]);
 
   /**
-   * Global event handler for Ctrl+A
+   * Global event handler for Ctrl+A - only prevent when visual input is focused
    */
   useEffect(() => {
     const fn = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key === 'a') {
+      // Only prevent Ctrl+A when this visual input component is focused
+      if (e.ctrlKey && e.key === 'a' && session.inputMode === 'visual' && isFocused) {
         e.preventDefault();
       }
     };
@@ -119,7 +120,7 @@ const Flow = observer(({ sessionId }: { sessionId: string }) => {
     return () => {
       document.removeEventListener('keydown', fn);
     };
-  }, []);
+  }, [session.inputMode, isFocused]);
 
   // Handle keyboard events on the flow container
   useEffect(() => {

@@ -7,9 +7,10 @@ import ActiveConnection from './ActiveConnection';
 import Message from './Message';
 import UserBox from './UserBox';
 import { isDevelopment } from '../store/util';
-import { Settings } from '@mui/icons-material';
+import { Settings, Analytics } from '@mui/icons-material';
 import { useState, useEffect } from 'react';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from '../store/preferences';
+import AnalysisModal from './AnalysisModal';
 
 const UserContent = isDevelopment ? (
   <Typography variant="caption" color="gray">
@@ -23,6 +24,7 @@ const AppView = observer(() => {
   const { global } = useStores();
   const session = global.getSession(global.activeSessionId);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [analysisInitialValue, setAnalysisInitialValue] = useState('');
 
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('lg'));
@@ -32,6 +34,20 @@ const AppView = observer(() => {
     const storedForceSmallScreen = getUserPreference(STORAGE_KEYS.FORCE_COMPACT_MODE, false);
     setForceSmallScreen(storedForceSmallScreen);
   }, []);
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const analyseParam = urlParams.get('analyse');
+    
+    if (analyseParam) {
+      setAnalysisInitialValue(decodeURIComponent(analyseParam));
+      global.setShowAnalysis(true);
+      
+      urlParams.delete('analyse');
+      const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
+      window.history.replaceState({}, '', newUrl);
+    }
+  }, [global]);
 
   const handleToggleForceSmallScreen = () => {
     const newValue = !forceSmallScreen;
@@ -45,6 +61,12 @@ const AppView = observer(() => {
 
   const handleMenuClose = () => {
     setAnchorEl(null);
+  };
+
+  const handleOpenAnalysis = () => {
+    setAnalysisInitialValue('');
+    global.setShowAnalysis(true);
+    handleMenuClose();
   };
 
   if (global.connecting) {
@@ -84,6 +106,7 @@ const AppView = observer(() => {
 
   return (
     <>
+      <AnalysisModal initialValue={analysisInitialValue} />
       <Grid container>
         <Grid item xs={3}>
           <Box sx={{ m: 2, mt: 1 }}>
@@ -104,9 +127,15 @@ const AppView = observer(() => {
               <Settings />
             </IconButton>
             <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}>
-              <MenuItem onClick={() => session.toggleTheme()}>
+              <MenuItem onClick={handleOpenAnalysis}>
                 <ListItemIcon>
-                  <Switch checked={session.theme === 'dark'} size="small" />
+                  <Analytics />
+                </ListItemIcon>
+                Analysis
+              </MenuItem>
+              <MenuItem onClick={() => global.toggleTheme()}>
+                <ListItemIcon>
+                  <Switch checked={global.theme === 'dark'} size="small" />
                 </ListItemIcon>
                 Dark Mode
               </MenuItem>
