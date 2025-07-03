@@ -166,13 +166,13 @@ export class HttpClient {
     expression: string,
     column: string,
     limit: number,
-  ): Promise<{ query: string; ast: Ast }> {
+  ): Promise<string> {
     const x = `${expression} | limit: ${limit} | delete! .${column}`;
     const response = await this.build(x);
     if (!response) {
       throw new Error('No response when trying to build the delete query');
     }
-    return response;
+    return `-- ${x}\n${response.query}`;
   }
 
   public async createConnection(connection: {

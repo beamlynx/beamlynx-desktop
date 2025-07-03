@@ -31,6 +31,7 @@
   --node-suggested-border: orange;
   --node-candidate-bg: #FFD700;
   --node-candidate-border: orange;
+  --node-candidate-text-color: #000000; /* Dark text for light theme */
 }
 
 [data-theme='dark'] {
@@ -49,23 +50,24 @@
   --component-border-color: #4b5263;
   --divider-color: #5c6370;
   --node-bg: #4b5263;
-  --node-border: #5c6370;
-  --node-text-color: #abb2bf;
-  --node-secondary-text-color: #abb2bf;
+  --node-border: #61afef; /* Brighter blue for selected nodes */
+  --node-text-color: #d7dce2; /* Better contrast for text */
+  --node-secondary-text-color: #9ca3af; /* Slightly dimmer for secondary text */
   --node-handle-bg: #5c6370;
   --node-schema-bg: #282c34;
-  --node-schema-text-color: #abb2bf;
+  --node-schema-text-color: #d7dce2;
   --node-order-bg: #e06c75;
   --node-order-text-color: #282c34;
   --node-column-bg: #282c34;
   --node-column-border: #5c6370;
-  --node-column-text-color: #abb2bf;
+  --node-column-text-color: #d7dce2;
   --node-candidate-column-border: #5c6370;
   --node-candidate-column-text-color: #c678dd;
   --node-suggested-bg: #4b5263;
-  --node-suggested-border: #98c379;
-  --node-candidate-bg: #c678dd;
+  --node-suggested-border: #f39c12; /* Orange for suggestions */
+  --node-candidate-bg: #61afef; /* Match border color instead of pink */
   --node-candidate-border: #61afef;
+  --node-candidate-text-color: #1a1a1a; /* Dark text for better contrast on light blue */
 }
 
 html,
@@ -121,4 +123,60 @@ a {
 
 .text-warning {
   color: var(--text-warning-color);
+}
+
+/* ReactFlow Edge Styles */
+.react-flow__edge-path {
+  stroke: #888;
+  stroke-width: 2;
+}
+
+.react-flow__edge-text {
+  fill: var(--text-color);
+}
+
+.react-flow__edge.react-flow__edge-straight,
+.react-flow__edge.react-flow__edge-step,
+.react-flow__edge.react-flow__edge-bezier {
+  stroke: #888;
+  stroke-width: 2;
+}
+
+/* Dark theme edge styles */
+[data-theme='dark'] .react-flow__edge-path {
+  stroke: var(--border-color);
+  stroke-width: 2;
+}
+
+[data-theme='dark'] .react-flow__edge.react-flow__edge-straight,
+[data-theme='dark'] .react-flow__edge.react-flow__edge-step,
+[data-theme='dark'] .react-flow__edge.react-flow__edge-bezier {
+  stroke: var(--border-color);
+  stroke-width: 2;
+}
+
+[data-theme='dark'] .react-flow__edge-text {
+  fill: var(--text-color);
+}
+
+/* Node styling enhancements for dark mode */
+/* Light mode suggested node styling */
+.react-flow__node-suggested-node > div {
+  border: 2px dotted var(--node-suggested-border) !important;
+}
+
+/* Dark mode node styling enhancements */
+[data-theme='dark'] .selected-node-inner {
+  border: 3px solid var(--node-border) !important;
+  box-shadow: 0 0 8px rgba(97, 175, 239, 0.3) !important;
+}
+
+[data-theme='dark'] .react-flow__node-suggested-node > div {
+  border: 2px dotted var(--node-suggested-border) !important;
+  box-shadow: 0 0 4px rgba(243, 156, 18, 0.2) !important;
+}
+
+/* Candidate node text contrast fix */
+[data-theme='dark'] .react-flow__node-suggested-node > div[style*="--node-candidate-bg"] {
+  color: #282c34 !important;
 }

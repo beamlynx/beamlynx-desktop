@@ -25,6 +25,7 @@ const SuggestedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
   const border = candidate
     ? `2px solid var(--node-candidate-border)`
     : `2px solid var(--node-suggested-border)`;
+  const textColor = candidate ? 'var(--node-candidate-text-color)' : 'var(--node-text-color)';
 
   return (
     <div
@@ -36,11 +37,11 @@ const SuggestedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
         border,
         background,
         borderRadius: '5px',
-        color: 'var(--node-text-color)',
+        color: textColor,
       }}
     >
       <div>{data.table}</div>
-      {data.schema !== 'public' && (
+      {data.schema && data.schema !== 'public' && (
         <div
           style={{
             position: 'absolute',
@@ -52,7 +53,7 @@ const SuggestedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
             borderRadius: '5px', // Rounded corners for the schema label
             transform: 'translateY(-100%)', // Move up fully above the node
             boxShadow: '0 2px 4px rgba(0,0,0,0.1)', // Optional: adds shadow for better visibility
-            color: 'var(--node-schema-text-color)',
+            color: data.color ? '#000000' : 'var(--node-schema-text-color)', // Use dark text on bright colors
           }}
         >
           {data.schema}

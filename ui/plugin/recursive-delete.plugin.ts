@@ -72,7 +72,7 @@ export class RecursiveDeletePlugin implements PluginInterface {
     }
 
     // After processing children, add the delete query for the current expression
-    const { query } = await this.client.buildDeleteQuery(expression, column, count);
+    const query = await this.client.buildDeleteQuery(expression, column, count);
     deleteQueries.push(query);
   }
 }

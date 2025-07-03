@@ -45,6 +45,7 @@ const TableNode = ({
     >
       {/* Node */}
       <div
+        className="selected-node-inner"
         onClick={() => onSelectedNodeClick(session, alias)}
         style={{
           position: 'relative',
@@ -97,7 +98,7 @@ const TableNode = ({
         }
 
         {/* Schema */}
-        {schema !== 'public' && (
+        {schema && schema !== 'public' && (
           <div
             style={{
               position: 'absolute',
@@ -109,7 +110,7 @@ const TableNode = ({
               transform: 'translateY(-100%)',
               boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
               background: color ?? 'var(--node-schema-bg)',
-              color: 'var(--node-schema-text-color)',
+              color: color ? '#000000' : 'var(--node-schema-text-color)', // Use dark text on bright colors
             }}
           >
             {schema}

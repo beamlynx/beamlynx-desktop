@@ -1,8 +1,9 @@
-import { Box, Button, Modal, TextField, Typography, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
+import { Box, Button, FormControl, InputLabel, MenuItem, Modal, Select, TextField, Typography } from '@mui/material';
 import { observer } from 'mobx-react-lite';
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useStores } from '../store/store-container';
-import { analysisTemplates, runAnalysis } from '../utils/analysisTemplates';
+import { runAnalysis } from '../utils/analysisTemplates';
+import { AnalysisTemplates } from '../utils/analysisTemplates.data';
 
 interface AnalysisModalProps {
   initialValue?: string;
@@ -100,7 +101,7 @@ const AnalysisModal = ({ initialValue = '' }: AnalysisModalProps) => {
               '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary-color)' },
             }}
           >
-            {analysisTemplates.map(template => (
+            {AnalysisTemplates.map(template => (
               <MenuItem key={template.id} value={template.id}>
                 {template.id}
               </MenuItem>
