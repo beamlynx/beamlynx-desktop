@@ -127,7 +127,7 @@ a {
 
 /* ReactFlow Edge Styles */
 .react-flow__edge-path {
-  stroke: #888;
+  stroke: var(--divider-color);
   stroke-width: 2;
 }
 
@@ -138,31 +138,27 @@ a {
 .react-flow__edge.react-flow__edge-straight,
 .react-flow__edge.react-flow__edge-step,
 .react-flow__edge.react-flow__edge-bezier {
-  stroke: #888;
+  stroke: var(--divider-color);
   stroke-width: 2;
 }
 
-/* Dark theme edge styles */
+/* Dark theme edge styles - use very subtle color */
 [data-theme='dark'] .react-flow__edge-path {
-  stroke: var(--border-color);
+  stroke: #353a45;
   stroke-width: 2;
 }
 
 [data-theme='dark'] .react-flow__edge.react-flow__edge-straight,
 [data-theme='dark'] .react-flow__edge.react-flow__edge-step,
 [data-theme='dark'] .react-flow__edge.react-flow__edge-bezier {
-  stroke: var(--border-color);
+  stroke: #353a45;
   stroke-width: 2;
-}
-
-[data-theme='dark'] .react-flow__edge-text {
-  fill: var(--text-color);
 }
 
 /* Node styling enhancements for dark mode */
 /* Light mode suggested node styling */
 .react-flow__node-suggested-node > div {
-  border: 2px dotted var(--node-suggested-border) !important;
+  border: 2px solid var(--node-suggested-border) !important;
 }
 
 /* Dark mode node styling enhancements */
@@ -172,7 +168,7 @@ a {
 }
 
 [data-theme='dark'] .react-flow__node-suggested-node > div {
-  border: 2px dotted var(--node-suggested-border) !important;
+  border: 2px solid var(--node-suggested-border) !important;
   box-shadow: 0 0 4px rgba(243, 156, 18, 0.2) !important;
 }
 

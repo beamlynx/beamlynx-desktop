@@ -5,7 +5,7 @@ import { Session, Theme } from './session';
 import { RequiredVersion } from '../constants';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
 
-const initSession = new Session('0');
+
 
 const client = new HttpClient();
 type ConnectionParams = {
@@ -23,9 +23,7 @@ export class GlobalStore {
   version: string | undefined = undefined;
 
   activeSessionId = 'session-0';
-  sessions: Record<string, Session> = {
-    [initSession.id]: initSession,
-  };
+  sessions: Record<string, Session> = {};
 
   // Theme - moved from individual sessions to global
   theme: Theme = 'light';
@@ -43,6 +41,10 @@ export class GlobalStore {
   constructor() {
     this.theme = getUserPreference(STORAGE_KEYS.THEME, 'light');
     makeAutoObservable(this);
+    
+    // Initialize the default session
+    const initSession = new Session('0', this);
+    this.sessions[initSession.id] = initSession;
   }
 
   public toggleTheme() {
@@ -73,7 +75,7 @@ export class GlobalStore {
   };
 
   createSessionUsingId = (id: string) => {
-    const session = new Session(id);
+    const session = new Session(id, this);
     this.sessions[session.id] = session;
     return session;
   };

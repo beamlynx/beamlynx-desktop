@@ -92,7 +92,8 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId }) => {
     setNodes(nds =>
       nds.map((n: PineSuggestedNode) => {
         const isCandidate = n.id === candidate.id;
-        const node = makeSuggestedNode(n.data, sessionId, isCandidate);
+        const isDark = global.theme === 'dark';
+        const node = makeSuggestedNode(n.data, sessionId, isCandidate, isDark);
         const result = { ...n, data: { ...n.data, ...node.data } };
         return result;
       }),

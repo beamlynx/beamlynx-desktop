@@ -123,7 +123,7 @@ const AppView = observer(() => {
         <Grid item xs={1}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
             {UserContent}
-            <IconButton onClick={handleMenuOpen} sx={{ ml: 1 }} color="inherit">
+            <IconButton onClick={handleMenuOpen} sx={{ ml: 1 }} color="inherit" tabIndex={2}>
               <Settings />
             </IconButton>
             <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}>

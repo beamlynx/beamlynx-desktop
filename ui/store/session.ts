@@ -123,9 +123,13 @@ export class Session {
   /** Evaluation plugins */
   plugins: { delete: RecursiveDeletePlugin; default: DefaultPlugin };
 
-  constructor(id: string) {
+  /** Global store reference for accessing theme */
+  private globalStore: any = null;
+
+  constructor(id: string, globalStore?: any) {
     this.id = `session-${id}`;
     this.vimMode = getUserPreference(STORAGE_KEYS.VIM_MODE, false);
+    this.globalStore = globalStore;
 
     makeAutoObservable(this);
 
@@ -204,7 +208,8 @@ export class Session {
           }
         }
 
-        const graph = generateGraph(ast, this.id);
+        const isDark = this.globalStore?.theme === 'dark';
+        const graph = generateGraph(ast, this.id, isDark);
         this.graph = graph;
       },
     );

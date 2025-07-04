@@ -223,23 +223,46 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
   }
 
   return (
-    <CodeMirror
-      ref={inputRef}
-      id="input"
-      value={session.expression}
-      height="177px"
-      theme={oneDark}
-      extensions={extensions}
+    <div 
+      tabIndex={1} 
+      style={{ outline: 'none' }}
       onFocus={() => {
-        session.textInputFocused = true;
+        // Delegate focus to the CodeMirror editor
+        if (inputRef.current?.view) {
+          inputRef.current.view.focus();
+        }
       }}
-      onBlur={() => {
-        session.textInputFocused = false;
-      }}
-      onChange={handleChange}
-      onKeyDown={handleKeyPress}
-      indentWithTab={false}
-    />
+    >
+      <CodeMirror
+        ref={inputRef}
+        id="input"
+        value={session.expression}
+        height="177px"
+        theme={oneDark}
+        extensions={extensions}
+        onFocus={() => {
+          session.textInputFocused = true;
+        }}
+        onBlur={() => {
+          session.textInputFocused = false;
+        }}
+        onChange={handleChange}
+        onKeyDown={handleKeyPress}
+        indentWithTab={false}
+        basicSetup={{
+          tabSize: 2,
+          foldGutter: false,
+          dropCursor: false,
+          allowMultipleSelections: false,
+          crosshairCursor: false,
+        }}
+        style={{ 
+          outline: 'none',
+        }}
+        autoFocus={false}
+        placeholder=""
+      />
+    </div>
   );
 });
 

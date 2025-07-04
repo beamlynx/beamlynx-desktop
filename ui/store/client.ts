@@ -172,7 +172,7 @@ export class HttpClient {
     if (!response) {
       throw new Error('No response when trying to build the delete query');
     }
-    return `-- ${x}\n${response.query}`;
+    return response.query;
   }
 
   public async createConnection(connection: {

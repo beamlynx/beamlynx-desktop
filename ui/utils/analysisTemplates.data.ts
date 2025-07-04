@@ -18,19 +18,3 @@ export const AnalysisTemplates: AnalysisTemplate[] = [
     },
   },
 ];
-
-// Function to run analysis based on template
-export const runAnalysis = async (input: string, templateId: string, global: GlobalStore) => {
-  const template = AnalysisTemplates.find(t => t.id === templateId);
-  if (!template) {
-    return;
-  }
-  const x = template.extract(input);
-  if (!x) {
-    return;
-  }
-  const sessionIds = await template.run(x, global);
-  if (sessionIds.length > 0) {
-    global.activeSessionId = sessionIds[0];
-  }
-}; 

@@ -31,8 +31,11 @@ export class RecursiveDeletePlugin implements PluginInterface {
       // Format the queries
       this.session.query = queries
         .map(q => {
+          if (q.trim().startsWith('/*')) {
+            return q;
+          }
           return format(q, {
-            language: 'postgresql',
+            language: 'postgresql', 
             indentStyle: 'tabularRight',
             denseOperators: false,
           });
@@ -73,6 +76,7 @@ export class RecursiveDeletePlugin implements PluginInterface {
 
     // After processing children, add the delete query for the current expression
     const query = await this.client.buildDeleteQuery(expression, column, count);
+    deleteQueries.push(`/*\n${expression}\n*/`);
     deleteQueries.push(query);
   }
 }

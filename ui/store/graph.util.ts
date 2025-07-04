@@ -24,17 +24,20 @@ export const getCandidateIndex = (suggestedTables: TableHint[], ci: number) => {
   return (ci < 0 ? suggestedTables.length + ci : ci) % suggestedTables.length;
 };
 
-// Generate a pallette of constrasting modern colors
-const Colors = ['#ff4e50', '#ff9f51', '#ffea51', '#4caf50', '#64b6ac'];
+// Generate a palette of contrasting modern colors
+const LightColors = ['#ff4e50', '#ff9f51', '#ffea51', '#4caf50', '#64b6ac'];
+const DarkColors = ['#cf6679', '#d4995c', '#e6c07b', '#98c379', '#61afef'];
 
 /**
  * Get the color for the schema. Note: this function probably has collisions.
  * TODO: Keep track of the schemas and colors to avoid collisions.
  */
-const getColor = (schema: string) => {
+const getColor = (schema: string, isDark: boolean = false) => {
   if (!schema) schema = 'public';
   const hash = schema.split('').reduce((acc, x) => acc + x.charCodeAt(0), 0);
-  const color = schema === 'public' ? '#FFF' : Colors[hash % Colors.length];
+  const colors = isDark ? DarkColors : LightColors;
+  const publicColor = isDark ? '#4b5263' : '#FFF';
+  const color = schema === 'public' ? publicColor : colors[hash % colors.length];
   return { schema, color };
 };
 
@@ -46,9 +49,10 @@ const makeSelectedNode = (
   suggestedColumns: string[],
   suggestedOrderColumns: string[],
   sessionId: string,
+  isDark: boolean = false,
 ): PineSelectedNode => {
   const { schema, table, alias } = n;
-  const { color } = getColor(n.schema);
+  const { color } = getColor(n.schema, isDark);
   const id = alias;
   return {
     id,
@@ -75,9 +79,10 @@ export const makeSuggestedNode = (
   n: TableHint,
   sessionId: string,
   candidate = false,
+  isDark: boolean = false,
 ): PineSuggestedNode => {
   const { schema, table, column, pine, parent } = n;
-  const { color } = getColor(schema);
+  const { color } = getColor(schema, isDark);
 
   const id = pine;
 
@@ -111,7 +116,7 @@ const makeColumnsLookup = (columns: Column[]): Record<string, string[]> => {
   );
 };
 
-const makeSelectedNodes = (ast: Ast, sessionId: string): PineSelectedNode[] => {
+const makeSelectedNodes = (ast: Ast, sessionId: string, isDark: boolean = false): PineSelectedNode[] => {
   const {
     'selected-tables': selectedTables,
     columns: selectedColumns,
@@ -147,6 +152,7 @@ const makeSelectedNodes = (ast: Ast, sessionId: string): PineSelectedNode[] => {
           suggestedColumns,
           suggestedOrderColumns,
           sessionId,
+          isDark,
         );
       })
     : [];
@@ -154,19 +160,19 @@ const makeSelectedNodes = (ast: Ast, sessionId: string): PineSelectedNode[] => {
   return selectedNodes;
 };
 
-const makeSuggestedNodes = (ast: Ast, sessionId: string): PineSuggestedNode[] => {
+const makeSuggestedNodes = (ast: Ast, sessionId: string, isDark: boolean = false): PineSuggestedNode[] => {
   const {
     hints: { table: suggestedTables },
   } = ast;
   const suggestedNodes: PineSuggestedNode[] = [];
   for (const h of suggestedTables) {
-    const node = makeSuggestedNode(h, sessionId, false);
+    const node = makeSuggestedNode(h, sessionId, false, isDark);
     suggestedNodes.push(node);
   }
   return suggestedNodes;
 };
 
-export const generateGraph = (ast: Ast, sessionId: string): Graph => {
+export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = false): Graph => {
   const { 'selected-tables': selectedTables, joins, context } = ast;
 
   const graph: Graph = {
@@ -180,7 +186,7 @@ export const generateGraph = (ast: Ast, sessionId: string): Graph => {
    * 1. Selected Nodes
    */
 
-  const selectedNodes = makeSelectedNodes(ast, sessionId);
+  const selectedNodes = makeSelectedNodes(ast, sessionId, isDark);
 
   // Find the context node
   const selectedNodesLookup = selectedNodes.reduce(
@@ -196,7 +202,7 @@ export const generateGraph = (ast: Ast, sessionId: string): Graph => {
    * 2. Suggested Nodes
    */
 
-  const suggestedNodes = makeSuggestedNodes(ast, sessionId);
+  const suggestedNodes = makeSuggestedNodes(ast, sessionId, isDark);
 
   graph.selectedNodes = selectedNodes;
   graph.suggestedNodes = suggestedNodes;

@@ -5,6 +5,16 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.21.1] - 2025-07-04
+### Fixed
+- Focus (when pressing `Tab`) goes to the input window instead of settings.
+- Improved colors for the graph in dark mode
+
+### Changed
+- The recursive delete queries also include the pine expressions
+
+
+
 ## [0.21.0] - 2025-07-02
 ### Added
 - Support for running analysis templates
