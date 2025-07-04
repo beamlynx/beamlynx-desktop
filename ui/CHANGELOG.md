@@ -5,6 +5,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- Download the results as a CSV file
+
 ## [0.21.1] - 2025-07-04
 ### Fixed
 - Focus (when pressing `Tab`) goes to the input window instead of settings.

@@ -3,7 +3,8 @@ import { toJS } from 'mobx';
 import { observer } from 'mobx-react-lite';
 import React from 'react';
 import { useStores } from '../store/store-container';
-import { Box } from '@mui/material';
+import { Box, IconButton, Tooltip } from '@mui/material';
+import { FileDownload } from '@mui/icons-material';
 
 interface ResultProps {
   sessionId: string;
@@ -15,6 +16,54 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const rows = toJS(session.rows);
   const columns = toJS(session.columns);
 
+  const exportToCSV = () => {
+    if (columns.length === 0 || rows.length === 0) {
+      return;
+    }
+
+    // Get column headers (excluding the _id column if present)
+    const headers = columns
+      .filter(col => col.field !== '_id')
+      .map(col => col.headerName || col.field);
+
+    // Convert rows to CSV format
+    const csvRows = [
+      headers.join(','), // Header row
+      ...rows.map(row => 
+        columns
+          .filter(col => col.field !== '_id')
+          .map(col => {
+            const value = row[col.field];
+            // Handle values that might contain commas, quotes, or newlines
+            if (value === null || value === undefined) {
+              return '';
+            }
+            const stringValue = String(value);
+            if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+              return `"${stringValue.replace(/"/g, '""')}"`;
+            }
+            return stringValue;
+          })
+          .join(',')
+      )
+    ];
+
+    // Create and download the file
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    
+    if (link.download !== undefined) {
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `pine-export-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
   if (columns.length === 0) {
     return <div style={{ textAlign: 'center', color: 'gray', padding: '20px' }}>No results</div>;
   }
@@ -25,6 +74,32 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
       respecting the max width. Hack taken from here:
       https://github.com/mui/mui-x/issues/8895#issuecomment-1793433389*/}
       <Box sx={{ flex: 1, position: 'relative' }}>
+        {/* CSV Export Button */}
+        <Tooltip title="Export to CSV">
+          <IconButton
+            onClick={exportToCSV}
+            disabled={rows.length === 0}
+            sx={{
+              position: 'absolute',
+              top: -40,
+              right: 0,
+              zIndex: 1000,
+              backgroundColor: 'var(--background-color)',
+              border: '1px solid var(--border-color)',
+              color: 'var(--text-color)',
+              '&:hover': {
+                backgroundColor: 'var(--node-bg)',
+              },
+              '&:disabled': {
+                opacity: 0.5,
+                color: 'var(--icon-color)',
+              },
+            }}
+            size="small"
+          >
+            <FileDownload fontSize="small" />
+          </IconButton>
+        </Tooltip>
         <Box sx={{ position: 'absolute', inset: 0 }}>
           <DataGrid
             sx={{
