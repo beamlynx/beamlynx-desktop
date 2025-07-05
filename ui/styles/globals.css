@@ -176,3 +176,22 @@ a {
 [data-theme='dark'] .react-flow__node-suggested-node > div[style*="--node-candidate-bg"] {
   color: #282c34 !important;
 }
+
+/* CodeMirror scrollbar styling for dark mode */
+.cm-editor ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.cm-editor ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cm-editor ::-webkit-scrollbar-thumb {
+  background-color: var(--node-handle-bg);
+  border-radius: 5px;
+}
+
+.cm-editor ::-webkit-scrollbar-thumb:hover {
+  background: var(--text-color);
+}
