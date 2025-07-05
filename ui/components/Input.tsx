@@ -4,7 +4,6 @@ import { useStores } from '../store/store-container';
 import { Box } from '@mui/material';
 import InputControls from './InputControls';
 import TextInput from './TextInput';
-import VisualInput from './visual-input/VisualInput';
 
 interface InputProps {
   sessionId: string;
@@ -26,17 +25,7 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
           overflow: 'hidden',
         }}
       >
-        {session.inputMode === 'text' ? (
-          <TextInput session={session} />
-        ) : (
-          <Box
-            sx={{
-              height: '177px',
-            }}
-          >
-            <VisualInput sessionId={sessionId} />
-          </Box>
-        )}
+        <TextInput session={session} />
       </Box>
       <InputControls session={session} />
     </Box>

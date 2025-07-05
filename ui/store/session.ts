@@ -87,6 +87,11 @@ export class Session {
   // TODO: make sure this is a readonly. This should only represent the state.
   // The actual focus should be done by calling the focus() function
   textInputFocused: boolean = false;
+  /**
+   * @deprecated
+   * I was experimenting with the visual mode. Not supporting it for the
+   * near future.
+   */
   inputMode: 'text' | 'visual' = 'text';
 
   /**

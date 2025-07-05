@@ -1,10 +1,4 @@
-import {
-  AccountTree,
-  BarChart,
-  Description,
-  MoreVert,
-  TableChart,
-} from '@mui/icons-material';
+import { AccountTree, BarChart, Description, MoreVert, TableChart } from '@mui/icons-material';
 import {
   Box,
   Divider,
@@ -93,7 +87,10 @@ const Sidebar = ({
           <Tooltip title="Documentation">
             <IconButton size="small" onClick={() => (session.mode = 'documentation')}>
               <Description
-                sx={{ color: session.mode === 'documentation' ? 'var(--primary-color)' : 'var(--icon-color)' }}
+                sx={{
+                  color:
+                    session.mode === 'documentation' ? 'var(--primary-color)' : 'var(--icon-color)',
+                }}
               />
             </IconButton>
           </Tooltip>
@@ -101,7 +98,9 @@ const Sidebar = ({
           <Tooltip title="Visualize Relations">
             <IconButton size="small" onClick={() => (session.mode = 'graph')}>
               <AccountTree
-                sx={{ color: session.mode === 'graph' ? 'var(--primary-color)' : 'var(--icon-color)' }}
+                sx={{
+                  color: session.mode === 'graph' ? 'var(--primary-color)' : 'var(--icon-color)',
+                }}
               />
             </IconButton>
           </Tooltip>
@@ -109,7 +108,9 @@ const Sidebar = ({
           <Tooltip title="Results">
             <IconButton size="small" onClick={() => (session.mode = 'result')}>
               <TableChart
-                sx={{ color: session.mode === 'result' ? 'var(--primary-color)' : 'var(--icon-color)' }}
+                sx={{
+                  color: session.mode === 'result' ? 'var(--primary-color)' : 'var(--icon-color)',
+                }}
               />
             </IconButton>
           </Tooltip>
@@ -130,7 +131,10 @@ const Sidebar = ({
             >
               <ListItemIcon>
                 <BarChart
-                  sx={{ color: session.mode === 'monitor' ? 'var(--primary-color)' : 'var(--icon-color)' }}
+                  sx={{
+                    color:
+                      session.mode === 'monitor' ? 'var(--primary-color)' : 'var(--icon-color)',
+                  }}
                 />
               </ListItemIcon>
               <ListItemText primary="Connection monitoring" />
@@ -276,7 +280,7 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
     setSidebarWidth(storedWidth);
   }, []);
 
-  const showSmallScreenLayout = isSmallScreen || session.forceCompactMode;
+  const compactMode = isSmallScreen || session.forceCompactMode;
 
   return (
     <Grid
@@ -285,7 +289,7 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
         mt: 2,
       }}
     >
-      {!showSmallScreenLayout && (
+      {!compactMode && (
         <>
           <Grid item style={{ width: sidebarWidth, position: 'relative' }}>
             <Sidebar
@@ -309,7 +313,7 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
         </>
       )}
 
-      {showSmallScreenLayout && (
+      {compactMode && (
         <Grid item xs={12} sx={{ flexGrow: 1, width: 'max-content' }}>
           <Sidebar
             session={session}
