@@ -170,7 +170,7 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
         case 'Tab':
           e.preventDefault();
           session.mode = 'graph';
-          session.textInputFocused = false;
+          session.blurTextInput();
           session.selectNextCandidate(1);
           return;
         case 'Enter':
@@ -188,19 +188,19 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
 
     switch (session.mode) {
       case 'result':
-        session.textInputFocused = true;
+        session.focusTextInput();
         return;
 
       case 'graph':
         switch (e.key) {
           case 'Escape':
             e.preventDefault();
-            session.textInputFocused = true;
+            session.focusTextInput();
             return;
           case 'Enter':
           case '|':
             e.preventDefault();
-            session.textInputFocused = true;
+            session.focusTextInput();
             session.updateExpressionUsingCandidate();
             return;
           case 'Tab':
@@ -220,7 +220,7 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
               return;
             }
             e.preventDefault();
-            session.textInputFocused = true;
+            session.focusTextInput();
             session.expression = session.expression + e.key;
             return;
         }
@@ -274,10 +274,10 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
           theme={oneDark}
           extensions={extensions}
           onFocus={() => {
-            session.textInputFocused = true;
+            session.focusTextInput();
           }}
           onBlur={() => {
-            session.textInputFocused = false;
+            session.blurTextInput();
           }}
           onChange={handleChange}
           onKeyDown={handleKeyPress}

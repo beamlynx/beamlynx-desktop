@@ -319,6 +319,18 @@ export class Session {
     }
   }
 
+  public setTextInputFocused(focused: boolean) {
+    this.textInputFocused = focused;
+  }
+
+  public focusTextInput() {
+    this.textInputFocused = true;
+  }
+
+  public blurTextInput() {
+    this.textInputFocused = false;
+  }
+
   async updateConnectionLogs() {
     const stats = await client.getConnectionStats();
     if (!stats) return;
