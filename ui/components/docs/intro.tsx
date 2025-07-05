@@ -11,9 +11,8 @@ export const Introduction = (
     </p>
 
     {/* Select  */}
-    <b>
-      <code>SELECT</code>
-    </b>
+    <b>SELECT</b>
+    <span style={{fontSize: '0.9em', color: '#666'}}> <code>select:</code> <code>s:</code></span>
     <ul>
       <li>
         <code>company</code>
@@ -21,37 +20,26 @@ export const Introduction = (
       <li>
         <code>company | select: id, name</code>
       </li>
-      <li>
-        <code>company | s: id, name</code>
-      </li>
     </ul>
 
     {/* Where */}
-    <b>
-      <code>WHERE</code>
-    </b>
+    <b>WHERE</b>
+    <span style={{fontSize: '0.9em', color: '#666'}}> <code>where:</code> <code>w:</code></span>
     <ul>
       <li>
         <code>company | where: name = &apos;Acme&apos;</code>
       </li>
       <li>
-        <code>company | w: name = &apos;Acme&apos;</code>
-      </li>
-      <li>
-        <code>company | w: active = true</code>
+        <code>company | where: active = true</code>
       </li>
     </ul>
 
     {/* Limit */}
-    <b>
-      <code>LIMIT</code>
-    </b>
+    <b>LIMIT</b>
+    <span style={{fontSize: '0.9em', color: '#666'}}> <code>limit:</code> <code>l:</code> <code>number</code></span>
     <ul>
       <li>
         <code>company | limit: 24</code>
-      </li>
-      <li>
-        <code>company | l: 24</code>
       </li>
       <li>
         <code>company | 24</code>
@@ -59,22 +47,17 @@ export const Introduction = (
     </ul>
 
     {/* Order */}
-    <b>
-      <code>ORDER</code>
-    </b>
+    <b>ORDER</b>
+    <span style={{fontSize: '0.9em', color: '#666'}}> <code>order:</code> <code>o:</code></span>
     <ul>
       <li>
         <code>company | order: created_at desc</code>
       </li>
-      <li>
-        <code>company | o: created_at desc</code>
-      </li>
     </ul>
 
     {/* Join  */}
-    <b>
-      <code>JOIN</code>
-    </b>
+    <b>JOIN</b>
+    <span style={{fontSize: '0.9em', color: '#666'}}> <code>table_name</code></span>
     <ul>
       <li>
         <code>company | company_document</code>

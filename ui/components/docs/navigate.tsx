@@ -25,13 +25,18 @@ export const Navigation = (
     </b>{' '}
     <ul>
       <li>In graph view: Select current suggestion and return focus to input</li>
-      <li>In input: Execute the query</li>
     </ul>
     <b>
       <code>ESC</code>
     </b>{' '}
     <ul>
       <li>Return focus to input</li>
+    </ul>
+    <b>
+      <code>CTRL + ENTER</code>
+    </b>{' '}
+    <ul>
+      <li>Execute the query</li>
     </ul>
     <br />
   </div>
