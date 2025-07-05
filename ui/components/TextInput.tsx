@@ -8,10 +8,39 @@ import { prettifyExpression } from '../store/util';
 import { observer } from 'mobx-react-lite';
 import { pineLanguage } from './pine-language';
 import { vim } from '@replit/codemirror-vim';
+import { Button, Box } from '@mui/material';
+import { PlayArrow, Loop } from '@mui/icons-material';
 
 interface TextInputProps {
   session: Session;
 }
+
+const RunButton: React.FC<{ session: Session }> = observer(({ session }) => (
+  <Button
+    variant="contained"
+    onClick={() => session.evaluate()}
+    disabled={!session.expression || session.loading}
+    startIcon={session.loading ? <Loop /> : <PlayArrow />}
+    size="small"
+    sx={{
+      backgroundColor: 'var(--primary-color)',
+      color: 'var(--primary-text-color)',
+      '&:hover': {
+        backgroundColor: 'var(--primary-color-hover)',
+      },
+      '&:disabled': {
+        backgroundColor: 'var(--icon-color)',
+        color: 'var(--text-color)',
+        opacity: 0.6,
+      },
+      minWidth: 'auto',
+      px: 1.5,
+      py: 0.5,
+    }}
+  >
+    Run
+  </Button>
+));
 
 const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
   const inputRef = useRef<ReactCodeMirrorRef | null>(null);
@@ -145,9 +174,12 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
           session.selectNextCandidate(1);
           return;
         case 'Enter':
-          e.preventDefault();
-          await session.evaluate();
-          return;
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            await session.evaluate();
+            return;
+          }
+          break;
       }
 
       session.mode = 'graph';
@@ -208,10 +240,10 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
     pineLanguage,
     Prec.high(keymap.of([
       {
-        key: 'Enter',
+        key: 'Ctrl-Enter',
         run: () => {
-          // Return true to prevent default behavior
-          // Your custom Enter handler in handleKeyPress will still work
+          // Trigger evaluation with Ctrl+Enter
+          session.evaluate();
           return true;
         }
       }
@@ -223,46 +255,60 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
   }
 
   return (
-    <div 
-      tabIndex={1} 
-      style={{ outline: 'none' }}
-      onFocus={() => {
-        // Delegate focus to the CodeMirror editor
-        if (inputRef.current?.view) {
-          inputRef.current.view.focus();
-        }
-      }}
-    >
-      <CodeMirror
-        ref={inputRef}
-        id="input"
-        value={session.expression}
-        height="177px"
-        theme={oneDark}
-        extensions={extensions}
+    <Box sx={{ position: 'relative' }}>
+      <div 
+        tabIndex={1} 
+        style={{ outline: 'none' }}
         onFocus={() => {
-          session.textInputFocused = true;
+          // Delegate focus to the CodeMirror editor
+          if (inputRef.current?.view) {
+            inputRef.current.view.focus();
+          }
         }}
-        onBlur={() => {
-          session.textInputFocused = false;
+      >
+        <CodeMirror
+          ref={inputRef}
+          id="input"
+          value={session.expression}
+          height="177px"
+          theme={oneDark}
+          extensions={extensions}
+          onFocus={() => {
+            session.textInputFocused = true;
+          }}
+          onBlur={() => {
+            session.textInputFocused = false;
+          }}
+          onChange={handleChange}
+          onKeyDown={handleKeyPress}
+          indentWithTab={false}
+          basicSetup={{
+            tabSize: 2,
+            foldGutter: false,
+            dropCursor: false,
+            allowMultipleSelections: false,
+            crosshairCursor: false,
+          }}
+          style={{ 
+            outline: 'none',
+          }}
+          autoFocus={false}
+          placeholder=""
+        />
+      </div>
+      
+      {/* Run button positioned at bottom right */}
+      <Box
+        sx={{
+          position: 'absolute',
+          bottom: 8,
+          right: 8,
+          zIndex: 10,
         }}
-        onChange={handleChange}
-        onKeyDown={handleKeyPress}
-        indentWithTab={false}
-        basicSetup={{
-          tabSize: 2,
-          foldGutter: false,
-          dropCursor: false,
-          allowMultipleSelections: false,
-          crosshairCursor: false,
-        }}
-        style={{ 
-          outline: 'none',
-        }}
-        autoFocus={false}
-        placeholder=""
-      />
-    </div>
+      >
+        <RunButton session={session} />
+      </Box>
+    </Box>
   );
 });
 

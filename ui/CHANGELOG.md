@@ -8,6 +8,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Added
 - Download the results as a CSV file
 
+### Changed
+- Keybinding to run the expression is changed to `Ctrl + Enter`
+- Run button is moved within the text input
+
 ## [0.21.1] - 2025-07-04
 ### Fixed
 - Focus (when pressing `Tab`) goes to the input window instead of settings.

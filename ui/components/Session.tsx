@@ -15,7 +15,7 @@ import {
 } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
-import { DEFAULT_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from '../constants';
+import { DEFAULT_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, getDefaultModeHeight, getCompactModeHeight } from '../constants';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from '../store/preferences';
 import { Mode, Session as SessionType } from '../store/session';
 import { useStores } from '../store/store-container';
@@ -306,7 +306,7 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
                 sessionId={sessionId}
                 mode={session.mode}
                 input={session.textInputFocused}
-                height="calc(100vh - 126px)"
+                height={getDefaultModeHeight()}
               />
             }
           </Grid>
@@ -323,7 +323,7 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
                 sessionId={sessionId}
                 mode={session.mode}
                 input={session.textInputFocused}
-                height="calc(100vh - 366px)"
+                height={getCompactModeHeight()}
               />
             }
           />

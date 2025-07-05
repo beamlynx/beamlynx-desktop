@@ -2,7 +2,6 @@ import { observer } from 'mobx-react-lite';
 import React from 'react';
 import { useStores } from '../store/store-container';
 import { Box } from '@mui/material';
-import InputControls from './InputControls';
 import TextInput from './TextInput';
 
 interface InputProps {
@@ -27,7 +26,6 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
       >
         <TextInput session={session} />
       </Box>
-      <InputControls session={session} />
     </Box>
   );
 });
