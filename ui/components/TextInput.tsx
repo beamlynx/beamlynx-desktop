@@ -2,11 +2,13 @@ import CodeMirror, { ReactCodeMirrorRef } from '@uiw/react-codemirror';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { keymap } from '@codemirror/view';
 import { Prec } from '@codemirror/state';
-import React, { useRef, useEffect, useCallback } from 'react';
+import { startCompletion } from '@codemirror/autocomplete';
+import React, { useRef, useEffect, useCallback, useMemo } from 'react';
 import { Session } from '../store/session';
 import { prettifyExpression } from '../store/util';
 import { observer } from 'mobx-react-lite';
 import { pineLanguage } from './pine-language';
+import { createPineAutocompletion } from './pine-autocomplete';
 import { vim } from '@replit/codemirror-vim';
 import { Button, Box } from '@mui/material';
 import { PlayArrow, Loop } from '@mui/icons-material';
@@ -235,9 +237,18 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
     }
   }, [session]);
 
+  // Create autocompletion extension that updates with hints
+  const autocompletionExtension = useMemo(() => {
+    return createPineAutocompletion({
+      hints: session.ast?.hints || null,
+      expression: session.expression
+    });
+  }, [session.ast?.hints, session.expression]);
+
   // Create extensions array with Pine language support and custom keymap
   const extensions = [
     pineLanguage,
+    autocompletionExtension,
     Prec.high(keymap.of([
       {
         key: 'Ctrl-Enter',
@@ -246,12 +257,20 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
           session.evaluate();
           return true;
         }
+      },
+      {
+        key: 'Ctrl-Space',
+        run: (view) => {
+          // Trigger autocompletion with Ctrl+Space
+          return startCompletion(view);
+        }
       }
     ]))
   ];
 
   if (session.vimMode) {
-    extensions.unshift(vim());
+    // Give vim mode the highest precedence to ensure proper key handling
+    extensions.unshift(Prec.highest(vim()));
   }
 
   return (

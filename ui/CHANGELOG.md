@@ -7,6 +7,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ### Added
 - Download the results as a CSV file
+- Autocompletion support for pine operations and table names
 
 ### Changed
 - Keybinding to run the expression is changed to `Ctrl + Enter`
