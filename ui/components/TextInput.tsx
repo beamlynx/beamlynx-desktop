@@ -242,6 +242,17 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
     return createPineAutocompletion({
       hints: session.ast?.hints || null,
       expression: session.expression
+    }, {
+      // Callback when an autocomplete item is highlighted (navigation with arrow keys)
+      onHighlight: (completion) => {
+        if (completion && completion.apply && typeof completion.apply === 'string') {
+          // Update the candidate with the pine expression from the highlighted completion
+          session.graph.candidate = { pine: completion.apply };
+        } else {
+          // Clear the candidate when no completion is highlighted
+          session.graph.candidate = null;
+        }
+      }
     });
   }, [session.ast?.hints, session.expression]);
 
@@ -299,7 +310,7 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
             session.blurTextInput();
           }}
           onChange={handleChange}
-          onKeyDown={handleKeyPress}
+          // onKeyDown={handleKeyPress}
           indentWithTab={false}
           basicSetup={{
             tabSize: 2,

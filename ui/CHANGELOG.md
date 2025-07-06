@@ -5,6 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.22.0] - 2025-07-07
 ### Added
 - Download the results as a CSV file
 - Autocompletion support for pine operations and table names

@@ -154,6 +154,12 @@ export class Session {
         // reset the candidate
         this.candidateIndex = undefined;
 
+        if (expression.trim() === '' && this.mode === 'graph') {
+          this.mode = 'documentation';
+        } else if (expression.trim() !== '' && this.mode === 'documentation') {
+          this.mode = 'graph';
+        }
+
         // response
         try {
           this.response = await client.build(expression);
@@ -198,20 +204,12 @@ export class Session {
     /**
      * Handle the ast
      * - Graph
-     * - Message from the hints
      */
     reaction(
       () => this.ast,
       async ast => {
         if (!ast) return;
 
-        if (ast.hints) {
-          const hints = ast.hints;
-          const message = getMessageFromHints(ast.operation, hints);
-          if (message) {
-            this.message = message;
-          }
-        }
 
         const isDark = this.globalStore?.theme === 'dark';
         const graph = generateGraph(ast, this.id, isDark);

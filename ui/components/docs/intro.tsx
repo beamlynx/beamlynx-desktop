@@ -4,10 +4,9 @@ export const Introduction = (
     <b>🌲 Welcome to Pine!</b>
     <br />
     <p>
-      Start by typing the name of a table (e.g. <code>company</code>, <code>document</code>).
+      Start by typing the name of a table.  Use a pipe (i.e. <code>|</code>) to compose queries. See examples:
     </p>
     <p>
-      Use pipes (<code>|</code>) to compose queries. See examples:
     </p>
 
     {/* Select  */}

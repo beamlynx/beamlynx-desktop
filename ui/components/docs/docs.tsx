@@ -7,21 +7,10 @@ export const Documentation = (
       style={{
         color: 'grey',
         textAlign: 'left',
-        width: '50%',
         userSelect: 'none',
       }}
     >
       {Introduction}
-    </div>
-    <div
-      style={{
-        color: 'grey',
-        textAlign: 'left',
-        width: '50%',
-        userSelect: 'none',
-      }}
-    >
-      {Navigation}
     </div>
   </div>
 );
