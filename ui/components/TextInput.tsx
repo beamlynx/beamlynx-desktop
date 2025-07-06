@@ -24,6 +24,7 @@ const RunButton: React.FC<{ session: Session }> = observer(({ session }) => (
     disabled={!session.expression || session.loading}
     startIcon={session.loading ? <Loop /> : <PlayArrow />}
     size="small"
+    title="Run (Ctrl + Enter)"
     sx={{
       backgroundColor: 'var(--primary-color)',
       color: 'var(--primary-text-color)',
@@ -145,90 +146,6 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
     return e.ctrlKey || e.metaKey || e.altKey || e.key === 'Meta';
   };
 
-  const handleKeyPress = async (e: React.KeyboardEvent) => {
-    if (session.inputMode !== 'text') {
-      return;
-    }
-
-    // Handle Ctrl+Shift+F / Cmd+Shift+F for prettification (standard formatting shortcut)
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
-      e.preventDefault();
-      
-      // Prettify the expression using the standard formatting shortcut
-      const prettifiedExpression = prettifyExpression(session.expression);
-      updateEditorValue(prettifiedExpression);
-      
-      // Update session state after DOM update
-      session.expression = prettifiedExpression;
-      return;
-    }
-
-    if (isModifierKeyCombo(e)) {
-      return;
-    }
-
-    if (session.textInputFocused) {
-      switch (e.key) {
-        case 'Tab':
-          e.preventDefault();
-          session.mode = 'graph';
-          session.blurTextInput();
-          session.selectNextCandidate(1);
-          return;
-        case 'Enter':
-          if (e.ctrlKey || e.metaKey) {
-            e.preventDefault();
-            await session.evaluate();
-            return;
-          }
-          break;
-      }
-
-      session.mode = 'graph';
-      return;
-    }
-
-    switch (session.mode) {
-      case 'result':
-        session.focusTextInput();
-        return;
-
-      case 'graph':
-        switch (e.key) {
-          case 'Escape':
-            e.preventDefault();
-            session.focusTextInput();
-            return;
-          case 'Enter':
-          case '|':
-            e.preventDefault();
-            session.focusTextInput();
-            session.updateExpressionUsingCandidate();
-            return;
-          case 'Tab':
-            e.preventDefault();
-            session.selectNextCandidate(e.shiftKey ? -1 : 1);
-            return;
-          case 'ArrowUp':
-            e.preventDefault();
-            session.selectNextCandidate(-1);
-            return;
-          case 'ArrowDown':
-            e.preventDefault();
-            session.selectNextCandidate(1);
-            return;
-          default:
-            if (!isPrintableChar(e.key)) {
-              return;
-            }
-            e.preventDefault();
-            session.focusTextInput();
-            session.expression = session.expression + e.key;
-            return;
-        }
-    }
-  };
-
   // Optimized onChange handler to prevent unnecessary updates
   const handleChange = useCallback((value: string) => {
     if (value !== lastValueRef.current) {
@@ -310,7 +227,6 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
             session.blurTextInput();
           }}
           onChange={handleChange}
-          // onKeyDown={handleKeyPress}
           indentWithTab={false}
           basicSetup={{
             tabSize: 2,
