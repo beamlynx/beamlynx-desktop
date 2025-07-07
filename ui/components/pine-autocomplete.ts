@@ -158,7 +158,7 @@ export function createPineAutocompletion(
       ],
       closeOnBlur: true,
       activateOnTyping: true,
-      selectOnOpen: false,
+      selectOnOpen: true,
       maxRenderedOptions: MAX_AUTOCOMPLETE_OPTIONS,
       defaultKeymap: true,
       tooltipClass: () => 'pine-autocomplete-tooltip',

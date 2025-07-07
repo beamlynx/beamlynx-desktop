@@ -2,7 +2,11 @@ import CodeMirror, { ReactCodeMirrorRef } from '@uiw/react-codemirror';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { keymap } from '@codemirror/view';
 import { Prec } from '@codemirror/state';
-import { startCompletion } from '@codemirror/autocomplete';
+import {
+  startCompletion,
+  completionStatus,
+  moveCompletionSelection,
+} from '@codemirror/autocomplete';
 import React, { useRef, useEffect, useCallback, useMemo } from 'react';
 import { Session } from '../store/session';
 import { prettifyExpression } from '../store/util';
@@ -66,10 +70,10 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
       changes: {
         from: 0,
         to: editor.state.doc.length,
-        insert: newValue
+        insert: newValue,
       },
       // Preserve cursor position at the end for prettification
-      selection: { anchor: newValue.length }
+      selection: { anchor: newValue.length },
     });
 
     editor.dispatch(transaction);
@@ -92,7 +96,12 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
 
       // Allow Ctrl+A in any regular text input (including modals)
       const target = e.target as HTMLElement;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.contentEditable === 'true')) {
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.contentEditable === 'true')
+      ) {
         return;
       }
 
@@ -147,53 +156,147 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
   };
 
   // Optimized onChange handler to prevent unnecessary updates
-  const handleChange = useCallback((value: string) => {
-    if (value !== lastValueRef.current) {
-      lastValueRef.current = value;
-      session.expression = value;
-    }
+  const handleChange = useCallback(
+    (value: string) => {
+      if (value !== lastValueRef.current) {
+        lastValueRef.current = value;
+        session.expression = value;
+      }
+    },
+    [session],
+  );
+
+  // Debounced prettify function for pipe character
+  const debouncedPrettifyOnPipe = useMemo(() => {
+    let timeoutId: NodeJS.Timeout;
+
+    return (view: any) => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        const currentContent = view.state.doc.toString();
+        const prettifiedContent = prettifyExpression(currentContent);
+
+        if (prettifiedContent === currentContent) {
+          return;
+        }
+
+        // Update the session and editor with the prettified content
+        session.expression = prettifiedContent;
+        lastValueRef.current = prettifiedContent;
+
+        // Update the editor directly to avoid the useEffect cycle
+        const newTransaction = view.state.update({
+          changes: {
+            from: 0,
+            to: view.state.doc.length,
+            insert: prettifiedContent,
+          },
+          selection: { anchor: prettifiedContent.length },
+        });
+        view.dispatch(newTransaction);
+      }, 150); // 150ms debounce delay
+    };
   }, [session]);
 
   // Create autocompletion extension that updates with hints
   const autocompletionExtension = useMemo(() => {
-    return createPineAutocompletion({
-      hints: session.ast?.hints || null,
-      expression: session.expression
-    }, {
-      // Callback when an autocomplete item is highlighted (navigation with arrow keys)
-      onHighlight: (completion) => {
-        if (completion && completion.apply && typeof completion.apply === 'string') {
-          // Update the candidate with the pine expression from the highlighted completion
-          session.graph.candidate = { pine: completion.apply };
-        } else {
-          // Clear the candidate when no completion is highlighted
-          session.graph.candidate = null;
-        }
-      }
-    });
+    return createPineAutocompletion(
+      {
+        hints: session.ast?.hints || null,
+        expression: session.expression,
+      },
+      {
+        // Callback when an autocomplete item is highlighted (navigation with arrow keys)
+        onHighlight: completion => {
+          if (completion && completion.apply && typeof completion.apply === 'string') {
+            // Update the candidate with the pine expression from the highlighted completion
+            session.graph.candidate = { pine: completion.apply };
+          } else {
+            // Clear the candidate when no completion is highlighted
+            session.graph.candidate = null;
+          }
+        },
+      },
+    );
   }, [session.ast?.hints, session.expression]);
 
   // Create extensions array with Pine language support and custom keymap
   const extensions = [
     pineLanguage,
     autocompletionExtension,
-    Prec.high(keymap.of([
-      {
-        key: 'Ctrl-Enter',
-        run: () => {
-          // Trigger evaluation with Ctrl+Enter
-          session.evaluate();
-          return true;
-        }
-      },
-      {
-        key: 'Ctrl-Space',
-        run: (view) => {
-          // Trigger autocompletion with Ctrl+Space
-          return startCompletion(view);
-        }
-      }
-    ]))
+    Prec.high(
+      keymap.of([
+        {
+          key: 'Ctrl-Enter',
+          run: () => {
+            // Trigger evaluation with Ctrl+Enter
+            session.evaluate();
+            return true;
+          },
+        },
+        {
+          key: 'Ctrl-Space',
+          run: view => {
+            // Trigger autocompletion with Ctrl+Space
+            return startCompletion(view);
+          },
+        },
+        {
+          key: 'Tab',
+          run: view => {
+            // Check if autocompletion is currently active
+            const status = completionStatus(view.state);
+
+            if (status === 'active') {
+              // If suggestions are showing, move to the next suggestion
+              return moveCompletionSelection(true)(view);
+            } else {
+              // If no suggestions are showing, trigger autocompletion
+              return startCompletion(view);
+            }
+          },
+        },
+        {
+          key: 'Shift-Tab',
+          run: view => {
+            // Check if autocompletion is currently active
+            const status = completionStatus(view.state);
+
+            if (status === 'active') {
+              // If suggestions are showing, move to the previous suggestion
+              return moveCompletionSelection(false)(view);
+            } else {
+              // If no suggestions are showing, let default behavior handle it
+              return false;
+            }
+          },
+        },
+        {
+          key: '|',
+          run: view => {
+            // Get current cursor position and document
+            const pos = view.state.selection.main.head;
+            const doc = view.state.doc;
+
+            // If not at end, let the default behavior handle it
+            if (pos !== doc.length) {
+              return false;
+            }
+
+            // Insert the pipe character first
+            view.dispatch({
+              changes: { from: pos, to: pos, insert: '|' },
+              selection: { anchor: pos + 1 },
+            });
+
+            // Call prettify with the current editor content to avoid race conditions
+            debouncedPrettifyOnPipe(view);
+
+            return true;
+          },
+        },
+      ]),
+    ),
   ];
 
   if (session.vimMode) {
@@ -203,46 +306,35 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
 
   return (
     <Box sx={{ position: 'relative' }}>
-      <div 
-        tabIndex={1} 
-        style={{ outline: 'none' }}
+      <CodeMirror
+        ref={inputRef}
+        id="input"
+        value={session.expression}
+        height="177px"
+        theme={oneDark}
+        extensions={extensions}
         onFocus={() => {
-          // Delegate focus to the CodeMirror editor
-          if (inputRef.current?.view) {
-            inputRef.current.view.focus();
-          }
+          session.focusTextInput();
         }}
-      >
-        <CodeMirror
-          ref={inputRef}
-          id="input"
-          value={session.expression}
-          height="177px"
-          theme={oneDark}
-          extensions={extensions}
-          onFocus={() => {
-            session.focusTextInput();
-          }}
-          onBlur={() => {
-            session.blurTextInput();
-          }}
-          onChange={handleChange}
-          indentWithTab={false}
-          basicSetup={{
-            tabSize: 2,
-            foldGutter: false,
-            dropCursor: false,
-            allowMultipleSelections: false,
-            crosshairCursor: false,
-          }}
-          style={{ 
-            outline: 'none',
-          }}
-          autoFocus={false}
-          placeholder=""
-        />
-      </div>
-      
+        onBlur={() => {
+          session.blurTextInput();
+        }}
+        onChange={handleChange}
+        indentWithTab={false}
+        basicSetup={{
+          tabSize: 2,
+          foldGutter: false,
+          dropCursor: false,
+          allowMultipleSelections: false,
+          crosshairCursor: false,
+        }}
+        style={{
+          outline: 'none',
+        }}
+        autoFocus={true}
+        placeholder=""
+      />
+
       {/* Run button positioned at bottom right */}
       <Box
         sx={{

@@ -5,6 +5,15 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.22.1] - 2025-07-07
+### Fixed
+Improved autocompletion:
+- Pressing `Tab` now shows the suggestions.
+- The first suggestion is selected when the suggestions are shown.
+
+### Changed
+- The expression is prettified when a pipe `|` is entered.
+
 ## [0.22.0] - 2025-07-07
 ### Added
 - Download the results as a CSV file
