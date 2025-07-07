@@ -5,6 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.23.0] - 2025-07-07
 ### Added
 - Autocompletions for `select:` and `order:` operations.
 
