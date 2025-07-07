@@ -1,14 +1,13 @@
 import {
   autocompletion,
+  Completion,
   CompletionContext,
   CompletionResult,
-  Completion,
-  completionStatus,
   selectedCompletion,
 } from '@codemirror/autocomplete';
 import { Extension } from '@codemirror/state';
 import { ViewPlugin, ViewUpdate } from '@codemirror/view';
-import { TableHint, ColumnHint, Hints } from '../store/client';
+import { Hints, TableHint } from '../store/client';
 
 // Configuration constants
 const MAX_AUTOCOMPLETE_OPTIONS = 15;
@@ -25,14 +24,14 @@ interface AutocompleteHighlightCallback {
 
 // Pine operators and keywords
 const PINE_OPERATORS = [
-  { label: ' select: ', detail: 'Select columns', type: 'keyword' },
-  { label: ' where:  ', detail: 'Where', type: 'keyword' },
-  { label: ' limit:  ', detail: 'Limit', type: 'keyword' },
-  { label: ' from:   ', detail: 'Set the context for the next operation', type: 'keyword' },
-  { label: ' order:  ', detail: 'Order', type: 'keyword' },
-  { label: ' group:  ', detail: 'Group', type: 'keyword' },
-  { label: ' delete! ', detail: 'Delete', type: 'keyword' },
-  { label: ' count:  ', detail: 'Count', type: 'keyword' },
+  { label: 'select: ', detail: 'Select columns', type: 'keyword' },
+  { label: 'where: ', detail: 'Where', type: 'keyword' },
+  { label: 'limit: ', detail: 'Limit', type: 'keyword' },
+  { label: 'from: ', detail: 'Set the context for the next operation', type: 'keyword' },
+  { label: 'order: ', detail: 'Order', type: 'keyword' },
+  { label: 'group: ', detail: 'Group', type: 'keyword' },
+  { label: 'delete! ', detail: 'Delete', type: 'keyword' },
+  { label: 'count: ', detail: 'Count', type: 'keyword' },
 ];
 
 // Helper function to extract a meaningful label from a TableHint
@@ -59,7 +58,10 @@ function getPineCompletions(
 
   // Add Pine operators/keywords (with high boost to ensure they appear first)
   PINE_OPERATORS.forEach(op => {
-    if ((word !== '' && op.label.toLowerCase().includes(word.toLowerCase())) || (word === '' && afterPipeSpace)) {
+    if (
+      (word !== '' && op.label.toLowerCase().includes(word.toLowerCase())) ||
+      (word === '' && afterPipeSpace)
+    ) {
       completions.push({
         label: op.label,
         detail: op.detail,
@@ -73,16 +75,17 @@ function getPineCompletions(
   // Add table hints (preserving original order)
   if (hints?.table) {
     const getKey = (hint: TableHint) => `${hint.schema}.${hint.table}`;
-    const tableCount = hints?.table?.reduce((acc, hint) => {
-      const key = getKey(hint);
-      const count = acc.get(key) || 0;
-      acc.set(key, count + 1);
-      return acc;
-    }, new Map<string, number>()) || new Map<string, number>();
+    const tableCount =
+      hints?.table?.reduce((acc, hint) => {
+        const key = getKey(hint);
+        const count = acc.get(key) || 0;
+        acc.set(key, count + 1);
+        return acc;
+      }, new Map<string, number>()) || new Map<string, number>();
 
     // Use a boost range that accommodates all hints
     const maxTableBoost = Math.max(hints.table.length, MAX_AUTOCOMPLETE_OPTIONS);
-    
+
     hints.table.forEach((hint, index) => {
       if (hint.table.toLowerCase().includes(word.toLowerCase()) || word === '') {
         completions.push({
@@ -102,7 +105,9 @@ function getPineCompletions(
 
   // Sort completions by boost only (preserving original order within same boost level)
   const sortedCompletions = completions.sort((a, b) => {
-    if (a.boost === undefined || b.boost === undefined) { return 0; }
+    if (a.boost === undefined || b.boost === undefined) {
+      return 0;
+    }
     return b.boost - a.boost;
   });
 
@@ -116,38 +121,40 @@ function getPineCompletions(
 
 // ViewPlugin to detect autocomplete selection changes
 function createAutocompleteListener(callbacks?: AutocompleteHighlightCallback): Extension {
-  return ViewPlugin.fromClass(class {
-    private lastSelectedCompletion: Completion | null = null;
-    
-    constructor(view: any) {
-      // Initial check
-      this.checkSelectionChange(view);
-    }
-    
-    update(update: ViewUpdate) {
-      this.checkSelectionChange(update.view);
-    }
-    
-    private checkSelectionChange(view: any) {
-      // Get the currently selected completion
-      const selected = selectedCompletion(view.state);
-      
-      // Check if the selection has changed
-      if (selected !== this.lastSelectedCompletion) {
-        this.lastSelectedCompletion = selected;
-        
-        // Call the onHighlight callback
-        if (callbacks?.onHighlight) {
-          callbacks.onHighlight(selected);
+  return ViewPlugin.fromClass(
+    class {
+      private lastSelectedCompletion: Completion | null = null;
+
+      constructor(view: any) {
+        // Initial check
+        this.checkSelectionChange(view);
+      }
+
+      update(update: ViewUpdate) {
+        this.checkSelectionChange(update.view);
+      }
+
+      private checkSelectionChange(view: any) {
+        // Get the currently selected completion
+        const selected = selectedCompletion(view.state);
+
+        // Check if the selection has changed
+        if (selected !== this.lastSelectedCompletion) {
+          this.lastSelectedCompletion = selected;
+
+          // Call the onHighlight callback
+          if (callbacks?.onHighlight) {
+            callbacks.onHighlight(selected);
+          }
         }
       }
-    }
-  });
+    },
+  );
 }
 
 export function createPineAutocompletion(
-  pineContext: PineCompletionContext, 
-  callbacks: AutocompleteHighlightCallback
+  pineContext: PineCompletionContext,
+  callbacks: AutocompleteHighlightCallback,
 ): Extension {
   return [
     autocompletion({
@@ -157,7 +164,7 @@ export function createPineAutocompletion(
         },
       ],
       closeOnBlur: true,
-      activateOnTyping: true,
+      activateOnTyping: false,
       selectOnOpen: true,
       maxRenderedOptions: MAX_AUTOCOMPLETE_OPTIONS,
       defaultKeymap: true,
@@ -166,6 +173,6 @@ export function createPineAutocompletion(
       aboveCursor: false,
       icons: false,
     }),
-    createAutocompleteListener(callbacks)
+    createAutocompleteListener(callbacks),
   ];
 }

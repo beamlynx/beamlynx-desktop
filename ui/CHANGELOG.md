@@ -5,6 +5,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.22.2] - 2025-07-07
+### Changed
+- Autocompletion is not activated automatically.
+
 ## [0.22.1] - 2025-07-07
 ### Fixed
 Improved autocompletion:
