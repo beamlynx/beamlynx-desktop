@@ -258,7 +258,7 @@ const Columns = ({
             style={{
               fontFamily: 'Courier, monospace',
               fontSize: '8px',
-              color: '#666',
+              color: 'var(--node-operation-label-color)',
               whiteSpace: 'nowrap',
               // fontWeight: 'bold',
             }}
@@ -273,9 +273,7 @@ const Columns = ({
       {candidateColumns.length > 0 && (
         <div
           style={{
-            border: '1px solid #eee',
-            borderRadius: '8px',
-            borderColor: '#eee',
+            backgroundColor: 'transparent',
             padding: '12px',
             margin: '8px',
           }}

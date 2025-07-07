@@ -25,8 +25,11 @@
   --node-column-bg: #f0f0f0;
   --node-column-border: #ddd;
   --node-column-text-color: black;
-  --node-candidate-column-border: #ccc;
+  --node-candidate-column-border: #f39c12;
   --node-candidate-column-text-color: #666;
+  --node-candidate-container-bg: transparent;
+  --node-candidate-container-border: #eee;
+  --node-operation-label-color: #666;
   --node-suggested-bg: white;
   --node-suggested-border: orange;
   --node-candidate-bg: #FFD700;
@@ -61,8 +64,11 @@
   --node-column-bg: #282c34;
   --node-column-border: #5c6370;
   --node-column-text-color: #d7dce2;
-  --node-candidate-column-border: #5c6370;
-  --node-candidate-column-text-color: #c678dd;
+  --node-candidate-column-border: #f39c12;
+  --node-candidate-column-text-color: #abb2bf;
+  --node-candidate-container-bg: transparent;
+  --node-candidate-container-border: #4b5263;
+  --node-operation-label-color: #9ca3af;
   --node-suggested-bg: #4b5263;
   --node-suggested-border: #f39c12; /* Orange for suggestions */
   --node-candidate-bg: #61afef; /* Match border color instead of pink */

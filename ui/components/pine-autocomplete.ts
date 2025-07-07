@@ -97,6 +97,25 @@ function getPineCompletions(
         });
       }
     });
+
+    hints.select.forEach((hint, index) => {
+      if (hint.column.toLowerCase().includes(word.toLowerCase()) || word === '') {
+        completions.push({
+          label: hint.column,
+          apply: `${hint.column}, `,
+        });
+      }
+    });
+
+    hints.order.forEach((hint, index) => {
+      if (hint.column.toLowerCase().includes(word.toLowerCase()) || word === '') {
+        completions.push({
+          label: hint.column,
+          apply: `${hint.column} desc, `,
+        });
+      }
+    });
+
   }
 
   if (completions.length === 0) {
