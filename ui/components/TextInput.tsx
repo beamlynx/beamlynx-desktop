@@ -301,7 +301,7 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
             });
 
             // Call prettify with the current editor content to avoid race conditions
-            debouncedPrettifyOnPipe(view);
+            debouncedPrettifyOnPipe(view, view.state.doc.toString());
 
             return true;
           },

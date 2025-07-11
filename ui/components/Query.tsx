@@ -91,7 +91,7 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
     return () => {
       view.destroy();
     };
-  }, [session.query, store.theme, onClick]);
+  }, [session.query, store.theme, onClick, editorView]);
 
   if (session.error && session.errorType === 'parse') {
     return (

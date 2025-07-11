@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import ReactFlow, {
   ConnectionLineType,
-  Controls,
   NodeTypes,
   ReactFlowProvider,
   useEdgesState,
@@ -98,7 +97,7 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId }) => {
         return result;
       }),
     );
-  }, [candidate, setNodes, sessionId]);
+  }, [candidate, setNodes, sessionId, global.theme]);
 
   // Add handler for node movement
   const onNodeDragStop = (event: React.MouseEvent, node: PineNode) => {
