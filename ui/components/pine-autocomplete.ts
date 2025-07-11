@@ -64,10 +64,12 @@ function getPineCompletions(
 
   // Add Pine operators/keywords (with high boost to ensure they appear first)
   PINE_OPERATORS.forEach(op => {
-    if (
+    const shouldShow =
       (word !== '' && op.label.toLowerCase().includes(word.toLowerCase())) ||
-      (word === '' && afterPipeSpace)
-    ) {
+      (word === '' && afterPipeSpace) ||
+      (word === '' && beforeCursor.trim() === '');
+
+    if (shouldShow) {
       completions.push({
         expression: op.label,
         section: 'Operation',
@@ -136,13 +138,17 @@ function getPineCompletions(
         });
       }
     });
-
   }
 
   if (completions.length === 0) {
-    return null;
+    completions.push({
+      expression: '',
+      label: '',
+      detail: 'Nothing found',
+      apply: () => {},
+      boost: 100,
+    });
   }
-
   // Sort completions by boost only (preserving original order within same boost level)
   const sortedCompletions = completions.sort((a, b) => {
     if (a.boost === undefined || b.boost === undefined) {

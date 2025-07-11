@@ -259,14 +259,10 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
         {
           key: 'Tab',
           run: view => {
-            // Check if autocompletion is currently active
             const status = completionStatus(view.state);
-
             if (status === 'active') {
-              // If suggestions are showing, move to the next suggestion
               return moveCompletionSelection(true)(view);
             } else {
-              // If no suggestions are showing, trigger autocompletion
               return startCompletion(view);
             }
           },

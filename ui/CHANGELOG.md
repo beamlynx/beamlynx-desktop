@@ -11,6 +11,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Fixed
 - Mouse cursor was set to 'pointer'.
 - Position of the 'Download CSV' button in compact mode was overlapping with the 'Run' button.
+- Autocomplete was not showing if opened too fast. Now we always have a backup no-op completion i.e. `Nothing found`.
 
 ## [0.23.0] - 2025-07-07
 ### Added
