@@ -6,20 +6,25 @@ import {
   selectedCompletion,
 } from '@codemirror/autocomplete';
 import { Extension } from '@codemirror/state';
-import { ViewPlugin, ViewUpdate } from '@codemirror/view';
+import { EditorView, ViewPlugin, ViewUpdate } from '@codemirror/view';
 import { Hints, TableHint } from '../store/client';
 
 // Configuration constants
 const MAX_AUTOCOMPLETE_OPTIONS = 15;
 
+// Extended completion interface for Pine-specific completions
+interface PineCompletion extends Completion {
+  expression?: string;
+}
+
 interface PineCompletionContext {
   hints: Hints | null;
-  expression: string;
 }
 
 // Callback interface for autocomplete highlight events
-interface AutocompleteHighlightCallback {
-  onHighlight?: (completion: Completion | null) => void;
+interface AutocompleteCallbacks {
+  onHighlight?: (completion: PineCompletion | null) => void;
+  onPipe?: (view: EditorView) => void;
 }
 
 // Pine operators and keywords
@@ -38,6 +43,7 @@ const PINE_OPERATORS = [
 function getPineCompletions(
   context: CompletionContext,
   pineContext: PineCompletionContext,
+  callbacks?: AutocompleteCallbacks,
 ): CompletionResult | null {
   const { hints } = pineContext;
   const { pos } = context;
@@ -51,7 +57,7 @@ function getPineCompletions(
   const word = wordMatch ? wordMatch[1] : '';
   const wordStart = pos - word.length;
 
-  const completions: Completion[] = [];
+  const completions: PineCompletion[] = [];
 
   // Check if cursor is immediately after a pipe and space
   const afterPipeSpace = beforeCursor.trim().endsWith('|');
@@ -63,6 +69,8 @@ function getPineCompletions(
       (word === '' && afterPipeSpace)
     ) {
       completions.push({
+        expression: op.label,
+        section: 'Operation',
         label: op.label,
         detail: op.detail,
         type: op.type,
@@ -89,10 +97,21 @@ function getPineCompletions(
     hints.table.forEach((hint, index) => {
       if (hint.table.toLowerCase().includes(word.toLowerCase()) || word === '') {
         completions.push({
+          expression: hint.pine,
+          section: 'Tables',
           label: hint.table,
-          detail: (tableCount.get(getKey(hint)) || 0) > 1 ? hint.pine : undefined,
+          info: (tableCount.get(getKey(hint)) || 0) > 1 ? hint.pine : undefined,
           type: 'variable',
-          apply: hint.pine,
+          apply: (view: EditorView, completion: PineCompletion, from: number, to: number) => {
+            // Insert pipe
+            view.dispatch({
+              changes: { from, to, insert: hint.pine + '|' },
+              selection: { anchor: from + hint.pine.length + 1 },
+            });
+            if (callbacks?.onPipe) {
+              callbacks.onPipe(view);
+            }
+          },
           boost: maxTableBoost - index, // Decreasing boost to maintain original order
         });
       }
@@ -101,6 +120,7 @@ function getPineCompletions(
     hints.select.forEach((hint, index) => {
       if (hint.column.toLowerCase().includes(word.toLowerCase()) || word === '') {
         completions.push({
+          expression: hint.column,
           label: hint.column,
           apply: `${hint.column}, `,
         });
@@ -110,6 +130,7 @@ function getPineCompletions(
     hints.order.forEach((hint, index) => {
       if (hint.column.toLowerCase().includes(word.toLowerCase()) || word === '') {
         completions.push({
+          expression: hint.column,
           label: hint.column,
           apply: `${hint.column} desc, `,
         });
@@ -139,10 +160,10 @@ function getPineCompletions(
 }
 
 // ViewPlugin to detect autocomplete selection changes
-function createAutocompleteListener(callbacks?: AutocompleteHighlightCallback): Extension {
+function createAutocompleteListener(callbacks?: AutocompleteCallbacks): Extension {
   return ViewPlugin.fromClass(
     class {
-      private lastSelectedCompletion: Completion | null = null;
+      private lastSelectedCompletion: PineCompletion | null = null;
 
       constructor(view: any) {
         // Initial check
@@ -158,7 +179,7 @@ function createAutocompleteListener(callbacks?: AutocompleteHighlightCallback): 
         const selected = selectedCompletion(view.state);
 
         // Check if the selection has changed
-        if (selected !== this.lastSelectedCompletion) {
+        if (selected?.label !== this.lastSelectedCompletion?.label) {
           this.lastSelectedCompletion = selected;
 
           // Call the onHighlight callback
@@ -173,13 +194,13 @@ function createAutocompleteListener(callbacks?: AutocompleteHighlightCallback): 
 
 export function createPineAutocompletion(
   pineContext: PineCompletionContext,
-  callbacks: AutocompleteHighlightCallback,
+  callbacks: AutocompleteCallbacks,
 ): Extension {
   return [
     autocompletion({
       override: [
         (context: CompletionContext) => {
-          return getPineCompletions(context, pineContext);
+          return getPineCompletions(context, pineContext, callbacks);
         },
       ],
       closeOnBlur: true,

@@ -1,6 +1,6 @@
 import CodeMirror, { ReactCodeMirrorRef } from '@uiw/react-codemirror';
 import { oneDark } from '@codemirror/theme-one-dark';
-import { keymap } from '@codemirror/view';
+import { EditorView, keymap } from '@codemirror/view';
 import { Prec } from '@codemirror/state';
 import {
   startCompletion,
@@ -170,10 +170,18 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
   const debouncedPrettifyOnPipe = useMemo(() => {
     let timeoutId: NodeJS.Timeout;
 
-    return (view: any) => {
+    return (view: EditorView, expectedContent: string) => {
       clearTimeout(timeoutId);
+      
       timeoutId = setTimeout(() => {
         const currentContent = view.state.doc.toString();
+        
+        // If expectedContent was provided, check if the content has changed unexpectedly
+        if (expectedContent && currentContent !== expectedContent) {
+          // Content has changed since the autocomplete was applied, skip prettify
+          return;
+        }
+        
         const prettifiedContent = prettifyExpression(currentContent);
 
         if (prettifiedContent === currentContent) {
@@ -203,22 +211,29 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
     return createPineAutocompletion(
       {
         hints: session.ast?.hints || null,
-        expression: session.expression,
       },
       {
         // Callback when an autocomplete item is highlighted (navigation with arrow keys)
         onHighlight: completion => {
-          if (completion && completion.apply && typeof completion.apply === 'string') {
-            // Update the candidate with the pine expression from the highlighted completion
-            session.graph.candidate = { pine: completion.apply };
-          } else {
-            // Clear the candidate when no completion is highlighted
+          if (!completion?.expression) {
             session.graph.candidate = null;
+            return;
           }
+
+          // Update the candidate with the pine expression from the highlighted completion
+          session.graph.candidate = { pine: completion.expression };
+        },
+        // Callback when a table hint is applied via autocomplete
+        onPipe: view => {
+          const expectedContent = view.state.doc.toString();
+          
+          // Call the debounced prettify function with the expected content
+          // This helps prevent race conditions if user starts typing immediately
+          debouncedPrettifyOnPipe(view, expectedContent);
         },
       },
     );
-  }, [session.ast?.hints, session.expression]);
+  }, [session.ast?.hints, debouncedPrettifyOnPipe]); // Removed session.expression from dependencies
 
   // Create extensions array with Pine language support and custom keymap
   const extensions = [

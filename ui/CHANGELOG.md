@@ -5,6 +5,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+- The expression is prettified when a table expression is selected from the autocompletion.
+
 ### Fixed
 - Mouse cursor was set to 'pointer'.
 - Position of the 'Download CSV' button in compact mode was overlapping with the 'Run' button.
