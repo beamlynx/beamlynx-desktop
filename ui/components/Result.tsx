@@ -3,7 +3,7 @@ import { toJS } from 'mobx';
 import { observer } from 'mobx-react-lite';
 import React from 'react';
 import { useStores } from '../store/store-container';
-import { Box, IconButton, Tooltip } from '@mui/material';
+import { Box, IconButton, Tooltip, useTheme, useMediaQuery } from '@mui/material';
 import { FileDownload } from '@mui/icons-material';
 
 interface ResultProps {
@@ -15,6 +15,9 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const session = store.getSession(sessionId);
   const rows = toJS(session.rows);
   const columns = toJS(session.columns);
+  const theme = useTheme();
+  const isSmallScreen = useMediaQuery(theme.breakpoints.down('lg'));
+  const compactMode = isSmallScreen || session.forceCompactMode;
 
   const exportToCSV = () => {
     if (columns.length === 0 || rows.length === 0) {
@@ -81,8 +84,13 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
             disabled={rows.length === 0}
             sx={{
               position: 'absolute',
-              top: -40,
-              right: 0,
+              ...(compactMode ? {
+                top: 0,
+                right: -44,
+              } : {
+                top: -40,
+                right: 0,
+              }),
               zIndex: 1000,
               backgroundColor: 'var(--background-color)',
               border: '1px solid var(--border-color)',

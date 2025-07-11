@@ -5,6 +5,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+- Mouse cursor was set to 'pointer'.
+- Position of the 'Download CSV' button in compact mode was overlapping with the 'Run' button.
+
 ## [0.23.0] - 2025-07-07
 ### Added
 - Autocompletions for `select:` and `order:` operations.
