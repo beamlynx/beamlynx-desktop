@@ -1,7 +1,7 @@
 import { Edge, Position } from 'reactflow';
 import { PineEdge, PineNode, PineSelectedNode, PineSuggestedNode } from '../model';
 import { NodeType } from '../components/Graph.box';
-import { Ast, Column, Table, TableHint } from './client';
+import { Ast, Column, Table, TableHint, WhereCondition } from './client';
 import dagre from 'dagre';
 
 export type Graph = {
@@ -46,8 +46,10 @@ const makeSelectedNode = (
   order: number,
   columns: string[],
   orderColumns: string[],
+  whereColumns: string[],
   suggestedColumns: string[],
   suggestedOrderColumns: string[],
+  suggestedWhereColumns: string[],
   sessionId: string,
   isDark: boolean = false,
 ): PineSelectedNode => {
@@ -67,8 +69,10 @@ const makeSelectedNode = (
       order,
       columns,
       orderColumns,
+      whereColumns,
       suggestedColumns,
       suggestedOrderColumns,
+      suggestedWhereColumns,
       sessionId,
     },
     position: { x: 0, y: 0 },
@@ -116,12 +120,29 @@ const makeColumnsLookup = (columns: Column[]): Record<string, string[]> => {
   );
 };
 
+const makeWhereColumnsLookup = (whereConditions: WhereCondition[]): Record<string, string[]> => {
+  return whereConditions.reduce(
+    (acc, [alias, column, , operator, value]) => {
+      if (!acc[alias]) {
+        acc[alias] = [];
+      }
+      // For display purposes, we'll show the column with its condition
+      const valueText = value && value.value ? value.value : '';
+      const displayText = `${column} ${operator} ${valueText}`;
+      acc[alias].push(displayText);
+      return acc;
+    },
+    {} as Record<string, string[]>,
+  );
+};
+
 const makeSelectedNodes = (ast: Ast, sessionId: string, isDark: boolean = false): PineSelectedNode[] => {
   const {
     'selected-tables': selectedTables,
     columns: selectedColumns,
     order: orderColumns,
-    hints: { select, order },
+    where: whereColumns,
+    hints: { select, order, where },
     operation: { type },
   } = ast;
 
@@ -129,6 +150,7 @@ const makeSelectedNodes = (ast: Ast, sessionId: string, isDark: boolean = false)
 
   const columnsLookup = makeColumnsLookup(selectedColumns);
   const orderLookup = makeColumnsLookup(orderColumns);
+  const whereLookup = makeWhereColumnsLookup(whereColumns);
 
   const suggestedColumnsLookup = makeColumnsLookup(
     type === 'select' || type === 'select-partial' ? select : [],
@@ -136,21 +158,28 @@ const makeSelectedNodes = (ast: Ast, sessionId: string, isDark: boolean = false)
   const suggestedOrderColsLookup = makeColumnsLookup(
     type === 'order' || type === 'order-partial' ? order : [],
   );
+  const suggestedWhereColsLookup = makeColumnsLookup(
+    type === 'where' || type === 'where-partial' ? where : [],
+  );
 
   const selectedNodes: PineSelectedNode[] = selectedTables
     ? selectedTables.map((x, i) => {
         const order = i + 1;
         const selectedColumns = columnsLookup[x.alias] ?? (order === count ? ['*'] : []);
         const orderColumns = orderLookup[x.alias] ?? [];
+        const whereColumns = whereLookup[x.alias] ?? [];
         const suggestedColumns = suggestedColumnsLookup[x.alias] ?? [];
         const suggestedOrderColumns = suggestedOrderColsLookup[x.alias] ?? [];
+        const suggestedWhereColumns = suggestedWhereColsLookup[x.alias] ?? [];
         return makeSelectedNode(
           x,
           order,
           selectedColumns,
           orderColumns,
+          whereColumns,
           suggestedColumns,
           suggestedOrderColumns,
+          suggestedWhereColumns,
           sessionId,
           isDark,
         );

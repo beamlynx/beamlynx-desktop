@@ -5,6 +5,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.24.0] - 2025-07-12
+### Added
+- Autocompletions for `where:` operation.
+
 ### Changed
 - The expression is prettified when a table expression is selected from the autocompletion.
 

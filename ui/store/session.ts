@@ -355,6 +355,9 @@ const getMessageFromHints = (operation: Operation, hints: Hints): string | undef
     case 'select-partial':
       const columns = hints.select?.map(h => h.column);
       return columns ? columns.join(', ') : '';
+    case 'where-partial':
+      const whereColumns = hints.where?.map(h => h.column);
+      return whereColumns ? whereColumns.join(', ') : '';
   }
 };
 

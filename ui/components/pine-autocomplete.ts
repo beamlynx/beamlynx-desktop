@@ -138,6 +138,17 @@ function getPineCompletions(
         });
       }
     });
+
+    hints.where.forEach((hint, index) => {
+      if (hint.column.toLowerCase().includes(word.toLowerCase()) || word === '') {
+        completions.push({
+          expression: hint.column,
+          label: hint.column,
+          apply: `${hint.column} = `,
+        });
+      }
+    });
+
   }
 
   if (completions.length === 0) {

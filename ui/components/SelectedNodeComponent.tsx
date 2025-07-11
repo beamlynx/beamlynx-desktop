@@ -9,11 +9,13 @@ const onSelectedNodeClick = (session: Session, alias: string) => {
   session.setContext(alias);
 };
 
-const onCandidateColumnClick = (session: Session, column: string, type: 'select' | 'order') => {
+const onCandidateColumnClick = (session: Session, column: string, type: 'select' | 'order' | 'where') => {
   if (type === 'select') {
     session.appendAndUpdateExpression(`${column}, `);
-  } else {
+  } else if (type === 'order') {
     session.appendAndUpdateExpression(`${column} desc, `);
+  } else {
+    session.appendAndUpdateExpression(`${column} = `);
   }
 };
 
@@ -184,7 +186,7 @@ const CandidateColumns = ({
 }: {
   columns: string[];
   sessionId: string;
-  type: 'select' | 'order';
+  type: 'select' | 'order' | 'where';
 }) => {
   const { global } = useStores();
   const session = global.getSession(sessionId);
@@ -236,7 +238,7 @@ const Columns = ({
 }: {
   columns: string[];
   suggested: string[];
-  type: 'select' | 'order';
+  type: 'select' | 'order' | 'where';
   sessionId: string;
 }) => {
   const selectedColumnsSet = new Set(columns.filter(Boolean));
@@ -294,8 +296,10 @@ const SelectedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
     alias,
     columns: selectedColumns,
     orderColumns,
+    whereColumns,
     suggestedColumns,
     suggestedOrderColumns,
+    suggestedWhereColumns,
     sessionId,
   } = data;
   return (
@@ -318,6 +322,12 @@ const SelectedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
         columns={orderColumns}
         suggested={suggestedOrderColumns}
         type="order"
+        sessionId={sessionId}
+      />
+      <Columns
+        columns={whereColumns}
+        suggested={suggestedWhereColumns}
+        type="where"
         sessionId={sessionId}
       />
     </div>

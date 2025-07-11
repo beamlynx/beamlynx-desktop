@@ -14,9 +14,11 @@ export type SelectedNodeData = BaseNode & {
   order: number;
   columns: string[];
   orderColumns: string[];
+  whereColumns: string[];
   // Current node
   suggestedColumns: string[];
   suggestedOrderColumns: string[];
+  suggestedWhereColumns: string[];
 };
 
 export type SuggestedNodeData = BaseNode & {

@@ -14,13 +14,15 @@ export type ColumnHint = {
   alias: string;
 };
 
-export type Hints = { table: TableHint[]; select: ColumnHint[]; order: ColumnHint[] };
+export type Hints = { table: TableHint[]; select: ColumnHint[]; order: ColumnHint[]; where: ColumnHint[] };
 // There are more operations. I'll add them as we need to handle them here
-export type OperationType = 'table' | 'delete' | 'select' | 'select-partial' | 'order' | 'order-partial';
+export type OperationType = 'table' | 'delete' | 'select' | 'select-partial' | 'order' | 'order-partial' | 'where' | 'where-partial';
 export type Operation = {
   type: OperationType;
 };
 export type Column = { column: string; alias: string };
+
+export type WhereCondition = [string, string, null, string, { type: string; value: string } | null];
 
 export type Ast = {
   hints: Hints;
@@ -31,6 +33,7 @@ export type Ast = {
   operation: Operation;
   columns: Column[];
   order: Column[];
+  where: WhereCondition[];
 };
 
 export type Response = {
