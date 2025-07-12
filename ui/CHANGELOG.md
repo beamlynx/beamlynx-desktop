@@ -5,6 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.24.1] - 2025-07-12
 ### Fixed
 - Performance issue with the SQL view.
 - Improved graph renders.
