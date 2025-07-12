@@ -15,7 +15,6 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
   const { global: store } = useStores();
   const session = store.getSession(sessionId);
   const editorRef = useRef<HTMLDivElement>(null);
-  const [editorView, setEditorView] = useState<EditorView | null>(null);
 
   const onClick = useCallback(() => {
     if (!session.query) {
@@ -29,11 +28,6 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
 
   useEffect(() => {
     if (!editorRef.current || !session.query) return;
-
-    // Clean up existing editor
-    if (editorView) {
-      editorView.destroy();
-    }
 
     const extensions = [
       // Use minimal setup instead of basicSetup to avoid unwanted features
@@ -86,12 +80,10 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
       parent: editorRef.current,
     });
 
-    setEditorView(view);
-
     return () => {
       view.destroy();
     };
-  }, [session.query, store.theme, onClick, editorView]);
+  }, [session.query, store.theme, onClick]);
 
   if (session.error && session.errorType === 'parse') {
     return (

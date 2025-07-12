@@ -5,6 +5,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+- Performance issue with the SQL view.
+
 ## [0.24.0] - 2025-07-12
 ### Added
 - Autocompletions for `where:` operation.
