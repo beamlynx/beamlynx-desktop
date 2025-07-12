@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import ReactFlow, {
   ConnectionLineType,
   NodeTypes,
@@ -12,11 +12,15 @@ import { Box, BoxProps } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import 'reactflow/dist/style.css';
 import { PineNode, PineSuggestedNode } from '../model';
-import { getLayoutedElements, getNodeHeight, makeSuggestedNode, nodeWidth } from '../store/graph.util';
+import {
+  getLayoutedElements,
+  getNodeHeight,
+  makeSuggestedNode,
+  nodeWidth,
+} from '../store/graph.util';
 import { useStores } from '../store/store-container';
 import SelectedNodeComponent from './SelectedNodeComponent';
 import SuggestedNodeComponent from './SuggestedNodeComponent';
-
 
 export const NodeType = {
   Selected: 'selected-node',
@@ -76,63 +80,68 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId, containerRef }) => {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const reactFlowInstance = useReactFlow();
 
-  // Render graph
-  useEffect(() => {
-    // 1. Layout nodes
-    const n = [...graph.selectedNodes, ...graph.suggestedNodes];
-    const { nodes: layoutedNodes, edges } = getLayoutedElements(nodePositionCache, n, graph.edges);
+  const { layoutedNodes, layoutedEdges, candidateNode } = useMemo(() => {
+    const allNodes = [...graph.selectedNodes, ...graph.suggestedNodes];
+    const { nodes, edges } = getLayoutedElements(nodePositionCache, allNodes, graph.edges);
 
-    let finalNodes: PineNode[] = layoutedNodes;
-    let candidateNode: PineSuggestedNode | null = null;
-
-    // 2. Deal with candidate
+    let foundCandidate = null;
     if (graph.candidate) {
-      const pine = graph.candidate.pine;
-      const foundNode = layoutedNodes.find(n => n.id === pine);
-
-      if (foundNode && foundNode.type === NodeType.Suggested) {
-        candidateNode = foundNode as PineSuggestedNode;
-        finalNodes = layoutedNodes.map(n => {
-          if (n.id === candidateNode!.id) {
-            const isDark = global.theme === 'dark';
-            const suggestedNode = n as PineSuggestedNode;
-            const node = makeSuggestedNode(suggestedNode.data, sessionId, true, isDark);
-            return { ...suggestedNode, data: { ...suggestedNode.data, ...node.data } };
-          }
-          return n;
-        });
+      const candidateInLayout = nodes.find(n => n.id === graph.candidate!.pine);
+      if (candidateInLayout && candidateInLayout.type === NodeType.Suggested) {
+        foundCandidate = candidateInLayout as PineSuggestedNode;
       }
     }
 
-    setNodes(finalNodes);
-    setEdges(edges);
+    return { layoutedNodes: nodes, layoutedEdges: edges, candidateNode: foundCandidate };
+  }, [graph.selectedNodes, graph.suggestedNodes, graph.edges, graph.candidate]);
+
+  // Update graph nodes and edges
+  useEffect(() => {
+    let finalNodes: PineNode[] = layoutedNodes;
 
     if (candidateNode) {
-      const isVisible = isNodeVisible(candidateNode, reactFlowInstance, containerRef.current);
+      finalNodes = layoutedNodes.map(n => {
+        if (n.id === candidateNode.id) {
+          const isDark = global.theme === 'dark';
+          const suggestedNode = n as PineSuggestedNode;
+          const node = makeSuggestedNode(suggestedNode.data, sessionId, true, isDark);
+          return { ...suggestedNode, data: { ...suggestedNode.data, ...node.data } };
+        }
+        return n;
+      });
+    }
 
+    setNodes(finalNodes);
+    setEdges(layoutedEdges);
+  }, [
+    layoutedNodes,
+    layoutedEdges,
+    candidateNode,
+    global.theme,
+    sessionId,
+    setNodes,
+    setEdges,
+  ]);
+
+  // Center view on candidate or fit view
+  useEffect(() => {
+    if (candidateNode) {
+      const isVisible = isNodeVisible(candidateNode, reactFlowInstance, containerRef.current);
       if (isVisible) return;
+
       setTimeout(() => {
-        reactFlowInstance.setCenter(candidateNode!.position.x, candidateNode!.position.y, {
+        reactFlowInstance.setCenter(candidateNode.position.x, candidateNode.position.y, {
           duration: 200,
           zoom: 1,
         });
       }, 100);
     } else {
+      if (layoutedNodes.length === 0) return;
       setTimeout(() => {
         reactFlowInstance.fitView({ duration: 200 });
       }, 100);
     }
-  }, [
-    graph.selectedNodes,
-    graph.suggestedNodes,
-    graph.edges,
-    graph.candidate,
-    global.theme,
-    sessionId,
-    setNodes,
-    setEdges,
-    reactFlowInstance,
-  ]);
+  }, [candidateNode, layoutedNodes.length, reactFlowInstance, containerRef]);
 
   // Add handler for node movement
   const onNodeDragStop = (event: React.MouseEvent, node: PineNode) => {
