@@ -290,8 +290,8 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
   return graph;
 };
 
-const nodeWidth = 172;
-const getNodeHeight = (node: PineNode) => {
+export const nodeWidth = 172;
+export const getNodeHeight = (node: PineNode) => {
   return node.data.type === 'selected' ? 60 : 20;
 };
 
