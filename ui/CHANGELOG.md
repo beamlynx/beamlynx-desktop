@@ -7,7 +7,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ### Fixed
 - Performance issue with the SQL view.
-- Graph is only rendered when the selected candidate is not visible.
+- Improved graph renders.
 
 ## [0.24.0] - 2025-07-12
 ### Added

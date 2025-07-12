@@ -126,22 +126,21 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId, containerRef }) => {
   // Center view on candidate or fit view
   useEffect(() => {
     if (candidateNode) {
-      const isVisible = isNodeVisible(candidateNode, reactFlowInstance, containerRef.current);
+      const renderedCandidate = nodes.find(n => n.id === candidateNode.id);
+      if (!renderedCandidate) return;
+
+      const isVisible = isNodeVisible(renderedCandidate, reactFlowInstance, containerRef.current);
       if (isVisible) return;
 
-      setTimeout(() => {
-        reactFlowInstance.setCenter(candidateNode.position.x, candidateNode.position.y, {
-          duration: 200,
-          zoom: 1,
-        });
-      }, 100);
+      reactFlowInstance.setCenter(renderedCandidate.position.x, renderedCandidate.position.y, {
+        duration: 300,
+        zoom: 1,
+      });
     } else {
-      if (layoutedNodes.length === 0) return;
-      setTimeout(() => {
-        reactFlowInstance.fitView({ duration: 200 });
-      }, 100);
+      if (nodes.length === 0) return;
+      reactFlowInstance.fitView({ duration: 300 });
     }
-  }, [candidateNode, layoutedNodes.length, reactFlowInstance, containerRef]);
+  }, [nodes, candidateNode, reactFlowInstance, containerRef]);
 
   // Add handler for node movement
   const onNodeDragStop = (event: React.MouseEvent, node: PineNode) => {
@@ -163,10 +162,11 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId, containerRef }) => {
       nodesConnectable={false}
       draggable={true}
       elementsSelectable={true}
-      fitView
       minZoom={0.5}
       maxZoom={1.2}
       proOptions={{ hideAttribution: true }}
+      zoomOnScroll={true}
+      nodeDragThreshold={1}
     >
       {/* <Controls /> */}
     </ReactFlow>
