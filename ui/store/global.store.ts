@@ -31,7 +31,7 @@ export class GlobalStore {
   sessions: Record<string, Session> = {};
 
   // Theme - moved from individual sessions to global
-  theme: Theme = 'light';
+  theme: Theme = 'dark';
 
   // User
   email = '';
