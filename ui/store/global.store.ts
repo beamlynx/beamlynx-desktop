@@ -5,8 +5,6 @@ import { Session, Theme } from './session';
 import { RequiredVersion } from '../constants';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
 
-
-
 const client = new HttpClient();
 type ConnectionParams = {
   dbHost: string;
@@ -17,10 +15,17 @@ type ConnectionParams = {
 };
 
 export class GlobalStore {
-  connected = false;
   connecting = false;
   connection = '';
   version: string | undefined = undefined;
+
+  get connected() {
+    // hardcoding it temporarily to test how the initial loading page works.  it
+    // is the first thing that any new user sees so this experience must be
+    // amazing
+    // return false;
+    return !!this.connection;
+  }
 
   activeSessionId = 'session-0';
   sessions: Record<string, Session> = {};
@@ -41,7 +46,7 @@ export class GlobalStore {
   constructor() {
     this.theme = getUserPreference(STORAGE_KEYS.THEME, 'light');
     makeAutoObservable(this);
-    
+
     // Initialize the default session
     const initSession = new Session('0', this);
     this.sessions[initSession.id] = initSession;
@@ -98,20 +103,30 @@ export class GlobalStore {
   };
 
   loadConnectionMetadata = async () => {
-    const response = await client.get('connection');
-    if (!response) return;
-    const result = response.result as unknown as {
-      version: string;
-      'connection-id': string;
-    };
-    this.connection = result['connection-id'];
-    this.version = result.version ?? '0.0.0';
-    this.connected = true;
+    try {
+      const response = await client.get('connection');
+      if (!response?.result) {
+        this.connection = '';
+        return;
+      }
+      const result = response.result as unknown as {
+        version: string;
+        'connection-id': string;
+      };
+      this.connection = result['connection-id'] || '';
 
-    if (lt(this.version, RequiredVersion)) {
-      // Use the default session to show the error
-      const session = this.getSession(this.activeSessionId);
-      session.error = `🚨 You are running version ${this.version}. Upgrade the server to the latest version (i.e. >= ${RequiredVersion}).`;
+      if (this.connection) {
+        this.version = result.version ?? '0.0.0';
+
+        if (lt(this.version, RequiredVersion)) {
+          // Use the default session to show the error
+          const session = this.getSession(this.activeSessionId);
+          session.error = `🚨 You are running version ${this.version}. Upgrade the server to the latest version (i.e. >= ${RequiredVersion}).`;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load connection metadata', e);
+      this.connection = '';
     }
     return this.connection;
   };

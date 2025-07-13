@@ -12,17 +12,9 @@ const Home: NextPage = () => {
   // Load Connection details
   useEffect(() => {
     global.connecting = true;
-    global
-      .loadConnectionMetadata()
-      .then(() => {
-        global.connected = true;
-        global.connecting = false;
-      })
-      .catch(err => {
-        global.connected = false;
-        global.connecting = false;
-        console.error(err);
-      });
+    global.loadConnectionMetadata().finally(() => {
+      global.connecting = false;
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
