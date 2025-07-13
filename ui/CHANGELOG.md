@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- Welcome page for new users
+- Poll for server connection status
 
 ## [0.24.1] - 2025-07-12
 ### Fixed
