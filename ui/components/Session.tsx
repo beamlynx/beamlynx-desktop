@@ -117,7 +117,7 @@ const Sidebar = ({
 
           <Tooltip title="More options">
             <IconButton size="small" onClick={handleMenuOpen}>
-              <MoreVert />
+              <MoreVert sx={{ color: 'var(--icon-color)' }} />
             </IconButton>
           </Tooltip>
 

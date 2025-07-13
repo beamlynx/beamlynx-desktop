@@ -6,7 +6,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ## [Unreleased]
 ### Added
 - Welcome page for new users
-- Poll for server connection status
+- Polling for server connection status
+
+### Changed
+- Default width of the sidebar is increased to 400px
 
 ## [0.24.1] - 2025-07-12
 ### Fixed
