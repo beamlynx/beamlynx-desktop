@@ -2,7 +2,8 @@ import { Box, Grid, Typography, IconButton, Menu, MenuItem, Switch, useTheme, us
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
 import PineTabs from './PineTabs';
-import { RunPineServer } from './docs/RunPineServer';
+import { Welcome } from './docs/Welcome';
+import { PineServerNotRunning } from './docs/PineServerNotRunning';
 import ActiveConnection from './ActiveConnection';
 import Message from './Message';
 import UserBox from './UserBox';
@@ -96,7 +97,7 @@ const AppView = observer(() => {
           },
         }}
       >
-        <RunPineServer />
+        {global.onboardingServer ? <PineServerNotRunning /> : <Welcome />}
       </Box>
     );
   }

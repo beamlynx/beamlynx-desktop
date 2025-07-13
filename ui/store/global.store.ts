@@ -5,6 +5,12 @@ import { Session, Theme } from './session';
 import { RequiredVersion } from '../constants';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
 
+const Dev = {
+  pineConnected: undefined,
+  dbConnected: undefined,
+  onboardingServer: undefined,
+};
+
 const client = new HttpClient();
 type ConnectionParams = {
   dbHost: string;
@@ -20,11 +26,11 @@ export class GlobalStore {
   version: string | undefined = undefined;
 
   get pineConnected() {
-    return !!this.version;
+    return Dev.pineConnected ?? !!this.version;
   }
 
   get dbConnected() {
-    return !!this.connection;
+    return Dev.dbConnected ?? !!this.connection;
   }
 
   activeSessionId = 'session-0';
@@ -52,8 +58,21 @@ export class GlobalStore {
   // Analysis
   showAnalysis = false;
 
+  // Onboarding
+  _onboardingServer: boolean;
+
+  get onboardingServer(): boolean {
+    return Dev.onboardingServer ?? this._onboardingServer;
+  }
+
+  set onboardingServer(value: boolean) {
+    this._onboardingServer = value;
+    setUserPreference(STORAGE_KEYS.ONBOARDING_SERVER, value);
+  }
+
   constructor() {
     this._theme = getUserPreference(STORAGE_KEYS.THEME, 'dark');
+    this._onboardingServer = getUserPreference(STORAGE_KEYS.ONBOARDING_SERVER, false);
     makeAutoObservable(this);
 
     // Initialize the default session
@@ -84,6 +103,10 @@ export class GlobalStore {
     }
     this.connection = id;
     this.version = version ?? '0.0.0';
+
+    if (!this.onboardingServer) {
+      this.onboardingServer = true;
+    }
     return id;
   };
 
@@ -124,6 +147,10 @@ export class GlobalStore {
       };
       this.version = result.version ?? '0.0.0';
       this.connection = result['connection-id'] || '';
+
+      if (this.pineConnected && !this.onboardingServer) {
+        this.onboardingServer = true;
+      }
 
       if (lt(this.version, RequiredVersion)) {
         // Use the default session to show the error
