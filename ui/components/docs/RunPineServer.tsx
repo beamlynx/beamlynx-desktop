@@ -15,20 +15,34 @@ export const RunPineServer = () => {
   };
 
   return (
-    <Box sx={{ p: 4, maxWidth: '800px', mx: 'auto', textAlign: 'center' }}>
-      <Typography variant="h3" component="h1" gutterBottom sx={{ fontWeight: 'bold', color: 'primary.main' }}>
-        Hey! 👋
-      </Typography>
-      <Typography variant="h6" color="text.secondary" sx={{ mb: 4 }}>
-        We&apos;re building Pine to be the most intuitive, insightful, and delightful way to work with databases.
+    <Box sx={{ p: 4, maxWidth: '800px', mx: 'auto', textAlign: 'left' }}>
+      <Typography
+        variant="h3"
+        component="h1"
+        gutterBottom
+        sx={{ fontWeight: 'bold', color: 'primary.main', textAlign: 'center', mb: 6 }}
+      >
+        Hey there ... 👋
       </Typography>
 
-      <Paper elevation={3} sx={{ p: 3, mb: 4, textAlign: 'left', backgroundColor: 'background.paper' }}>
+      <Typography variant="h6" color="text.secondary" sx={{ mb: 4 }}>
+        I&apos;m building Pine on a simple belief: working with databases can be more intuitive — maybe
+        even enjoyable.
+      </Typography>
+
+      <Typography variant="h6" color="text.secondary" sx={{ mb: 4 }}>
+        It&apos;s still early days, and your honest feedback is vital. I&apos;d love to hear what you think.
+      </Typography>
+
+      <Paper
+        elevation={3}
+        sx={{ p: 3, mb: 6, textAlign: 'left', backgroundColor: 'background.paper' }}
+      >
         <Typography variant="h6" gutterBottom>
           First things first...
         </Typography>
         <Typography color="text.secondary" sx={{ mb: 2 }}>
-          To get started, you&apos;ll need to run the Pine server. The easiest way is with the Docker command below.
+          To get started, run the Pine server. The easiest way is with the Docker command below:
         </Typography>
         <Box
           sx={{
@@ -43,7 +57,10 @@ export const RunPineServer = () => {
           }}
         >
           <code>
-            docker run -p 33333:33333 --add-host host.docker.internal:host-gateway ahmadnazir/pine:{RequiredVersion}
+            docker run \<br />
+            &nbsp;&nbsp;&nbsp;&nbsp;-p 33333:33333 \<br />
+            &nbsp;&nbsp;&nbsp;&nbsp;--add-host host.docker.internal:host-gateway \<br />
+            &nbsp;&nbsp;&nbsp;&nbsp;ahmadnazir/pine:{RequiredVersion}
           </code>
           <Button
             variant="contained"
@@ -55,45 +72,45 @@ export const RunPineServer = () => {
           </Button>
         </Box>
       </Paper>
-      
-      <Grid container spacing={4} justifyContent="center" sx={{ mt: 2 }}>
+
+      <Grid container spacing={3} justifyContent="center">
         <Grid item>
-          <Link href="https://pine-lang.org/" target="_blank" underline="hover" color="inherit" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Link
+            href="https://pine-lang.org/"
+            target="_blank"
+            underline="hover"
+            color="inherit"
+            sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+          >
             <Book />
             <Typography>Website</Typography>
           </Link>
         </Grid>
         <Grid item>
-          <Link href="https://github.com/pine-lang" target="_blank" underline="hover" color="inherit" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Link
+            href="https://github.com/pine-lang"
+            target="_blank"
+            underline="hover"
+            color="inherit"
+            sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+          >
             <GitHub />
             <Typography>GitHub</Typography>
           </Link>
         </Grid>
         <Grid item>
-           <Link href="https://pinelang.substack.com/" target="_blank" underline="hover" color="inherit" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Link
+            href="https://pinelang.substack.com/"
+            target="_blank"
+            underline="hover"
+            color="inherit"
+            sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+          >
             <RssFeed />
             <Typography>Substack</Typography>
           </Link>
         </Grid>
       </Grid>
-      
-      <Box sx={{ mt: 4 }}>
-        <Typography variant="body2" color="text.secondary">
-          This is just the beginning of our journey. Pine is in active development, and your feedback is
-          incredibly valuable in helping us build something you&apos;ll love to use.
-          <br />
-          We&apos;d love to hear your thoughts on our Substack or GitHub!
-        </Typography>
-        <Box sx={{mt: 2}}>
-          <Link href="https://open.substack.com/pub/pinelang/p/discovering-pine-lang-simplifying?r=hkxog&utm_campaign=post&utm_medium=web&showWelcomeOnShare=false" target="_blank" sx={{ mx: 1 }}>
-            Discovering Pine
-          </Link>
-          |
-          <Link href="https://open.substack.com/pub/pinelang/p/insight-simplicity-delight?r=hkxog&utm_campaign=post&utm_medium=web&showWelcomeOnShare=false" target="_blank" sx={{ mx: 1 }}>
-            Insight, Simplicity, Delight
-          </Link>
-        </Box>
-      </Box>
     </Box>
   );
 };
