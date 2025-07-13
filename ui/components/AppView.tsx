@@ -26,12 +26,14 @@ const AppView = observer(() => {
   const session = global.getSession(global.activeSessionId);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [analysisInitialValue, setAnalysisInitialValue] = useState('');
+  const [mounted, setMounted] = useState(false);
 
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('lg'));
   const [forceSmallScreen, setForceSmallScreen] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     const storedForceSmallScreen = getUserPreference(STORAGE_KEYS.FORCE_COMPACT_MODE, false);
     setForceSmallScreen(storedForceSmallScreen);
   }, []);
@@ -79,6 +81,11 @@ const AppView = observer(() => {
   }
 
   if (!global.pineConnected) {
+    // Prevent hydration errors by ensuring the same component is rendered on server and client initial render
+    if (!mounted) {
+      return null;
+    }
+
     return (
       <Box
         sx={{
