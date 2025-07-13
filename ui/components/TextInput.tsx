@@ -16,6 +16,7 @@ import { createPineAutocompletion } from './pine-autocomplete';
 import { vim } from '@replit/codemirror-vim';
 import { Button, Box } from '@mui/material';
 import { PlayArrow, Loop } from '@mui/icons-material';
+import { useStores } from '../store/store-container';
 
 interface TextInputProps {
   session: Session;
@@ -50,6 +51,7 @@ const RunButton: React.FC<{ session: Session }> = observer(({ session }) => (
 ));
 
 const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
+  const { global } = useStores();
   const inputRef = useRef<ReactCodeMirrorRef | null>(null);
   const lastValueRef = useRef<string>(session.expression);
 
@@ -322,7 +324,7 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
         id="input"
         value={session.expression}
         height="177px"
-        theme={oneDark}
+        theme={global.theme === 'dark' ? oneDark : 'light'}
         extensions={extensions}
         onFocus={() => {
           session.focusTextInput();
