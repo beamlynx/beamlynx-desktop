@@ -8,24 +8,24 @@ const ActiveConnection = () => {
   const [connectionDisplay, setConnectionDisplay] = useState('🔌 No connection!');
 
   useEffect(() => {
-    if (!global.connected) {
-      setConnectionDisplay('🔌 No connection!');
+    if (!global.pineConnected) {
+      setConnectionDisplay('🔌 No connection to Pine server!');
       return;
     }
 
     const serverVersion = global.version ?? 'obsolete';
     const dbConnectionName = global.getConnectionName();
-    const status = dbConnectionName ? '⚡' : '🔌';
+    const status = global.dbConnected ? '⚡' : '🔌';
 
     setConnectionDisplay(
       `${status} [${serverVersion}] ${dbConnectionName || 'Not connected to database'}`,
     );
 
     // Show the database connection settings if no database is connected
-    if (!dbConnectionName) {
+    if (!global.dbConnected) {
       global.setShowSettings(true);
     }
-  }, [global, global.connected, global.connection, global.version]);
+  }, [global, global.pineConnected, global.dbConnected, global.version, global.connection]);
 
   return (
     <Box>
@@ -34,7 +34,7 @@ const ActiveConnection = () => {
         variant="caption"
         component="code"
         color="gray"
-        {...(global.connected && {
+        {...(global.pineConnected && {
           onClick: () => global.setShowSettings(!global.showSettings),
           style: { cursor: 'pointer' },
         })}

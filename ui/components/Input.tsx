@@ -11,12 +11,10 @@ interface InputProps {
 const Input: React.FC<InputProps> = observer(({ sessionId }) => {
   const { global } = useStores();
   const session = global.getSession(sessionId);
-  const isConnected = global.connected && !!global.getConnectionName();
+  const isConnected = global.dbConnected;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
-      {!isConnected && <Box sx={{ color: 'error.main', mb: 1 }}>Not connected</Box>}
-
       <Box
         sx={{
           border: '1px solid var(--border-color)',

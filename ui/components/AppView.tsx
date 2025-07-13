@@ -77,7 +77,7 @@ const AppView = observer(() => {
     );
   }
 
-  if (!global.connected) {
+  if (!global.pineConnected) {
     return (
       <Box
         sx={{

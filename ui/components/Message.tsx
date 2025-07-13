@@ -26,10 +26,10 @@ const Message: React.FC<MessageProps> = observer(({}) => {
           fontFamily: 'Courier, Courier New, monospace',
           whiteSpace: 'break-spaces',
           lineHeight: 1,
-          color: 'red',
+          color: 'error.main',
         }}
       >
-        {'🤦 ' + session.error}
+        {'🚨 ' + session.error}
       </Typography>
     );
   }

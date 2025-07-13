@@ -19,11 +19,11 @@ export class GlobalStore {
   connection = '';
   version: string | undefined = undefined;
 
-  get connected() {
-    // hardcoding it temporarily to test how the initial loading page works.  it
-    // is the first thing that any new user sees so this experience must be
-    // amazing
-    // return false;
+  get pineConnected() {
+    return !!this.version;
+  }
+
+  get dbConnected() {
     return !!this.connection;
   }
 
@@ -31,7 +31,16 @@ export class GlobalStore {
   sessions: Record<string, Session> = {};
 
   // Theme - moved from individual sessions to global
-  theme: Theme = 'dark';
+  _theme: Theme;
+
+  get theme(): Theme {
+    return this._theme;
+  }
+
+  set theme(newTheme: Theme) {
+    this._theme = newTheme;
+    setUserPreference(STORAGE_KEYS.THEME, newTheme);
+  }
 
   // User
   email = '';
@@ -44,7 +53,7 @@ export class GlobalStore {
   showAnalysis = false;
 
   constructor() {
-    this.theme = getUserPreference(STORAGE_KEYS.THEME, 'light');
+    this._theme = getUserPreference(STORAGE_KEYS.THEME, 'dark');
     makeAutoObservable(this);
 
     // Initialize the default session
@@ -54,7 +63,6 @@ export class GlobalStore {
 
   public toggleTheme() {
     this.theme = this.theme === 'light' ? 'dark' : 'light';
-    setUserPreference(STORAGE_KEYS.THEME, this.theme);
   }
 
   getConnectionName = () => {
@@ -107,26 +115,25 @@ export class GlobalStore {
       const response = await client.get('connection');
       if (!response?.result) {
         this.connection = '';
+        this.version = undefined;
         return;
       }
       const result = response.result as unknown as {
         version: string;
         'connection-id': string;
       };
+      this.version = result.version ?? '0.0.0';
       this.connection = result['connection-id'] || '';
 
-      if (this.connection) {
-        this.version = result.version ?? '0.0.0';
-
-        if (lt(this.version, RequiredVersion)) {
-          // Use the default session to show the error
-          const session = this.getSession(this.activeSessionId);
-          session.error = `🚨 You are running version ${this.version}. Upgrade the server to the latest version (i.e. >= ${RequiredVersion}).`;
-        }
+      if (lt(this.version, RequiredVersion)) {
+        // Use the default session to show the error
+        const session = this.getSession(this.activeSessionId);
+        session.error = `You are running version ${this.version}. Upgrade the server to the latest version (i.e. >= ${RequiredVersion}).`;
       }
     } catch (e) {
       console.error('Failed to load connection metadata', e);
       this.connection = '';
+      this.version = undefined;
     }
     return this.connection;
   };
