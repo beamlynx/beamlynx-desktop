@@ -8,7 +8,22 @@ const noOpMiddleware: NextMiddleware = (req: NextRequest, ev: NextFetchEvent) =>
   return NextResponse.next();
 };
 
-const middleware: NextMiddleware = isDevelopment() || isPlayground() ? noOpMiddleware : productionMiddleware;
+const middleware: NextMiddleware = (req: NextRequest, ev: NextFetchEvent) => {
+  // Server-side environment detection
+  const isDev = process.env.NODE_ENV === 'development';
+  const hostname = req.nextUrl.hostname;
+  const isPlaygroundServer = hostname.includes('playground');
+  
+  console.log('Middleware - hostname:', hostname, 'isDev:', isDev, 'isPlayground:', isPlaygroundServer);
+  
+  if (isDev || isPlaygroundServer) {
+    console.log('Using noOpMiddleware (no auth)');
+    return noOpMiddleware(req, ev);
+  } else {
+    console.log('Using productionMiddleware (Clerk auth)');
+    return productionMiddleware(req, ev);
+  }
+};
 
 export default middleware;
 

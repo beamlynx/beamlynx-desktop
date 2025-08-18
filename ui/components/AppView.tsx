@@ -77,6 +77,11 @@ const AppView = observer(() => {
     handleMenuClose();
   };
 
+  // Prevent hydration errors by ensuring the same component is rendered on server and client initial render
+  if (!mounted) {
+    return null;
+  }
+
   // Define UserContent inside the component so it can access the state
   const UserContent =
     isDevelopment() || isPlayground() ? (
@@ -95,11 +100,6 @@ const AppView = observer(() => {
     );
 
   if (!global.pineConnected) {
-    // Prevent hydration errors by ensuring the same component is rendered on server and client initial render
-    if (!mounted) {
-      return null;
-    }
-
     if (isPlayground()) {
       return (
         <Box
