@@ -9,10 +9,11 @@ import { isDevelopment, isPlayground } from '../store/util';
 
 const Home: NextPage = () => {
   const { global } = useStores();
-  const [isPlaygroundEnv, setIsPlaygroundEnv] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   // Load Connection details
   useEffect(() => {
+    setMounted(true);
     let pollingInterval: NodeJS.Timeout | null = null;
 
     const startPolling = () => {
@@ -48,9 +49,6 @@ const Home: NextPage = () => {
       { fireImmediately: true }, // Fire immediately to check initial state
     );
 
-    // Check if we're in playground environment
-    setIsPlaygroundEnv(isPlayground());
-
     // Cleanup on component unmount
     return () => {
       stopPolling();
@@ -73,7 +71,12 @@ const Home: NextPage = () => {
     </Container>
   );
 
-  return isDevelopment() || isPlaygroundEnv ? (
+  // Prevent hydration mismatch by ensuring consistent rendering
+  if (!mounted) {
+    return AppContent;
+  }
+
+  return isDevelopment() || isPlayground() ? (
     AppContent
   ) : (
     <ClerkProvider>{AppContent}</ClerkProvider>

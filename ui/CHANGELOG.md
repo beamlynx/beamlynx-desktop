@@ -5,6 +5,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.26.1] - 2025-08-19
+### Fixed
+- Disabled user authentication for playground.
+
 ## [0.26.0] - 2025-08-18
 ### Added
 - Setup for playground i.e. playground.beamlynx.com

@@ -4,7 +4,8 @@ export const DevState = {
   dbConnected: undefined,
   onboardingServer: undefined,
 
-  // Playground
+  // Playground - set to undefined to allow URL-based detection (playground.beamlynx.com)
+  development: undefined,
   playground: undefined,
 };
 
