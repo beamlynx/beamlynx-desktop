@@ -9,6 +9,7 @@ import {
   useTheme,
   useMediaQuery,
   ListItemIcon,
+  Link,
 } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
@@ -24,20 +25,13 @@ import { useState, useEffect } from 'react';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from '../store/preferences';
 import AnalysisModal from './AnalysisModal';
 
-const UserContent = isDevelopment() || isPlayground() ? (
-  <Typography variant="caption" color="gray">
-    Dev Mode
-  </Typography>
-) : (
-  <UserBox />
-);
-
 const AppView = observer(() => {
   const { global } = useStores();
   const session = global.getSession(global.activeSessionId);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [analysisInitialValue, setAnalysisInitialValue] = useState('');
   const [mounted, setMounted] = useState(false);
+  const [isPlaygroundEnv, setIsPlaygroundEnv] = useState(false);
 
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('lg'));
@@ -47,6 +41,9 @@ const AppView = observer(() => {
     setMounted(true);
     const storedForceSmallScreen = getUserPreference(STORAGE_KEYS.FORCE_COMPACT_MODE, false);
     setForceSmallScreen(storedForceSmallScreen);
+    
+    // Check if we're in playground environment
+    setIsPlaygroundEnv(isPlayground());
   }, []);
 
   useEffect(() => {
@@ -84,6 +81,14 @@ const AppView = observer(() => {
     handleMenuClose();
   };
 
+  // Define UserContent inside the component so it can access the state
+  const UserContent = isDevelopment() || isPlaygroundEnv ? (
+    <Typography variant="caption" color="gray">
+    </Typography>
+  ) : (
+    <UserBox />
+  );
+
   if (global.connecting) {
     return (
       <Box sx={{ p: 2, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
@@ -92,11 +97,31 @@ const AppView = observer(() => {
     );
   }
 
+
   if (!global.pineConnected) {
     // Prevent hydration errors by ensuring the same component is rendered on server and client initial render
     if (!mounted) {
       return null;
     }
+
+
+  if (isPlaygroundEnv) {
+    return (
+      <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2, justifyContent: 'center', alignItems: 'center' }}>
+        <Typography className="text-primary">
+          Something went wrong with the playground connection
+        </Typography>
+        <Link 
+          href="https://github.com/beamlynx/pine-app/issues/new"
+          target="_blank"
+          underline="hover"
+          sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+        >
+          Please create an issue on GitHub
+        </Link>
+      </Box>
+    );
+  }
 
     return (
       <Box

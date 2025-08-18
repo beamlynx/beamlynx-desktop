@@ -55,8 +55,15 @@ export const isPlayground = () => {
   if (DevState.playground !== undefined) {
     return DevState.playground;
   }
-  const url = new URL(window.location.href);
-  return url.hostname.startsWith('playground');
+  
+  // Check if we're in a browser environment before accessing window
+  if (typeof window !== 'undefined') {
+    const url = new URL(window.location.href);
+    return url.hostname.startsWith('playground');
+  }
+  
+  // Default to false during SSR
+  return false;
 };
 
 

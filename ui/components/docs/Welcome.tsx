@@ -16,7 +16,7 @@ export const Welcome = () => {
       </Typography>
 
       <Typography variant="h6" color="text.secondary" sx={{ mb: 4 }}>
-        I&apos;m building Pine on a simple belief: working with databases can be more intuitive — maybe
+        I&apos;m building beamlynx on a simple belief: working with databases can be more intuitive - maybe
         even enjoyable.
       </Typography>
 
@@ -26,7 +26,7 @@ export const Welcome = () => {
 
       <DockerCommand
         title="First things first..."
-        description="To get started, run the Pine server. The easiest way is with the Docker command below:"
+        description="To get started, run the server. The easiest way is with the Docker command below:"
         sx={{ mb: 6 }}
       />
 

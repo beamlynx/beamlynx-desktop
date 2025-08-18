@@ -1,7 +1,7 @@
 import { ClerkProvider } from '@clerk/nextjs';
 import Container from '@mui/material/Container';
 import type { NextPage } from 'next';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { reaction } from 'mobx';
 import AppView from '../components/AppView';
 import { useStores } from '../store/store-container';
@@ -9,6 +9,7 @@ import { isDevelopment, isPlayground } from '../store/util';
 
 const Home: NextPage = () => {
   const { global } = useStores();
+  const [isPlaygroundEnv, setIsPlaygroundEnv] = useState(false);
 
   // Load Connection details
   useEffect(() => {
@@ -47,6 +48,9 @@ const Home: NextPage = () => {
       { fireImmediately: true }, // Fire immediately to check initial state
     );
 
+    // Check if we're in playground environment
+    setIsPlaygroundEnv(isPlayground());
+
     // Cleanup on component unmount
     return () => {
       stopPolling();
@@ -69,7 +73,7 @@ const Home: NextPage = () => {
     </Container>
   );
 
-  return isDevelopment() || isPlayground() ? (
+  return isDevelopment() || isPlaygroundEnv ? (
     AppContent
   ) : (
     <ClerkProvider>{AppContent}</ClerkProvider>
