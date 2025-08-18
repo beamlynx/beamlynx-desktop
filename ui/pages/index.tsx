@@ -5,7 +5,7 @@ import { useEffect } from 'react';
 import { reaction } from 'mobx';
 import AppView from '../components/AppView';
 import { useStores } from '../store/store-container';
-import { isDevelopment } from '../store/util';
+import { isDevelopment, isPlayground } from '../store/util';
 
 const Home: NextPage = () => {
   const { global } = useStores();
@@ -37,7 +37,7 @@ const Home: NextPage = () => {
     // Setup a reaction to manage polling based on connection status
     const disposer = reaction(
       () => global.pineConnected,
-      (connected) => {
+      connected => {
         if (connected) {
           stopPolling();
         } else {
@@ -69,7 +69,11 @@ const Home: NextPage = () => {
     </Container>
   );
 
-  return isDevelopment ? AppContent : <ClerkProvider>{AppContent}</ClerkProvider>;
+  return isDevelopment() || isPlayground() ? (
+    AppContent
+  ) : (
+    <ClerkProvider>{AppContent}</ClerkProvider>
+  );
 };
 
 export default Home;

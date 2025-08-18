@@ -4,12 +4,7 @@ import { HttpClient } from './client';
 import { Session, Theme } from './session';
 import { RequiredVersion } from '../constants';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
-
-const Dev = {
-  pineConnected: undefined,
-  dbConnected: undefined,
-  onboardingServer: undefined,
-};
+import { DevState } from './dev-state';
 
 const client = new HttpClient();
 type ConnectionParams = {
@@ -26,11 +21,11 @@ export class GlobalStore {
   version: string | undefined = undefined;
 
   get pineConnected() {
-    return Dev.pineConnected ?? !!this.version;
+    return DevState.pineConnected ?? !!this.version;
   }
 
   get dbConnected() {
-    return Dev.dbConnected ?? !!this.connection;
+    return DevState.dbConnected ?? !!this.connection;
   }
 
   activeSessionId = 'session-0';
@@ -62,7 +57,7 @@ export class GlobalStore {
   _onboardingServer: boolean;
 
   get onboardingServer(): boolean {
-    return Dev.onboardingServer ?? this._onboardingServer;
+    return DevState.onboardingServer ?? this._onboardingServer;
   }
 
   set onboardingServer(value: boolean) {

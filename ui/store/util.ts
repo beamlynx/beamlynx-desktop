@@ -1,3 +1,5 @@
+import { DevState } from "./dev-state";
+
 export const prettifyExpression = (expression: string): string => {
   const parts = expression.split('|');
   return (
@@ -46,7 +48,16 @@ export const debounce = (func: (...args: any[]) => void, wait: number) => {
  * console.log(devOnly('Debug info')); // Shows 'Debug info' in development, '' in production
  */
 export const devOnly = (text: string): string => {
-  return process.env.NODE_ENV === 'development' ? text : '';
+  return isDevelopment() ? text : '';
 };
 
-export const isDevelopment = process.env.NODE_ENV === 'development';
+export const isPlayground = () => {
+  if (DevState.playground !== undefined) {
+    return DevState.playground;
+  }
+  const url = new URL(window.location.href);
+  return url.hostname.startsWith('playground');
+};
+
+
+export const isDevelopment = () => process.env.NODE_ENV === 'development';

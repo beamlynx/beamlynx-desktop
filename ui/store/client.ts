@@ -1,4 +1,8 @@
-const base = 'http://localhost:33333';
+import { isPlayground } from './util';
+
+const getBaseUrl = () => {
+  return isPlayground() ? 'https://api.playground.beamlynx.com' : 'http://localhost:33333';
+};
 
 export type Table = { schema: string; table: string; alias: string };
 export type TableHint = {
@@ -14,9 +18,22 @@ export type ColumnHint = {
   alias: string;
 };
 
-export type Hints = { table: TableHint[]; select: ColumnHint[]; order: ColumnHint[]; where: ColumnHint[] };
+export type Hints = {
+  table: TableHint[];
+  select: ColumnHint[];
+  order: ColumnHint[];
+  where: ColumnHint[];
+};
 // There are more operations. I'll add them as we need to handle them here
-export type OperationType = 'table' | 'delete' | 'select' | 'select-partial' | 'order' | 'order-partial' | 'where' | 'where-partial';
+export type OperationType =
+  | 'table'
+  | 'delete'
+  | 'select'
+  | 'select-partial'
+  | 'order'
+  | 'order-partial'
+  | 'where'
+  | 'where-partial';
 export type Operation = {
   type: OperationType;
 };
@@ -55,7 +72,7 @@ export class HttpClient {
   constructor(private readonly onBuild?: (ast: Ast) => void) {}
 
   private async baseGet<T>(path: string): Promise<T | undefined> {
-    const res = await fetch(`${base}/api/v1/${path}`, {
+    const res = await fetch(`${getBaseUrl()}/api/v1/${path}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -85,7 +102,7 @@ export class HttpClient {
   }
 
   private async post(path: string, body: object): Promise<Response | undefined> {
-    const res = await fetch(`${base}/api/v1/${path}`, {
+    const res = await fetch(`${getBaseUrl()}/api/v1/${path}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

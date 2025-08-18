@@ -7,7 +7,7 @@ export const DEFAULT_SIDEBAR_WIDTH = 400;
 export const MIN_SIDEBAR_WIDTH = 200;
 
 /* Pine Server */
-export const RequiredVersion = '0.22.0';
+export const RequiredVersion = '0.23.0';
 
 /* Layout Constants */
 // Height calculations for main content areas

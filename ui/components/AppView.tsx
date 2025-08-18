@@ -1,4 +1,15 @@
-import { Box, Grid, Typography, IconButton, Menu, MenuItem, Switch, useTheme, useMediaQuery, ListItemIcon } from '@mui/material';
+import {
+  Box,
+  Grid,
+  Typography,
+  IconButton,
+  Menu,
+  MenuItem,
+  Switch,
+  useTheme,
+  useMediaQuery,
+  ListItemIcon,
+} from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
 import PineTabs from './PineTabs';
@@ -7,13 +18,13 @@ import { PineServerNotRunning } from './docs/PineServerNotRunning';
 import ActiveConnection from './ActiveConnection';
 import Message from './Message';
 import UserBox from './UserBox';
-import { isDevelopment } from '../store/util';
+import { isDevelopment, isPlayground } from '../store/util';
 import { Settings, Analytics } from '@mui/icons-material';
 import { useState, useEffect } from 'react';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from '../store/preferences';
 import AnalysisModal from './AnalysisModal';
 
-const UserContent = isDevelopment ? (
+const UserContent = isDevelopment() || isPlayground() ? (
   <Typography variant="caption" color="gray">
     Dev Mode
   </Typography>
@@ -41,13 +52,14 @@ const AppView = observer(() => {
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const analyseParam = urlParams.get('analyse');
-    
+
     if (analyseParam) {
       setAnalysisInitialValue(decodeURIComponent(analyseParam));
       global.setShowAnalysis(true);
-      
+
       urlParams.delete('analyse');
-      const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
+      const newUrl =
+        window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
       window.history.replaceState({}, '', newUrl);
     }
   }, [global]);
