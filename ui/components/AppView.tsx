@@ -41,7 +41,7 @@ const AppView = observer(() => {
     setMounted(true);
     const storedForceSmallScreen = getUserPreference(STORAGE_KEYS.FORCE_COMPACT_MODE, false);
     setForceSmallScreen(storedForceSmallScreen);
-    
+
     // Check if we're in playground environment
     setIsPlaygroundEnv(isPlayground());
   }, []);
@@ -82,12 +82,12 @@ const AppView = observer(() => {
   };
 
   // Define UserContent inside the component so it can access the state
-  const UserContent = isDevelopment() || isPlaygroundEnv ? (
-    <Typography variant="caption" color="gray">
-    </Typography>
-  ) : (
-    <UserBox />
-  );
+  const UserContent =
+    isDevelopment() || isPlaygroundEnv ? (
+      <Typography variant="caption" color="gray"></Typography>
+    ) : (
+      <UserBox />
+    );
 
   if (global.connecting) {
     return (
@@ -97,31 +97,38 @@ const AppView = observer(() => {
     );
   }
 
-
   if (!global.pineConnected) {
     // Prevent hydration errors by ensuring the same component is rendered on server and client initial render
     if (!mounted) {
       return null;
     }
 
-
-  if (isPlaygroundEnv) {
-    return (
-      <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2, justifyContent: 'center', alignItems: 'center' }}>
-        <Typography className="text-primary">
-          Something went wrong with the playground connection
-        </Typography>
-        <Link 
-          href="https://github.com/beamlynx/pine-app/issues/new"
-          target="_blank"
-          underline="hover"
-          sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+    if (isPlaygroundEnv) {
+      return (
+        <Box
+          sx={{
+            p: 2,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
         >
-          Please create an issue on GitHub
-        </Link>
-      </Box>
-    );
-  }
+          <Typography className="text-primary">
+            Something went wrong with the playground connection
+          </Typography>
+          <Link
+            href="https://github.com/beamlynx/pine-app/issues/new"
+            target="_blank"
+            underline="hover"
+            sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+          >
+            Please create an issue on GitHub
+          </Link>
+        </Box>
+      );
+    }
 
     return (
       <Box
