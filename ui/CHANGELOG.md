@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.27.0] - 2025-08-19
 ### Added
 - Support for `?query=<expression>` URL parameter.
 - Show the graph in the secondary view when the results are shown.
