@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- Support for `?query=<expression>` URL parameter.
 
 ## [0.26.2] - 2025-08-19
 ### Fixed

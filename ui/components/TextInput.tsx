@@ -184,7 +184,7 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
           return;
         }
         
-        const prettifiedContent = prettifyExpression(currentContent);
+        const prettifiedContent = prettifyExpression(currentContent, true);
 
         if (prettifiedContent === currentContent) {
           return;

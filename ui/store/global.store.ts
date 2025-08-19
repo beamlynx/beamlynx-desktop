@@ -52,6 +52,7 @@ export class GlobalStore {
 
   // Analysis
   showAnalysis = false;
+  analysisInitialValue = '';
 
   // Onboarding
   _onboardingServer: boolean;
@@ -73,6 +74,40 @@ export class GlobalStore {
     // Initialize the default session
     const initSession = new Session('0', this);
     this.sessions[initSession.id] = initSession;
+  }
+
+  public handleUrlParameters() {
+    if (typeof window === 'undefined') return; // Skip on server-side
+
+    const urlParams = new URLSearchParams(window.location.search);
+    let hasChanges = false;
+
+    // Handle 'analyse' parameter
+    const analyseParam = urlParams.get('analyse');
+    if (analyseParam) {
+      this.analysisInitialValue = decodeURIComponent(analyseParam);
+      this.setShowAnalysis(true);
+      urlParams.delete('analyse');
+      hasChanges = true;
+    }
+
+    // Handle 'query' parameter
+    const queryParam = urlParams.get('query');
+    if (queryParam) {
+      const session = this.getSession(this.activeSessionId);
+      if (session) {
+        session.expression = decodeURIComponent(queryParam);
+        session.prettify();
+      }
+      urlParams.delete('query');
+      hasChanges = true;
+    }
+
+    // Update URL if any parameters were processed
+    if (hasChanges) {
+      const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
+      window.history.replaceState({}, '', newUrl);
+    }
   }
 
   public toggleTheme() {
@@ -198,5 +233,8 @@ export class GlobalStore {
 
   setShowAnalysis = (show: boolean) => {
     this.showAnalysis = show;
+    if (!show) {
+      this.analysisInitialValue = ''; // Clear initial value when closing
+    }
   };
 }

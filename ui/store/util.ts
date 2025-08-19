@@ -1,12 +1,12 @@
 import { DevState } from './dev-state';
 
-export const prettifyExpression = (expression: string): string => {
+export const prettifyExpression = (expression: string, appendPipe: boolean = false): string => {
   const parts = expression.split('|');
   return (
     parts
       .map(x => x.trim())
       .filter(Boolean)
-      .join('\n | ') + '\n | '
+      .join('\n | ') + (appendPipe ? '\n | ' : '')
   );
 };
 

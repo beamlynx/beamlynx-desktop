@@ -29,7 +29,6 @@ const AppView = observer(() => {
   const { global } = useStores();
   const session = global.getSession(global.activeSessionId);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const [analysisInitialValue, setAnalysisInitialValue] = useState('');
   const [mounted, setMounted] = useState(false);
 
   const theme = useTheme();
@@ -43,18 +42,7 @@ const AppView = observer(() => {
   }, []);
 
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const analyseParam = urlParams.get('analyse');
-
-    if (analyseParam) {
-      setAnalysisInitialValue(decodeURIComponent(analyseParam));
-      global.setShowAnalysis(true);
-
-      urlParams.delete('analyse');
-      const newUrl =
-        window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
-      window.history.replaceState({}, '', newUrl);
-    }
+    global.handleUrlParameters();
   }, [global]);
 
   const handleToggleForceSmallScreen = () => {
@@ -72,7 +60,6 @@ const AppView = observer(() => {
   };
 
   const handleOpenAnalysis = () => {
-    setAnalysisInitialValue('');
     global.setShowAnalysis(true);
     handleMenuClose();
   };
@@ -155,7 +142,7 @@ const AppView = observer(() => {
 
   return (
     <>
-      <AnalysisModal initialValue={analysisInitialValue} />
+      <AnalysisModal />
       <Grid container>
         <Grid item xs={3}>
           <Box sx={{ m: 2, mt: 1 }}>

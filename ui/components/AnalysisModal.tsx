@@ -5,21 +5,17 @@ import { useStores } from '../store/store-container';
 import { runAnalysis } from '../utils/analysisTemplates';
 import { AnalysisTemplates } from '../utils/analysisTemplates.data';
 
-interface AnalysisModalProps {
-  initialValue?: string;
-}
-
-const AnalysisModal = ({ initialValue = '' }: AnalysisModalProps) => {
+const AnalysisModal = () => {
   const { global } = useStores();
   const [analysisInput, setAnalysisInput] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string|null>(null);
 
   // Set initial value when modal opens
   useEffect(() => {
-    if (global.showAnalysis) {
-      setAnalysisInput(initialValue);
+    if (global.showAnalysis && global.analysisInitialValue) {
+      setAnalysisInput(global.analysisInitialValue);
     }
-  }, [global.showAnalysis, initialValue]);
+  }, [global.showAnalysis, global.analysisInitialValue]);
 
   const handleAnalyse = () => {
     if (!selectedTemplateId) {
