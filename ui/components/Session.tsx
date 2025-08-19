@@ -15,7 +15,7 @@ import {
 } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
-import { DEFAULT_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, getDefaultModeHeight, getCompactModeHeight } from '../constants';
+import { DEFAULT_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, getTabHeight, getSecondaryViewHeight } from '../constants';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from '../store/preferences';
 import { Mode, Session as SessionType } from '../store/session';
 import { useStores } from '../store/store-container';
@@ -67,6 +67,7 @@ const Sidebar = ({
               border: '1px solid var(--border-color)',
               borderRadius: 1,
               mt: 2,
+              height: getSecondaryViewHeight(),
             }}
           >
             {secondView}
@@ -295,7 +296,7 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
             <Sidebar
               session={session}
               firstView={<Input sessionId={sessionId} />}
-              secondView={<Query sessionId={sessionId} />}
+              secondView={session.mode === 'result' ? <GraphBox sessionId={sessionId} /> : <Query sessionId={sessionId} />}
             />
             <ResizableDivider sidebarWidth={sidebarWidth} setSidebarWidth={setSidebarWidth} />
           </Grid>
@@ -306,7 +307,7 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
                 sessionId={sessionId}
                 mode={session.mode}
                 input={session.textInputFocused}
-                height={getDefaultModeHeight()}
+                height={getTabHeight()}
               />
             }
           </Grid>
@@ -323,7 +324,7 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
                 sessionId={sessionId}
                 mode={session.mode}
                 input={session.textInputFocused}
-                height={getCompactModeHeight()}
+                height={getSecondaryViewHeight()}
               />
             }
           />

@@ -37,15 +37,18 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
         '&': {
           fontSize: '12px',
           fontFamily: 'monospace',
+          height: '100%',
         },
         '.cm-editor': {
           cursor: 'pointer',
+          height: '100%',
         },
         '.cm-focused': {
           outline: 'none',
         },
         '.cm-content': {
           padding: '8px 12px',
+          minHeight: '100%',
         },
         '.cm-editor.cm-focused .cm-selectionBackground': {
           backgroundColor: 'transparent',
@@ -58,6 +61,10 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
         },
         '.cm-gutters': {
           display: 'none',
+        },
+        '.cm-scroller': {
+          fontFamily: 'monospace',
+          height: '100%',
         },
       }),
       EditorView.editable.of(false),
@@ -104,7 +111,12 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
   }
 
   if (session.query) {
-    return <div ref={editorRef} />;
+    return (
+      <Box
+        ref={editorRef}
+        sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+      />
+    );
   }
 
   return (

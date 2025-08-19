@@ -41,6 +41,12 @@ export class RecursiveDeletePlugin implements PluginInterface {
           });
         })
         .join('\n\n');
+      // FIXME: I am not sure how to design this. When we get all the queries, I
+      // show the graph to the right so that the queries also also visible.
+      // Currently, there is no way to see the queries if the result mode is
+      // enabled as the graph is shown in place of the queries (i.e. the
+      // secondary view is not visible).
+      this.session.mode = 'graph';
     } catch (e) {
       this.session.error = e instanceof Error ? e.message : 'Unknown error';
       this.session.query = `/* Recursive deletion failed */`;

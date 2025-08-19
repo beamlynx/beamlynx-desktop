@@ -6,6 +6,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ## [Unreleased]
 ### Added
 - Support for `?query=<expression>` URL parameter.
+- Show the graph in the secondary view when the results are shown.
 
 ## [0.26.2] - 2025-08-19
 ### Fixed
