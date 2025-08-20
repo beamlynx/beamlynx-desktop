@@ -5,8 +5,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.27.3] - 2025-08-20
 ### Fixed
 - Related tables weren't being shown when clicking a table in the graph.
+- The keybinding to run the expression also works on Mac.
 
 ### Changed
 - The connection monitor is moved together with the other menu items in the settings.

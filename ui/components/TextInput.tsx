@@ -29,7 +29,7 @@ const RunButton: React.FC<{ session: Session }> = observer(({ session }) => (
     disabled={!session.expression || session.loading}
     startIcon={session.loading ? <Loop /> : <PlayArrow />}
     size="small"
-    title="Run (Ctrl + Enter)"
+    title="Run (Cmd/Ctrl + Enter)"
     sx={{
       backgroundColor: 'var(--primary-color)',
       color: 'var(--primary-text-color)',
@@ -244,17 +244,17 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
     Prec.high(
       keymap.of([
         {
-          key: 'Ctrl-Enter',
+          key: 'Mod-Enter',
           run: () => {
-            // Trigger evaluation with Ctrl+Enter
+            // Trigger evaluation with Cmd/Ctrl+Enter
             session.evaluate();
             return true;
           },
         },
         {
-          key: 'Ctrl-Space',
+          key: 'Mod-Space',
           run: view => {
-            // Trigger autocompletion with Ctrl+Space
+            // Trigger autocompletion with Cmd/Ctrl+Space
             return startCompletion(view);
           },
         },
