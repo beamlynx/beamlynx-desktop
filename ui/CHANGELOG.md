@@ -9,6 +9,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - Related tables weren't being shown when clicking a table in the graph.
 
 ### Changed
+- The connection monitor is moved together with the other menu items in the settings.
 - The graph has a minimize / maximize button.
 - The resizable divider is slimmer - no icons are shown.
 

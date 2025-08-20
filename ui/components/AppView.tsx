@@ -198,6 +198,12 @@ const AppView = observer(() => {
                 </ListItemIcon>
                 Compact mode
               </MenuItem>
+              <MenuItem onClick={() => session.mode = session.mode === 'monitor' ? 'graph' : 'monitor'}>
+                <ListItemIcon>
+                  <Switch checked={session.mode === 'monitor'} size="small" />
+                </ListItemIcon>
+                Connection Monitor
+              </MenuItem>
             </Menu>
           </Box>
         </Grid>
