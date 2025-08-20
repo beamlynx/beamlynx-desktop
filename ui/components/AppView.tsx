@@ -73,7 +73,8 @@ const AppView = observer(() => {
   const UserContent =
     isDevelopment() || isPlayground() ? (
       <Typography variant="caption" color="gray">
-        {isDevelopment() ? 'Dev mode' : isPlayground() ? 'Playground' : 'none'}
+        {isDevelopment() ? '[Develoment]' : ''} 
+        {isPlayground() ? '[Playground]' : 'none'}
       </Typography>
     ) : (
       <UserBox />

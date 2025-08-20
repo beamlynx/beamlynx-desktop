@@ -281,7 +281,7 @@ export class Session {
     }
     parts.push(pine);
     const expression = parts.join(' | ').trimEnd();
-    return prettifyExpression(expression);
+    return prettifyExpression(expression, true);
   }
 
   public updateExpressionUsingCandidate() {

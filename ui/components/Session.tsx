@@ -15,7 +15,12 @@ import {
 } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
-import { DEFAULT_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, getTabHeight, getSecondaryViewHeight } from '../constants';
+import {
+  DEFAULT_SIDEBAR_WIDTH,
+  MIN_SIDEBAR_WIDTH,
+  getTabHeight,
+  getSecondaryViewHeight,
+} from '../constants';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from '../store/preferences';
 import { Mode, Session as SessionType } from '../store/session';
 import { useStores } from '../store/store-container';
@@ -39,109 +44,26 @@ const Sidebar = ({
   firstView: React.ReactNode;
   secondView: React.ReactNode;
 }) => {
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-
-  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
-    setAnchorEl(event.currentTarget);
-  };
-
-  const handleMenuClose = () => {
-    setAnchorEl(null);
-  };
 
   return (
-    <Box sx={{ height: '100%' }}>
-      <Box sx={{ display: 'flex', flexDirection: 'row', height: '100%' }}>
-        {/* Left column: Input and Query */}
-        <Box sx={{ flex: 1, mr: 1, flexDirection: 'column', height: '100%' }}>
-          <Box
-            sx={{
-              alignItems: 'center',
-              mb: 1,
-            }}
-          >
-            {firstView}
-          </Box>
-          <Box
-            sx={{
-              border: '1px solid var(--border-color)',
-              borderRadius: 1,
-              mt: 2,
-              height: getSecondaryViewHeight(),
-            }}
-          >
-            {secondView}
-          </Box>
-        </Box>
-
-        {/* Right column: Icons */}
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 1,
-            mr: 1,
-            width: 'auto',
-          }}
-        >
-          <Tooltip title="Documentation">
-            <IconButton size="small" onClick={() => (session.mode = 'documentation')}>
-              <Description
-                sx={{
-                  color:
-                    session.mode === 'documentation' ? 'var(--primary-color)' : 'var(--icon-color)',
-                }}
-              />
-            </IconButton>
-          </Tooltip>
-
-          <Tooltip title="Visualize Relations">
-            <IconButton size="small" onClick={() => (session.mode = 'graph')}>
-              <AccountTree
-                sx={{
-                  color: session.mode === 'graph' ? 'var(--primary-color)' : 'var(--icon-color)',
-                }}
-              />
-            </IconButton>
-          </Tooltip>
-
-          <Tooltip title="Results">
-            <IconButton size="small" onClick={() => (session.mode = 'result')}>
-              <TableChart
-                sx={{
-                  color: session.mode === 'result' ? 'var(--primary-color)' : 'var(--icon-color)',
-                }}
-              />
-            </IconButton>
-          </Tooltip>
-
-          <Tooltip title="More options">
-            <IconButton size="small" onClick={handleMenuOpen}>
-              <MoreVert sx={{ color: 'var(--icon-color)' }} />
-            </IconButton>
-          </Tooltip>
-
-          <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}>
-            <MenuItem
-              onClick={() => {
-                if (session.mode === 'monitor') return;
-                session.mode = 'monitor';
-                handleMenuClose();
-              }}
-            >
-              <ListItemIcon>
-                <BarChart
-                  sx={{
-                    color:
-                      session.mode === 'monitor' ? 'var(--primary-color)' : 'var(--icon-color)',
-                  }}
-                />
-              </ListItemIcon>
-              <ListItemText primary="Connection monitoring" />
-            </MenuItem>
-          </Menu>
-        </Box>
+    <Box sx={{ flex: 1, mr: 1, flexDirection: 'column', height: '100%' }}>
+      <Box
+        sx={{
+          alignItems: 'center',
+          mb: 1,
+        }}
+      >
+        {firstView}
+      </Box>
+      <Box
+        sx={{
+          border: '1px solid var(--border-color)',
+          borderRadius: 1,
+          mt: 1,
+          height: getSecondaryViewHeight(),
+        }}
+      >
+        {secondView}
       </Box>
     </Box>
   );
@@ -287,7 +209,7 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
     <Grid
       container
       sx={{
-        mt: 2,
+        mt: 1,
       }}
     >
       {!compactMode && (
@@ -296,7 +218,13 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
             <Sidebar
               session={session}
               firstView={<Input sessionId={sessionId} />}
-              secondView={session.mode === 'result' ? <GraphBox sessionId={sessionId} /> : <Query sessionId={sessionId} />}
+              secondView={
+                session.mode === 'result' ? (
+                  <GraphBox sessionId={sessionId} />
+                ) : (
+                  <Query sessionId={sessionId} />
+                )
+              }
             />
             <ResizableDivider sidebarWidth={sidebarWidth} setSidebarWidth={setSidebarWidth} />
           </Grid>

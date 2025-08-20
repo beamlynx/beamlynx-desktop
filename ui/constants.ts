@@ -14,7 +14,7 @@ export const RequiredVersion = '0.23.0';
 // These account for header, margins, and other UI elements
 export const LAYOUT_HEIGHTS = {
   DEFAULT_MODE_OFFSET: 122,
-  COMPACT_MODE_OFFSET: 326,
+  COMPACT_MODE_OFFSET: 310,
 } as const;
 
 export const getTabHeight = () => `calc(100vh - ${LAYOUT_HEIGHTS.DEFAULT_MODE_OFFSET}px)`;

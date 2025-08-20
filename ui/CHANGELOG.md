@@ -5,6 +5,13 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+- Related tables weren't being shown when clicking a table in the graph.
+
+### Changed
+- The graph has a minimize / maximize button.
+- The resizable divider is slimmer - no icons are shown.
+
 ## [0.27.0] - 2025-08-19
 ### Added
 - Support for `?query=<expression>` URL parameter.

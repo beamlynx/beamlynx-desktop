@@ -21,6 +21,7 @@ import {
 import { useStores } from '../store/store-container';
 import SelectedNodeComponent from './SelectedNodeComponent';
 import SuggestedNodeComponent from './SuggestedNodeComponent';
+import { CloseFullscreen, OpenInFull } from '@mui/icons-material';
 
 export const NodeType = {
   Selected: 'selected-node',
@@ -168,6 +169,27 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId, containerRef }) => {
       zoomOnScroll={true}
       nodeDragThreshold={1}
     >
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 10,
+            right: 10,
+            zIndex: 10,
+            cursor: 'pointer',
+            color: 'var(--text-color)',
+            '&:hover': {
+              color: 'var(--primary-color)'
+            }
+          }}
+          onClick={() => session.mode = session.mode === 'graph' ? 'result' : 'graph'}
+        >
+      {session.mode === 'graph' ? (
+          <CloseFullscreen/>
+      ) : (
+          <OpenInFull/>
+      )}
+
+        </Box>
       {/* <Controls /> */}
     </ReactFlow>
   );
