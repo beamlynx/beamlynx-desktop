@@ -5,6 +5,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+- Keybinding for reloading the tab wasn't working
+
 ## [0.27.3] - 2025-08-20
 ### Fixed
 - Related tables weren't being shown when clicking a table in the graph.

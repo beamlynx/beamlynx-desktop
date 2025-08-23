@@ -24,12 +24,19 @@ import { Settings, Analytics } from '@mui/icons-material';
 import { useState, useEffect } from 'react';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from '../store/preferences';
 import AnalysisModal from './AnalysisModal';
+import { useGlobalKeybindings } from '../hooks/useGlobalKeybindings';
 
 const AppView = observer(() => {
   const { global } = useStores();
   const session = global.getSession(global.activeSessionId);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [mounted, setMounted] = useState(false);
+
+  // Initialize global keyboard shortcuts
+  useGlobalKeybindings({ 
+    session,
+    focusInput: () => session.focusTextInput()
+  });
 
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('lg'));
@@ -74,7 +81,7 @@ const AppView = observer(() => {
     isDevelopment() || isPlayground() ? (
       <Typography variant="caption" color="gray">
         {isDevelopment() ? '[Develoment]' : ''} 
-        {isPlayground() ? '[Playground]' : 'none'}
+        {isPlayground() ? '[Playground]' : ''}
       </Typography>
     ) : (
       <UserBox />

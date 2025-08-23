@@ -18,6 +18,7 @@ import { Button, Box } from '@mui/material';
 import { PlayArrow, Loop } from '@mui/icons-material';
 import { useStores } from '../store/store-container';
 
+
 interface TextInputProps {
   session: Session;
 }
@@ -55,6 +56,8 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
   const inputRef = useRef<ReactCodeMirrorRef | null>(null);
   const lastValueRef = useRef<string>(session.expression);
 
+
+
   /**
    * Optimized value update function that uses CodeMirror's transaction API
    * for better performance when updating the entire content
@@ -89,40 +92,7 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
     }
   }, [session.expression, updateEditorValue]);
 
-  /**
-   * Global event handler for Ctrl+A - only prevent when not in Pine text input
-   */
-  useEffect(() => {
-    const fn = (e: KeyboardEvent) => {
-      if (!e.ctrlKey) return;
 
-      // Allow Ctrl+A in any regular text input (including modals)
-      const target = e.target as HTMLElement;
-      if (
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.contentEditable === 'true')
-      ) {
-        return;
-      }
-
-      // Only prevent Ctrl+A when we're in session mode but not focused on the Pine input
-      if (session.textInputFocused) {
-        return;
-      }
-
-      // Disable Ctrl+A for general page selection
-      if (e.ctrlKey && e.key === 'a') {
-        e.preventDefault();
-      }
-    };
-
-    document.addEventListener('keydown', fn);
-    return () => {
-      document.removeEventListener('keydown', fn);
-    };
-  }, [session]);
 
   useEffect(() => {
     if (session.textInputFocused) {
@@ -130,24 +100,7 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
     }
   }, [session.textInputFocused]);
 
-  /**
-   * Global keyboard event handler for the input component.
-   *
-   * This handler ensures that the input field receives focus when the Escape key is pressed,
-   * allowing users to quickly return to typing after navigating away from the input.
-   */
-  useEffect(() => {
-    const handleEscapeKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      if (!inputRef.current) return;
-      inputRef.current.view?.focus();
-    };
 
-    window.addEventListener('keydown', handleEscapeKey);
-    return () => {
-      window.removeEventListener('keydown', handleEscapeKey);
-    };
-  }, [session.mode]);
 
   const isPrintableChar = (key: string) => {
     return key.length === 1 && !key.match(/[\u0000-\u001F\u007F-\u009F]/);
@@ -241,6 +194,27 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
   const extensions = [
     pineLanguage,
     autocompletionExtension,
+    // Browser shortcuts - highest precedence to ensure they always work
+    Prec.highest(
+      keymap.of([
+        {
+          key: 'Mod-r', // Ctrl+R (Windows/Linux) or Cmd+R (Mac)
+          run: () => false, // Let browser handle reload
+        },
+        {
+          key: 'Mod-t', // Ctrl+T (Windows/Linux) or Cmd+T (Mac)
+          run: () => false, // Let browser handle new tab
+        },
+        {
+          key: 'Mod-w', // Ctrl+W (Windows/Linux) or Cmd+W (Mac)
+          run: () => false, // Let browser handle close tab
+        },
+        {
+          key: 'F5',
+          run: () => false, // Let browser handle F5 (reload)
+        },
+      ])
+    ),
     Prec.high(
       keymap.of([
         {
@@ -313,8 +287,8 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
   ];
 
   if (session.vimMode) {
-    // Give vim mode the highest precedence to ensure proper key handling
-    extensions.unshift(Prec.highest(vim()));
+    // Add vim mode with high precedence, but lower than browser shortcuts
+    extensions.push(Prec.high(vim()));
   }
 
   return (

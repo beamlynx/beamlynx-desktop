@@ -106,21 +106,7 @@ const Flow = observer(({ sessionId }: { sessionId: string }) => {
   //   );
   // }, [isFocused, setNodes]);
 
-  /**
-   * Global event handler for Ctrl+A - only prevent when visual input is focused
-   */
-  useEffect(() => {
-    const fn = (e: KeyboardEvent) => {
-      // Only prevent Ctrl+A when this visual input component is focused
-      if (e.ctrlKey && e.key === 'a' && session.inputMode === 'visual' && isFocused) {
-        e.preventDefault();
-      }
-    };
-    document.addEventListener('keydown', fn);
-    return () => {
-      document.removeEventListener('keydown', fn);
-    };
-  }, [session.inputMode, isFocused]);
+
 
   // Handle keyboard events on the flow container
   useEffect(() => {
@@ -128,7 +114,7 @@ const Flow = observer(({ sessionId }: { sessionId: string }) => {
       if (session.inputMode !== 'visual') {
         return;
       }
-      // Only handle events without modifier keys
+      // Allow browser shortcuts with modifier keys (like Ctrl+R for reload)
       if (event.ctrlKey || event.altKey || event.metaKey) {
         return;
       }
