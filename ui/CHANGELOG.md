@@ -5,6 +5,12 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- Filter on any value in the results using the context menu.
+
+### Changed
+- Values in the results can by copied using the context menu.
+
 ### Fixed
 - Keybinding for reloading the tab wasn't working
 

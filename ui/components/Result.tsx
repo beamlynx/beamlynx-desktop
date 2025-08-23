@@ -1,13 +1,20 @@
 import { DataGrid } from '@mui/x-data-grid';
 import { toJS } from 'mobx';
 import { observer } from 'mobx-react-lite';
-import React from 'react';
+import React, { useState } from 'react';
 import { useStores } from '../store/store-container';
-import { Box, IconButton, Tooltip, useTheme, useMediaQuery } from '@mui/material';
-import { FileDownload } from '@mui/icons-material';
+import { Box, IconButton, Tooltip, useTheme, useMediaQuery, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
+import { FileDownload, ContentCopy, FilterAlt } from '@mui/icons-material';
 
 interface ResultProps {
   sessionId: string;
+}
+
+interface ContextMenuState {
+  mouseX: number;
+  mouseY: number;
+  cellValue: any;
+  fieldIndex: string;
 }
 
 const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
@@ -18,6 +25,48 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('lg'));
   const compactMode = isSmallScreen || session.forceCompactMode;
+  
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+
+  const handleContextMenuClose = () => {
+    setContextMenu(null);
+  };
+
+  const handleContextMenu = (event: React.MouseEvent, params: any) => {
+    event.preventDefault();
+    setContextMenu({
+      mouseX: event.clientX + 2,
+      mouseY: event.clientY - 6,
+      cellValue: params.value,
+      fieldIndex: params.field,
+    });
+  };
+
+  const handleCopyAction = () => {
+    if (contextMenu?.cellValue !== undefined && contextMenu?.cellValue !== null) {
+      navigator.clipboard.writeText(String(contextMenu.cellValue)).then(() => {
+        store.setCopiedMessage(sessionId, contextMenu.cellValue, true);
+      });
+    }
+    handleContextMenuClose();
+  };
+
+  const handleFilterAction = async () => {
+    if (contextMenu?.cellValue === undefined || contextMenu?.cellValue === null) {
+      console.error('Filter action called without valid cell value');
+      handleContextMenuClose();
+      return;
+    }
+
+    const column = columns[parseInt(contextMenu.fieldIndex)];
+    if (column?.headerName) {
+      session.pipeAndUpdateExpression(`where: ${column.headerName} = '${contextMenu.cellValue}'`, false);
+      await session.evaluate();
+    } else {
+      console.error('Column missing header name for filter action:', { fieldIndex: contextMenu.fieldIndex, column });
+    }
+    handleContextMenuClose();
+  };
 
   const exportToCSV = () => {
     if (columns.length === 0 || rows.length === 0) {
@@ -108,7 +157,34 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
             <FileDownload fontSize="small" />
           </IconButton>
         </Tooltip>
-        <Box sx={{ position: 'absolute', inset: 0 }}>
+        <Box 
+          sx={{ position: 'absolute', inset: 0 }}
+          onContextMenu={(event: React.MouseEvent) => {
+            // Find the cell that was right-clicked
+            const target = event.target as HTMLElement;
+            const cell = target.closest('.MuiDataGrid-cell');
+            if (cell) {
+              event.preventDefault();
+              const fieldAttr = cell.getAttribute('data-field');
+              const rowElement = cell.closest('.MuiDataGrid-row');
+              if (fieldAttr && rowElement) {
+                const rowIndexAttr = rowElement.getAttribute('data-rowindex');
+                if (rowIndexAttr) {
+                  const rowIndex = parseInt(rowIndexAttr, 10);
+                  const rowData = rows[rowIndex];
+                  if (rowData) {
+                    const params = {
+                      field: fieldAttr,
+                      value: rowData[fieldAttr],
+                      row: rowData
+                    };
+                    handleContextMenu(event, params);
+                  }
+                }
+              }
+            }
+          }}
+        >
           <DataGrid
             sx={{
               '--DataGrid-containerBackground': 'var(--node-column-bg)',
@@ -158,15 +234,31 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
             rows={rows}
             columns={columns}
             getRowId={row => row._id ?? ''}
-            onCellClick={(x, y) => {
-              const v = x.row[x.field];
-              navigator.clipboard.writeText(v).then(() => {
-                store.setCopiedMessage(sessionId, v, true);
-              });
-            }}
           />
         </Box>
       </Box>
+
+      {contextMenu && (
+        <Menu
+          open={!!contextMenu}
+          onClose={handleContextMenuClose}
+          anchorReference="anchorPosition"
+          anchorPosition={contextMenu.mouseX > 0 && contextMenu.mouseY > 0 ? { top: contextMenu.mouseY, left: contextMenu.mouseX } : undefined}
+        >
+                     <MenuItem onClick={handleCopyAction}>
+             <ListItemIcon>
+               <ContentCopy fontSize="small" />
+             </ListItemIcon>
+             <ListItemText primary="Copy" />
+           </MenuItem>
+           <MenuItem onClick={handleFilterAction}>
+             <ListItemIcon>
+               <FilterAlt fontSize="small" />
+             </ListItemIcon>
+             <ListItemText primary="Filter" />
+           </MenuItem>
+        </Menu>
+      )}
     </div>
   );
 });

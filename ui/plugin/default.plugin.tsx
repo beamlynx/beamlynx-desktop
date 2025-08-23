@@ -38,7 +38,6 @@ export class DefaultPlugin implements PluginInterface {
 
     const rows = response.result as Row[];
     const columns: GridColDef[] = rows[0].map((header: string, index: number): GridColDef => {
-      const isIdColumn = header === 'id';
       return {
         field: index.toString(),
         headerName: header,
@@ -46,20 +45,6 @@ export class DefaultPlugin implements PluginInterface {
         editable: false,
         minWidth: 100,
         maxWidth: 400,
-        ...(isIdColumn && {
-          renderCell: params => (
-            <Link
-              component="button"
-              onClick={async () => {
-                session.pipeAndUpdateExpression(`id = '${params.value}'`, false);
-                await session.evaluate();
-              }}
-              sx={{ textDecoration: 'none' }}
-            >
-              {params.value}
-            </Link>
-          ),
-        }),
       };
     });
     session.columns = columns;
