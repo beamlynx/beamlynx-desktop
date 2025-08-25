@@ -206,6 +206,10 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
               '& .MuiDataGrid-cell': {
                 color: 'var(--text-color)',
                 borderBottom: '1px solid var(--border-color)',
+                userSelect: 'none', // Prevent text selection
+                '-webkit-user-select': 'none',
+                '-moz-user-select': 'none',
+                '-ms-user-select': 'none',
               },
               '& .MuiDataGrid-row:hover': {
                 backgroundColor: 'var(--node-bg)',

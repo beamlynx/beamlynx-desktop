@@ -13,6 +13,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ### Fixed
 - Keybinding for reloading the tab wasn't working
+- Cell values shouldn't be selectable
 
 ## [0.27.3] - 2025-08-20
 ### Fixed
