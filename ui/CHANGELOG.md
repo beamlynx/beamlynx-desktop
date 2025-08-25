@@ -5,7 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
-## [0.28.0] - 2025-08-26
+## [0.28.1] - 2025-08-26
 ### Added
 - Support for updating rows in the results.
 - Filter on any value in the results using the context menu.

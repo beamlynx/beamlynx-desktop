@@ -294,12 +294,13 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
                 vs.expression = session.expression;
                 vs.prettify();
                 vs.pipeAndUpdateExpression(`from: ${alias}`);
-                vs.pipeAndUpdateExpression(`where: id = '${id}'`);
+                vs.pipeAndUpdateExpression(
+                  `where: id = ${Number.isInteger(id) ? parseInt(id, 10) : `'${id.replace(/'/g, "''")}'`}`,
+                );
                 vs.pipeAndUpdateExpression(`update! ${column} = '${newRow[columnIndex]}'`);
                 const result = await vs.evaluate();
 
                 session.message = Object.values(result).join(': ');
-
               } catch (e) {
                 console.error('Error updating row:', e);
                 return oldRow;
