@@ -3,7 +3,17 @@ import { toJS } from 'mobx';
 import { observer } from 'mobx-react-lite';
 import React, { useState } from 'react';
 import { useStores } from '../store/store-container';
-import { Box, IconButton, Tooltip, useTheme, useMediaQuery, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
+import {
+  Box,
+  IconButton,
+  Tooltip,
+  useTheme,
+  useMediaQuery,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
+} from '@mui/material';
 import { FileDownload, ContentCopy, FilterAlt } from '@mui/icons-material';
 
 interface ResultProps {
@@ -18,14 +28,14 @@ interface ContextMenuState {
 }
 
 const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
-  const { global: store } = useStores();
-  const session = store.getSession(sessionId);
+  const { global } = useStores();
+  const session = global.getSession(sessionId);
   const rows = toJS(session.rows);
   const columns = toJS(session.columns);
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('lg'));
   const compactMode = isSmallScreen || session.forceCompactMode;
-  
+
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
   const handleContextMenuClose = () => {
@@ -45,7 +55,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const handleCopyAction = () => {
     if (contextMenu?.cellValue !== undefined && contextMenu?.cellValue !== null) {
       navigator.clipboard.writeText(String(contextMenu.cellValue)).then(() => {
-        store.setCopiedMessage(sessionId, contextMenu.cellValue, true);
+        global.setCopiedMessage(sessionId, contextMenu.cellValue, true);
       });
     }
     handleContextMenuClose();
@@ -60,10 +70,16 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
 
     const column = columns[parseInt(contextMenu.fieldIndex)];
     if (column?.headerName) {
-      session.pipeAndUpdateExpression(`where: ${column.headerName} = '${contextMenu.cellValue}'`, false);
+      session.pipeAndUpdateExpression(
+        `where: ${column.headerName} = '${contextMenu.cellValue}'`,
+        false,
+      );
       await session.evaluate();
     } else {
-      console.error('Column missing header name for filter action:', { fieldIndex: contextMenu.fieldIndex, column });
+      console.error('Column missing header name for filter action:', {
+        fieldIndex: contextMenu.fieldIndex,
+        column,
+      });
     }
     handleContextMenuClose();
   };
@@ -81,7 +97,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     // Convert rows to CSV format
     const csvRows = [
       headers.join(','), // Header row
-      ...rows.map(row => 
+      ...rows.map(row =>
         columns
           .filter(col => col.field !== '_id')
           .map(col => {
@@ -91,24 +107,31 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
               return '';
             }
             const stringValue = String(value);
-            if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+            if (
+              stringValue.includes(',') ||
+              stringValue.includes('"') ||
+              stringValue.includes('\n')
+            ) {
               return `"${stringValue.replace(/"/g, '""')}"`;
             }
             return stringValue;
           })
-          .join(',')
-      )
+          .join(','),
+      ),
     ];
 
     // Create and download the file
     const csvContent = csvRows.join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
-    
+
     if (link.download !== undefined) {
       const url = URL.createObjectURL(blob);
       link.setAttribute('href', url);
-      link.setAttribute('download', `pine-export-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`);
+      link.setAttribute(
+        'download',
+        `pine-export-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`,
+      );
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
@@ -133,13 +156,15 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
             disabled={rows.length === 0}
             sx={{
               position: 'absolute',
-              ...(compactMode ? {
-                top: 0,
-                right: -44,
-              } : {
-                top: -40,
-                right: 0,
-              }),
+              ...(compactMode
+                ? {
+                    top: 0,
+                    right: -44,
+                  }
+                : {
+                    top: -40,
+                    right: 0,
+                  }),
               zIndex: 1000,
               backgroundColor: 'var(--background-color)',
               border: '1px solid var(--border-color)',
@@ -157,7 +182,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
             <FileDownload fontSize="small" />
           </IconButton>
         </Tooltip>
-        <Box 
+        <Box
           sx={{ position: 'absolute', inset: 0 }}
           onContextMenu={(event: React.MouseEvent) => {
             // Find the cell that was right-clicked
@@ -176,7 +201,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
                     const params = {
                       field: fieldAttr,
                       value: rowData[fieldAttr],
-                      row: rowData
+                      row: rowData,
                     };
                     handleContextMenu(event, params);
                   }
@@ -238,6 +263,50 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
             rows={rows}
             columns={columns}
             getRowId={row => row._id ?? ''}
+            columnVisibilityModel={session.columnVisibilityModel}
+            processRowUpdate={async (newRow, oldRow) => {
+              // Find which field/column changed
+              const changedFields = Object.keys(newRow).filter(
+                field => newRow[field] !== oldRow[field],
+              );
+
+              if (changedFields.length === 0) {
+                return oldRow;
+              }
+              const changedField = changedFields[0]; // Usually only one field changes at a time
+
+              // If you need the column index instead of field name
+              const columnIndex = columns.findIndex(col => col.field === changedField).toString();
+
+              // the field is a stringified index of the column
+              // We want to find the table i.e. the alias of the table for the column
+              const alias = session.columnMetadata.colIndexToAliasLookup[columnIndex];
+              const idColumnIndex = session.columnMetadata.aliasToIdLookup[alias];
+              if (!idColumnIndex) {
+                console.error('No id column index found for alias:', alias);
+                return oldRow;
+              }
+              const id = newRow[idColumnIndex];
+              const column = session.columnMetadata.colIndexToColumnLookup[columnIndex];
+
+              try {
+                const vs = global.getVirtualSession();
+                vs.expression = session.expression;
+                vs.prettify();
+                vs.pipeAndUpdateExpression(`from: ${alias}`);
+                vs.pipeAndUpdateExpression(`where: id = '${id}'`);
+                vs.pipeAndUpdateExpression(`update! ${column} = '${newRow[columnIndex]}'`);
+                const result = await vs.evaluate();
+
+                session.message = Object.values(result).join(': ');
+
+              } catch (e) {
+                console.error('Error updating row:', e);
+                return oldRow;
+              }
+
+              return newRow;
+            }}
           />
         </Box>
       </Box>
@@ -247,20 +316,24 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
           open={!!contextMenu}
           onClose={handleContextMenuClose}
           anchorReference="anchorPosition"
-          anchorPosition={contextMenu.mouseX > 0 && contextMenu.mouseY > 0 ? { top: contextMenu.mouseY, left: contextMenu.mouseX } : undefined}
+          anchorPosition={
+            contextMenu.mouseX > 0 && contextMenu.mouseY > 0
+              ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
+              : undefined
+          }
         >
-                     <MenuItem onClick={handleCopyAction}>
-             <ListItemIcon>
-               <ContentCopy fontSize="small" />
-             </ListItemIcon>
-             <ListItemText primary="Copy" />
-           </MenuItem>
-           <MenuItem onClick={handleFilterAction}>
-             <ListItemIcon>
-               <FilterAlt fontSize="small" />
-             </ListItemIcon>
-             <ListItemText primary="Filter" />
-           </MenuItem>
+          <MenuItem onClick={handleCopyAction}>
+            <ListItemIcon>
+              <ContentCopy fontSize="small" />
+            </ListItemIcon>
+            <ListItemText primary="Copy" />
+          </MenuItem>
+          <MenuItem onClick={handleFilterAction}>
+            <ListItemIcon>
+              <FilterAlt fontSize="small" />
+            </ListItemIcon>
+            <ListItemText primary="Filter" />
+          </MenuItem>
         </Menu>
       )}
     </div>

@@ -37,10 +37,9 @@ export type OperationType =
 export type Operation = {
   type: OperationType;
 };
-export type Column = { column: string; alias: string };
-
 export type WhereCondition = [string, string, null, string, { type: string; value: string } | null];
 
+export type Column = { alias: string; column: string; 'column-alias': string; hidden: boolean };
 export type Ast = {
   hints: Hints;
   'selected-tables': Table[];
@@ -54,13 +53,16 @@ export type Ast = {
 };
 
 export type Response = {
-  result: (string | number)[][];
   'connection-id': string;
   version: string;
-  query: string;
   error: string;
   'error-type': string;
+  // build
   ast: Ast;
+  query: string;
+  // eval
+  result: (string | number)[][];
+  columns: Column[];
 };
 
 export type ConnectionStatsResponse = {
@@ -126,19 +128,6 @@ export class HttpClient {
       throw new Error('No response when trying to eval');
     }
     return response;
-  }
-
-  /**
-   * The first column is usually the primary key
-   */
-  public async getFirstColumnName(expression: string): Promise<{ columnName: string; ast: Ast }> {
-    const response = await this.post('eval', {
-      expression: this.cleanExpression(`${expression} | 1`),
-    });
-    if (!response) {
-      throw new Error('No response when trying to get the first column name');
-    }
-    return { columnName: response.result[0][0] as string, ast: response.ast };
   }
 
   public async build(expression: string): Promise<Response> {

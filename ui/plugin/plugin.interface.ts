@@ -1,6 +1,6 @@
 import { GlobalStore } from '../store/global.store';
-import { Session } from '../store/session';
+import { Row, Session } from '../store/session';
 
 export interface PluginInterface {
-  evaluate(): Promise<void>;
+  evaluate(): Promise<Row[]>;
 }

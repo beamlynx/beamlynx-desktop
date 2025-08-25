@@ -30,6 +30,7 @@ export class GlobalStore {
 
   activeSessionId = 'session-0';
   sessions: Record<string, Session> = {};
+  virtualSession: Session | null = null;
 
   // Theme - moved from individual sessions to global
   _theme: Theme;
@@ -161,6 +162,13 @@ export class GlobalStore {
       throw new Error('Session with id ' + id + ' not found');
     }
     return session;
+  };
+
+  getVirtualSession = (): Session => {
+    if (!this.virtualSession) {
+      this.virtualSession = new Session('virtual', this);
+    }
+    return this.virtualSession;
   };
 
   loadConnectionMetadata = async () => {

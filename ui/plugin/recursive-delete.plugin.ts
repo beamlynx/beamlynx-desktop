@@ -1,5 +1,5 @@
 import { format } from 'sql-formatter';
-import { Session } from '../store/session';
+import { Row, Session } from '../store/session';
 import { PluginInterface } from './plugin.interface';
 import { Ast, HttpClient } from '../store/client';
 
@@ -12,7 +12,7 @@ export class RecursiveDeletePlugin implements PluginInterface {
       this.session.ast = ast;
     });
   }
-  public async evaluate(): Promise<void> {
+  public async evaluate(): Promise<Row[]> {
     const startTime = Date.now();
     try {
       this.session.loading = true;
@@ -58,7 +58,7 @@ export class RecursiveDeletePlugin implements PluginInterface {
       this.session.message = `⏱️ Time taken: ${minutes}:${seconds.toString().padStart(2, '0')}`;
     }
 
-    return Promise.resolve();
+    return [];
   }
 
   private async collectDeleteQueries(

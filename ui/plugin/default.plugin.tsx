@@ -1,8 +1,7 @@
-import { HttpClient } from '../store/client';
-import { Row, Session } from '../store/session';
+import { Column, HttpClient } from '../store/client';
+import { ColumnMetadata, Row, Session } from '../store/session';
 import { pickSuccessMessage } from '../store/success-messages';
 import { PluginInterface } from './plugin.interface';
-import { Link } from '@mui/material';
 import { GridColDef } from '@mui/x-data-grid';
 
 export class DefaultPlugin implements PluginInterface {
@@ -11,7 +10,7 @@ export class DefaultPlugin implements PluginInterface {
     this.client = new HttpClient();
   }
 
-  public async evaluate(): Promise<void> {
+  public async evaluate(): Promise<Row[]> {
     const session = this.session;
     session.message = '⏳ Fetching rows ...';
     session.loading = true;
@@ -21,44 +20,66 @@ export class DefaultPlugin implements PluginInterface {
     if (!response) {
       session.message = '🤷 No response';
       session.loading = false;
-      return;
+      return [];
     }
 
     if (response.error) {
       session.message = '';
       session.error = response.error;
       session.loading = false;
-      return;
+      return [];
     }
 
     if (!response.result) {
       session.loading = false;
-      return;
+      return [];
     }
 
     const rows = response.result as Row[];
-    const columns: GridColDef[] = rows[0].map((header: string, index: number): GridColDef => {
+    const result = [...rows];
+
+    const columns = response.columns.map((column, index): GridColDef => {
       return {
         field: index.toString(),
-        headerName: header,
+        headerName: column['column-alias'] || column['column'],
         flex: 1,
-        editable: false,
         minWidth: 100,
         maxWidth: 400,
+        editable: true,
+        disableReorder: true,
       };
     });
-    session.columns = columns;
-    const idIndex = columns.findIndex(column => column.headerName === 'id');
-    session.rows = rows.splice(1).map((row, index) => {
-      if (idIndex !== -1) {
-        row[idIndex] = row[idIndex]; // TODO: this should be clicable
-      }
+    const columnMetadata = response.columns.reduce<ColumnMetadata>(
+      (acc, column, index) => {
+        acc.colIndexToAliasLookup[index.toString()] = column['alias'];
+        acc.colIndexToColumnLookup[index.toString()] = column['column'];
+        if (column.column !== 'id') {
+          return acc;
+        }
+        acc.aliasToIdLookup[column['alias']] = index.toString();
+        return acc;
+      },
+      { colIndexToAliasLookup: {}, aliasToIdLookup: {}, colIndexToColumnLookup: {} },
+    );
+    const columnVisibilityModel = response.columns.reduce(
+      (acc, column, index) => {
+        acc[index.toString()] = !column.hidden;
+        return acc;
+      },
+      {} as Record<string, boolean>,
+    );
 
+    session.columns = columns;
+    session.columnVisibilityModel = columnVisibilityModel;
+    session.columnMetadata = columnMetadata;
+    session.rows = rows.splice(1).map((row, index) => {
       return { ...row, _id: index };
     });
     session.message = pickSuccessMessage();
     session.loading = false;
     session.focusTextInput();
     session.mode = 'result';
+
+    return result;
   }
 }

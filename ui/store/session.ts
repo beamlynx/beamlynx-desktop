@@ -2,7 +2,7 @@ import { makeAutoObservable, reaction } from 'mobx';
 import { format } from 'sql-formatter';
 import { DefaultPlugin } from '../plugin/default.plugin';
 import { RecursiveDeletePlugin } from '../plugin/recursive-delete.plugin';
-import { Ast, Hints, HttpClient, Operation, Response, TableHint } from './client';
+import { Ast, Column, Hints, HttpClient, Operation, Response, TableHint } from './client';
 import { generateGraph, getCandidateIndex, Graph } from './graph.util';
 import { debounce, prettifyExpression } from './util';
 import { MAX_COUNT, TOTAL_BARS } from '../constants';
@@ -14,6 +14,12 @@ export type Mode = 'documentation' | 'graph' | 'result' | 'monitor';
 export type Theme = 'light' | 'dark';
 
 export type Row = { [key: string]: any };
+
+export type ColumnMetadata = {
+  colIndexToAliasLookup: Record<string, string>; // i.e. which table does the column belong to
+  aliasToIdLookup: Record<string, string>; // i.e. what is the id column index for the table
+  colIndexToColumnLookup: Record<string, string>; // i.e. what is the column name for the column index
+};
 
 const client = new HttpClient();
 
@@ -75,6 +81,11 @@ export class Session {
   /** Result */
   loading: boolean = false; // observable
   columns: GridColDef[] = [];
+  // The field name - which is the index of the column (stringified) - and the
+  // value is false The id fields are hiddlen by default but kept in the list of
+  // columns so that finding the correct id of the row being updated is possible
+  columnVisibilityModel: Record<string, boolean> = {};
+  columnMetadata: ColumnMetadata = { colIndexToAliasLookup: {}, aliasToIdLookup: {}, colIndexToColumnLookup: {} };
   rows: Row[] = [];
 
   /** Mode - controls the main view */
@@ -210,7 +221,6 @@ export class Session {
       async ast => {
         if (!ast) return;
 
-
         const isDark = this.globalStore?.theme === 'dark';
         const graph = generateGraph(ast, this.id, isDark);
         this.graph = graph;
@@ -296,7 +306,7 @@ export class Session {
     this.expression = this.expression + string;
   }
 
-  public pipeAndUpdateExpression(pine: string, overwriteLastOperation: boolean) {
+  public pipeAndUpdateExpression(pine: string, overwriteLastOperation: boolean = false) {
     this.expression = this.pipeExpression(pine, overwriteLastOperation);
   }
 
