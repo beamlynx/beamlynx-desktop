@@ -1,7 +1,7 @@
 import { Edge, Position } from 'reactflow';
 import { PineEdge, PineNode, PineSelectedNode, PineSuggestedNode } from '../model';
 import { NodeType } from '../components/Graph.box';
-import { Ast, Column, Table, TableHint, WhereCondition } from './client';
+import { Ast, Column, ColumnHint, Table, TableHint, WhereCondition } from './client';
 import dagre from 'dagre';
 
 export type Graph = {
@@ -120,6 +120,19 @@ const makeColumnsLookup = (columns: Column[]): Record<string, string[]> => {
   );
 };
 
+const makeColumnHintsLookup = (columns: ColumnHint[]): Record<string, string[]> => {
+  return columns.reduce(
+    (acc, x) => {
+      if (!acc[x.alias]) {
+        acc[x.alias] = [];
+      }
+      acc[x.alias].push(x.column);
+      return acc;
+    },
+    {} as Record<string, string[]>,
+  );
+};
+
 const makeWhereColumnsLookup = (whereConditions: WhereCondition[]): Record<string, string[]> => {
   return whereConditions.reduce(
     (acc, [alias, column, , operator, value]) => {
@@ -152,13 +165,13 @@ const makeSelectedNodes = (ast: Ast, sessionId: string, isDark: boolean = false)
   const orderLookup = makeColumnsLookup(orderColumns);
   const whereLookup = makeWhereColumnsLookup(whereColumns);
 
-  const suggestedColumnsLookup = makeColumnsLookup(
+  const suggestedColumnsLookup = makeColumnHintsLookup(
     type === 'select' || type === 'select-partial' ? select : [],
   );
-  const suggestedOrderColsLookup = makeColumnsLookup(
+  const suggestedOrderColsLookup = makeColumnHintsLookup(
     type === 'order' || type === 'order-partial' ? order : [],
   );
-  const suggestedWhereColsLookup = makeColumnsLookup(
+  const suggestedWhereColsLookup = makeColumnHintsLookup(
     type === 'where' || type === 'where-partial' ? where : [],
   );
 
