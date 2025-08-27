@@ -5,6 +5,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- Force the user to upgrade the server if needed.
+
 ## [0.28.1] - 2025-08-26
 ### Added
 - Support for updating rows in the results.

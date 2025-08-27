@@ -3,6 +3,7 @@ export const DevState = {
   pineConnected: undefined,
   dbConnected: undefined,
   onboardingServer: undefined,
+  requiresUpgrade: undefined,
 
   // Playground - set to undefined to allow URL-based detection (playground.beamlynx.com)
   development: undefined,

@@ -19,6 +19,7 @@ export class GlobalStore {
   connecting = false;
   connection = '';
   version: string | undefined = undefined;
+  requiresUpgrade = false;
 
   get pineConnected() {
     return DevState.pineConnected ?? !!this.version;
@@ -191,9 +192,7 @@ export class GlobalStore {
       }
 
       if (lt(this.version, RequiredVersion)) {
-        // Use the default session to show the error
-        const session = this.getSession(this.activeSessionId);
-        session.error = `You are running version ${this.version}. Upgrade the server to the latest version (i.e. >= ${RequiredVersion}).`;
+        this.requiresUpgrade = true;
       }
     } catch (e) {
       console.error('Failed to load connection metadata', e);
@@ -201,6 +200,10 @@ export class GlobalStore {
       this.version = undefined;
     }
     return this.connection;
+  };
+
+  getRequiresUpgrade = () => {
+    return DevState.requiresUpgrade ?? this.requiresUpgrade;
   };
 
   setEmail = (email: string) => {

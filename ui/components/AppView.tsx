@@ -16,6 +16,7 @@ import { useStores } from '../store/store-container';
 import PineTabs from './PineTabs';
 import { Welcome } from './docs/Welcome';
 import { PineServerNotRunning } from './docs/PineServerNotRunning';
+import { UpgradeRequired } from './docs/UpgradeRequired';
 import ActiveConnection from './ActiveConnection';
 import Message from './Message';
 import UserBox from './UserBox';
@@ -33,9 +34,9 @@ const AppView = observer(() => {
   const [mounted, setMounted] = useState(false);
 
   // Initialize global keyboard shortcuts
-  useGlobalKeybindings({ 
+  useGlobalKeybindings({
     session,
-    focusInput: () => session.focusTextInput()
+    focusInput: () => session.focusTextInput(),
   });
 
   const theme = useTheme();
@@ -80,7 +81,7 @@ const AppView = observer(() => {
   const UserContent =
     isDevelopment() || isPlayground() ? (
       <Typography variant="caption" color="gray">
-        {isDevelopment() ? '[Develoment]' : ''} 
+        {isDevelopment() ? '[Develoment]' : ''}
         {isPlayground() ? '[Playground]' : ''}
       </Typography>
     ) : (
@@ -148,6 +149,10 @@ const AppView = observer(() => {
   session.isSmallScreen = isSmallScreen;
   session.forceCompactMode = forceSmallScreen;
 
+  if (global.getRequiresUpgrade()) {
+    return <UpgradeRequired />;
+  }
+
   return (
     <>
       <AnalysisModal />
@@ -205,7 +210,9 @@ const AppView = observer(() => {
                 </ListItemIcon>
                 Compact mode
               </MenuItem>
-              <MenuItem onClick={() => session.mode = session.mode === 'monitor' ? 'graph' : 'monitor'}>
+              <MenuItem
+                onClick={() => (session.mode = session.mode === 'monitor' ? 'graph' : 'monitor')}
+              >
                 <ListItemIcon>
                   <Switch checked={session.mode === 'monitor'} size="small" />
                 </ListItemIcon>
