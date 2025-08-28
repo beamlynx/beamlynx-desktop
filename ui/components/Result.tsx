@@ -300,9 +300,13 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
                 vs.pipeAndUpdateExpression(`update! ${column} = '${newRow[columnIndex]}'`);
                 const result = await vs.evaluate();
 
+                if (vs.error) {
+                  session.error = vs.error;
+                  return oldRow;
+                }
                 session.message = Object.values(result).join(': ');
               } catch (e) {
-                console.error('Error updating row:', e);
+                session.error = 'Error updating row';
                 return oldRow;
               }
 

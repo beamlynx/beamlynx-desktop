@@ -1,4 +1,4 @@
-import { Typography, useMediaQuery, useTheme } from '@mui/material';
+import { Typography, useMediaQuery, useTheme, Tooltip } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
 import React, { useEffect } from 'react';
@@ -19,18 +19,21 @@ const Message: React.FC<MessageProps> = observer(({}) => {
   }, [global, global.activeSessionId]);
 
   if (session.error && session.errorType !== 'parse') {
+    const truncatedError = session.error.substring(0, isSmallScreen ? 40 : 120);
     return (
-      <Typography
-        variant="caption"
-        sx={{
-          fontFamily: 'Courier, Courier New, monospace',
-          whiteSpace: 'break-spaces',
-          lineHeight: 1,
-          color: 'error.main',
-        }}
-      >
-        {'🚨 ' + session.error}
-      </Typography>
+      <Tooltip title={session.error} placement="bottom-start">
+        <Typography
+          variant="caption"
+          sx={{
+            fontFamily: 'Courier, Courier New, monospace',
+            whiteSpace: 'break-spaces',
+            lineHeight: 1,
+            color: 'error.main',
+          }}
+        >
+          {'🚨 ' + truncatedError}
+        </Typography>
+      </Tooltip>
     );
   }
   return (

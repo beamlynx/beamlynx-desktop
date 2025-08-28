@@ -5,8 +5,12 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.29.0] - 2025-08-28
 ### Added
 - Force the user to upgrade the server if needed.
+
+### Fixed
+- Error message was not being shown when the update failed
 
 ## [0.28.1] - 2025-08-26
 ### Added

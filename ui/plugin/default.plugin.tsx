@@ -13,6 +13,7 @@ export class DefaultPlugin implements PluginInterface {
   public async evaluate(): Promise<Row[]> {
     const session = this.session;
     session.message = '⏳ Fetching rows ...';
+    session.error = '';
     session.loading = true;
 
     const response = await this.client.eval(session.expression);
