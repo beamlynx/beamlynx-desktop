@@ -5,6 +5,11 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+
+## [0.29.1] - 2025-08-30
+### Security
+- The updated values weren't being escaped.
+
 ## [0.29.0] - 2025-08-28
 ### Added
 - Force the user to upgrade the server if needed.

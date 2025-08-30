@@ -15,6 +15,7 @@ import {
   ListItemText,
 } from '@mui/material';
 import { FileDownload, ContentCopy, FilterAlt } from '@mui/icons-material';
+import { pineEscape } from '../store/util';
 
 interface ResultProps {
   sessionId: string;
@@ -295,9 +296,9 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
                 vs.prettify();
                 vs.pipeAndUpdateExpression(`from: ${alias}`);
                 vs.pipeAndUpdateExpression(
-                  `where: id = ${Number.isInteger(id) ? parseInt(id, 10) : `'${id.replace(/'/g, "''")}'`}`,
+                  `where: id = ${Number.isInteger(id) ? parseInt(id, 10) : `'${pineEscape(id)}'`}`,
                 );
-                vs.pipeAndUpdateExpression(`update! ${column} = '${newRow[columnIndex]}'`);
+                vs.pipeAndUpdateExpression(`update! ${column} = '${pineEscape(newRow[columnIndex])}'`);
                 const result = await vs.evaluate();
 
                 if (vs.error) {

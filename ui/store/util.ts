@@ -79,3 +79,13 @@ export const isDevelopment = () => {
   }
   return process.env.NODE_ENV === 'development';
 };
+
+/**
+ * Escapes a string for use in a SQL query
+ * 
+ * TODO: I am replacing the single quote with an underscore but a more robust
+ * solution is needed.
+ */
+export const pineEscape = (x: string) => {
+  return x.replace(/'/g, "_");
+} 
