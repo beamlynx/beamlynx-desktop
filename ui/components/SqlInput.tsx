@@ -69,7 +69,29 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session }) => {
   );
 
   const extensions = [
+    EditorView.lineWrapping,
     sql(),
+    EditorView.theme({
+      '&': {
+        fontSize: '12px',
+        fontFamily: 'monospace',
+        height: '177px',
+      },
+      '.cm-editor': {
+        height: '100%',
+      },
+      '.cm-focused': {
+        outline: 'none',
+      },
+      '.cm-content': {
+        padding: '8px 12px',
+        minHeight: '100%',
+      },
+      '.cm-scroller': {
+        fontFamily: 'monospace',
+        height: '100%',
+      },
+    }),
     Prec.high(
       keymap.of([
         {
@@ -109,6 +131,7 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session }) => {
         dropCursor: false,
         allowMultipleSelections: false,
         crosshairCursor: false,
+        lineNumbers: true,
       }}
       style={{
         outline: 'none',

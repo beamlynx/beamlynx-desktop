@@ -1,13 +1,13 @@
+import { GridColDef } from '@mui/x-data-grid';
 import { makeAutoObservable, reaction } from 'mobx';
 import { format } from 'sql-formatter';
+import { TOTAL_BARS } from '../constants';
 import { DefaultPlugin } from '../plugin/default.plugin';
 import { RecursiveDeletePlugin } from '../plugin/recursive-delete.plugin';
-import { Ast, Column, Hints, HttpClient, Operation, Response, TableHint } from './client';
+import { Ast, Hints, HttpClient, Operation, Response } from './client';
 import { generateGraph, getCandidateIndex, Graph } from './graph.util';
-import { debounce, prettifyExpression } from './util';
-import { MAX_COUNT, TOTAL_BARS } from '../constants';
-import { GridColDef } from '@mui/x-data-grid';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
+import { debounce, prettifyExpression } from './util';
 
 export type Mode = 'documentation' | 'graph' | 'result' | 'monitor';
 
@@ -90,7 +90,11 @@ export class Session {
   // value is false The id fields are hiddlen by default but kept in the list of
   // columns so that finding the correct id of the row being updated is possible
   columnVisibilityModel: Record<string, boolean> = {};
-  columnMetadata: ColumnMetadata = { colIndexToAliasLookup: {}, aliasToIdLookup: {}, colIndexToColumnLookup: {} };
+  columnMetadata: ColumnMetadata = {
+    colIndexToAliasLookup: {},
+    aliasToIdLookup: {},
+    colIndexToColumnLookup: {},
+  };
   rows: Row[] = [];
 
   /** Mode - controls the main view */
@@ -320,15 +324,15 @@ export class Session {
   }
 
   public async evaluate() {
-      const { type } = this.operation;
-      switch (type) {
-        case 'delete':
-          return await this.plugins.delete.evaluate();
-        case 'table':
-        // intentional fall through
-        default:
-          return await this.plugins.default.evaluate();
-      }
+    const { type } = this.operation;
+    switch (type) {
+      case 'delete':
+        return await this.plugins.delete.evaluate();
+      case 'table':
+      // intentional fall through
+      default:
+        return await this.plugins.default.evaluate();
+    }
   }
 
   public setTextInputFocused(focused: boolean) {
@@ -349,7 +353,7 @@ export class Session {
 
   public setMessage(message: string, autoClearMs: number = 3000) {
     this.message = message;
-    
+
     if (autoClearMs > 0) {
       setTimeout(() => {
         // Only clear if the message hasn't been changed by something else
