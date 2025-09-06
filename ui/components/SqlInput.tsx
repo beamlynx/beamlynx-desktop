@@ -7,41 +7,12 @@ import React, { useRef, useEffect, useCallback } from 'react';
 import { Session } from '../store/session';
 import { observer } from 'mobx-react-lite';
 import { vim } from '@replit/codemirror-vim';
-import { Button, Box } from '@mui/material';
-import { PlayArrow, Loop } from '@mui/icons-material';
+import { Box } from '@mui/material';
 import { useStores } from '../store/store-container';
 
 interface SqlInputProps {
   session: Session;
 }
-
-const RunButton: React.FC<{ session: Session }> = observer(({ session }) => (
-  <Button
-    variant="contained"
-    onClick={() => session.evaluate()}
-    disabled={!session.query || session.loading}
-    startIcon={session.loading ? <Loop /> : <PlayArrow />}
-    size="small"
-    title="Run (Cmd/Ctrl + Enter)"
-    sx={{
-      backgroundColor: 'var(--primary-color)',
-      color: 'var(--primary-text-color)',
-      '&:hover': {
-        backgroundColor: 'var(--primary-color-hover)',
-      },
-      '&:disabled': {
-        backgroundColor: 'var(--icon-color)',
-        color: 'var(--text-color)',
-        opacity: 0.6,
-      },
-      minWidth: 'auto',
-      px: 1.5,
-      py: 0.5,
-    }}
-  >
-    Run
-  </Button>
-));
 
 const SqlInput: React.FC<SqlInputProps> = observer(({ session }) => {
   const { global } = useStores();
@@ -99,22 +70,17 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session }) => {
 
   const extensions = [
     sql(),
-    keymap.of([
-      {
-        key: 'Cmd-Enter',
-        run: () => {
-          session.evaluate();
-          return true;
+    Prec.high(
+      keymap.of([
+        {
+          key: 'Mod-Enter',
+          run: () => {
+            session.evaluate();
+            return true;
+          },
         },
-      },
-      {
-        key: 'Ctrl-Enter',
-        run: () => {
-          session.evaluate();
-          return true;
-        },
-      },
-    ]),
+      ]),
+    ),
   ];
 
   if (session.vimMode) {
@@ -122,49 +88,35 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session }) => {
   }
 
   return (
-    <Box sx={{ position: 'relative' }}>
-      <CodeMirror
-        ref={inputRef}
-        id="sql-input"
-        value={session.query}
-        height="177px"
-        theme={global.theme === 'dark' ? oneDark : 'light'}
-        extensions={extensions}
-        onFocus={() => {
-          session.focusTextInput();
-        }}
-        onBlur={() => {
-          session.blurTextInput();
-        }}
-        onChange={handleChange}
-        indentWithTab={false}
-        basicSetup={{
-          tabSize: 2,
-          foldGutter: false,
-          dropCursor: false,
-          allowMultipleSelections: false,
-          crosshairCursor: false,
-        }}
-        style={{
-          outline: 'none',
-        }}
-        autoFocus={true}
-        placeholder="Enter your SQL query here..."
-      />
-
-      {/* Run button positioned at bottom right */}
-      <Box
-        sx={{
-          position: 'absolute',
-          bottom: 8,
-          right: 8,
-          zIndex: 10,
-        }}
-      >
-        <RunButton session={session} />
-      </Box>
-    </Box>
+    <CodeMirror
+      ref={inputRef}
+      id="sql-input"
+      value={session.query}
+      height="177px"
+      theme={global.theme === 'dark' ? oneDark : 'light'}
+      extensions={extensions}
+      onFocus={() => {
+        session.focusTextInput();
+      }}
+      onBlur={() => {
+        session.blurTextInput();
+      }}
+      onChange={handleChange}
+      indentWithTab={false}
+      basicSetup={{
+        tabSize: 2,
+        foldGutter: false,
+        dropCursor: false,
+        allowMultipleSelections: false,
+        crosshairCursor: false,
+      }}
+      style={{
+        outline: 'none',
+      }}
+      autoFocus={true}
+      placeholder="Enter your SQL query here..."
+    />
   );
 });
 
-export default SqlInput; 
+export default SqlInput;

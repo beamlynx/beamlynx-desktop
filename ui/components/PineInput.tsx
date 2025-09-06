@@ -1,62 +1,29 @@
-import CodeMirror, { ReactCodeMirrorRef } from '@uiw/react-codemirror';
-import { oneDark } from '@codemirror/theme-one-dark';
-import { EditorView, keymap } from '@codemirror/view';
-import { Prec } from '@codemirror/state';
 import {
-  startCompletion,
   completionStatus,
   moveCompletionSelection,
+  startCompletion,
 } from '@codemirror/autocomplete';
-import React, { useRef, useEffect, useCallback, useMemo } from 'react';
-import { Session } from '../store/session';
-import { prettifyExpression } from '../store/util';
-import { observer } from 'mobx-react-lite';
-import { pineLanguage } from './pine-language';
-import { createPineAutocompletion } from './pine-autocomplete';
+import { Prec } from '@codemirror/state';
+import { oneDark } from '@codemirror/theme-one-dark';
+import { EditorView, keymap } from '@codemirror/view';
 import { vim } from '@replit/codemirror-vim';
-import { Button, Box } from '@mui/material';
-import { PlayArrow, Loop } from '@mui/icons-material';
+import CodeMirror, { ReactCodeMirrorRef } from '@uiw/react-codemirror';
+import { observer } from 'mobx-react-lite';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import { Session } from '../store/session';
 import { useStores } from '../store/store-container';
-
+import { prettifyExpression } from '../store/util';
+import { createPineAutocompletion } from './pine-autocomplete';
+import { pineLanguage } from './pine-language';
 
 interface PineInputProps {
   session: Session;
 }
 
-const RunButton: React.FC<{ session: Session }> = observer(({ session }) => (
-  <Button
-    variant="contained"
-    onClick={() => session.evaluate()}
-    disabled={!session.expression || session.loading}
-    startIcon={session.loading ? <Loop /> : <PlayArrow />}
-    size="small"
-    title="Run (Cmd/Ctrl + Enter)"
-    sx={{
-      backgroundColor: 'var(--primary-color)',
-      color: 'var(--primary-text-color)',
-      '&:hover': {
-        backgroundColor: 'var(--primary-color-hover)',
-      },
-      '&:disabled': {
-        backgroundColor: 'var(--icon-color)',
-        color: 'var(--text-color)',
-        opacity: 0.6,
-      },
-      minWidth: 'auto',
-      px: 1.5,
-      py: 0.5,
-    }}
-  >
-    Run
-  </Button>
-));
-
 const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
   const { global } = useStores();
   const inputRef = useRef<ReactCodeMirrorRef | null>(null);
   const lastValueRef = useRef<string>(session.expression);
-
-
 
   /**
    * Optimized value update function that uses CodeMirror's transaction API
@@ -92,15 +59,11 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
     }
   }, [session.expression, updateEditorValue]);
 
-
-
   useEffect(() => {
     if (session.textInputFocused) {
       inputRef.current?.view?.focus();
     }
   }, [session.textInputFocused]);
-
-
 
   const isPrintableChar = (key: string) => {
     return key.length === 1 && !key.match(/[\u0000-\u001F\u007F-\u009F]/);
@@ -127,16 +90,16 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
 
     return (view: EditorView, expectedContent: string) => {
       clearTimeout(timeoutId);
-      
+
       timeoutId = setTimeout(() => {
         const currentContent = view.state.doc.toString();
-        
+
         // If expectedContent was provided, check if the content has changed unexpectedly
         if (expectedContent && currentContent !== expectedContent) {
           // Content has changed since the autocomplete was applied, skip prettify
           return;
         }
-        
+
         const prettifiedContent = prettifyExpression(currentContent, true);
 
         if (prettifiedContent === currentContent) {
@@ -181,7 +144,7 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
         // Callback when a table hint is applied via autocomplete
         onPipe: view => {
           const expectedContent = view.state.doc.toString();
-          
+
           // Call the debounced prettify function with the expected content
           // This helps prevent race conditions if user starts typing immediately
           debouncedPrettifyOnPipe(view, expectedContent);
@@ -213,7 +176,7 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
           key: 'F5',
           run: () => false, // Let browser handle F5 (reload)
         },
-      ])
+      ]),
     ),
     Prec.high(
       keymap.of([
@@ -292,48 +255,34 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
   }
 
   return (
-    <Box sx={{ position: 'relative' }}>
-      <CodeMirror
-        ref={inputRef}
-        id="input"
-        value={session.expression}
-        height="177px"
-        theme={global.theme === 'dark' ? oneDark : 'light'}
-        extensions={extensions}
-        onFocus={() => {
-          session.focusTextInput();
-        }}
-        onBlur={() => {
-          session.blurTextInput();
-        }}
-        onChange={handleChange}
-        indentWithTab={false}
-        basicSetup={{
-          tabSize: 2,
-          foldGutter: false,
-          dropCursor: false,
-          allowMultipleSelections: false,
-          crosshairCursor: false,
-        }}
-        style={{
-          outline: 'none',
-        }}
-        autoFocus={true}
-        placeholder=""
-      />
-
-      {/* Run button positioned at bottom right */}
-      <Box
-        sx={{
-          position: 'absolute',
-          bottom: 8,
-          right: 8,
-          zIndex: 10,
-        }}
-      >
-        <RunButton session={session} />
-      </Box>
-    </Box>
+    <CodeMirror
+      ref={inputRef}
+      id="input"
+      value={session.expression}
+      height="177px"
+      theme={global.theme === 'dark' ? oneDark : 'light'}
+      extensions={extensions}
+      onFocus={() => {
+        session.focusTextInput();
+      }}
+      onBlur={() => {
+        session.blurTextInput();
+      }}
+      onChange={handleChange}
+      indentWithTab={false}
+      basicSetup={{
+        tabSize: 2,
+        foldGutter: false,
+        dropCursor: false,
+        allowMultipleSelections: false,
+        crosshairCursor: false,
+      }}
+      style={{
+        outline: 'none',
+      }}
+      autoFocus={true}
+      placeholder=""
+    />
   );
 });
 

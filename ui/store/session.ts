@@ -320,15 +320,15 @@ export class Session {
   }
 
   public async evaluate() {
-    const { type } = this.operation;
-    switch (type) {
-      case 'delete':
-        return await this.plugins.delete.evaluate();
-      case 'table':
-      // intentional fall through
-      default:
-        return await this.plugins.default.evaluate();
-    }
+      const { type } = this.operation;
+      switch (type) {
+        case 'delete':
+          return await this.plugins.delete.evaluate();
+        case 'table':
+        // intentional fall through
+        default:
+          return await this.plugins.default.evaluate();
+      }
   }
 
   public setTextInputFocused(focused: boolean) {
@@ -345,6 +345,19 @@ export class Session {
 
   public setInputMode(mode: InputMode) {
     this.inputMode = mode;
+  }
+
+  public setMessage(message: string, autoClearMs: number = 3000) {
+    this.message = message;
+    
+    if (autoClearMs > 0) {
+      setTimeout(() => {
+        // Only clear if the message hasn't been changed by something else
+        if (this.message === message) {
+          this.message = '';
+        }
+      }, autoClearMs);
+    }
   }
 
   async updateConnectionLogs() {
