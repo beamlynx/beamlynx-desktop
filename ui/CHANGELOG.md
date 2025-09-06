@@ -5,7 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
-## [0.30.0] - 2025-09-07
+## [0.30.1] - 2025-09-07
 ### Added
 - Support for SQL mode.
 
