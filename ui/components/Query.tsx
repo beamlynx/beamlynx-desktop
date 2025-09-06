@@ -110,6 +110,19 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
     );
   }
 
+  if (session.inputMode === 'sql') {
+    return (<div
+      style={{
+        padding: '8px 12px',
+        fontSize: '12px',
+        fontFamily: 'monospace',
+        color: 'gray',
+      }}
+    >
+      SQL mode enabled. You can edit the SQL query directly in the input.
+    </div>);
+  }
+
   if (session.query) {
     return (
       <Box

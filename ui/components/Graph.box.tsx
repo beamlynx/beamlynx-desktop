@@ -151,6 +151,19 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId, containerRef }) => {
     }
   };
 
+  if (session.inputMode === 'sql') {
+    return (<div
+      style={{
+        padding: '8px 12px',
+        fontSize: '12px',
+        fontFamily: 'monospace',
+        color: 'gray',
+      }}
+    >
+      SQL mode enabled. You can edit the SQL query directly in the input.
+    </div>);
+  }
+
   return (
     <ReactFlow
       nodes={nodes}
