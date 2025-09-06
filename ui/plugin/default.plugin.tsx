@@ -16,7 +16,11 @@ export class DefaultPlugin implements PluginInterface {
     session.error = '';
     session.loading = true;
 
-    const response = await this.client.eval(session.expression);
+    // Use SQL endpoint if in SQL mode, otherwise use Pine eval endpoint
+    const response =
+      session.inputMode === 'sql'
+        ? await this.client.sql(session.query)
+        : await this.client.eval(session.expression);
 
     if (!response) {
       session.message = '🤷 No response';
@@ -39,6 +43,7 @@ export class DefaultPlugin implements PluginInterface {
     const rows = response.result as Row[];
     const result = [...rows];
 
+    // Pine mode - full metadata support
     const columns = response.columns.map((column, index): GridColDef => {
       return {
         field: index.toString(),
@@ -50,6 +55,7 @@ export class DefaultPlugin implements PluginInterface {
         disableReorder: true,
       };
     });
+
     const columnMetadata = response.columns.reduce<ColumnMetadata>(
       (acc, column, index) => {
         acc.colIndexToAliasLookup[index.toString()] = column['alias'];
@@ -62,6 +68,7 @@ export class DefaultPlugin implements PluginInterface {
       },
       { colIndexToAliasLookup: {}, aliasToIdLookup: {}, colIndexToColumnLookup: {} },
     );
+
     const columnVisibilityModel = response.columns.reduce(
       (acc, column, index) => {
         acc[index.toString()] = !column.hidden;
@@ -73,9 +80,10 @@ export class DefaultPlugin implements PluginInterface {
     session.columns = columns;
     session.columnVisibilityModel = columnVisibilityModel;
     session.columnMetadata = columnMetadata;
-    session.rows = rows.splice(1).map((row, index) => {
+    session.rows = rows.slice(1).map((row, index) => {
       return { ...row, _id: index };
     });
+
     session.message = pickSuccessMessage();
     session.loading = false;
     session.focusTextInput();

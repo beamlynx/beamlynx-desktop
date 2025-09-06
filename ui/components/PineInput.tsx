@@ -19,7 +19,7 @@ import { PlayArrow, Loop } from '@mui/icons-material';
 import { useStores } from '../store/store-container';
 
 
-interface TextInputProps {
+interface PineInputProps {
   session: Session;
 }
 
@@ -51,7 +51,7 @@ const RunButton: React.FC<{ session: Session }> = observer(({ session }) => (
   </Button>
 ));
 
-const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
+const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
   const { global } = useStores();
   const inputRef = useRef<ReactCodeMirrorRef | null>(null);
   const lastValueRef = useRef<string>(session.expression);
@@ -188,7 +188,7 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
         },
       },
     );
-  }, [session.ast?.hints, debouncedPrettifyOnPipe]); // Removed session.expression from dependencies
+  }, [session.ast?.hints, session.graph, debouncedPrettifyOnPipe]); // Added session.graph dependency
 
   // Create extensions array with Pine language support and custom keymap
   const extensions = [
@@ -337,4 +337,4 @@ const TextInput: React.FC<TextInputProps> = observer(({ session }) => {
   );
 });
 
-export default TextInput;
+export default PineInput;

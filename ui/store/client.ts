@@ -130,6 +130,14 @@ export class HttpClient {
     return response;
   }
 
+  public async sql(query: string): Promise<Response> {
+    const response = await this.post('sql', { query: query.trim() });
+    if (!response) {
+      throw new Error('No response when trying to execute SQL');
+    }
+    return response;
+  }
+
   public async build(expression: string): Promise<Response> {
     const response = await this.post('build', { expression });
     if (!response) {

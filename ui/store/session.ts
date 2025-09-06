@@ -13,6 +13,8 @@ export type Mode = 'documentation' | 'graph' | 'result' | 'monitor';
 
 export type Theme = 'light' | 'dark';
 
+export type InputMode = 'pine' | 'sql';
+
 export type Row = { [key: string]: any };
 
 export type ColumnMetadata = {
@@ -74,6 +76,9 @@ export class Session {
   /** Pine expression to be evaluated */
   expression: string = ''; // observable
 
+  /** Input mode - pine or sql */
+  inputMode: InputMode = 'pine';
+
   /** Database connection monitoring */
   monitor: boolean = false;
   connectionCountLogs: { time: string; count: number }[] = [];
@@ -98,12 +103,6 @@ export class Session {
   // TODO: make sure this is a readonly. This should only represent the state.
   // The actual focus should be done by calling the focus() function
   textInputFocused: boolean = false;
-  /**
-   * @deprecated
-   * I was experimenting with the visual mode. Not supporting it for the
-   * near future.
-   */
-  inputMode: 'text' | 'visual' = 'text';
 
   /**
    * Resonse
@@ -162,6 +161,11 @@ export class Session {
     reaction(
       () => this.expression,
       debounce(async expression => {
+        // Skip building if in SQL mode - no Pine expression to build
+        if (this.inputMode === 'sql') {
+          return;
+        }
+
         // reset the candidate
         this.candidateIndex = undefined;
 
@@ -337,6 +341,10 @@ export class Session {
 
   public blurTextInput() {
     this.textInputFocused = false;
+  }
+
+  public setInputMode(mode: InputMode) {
+    this.inputMode = mode;
   }
 
   async updateConnectionLogs() {
