@@ -15,11 +15,12 @@ interface UpdateData {
 }
 
 interface UpdateModalProps {
-  session: Session;
+  expression: string;
   updateData: UpdateData;
+  onClose: () => void;
 }
 
-const UpdateModal: React.FC<UpdateModalProps> = observer(({ session, updateData }) => {
+const UpdateModal: React.FC<UpdateModalProps> = observer(({ expression, updateData, onClose }) => {
   const { global } = useStores();
   const vs = global.getVirtualSession();
   const [title, setTitle] = useState('Review Update Query');
@@ -39,10 +40,6 @@ const UpdateModal: React.FC<UpdateModalProps> = observer(({ session, updateData 
 
   // Set up the Pine expression when modal opens with update data
   useEffect(() => {
-    if (!session.updating || !updateData) {
-      return;
-    }
-
     const { column, id, value, alias } = updateData;
 
     // Reset virtual session state
@@ -54,7 +51,7 @@ const UpdateModal: React.FC<UpdateModalProps> = observer(({ session, updateData 
     vs.setInputMode('pine');
 
     // Set up the update query
-    vs.expression = session.expression;
+    vs.expression = expression;
     vs.prettify();
     vs.pipeAndUpdateExpression(`from: ${alias}`);
     vs.pipeAndUpdateExpression(
@@ -64,14 +61,10 @@ const UpdateModal: React.FC<UpdateModalProps> = observer(({ session, updateData 
 
     // Update title to be more specific
     setTitle(`Update ${alias}.${column}`);
-  }, [session.updating, updateData, vs, session.expression]);
-
-  const handleClose = () => {
-    session.updating = false;
-  };
+  }, [updateData, vs, expression]);
 
   return (
-    <Modal open={session.updating} onClose={handleClose} aria-labelledby="update-modal-title">
+    <Modal open={!!updateData} onClose={onClose} aria-labelledby="update-modal-title">
       <Box
         sx={{
           position: 'absolute',
@@ -112,7 +105,7 @@ const UpdateModal: React.FC<UpdateModalProps> = observer(({ session, updateData 
 
           <Tooltip title="Close without executing" placement="left">
             <IconButton
-              onClick={handleClose}
+              onClick={onClose}
               size="small"
               sx={{
                 color: 'var(--text-color)',

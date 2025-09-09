@@ -38,7 +38,6 @@ interface UpdateData {
 const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const { global } = useStores();
   const session = global.getSession(sessionId);
-  const virtualSession = global.getVirtualSession();
   const rows = toJS(session.rows);
   const columns = toJS(session.columns);
   const theme = useTheme();
@@ -47,8 +46,6 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [updateData, setUpdateData] = useState<UpdateData | undefined>(undefined);
-
-
 
   const handleContextMenuClose = () => {
     setContextMenu(null);
@@ -98,9 +95,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
 
   const updateRecord = async (newRow: any, oldRow: any) => {
     // Find which field/column changed
-    const changedFields = Object.keys(newRow).filter(
-      field => newRow[field] !== oldRow[field],
-    );
+    const changedFields = Object.keys(newRow).filter(field => newRow[field] !== oldRow[field]);
 
     if (changedFields.length === 0) {
       return oldRow;
@@ -128,11 +123,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
       value: newRow[columnIndex],
       alias,
     });
-    
-    // Set updating flag to show modal
-    session.updating = true;
 
-    // TODO: how to handle the case when the user cancels the update? or it fails?
     return newRow;
   };
 
@@ -348,7 +339,13 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
       )}
 
       {/* Update Modal */}
-      {updateData && <UpdateModal session={session} updateData={updateData}/>}
+      {updateData && (
+        <UpdateModal
+          expression={session.expression}
+          updateData={updateData}
+          onClose={() => setUpdateData(undefined)}
+        />
+      )}
     </div>
   );
 });
