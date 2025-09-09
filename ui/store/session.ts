@@ -85,6 +85,7 @@ export class Session {
 
   /** Result */
   loading: boolean = false; // observable
+  updating: boolean = false; // observable - for in-place updates
   columns: GridColDef[] = [];
   // The field name - which is the index of the column (stringified) - and the
   // value is false The id fields are hiddlen by default but kept in the list of

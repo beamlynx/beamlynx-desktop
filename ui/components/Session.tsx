@@ -1,25 +1,11 @@
-import { AccountTree, BarChart, Description, MoreVert, TableChart } from '@mui/icons-material';
-import {
-  Box,
-  Divider,
-  Grid,
-  IconButton,
-  ListItemIcon,
-  ListItemText,
-  Menu,
-  MenuItem,
-  Switch,
-  Tooltip,
-  useMediaQuery,
-  useTheme,
-} from '@mui/material';
+import { Box, Divider, Grid, useMediaQuery, useTheme } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
 import {
   DEFAULT_SIDEBAR_WIDTH,
-  MIN_SIDEBAR_WIDTH,
-  getTabHeight,
   getSecondaryViewHeight,
+  getTabHeight,
+  MIN_SIDEBAR_WIDTH,
 } from '../constants';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from '../store/preferences';
 import { Mode, Session as SessionType } from '../store/session';
@@ -44,7 +30,6 @@ const Sidebar = ({
   firstView: React.ReactNode;
   secondView: React.ReactNode;
 }) => {
-
   return (
     <Box sx={{ flex: 1, mr: 1, flexDirection: 'column', height: '100%' }}>
       <Box
@@ -217,7 +202,7 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
           <Grid item style={{ width: sidebarWidth, position: 'relative' }}>
             <Sidebar
               session={session}
-              firstView={<Input sessionId={sessionId} />}
+              firstView={<Input session={session} />}
               secondView={
                 session.mode === 'result' ? (
                   <GraphBox sessionId={sessionId} />
@@ -246,7 +231,7 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
         <Grid item xs={12} sx={{ flexGrow: 1, width: 'max-content' }}>
           <Sidebar
             session={session}
-            firstView={<Input sessionId={sessionId} />}
+            firstView={<Input session={session} />}
             secondView={
               <MainView
                 sessionId={sessionId}

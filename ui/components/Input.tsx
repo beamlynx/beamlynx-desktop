@@ -1,6 +1,5 @@
 import { observer } from 'mobx-react-lite';
 import React from 'react';
-import { useStores } from '../store/store-container';
 import { Box, ToggleButton, ToggleButtonGroup, Tooltip, IconButton, Button } from '@mui/material';
 import { Info, PlayArrow, Loop } from '@mui/icons-material';
 import PineInput from './PineInput';
@@ -8,13 +7,14 @@ import SqlInput from './SqlInput';
 import { Session } from '../store/session';
 
 interface InputProps {
-  sessionId: string;
+  session: Session;
+  onRun?: () => void | Promise<void>;
 }
 
-const RunButton: React.FC<{ session: Session }> = observer(({ session }) => (
+const RunButton: React.FC<{ session: Session; onRun?: () => void | Promise<void> }> = observer(({ session, onRun }) => (
   <Button
     variant="contained"
-    onClick={() => session.evaluate()}
+    onClick={onRun || (() => session.evaluate())}
     disabled={(!session.expression && !session.query) || session.loading}
     startIcon={session.loading ? <Loop /> : <PlayArrow />}
     size="small"
@@ -39,10 +39,7 @@ const RunButton: React.FC<{ session: Session }> = observer(({ session }) => (
   </Button>
 ));
 
-const Input: React.FC<InputProps> = observer(({ sessionId }) => {
-  const { global } = useStores();
-  const session = global.getSession(sessionId);
-
+const Input: React.FC<InputProps> = observer(({ session, onRun }) => {
   const handleInputModeChange = (
     event: React.MouseEvent<HTMLElement>,
     newMode: 'pine' | 'sql' | null,
@@ -199,7 +196,7 @@ const Input: React.FC<InputProps> = observer(({ sessionId }) => {
             zIndex: 10,
           }}
         >
-          <RunButton session={session} />
+          <RunButton session={session} onRun={onRun} />
         </Box>
       </Box>
     </Box>

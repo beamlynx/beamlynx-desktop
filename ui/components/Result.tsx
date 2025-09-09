@@ -1,7 +1,7 @@
 import { DataGrid } from '@mui/x-data-grid';
 import { toJS } from 'mobx';
 import { observer } from 'mobx-react-lite';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStores } from '../store/store-container';
 import {
   Box,
@@ -15,7 +15,7 @@ import {
   ListItemText,
 } from '@mui/material';
 import { FileDownload, ContentCopy, FilterAlt } from '@mui/icons-material';
-import { pineEscape } from '../store/util';
+import UpdateModal from './UpdateModal';
 
 interface ResultProps {
   sessionId: string;
@@ -28,9 +28,17 @@ interface ContextMenuState {
   fieldIndex: string;
 }
 
+interface UpdateData {
+  column: string;
+  id: string | number;
+  value: string;
+  alias: string;
+}
+
 const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const { global } = useStores();
   const session = global.getSession(sessionId);
+  const virtualSession = global.getVirtualSession();
   const rows = toJS(session.rows);
   const columns = toJS(session.columns);
   const theme = useTheme();
@@ -38,6 +46,9 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const compactMode = isSmallScreen || session.forceCompactMode;
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [updateData, setUpdateData] = useState<UpdateData | undefined>(undefined);
+
+
 
   const handleContextMenuClose = () => {
     setContextMenu(null);
@@ -83,6 +94,46 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
       });
     }
     handleContextMenuClose();
+  };
+
+  const updateRecord = async (newRow: any, oldRow: any) => {
+    // Find which field/column changed
+    const changedFields = Object.keys(newRow).filter(
+      field => newRow[field] !== oldRow[field],
+    );
+
+    if (changedFields.length === 0) {
+      return oldRow;
+    }
+    const changedField = changedFields[0]; // Usually only one field changes at a time
+
+    // If you need the column index instead of field name
+    const columnIndex = columns.findIndex(col => col.field === changedField).toString();
+
+    // the field is a stringified index of the column
+    // We want to find the table i.e. the alias of the table for the column
+    const alias = session.columnMetadata.colIndexToAliasLookup[columnIndex];
+    const idColumnIndex = session.columnMetadata.aliasToIdLookup[alias];
+    if (!idColumnIndex) {
+      console.error('No id column index found for alias:', alias);
+      return oldRow;
+    }
+    const id = newRow[idColumnIndex];
+    const column = session.columnMetadata.colIndexToColumnLookup[columnIndex];
+
+    // Prepare update data and show modal
+    setUpdateData({
+      column,
+      id,
+      value: newRow[columnIndex],
+      alias,
+    });
+    
+    // Set updating flag to show modal
+    session.updating = true;
+
+    // TODO: how to handle the case when the user cancels the update? or it fails?
+    return newRow;
   };
 
   const exportToCSV = () => {
@@ -265,54 +316,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
             columns={columns}
             getRowId={row => row._id ?? ''}
             columnVisibilityModel={session.columnVisibilityModel}
-            processRowUpdate={async (newRow, oldRow) => {
-              // Find which field/column changed
-              const changedFields = Object.keys(newRow).filter(
-                field => newRow[field] !== oldRow[field],
-              );
-
-              if (changedFields.length === 0) {
-                return oldRow;
-              }
-              const changedField = changedFields[0]; // Usually only one field changes at a time
-
-              // If you need the column index instead of field name
-              const columnIndex = columns.findIndex(col => col.field === changedField).toString();
-
-              // the field is a stringified index of the column
-              // We want to find the table i.e. the alias of the table for the column
-              const alias = session.columnMetadata.colIndexToAliasLookup[columnIndex];
-              const idColumnIndex = session.columnMetadata.aliasToIdLookup[alias];
-              if (!idColumnIndex) {
-                console.error('No id column index found for alias:', alias);
-                return oldRow;
-              }
-              const id = newRow[idColumnIndex];
-              const column = session.columnMetadata.colIndexToColumnLookup[columnIndex];
-
-              try {
-                const vs = global.getVirtualSession();
-                vs.expression = session.expression;
-                vs.prettify();
-                vs.pipeAndUpdateExpression(`from: ${alias}`);
-                vs.pipeAndUpdateExpression(
-                  `where: id = ${Number.isInteger(id) ? parseInt(id, 10) : `'${pineEscape(id)}'`}`,
-                );
-                vs.pipeAndUpdateExpression(`update! ${column} = '${pineEscape(newRow[columnIndex])}'`);
-                const result = await vs.evaluate();
-
-                if (vs.error) {
-                  session.error = vs.error;
-                  return oldRow;
-                }
-                session.message = Object.values(result).join(': ');
-              } catch (e) {
-                session.error = 'Error updating row';
-                return oldRow;
-              }
-
-              return newRow;
-            }}
+            processRowUpdate={updateRecord}
           />
         </Box>
       </Box>
@@ -342,6 +346,9 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
           </MenuItem>
         </Menu>
       )}
+
+      {/* Update Modal */}
+      {updateData && <UpdateModal session={session} updateData={updateData}/>}
     </div>
   );
 });
