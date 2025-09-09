@@ -5,8 +5,12 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.31.0] - 2025-09-10
 ### Added
 - Showing an update modal before updating a record.
+
+### Changed
+- Farewell to the success messages.
 
 ## [0.30.1] - 2025-09-07
 ### Added

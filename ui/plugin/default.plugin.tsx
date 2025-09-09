@@ -12,7 +12,7 @@ export class DefaultPlugin implements PluginInterface {
 
   public async evaluate(): Promise<Row[]> {
     const session = this.session;
-    session.message = '⏳ Fetching rows ...';
+    // session.message = '⏳ Fetching rows ...';
     session.error = '';
     session.loading = true;
 
@@ -84,7 +84,7 @@ export class DefaultPlugin implements PluginInterface {
       return { ...row, _id: index };
     });
 
-    session.message = pickSuccessMessage();
+    // session.message = pickSuccessMessage();
     session.loading = false;
     session.focusTextInput();
     session.mode = 'result';

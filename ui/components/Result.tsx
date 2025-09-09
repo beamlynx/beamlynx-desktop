@@ -124,7 +124,13 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
       alias,
     });
 
+    // Return newRow for optimistic update
     return newRow;
+  };
+
+  const handleModalClose = () => {
+    session.evaluate();
+    setUpdateData(undefined);
   };
 
   const exportToCSV = () => {
@@ -279,6 +285,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
                 '-moz-user-select': 'none',
                 '-ms-user-select': 'none',
               },
+
               '& .MuiDataGrid-row:hover': {
                 backgroundColor: 'var(--node-bg)',
               },
@@ -343,7 +350,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
         <UpdateModal
           expression={session.expression}
           updateData={updateData}
-          onClose={() => setUpdateData(undefined)}
+          onClose={handleModalClose}
         />
       )}
     </div>

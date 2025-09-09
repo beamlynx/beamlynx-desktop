@@ -32,6 +32,7 @@ const UpdateModal: React.FC<UpdateModalProps> = observer(({ expression, updateDa
       const message = messageRow[0];
       const count = countRow[0];
       setTitle(`✅ ${message}: ${count}`);
+      
     } catch (error) {
       setTitle(`❌ Update execution failed`);
       console.error(error);
