@@ -80,7 +80,7 @@ const Input: React.FC<InputProps> = observer(({ session, onRun }) => {
         >
           {/* Info icon with tooltip */}
           <Tooltip
-            title="Pine is a simpler DSL that compiles to SQL. Switch modes to edit in Pine expressions or raw SQL queries."
+            title="Pine is a simpler DSL that compiles to SQL. Click the button to switch between Pine expressions and raw SQL queries."
             placement="bottom-end"
             arrow
           >
@@ -101,74 +101,38 @@ const Input: React.FC<InputProps> = observer(({ session, onRun }) => {
             </IconButton>
           </Tooltip>
 
-          {/* Segmented control toggle */}
+          {/* Compact mode button */}
           <Tooltip
-            title={
-              session.inputMode === 'pine'
-                ? 'Switch to SQL mode (edit raw SQL queries)'
-                : 'Switch to Pine mode (edit Pine expressions)'
-            }
+            title={`Currently in ${session.inputMode.toUpperCase()} mode - click to switch to ${session.inputMode === 'pine' ? 'SQL' : 'Pine'}`}
             placement="bottom-end"
             arrow
           >
-            <ToggleButtonGroup
-              value={session.inputMode}
-              exclusive
-              onChange={handleInputModeChange}
+            <Button
+              variant="outlined"
               size="small"
+              onClick={() => session.setInputMode(session.inputMode === 'pine' ? 'sql' : 'pine')}
               sx={{
                 backgroundColor: 'var(--background-color)',
                 borderRadius: '12px',
                 border: '1px solid var(--border-color)',
-                overflow: 'hidden',
-                '& .MuiToggleButtonGroup-grouped': {
-                  border: 'none',
-                  '&:not(:first-of-type)': {
-                    borderLeft: 'none',
-                    marginLeft: 0,
-                  },
-                  '&:first-of-type': {
-                    borderTopLeftRadius: '12px',
-                    borderBottomLeftRadius: '12px',
-                  },
-                  '&:last-of-type': {
-                    borderTopRightRadius: '12px',
-                    borderBottomRightRadius: '12px',
-                  },
-                },
-                '& .MuiToggleButton-root': {
-                  textTransform: 'none',
-                  fontSize: '0.75rem',
-                  fontWeight: 500,
-                  px: 1.5,
-                  py: 0.4,
-                  minHeight: '28px',
-                  minWidth: '42px',
-                  color: 'var(--text-color)',
-                  backgroundColor: 'transparent',
-                  border: '1px solid transparent',
-                  transition: 'all 0.2s ease-in-out',
-                  '&.Mui-selected': {
-                    backgroundColor: 'rgba(25, 118, 210, 0.08)',
-                    color: 'var(--primary-color)',
-                    fontWeight: 600,
-                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-                    borderColor: 'rgba(25, 118, 210, 0.3)',
-                    '&:hover': {
-                      backgroundColor: 'rgba(25, 118, 210, 0.12)',
-                      borderColor: 'rgba(25, 118, 210, 0.4)',
-                    },
-                  },
-                  '&:hover:not(.Mui-selected)': {
-                    backgroundColor: 'var(--hover-color)',
-                    color: 'var(--text-color)',
-                  },
+                textTransform: 'none',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                px: 1.5,
+                py: 0.4,
+                minHeight: '28px',
+                minWidth: '44px',
+                color: 'var(--text-color)',
+                borderColor: 'var(--border-color)',
+                '&:hover': {
+                  backgroundColor: 'rgba(25, 118, 210, 0.08)',
+                  borderColor: 'rgba(25, 118, 210, 0.3)',
+                  color: 'var(--primary-color)',
                 },
               }}
             >
-              <ToggleButton value="pine">Pine</ToggleButton>
-              <ToggleButton value="sql">SQL</ToggleButton>
-            </ToggleButtonGroup>
+              {session.inputMode.toUpperCase()}
+            </Button>
           </Tooltip>
         </Box>
 

@@ -5,8 +5,13 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.31.2] - 2025-09-11
+### Changed
+- Using a company toggle button to switch input modes between pine and sql.
+
+
 ## [0.31.1] - 2025-09-11
-### Added
+### Changed
 - Update model is not shown by default. It is shown when the inspect icon is clicked.
 
 ## [0.31.0] - 2025-09-10
