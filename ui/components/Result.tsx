@@ -14,8 +14,9 @@ import {
   ListItemIcon,
   ListItemText,
 } from '@mui/material';
-import { FileDownload, ContentCopy, FilterAlt } from '@mui/icons-material';
+import { FileDownload, ContentCopy, FilterAlt, Search } from '@mui/icons-material';
 import UpdateModal from './UpdateModal';
+import { pineEscape } from '../store/util';
 
 interface ResultProps {
   sessionId: string;
@@ -33,19 +34,32 @@ interface UpdateData {
   id: string | number;
   value: string;
   alias: string;
+  updateExpression: string;
+}
+
+interface EditingCell {
+  id: string | number;
+  field: string;
 }
 
 const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const { global } = useStores();
   const session = global.getSession(sessionId);
   const rows = toJS(session.rows);
-  const columns = toJS(session.columns);
+  const baseColumns = toJS(session.columns);
+
+  // Add custom edit component to columns
+  const columns = baseColumns.map(column => ({
+    ...column,
+    renderEditCell: (params: any) => <CellEditComponent {...params} />,
+  }));
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('lg'));
   const compactMode = isSmallScreen || session.forceCompactMode;
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [updateData, setUpdateData] = useState<UpdateData | undefined>(undefined);
+  const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
 
   const handleContextMenuClose = () => {
     setContextMenu(null);
@@ -116,13 +130,28 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     const id = newRow[idColumnIndex];
     const column = session.columnMetadata.colIndexToColumnLookup[columnIndex];
 
-    // Prepare update data and show modal
-    setUpdateData({
-      column,
-      id,
-      value: newRow[columnIndex],
-      alias,
-    });
+    // For default behavior (Enter/Esc), execute the update directly without showing modal
+    // The modal is only shown when the inspect icon is clicked
+    try {
+      // Create the update expression using the helper function
+      const updateExpression = createUpdateExpression(
+        session.expression,
+        alias,
+        id,
+        column,
+        newRow[columnIndex],
+      );
+
+      // Get virtual session and execute the update
+      const vs = global.getVirtualSession();
+      vs.expression = updateExpression;
+      await vs.evaluate();
+
+      // Refresh the main session
+      await session.evaluate();
+    } catch (error) {
+      console.error('Direct update failed:', error);
+    }
 
     // Return newRow for optimistic update
     return newRow;
@@ -131,6 +160,145 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const handleModalClose = () => {
     session.evaluate();
     setUpdateData(undefined);
+  };
+
+  // Helper function to create update expression
+  const createUpdateExpression = (
+    baseExpression: string,
+    alias: string,
+    id: string | number,
+    column: string,
+    value: string,
+  ) => {
+    const vs = global.getVirtualSession();
+
+    // Reset virtual session state
+    vs.setMessage('');
+    vs.error = '';
+    vs.loading = false;
+    vs.setInputMode('pine');
+
+    // Set up the update query
+    vs.expression = baseExpression;
+    vs.prettify();
+    vs.pipeAndUpdateExpression(`from: ${alias}`);
+    vs.pipeAndUpdateExpression(
+      `where: id = ${Number.isInteger(id) ? parseInt(id as string, 10) : `'${pineEscape(id as string)}'`}`,
+    );
+    vs.pipeAndUpdateExpression(`update! ${column} = '${pineEscape(value)}'`);
+
+    return vs.expression;
+  };
+
+  // Custom edit component that shows inspect icon during editing
+  const CellEditComponent = (props: any) => {
+    const { id, field, value, api, ...other } = props;
+    const [inputValue, setInputValue] = useState(value ?? '');
+
+    const handleInspectClick = () => {
+      // Find the column information
+      const columnIndex = field;
+      const alias = session.columnMetadata.colIndexToAliasLookup[columnIndex];
+      const idColumnIndex = session.columnMetadata.aliasToIdLookup[alias];
+      if (!idColumnIndex) {
+        console.error('No id column index found for alias:', alias);
+        return;
+      }
+      const rowData = rows.find(row => row._id === id);
+      if (!rowData) {
+        console.error('Row data not found for id:', id);
+        return;
+      }
+      const rowId = rowData[idColumnIndex];
+      const column = session.columnMetadata.colIndexToColumnLookup[columnIndex];
+
+      // Create the update expression
+      const updateExpression = createUpdateExpression(
+        session.expression,
+        alias,
+        rowId,
+        column,
+        inputValue,
+      );
+
+      // Prepare update data and show modal
+      setUpdateData({
+        column,
+        id: rowId,
+        value: inputValue,
+        alias,
+        updateExpression, // Add the pre-built expression
+      });
+
+      // Exit edit mode
+      api.stopCellEditMode({ id, field });
+    };
+
+    const handleKeyDown = (event: React.KeyboardEvent) => {
+      if (event.key === 'Enter') {
+        // Default behavior - save and exit
+        api.stopCellEditMode({ id, field });
+      } else if (event.key === 'Escape') {
+        // Default behavior - cancel and exit
+        api.stopCellEditMode({ id, field, ignoreModifications: true });
+      }
+    };
+
+    return (
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          width: '100%',
+          height: '100%',
+          position: 'relative',
+        }}
+      >
+        <input
+          value={inputValue}
+          onChange={e => {
+            setInputValue(e.target.value);
+            api.setEditCellValue({ id, field, value: e.target.value });
+          }}
+          onKeyDown={handleKeyDown}
+          style={{
+            border: 'none',
+            outline: 'none',
+            background: 'transparent',
+            width: '100%',
+            height: '100%',
+            padding: '8px 32px 8px 8px', // Add right padding for the icon
+            fontSize: 'inherit',
+            color: 'inherit',
+            fontFamily: 'inherit',
+          }}
+          autoFocus
+          {...other}
+        />
+        <Tooltip title="Inspect Update (opens update modal)">
+          <IconButton
+            size="small"
+            onClick={handleInspectClick}
+            sx={{
+              position: 'absolute',
+              right: 4,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              backgroundColor: 'var(--background-color)',
+              border: '1px solid var(--border-color)',
+              color: 'var(--text-color)',
+              '&:hover': {
+                backgroundColor: 'var(--node-bg)',
+              },
+              width: 24,
+              height: 24,
+            }}
+          >
+            <Search fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      </Box>
+    );
   };
 
   const exportToCSV = () => {
@@ -315,6 +483,12 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
             getRowId={row => row._id ?? ''}
             columnVisibilityModel={session.columnVisibilityModel}
             processRowUpdate={updateRecord}
+            onCellEditStart={params => {
+              setEditingCell({ id: params.id, field: params.field });
+            }}
+            onCellEditStop={() => {
+              setEditingCell(null);
+            }}
           />
         </Box>
       </Box>
@@ -348,7 +522,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
       {/* Update Modal */}
       {updateData && (
         <UpdateModal
-          expression={session.expression}
+          updateExpression={updateData.updateExpression}
           updateData={updateData}
           onClose={handleModalClose}
         />

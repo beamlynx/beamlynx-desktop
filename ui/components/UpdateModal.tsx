@@ -5,22 +5,22 @@ import React, { useEffect, useState } from 'react';
 import { Session } from '../store/session';
 import Input from './Input';
 import { useStores } from '../store/store-container';
-import { pineEscape } from '../store/util';
 
 interface UpdateData {
   column: string;
   id: string | number;
   value: string;
   alias: string;
+  updateExpression: string;
 }
 
 interface UpdateModalProps {
-  expression: string;
+  updateExpression: string;
   updateData: UpdateData;
   onClose: () => void;
 }
 
-const UpdateModal: React.FC<UpdateModalProps> = observer(({ expression, updateData, onClose }) => {
+const UpdateModal: React.FC<UpdateModalProps> = observer(({ updateExpression, updateData, onClose }) => {
   const { global } = useStores();
   const vs = global.getVirtualSession();
   const [title, setTitle] = useState('Review Update Query');
@@ -41,7 +41,7 @@ const UpdateModal: React.FC<UpdateModalProps> = observer(({ expression, updateDa
 
   // Set up the Pine expression when modal opens with update data
   useEffect(() => {
-    const { column, id, value, alias } = updateData;
+    const { column, alias } = updateData;
 
     // Reset virtual session state
     vs.setMessage('');
@@ -51,18 +51,12 @@ const UpdateModal: React.FC<UpdateModalProps> = observer(({ expression, updateDa
     // Always start in Pine mode to ensure the build process triggers
     vs.setInputMode('pine');
 
-    // Set up the update query
-    vs.expression = expression;
-    vs.prettify();
-    vs.pipeAndUpdateExpression(`from: ${alias}`);
-    vs.pipeAndUpdateExpression(
-      `where: id = ${Number.isInteger(id) ? parseInt(id as string, 10) : `'${pineEscape(id as string)}'`}`,
-    );
-    vs.pipeAndUpdateExpression(`update! ${column} = '${pineEscape(value)}'`);
+    // Use the pre-built update expression
+    vs.expression = updateExpression;
 
     // Update title to be more specific
     setTitle(`Update ${alias}.${column}`);
-  }, [updateData, vs, expression]);
+  }, [updateData, vs, updateExpression]);
 
   return (
     <Modal open={!!updateData} onClose={onClose} aria-labelledby="update-modal-title">
