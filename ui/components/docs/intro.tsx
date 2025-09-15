@@ -1,66 +1,37 @@
 export const Introduction = (
+
   <div>
     {/* Intro */}
-    <b>🌲 Welcome to Pine!</b>
+    <b>Welcome to <span style={{color: '#4a9eff'}}>beamlynx</span></b>
     <br />
     <p>
-      Start by typing the name of a table.  Use a pipe (i.e. <code>|</code>) to compose queries. See examples:
-    </p>
-    <p>
+      Beamlynx uses <a href="https://beamlynx.com/docs" style={{textDecoration: 'underline'}}>pine-lang</a> dsl to query data.
     </p>
 
-    {/* Select  */}
-    <b>SELECT</b>
-    <span style={{fontSize: '0.9em', color: '#666'}}> <code>select:</code> <code>s:</code></span>
+    <p>Examples:</p>
+    
     <ul>
       <li>
-        <code>company</code>
+        <code style={{
+          fontFamily: 'monospace',
+        }}>customers | select: first_name</code>
       </li>
+
       <li>
-        <code>company | select: id, name</code>
+        <code style={{
+          fontFamily: 'monospace',
+        }}>customers | where: first_name = &apos;John&apos;</code>
+      </li>
+
+      <li>
+        <code style={{
+          fontFamily: 'monospace',
+        }}>customers
+| orders 
+| select: name, price
+| limit: 10</code>
       </li>
     </ul>
 
-    {/* Where */}
-    <b>WHERE</b>
-    <span style={{fontSize: '0.9em', color: '#666'}}> <code>where:</code> <code>w:</code></span>
-    <ul>
-      <li>
-        <code>company | where: name = &apos;Acme&apos;</code>
-      </li>
-      <li>
-        <code>company | where: active = true</code>
-      </li>
-    </ul>
-
-    {/* Limit */}
-    <b>LIMIT</b>
-    <span style={{fontSize: '0.9em', color: '#666'}}> <code>limit:</code> <code>l:</code> <code>number</code></span>
-    <ul>
-      <li>
-        <code>company | limit: 24</code>
-      </li>
-      <li>
-        <code>company | 24</code>
-      </li>
-    </ul>
-
-    {/* Order */}
-    <b>ORDER</b>
-    <span style={{fontSize: '0.9em', color: '#666'}}> <code>order:</code> <code>o:</code></span>
-    <ul>
-      <li>
-        <code>company | order: created_at desc</code>
-      </li>
-    </ul>
-
-    {/* Join  */}
-    <b>JOIN</b>
-    <span style={{fontSize: '0.9em', color: '#666'}}> <code>table_name</code></span>
-    <ul>
-      <li>
-        <code>company | company_document</code>
-      </li>
-    </ul>
   </div>
 );
