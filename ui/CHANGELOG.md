@@ -5,9 +5,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
-## [0.31.3] - 2025-09-15
+## [0.31.4] - 2025-09-15
 ### Changed
 - Updated intro page with examples that are compatible with the playground.
+- Support for `?data=<expression>` URL parameter which is json encoded object containing the expression.
 
 ## [0.31.2] - 2025-09-11
 ### Changed

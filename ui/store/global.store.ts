@@ -85,24 +85,49 @@ export class GlobalStore {
     let hasChanges = false;
 
     // Handle 'analyse' parameter
-    const analyseParam = urlParams.get('analyse');
-    if (analyseParam) {
-      this.analysisInitialValue = decodeURIComponent(analyseParam);
-      this.setShowAnalysis(true);
-      urlParams.delete('analyse');
-      hasChanges = true;
+    try {
+      const analyseParam = urlParams.get('analyse');
+      if (analyseParam) {
+        this.analysisInitialValue = decodeURIComponent(analyseParam);
+        this.setShowAnalysis(true);
+        urlParams.delete('analyse');
+        hasChanges = true;
+      }
+    } catch (error) {
+      console.log('Error handling analyse parameter:', error);
     }
 
     // Handle 'query' parameter
-    const queryParam = urlParams.get('query');
-    if (queryParam) {
-      const session = this.getSession(this.activeSessionId);
-      if (session) {
-        session.expression = decodeURIComponent(queryParam);
-        session.prettify();
+    try {
+      const queryParam = urlParams.get('query');
+      if (queryParam) {
+        const session = this.getSession(this.activeSessionId);
+        if (session) {
+          session.expression = decodeURIComponent(queryParam);
+          session.prettify();
+        }
+        urlParams.delete('query');
+        hasChanges = true;
       }
-      urlParams.delete('query');
-      hasChanges = true;
+    } catch (error) {
+      console.log('Error handling query parameter:', error);
+    }
+
+    // Handle 'data' parameter
+    try {
+      const dataParam = urlParams.get('data');
+      if (dataParam) {
+        const data = JSON.parse(decodeURIComponent(dataParam));
+        const session = this.getSession(this.activeSessionId);
+        if (session && data.expression) {
+          session.expression = data.expression;
+          session.prettify();
+        }
+        urlParams.delete('data');
+        hasChanges = true;
+      }
+    } catch (error) {
+      console.log('Error handling data parameter:', error);
     }
 
     // Update URL if any parameters were processed
