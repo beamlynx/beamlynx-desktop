@@ -117,7 +117,7 @@ export class GlobalStore {
     try {
       const dataParam = urlParams.get('data');
       if (dataParam) {
-        const data = JSON.parse(decodeURIComponent(dataParam));
+        const data = JSON.parse(dataParam);
         const session = this.getSession(this.activeSessionId);
         if (session && data.expression) {
           session.expression = data.expression;
