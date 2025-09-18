@@ -14,7 +14,7 @@ import {
   ListItemIcon,
   ListItemText,
 } from '@mui/material';
-import { FileDownload, ContentCopy, FilterAlt, Search } from '@mui/icons-material';
+import { FileDownload, ContentCopy, FilterAlt, Code } from '@mui/icons-material';
 import UpdateModal from './UpdateModal';
 import { pineEscape } from '../store/util';
 
@@ -294,7 +294,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
               height: 24,
             }}
           >
-            <Search fontSize="small" />
+            <Code fontSize="small" />
           </IconButton>
         </Tooltip>
       </Box>
