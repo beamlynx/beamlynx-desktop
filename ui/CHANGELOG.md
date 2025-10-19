@@ -15,6 +15,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
    block comment */
 ```
 
+### Fixed
+- The graph was shown when there was an error in the expression.
+
 ## [0.31.5] - 2025-09-16
 ### Changed
 - Updated intro page with examples that are compatible with the playground.

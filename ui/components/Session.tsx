@@ -204,7 +204,7 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
               session={session}
               firstView={<Input session={session} />}
               secondView={
-                session.mode === 'result' ? (
+                !session.error && session.mode === 'result' ? (
                   <GraphBox sessionId={sessionId} />
                 ) : (
                   <Query sessionId={sessionId} />
