@@ -5,6 +5,16 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- Support for comments (line and block) in the pine language e.g.:
+
+```
+-- This is a line comment
+/* This is a
+   multi-line
+   block comment */
+```
+
 ## [0.31.5] - 2025-09-16
 ### Changed
 - Updated intro page with examples that are compatible with the playground.

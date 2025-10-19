@@ -1,20 +1,49 @@
 import { StreamLanguage } from '@codemirror/language';
 
+// Centralized comment delimiters
+const Char = {
+  LineComment: '--',
+  BlockCommentStart: '/*',
+  BlockCommentEnd: '*/',
+} as const;
+
 interface PineLanguageState {
-  // Simple state, no complex tracking needed
+  inBlockComment: boolean;
 }
 
 const pineLanguage = StreamLanguage.define<PineLanguageState>({
   name: 'pine',
-  
+
   startState(): PineLanguageState {
-    return {};
+    return { inBlockComment: false };
   },
 
   token(stream, state) {
     // Handle whitespace
     if (stream.eatSpace()) {
       return null;
+    }
+
+    // Handle block comments
+    if (state.inBlockComment) {
+      if (stream.match(Char.BlockCommentEnd)) {
+        state.inBlockComment = false;
+        return 'comment';
+      }
+      stream.next();
+      return 'comment';
+    }
+
+    // Handle line comments
+    if (stream.match(Char.LineComment)) {
+      stream.skipToEnd();
+      return 'comment';
+    }
+
+    // Handle block comment start
+    if (stream.match(Char.BlockCommentStart)) {
+      state.inBlockComment = true;
+      return 'comment';
     }
 
     // Check for operations first
@@ -32,9 +61,11 @@ const pineLanguage = StreamLanguage.define<PineLanguageState>({
 
     // Check for column hints: .columnName preceded by space
     // Note: whitespace is already consumed by eatSpace(), so check previous char
-    if (stream.match(/^\.[A-Za-z][A-Za-z0-9\-_]*/) && 
-        stream.start > 0 && 
-        /\s/.test(stream.string.charAt(stream.start - 1))) {
+    if (
+      stream.match(/^\.[A-Za-z][A-Za-z0-9\-_]*/) &&
+      stream.start > 0 &&
+      /\s/.test(stream.string.charAt(stream.start - 1))
+    ) {
       return 'propertyName';
     }
 
@@ -44,8 +75,12 @@ const pineLanguage = StreamLanguage.define<PineLanguageState>({
   },
 
   languageData: {
-    commentTokens: { line: '//' },
-  }
+    commentTokens: {
+      line: Char.LineComment,
+      block: Char.BlockCommentStart,
+      close: Char.BlockCommentEnd,
+    },
+  },
 });
 
-export { pineLanguage }; 
+export { pineLanguage };
