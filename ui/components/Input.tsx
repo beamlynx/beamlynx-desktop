@@ -1,7 +1,7 @@
 import { observer } from 'mobx-react-lite';
 import React from 'react';
-import { Box, ToggleButton, ToggleButtonGroup, Tooltip, IconButton, Button } from '@mui/material';
-import { Info, PlayArrow, Loop } from '@mui/icons-material';
+import { Box, ToggleButton, ToggleButtonGroup, Button } from '@mui/material';
+import { PlayArrow, Loop } from '@mui/icons-material';
 import PineInput from './PineInput';
 import SqlInput from './SqlInput';
 import { Session } from '../store/session';
@@ -78,43 +78,17 @@ const Input: React.FC<InputProps> = observer(({ session, onRun }) => {
             gap: 0.5,
           }}
         >
-          {/* Info icon with tooltip */}
-          <Tooltip
-            title="Pine is a simpler DSL that compiles to SQL. Click the button to switch between Pine expressions and raw SQL queries."
-            placement="bottom-end"
-            arrow
-          >
-            <IconButton
-              size="small"
-              sx={{
-                width: 20,
-                height: 20,
-                color: 'var(--text-color)',
-                opacity: 0.6,
-                '&:hover': {
-                  opacity: 1,
-                  backgroundColor: 'var(--hover-color)',
-                },
-              }}
-            >
-              <Info sx={{ fontSize: 14 }} />
-            </IconButton>
-          </Tooltip>
-
-          {/* Compact mode button */}
-          <Tooltip
-            title={`Currently in ${session.inputMode.toUpperCase()} mode - click to switch to ${session.inputMode === 'pine' ? 'SQL' : 'Pine'}`}
-            placement="bottom-end"
-            arrow
-          >
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={() => session.setInputMode(session.inputMode === 'pine' ? 'sql' : 'pine')}
-              sx={{
-                backgroundColor: 'var(--background-color)',
-                borderRadius: '12px',
-                border: '1px solid var(--border-color)',
+          {/* Input mode toggle */}
+          <ToggleButtonGroup
+            value={session.inputMode}
+            exclusive
+            onChange={handleInputModeChange}
+            size="small"
+            sx={{
+              backgroundColor: 'var(--background-color)',
+              borderRadius: '12px',
+              border: '1px solid var(--border-color)',
+              '& .MuiToggleButton-root': {
                 textTransform: 'none',
                 fontSize: '0.75rem',
                 fontWeight: 600,
@@ -123,17 +97,42 @@ const Input: React.FC<InputProps> = observer(({ session, onRun }) => {
                 minHeight: '28px',
                 minWidth: '44px',
                 color: 'var(--text-color)',
-                borderColor: 'var(--border-color)',
+                border: 'none',
+                borderRadius: '12px',
                 '&:hover': {
                   backgroundColor: 'rgba(25, 118, 210, 0.08)',
-                  borderColor: 'rgba(25, 118, 210, 0.3)',
                   color: 'var(--primary-color)',
                 },
-              }}
-            >
-              {session.inputMode.toUpperCase()}
-            </Button>
-          </Tooltip>
+                '&.Mui-selected': {
+                  backgroundColor: 'var(--border-color)',
+                  color: 'var(--text-color)',
+                  fontWeight: 700,
+                  '&:hover': {
+                    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+                  },
+                },
+                '&:first-of-type': {
+                  borderTopRightRadius: 0,
+                  borderBottomRightRadius: 0,
+                },
+                '&:last-of-type': {
+                  borderTopLeftRadius: 0,
+                  borderBottomLeftRadius: 0,
+                },
+                '&:first-of-type.Mui-selected': {
+                  borderTopRightRadius: 0,
+                  borderBottomRightRadius: 0,
+                },
+                '&:last-of-type.Mui-selected': {
+                  borderTopLeftRadius: 0,
+                  borderBottomLeftRadius: 0,
+                },
+              },
+            }}
+          >
+            <ToggleButton value="pine">PINE</ToggleButton>
+            <ToggleButton value="sql">SQL</ToggleButton>
+          </ToggleButtonGroup>
         </Box>
 
         <Box

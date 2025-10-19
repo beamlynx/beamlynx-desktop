@@ -5,6 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.32.0] - 2025-10-19
 ### Added
 - Support for comments (line and block) in the pine language e.g.:
 
@@ -17,6 +18,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ### Fixed
 - The graph was shown when there was an error in the expression.
+
+### Changed
+- Showing a toggle button to switch between pine and sql modes.
 
 ## [0.31.5] - 2025-09-16
 ### Changed
