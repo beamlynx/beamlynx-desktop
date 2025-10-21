@@ -5,6 +5,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.33.0] - 2025-10-21
+### Added
+- Show the changelog.
+
 ## [0.32.0] - 2025-10-19
 ### Added
 - Support for comments (line and block) in the pine language e.g.:
@@ -276,6 +280,7 @@ company as c | document | select: c.id
 
 ### Added
 
+- Support for tabs i.e. multiple sessions.
 - Support for recursive deletes e.g.
 
 ```

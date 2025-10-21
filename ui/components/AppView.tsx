@@ -10,6 +10,7 @@ import {
   useMediaQuery,
   ListItemIcon,
   Link,
+  Badge,
 } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
@@ -21,17 +22,22 @@ import ActiveConnection from './ActiveConnection';
 import Message from './Message';
 import UserBox from './UserBox';
 import { isDevelopment, isPlayground } from '../store/util';
-import { Settings, Analytics } from '@mui/icons-material';
+import { Settings, Analytics, Notifications } from '@mui/icons-material';
 import { useState, useEffect } from 'react';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from '../store/preferences';
 import AnalysisModal from './AnalysisModal';
+import ChangelogModal from './ChangelogModal';
 import { useGlobalKeybindings } from '../hooks/useGlobalKeybindings';
+import { LATEST_VERSION } from '../utils/changelog.data';
+import { compare } from 'semver';
 
 const AppView = observer(() => {
   const { global } = useStores();
   const session = global.getSession(global.activeSessionId);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [mounted, setMounted] = useState(false);
+  const [showChangelog, setShowChangelog] = useState(false);
+  const [hasUnreadUpdates, setHasUnreadUpdates] = useState(false);
 
   // Initialize global keyboard shortcuts
   useGlobalKeybindings({
@@ -47,6 +53,11 @@ const AppView = observer(() => {
     setMounted(true);
     const storedForceSmallScreen = getUserPreference(STORAGE_KEYS.FORCE_COMPACT_MODE, false);
     setForceSmallScreen(storedForceSmallScreen);
+    
+    // Check for unread updates
+    const lastReadVersion = getUserPreference(STORAGE_KEYS.LAST_READ_VERSION, '0.0.0');
+    const hasUpdates = compare(LATEST_VERSION, lastReadVersion) > 0;
+    setHasUnreadUpdates(hasUpdates);
   }, []);
 
   useEffect(() => {
@@ -70,6 +81,15 @@ const AppView = observer(() => {
   const handleOpenAnalysis = () => {
     global.setShowAnalysis(true);
     handleMenuClose();
+  };
+
+  const handleOpenChangelog = () => {
+    setShowChangelog(true);
+  };
+
+  const handleCloseChangelog = () => {
+    setShowChangelog(false);
+    setHasUnreadUpdates(false);
   };
 
   // Prevent hydration errors by ensuring the same component is rendered on server and client initial render
@@ -156,6 +176,7 @@ const AppView = observer(() => {
   return (
     <>
       <AnalysisModal />
+      <ChangelogModal open={showChangelog} onClose={handleCloseChangelog} />
       <Grid container>
         <Grid item xs={3}>
           <Box sx={{ m: 2, mt: 1 }}>
@@ -172,6 +193,11 @@ const AppView = observer(() => {
         <Grid item xs={1}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
             {UserContent}
+            <IconButton onClick={handleOpenChangelog} sx={{ ml: 1 }} color="inherit" tabIndex={1}>
+              <Badge variant="dot" color="error" invisible={!hasUnreadUpdates}>
+                <Notifications />
+              </Badge>
+            </IconButton>
             <IconButton onClick={handleMenuOpen} sx={{ ml: 1 }} color="inherit" tabIndex={2}>
               <Settings />
             </IconButton>

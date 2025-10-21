@@ -4,6 +4,7 @@ export const STORAGE_KEYS = {
   VIM_MODE: 'pine-vim-mode',
   FORCE_COMPACT_MODE: 'pine-force-compact-mode',
   ONBOARDING_SERVER: 'pine-onboarding-server',
+  LAST_READ_VERSION: 'pine-last-read-version',
 } as const;
 
 export const getUserPreference = (key: string, defaultValue: any) => {
