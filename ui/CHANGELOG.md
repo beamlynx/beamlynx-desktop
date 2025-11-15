@@ -5,6 +5,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- Option to render bar chart when results have 2 column with string and number values respectively.
+
 ## [0.33.0] - 2025-10-21
 ### Added
 - Show the changelog.

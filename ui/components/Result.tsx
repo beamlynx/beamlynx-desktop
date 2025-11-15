@@ -1,7 +1,7 @@
 import { DataGrid } from '@mui/x-data-grid';
 import { toJS } from 'mobx';
 import { observer } from 'mobx-react-lite';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useStores } from '../store/store-container';
 import {
   Box,
@@ -14,9 +14,10 @@ import {
   ListItemIcon,
   ListItemText,
 } from '@mui/material';
-import { FileDownload, ContentCopy, FilterAlt, Code } from '@mui/icons-material';
+import { FileDownload, ContentCopy, FilterAlt, Code, BarChart as BarChartIcon } from '@mui/icons-material';
 import UpdateModal from './UpdateModal';
 import { pineEscape } from '../store/util';
+import { BarChart } from './BarChart';
 
 interface ResultProps {
   sessionId: string;
@@ -60,6 +61,38 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [updateData, setUpdateData] = useState<UpdateData | undefined>(undefined);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
+  const [viewMode, setViewMode] = useState<'table' | 'chart'>('table');
+
+  // Track data structure changes to reset view mode
+  const prevDataSignature = useRef<string>('');
+
+  // Check if data is suitable for bar chart visualization
+  const isBarChartSuitable = () => {
+    // Check: exactly 2 columns (excluding _id)
+    const visibleColumns = columns.filter(col => col.field !== '_id');
+    if (visibleColumns.length !== 2) return false;
+    
+    // Check: second column has numeric values
+    const secondColField = visibleColumns[1].field;
+    if (rows.length === 0) return false;
+    
+    return rows.every(row => {
+      const value = row[secondColField];
+      return value !== null && value !== undefined && !isNaN(Number(value));
+    });
+  };
+
+  // Reset view mode to table only when data becomes unsuitable for bar chart
+  useEffect(() => {
+    const currentSignature = `${columns.length}-${rows.length}`;
+    if (prevDataSignature.current && prevDataSignature.current !== currentSignature) {
+      // Only reset to table if the new data is not suitable for bar chart
+      if (!isBarChartSuitable()) {
+        setViewMode('table');
+      }
+    }
+    prevDataSignature.current = currentSignature;
+  }, [columns.length, rows.length]);
 
   const handleContextMenuClose = () => {
     setContextMenu(null);
@@ -399,98 +432,147 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
             <FileDownload fontSize="small" />
           </IconButton>
         </Tooltip>
-        <Box
-          sx={{ position: 'absolute', inset: 0 }}
-          onContextMenu={(event: React.MouseEvent) => {
-            // Find the cell that was right-clicked
-            const target = event.target as HTMLElement;
-            const cell = target.closest('.MuiDataGrid-cell');
-            if (cell) {
-              event.preventDefault();
-              const fieldAttr = cell.getAttribute('data-field');
-              const rowElement = cell.closest('.MuiDataGrid-row');
-              if (fieldAttr && rowElement) {
-                const rowIndexAttr = rowElement.getAttribute('data-rowindex');
-                if (rowIndexAttr) {
-                  const rowIndex = parseInt(rowIndexAttr, 10);
-                  const rowData = rows[rowIndex];
-                  if (rowData) {
-                    const params = {
-                      field: fieldAttr,
-                      value: rowData[fieldAttr],
-                      row: rowData,
-                    };
-                    handleContextMenu(event, params);
+        
+        {/* Bar Chart Toggle Button */}
+        {isBarChartSuitable() && (
+          <Tooltip title={viewMode === 'table' ? 'View as Bar Chart' : 'View as Table'}>
+            <IconButton
+              onClick={() => setViewMode(viewMode === 'table' ? 'chart' : 'table')}
+              sx={{
+                position: 'absolute',
+                ...(compactMode
+                  ? {
+                      top: 0,
+                      right: -88,
+                    }
+                  : {
+                      top: -40,
+                      right: 44,
+                    }),
+                zIndex: 1000,
+                backgroundColor: 'var(--background-color)',
+                border: '1px solid var(--border-color)',
+                color: viewMode === 'chart' ? '#8884d8' : 'var(--text-color)',
+                '&:hover': {
+                  backgroundColor: 'var(--node-bg)',
+                },
+              }}
+              size="small"
+            >
+              <BarChartIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
+        
+        {/* Conditional rendering: Table or Bar Chart */}
+        {viewMode === 'table' ? (
+          <Box
+            sx={{ position: 'absolute', inset: 0 }}
+            onContextMenu={(event: React.MouseEvent) => {
+              // Find the cell that was right-clicked
+              const target = event.target as HTMLElement;
+              const cell = target.closest('.MuiDataGrid-cell');
+              if (cell) {
+                event.preventDefault();
+                const fieldAttr = cell.getAttribute('data-field');
+                const rowElement = cell.closest('.MuiDataGrid-row');
+                if (fieldAttr && rowElement) {
+                  const rowIndexAttr = rowElement.getAttribute('data-rowindex');
+                  if (rowIndexAttr) {
+                    const rowIndex = parseInt(rowIndexAttr, 10);
+                    const rowData = rows[rowIndex];
+                    if (rowData) {
+                      const params = {
+                        field: fieldAttr,
+                        value: rowData[fieldAttr],
+                        row: rowData,
+                      };
+                      handleContextMenu(event, params);
+                    }
                   }
                 }
               }
-            }
-          }}
-        >
-          <DataGrid
-            sx={{
-              '--DataGrid-containerBackground': 'var(--node-column-bg)',
-              '--DataGrid-rowBorderColor': 'var(--border-color)',
-              color: 'var(--text-color)',
-              border: '1px solid var(--border-color)',
-              borderRadius: 1,
-              overflow: 'hidden',
-              '& .MuiDataGrid-withBorderColor': {
-                borderColor: 'transparent',
-              },
-              '& .MuiDataGrid-columnHeaders': {
-                backgroundColor: 'var(--node-bg)',
-                borderBottom: '1px solid var(--border-color)',
-              },
-              '& .MuiDataGrid-columnHeaderTitle': {
+            }}
+          >
+            <DataGrid
+              sx={{
+                '--DataGrid-containerBackground': 'var(--node-column-bg)',
+                '--DataGrid-rowBorderColor': 'var(--border-color)',
                 color: 'var(--text-color)',
-              },
-              '& .MuiDataGrid-cell': {
-                color: 'var(--text-color)',
-                borderBottom: '1px solid var(--border-color)',
-                userSelect: 'none', // Prevent text selection
-                '-webkit-user-select': 'none',
-                '-moz-user-select': 'none',
-                '-ms-user-select': 'none',
-              },
-
-              '& .MuiDataGrid-row:hover': {
-                backgroundColor: 'var(--node-bg)',
-              },
-              '& .MuiTablePagination-root, & .MuiTablePagination-root .MuiSvgIcon-root, & .MuiTablePagination-root .MuiIconButton-root':
-                {
+                border: '1px solid var(--border-color)',
+                borderRadius: 1,
+                overflow: 'hidden',
+                '& .MuiDataGrid-withBorderColor': {
+                  borderColor: 'transparent',
+                },
+                '& .MuiDataGrid-columnHeaders': {
+                  backgroundColor: 'var(--node-bg)',
+                  borderBottom: '1px solid var(--border-color)',
+                },
+                '& .MuiDataGrid-columnHeaderTitle': {
                   color: 'var(--text-color)',
                 },
-              '& ::-webkit-scrollbar': {
-                width: '10px',
-                height: '10px',
-              },
-              '& ::-webkit-scrollbar-track': {
-                background: 'transparent',
-              },
-              '& ::-webkit-scrollbar-thumb': {
-                backgroundColor: 'var(--node-handle-bg)',
-                borderRadius: '5px',
-              },
-              '& ::-webkit-scrollbar-thumb:hover': {
-                background: 'var(--text-color)',
-              },
-            }}
-            density="compact"
-            autoHeight={true}
-            rows={rows}
-            columns={columns}
-            getRowId={row => row._id ?? ''}
-            columnVisibilityModel={session.columnVisibilityModel}
-            processRowUpdate={updateRecord}
-            onCellEditStart={params => {
-              setEditingCell({ id: params.id, field: params.field });
-            }}
-            onCellEditStop={() => {
-              setEditingCell(null);
-            }}
-          />
-        </Box>
+                '& .MuiDataGrid-cell': {
+                  color: 'var(--text-color)',
+                  borderBottom: '1px solid var(--border-color)',
+                  userSelect: 'none', // Prevent text selection
+                  '-webkit-user-select': 'none',
+                  '-moz-user-select': 'none',
+                  '-ms-user-select': 'none',
+                },
+
+                '& .MuiDataGrid-row:hover': {
+                  backgroundColor: 'var(--node-bg)',
+                },
+                '& .MuiTablePagination-root, & .MuiTablePagination-root .MuiSvgIcon-root, & .MuiTablePagination-root .MuiIconButton-root':
+                  {
+                    color: 'var(--text-color)',
+                  },
+                '& ::-webkit-scrollbar': {
+                  width: '10px',
+                  height: '10px',
+                },
+                '& ::-webkit-scrollbar-track': {
+                  background: 'transparent',
+                },
+                '& ::-webkit-scrollbar-thumb': {
+                  backgroundColor: 'var(--node-handle-bg)',
+                  borderRadius: '5px',
+                },
+                '& ::-webkit-scrollbar-thumb:hover': {
+                  background: 'var(--text-color)',
+                },
+              }}
+              density="compact"
+              autoHeight={true}
+              rows={rows}
+              columns={columns}
+              getRowId={row => row._id ?? ''}
+              columnVisibilityModel={session.columnVisibilityModel}
+              processRowUpdate={updateRecord}
+              onCellEditStart={params => {
+                setEditingCell({ id: params.id, field: params.field });
+              }}
+              onCellEditStop={() => {
+                setEditingCell(null);
+              }}
+            />
+          </Box>
+        ) : (
+          <Box sx={{ width: '100%', overflow: 'auto' }}>
+            <BarChart
+              data={(() => {
+                const visibleColumns = columns.filter(col => col.field !== '_id');
+                const labelField = visibleColumns[0].field;
+                const valueField = visibleColumns[1].field;
+                return rows.map(row => ({
+                  label: String(row[labelField] ?? ''),
+                  value: Number(row[valueField] ?? 0),
+                }));
+              })()}
+            />
+          </Box>
+        )}
       </Box>
 
       {contextMenu && (
