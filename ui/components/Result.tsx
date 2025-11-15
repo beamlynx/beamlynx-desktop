@@ -16,6 +16,7 @@ import {
 } from '@mui/material';
 import { FileDownload, ContentCopy, FilterAlt, Code, BarChart as BarChartIcon } from '@mui/icons-material';
 import UpdateModal from './UpdateModal';
+import DownloadResultsModal from './DownloadResultsModal';
 import { pineEscape } from '../store/util';
 import { BarChart } from './BarChart';
 
@@ -62,6 +63,11 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const [updateData, setUpdateData] = useState<UpdateData | undefined>(undefined);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [viewMode, setViewMode] = useState<'table' | 'chart'>('table');
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [exportData, setExportData] = useState<{ filename: string; csvContent: string }>({
+    filename: '',
+    csvContent: '',
+  });
 
   // Track data structure changes to reset view mode
   const prevDataSignature = useRef<string>('');
@@ -370,23 +376,12 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
       ),
     ];
 
-    // Create and download the file
+    // Create CSV content and open modal
     const csvContent = csvRows.join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-
-    if (link.download !== undefined) {
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute(
-        'download',
-        `pine-export-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`,
-      );
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
+    const defaultFilename = `pine-export-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`;
+    
+    setExportData({ filename: defaultFilename, csvContent });
+    setExportModalOpen(true);
   };
 
   if (columns.length === 0) {
@@ -609,6 +604,14 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
           onClose={handleModalClose}
         />
       )}
+
+      {/* Export Modal */}
+      <DownloadResultsModal
+        open={exportModalOpen}
+        defaultFilename={exportData.filename}
+        csvContent={exportData.csvContent}
+        onClose={() => setExportModalOpen(false)}
+      />
     </div>
   );
 });

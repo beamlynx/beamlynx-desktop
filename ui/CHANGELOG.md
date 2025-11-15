@@ -7,6 +7,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ### Added
 - Option to render bar chart when results have 2 column with string and number values respectively.
+- Prompt user to enter filename for CSV export.
 
 ## [0.33.0] - 2025-10-21
 ### Added
