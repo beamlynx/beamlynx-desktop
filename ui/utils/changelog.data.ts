@@ -14,6 +14,24 @@ export interface ChangelogVersion {
 }
 
 export const CHANGELOG: ChangelogVersion[] = [
+{
+    version: '0.34.0',
+    date: '2025-12-08',
+    added: [
+      {
+        description: 'Option to render bar chart when results have 2 column with string and number values respectively'
+      },
+    ]
+  },
+  {
+    version: '0.33.0',
+    date: '2025-10-21',
+    added: [
+      {
+        description: 'Show the changelog'
+      }
+    ]
+  },
   {
     version: '0.32.0',
     date: '2025-10-19',
