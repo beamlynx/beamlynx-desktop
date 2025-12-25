@@ -156,15 +156,12 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
   // Create cursor tracking extension
   const cursorUpdateExtension = useMemo(() => {
     return EditorView.updateListener.of(update => {
-      if (update.docChanged) {
-        // Only when typing, not cursor movement
-        const pos = update.state.selection.main.head;
-        const line = update.state.doc.lineAt(pos);
-        session.updateCursorPosition(
-          line.number - 1, // Convert to 0-indexed
-          pos - line.from,
-        );
-      }
+      const pos = update.state.selection.main.head;
+      const line = update.state.doc.lineAt(pos);
+      session.updateCursorPosition(
+        line.number - 1, // Convert to 0-indexed
+        pos - line.from,
+      );
     });
   }, [session]);
 
@@ -208,6 +205,7 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
           key: 'Mod-Space',
           run: view => {
             // Trigger autocompletion with Cmd/Ctrl+Space
+            session.requestHints(); // Trigger rebuild
             return startCompletion(view);
           },
         },
@@ -218,6 +216,7 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
             if (status === 'active') {
               return moveCompletionSelection(true)(view);
             } else {
+              session.requestHints(); // Trigger rebuild
               return startCompletion(view);
             }
           },

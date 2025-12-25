@@ -1,6 +1,5 @@
 import { Column, HttpClient } from '../store/client';
 import { ColumnMetadata, Row, Session } from '../store/session';
-import { pickSuccessMessage } from '../store/success-messages';
 import { PluginInterface } from './plugin.interface';
 import { GridColDef } from '@mui/x-data-grid';
 

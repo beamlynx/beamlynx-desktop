@@ -142,6 +142,9 @@ export class Session {
   /** Cursor position */
   cursorPosition?: { line: number; character: number };
 
+  /** Counter to trigger hint regeneration on demand */
+  hintsRequestedCounter: number = 0;
+
   /** Evaluation plugins */
   plugins: { delete: RecursiveDeletePlugin; default: DefaultPlugin };
 
@@ -162,12 +165,15 @@ export class Session {
     };
 
     /**
-     * Handle the expression
-     * - Get the http repsonse
+     * Handle the expression and explicit hint requests
+     * - Get the http response
      */
     reaction(
-      () => this.expression,
-      debounce(async expression => {
+      () => ({
+        expression: this.expression,
+        trigger: this.hintsRequestedCounter,
+      }),
+      debounce(async ({ expression }) => {
         // Skip building if in SQL mode - no Pine expression to build
         if (this.inputMode === 'sql') {
           return;
@@ -182,7 +188,7 @@ export class Session {
           this.mode = 'graph';
         }
 
-        // response
+        // response - use current cursor position (not watched, but always current)
         try {
           this.response = await client.build(expression, this.cursorPosition);
         } catch (e) {
@@ -352,6 +358,11 @@ export class Session {
 
   public updateCursorPosition(line: number, character: number) {
     this.cursorPosition = { line, character };
+  }
+
+  public requestHints() {
+    // Increment counter to trigger the reaction
+    this.hintsRequestedCounter++;
   }
 
   public setInputMode(mode: InputMode) {
