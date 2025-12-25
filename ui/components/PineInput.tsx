@@ -153,10 +153,26 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
     );
   }, [session.ast?.hints, session.graph, debouncedPrettifyOnPipe]); // Added session.graph dependency
 
+  // Create cursor tracking extension
+  const cursorUpdateExtension = useMemo(() => {
+    return EditorView.updateListener.of(update => {
+      if (update.docChanged) {
+        // Only when typing, not cursor movement
+        const pos = update.state.selection.main.head;
+        const line = update.state.doc.lineAt(pos);
+        session.updateCursorPosition(
+          line.number - 1, // Convert to 0-indexed
+          pos - line.from,
+        );
+      }
+    });
+  }, [session]);
+
   // Create extensions array with Pine language support and custom keymap
   const extensions = [
     pineLanguage,
     autocompletionExtension,
+    cursorUpdateExtension,
     // Browser shortcuts - highest precedence to ensure they always work
     Prec.highest(
       keymap.of([

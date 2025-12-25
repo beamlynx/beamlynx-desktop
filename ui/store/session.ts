@@ -139,6 +139,9 @@ export class Session {
     edges: [],
   };
 
+  /** Cursor position */
+  cursorPosition?: { line: number; character: number };
+
   /** Evaluation plugins */
   plugins: { delete: RecursiveDeletePlugin; default: DefaultPlugin };
 
@@ -181,7 +184,7 @@ export class Session {
 
         // response
         try {
-          this.response = await client.build(expression);
+          this.response = await client.build(expression, this.cursorPosition);
         } catch (e) {
           this.error = (e as any).message || 'Failed to build';
         }
@@ -345,6 +348,10 @@ export class Session {
 
   public blurTextInput() {
     this.textInputFocused = false;
+  }
+
+  public updateCursorPosition(line: number, character: number) {
+    this.cursorPosition = { line, character };
   }
 
   public setInputMode(mode: InputMode) {

@@ -18,11 +18,17 @@ export type ColumnHint = {
   alias: string;
 };
 
+export type CursorPosition = {
+  line: number;      // 0-indexed line number
+  character: number; // 0-indexed character offset within line
+};
+
 export type Hints = {
   table: TableHint[];
   select: ColumnHint[];
   order: ColumnHint[];
   where: ColumnHint[];
+  context: string;
 };
 // There are more operations. I'll add them as we need to handle them here
 export type OperationType =
@@ -45,7 +51,7 @@ export type Ast = {
   'selected-tables': Table[];
   joins: string[][];
   context: string;
-  current: string;
+  // current: string;
   operation: Operation;
   columns: Column[];
   order: Column[];
@@ -138,8 +144,12 @@ export class HttpClient {
     return response;
   }
 
-  public async build(expression: string): Promise<Response> {
-    const response = await this.post('build', { expression });
+  public async build(expression: string, cursor?: CursorPosition): Promise<Response> {
+    const body: { expression: string; cursor?: CursorPosition } = { expression };
+    if (cursor) {
+      body.cursor = cursor;
+    }
+    const response = await this.post('build', body);
     if (!response) {
       throw new Error('No response when trying to build');
     }

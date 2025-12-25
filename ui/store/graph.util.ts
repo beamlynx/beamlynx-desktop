@@ -215,7 +215,7 @@ const makeSuggestedNodes = (ast: Ast, sessionId: string, isDark: boolean = false
 };
 
 export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = false): Graph => {
-  const { 'selected-tables': selectedTables, joins, context } = ast;
+  const { 'selected-tables': selectedTables, joins, hints: { context } } = ast;
 
   const graph: Graph = {
     candidate: null,
