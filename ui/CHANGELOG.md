@@ -5,6 +5,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.35.0] - 2025-12-25
+### Added
+- Support for hints at cursor position.
+
 ## [0.34.0] - 2025-12-08
 ### Added
 - Option to render bar chart when results have 2 column with string and number values respectively.
