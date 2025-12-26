@@ -15,8 +15,8 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
-    version: '0.35.0',
-    date: '2025-12-25',
+    version: '0.35.1',
+    date: '2025-12-26',
     added: [
       {
         description: 'Support for hints at cursor position',
@@ -761,4 +761,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.35.0';
+export const LATEST_VERSION = '0.35.1';

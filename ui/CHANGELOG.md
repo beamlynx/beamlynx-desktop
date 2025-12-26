@@ -5,7 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
-## [0.35.0] - 2025-12-25
+## [0.35.1] - 2025-12-26
 ### Added
 - Support for hints at cursor position.
 - Notification bell animates when there are unread updates.

@@ -164,7 +164,7 @@ function createAutocompleteListener(callbacks?: AutocompleteCallbacks): Extensio
 
       private checkSelectionChange(view: any) {
         // Get the currently selected completion
-        const selected = selectedCompletion(view.state);
+        const selected = selectedCompletion(view.state) as PineCompletion | null;
 
         // Check if the selection has changed (compare by expression to handle same table names with different pine expressions)
         if (selected?.expression !== this.lastSelectedCompletion?.expression) {
