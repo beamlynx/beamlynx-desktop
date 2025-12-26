@@ -21,6 +21,9 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         description: 'Support for hints at cursor position',
       },
+      {
+        description: 'Notification bell animates when there are unread updates',
+      },
     ],
     changed: [
       {
@@ -758,4 +761,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.32.0';
+export const LATEST_VERSION = '0.35.0';

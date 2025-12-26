@@ -8,6 +8,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ## [0.35.0] - 2025-12-25
 ### Added
 - Support for hints at cursor position.
+- Notification bell animates when there are unread updates.
 
 ### Changed
 - Pine operations are not shown in the autocompletion.

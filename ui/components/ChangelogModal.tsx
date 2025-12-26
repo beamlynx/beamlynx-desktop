@@ -100,6 +100,23 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ open, onClose }) => {
     }
   };
 
+  const getSectionColor = (section: string) => {
+    switch (section) {
+      case 'added':
+        return '#4caf50'; // Green
+      case 'changed':
+        return '#2196f3'; // Blue
+      case 'fixed':
+        return '#ff9800'; // Orange
+      case 'security':
+        return '#9c27b0'; // Purple
+      case 'breaking':
+        return '#f44336'; // Red
+      default:
+        return 'var(--text-color)';
+    }
+  };
+
   const renderChangelogItem = (item: any, index: number) => (
     <Box key={index} sx={{ mb: 1.5, ml: 2 }}>
       <Typography variant="body2" sx={{ color: 'var(--text-color)', lineHeight: 1.6 }}>
@@ -175,10 +192,10 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ open, onClose }) => {
                   variant="subtitle2" 
                   sx={{ 
                     mb: 1.5,
-                    color: 'var(--text-color)',
+                    color: getSectionColor(section),
                     fontWeight: 600,
                     fontSize: '0.85rem',
-                    opacity: 0.7
+                    opacity: 0.9
                   }}
                 >
                   {getSectionTitle(section)}

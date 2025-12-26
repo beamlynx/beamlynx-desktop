@@ -10,7 +10,6 @@ import {
   useMediaQuery,
   ListItemIcon,
   Link,
-  Badge,
 } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
@@ -22,11 +21,12 @@ import ActiveConnection from './ActiveConnection';
 import Message from './Message';
 import UserBox from './UserBox';
 import { isDevelopment, isPlayground } from '../store/util';
-import { Settings, Analytics, Notifications } from '@mui/icons-material';
+import { Settings, Analytics } from '@mui/icons-material';
 import { useState, useEffect } from 'react';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from '../store/preferences';
 import AnalysisModal from './AnalysisModal';
 import ChangelogModal from './ChangelogModal';
+import NotificationBell from './NotificationBell';
 import { useGlobalKeybindings } from '../hooks/useGlobalKeybindings';
 import { LATEST_VERSION } from '../utils/changelog.data';
 import { compare } from 'semver';
@@ -85,11 +85,11 @@ const AppView = observer(() => {
 
   const handleOpenChangelog = () => {
     setShowChangelog(true);
+    setHasUnreadUpdates(false);
   };
 
   const handleCloseChangelog = () => {
     setShowChangelog(false);
-    setHasUnreadUpdates(false);
   };
 
   // Prevent hydration errors by ensuring the same component is rendered on server and client initial render
@@ -193,11 +193,10 @@ const AppView = observer(() => {
         <Grid item xs={1}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
             {UserContent}
-            <IconButton onClick={handleOpenChangelog} sx={{ ml: 1 }} color="inherit" tabIndex={1}>
-              <Badge variant="dot" color="error" invisible={!hasUnreadUpdates}>
-                <Notifications />
-              </Badge>
-            </IconButton>
+            <NotificationBell
+              hasUnreadUpdates={hasUnreadUpdates}
+              onClick={handleOpenChangelog}
+            />
             <IconButton onClick={handleMenuOpen} sx={{ ml: 1 }} color="inherit" tabIndex={2}>
               <Settings />
             </IconButton>
