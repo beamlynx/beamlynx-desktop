@@ -9,6 +9,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Added
 - Support for hints at cursor position.
 
+### Changed
+- Pine operations are not shown in the autocompletion.
+
 ## [0.34.0] - 2025-12-08
 ### Added
 - Option to render bar chart when results have 2 column with string and number values respectively.

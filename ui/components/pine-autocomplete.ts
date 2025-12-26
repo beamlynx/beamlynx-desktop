@@ -27,18 +27,6 @@ interface AutocompleteCallbacks {
   onPipe?: (view: EditorView) => void;
 }
 
-// Pine operators and keywords
-const PINE_OPERATORS = [
-  { label: 'select: ', detail: 'Select columns', type: 'keyword' },
-  { label: 'where: ', detail: 'Where', type: 'keyword' },
-  { label: 'limit: ', detail: 'Limit', type: 'keyword' },
-  { label: 'from: ', detail: 'Set the context for the next operation', type: 'keyword' },
-  { label: 'order: ', detail: 'Order', type: 'keyword' },
-  { label: 'group: ', detail: 'Group', type: 'keyword' },
-  { label: 'delete! ', detail: 'Delete', type: 'keyword' },
-  { label: 'count: ', detail: 'Count', type: 'keyword' },
-];
-
 // Helper function to extract a meaningful label from a TableHint
 function getPineCompletions(
   context: CompletionContext,
@@ -61,26 +49,6 @@ function getPineCompletions(
 
   // Check if cursor is immediately after a pipe and space
   const afterPipeSpace = beforeCursor.trim().endsWith('|');
-
-  // Add Pine operators/keywords (with high boost to ensure they appear first)
-  PINE_OPERATORS.forEach(op => {
-    const shouldShow =
-      (word !== '' && op.label.toLowerCase().includes(word.toLowerCase())) ||
-      (word === '' && afterPipeSpace) ||
-      (word === '' && beforeCursor.trim() === '');
-
-    if (shouldShow) {
-      completions.push({
-        expression: op.label,
-        section: 'Operation',
-        label: op.label,
-        detail: op.detail,
-        type: op.type,
-        apply: op.label,
-        boost: 100, // High boost to ensure operators appear first
-      });
-    }
-  });
 
   // Add table hints (preserving original order)
   if (hints?.table) {
@@ -123,6 +91,7 @@ function getPineCompletions(
       if (hint.column.toLowerCase().includes(word.toLowerCase()) || word === '') {
         completions.push({
           expression: hint.column,
+          section: 'Columns',
           label: hint.column,
           apply: `${hint.column}, `,
         });
@@ -133,6 +102,7 @@ function getPineCompletions(
       if (hint.column.toLowerCase().includes(word.toLowerCase()) || word === '') {
         completions.push({
           expression: hint.column,
+          section: 'Columns',
           label: hint.column,
           apply: `${hint.column} desc, `,
         });
@@ -143,6 +113,7 @@ function getPineCompletions(
       if (hint.column.toLowerCase().includes(word.toLowerCase()) || word === '') {
         completions.push({
           expression: hint.column,
+          section: 'Columns',
           label: hint.column,
           apply: `${hint.column} = `,
         });
