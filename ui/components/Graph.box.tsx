@@ -114,15 +114,7 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId, containerRef }) => {
 
     setNodes(finalNodes);
     setEdges(layoutedEdges);
-  }, [
-    layoutedNodes,
-    layoutedEdges,
-    candidateNode,
-    global.theme,
-    sessionId,
-    setNodes,
-    setEdges,
-  ]);
+  }, [layoutedNodes, layoutedEdges, candidateNode, global.theme, sessionId, setNodes, setEdges]);
 
   // Center view on candidate or fit view
   useEffect(() => {
@@ -152,16 +144,18 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId, containerRef }) => {
   };
 
   if (session.inputMode === 'sql') {
-    return (<div
-      style={{
-        padding: '8px 12px',
-        fontSize: '12px',
-        fontFamily: 'monospace',
-        color: 'gray',
-      }}
-    >
-      SQL mode enabled. You can edit the SQL query directly in the input.
-    </div>);
+    return (
+      <div
+        style={{
+          padding: '8px 12px',
+          fontSize: '12px',
+          fontFamily: 'monospace',
+          color: 'gray',
+        }}
+      >
+        SQL mode enabled. You can edit the SQL query directly in the input.
+      </div>
+    );
   }
 
   return (
@@ -182,27 +176,22 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId, containerRef }) => {
       zoomOnScroll={true}
       nodeDragThreshold={1}
     >
-        <Box
-          sx={{
-            position: 'absolute',
-            top: 10,
-            right: 10,
-            zIndex: 10,
-            cursor: 'pointer',
-            color: 'var(--text-color)',
-            '&:hover': {
-              color: 'var(--primary-color)'
-            }
-          }}
-          onClick={() => session.mode = session.mode === 'graph' ? 'result' : 'graph'}
-        >
-      {session.mode === 'graph' ? (
-          <CloseFullscreen/>
-      ) : (
-          <OpenInFull/>
-      )}
-
-        </Box>
+      <Box
+        sx={{
+          position: 'absolute',
+          top: 10,
+          right: 10,
+          zIndex: 10,
+          cursor: 'pointer',
+          color: 'var(--text-color)',
+          '&:hover': {
+            color: 'var(--primary-color)',
+          },
+        }}
+        onClick={() => (session.mode = session.mode === 'graph' ? 'result' : 'graph')}
+      >
+        {session.mode === 'graph' ? <CloseFullscreen /> : <OpenInFull />}
+      </Box>
       {/* <Controls /> */}
     </ReactFlow>
   );

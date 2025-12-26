@@ -166,8 +166,8 @@ function createAutocompleteListener(callbacks?: AutocompleteCallbacks): Extensio
         // Get the currently selected completion
         const selected = selectedCompletion(view.state);
 
-        // Check if the selection has changed
-        if (selected?.label !== this.lastSelectedCompletion?.label) {
+        // Check if the selection has changed (compare by expression to handle same table names with different pine expressions)
+        if (selected?.expression !== this.lastSelectedCompletion?.expression) {
           this.lastSelectedCompletion = selected;
 
           // Call the onHighlight callback

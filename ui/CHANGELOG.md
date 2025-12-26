@@ -12,6 +12,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Changed
 - Pine operations are not shown in the autocompletion.
 
+### Fixed
+- The candidate node was not being selected when cycling through suggestions.
+This was only happening when there were multiple nodes with the same table name.
+
 ## [0.34.0] - 2025-12-08
 ### Added
 - Option to render bar chart when results have 2 column with string and number values respectively.

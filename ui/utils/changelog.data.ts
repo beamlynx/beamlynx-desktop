@@ -22,6 +22,16 @@ export const CHANGELOG: ChangelogVersion[] = [
         description: 'Support for hints at cursor position',
       },
     ],
+    changed: [
+      {
+        description: 'Pine operations will not be shown in suggestions e.g. when pressing `Tab`, etc',
+      },
+    ],
+    fixed: [
+      {
+        description: 'The candidate node was not being selected when cycling through suggestions. This was only happening when there were multiple nodes with the same table name',
+      },
+    ],
   },
   {
     version: '0.34.0',
