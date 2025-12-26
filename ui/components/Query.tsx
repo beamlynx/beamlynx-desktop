@@ -30,7 +30,6 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
     if (!editorRef.current || !session.query) return;
 
     const extensions = [
-      // Use minimal setup instead of basicSetup to avoid unwanted features
       EditorView.lineWrapping,
       sql(),
       EditorView.theme({

@@ -124,6 +124,25 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
     };
   }, [session]);
 
+  const onHighlight = useCallback(
+    (completion: any) => {
+      if (!completion?.expression) {
+        session.graph.candidate = null;
+        return;
+      }
+      session.graph.candidate = { pine: completion.expression };
+    },
+    [session.graph], // Only depend on graph, not entire session
+  );
+
+  const onPipe = useCallback(
+    (view: EditorView) => {
+      const expectedContent = view.state.doc.toString();
+      debouncedPrettifyOnPipe(view, expectedContent);
+    },
+    [debouncedPrettifyOnPipe],
+  );
+
   // Create autocompletion extension that updates with hints
   const autocompletionExtension = useMemo(() => {
     return createPineAutocompletion(
@@ -131,27 +150,11 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
         hints: session.ast?.hints || null,
       },
       {
-        // Callback when an autocomplete item is highlighted (navigation with arrow keys)
-        onHighlight: completion => {
-          if (!completion?.expression) {
-            session.graph.candidate = null;
-            return;
-          }
-
-          // Update the candidate with the pine expression from the highlighted completion
-          session.graph.candidate = { pine: completion.expression };
-        },
-        // Callback when a table hint is applied via autocomplete
-        onPipe: view => {
-          const expectedContent = view.state.doc.toString();
-
-          // Call the debounced prettify function with the expected content
-          // This helps prevent race conditions if user starts typing immediately
-          debouncedPrettifyOnPipe(view, expectedContent);
-        },
+        onHighlight,
+        onPipe,
       },
     );
-  }, [session.ast?.hints, session.graph, debouncedPrettifyOnPipe]); // Added session.graph dependency
+  }, [session.ast?.hints, onHighlight, onPipe]);
 
   // Create cursor tracking extension
   const cursorUpdateExtension = useMemo(() => {
