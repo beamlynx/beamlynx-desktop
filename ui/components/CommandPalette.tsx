@@ -29,7 +29,7 @@ const CommandPalette = observer(({ onOpenChangelog }: CommandPaletteProps) => {
 
   // Group filtered commands by category
   const groupedCommands: { category: CommandCategory; commands: Command[] }[] = [];
-  const categoryOrder: CommandCategory[] = ['Preferences', 'Query', 'Help'];
+  const categoryOrder: CommandCategory[] = ['Preferences', 'Query', 'Help', 'Experimental'];
 
   categoryOrder.forEach(category => {
     const commands = filteredCommands.filter(cmd => cmd.category === category);
@@ -176,6 +176,21 @@ const CommandPalette = observer(({ onOpenChangelog }: CommandPaletteProps) => {
             overflowY: 'auto',
             flex: 1,
             minHeight: 0,
+            // Custom scrollbar styling
+            '&::-webkit-scrollbar': {
+              width: '8px',
+            },
+            '&::-webkit-scrollbar-track': {
+              backgroundColor: 'var(--background-color)',
+            },
+            '&::-webkit-scrollbar-thumb': {
+              backgroundColor: 'var(--border-color)',
+              borderRadius: '4px',
+              '&:hover': {
+                backgroundColor: 'var(--text-color)',
+                opacity: 0.5,
+              },
+            },
           }}
         >
           {groupedCommands.length === 0 ? (

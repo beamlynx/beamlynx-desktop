@@ -2,13 +2,8 @@ import {
   Box,
   Grid,
   Typography,
-  IconButton,
-  Menu,
-  MenuItem,
-  Switch,
   useTheme,
   useMediaQuery,
-  ListItemIcon,
   Link,
 } from '@mui/material';
 import { observer } from 'mobx-react-lite';
@@ -21,9 +16,8 @@ import ActiveConnection from './ActiveConnection';
 import Message from './Message';
 import UserBox from './UserBox';
 import { isDevelopment, isPlayground } from '../store/util';
-import { Settings, Analytics } from '@mui/icons-material';
 import { useState, useEffect, useCallback } from 'react';
-import { getUserPreference, setUserPreference, STORAGE_KEYS } from '../store/preferences';
+import { getUserPreference, STORAGE_KEYS } from '../store/preferences';
 import AnalysisModal from './AnalysisModal';
 import ChangelogModal from './ChangelogModal';
 import CommandPalette from './CommandPalette';
@@ -35,7 +29,6 @@ import { compare } from 'semver';
 const AppView = observer(() => {
   const { global } = useStores();
   const session = global.getSession(global.activeSessionId);
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [mounted, setMounted] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
   const [hasUnreadUpdates, setHasUnreadUpdates] = useState(false);
@@ -74,19 +67,6 @@ const AppView = observer(() => {
   useEffect(() => {
     global.handleUrlParameters();
   }, [global]);
-
-  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
-    setAnchorEl(event.currentTarget);
-  };
-
-  const handleMenuClose = () => {
-    setAnchorEl(null);
-  };
-
-  const handleOpenAnalysis = () => {
-    global.setShowAnalysis(true);
-    handleMenuClose();
-  };
 
   // Prevent hydration errors by ensuring the same component is rendered on server and client initial render
   if (!mounted) {
@@ -224,53 +204,6 @@ const AppView = observer(() => {
               hasUnreadUpdates={hasUnreadUpdates}
               onClick={handleOpenChangelog}
             />
-            <IconButton onClick={handleMenuOpen} sx={{ ml: 1 }} color="inherit" tabIndex={2}>
-              <Settings />
-            </IconButton>
-            <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}>
-              <MenuItem onClick={handleOpenAnalysis}>
-                <ListItemIcon>
-                  <Analytics />
-                </ListItemIcon>
-                Analysis
-              </MenuItem>
-              <MenuItem onClick={() => global.toggleTheme()}>
-                <ListItemIcon>
-                  <Switch checked={global.theme === 'dark'} size="small" />
-                </ListItemIcon>
-                Dark Mode
-              </MenuItem>
-              <MenuItem onClick={() => session.toggleVimMode()}>
-                <ListItemIcon>
-                  <Switch checked={session.vimMode} size="small" />
-                </ListItemIcon>
-                Vim Mode
-              </MenuItem>
-              <MenuItem
-                disabled={isSmallScreen}
-                onClick={() => {
-                  if (isSmallScreen) return;
-                  global.toggleCompactMode();
-                }}
-              >
-                <ListItemIcon>
-                  <Switch
-                    checked={isSmallScreen || global.forceCompactMode}
-                    size="small"
-                    disabled={isSmallScreen}
-                  />
-                </ListItemIcon>
-                Compact mode
-              </MenuItem>
-              <MenuItem
-                onClick={() => (session.mode = session.mode === 'monitor' ? 'graph' : 'monitor')}
-              >
-                <ListItemIcon>
-                  <Switch checked={session.mode === 'monitor'} size="small" />
-                </ListItemIcon>
-                Connection Monitor
-              </MenuItem>
-            </Menu>
           </Box>
         </Grid>
       </Grid>

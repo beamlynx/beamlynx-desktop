@@ -1,7 +1,7 @@
 import { GlobalStore } from '../store/global.store';
 import { Session } from '../store/session';
 
-export type CommandCategory = 'Preferences' | 'Query' | 'Help';
+export type CommandCategory = 'Preferences' | 'Query' | 'Experimental' | 'Help';
 
 export interface Command {
   id: string;
@@ -60,6 +60,14 @@ export function getAllCommands(
       },
     },
 
+    // Experimental Category
+    {
+      id: 'open-analysis',
+      label: 'Open Analysis',
+      category: 'Experimental',
+      handler: () => global.setShowAnalysis(true),
+    },
+
     // Help Category
     {
       id: 'show-changelog',
@@ -88,6 +96,7 @@ export function getCommandsByCategory(
   const grouped: Record<CommandCategory, Command[]> = {
     Preferences: [],
     Query: [],
+    Experimental: [],
     Help: [],
   };
 
