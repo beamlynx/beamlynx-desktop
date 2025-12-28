@@ -49,13 +49,7 @@ export function getAllCommands(
       id: 'toggle-compact-mode',
       label: 'Toggle Compact Mode',
       category: 'Preferences',
-      handler: () => {
-        // Toggle forceCompactMode in session
-        session.forceCompactMode = !session.forceCompactMode;
-        // Also persist to local storage
-        const { setUserPreference, STORAGE_KEYS } = require('../store/preferences');
-        setUserPreference(STORAGE_KEYS.FORCE_COMPACT_MODE, session.forceCompactMode);
-      },
+      handler: () => global.toggleCompactMode(),
     },
     {
       id: 'toggle-connection-monitor',

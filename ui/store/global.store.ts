@@ -45,6 +45,18 @@ export class GlobalStore {
     setUserPreference(STORAGE_KEYS.THEME, newTheme);
   }
 
+  // Force Compact Mode
+  _forceCompactMode: boolean;
+
+  get forceCompactMode(): boolean {
+    return this._forceCompactMode;
+  }
+
+  set forceCompactMode(value: boolean) {
+    this._forceCompactMode = value;
+    setUserPreference(STORAGE_KEYS.FORCE_COMPACT_MODE, value);
+  }
+
   // User
   email = '';
   domain = '';
@@ -73,6 +85,7 @@ export class GlobalStore {
 
   constructor() {
     this._theme = getUserPreference(STORAGE_KEYS.THEME, 'dark');
+    this._forceCompactMode = getUserPreference(STORAGE_KEYS.FORCE_COMPACT_MODE, false);
     this._onboardingServer = getUserPreference(STORAGE_KEYS.ONBOARDING_SERVER, false);
     makeAutoObservable(this);
 
@@ -142,6 +155,10 @@ export class GlobalStore {
 
   public toggleTheme() {
     this.theme = this.theme === 'light' ? 'dark' : 'light';
+  }
+
+  public toggleCompactMode() {
+    this.forceCompactMode = !this.forceCompactMode;
   }
 
   getConnectionName = () => {

@@ -61,12 +61,9 @@ const AppView = observer(() => {
 
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('lg'));
-  const [forceSmallScreen, setForceSmallScreen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
-    const storedForceSmallScreen = getUserPreference(STORAGE_KEYS.FORCE_COMPACT_MODE, false);
-    setForceSmallScreen(storedForceSmallScreen);
     
     // Check for unread updates
     const lastReadVersion = getUserPreference(STORAGE_KEYS.LAST_READ_VERSION, '0.0.0');
@@ -77,12 +74,6 @@ const AppView = observer(() => {
   useEffect(() => {
     global.handleUrlParameters();
   }, [global]);
-
-  const handleToggleForceSmallScreen = () => {
-    const newValue = !forceSmallScreen;
-    setForceSmallScreen(newValue);
-    setUserPreference(STORAGE_KEYS.FORCE_COMPACT_MODE, newValue);
-  };
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -172,7 +163,7 @@ const AppView = observer(() => {
   }
 
   session.isSmallScreen = isSmallScreen;
-  session.forceCompactMode = forceSmallScreen;
+  session.forceCompactMode = global.forceCompactMode;
 
   if (global.getRequiresUpgrade()) {
     return <UpgradeRequired />;
@@ -259,12 +250,12 @@ const AppView = observer(() => {
                 disabled={isSmallScreen}
                 onClick={() => {
                   if (isSmallScreen) return;
-                  handleToggleForceSmallScreen();
+                  global.toggleCompactMode();
                 }}
               >
                 <ListItemIcon>
                   <Switch
-                    checked={isSmallScreen || forceSmallScreen}
+                    checked={isSmallScreen || global.forceCompactMode}
                     size="small"
                     disabled={isSmallScreen}
                   />
