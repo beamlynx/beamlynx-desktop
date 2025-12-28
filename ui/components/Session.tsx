@@ -16,6 +16,7 @@ import Input from './Input';
 import { Monitor } from './Monitor';
 import Query from './Query';
 import Result from './Result';
+import ErrorMessage from './ErrorMessage';
 
 interface SessionProps {
   sessionId: string;
@@ -204,7 +205,9 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
               session={session}
               firstView={<Input session={session} />}
               secondView={
-                !session.error && session.mode === 'result' ? (
+                session.error ? (
+                  <ErrorMessage />
+                ) : session.mode === 'result' ? (
                   <GraphBox sessionId={sessionId} />
                 ) : (
                   <Query sessionId={sessionId} />

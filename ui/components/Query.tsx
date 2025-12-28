@@ -91,24 +91,6 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
     };
   }, [session.query, store.theme, onClick]);
 
-  if (session.error && session.errorType === 'parse') {
-    return (
-      <Box sx={{ margin: 1 }}>
-        <Typography
-          variant="caption"
-          sx={{
-            fontFamily: 'monospace',
-            whiteSpace: 'break-spaces',
-            lineHeight: 1,
-            color: 'red',
-          }}
-        >
-          {session.error}
-        </Typography>
-      </Box>
-    );
-  }
-
   if (session.inputMode === 'sql') {
     return (<div
       style={{
