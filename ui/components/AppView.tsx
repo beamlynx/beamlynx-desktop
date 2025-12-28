@@ -22,10 +22,11 @@ import Message from './Message';
 import UserBox from './UserBox';
 import { isDevelopment, isPlayground } from '../store/util';
 import { Settings, Analytics } from '@mui/icons-material';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from '../store/preferences';
 import AnalysisModal from './AnalysisModal';
 import ChangelogModal from './ChangelogModal';
+import CommandPalette from './CommandPalette';
 import NotificationBell from './NotificationBell';
 import { useGlobalKeybindings } from '../hooks/useGlobalKeybindings';
 import { LATEST_VERSION } from '../utils/changelog.data';
@@ -39,10 +40,23 @@ const AppView = observer(() => {
   const [showChangelog, setShowChangelog] = useState(false);
   const [hasUnreadUpdates, setHasUnreadUpdates] = useState(false);
 
+  const handleOpenChangelog = () => {
+    setShowChangelog(true);
+    setHasUnreadUpdates(false);
+  };
+
+  const handleCloseChangelog = () => {
+    setShowChangelog(false);
+  };
+
   // Initialize global keyboard shortcuts
   useGlobalKeybindings({
     session,
+    global,
     focusInput: () => session.focusTextInput(),
+    callbacks: {
+      openChangelog: handleOpenChangelog,
+    },
   });
 
   const theme = useTheme();
@@ -81,15 +95,6 @@ const AppView = observer(() => {
   const handleOpenAnalysis = () => {
     global.setShowAnalysis(true);
     handleMenuClose();
-  };
-
-  const handleOpenChangelog = () => {
-    setShowChangelog(true);
-    setHasUnreadUpdates(false);
-  };
-
-  const handleCloseChangelog = () => {
-    setShowChangelog(false);
   };
 
   // Prevent hydration errors by ensuring the same component is rendered on server and client initial render
@@ -177,6 +182,7 @@ const AppView = observer(() => {
     <>
       <AnalysisModal />
       <ChangelogModal open={showChangelog} onClose={handleCloseChangelog} />
+      <CommandPalette onOpenChangelog={handleOpenChangelog} />
       <Grid container>
         <Grid item xs={3}>
           <Box sx={{ m: 2, mt: 1 }}>
@@ -184,13 +190,43 @@ const AppView = observer(() => {
           </Box>
         </Grid>
 
-        <Grid item xs={8}>
-          <Box sx={{ m: 1 }}>
-            <Message />
+        <Grid item xs={6}>
+          <Box sx={{ m: 1, display: 'flex', justifyContent: 'center' }}>
+            <Box
+              onClick={() => global.setShowCommandPalette(true)}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                width: 600,
+                maxWidth: '90vw',
+                padding: '8px 16px',
+                backgroundColor: 'var(--node-column-bg)',
+                border: '1px solid var(--border-color)',
+                borderRadius: 1,
+                cursor: 'pointer',
+                visibility: global.showCommandPalette ? 'hidden' : 'visible',
+                '&:hover': {
+                  borderColor: 'var(--primary-color)',
+                  backgroundColor: 'var(--background-color)',
+                },
+              }}
+            >
+              <Typography
+                variant="body2"
+                sx={{
+                  color: 'var(--text-color)',
+                  opacity: 0.6,
+                  userSelect: 'none',
+                }}
+              >
+                Search commands... (Ctrl+Shift+P)
+              </Typography>
+            </Box>
+            {/* <Message /> */}
           </Box>
         </Grid>
 
-        <Grid item xs={1}>
+        <Grid item xs={3}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
             {UserContent}
             <NotificationBell

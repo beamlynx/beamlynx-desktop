@@ -56,6 +56,9 @@ export class GlobalStore {
   showAnalysis = false;
   analysisInitialValue = '';
 
+  // Command Palette
+  showCommandPalette = false;
+
   // Onboarding
   _onboardingServer: boolean;
 
@@ -272,5 +275,9 @@ export class GlobalStore {
     if (!show) {
       this.analysisInitialValue = ''; // Clear initial value when closing
     }
+  };
+
+  setShowCommandPalette = (show: boolean) => {
+    this.showCommandPalette = show;
   };
 }

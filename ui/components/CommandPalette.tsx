@@ -1,0 +1,313 @@
+import { Box, Modal, TextField, Typography, List, ListItem, ListItemText, Chip } from '@mui/material';
+import { observer } from 'mobx-react-lite';
+import { useEffect, useState, useRef, useCallback } from 'react';
+import { useStores } from '../store/store-container';
+import { getAllCommands, Command, CommandCategory } from '../utils/commands';
+
+interface CommandPaletteProps {
+  onOpenChangelog?: () => void;
+}
+
+const CommandPalette = observer(({ onOpenChangelog }: CommandPaletteProps) => {
+  const { global } = useStores();
+  const session = global.getSession(global.activeSessionId);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  const allCommands = getAllCommands(global, session, {
+    openChangelog: onOpenChangelog,
+  });
+
+  // Filter commands based on search query
+  const filteredCommands = searchQuery
+    ? allCommands.filter(cmd =>
+        cmd.label.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : allCommands;
+
+  // Group filtered commands by category
+  const groupedCommands: { category: CommandCategory; commands: Command[] }[] = [];
+  const categoryOrder: CommandCategory[] = ['Preferences', 'Query', 'Help'];
+
+  categoryOrder.forEach(category => {
+    const commands = filteredCommands.filter(cmd => cmd.category === category);
+    if (commands.length > 0) {
+      groupedCommands.push({ category, commands });
+    }
+  });
+
+  // Flatten for keyboard navigation
+  const flatCommands = groupedCommands.flatMap(group => group.commands);
+
+  useEffect(() => {
+    if (global.showCommandPalette) {
+      // Reset state when modal opens
+      setSearchQuery('');
+      setSelectedIndex(0);
+      
+      // Focus the search input when modal opens
+      requestAnimationFrame(() => {
+        searchInputRef.current?.focus();
+      });
+    }
+  }, [global.showCommandPalette]);
+
+  // Update selected index when filtered commands change
+  useEffect(() => {
+    if (selectedIndex >= flatCommands.length) {
+      setSelectedIndex(Math.max(0, flatCommands.length - 1));
+    }
+  }, [flatCommands.length, selectedIndex]);
+
+  const handleClose = useCallback(() => {
+    global.setShowCommandPalette(false);
+  }, [global]);
+
+  const executeCommand = (command: Command) => {
+    command.handler();
+    handleClose();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIndex(prev => Math.min(prev + 1, flatCommands.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIndex(prev => Math.max(prev - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (flatCommands[selectedIndex]) {
+        executeCommand(flatCommands[selectedIndex]);
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      handleClose();
+    }
+  };
+
+  // Auto-scroll selected item into view
+  useEffect(() => {
+    const selectedElement = listRef.current?.querySelector(`[data-index="${selectedIndex}"]`);
+    if (selectedElement) {
+      selectedElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [selectedIndex]);
+
+  return (
+    <Modal
+      open={global.showCommandPalette}
+      onClose={handleClose}
+      aria-labelledby="command-palette-title"
+      sx={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'center',
+        paddingTop: '8px',
+      }}
+      slotProps={{
+        backdrop: {
+          sx: {
+            // backgroundColor: 'rgba(0, 0, 0, 0.3)',
+            backgroundColor: 'rgba(0, 0, 0, 0)',
+          },
+        },
+      }}
+    >
+      <Box
+        sx={{
+          width: 600,
+          maxWidth: '90vw',
+          bgcolor: 'var(--background-color)',
+          border: '1px solid var(--border-color)',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
+          borderRadius: 1, // Match search box (4px)
+          outline: 'none',
+          maxHeight: '60vh',
+          display: 'flex',
+          flexDirection: 'column',
+          // animation: 'slideDown 0.15s ease-out',
+          '@keyframes slideDown': {
+            '0%': {
+              opacity: 0,
+              transform: 'translateY(-10px)',
+            },
+            '100%': {
+              opacity: 1,
+              transform: 'translateY(0)',
+            },
+          },
+        }}
+        onKeyDown={handleKeyDown}
+      >
+        {/* Search Input */}
+        <TextField
+          fullWidth
+          placeholder="Type a command..."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          inputRef={searchInputRef}
+          variant="outlined"
+          size="small"
+          autoComplete="off"
+          sx={{
+            '& .MuiInputBase-root': {
+              color: 'var(--text-color)',
+              backgroundColor: 'var(--node-column-bg)',
+              borderRadius: '4px 4px 0 0', // Match search box border radius (4px at top)
+            },
+            '& .MuiOutlinedInput-root': {
+              '& fieldset': { 
+                borderColor: 'var(--border-color)',
+                borderBottom: '1px solid var(--border-color)',
+              },
+              '&:hover fieldset': { borderColor: 'var(--text-color)' },
+              '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
+            },
+          }}
+        />
+
+        {/* Commands List */}
+        <Box
+          ref={listRef}
+          sx={{
+            overflowY: 'auto',
+            flex: 1,
+            minHeight: 0,
+          }}
+        >
+          {groupedCommands.length === 0 ? (
+            <Box sx={{ p: 3, textAlign: 'center' }}>
+              <Typography sx={{ color: 'var(--text-color)', opacity: 0.6 }}>
+                No commands found
+              </Typography>
+            </Box>
+          ) : (
+            groupedCommands.map(({ category, commands }) => {
+              // Calculate the starting index for this category
+              const categoryStartIndex = flatCommands.findIndex(cmd => cmd.category === category);
+              
+              return (
+                <Box key={category} sx={{ mb: 1 }}>
+                  {/* Category Header */}
+                  <Box
+                    sx={{
+                      px: 2,
+                      py: 1,
+                      backgroundColor: 'var(--node-column-bg)',
+                      borderBottom: '1px solid var(--border-color)',
+                    }}
+                  >
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: 'var(--text-color)',
+                        opacity: 0.7,
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        fontSize: '0.7rem',
+                      }}
+                    >
+                      {category}
+                    </Typography>
+                  </Box>
+
+                  {/* Category Commands */}
+                  <List disablePadding>
+                    {commands.map((cmd, index) => {
+                      const commandIndex = categoryStartIndex + index;
+                      const isSelected = commandIndex === selectedIndex;
+                      
+                      return (
+                        <ListItem
+                          key={cmd.id}
+                          data-index={commandIndex}
+                          component="div"
+                          onClick={() => executeCommand(cmd)}
+                          sx={{
+                            px: 2,
+                            py: 1.5,
+                            cursor: 'pointer',
+                            backgroundColor: isSelected
+                              ? 'var(--primary-color)'
+                              : 'transparent',
+                            color: isSelected ? 'var(--primary-text-color)' : 'var(--text-color)',
+                            '&:hover': {
+                              backgroundColor: isSelected
+                                ? 'var(--primary-color)'
+                                : 'var(--node-column-bg)',
+                            },
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <ListItemText
+                            primary={cmd.label}
+                            primaryTypographyProps={{
+                              sx: {
+                                color: 'inherit',
+                                fontWeight: isSelected ? 500 : 400,
+                              },
+                            }}
+                          />
+                          {cmd.keybinding && (
+                            <Chip
+                              label={cmd.keybinding.display}
+                              size="small"
+                              sx={{
+                                height: 22,
+                                fontSize: '0.7rem',
+                                backgroundColor: isSelected
+                                  ? 'rgba(255, 255, 255, 0.2)'
+                                  : 'var(--node-column-bg)',
+                                color: isSelected
+                                  ? 'var(--primary-text-color)'
+                                  : 'var(--text-color)',
+                                border: '1px solid',
+                                borderColor: isSelected
+                                  ? 'rgba(255, 255, 255, 0.3)'
+                                  : 'var(--border-color)',
+                                fontFamily: 'monospace',
+                              }}
+                            />
+                          )}
+                        </ListItem>
+                      );
+                    })}
+                  </List>
+                </Box>
+              );
+            })
+          )}
+        </Box>
+
+        {/* Footer hint */}
+        <Box
+          sx={{
+            px: 2,
+            py: 1,
+            borderTop: '1px solid var(--border-color)',
+            backgroundColor: 'var(--node-column-bg)',
+          }}
+        >
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'var(--text-color)',
+              opacity: 0.6,
+              fontSize: '0.7rem',
+            }}
+          >
+            Use ↑↓ to navigate • Enter to select • Esc to close
+          </Typography>
+        </Box>
+      </Box>
+    </Modal>
+  );
+});
+
+export default CommandPalette;
+
