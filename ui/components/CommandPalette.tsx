@@ -27,6 +27,13 @@ const CommandPalette = observer(({ onOpenChangelog }: CommandPaletteProps) => {
       )
     : allCommands;
 
+  // Get recent commands (only if no search query)
+  const recentCommands = !searchQuery
+    ? global.commandHistory
+        .map(id => allCommands.find(cmd => cmd.id === id))
+        .filter(Boolean) as Command[]
+    : [];
+
   // Group filtered commands by category
   const groupedCommands: { category: CommandCategory; commands: Command[] }[] = [];
   const categoryOrder: CommandCategory[] = ['Preferences', 'Query', 'Help', 'Experimental'];
@@ -38,8 +45,10 @@ const CommandPalette = observer(({ onOpenChangelog }: CommandPaletteProps) => {
     }
   });
 
-  // Flatten for keyboard navigation
-  const flatCommands = groupedCommands.flatMap(group => group.commands);
+  // Flatten for keyboard navigation (include recent commands if showing them)
+  const flatCommands = recentCommands.length > 0
+    ? [...recentCommands, ...groupedCommands.flatMap(group => group.commands)]
+    : groupedCommands.flatMap(group => group.commands);
 
   useEffect(() => {
     if (global.showCommandPalette) {
@@ -67,6 +76,7 @@ const CommandPalette = observer(({ onOpenChangelog }: CommandPaletteProps) => {
 
   const executeCommand = (command: Command) => {
     command.handler();
+    global.addToCommandHistory(command.id);
     handleClose();
   };
 
@@ -193,16 +203,111 @@ const CommandPalette = observer(({ onOpenChangelog }: CommandPaletteProps) => {
             },
           }}
         >
-          {groupedCommands.length === 0 ? (
+          {groupedCommands.length === 0 && recentCommands.length === 0 ? (
             <Box sx={{ p: 3, textAlign: 'center' }}>
               <Typography sx={{ color: 'var(--text-color)', opacity: 0.6 }}>
                 No commands found
               </Typography>
             </Box>
           ) : (
-            groupedCommands.map(({ category, commands }) => {
-              // Calculate the starting index for this category
-              const categoryStartIndex = flatCommands.findIndex(cmd => cmd.category === category);
+            <>
+              {/* Recent Commands Section */}
+              {recentCommands.length > 0 && (
+                <Box sx={{ mb: 1 }}>
+                  {/* Recent Header */}
+                  <Box
+                    sx={{
+                      px: 2,
+                      py: 1,
+                      backgroundColor: 'var(--node-column-bg)',
+                      borderBottom: '1px solid var(--border-color)',
+                    }}
+                  >
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: 'var(--text-color)',
+                        opacity: 0.7,
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        fontSize: '0.7rem',
+                      }}
+                    >
+                      Recent
+                    </Typography>
+                  </Box>
+
+                  {/* Recent Commands */}
+                  <List disablePadding>
+                    {recentCommands.map((cmd, index) => {
+                      const isSelected = index === selectedIndex;
+                      
+                      return (
+                        <ListItem
+                          key={cmd.id}
+                          data-index={index}
+                          component="div"
+                          onClick={() => executeCommand(cmd)}
+                          sx={{
+                            px: 2,
+                            py: 1.5,
+                            cursor: 'pointer',
+                            backgroundColor: isSelected
+                              ? 'var(--primary-color)'
+                              : 'transparent',
+                            color: isSelected ? 'var(--primary-text-color)' : 'var(--text-color)',
+                            '&:hover': {
+                              backgroundColor: isSelected
+                                ? 'var(--primary-color)'
+                                : 'var(--node-column-bg)',
+                            },
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <ListItemText
+                            primary={cmd.label}
+                            primaryTypographyProps={{
+                              sx: {
+                                color: 'inherit',
+                                fontWeight: isSelected ? 500 : 400,
+                              },
+                            }}
+                          />
+                          {cmd.keybinding && (
+                            <Chip
+                              label={cmd.keybinding.display}
+                              size="small"
+                              sx={{
+                                height: 22,
+                                fontSize: '0.7rem',
+                                backgroundColor: isSelected
+                                  ? 'rgba(255, 255, 255, 0.2)'
+                                  : 'var(--node-column-bg)',
+                                color: isSelected
+                                  ? 'var(--primary-text-color)'
+                                  : 'var(--text-color)',
+                                border: '1px solid',
+                                borderColor: isSelected
+                                  ? 'rgba(255, 255, 255, 0.3)'
+                                  : 'var(--border-color)',
+                                fontFamily: 'monospace',
+                              }}
+                            />
+                          )}
+                        </ListItem>
+                      );
+                    })}
+                  </List>
+                </Box>
+              )}
+
+              {/* Category Commands */}
+              {groupedCommands.map(({ category, commands }) => {
+              // Calculate the starting index for this category (account for recent commands)
+              const categoryStartIndex = recentCommands.length + 
+                flatCommands.slice(recentCommands.length).findIndex(cmd => cmd.category === category);
               
               return (
                 <Box key={category} sx={{ mb: 1 }}>
@@ -295,7 +400,8 @@ const CommandPalette = observer(({ onOpenChangelog }: CommandPaletteProps) => {
                   </List>
                 </Box>
               );
-            })
+            })}
+            </>
           )}
         </Box>
 

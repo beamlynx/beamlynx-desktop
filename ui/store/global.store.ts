@@ -70,6 +70,22 @@ export class GlobalStore {
 
   // Command Palette
   showCommandPalette = false;
+  _commandHistory: string[] = []; // Store command IDs
+
+  get commandHistory(): string[] {
+    return this._commandHistory;
+  }
+
+  addToCommandHistory(commandId: string) {
+    // Remove if already exists (move to front)
+    this._commandHistory = this._commandHistory.filter(id => id !== commandId);
+    // Add to front
+    this._commandHistory.unshift(commandId);
+    // Keep only last 5
+    this._commandHistory = this._commandHistory.slice(0, 5);
+    // Persist to localStorage
+    setUserPreference(STORAGE_KEYS.COMMAND_HISTORY, this._commandHistory);
+  }
 
   // Onboarding
   _onboardingServer: boolean;
@@ -87,6 +103,7 @@ export class GlobalStore {
     this._theme = getUserPreference(STORAGE_KEYS.THEME, 'dark');
     this._forceCompactMode = getUserPreference(STORAGE_KEYS.FORCE_COMPACT_MODE, false);
     this._onboardingServer = getUserPreference(STORAGE_KEYS.ONBOARDING_SERVER, false);
+    this._commandHistory = getUserPreference(STORAGE_KEYS.COMMAND_HISTORY, []);
     makeAutoObservable(this);
 
     // Initialize the default session

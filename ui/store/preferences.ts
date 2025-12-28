@@ -5,6 +5,7 @@ export const STORAGE_KEYS = {
   FORCE_COMPACT_MODE: 'pine-force-compact-mode',
   ONBOARDING_SERVER: 'pine-onboarding-server',
   LAST_READ_VERSION: 'pine-last-read-version',
+  COMMAND_HISTORY: 'pine-command-history',
 } as const;
 
 export const getUserPreference = (key: string, defaultValue: any) => {
