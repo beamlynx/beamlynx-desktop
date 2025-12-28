@@ -156,13 +156,13 @@ const AppView = observer(() => {
       <CommandPalette onOpenChangelog={handleOpenChangelog} />
       <Grid container>
         <Grid item xs={3}>
-          <Box sx={{ m: 2, mt: 1 }}>
+          <Box sx={{ m: 2, mt: 1, mb: 0 }}>
             <ActiveConnection />
           </Box>
         </Grid>
 
         <Grid item xs={6}>
-          <Box sx={{ m: 1, display: 'flex', justifyContent: 'center' }}>
+          <Box sx={{ m: 1, mt: 1, mb: 0, display: 'flex', justifyContent: 'center' }}>
             <Box
               onClick={() => global.setShowCommandPalette(true)}
               sx={{
@@ -198,7 +198,7 @@ const AppView = observer(() => {
         </Grid>
 
         <Grid item xs={3}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+          <Box sx={{ m: 1, mt: 0, mb: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
             {UserContent}
             <NotificationBell
               hasUnreadUpdates={hasUnreadUpdates}
@@ -208,7 +208,7 @@ const AppView = observer(() => {
         </Grid>
       </Grid>
 
-      <Box sx={{ m: 1, display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ m: 1, mt: 0, mb: 0, display: 'flex', flexDirection: 'column' }}>
         <PineTabs></PineTabs>
       </Box>
     </>

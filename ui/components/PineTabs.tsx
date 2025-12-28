@@ -50,10 +50,10 @@ const PineTabs = observer(() => {
   };
 
   return (
-    <Box sx={{ width: '100%' }}>
+    <Box sx={{ width: '100%', mt: 0, pt: 0 }}>
       <TabContext value={sessionId}>
         <Box
-          sx={{ borderBottom: 1, borderColor: 'divider', display: 'flex', alignItems: 'center' }}
+          sx={{ borderBottom: 1, borderColor: 'divider', display: 'flex', alignItems: 'center', mt: 0 }}
         >
           <TabList 
             onChange={handleChange}
