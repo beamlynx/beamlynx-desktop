@@ -25,21 +25,21 @@ import NotificationBell from './NotificationBell';
 import { useGlobalKeybindings } from '../hooks/useGlobalKeybindings';
 import { LATEST_VERSION } from '../utils/changelog.data';
 import { compare } from 'semver';
+import { getKeybindingDisplayForCommand } from '../utils/keybindings';
 
 const AppView = observer(() => {
   const { global } = useStores();
   const session = global.getSession(global.activeSessionId);
   const [mounted, setMounted] = useState(false);
-  const [showChangelog, setShowChangelog] = useState(false);
   const [hasUnreadUpdates, setHasUnreadUpdates] = useState(false);
 
   const handleOpenChangelog = () => {
-    setShowChangelog(true);
+    global.setShowChangelog(true);
     setHasUnreadUpdates(false);
   };
 
   const handleCloseChangelog = () => {
-    setShowChangelog(false);
+    global.setShowChangelog(false);
   };
 
   // Initialize global keyboard shortcuts
@@ -47,9 +47,6 @@ const AppView = observer(() => {
     session,
     global,
     focusInput: () => session.focusTextInput(),
-    callbacks: {
-      openChangelog: handleOpenChangelog,
-    },
   });
 
   const theme = useTheme();
@@ -152,8 +149,8 @@ const AppView = observer(() => {
   return (
     <>
       <AnalysisModal />
-      <ChangelogModal open={showChangelog} onClose={handleCloseChangelog} />
-      <CommandPalette onOpenChangelog={handleOpenChangelog} />
+      <ChangelogModal open={global.showChangelog} onClose={handleCloseChangelog} />
+      <CommandPalette />
       <Grid container>
         <Grid item xs={3}>
           <Box sx={{ m: 2, mt: 1, mb: 0 }}>
@@ -190,7 +187,7 @@ const AppView = observer(() => {
                   userSelect: 'none',
                 }}
               >
-                Search commands... (Ctrl+Shift+P)
+                Search commands... ({getKeybindingDisplayForCommand('command-palette')})
               </Typography>
             </Box>
             {/* <Message /> */}

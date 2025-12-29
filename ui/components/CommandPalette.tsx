@@ -1,14 +1,11 @@
 import { Box, Modal, TextField, Typography, List, ListItem, ListItemText, Chip } from '@mui/material';
 import { observer } from 'mobx-react-lite';
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useStores } from '../store/store-container';
 import { getAllCommands, Command, CommandCategory } from '../utils/commands';
+import { getKeybindingDisplayForCommand } from '../utils/keybindings';
 
-interface CommandPaletteProps {
-  onOpenChangelog?: () => void;
-}
-
-const CommandPalette = observer(({ onOpenChangelog }: CommandPaletteProps) => {
+const CommandPalette = observer(() => {
   const { global } = useStores();
   const session = global.getSession(global.activeSessionId);
   const [searchQuery, setSearchQuery] = useState('');
@@ -16,9 +13,20 @@ const CommandPalette = observer(({ onOpenChangelog }: CommandPaletteProps) => {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const allCommands = getAllCommands(global, session, {
-    openChangelog: onOpenChangelog,
-  });
+  // Get all commands and filter out hidden ones
+  const allCommands = getAllCommands(global, session).filter(cmd => !cmd.hidden);
+
+  // Create a map of command ID to keybinding display for efficient lookup
+  const commandKeybindings = useMemo(() => {
+    const map = new Map<string, string>();
+    allCommands.forEach(cmd => {
+      const keybindingDisplay = getKeybindingDisplayForCommand(cmd.id);
+      if (keybindingDisplay) {
+        map.set(cmd.id, keybindingDisplay);
+      }
+    });
+    return map;
+  }, [allCommands]);
 
   // Filter commands based on search query
   const filteredCommands = searchQuery
@@ -75,8 +83,7 @@ const CommandPalette = observer(({ onOpenChangelog }: CommandPaletteProps) => {
   }, [global]);
 
   const executeCommand = (command: Command) => {
-    command.handler();
-    global.addToCommandHistory(command.id);
+    global.executeCommand(command.id);
     handleClose();
   };
 
@@ -275,9 +282,9 @@ const CommandPalette = observer(({ onOpenChangelog }: CommandPaletteProps) => {
                               },
                             }}
                           />
-                          {cmd.keybinding && (
+                          {commandKeybindings.get(cmd.id) && (
                             <Chip
-                              label={cmd.keybinding.display}
+                              label={commandKeybindings.get(cmd.id)}
                               size="small"
                               sx={{
                                 height: 22,
@@ -373,9 +380,9 @@ const CommandPalette = observer(({ onOpenChangelog }: CommandPaletteProps) => {
                               },
                             }}
                           />
-                          {cmd.keybinding && (
+                          {commandKeybindings.get(cmd.id) && (
                             <Chip
-                              label={cmd.keybinding.display}
+                              label={commandKeybindings.get(cmd.id)}
                               size="small"
                               sx={{
                                 height: 22,

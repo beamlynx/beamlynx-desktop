@@ -5,6 +5,7 @@ import { Session, Theme } from './session';
 import { RequiredVersion } from '../constants';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
 import { DevState } from './dev-state';
+import { getAllCommands } from '../utils/commands';
 
 const client = new HttpClient();
 type ConnectionParams = {
@@ -71,6 +72,9 @@ export class GlobalStore {
   // Command Palette
   showCommandPalette = false;
   _commandHistory: string[] = []; // Store command IDs
+
+  // Changelog
+  showChangelog = false;
 
   get commandHistory(): string[] {
     return this._commandHistory;
@@ -313,5 +317,35 @@ export class GlobalStore {
 
   setShowCommandPalette = (show: boolean) => {
     this.showCommandPalette = show;
+  };
+
+  setShowChangelog = (show: boolean) => {
+    this.showChangelog = show;
+  };
+
+  /**
+   * Execute a command by its ID.
+   * This is the central command execution mechanism that:
+   * 1. Looks up the command from the registry
+   * 2. Executes its handler
+   * 3. Adds it to command history
+   * 
+   * @param commandId The unique identifier of the command to execute
+   * @throws Error if the command ID is not found
+   */
+  executeCommand = (commandId: string) => {
+    const session = this.getSession(this.activeSessionId);
+    const allCommands = getAllCommands(this, session);
+    
+    const command = allCommands.find(cmd => cmd.id === commandId);
+    if (!command) {
+      throw new Error(`Command with id "${commandId}" not found`);
+    }
+    
+    // Execute the command handler
+    command.handler();
+    
+    // Add to command history
+    this.addToCommandHistory(commandId);
   };
 }

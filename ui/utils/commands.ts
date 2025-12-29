@@ -8,10 +8,8 @@ export interface Command {
   label: string;
   category: CommandCategory;
   handler: () => void;
-  keybinding?: {
-    display: string;
-    matches: (e: KeyboardEvent) => boolean;
-  };
+  /** If true, this command will not be shown in the command palette UI */
+  hidden?: boolean;
 }
 
 /**
@@ -21,10 +19,7 @@ export interface Command {
  */
 export function getAllCommands(
   global: GlobalStore,
-  session: Session,
-  callbacks?: {
-    openChangelog?: () => void;
-  }
+  session: Session
 ): Command[] {
   return [
     // Preferences Category
@@ -33,11 +28,6 @@ export function getAllCommands(
       label: 'Toggle Theme',
       category: 'Preferences',
       handler: () => global.toggleTheme(),
-      keybinding: {
-        display: 'Ctrl+Shift+T',
-        matches: (e: KeyboardEvent) =>
-          (e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 't',
-      },
     },
     {
       id: 'toggle-vim-mode',
@@ -59,6 +49,13 @@ export function getAllCommands(
         session.mode = session.mode === 'monitor' ? 'graph' : 'monitor';
       },
     },
+    {
+      id: 'command-palette',
+      label: 'Open Command Palette',
+      category: 'Preferences',
+      handler: () => global.setShowCommandPalette(true),
+      hidden: true, // Don't show in command palette itself
+    },
 
     // Experimental Category
     {
@@ -73,11 +70,7 @@ export function getAllCommands(
       id: 'show-changelog',
       label: 'Show Changelog',
       category: 'Help',
-      handler: () => {
-        if (callbacks?.openChangelog) {
-          callbacks.openChangelog();
-        }
-      },
+      handler: () => global.setShowChangelog(true),
     },
   ];
 }
@@ -87,12 +80,9 @@ export function getAllCommands(
  */
 export function getCommandsByCategory(
   global: GlobalStore,
-  session: Session,
-  callbacks?: {
-    openChangelog?: () => void;
-  }
+  session: Session
 ): Record<CommandCategory, Command[]> {
-  const allCommands = getAllCommands(global, session, callbacks);
+  const allCommands = getAllCommands(global, session);
   const grouped: Record<CommandCategory, Command[]> = {
     Preferences: [],
     Query: [],
