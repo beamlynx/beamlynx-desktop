@@ -46,7 +46,6 @@ const AppView = observer(() => {
   useGlobalKeybindings({
     session,
     global,
-    focusInput: () => session.focusTextInput(),
   });
 
   const theme = useTheme();

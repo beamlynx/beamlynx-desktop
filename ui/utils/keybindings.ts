@@ -8,6 +8,8 @@
  */
 
 export interface KeybindingConfig {
+  /** Unique identifier for this keybinding */
+  name: string;
   /** Human-readable description of what this keybinding does */
   description: string;
   /** Visual representation shown in UI (e.g., "⌘⇧P" on Mac, "Ctrl+Shift+P" on Windows) */
@@ -62,14 +64,14 @@ function createKeybindingDisplay(modifiers: ('ctrl' | 'shift' | 'alt')[], key: s
 
 /**
  * Registry of all keybindings in the application.
- * Key is a unique identifier for the keybinding.
  * 
  * NOTE: This is exported for internal use by useGlobalKeybindings hook.
  * External consumers should use getKeybindingDisplayForCommand() instead.
  */
-export const KEYBINDINGS: Record<string, KeybindingConfig> = {
+export const KEYBINDINGS: KeybindingConfig[] = [
   // Command-triggering keybindings
-  'toggle-theme': {
+  {
+    name: 'toggle-theme',
     description: 'Toggle Theme',
     display: createKeybindingDisplay(['ctrl', 'shift'], 'T'),
     matches: (e: KeyboardEvent) =>
@@ -77,7 +79,8 @@ export const KEYBINDINGS: Record<string, KeybindingConfig> = {
     commandId: 'toggle-theme',
   },
 
-  'command-palette': {
+  {
+    name: 'command-palette',
     description: 'Open Command Palette',
     display: createKeybindingDisplay(['ctrl', 'shift'], 'P'),
     matches: (e: KeyboardEvent) =>
@@ -85,36 +88,37 @@ export const KEYBINDINGS: Record<string, KeybindingConfig> = {
     commandId: 'command-palette',
   },
 
-  // App-level keybindings (no command ID - handled specially)
-  escape: {
+  // Command-triggering keybinding
+  {
+    name: 'escape',
     description: 'Return focus to the Pine input field',
     display: 'Esc',
     matches: (e: KeyboardEvent) => e.key === 'Escape',
+    commandId: 'focus-input',
   },
 
-  'select-all': {
+  // App-level keybindings (no command ID - handled specially)
+  {
+    name: 'select-all',
     description: 'Prevent default page selection',
     display: createKeybindingDisplay(['ctrl'], 'A'),
     matches: (e: KeyboardEvent) => (e.ctrlKey || e.metaKey) && e.key === 'a',
   },
 
-  reload: {
+  {
+    name: 'reload',
     description: 'Ensure browser reload always works',
     display: createKeybindingDisplay(['ctrl'], 'R'),
     matches: (e: KeyboardEvent) => (e.ctrlKey || e.metaKey) && e.key === 'r',
   },
-};
+];
 
 /**
  * Get keybinding display string by command ID.
  * Returns undefined if no keybinding is mapped to this command.
  */
 export function getKeybindingDisplayForCommand(commandId: string): string | undefined {
-  for (const config of Object.values(KEYBINDINGS)) {
-    if (config.commandId === commandId) {
-      return config.display;
-    }
-  }
-  return undefined;
+  const keybinding = KEYBINDINGS.find(config => config.commandId === commandId);
+  return keybinding?.display;
 }
 

@@ -49,12 +49,20 @@ export function getAllCommands(
         session.mode = session.mode === 'monitor' ? 'graph' : 'monitor';
       },
     },
+    // Hidden commands
     {
       id: 'command-palette',
       label: 'Open Command Palette',
       category: 'Preferences',
       handler: () => global.setShowCommandPalette(true),
-      hidden: true, // Don't show in command palette itself
+      hidden: true,
+    },
+    {
+      id: 'focus-input',
+      label: 'Focus on the Input Field',
+      category: 'Preferences',
+      handler: () => session.focusTextInput(),
+      hidden: true,
     },
 
     // Experimental Category
