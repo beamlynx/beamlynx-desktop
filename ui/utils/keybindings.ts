@@ -97,7 +97,7 @@ export const KEYBINDINGS: KeybindingConfig[] = [
     commandId: 'focus-input',
   },
 
-  // App-level keybindings (no command ID - handled specially)
+  // App-level keybindings
   {
     name: 'select-all',
     description: 'Prevent default page selection',

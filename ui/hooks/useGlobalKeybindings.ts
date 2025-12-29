@@ -33,33 +33,35 @@ export const useGlobalKeybindings = ({ session, global }: GlobalKeybindingsProps
         }
 
          // Handle app-level keybindings with custom behavior
+         // These cannot be simple commands for different reasons (see comments in each case)
          switch (config.name) {
            case 'select-all':
-            // Allow select-all in any regular text input (including modals)
-            const target = e.target as HTMLElement;
-            if (
-              target &&
-              (target.tagName === 'INPUT' ||
-                target.tagName === 'TEXTAREA' ||
-                target.contentEditable === 'true')
-            ) {
-              return;
-            }
+             // NOT a command: Needs KeyboardEvent to inspect event.target
+             // and conditionally prevent default based on focus state
+             const target = e.target as HTMLElement;
+             if (
+               target &&
+               (target.tagName === 'INPUT' ||
+                 target.tagName === 'TEXTAREA' ||
+                 target.contentEditable === 'true')
+             ) {
+               return; // Allow native behavior in inputs
+             }
 
-            // Allow select-all when focused on the Pine input
-            if (session.textInputFocused) {
-              return;
-            }
+             // Allow select-all when focused on the Pine input
+             if (session.textInputFocused) {
+               return; // Allow native behavior in Pine input
+             }
 
-            // Prevent default page selection
-            e.preventDefault();
-            break;
+             // Prevent default page selection in all other cases
+             e.preventDefault();
+             break;
 
-          case 'reload':
-            // Always allow browser reload - don't prevent or stop this event
-            // This ensures reload works even if other extensions try to intercept it
-            return;
-        }
+           case 'reload':
+             // NOT a command: Intentional no-op to preserve browser's native reload
+             // Registering it ensures nothing else in our code accidentally intercepts it
+             return;
+         }
       });
     };
 
