@@ -44,7 +44,7 @@ const CommandPalette = observer(() => {
 
   // Group filtered commands by category
   const groupedCommands: { category: CommandCategory; commands: Command[] }[] = [];
-  const categoryOrder: CommandCategory[] = ['View', 'Preferences', 'Query', 'Help', 'Experimental'];
+  const categoryOrder: CommandCategory[] = ['View', 'Query', 'Preferences', 'Help', 'Experimental'];
 
   categoryOrder.forEach(category => {
     const commands = filteredCommands.filter(cmd => cmd.category === category);

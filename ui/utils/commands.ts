@@ -1,7 +1,7 @@
 import { GlobalStore } from '../store/global.store';
 import { Session } from '../store/session';
 
-export type CommandCategory = 'View' | 'Preferences' | 'Query' | 'Experimental' | 'Help';
+export type CommandCategory = 'View' | 'Query' | 'Preferences' | 'Experimental' | 'Help';
 
 export interface Command {
   id: string;
@@ -42,7 +42,7 @@ export function getAllCommands(
       handler: () => global.toggleCompactMode(),
     },
 
-    // Workspace Category
+    // View Category
     {
       id: 'new-tab',
       label: 'New Tab',
@@ -54,6 +54,14 @@ export function getAllCommands(
       label: 'Close Tab',
       category: 'View',
       handler: () => global.closeTab(session.id),
+    },
+
+    // Query Category
+    {
+      id: 'run-query',
+      label: 'Run Query',
+      category: 'Query',
+      handler: () => session.evaluate(),
     },
 
     // Hidden commands
@@ -108,8 +116,8 @@ export function getCommandsByCategory(
   const allCommands = getAllCommands(global, session);
   const grouped: Record<CommandCategory, Command[]> = {
     View: [],
-    Preferences: [],
     Query: [],
+    Preferences: [],
     Experimental: [],
     Help: [],
   };

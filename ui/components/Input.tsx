@@ -5,20 +5,25 @@ import { PlayArrow, Loop } from '@mui/icons-material';
 import PineInput from './PineInput';
 import SqlInput from './SqlInput';
 import { Session } from '../store/session';
+import { getKeybindingDisplayForCommand } from '../utils/keybindings';
 
 interface InputProps {
   session: Session;
   onRun?: () => void | Promise<void>;
 }
 
-const RunButton: React.FC<{ session: Session; onRun?: () => void | Promise<void> }> = observer(({ session, onRun }) => (
-  <Button
-    variant="contained"
-    onClick={onRun || (() => session.evaluate())}
-    disabled={(!session.expression && !session.query) || session.loading}
-    startIcon={session.loading ? <Loop /> : <PlayArrow />}
-    size="small"
-    title="Run (Cmd/Ctrl + Enter)"
+const RunButton: React.FC<{ session: Session; onRun?: () => void | Promise<void> }> = observer(({ session, onRun }) => {
+  const keybinding = getKeybindingDisplayForCommand('run-query');
+  const tooltip = keybinding ? `Run (${keybinding})` : 'Run';
+  
+  return (
+    <Button
+      variant="contained"
+      onClick={onRun || (() => session.evaluate())}
+      disabled={(!session.expression && !session.query) || session.loading}
+      startIcon={session.loading ? <Loop /> : <PlayArrow />}
+      size="small"
+      title={tooltip}
     sx={{
       backgroundColor: 'var(--primary-color)',
       color: 'var(--primary-text-color)',
@@ -34,10 +39,11 @@ const RunButton: React.FC<{ session: Session; onRun?: () => void | Promise<void>
       px: 1.5,
       py: 0.5,
     }}
-  >
-    Run
-  </Button>
-));
+    >
+      Run
+    </Button>
+  );
+});
 
 const Input: React.FC<InputProps> = observer(({ session, onRun }) => {
   const handleInputModeChange = (

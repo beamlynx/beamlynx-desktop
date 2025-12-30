@@ -88,6 +88,15 @@ export const KEYBINDINGS: KeybindingConfig[] = [
     commandId: 'command-palette',
   },
 
+  {
+    name: 'run-query',
+    description: 'Run Query',
+    display: createKeybindingDisplay(['ctrl'], 'Enter'),
+    matches: (e: KeyboardEvent) =>
+      (e.ctrlKey || e.metaKey) && e.key === 'Enter',
+    commandId: 'run-query',
+  },
+
   // Command-triggering keybinding
   {
     name: 'escape',
