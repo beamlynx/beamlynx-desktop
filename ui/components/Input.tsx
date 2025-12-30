@@ -6,7 +6,7 @@ import PineInput from './PineInput';
 import SqlInput from './SqlInput';
 import { Session } from '../store/session';
 import { getKeybindingDisplayForCommand } from '../utils/keybindings';
-import { getAllCommands } from '../utils/commands';
+import { getCommandById } from '../utils/commands';
 import { useStores } from '../store/store-container';
 
 interface InputProps {
@@ -20,12 +20,9 @@ const RunButton: React.FC<{ session: Session; onRun?: () => void | Promise<void>
   const tooltip = keybinding ? `Run (${keybinding})` : 'Run';
   
   // Get the run-query command to check if it's enabled
-  const runQueryCommand = useMemo(() => {
-    const commands = getAllCommands(global, session);
-    return commands.find(cmd => cmd.id === 'run-query');
-  }, [global, session]);
+  const runQueryCommand = useMemo(() => getCommandById('run-query'), []);
   
-  const isDisabled = runQueryCommand ? !runQueryCommand.isEnabled() : false;
+  const isDisabled = runQueryCommand ? !runQueryCommand.isEnabled(global, session) : false;
   
   return (
     <Button

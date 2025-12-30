@@ -5,7 +5,7 @@ import { Session, Theme } from './session';
 import { RequiredVersion } from '../constants';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
 import { DevState } from './dev-state';
-import { getAllCommands } from '../utils/commands';
+import { getCommandById } from '../utils/commands';
 
 const client = new HttpClient();
 type ConnectionParams = {
@@ -373,20 +373,19 @@ export class GlobalStore {
    */
   executeCommand = (commandId: string) => {
     const session = this.getSession(this.activeSessionId);
-    const allCommands = getAllCommands(this, session);
+    const command = getCommandById(commandId);
     
-    const command = allCommands.find(cmd => cmd.id === commandId);
     if (!command) {
       throw new Error(`Command with id "${commandId}" not found`);
     }
     
     // Check if command is enabled
-    if (!command.isEnabled()) {
+    if (!command.isEnabled(this, session)) {
       throw new Error(`Command "${commandId}" cannot execute: prerequisites not met`);
     }
     
     // Execute the command handler
-    command.handler();
+    command.handler(this, session);
     
     // Add to command history
     this.addToCommandHistory(commandId);

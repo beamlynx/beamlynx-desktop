@@ -14,7 +14,7 @@ const CommandPalette = observer(() => {
   const listRef = useRef<HTMLDivElement>(null);
 
   // Get all commands and filter out hidden ones
-  const allCommands = getAllCommands(global, session).filter(cmd => !cmd.hidden);
+  const allCommands = getAllCommands().filter(cmd => !cmd.hidden);
 
   // Create a map of command ID to keybinding display for efficient lookup
   const commandKeybindings = useMemo(() => {
@@ -97,7 +97,7 @@ const CommandPalette = observer(() => {
     } else if (e.key === 'Enter') {
       e.preventDefault();
       const command = flatCommands[selectedIndex];
-      if (command && command.isEnabled()) {
+      if (command && command.isEnabled(global, session)) {
         executeCommand(command);
       }
     } else if (e.key === 'Escape') {
@@ -249,7 +249,7 @@ const CommandPalette = observer(() => {
                   <List disablePadding>
                     {recentCommands.map((cmd, index) => {
                       const isSelected = index === selectedIndex;
-                      const isDisabled = !cmd.isEnabled();
+                      const isDisabled = !cmd.isEnabled(global, session);
                       
                       return (
                         <ListItem
@@ -351,7 +351,7 @@ const CommandPalette = observer(() => {
                     {commands.map((cmd, index) => {
                       const commandIndex = categoryStartIndex + index;
                       const isSelected = commandIndex === selectedIndex;
-                      const isDisabled = !cmd.isEnabled();
+                      const isDisabled = !cmd.isEnabled(global, session);
                       
                       return (
                         <ListItem

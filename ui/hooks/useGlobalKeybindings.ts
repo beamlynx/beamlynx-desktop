@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Session } from '../store/session';
 import { GlobalStore } from '../store/global.store';
 import { KEYBINDINGS } from '../utils/keybindings';
-import { getAllCommands } from '../utils/commands';
+import { getCommandById } from '../utils/commands';
 
 interface GlobalKeybindingsProps {
   session: Session;
@@ -31,9 +31,8 @@ export const useGlobalKeybindings = ({ session, global }: GlobalKeybindingsProps
           e.preventDefault();
           
           // Check if command is enabled before executing (for better UX)
-          const allCommands = getAllCommands(global, session);
-          const command = allCommands.find(cmd => cmd.id === config.commandId);
-          if (command && command.isEnabled()) {
+          const command = getCommandById(config.commandId);
+          if (command && command.isEnabled(global, session)) {
             global.executeCommand(config.commandId);
           }
           // If command is disabled, silently do nothing (like clicking a disabled button)
