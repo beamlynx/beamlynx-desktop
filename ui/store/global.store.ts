@@ -169,7 +169,8 @@ export class GlobalStore {
 
     // Update URL if any parameters were processed
     if (hasChanges) {
-      const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
+      const newUrl =
+        window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
       window.history.replaceState({}, '', newUrl);
     }
   }
@@ -235,12 +236,12 @@ export class GlobalStore {
   /**
    * Close a tab with proper cleanup and switching logic.
    * If it's the last tab, resets it instead of closing.
-   * 
+   *
    * @param sessionId The session ID to close
    */
   closeTab = (sessionId: string) => {
     const sessionIds = Object.keys(this.sessions);
-    
+
     // If it's the last tab, reset it instead of closing
     if (sessionIds.length === 1) {
       this.createSessionUsingId(sessionId.replace('session-', ''));
@@ -366,7 +367,7 @@ export class GlobalStore {
    * 2. Checks if the command is enabled (all prerequisites met)
    * 3. Executes its handler
    * 4. Adds it to command history
-   * 
+   *
    * @param commandId The unique identifier of the command to execute
    * @throws Error if the command ID is not found
    * @throws Error if the command's isEnabled() returns false
@@ -374,19 +375,19 @@ export class GlobalStore {
   executeCommand = (commandId: string) => {
     const session = this.getSession(this.activeSessionId);
     const command = getCommandById(commandId);
-    
+
     if (!command) {
       throw new Error(`Command with id "${commandId}" not found`);
     }
-    
+
     // Check if command is enabled
     if (!command.isEnabled(this, session)) {
       throw new Error(`Command "${commandId}" cannot execute: prerequisites not met`);
     }
-    
+
     // Execute the command handler
     command.handler(this, session);
-    
+
     // Add to command history
     this.addToCommandHistory(commandId);
   };

@@ -1,6 +1,6 @@
 /**
  * Keybindings registry
- * 
+ *
  * This file defines all keyboard shortcuts in the application.
  * Keybindings can either:
  * 1. Map to a command ID (which gets executed via GlobalStore.executeCommand)
@@ -23,7 +23,8 @@ export interface KeybindingConfig {
 /**
  * Detect if the user is on macOS
  */
-const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+const isMac =
+  typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0;
 
 /**
  * Create a platform-aware keybinding display string.
@@ -32,7 +33,7 @@ const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase
  *   - 'shift' modifier → ⇧ (Shift)
  *   - 'alt' modifier → ⌥ (Option)
  * On Windows/Linux: uses text (Ctrl, Shift, Alt)
- * 
+ *
  * @param modifiers - Array of modifier keys: 'ctrl', 'shift', 'alt'
  * @param key - The main key (e.g., 'P', 'T', 'A')
  * @returns Platform-appropriate display string
@@ -41,20 +42,28 @@ function createKeybindingDisplay(modifiers: ('ctrl' | 'shift' | 'alt')[], key: s
   if (isMac) {
     const symbols: string[] = modifiers.map(mod => {
       switch (mod) {
-        case 'ctrl': return '⌘'; // Command key on Mac (metaKey)
-        case 'shift': return '⇧';
-        case 'alt': return '⌥';
-        default: return '';
+        case 'ctrl':
+          return '⌘'; // Command key on Mac (metaKey)
+        case 'shift':
+          return '⇧';
+        case 'alt':
+          return '⌥';
+        default:
+          return '';
       }
     });
     return symbols.join('') + key.toUpperCase();
   } else {
     const parts: string[] = modifiers.map(mod => {
       switch (mod) {
-        case 'ctrl': return 'Ctrl';
-        case 'shift': return 'Shift';
-        case 'alt': return 'Alt';
-        default: return '';
+        case 'ctrl':
+          return 'Ctrl';
+        case 'shift':
+          return 'Shift';
+        case 'alt':
+          return 'Alt';
+        default:
+          return '';
       }
     });
     parts.push(key.toUpperCase());
@@ -64,7 +73,7 @@ function createKeybindingDisplay(modifiers: ('ctrl' | 'shift' | 'alt')[], key: s
 
 /**
  * Registry of all keybindings in the application.
- * 
+ *
  * NOTE: This is exported for internal use by useGlobalKeybindings hook.
  * External consumers should use getKeybindingDisplayForCommand() instead.
  */
@@ -92,8 +101,7 @@ export const KEYBINDINGS: KeybindingConfig[] = [
     name: 'run-query',
     description: 'Run Query',
     display: createKeybindingDisplay(['ctrl'], 'Enter'),
-    matches: (e: KeyboardEvent) =>
-      (e.ctrlKey || e.metaKey) && e.key === 'Enter',
+    matches: (e: KeyboardEvent) => (e.ctrlKey || e.metaKey) && e.key === 'Enter',
     commandId: 'run-query',
   },
 
@@ -130,4 +138,3 @@ export function getKeybindingDisplayForCommand(commandId: string): string | unde
   const keybinding = KEYBINDINGS.find(config => config.commandId === commandId);
   return keybinding?.display;
 }
-

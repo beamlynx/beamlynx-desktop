@@ -28,7 +28,7 @@ const COMMANDS: Command[] = [
     id: 'toggle-theme',
     label: 'Toggle Theme',
     category: 'Preferences',
-    handler: (global) => global.toggleTheme(),
+    handler: global => global.toggleTheme(),
     isEnabled: ALWAYS_ENABLED,
   },
   {
@@ -42,7 +42,7 @@ const COMMANDS: Command[] = [
     id: 'toggle-compact-mode',
     label: 'Toggle Compact Mode',
     category: 'Preferences',
-    handler: (global) => global.toggleCompactMode(),
+    handler: global => global.toggleCompactMode(),
     isEnabled: ALWAYS_ENABLED,
   },
 
@@ -51,7 +51,7 @@ const COMMANDS: Command[] = [
     id: 'new-tab',
     label: 'New Tab',
     category: 'View',
-    handler: (global) => global.addTab(),
+    handler: global => global.addTab(),
     isEnabled: ALWAYS_ENABLED,
   },
   {
@@ -76,7 +76,7 @@ const COMMANDS: Command[] = [
     id: 'command-palette',
     label: 'Open Command Palette',
     category: 'Preferences',
-    handler: (global) => global.setShowCommandPalette(true),
+    handler: global => global.setShowCommandPalette(true),
     hidden: true,
     isEnabled: ALWAYS_ENABLED,
   },
@@ -103,7 +103,7 @@ const COMMANDS: Command[] = [
     id: 'open-analysis',
     label: 'Open Analysis',
     category: 'Experimental',
-    handler: (global) => global.setShowAnalysis(true),
+    handler: global => global.setShowAnalysis(true),
     isEnabled: ALWAYS_ENABLED,
   },
 
@@ -112,7 +112,7 @@ const COMMANDS: Command[] = [
     id: 'show-changelog',
     label: 'Show Changelog',
     category: 'Help',
-    handler: (global) => global.setShowChangelog(true),
+    handler: global => global.setShowChangelog(true),
     isEnabled: ALWAYS_ENABLED,
   },
 ];
@@ -133,7 +133,7 @@ export function getAllCommands(): Command[] {
 /**
  * Get a single command by its ID.
  * O(1) lookup using pre-indexed map.
- * 
+ *
  * @param commandId The unique identifier of the command
  * @returns The command if found, undefined otherwise
  */
@@ -160,4 +160,3 @@ export function getCommandsByCategory(): Record<CommandCategory, Command[]> {
 
   return grouped;
 }
-

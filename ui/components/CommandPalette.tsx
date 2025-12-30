@@ -1,4 +1,13 @@
-import { Box, Modal, TextField, Typography, List, ListItem, ListItemText, Chip } from '@mui/material';
+import {
+  Box,
+  Modal,
+  TextField,
+  Typography,
+  List,
+  ListItem,
+  ListItemText,
+  Chip,
+} from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useStores } from '../store/store-container';
@@ -30,16 +39,14 @@ const CommandPalette = observer(() => {
 
   // Filter commands based on search query
   const filteredCommands = searchQuery
-    ? allCommands.filter(cmd =>
-        cmd.label.toLowerCase().includes(searchQuery.toLowerCase())
-      )
+    ? allCommands.filter(cmd => cmd.label.toLowerCase().includes(searchQuery.toLowerCase()))
     : allCommands;
 
   // Get recent commands (only if no search query)
   const recentCommands = !searchQuery
-    ? global.commandHistory
+    ? (global.commandHistory
         .map(id => allCommands.find(cmd => cmd.id === id))
-        .filter(Boolean) as Command[]
+        .filter(Boolean) as Command[])
     : [];
 
   // Group filtered commands by category
@@ -54,16 +61,17 @@ const CommandPalette = observer(() => {
   });
 
   // Flatten for keyboard navigation (include recent commands if showing them)
-  const flatCommands = recentCommands.length > 0
-    ? [...recentCommands, ...groupedCommands.flatMap(group => group.commands)]
-    : groupedCommands.flatMap(group => group.commands);
+  const flatCommands =
+    recentCommands.length > 0
+      ? [...recentCommands, ...groupedCommands.flatMap(group => group.commands)]
+      : groupedCommands.flatMap(group => group.commands);
 
   useEffect(() => {
     if (global.showCommandPalette) {
       // Reset state when modal opens
       setSearchQuery('');
       setSelectedIndex(0);
-      
+
       // Focus the search input when modal opens
       requestAnimationFrame(() => {
         searchInputRef.current?.focus();
@@ -177,7 +185,7 @@ const CommandPalette = observer(() => {
               borderRadius: '4px 4px 0 0', // Match search box border radius (4px at top)
             },
             '& .MuiOutlinedInput-root': {
-              '& fieldset': { 
+              '& fieldset': {
                 borderColor: 'var(--border-color)',
                 borderBottom: '1px solid var(--border-color)',
               },
@@ -250,7 +258,7 @@ const CommandPalette = observer(() => {
                     {recentCommands.map((cmd, index) => {
                       const isSelected = index === selectedIndex;
                       const isDisabled = !cmd.isEnabled(global, session);
-                      
+
                       return (
                         <ListItem
                           key={cmd.id}
@@ -261,17 +269,15 @@ const CommandPalette = observer(() => {
                             px: 2,
                             py: 1.5,
                             cursor: isDisabled ? 'not-allowed' : 'pointer',
-                            backgroundColor: isSelected
-                              ? 'var(--primary-color)'
-                              : 'transparent',
+                            backgroundColor: isSelected ? 'var(--primary-color)' : 'transparent',
                             color: isSelected ? 'var(--primary-text-color)' : 'var(--text-color)',
                             opacity: isDisabled ? 0.5 : 1,
                             '&:hover': {
-                              backgroundColor: isDisabled 
+                              backgroundColor: isDisabled
                                 ? 'transparent'
-                                : (isSelected
+                                : isSelected
                                   ? 'var(--primary-color)'
-                                  : 'var(--node-column-bg)'),
+                                  : 'var(--node-column-bg)',
                             },
                             display: 'flex',
                             justifyContent: 'space-between',
@@ -317,106 +323,107 @@ const CommandPalette = observer(() => {
 
               {/* Category Commands */}
               {groupedCommands.map(({ category, commands }) => {
-              // Calculate the starting index for this category (account for recent commands)
-              const categoryStartIndex = recentCommands.length + 
-                flatCommands.slice(recentCommands.length).findIndex(cmd => cmd.category === category);
-              
-              return (
-                <Box key={category} sx={{ mb: 1 }}>
-                  {/* Category Header */}
-                  <Box
-                    sx={{
-                      px: 2,
-                      py: 1,
-                      backgroundColor: 'var(--node-column-bg)',
-                      borderBottom: '1px solid var(--border-color)',
-                    }}
-                  >
-                    <Typography
-                      variant="caption"
+                // Calculate the starting index for this category (account for recent commands)
+                const categoryStartIndex =
+                  recentCommands.length +
+                  flatCommands
+                    .slice(recentCommands.length)
+                    .findIndex(cmd => cmd.category === category);
+
+                return (
+                  <Box key={category} sx={{ mb: 1 }}>
+                    {/* Category Header */}
+                    <Box
                       sx={{
-                        color: 'var(--text-color)',
-                        opacity: 0.7,
-                        fontWeight: 600,
-                        textTransform: 'uppercase',
-                        fontSize: '0.7rem',
+                        px: 2,
+                        py: 1,
+                        backgroundColor: 'var(--node-column-bg)',
+                        borderBottom: '1px solid var(--border-color)',
                       }}
                     >
-                      {category}
-                    </Typography>
-                  </Box>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: 'var(--text-color)',
+                          opacity: 0.7,
+                          fontWeight: 600,
+                          textTransform: 'uppercase',
+                          fontSize: '0.7rem',
+                        }}
+                      >
+                        {category}
+                      </Typography>
+                    </Box>
 
-                  {/* Category Commands */}
-                  <List disablePadding>
-                    {commands.map((cmd, index) => {
-                      const commandIndex = categoryStartIndex + index;
-                      const isSelected = commandIndex === selectedIndex;
-                      const isDisabled = !cmd.isEnabled(global, session);
-                      
-                      return (
-                        <ListItem
-                          key={cmd.id}
-                          data-index={commandIndex}
-                          component="div"
-                          onClick={() => !isDisabled && executeCommand(cmd)}
-                          sx={{
-                            px: 2,
-                            py: 1.5,
-                            cursor: isDisabled ? 'not-allowed' : 'pointer',
-                            backgroundColor: isSelected
-                              ? 'var(--primary-color)'
-                              : 'transparent',
-                            color: isSelected ? 'var(--primary-text-color)' : 'var(--text-color)',
-                            opacity: isDisabled ? 0.5 : 1,
-                            '&:hover': {
-                              backgroundColor: isDisabled 
-                                ? 'transparent'
-                                : (isSelected
-                                  ? 'var(--primary-color)'
-                                  : 'var(--node-column-bg)'),
-                            },
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                          }}
-                        >
-                          <ListItemText
-                            primary={cmd.label}
-                            primaryTypographyProps={{
-                              sx: {
-                                color: 'inherit',
-                                fontWeight: isSelected ? 500 : 400,
+                    {/* Category Commands */}
+                    <List disablePadding>
+                      {commands.map((cmd, index) => {
+                        const commandIndex = categoryStartIndex + index;
+                        const isSelected = commandIndex === selectedIndex;
+                        const isDisabled = !cmd.isEnabled(global, session);
+
+                        return (
+                          <ListItem
+                            key={cmd.id}
+                            data-index={commandIndex}
+                            component="div"
+                            onClick={() => !isDisabled && executeCommand(cmd)}
+                            sx={{
+                              px: 2,
+                              py: 1.5,
+                              cursor: isDisabled ? 'not-allowed' : 'pointer',
+                              backgroundColor: isSelected ? 'var(--primary-color)' : 'transparent',
+                              color: isSelected ? 'var(--primary-text-color)' : 'var(--text-color)',
+                              opacity: isDisabled ? 0.5 : 1,
+                              '&:hover': {
+                                backgroundColor: isDisabled
+                                  ? 'transparent'
+                                  : isSelected
+                                    ? 'var(--primary-color)'
+                                    : 'var(--node-column-bg)',
                               },
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
                             }}
-                          />
-                          {commandKeybindings.get(cmd.id) && (
-                            <Chip
-                              label={commandKeybindings.get(cmd.id)}
-                              size="small"
-                              sx={{
-                                height: 22,
-                                fontSize: '0.7rem',
-                                backgroundColor: isSelected
-                                  ? 'rgba(255, 255, 255, 0.2)'
-                                  : 'var(--node-column-bg)',
-                                color: isSelected
-                                  ? 'var(--primary-text-color)'
-                                  : 'var(--text-color)',
-                                border: '1px solid',
-                                borderColor: isSelected
-                                  ? 'rgba(255, 255, 255, 0.3)'
-                                  : 'var(--border-color)',
-                                fontFamily: 'monospace',
+                          >
+                            <ListItemText
+                              primary={cmd.label}
+                              primaryTypographyProps={{
+                                sx: {
+                                  color: 'inherit',
+                                  fontWeight: isSelected ? 500 : 400,
+                                },
                               }}
                             />
-                          )}
-                        </ListItem>
-                      );
-                    })}
-                  </List>
-                </Box>
-              );
-            })}
+                            {commandKeybindings.get(cmd.id) && (
+                              <Chip
+                                label={commandKeybindings.get(cmd.id)}
+                                size="small"
+                                sx={{
+                                  height: 22,
+                                  fontSize: '0.7rem',
+                                  backgroundColor: isSelected
+                                    ? 'rgba(255, 255, 255, 0.2)'
+                                    : 'var(--node-column-bg)',
+                                  color: isSelected
+                                    ? 'var(--primary-text-color)'
+                                    : 'var(--text-color)',
+                                  border: '1px solid',
+                                  borderColor: isSelected
+                                    ? 'rgba(255, 255, 255, 0.3)'
+                                    : 'var(--border-color)',
+                                  fontFamily: 'monospace',
+                                }}
+                              />
+                            )}
+                          </ListItem>
+                        );
+                      })}
+                    </List>
+                  </Box>
+                );
+              })}
             </>
           )}
         </Box>
@@ -447,4 +454,3 @@ const CommandPalette = observer(() => {
 });
 
 export default CommandPalette;
-

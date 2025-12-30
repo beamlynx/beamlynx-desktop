@@ -14,44 +14,46 @@ interface InputProps {
   onRun?: () => void | Promise<void>;
 }
 
-const RunButton: React.FC<{ session: Session; onRun?: () => void | Promise<void> }> = observer(({ session, onRun }) => {
-  const { global } = useStores();
-  const keybinding = getKeybindingDisplayForCommand('run-query');
-  const tooltip = keybinding ? `Run (${keybinding})` : 'Run';
-  
-  // Get the run-query command to check if it's enabled
-  const runQueryCommand = useMemo(() => getCommandById('run-query'), []);
-  
-  const isDisabled = runQueryCommand ? !runQueryCommand.isEnabled(global, session) : false;
-  
-  return (
-    <Button
-      variant="contained"
-      onClick={onRun || (() => session.evaluate())}
-      disabled={isDisabled}
-      startIcon={session.loading ? <Loop /> : <PlayArrow />}
-      size="small"
-      title={tooltip}
-    sx={{
-      backgroundColor: 'var(--primary-color)',
-      color: 'var(--primary-text-color)',
-      '&:hover': {
-        backgroundColor: 'var(--primary-color-hover)',
-      },
-      '&:disabled': {
-        backgroundColor: 'var(--icon-color)',
-        color: 'var(--text-color)',
-        opacity: 0.6,
-      },
-      minWidth: 'auto',
-      px: 1.5,
-      py: 0.5,
-    }}
-    >
-      Run
-    </Button>
-  );
-});
+const RunButton: React.FC<{ session: Session; onRun?: () => void | Promise<void> }> = observer(
+  ({ session, onRun }) => {
+    const { global } = useStores();
+    const keybinding = getKeybindingDisplayForCommand('run-query');
+    const tooltip = keybinding ? `Run (${keybinding})` : 'Run';
+
+    // Get the run-query command to check if it's enabled
+    const runQueryCommand = useMemo(() => getCommandById('run-query'), []);
+
+    const isDisabled = runQueryCommand ? !runQueryCommand.isEnabled(global, session) : false;
+
+    return (
+      <Button
+        variant="contained"
+        onClick={onRun || (() => session.evaluate())}
+        disabled={isDisabled}
+        startIcon={session.loading ? <Loop /> : <PlayArrow />}
+        size="small"
+        title={tooltip}
+        sx={{
+          backgroundColor: 'var(--primary-color)',
+          color: 'var(--primary-text-color)',
+          '&:hover': {
+            backgroundColor: 'var(--primary-color-hover)',
+          },
+          '&:disabled': {
+            backgroundColor: 'var(--icon-color)',
+            color: 'var(--text-color)',
+            opacity: 0.6,
+          },
+          minWidth: 'auto',
+          px: 1.5,
+          py: 0.5,
+        }}
+      >
+        Run
+      </Button>
+    );
+  },
+);
 
 const Input: React.FC<InputProps> = observer(({ session, onRun }) => {
   const handleInputModeChange = (
@@ -60,7 +62,7 @@ const Input: React.FC<InputProps> = observer(({ session, onRun }) => {
   ) => {
     if (newMode !== null && newMode !== session.inputMode) {
       session.setInputMode(newMode);
-      
+
       // Show feedback message when switching modes
       if (newMode === 'pine') {
         session.setMessage('🌲 Switched to Pine mode - Edit with Pine DSL expressions');
