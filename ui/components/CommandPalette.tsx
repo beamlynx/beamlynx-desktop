@@ -96,8 +96,9 @@ const CommandPalette = observer(() => {
       setSelectedIndex(prev => Math.max(prev - 1, 0));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      if (flatCommands[selectedIndex]) {
-        executeCommand(flatCommands[selectedIndex]);
+      const command = flatCommands[selectedIndex];
+      if (command && command.isEnabled()) {
+        executeCommand(command);
       }
     } else if (e.key === 'Escape') {
       e.preventDefault();
@@ -248,25 +249,29 @@ const CommandPalette = observer(() => {
                   <List disablePadding>
                     {recentCommands.map((cmd, index) => {
                       const isSelected = index === selectedIndex;
+                      const isDisabled = !cmd.isEnabled();
                       
                       return (
                         <ListItem
                           key={cmd.id}
                           data-index={index}
                           component="div"
-                          onClick={() => executeCommand(cmd)}
+                          onClick={() => !isDisabled && executeCommand(cmd)}
                           sx={{
                             px: 2,
                             py: 1.5,
-                            cursor: 'pointer',
+                            cursor: isDisabled ? 'not-allowed' : 'pointer',
                             backgroundColor: isSelected
                               ? 'var(--primary-color)'
                               : 'transparent',
                             color: isSelected ? 'var(--primary-text-color)' : 'var(--text-color)',
+                            opacity: isDisabled ? 0.5 : 1,
                             '&:hover': {
-                              backgroundColor: isSelected
-                                ? 'var(--primary-color)'
-                                : 'var(--node-column-bg)',
+                              backgroundColor: isDisabled 
+                                ? 'transparent'
+                                : (isSelected
+                                  ? 'var(--primary-color)'
+                                  : 'var(--node-column-bg)'),
                             },
                             display: 'flex',
                             justifyContent: 'space-between',
@@ -346,25 +351,29 @@ const CommandPalette = observer(() => {
                     {commands.map((cmd, index) => {
                       const commandIndex = categoryStartIndex + index;
                       const isSelected = commandIndex === selectedIndex;
+                      const isDisabled = !cmd.isEnabled();
                       
                       return (
                         <ListItem
                           key={cmd.id}
                           data-index={commandIndex}
                           component="div"
-                          onClick={() => executeCommand(cmd)}
+                          onClick={() => !isDisabled && executeCommand(cmd)}
                           sx={{
                             px: 2,
                             py: 1.5,
-                            cursor: 'pointer',
+                            cursor: isDisabled ? 'not-allowed' : 'pointer',
                             backgroundColor: isSelected
                               ? 'var(--primary-color)'
                               : 'transparent',
                             color: isSelected ? 'var(--primary-text-color)' : 'var(--text-color)',
+                            opacity: isDisabled ? 0.5 : 1,
                             '&:hover': {
-                              backgroundColor: isSelected
-                                ? 'var(--primary-color)'
-                                : 'var(--node-column-bg)',
+                              backgroundColor: isDisabled 
+                                ? 'transparent'
+                                : (isSelected
+                                  ? 'var(--primary-color)'
+                                  : 'var(--node-column-bg)'),
                             },
                             display: 'flex',
                             justifyContent: 'space-between',

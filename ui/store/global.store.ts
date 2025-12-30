@@ -363,11 +363,13 @@ export class GlobalStore {
    * Execute a command by its ID.
    * This is the central command execution mechanism that:
    * 1. Looks up the command from the registry
-   * 2. Executes its handler
-   * 3. Adds it to command history
+   * 2. Checks if the command is enabled (all prerequisites met)
+   * 3. Executes its handler
+   * 4. Adds it to command history
    * 
    * @param commandId The unique identifier of the command to execute
    * @throws Error if the command ID is not found
+   * @throws Error if the command's isEnabled() returns false
    */
   executeCommand = (commandId: string) => {
     const session = this.getSession(this.activeSessionId);
@@ -376,6 +378,11 @@ export class GlobalStore {
     const command = allCommands.find(cmd => cmd.id === commandId);
     if (!command) {
       throw new Error(`Command with id "${commandId}" not found`);
+    }
+    
+    // Check if command is enabled
+    if (!command.isEnabled()) {
+      throw new Error(`Command "${commandId}" cannot execute: prerequisites not met`);
     }
     
     // Execute the command handler

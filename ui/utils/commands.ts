@@ -3,6 +3,9 @@ import { Session } from '../store/session';
 
 export type CommandCategory = 'View' | 'Query' | 'Preferences' | 'Experimental' | 'Help';
 
+/** Helper constant for commands that are always enabled */
+export const ALWAYS_ENABLED = () => true;
+
 export interface Command {
   id: string;
   label: string;
@@ -10,6 +13,8 @@ export interface Command {
   handler: () => void;
   /** If true, this command will not be shown in the command palette UI */
   hidden?: boolean;
+  /** Function that determines if this command can currently execute */
+  isEnabled: () => boolean;
 }
 
 /**
@@ -28,18 +33,21 @@ export function getAllCommands(
       label: 'Toggle Theme',
       category: 'Preferences',
       handler: () => global.toggleTheme(),
+      isEnabled: ALWAYS_ENABLED,
     },
     {
       id: 'toggle-vim-mode',
       label: 'Toggle Vim Mode',
       category: 'Preferences',
       handler: () => session.toggleVimMode(),
+      isEnabled: ALWAYS_ENABLED,
     },
     {
       id: 'toggle-compact-mode',
       label: 'Toggle Compact Mode',
       category: 'Preferences',
       handler: () => global.toggleCompactMode(),
+      isEnabled: ALWAYS_ENABLED,
     },
 
     // View Category
@@ -48,12 +56,14 @@ export function getAllCommands(
       label: 'New Tab',
       category: 'View',
       handler: () => global.addTab(),
+      isEnabled: ALWAYS_ENABLED,
     },
     {
       id: 'close-tab',
       label: 'Close Tab',
       category: 'View',
       handler: () => global.closeTab(session.id),
+      isEnabled: ALWAYS_ENABLED,
     },
 
     // Query Category
@@ -62,6 +72,7 @@ export function getAllCommands(
       label: 'Run Query',
       category: 'Query',
       handler: () => session.evaluate(),
+      isEnabled: () => !!(session.expression || session.query) && !session.loading,
     },
 
     // Hidden commands
@@ -71,6 +82,7 @@ export function getAllCommands(
       category: 'Preferences',
       handler: () => global.setShowCommandPalette(true),
       hidden: true,
+      isEnabled: ALWAYS_ENABLED,
     },
     {
       id: 'focus-input',
@@ -78,6 +90,7 @@ export function getAllCommands(
       category: 'Preferences',
       handler: () => session.focusTextInput(),
       hidden: true,
+      isEnabled: ALWAYS_ENABLED,
     },
 
     // Experimental Category
@@ -88,12 +101,14 @@ export function getAllCommands(
       handler: () => {
         session.mode = session.mode === 'monitor' ? 'graph' : 'monitor';
       },
+      isEnabled: ALWAYS_ENABLED,
     },
     {
       id: 'open-analysis',
       label: 'Open Analysis',
       category: 'Experimental',
       handler: () => global.setShowAnalysis(true),
+      isEnabled: ALWAYS_ENABLED,
     },
 
     // Help Category
@@ -102,6 +117,7 @@ export function getAllCommands(
       label: 'Show Changelog',
       category: 'Help',
       handler: () => global.setShowChangelog(true),
+      isEnabled: ALWAYS_ENABLED,
     },
   ];
 }

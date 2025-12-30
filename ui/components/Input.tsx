@@ -1,11 +1,13 @@
 import { observer } from 'mobx-react-lite';
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Box, ToggleButton, ToggleButtonGroup, Button } from '@mui/material';
 import { PlayArrow, Loop } from '@mui/icons-material';
 import PineInput from './PineInput';
 import SqlInput from './SqlInput';
 import { Session } from '../store/session';
 import { getKeybindingDisplayForCommand } from '../utils/keybindings';
+import { getAllCommands } from '../utils/commands';
+import { useStores } from '../store/store-container';
 
 interface InputProps {
   session: Session;
@@ -13,14 +15,23 @@ interface InputProps {
 }
 
 const RunButton: React.FC<{ session: Session; onRun?: () => void | Promise<void> }> = observer(({ session, onRun }) => {
+  const { global } = useStores();
   const keybinding = getKeybindingDisplayForCommand('run-query');
   const tooltip = keybinding ? `Run (${keybinding})` : 'Run';
+  
+  // Get the run-query command to check if it's enabled
+  const runQueryCommand = useMemo(() => {
+    const commands = getAllCommands(global, session);
+    return commands.find(cmd => cmd.id === 'run-query');
+  }, [global, session]);
+  
+  const isDisabled = runQueryCommand ? !runQueryCommand.isEnabled() : false;
   
   return (
     <Button
       variant="contained"
       onClick={onRun || (() => session.evaluate())}
-      disabled={(!session.expression && !session.query) || session.loading}
+      disabled={isDisabled}
       startIcon={session.loading ? <Loop /> : <PlayArrow />}
       size="small"
       title={tooltip}
