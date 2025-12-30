@@ -223,6 +223,42 @@ export class GlobalStore {
     delete this.sessions[sessionId];
   };
 
+  /**
+   * Add a new tab and switch to it.
+   * This is the proper way to create a new tab in the UI.
+   */
+  addTab = () => {
+    const session = this.createSession();
+    this.activeSessionId = session.id;
+  };
+
+  /**
+   * Close a tab with proper cleanup and switching logic.
+   * If it's the last tab, resets it instead of closing.
+   * 
+   * @param sessionId The session ID to close
+   */
+  closeTab = (sessionId: string) => {
+    const sessionIds = Object.keys(this.sessions);
+    
+    // If it's the last tab, reset it instead of closing
+    if (sessionIds.length === 1) {
+      this.createSessionUsingId(sessionId.replace('session-', ''));
+      return;
+    }
+
+    // Remove the session
+    this.deleteSession(sessionId);
+
+    // If the active tab is being closed, switch to another tab
+    if (this.activeSessionId === sessionId && sessionIds.length > 1) {
+      const remainingSessions = Object.keys(this.sessions);
+      if (remainingSessions.length > 0) {
+        this.activeSessionId = remainingSessions[0];
+      }
+    }
+  };
+
   getSession = (id: string): Session => {
     const session = this.sessions[id];
     if (!session) {

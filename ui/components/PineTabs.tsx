@@ -26,27 +26,11 @@ const PineTabs = observer(() => {
   };
 
   const addTab = () => {
-    const session = global.createSession();
-    setActiveTab(session.id);
+    global.addTab();
   };
 
   const removeTab = (sessionIdToRemove: string) => {
-    // Reset the session if it is the last tab
-    if (tabs.length === 1) {
-      global.createSessionUsingId(sessionIdToRemove.replace('session-', ''));
-      return;
-    }
-
-    // Remove the session from global store
-    global.deleteSession(sessionIdToRemove);
-
-    // If the active tab is removed, switch to another tab
-    if (global.activeSessionId === sessionIdToRemove && tabs.length > 1) {
-      const remainingSessions = Object.keys(global.sessions);
-      if (remainingSessions.length > 0) {
-        setActiveTab(remainingSessions[0]);
-      }
-    }
+    global.closeTab(sessionIdToRemove);
   };
 
   return (

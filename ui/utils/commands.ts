@@ -1,7 +1,7 @@
 import { GlobalStore } from '../store/global.store';
 import { Session } from '../store/session';
 
-export type CommandCategory = 'Preferences' | 'Query' | 'Experimental' | 'Help';
+export type CommandCategory = 'View' | 'Preferences' | 'Query' | 'Experimental' | 'Help';
 
 export interface Command {
   id: string;
@@ -41,14 +41,21 @@ export function getAllCommands(
       category: 'Preferences',
       handler: () => global.toggleCompactMode(),
     },
+
+    // Workspace Category
     {
-      id: 'toggle-connection-monitor',
-      label: 'Toggle Connection Monitor',
-      category: 'Preferences',
-      handler: () => {
-        session.mode = session.mode === 'monitor' ? 'graph' : 'monitor';
-      },
+      id: 'new-tab',
+      label: 'New Tab',
+      category: 'View',
+      handler: () => global.addTab(),
     },
+    {
+      id: 'close-tab',
+      label: 'Close Tab',
+      category: 'View',
+      handler: () => global.closeTab(session.id),
+    },
+
     // Hidden commands
     {
       id: 'command-palette',
@@ -66,6 +73,14 @@ export function getAllCommands(
     },
 
     // Experimental Category
+    {
+      id: 'toggle-connection-monitor',
+      label: 'Toggle Connection Monitor',
+      category: 'Experimental',
+      handler: () => {
+        session.mode = session.mode === 'monitor' ? 'graph' : 'monitor';
+      },
+    },
     {
       id: 'open-analysis',
       label: 'Open Analysis',
@@ -92,6 +107,7 @@ export function getCommandsByCategory(
 ): Record<CommandCategory, Command[]> {
   const allCommands = getAllCommands(global, session);
   const grouped: Record<CommandCategory, Command[]> = {
+    View: [],
     Preferences: [],
     Query: [],
     Experimental: [],
