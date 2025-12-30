@@ -171,7 +171,7 @@ const CommandPalette = observer(() => {
         {/* Search Input */}
         <TextField
           fullWidth
-          placeholder="Type a command..."
+          placeholder="Search commands..."
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
           inputRef={searchInputRef}
@@ -183,6 +183,11 @@ const CommandPalette = observer(() => {
               color: 'var(--text-color)',
               backgroundColor: 'var(--node-column-bg)',
               borderRadius: '4px 4px 0 0', // Match search box border radius (4px at top)
+              fontSize: '0.875rem', // Match button text size
+            },
+            '& .MuiInputBase-input': {
+              fontSize: '0.875rem', // Match button text size
+              padding: '10px 16px', // Slightly taller than button
             },
             '& .MuiOutlinedInput-root': {
               '& fieldset': {
@@ -229,12 +234,12 @@ const CommandPalette = observer(() => {
             <>
               {/* Recent Commands Section */}
               {recentCommands.length > 0 && (
-                <Box sx={{ mb: 1 }}>
+                <Box sx={{ mb: 0.5 }}>
                   {/* Recent Header */}
                   <Box
                     sx={{
                       px: 2,
-                      py: 1,
+                      py: 0.5,
                       backgroundColor: 'var(--node-column-bg)',
                       borderBottom: '1px solid var(--border-color)',
                     }}
@@ -246,7 +251,8 @@ const CommandPalette = observer(() => {
                         opacity: 0.7,
                         fontWeight: 600,
                         textTransform: 'uppercase',
-                        fontSize: '0.7rem',
+                        fontSize: '0.75rem',
+                        letterSpacing: '0.5px',
                       }}
                     >
                       Recent
@@ -267,7 +273,7 @@ const CommandPalette = observer(() => {
                           onClick={() => !isDisabled && executeCommand(cmd)}
                           sx={{
                             px: 2,
-                            py: 1.5,
+                            py: 0.5,
                             cursor: isDisabled ? 'not-allowed' : 'pointer',
                             backgroundColor: isSelected ? 'var(--primary-color)' : 'transparent',
                             color: isSelected ? 'var(--primary-text-color)' : 'var(--text-color)',
@@ -290,6 +296,7 @@ const CommandPalette = observer(() => {
                               sx: {
                                 color: 'inherit',
                                 fontWeight: isSelected ? 500 : 400,
+                                fontSize: '0.875rem', // Match button text size
                               },
                             }}
                           />
@@ -298,7 +305,7 @@ const CommandPalette = observer(() => {
                               label={commandKeybindings.get(cmd.id)}
                               size="small"
                               sx={{
-                                height: 22,
+                                height: 20,
                                 fontSize: '0.7rem',
                                 backgroundColor: isSelected
                                   ? 'rgba(255, 255, 255, 0.2)'
@@ -331,12 +338,12 @@ const CommandPalette = observer(() => {
                     .findIndex(cmd => cmd.category === category);
 
                 return (
-                  <Box key={category} sx={{ mb: 1 }}>
+                  <Box key={category} sx={{ mb: 0.5 }}>
                     {/* Category Header */}
                     <Box
                       sx={{
                         px: 2,
-                        py: 1,
+                        py: 0.5,
                         backgroundColor: 'var(--node-column-bg)',
                         borderBottom: '1px solid var(--border-color)',
                       }}
@@ -348,7 +355,8 @@ const CommandPalette = observer(() => {
                           opacity: 0.7,
                           fontWeight: 600,
                           textTransform: 'uppercase',
-                          fontSize: '0.7rem',
+                          fontSize: '0.75rem',
+                          letterSpacing: '0.5px',
                         }}
                       >
                         {category}
@@ -370,7 +378,7 @@ const CommandPalette = observer(() => {
                             onClick={() => !isDisabled && executeCommand(cmd)}
                             sx={{
                               px: 2,
-                              py: 1.5,
+                              py: 0.5,
                               cursor: isDisabled ? 'not-allowed' : 'pointer',
                               backgroundColor: isSelected ? 'var(--primary-color)' : 'transparent',
                               color: isSelected ? 'var(--primary-text-color)' : 'var(--text-color)',
@@ -393,6 +401,7 @@ const CommandPalette = observer(() => {
                                 sx: {
                                   color: 'inherit',
                                   fontWeight: isSelected ? 500 : 400,
+                                  fontSize: '0.875rem', // Match button text size
                                 },
                               }}
                             />
@@ -401,7 +410,7 @@ const CommandPalette = observer(() => {
                                 label={commandKeybindings.get(cmd.id)}
                                 size="small"
                                 sx={{
-                                  height: 22,
+                                  height: 20,
                                   fontSize: '0.7rem',
                                   backgroundColor: isSelected
                                     ? 'rgba(255, 255, 255, 0.2)'
@@ -432,7 +441,7 @@ const CommandPalette = observer(() => {
         <Box
           sx={{
             px: 2,
-            py: 1,
+            py: 0.5,
             borderTop: '1px solid var(--border-color)',
             backgroundColor: 'var(--node-column-bg)',
           }}
@@ -442,7 +451,7 @@ const CommandPalette = observer(() => {
             sx={{
               color: 'var(--text-color)',
               opacity: 0.6,
-              fontSize: '0.7rem',
+              fontSize: '0.75rem',
             }}
           >
             Use ↑↓ to navigate • Enter to select • Esc to close

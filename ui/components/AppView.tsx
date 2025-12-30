@@ -166,7 +166,7 @@ const AppView = observer(() => {
                 alignItems: 'center',
                 width: 600,
                 maxWidth: '90vw',
-                padding: '8px 16px',
+                padding: '10px 16px',
                 backgroundColor: 'var(--node-column-bg)',
                 border: '1px solid var(--border-color)',
                 borderRadius: 1,
@@ -184,6 +184,7 @@ const AppView = observer(() => {
                   color: 'var(--text-color)',
                   opacity: 0.6,
                   userSelect: 'none',
+                  lineHeight: 1.5,
                 }}
               >
                 Search commands... ({getKeybindingDisplayForCommand('command-palette')})
