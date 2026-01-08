@@ -139,7 +139,6 @@ const AppView = observer(() => {
   }
 
   session.isSmallScreen = isSmallScreen;
-  session.forceCompactMode = global.forceCompactMode;
 
   if (global.getRequiresUpgrade()) {
     return <UpgradeRequired />;

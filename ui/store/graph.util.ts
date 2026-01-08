@@ -32,7 +32,7 @@ const DarkColors = ['#cf6679', '#d4995c', '#e6c07b', '#98c379', '#61afef'];
  * Get the color for the schema. Note: this function probably has collisions.
  * TODO: Keep track of the schemas and colors to avoid collisions.
  */
-const getColor = (schema: string, isDark: boolean = false) => {
+export const getSchemaColor = (schema: string, isDark: boolean = false) => {
   if (!schema) schema = 'public';
   const hash = schema.split('').reduce((acc, x) => acc + x.charCodeAt(0), 0);
   const colors = isDark ? DarkColors : LightColors;
@@ -54,7 +54,7 @@ const makeSelectedNode = (
   isDark: boolean = false,
 ): PineSelectedNode => {
   const { schema, table, alias } = n;
-  const { color } = getColor(n.schema, isDark);
+  const { color } = getSchemaColor(n.schema, isDark);
   const id = alias;
   return {
     id,
@@ -86,7 +86,7 @@ export const makeSuggestedNode = (
   isDark: boolean = false,
 ): PineSuggestedNode => {
   const { schema, table, column, pine, parent } = n;
-  const { color } = getColor(schema, isDark);
+  const { color } = getSchemaColor(schema, isDark);
 
   const id = pine;
 

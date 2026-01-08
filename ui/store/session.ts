@@ -65,7 +65,6 @@ export class Session {
    * Layout properties
    */
   isSmallScreen: boolean = false;
-  forceCompactMode: boolean = false;
 
   /**
    * App states
@@ -315,8 +314,8 @@ export class Session {
     this.expression = this.getExpressionUsingCandidate();
   }
 
-  public prettify() {
-    this.expression = prettifyExpression(this.expression);
+  public prettify(appendPipe = false) {
+    this.expression = prettifyExpression(this.expression, appendPipe);
   }
 
   public appendAndUpdateExpression(string: string) {
@@ -342,6 +341,18 @@ export class Session {
       default:
         return await this.plugins.default.evaluate();
     }
+  }
+
+  /**
+   * Explicitly build an expression and return the AST.
+   * This bypasses the reactive flow and is useful for imperative operations
+   * like fetching hints for command palette options.
+   *
+   * Similar to evaluate() but only builds without executing.
+   */
+  public async build(expression: string): Promise<Ast> {
+    const response = await client.build(expression, this.cursorPosition);
+    return response.ast;
   }
 
   public setTextInputFocused(focused: boolean) {

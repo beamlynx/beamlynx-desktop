@@ -1,16 +1,39 @@
 import { GlobalStore } from '../store/global.store';
 import { Session } from '../store/session';
+import { getSchemaColor } from '../store/graph.util';
 
 export type CommandCategory = 'View' | 'Query' | 'Preferences' | 'Experimental' | 'Help';
 
 /** Helper constant for commands that are always enabled */
 export const ALWAYS_ENABLED = (_global: GlobalStore, _session: Session) => true;
 
+/**
+ * Represents a selectable option in a two-stage command.
+ * Used when a command needs to show dynamic choices (e.g., table selection).
+ */
+export interface CommandOption {
+  id: string;
+  label: string;
+  /** Secondary info (e.g., "public.users" for disambiguation) */
+  detail?: string;
+  /** Schema name for table options */
+  schema?: string;
+  /** Color for the schema chip */
+  schemaColor?: string;
+  handler: (global: GlobalStore, session: Session) => void;
+}
+
 export interface Command {
   id: string;
   label: string;
   category: CommandCategory;
-  handler: (global: GlobalStore, session: Session) => void;
+  /**
+   * Command handler that can either:
+   * - Execute immediately (return void) - single-stage command
+   * - Return options for user selection (return Promise<CommandOption[]>) - two-stage command
+   * - Execute async operation (return Promise) - single-stage async command
+   */
+  handler: (global: GlobalStore, session: Session) => void | Promise<any>;
   /** If true, this command will not be shown in the command palette UI */
   hidden?: boolean;
   /** Function that determines if this command can currently execute */
@@ -72,6 +95,40 @@ const COMMANDS: Command[] = [
   },
 
   // Hidden commands
+  {
+    id: 'select-table',
+    hidden: true, // Temporarily hiding it until the functionality is full implemented
+    label: 'Select Table',
+    category: 'Query',
+    handler: async (global, session) => {
+      // Use virtual session to build from current session expression
+      const vs = global.getVirtualSession();
+      const ast = await vs.build(session.expression);
+      const tableHints = ast.hints.table;
+
+      // Get theme for schema colors
+      const isDark = global.theme === 'dark';
+
+      // Create options from table hints
+      return tableHints.map(hint => {
+        const { color } = getSchemaColor(hint.schema, isDark);
+        return {
+          id: hint.pine,
+          label: hint.table, // Show table name
+          schema: hint.schema, // Include schema for chip
+          schemaColor: color, // Include color for chip
+          handler: (global: GlobalStore, session: Session) => {
+            // Insert table as first expression
+            session.appendAndUpdateExpression(hint.pine);
+            // session.expression = `${hint.pine}`;
+            // session.prettify(true);
+            // session.focusTextInput();
+          },
+        };
+      });
+    },
+    isEnabled: (_global, session) => session.expression.trim() === '',
+  },
   {
     id: 'command-palette',
     label: 'Open Command Palette',

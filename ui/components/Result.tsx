@@ -57,7 +57,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   }));
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('lg'));
-  const compactMode = isSmallScreen || session.forceCompactMode;
+  const compactMode = isSmallScreen || global.forceCompactMode;
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [updateData, setUpdateData] = useState<UpdateData | undefined>(undefined);

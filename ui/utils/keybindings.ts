@@ -80,15 +80,6 @@ function createKeybindingDisplay(modifiers: ('ctrl' | 'shift' | 'alt')[], key: s
 export const KEYBINDINGS: KeybindingConfig[] = [
   // Command-triggering keybindings
   {
-    name: 'toggle-theme',
-    description: 'Toggle Theme',
-    display: createKeybindingDisplay(['ctrl', 'shift'], 'T'),
-    matches: (e: KeyboardEvent) =>
-      (e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 't',
-    commandId: 'toggle-theme',
-  },
-
-  {
     name: 'command-palette',
     description: 'Open Command Palette',
     display: createKeybindingDisplay(['ctrl', 'shift'], 'P'),

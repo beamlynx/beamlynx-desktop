@@ -11,7 +11,7 @@ import {
 import { observer } from 'mobx-react-lite';
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useStores } from '../store/store-container';
-import { getAllCommands, Command, CommandCategory } from '../utils/commands';
+import { getAllCommands, Command, CommandCategory, CommandOption } from '../utils/commands';
 import { getKeybindingDisplayForCommand } from '../utils/keybindings';
 
 const CommandPalette = observer(() => {
@@ -21,6 +21,10 @@ const CommandPalette = observer(() => {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+
+  // Two-stage mode state
+  const [commandOptions, setCommandOptions] = useState<CommandOption[] | null>(null);
+  const [parentCommand, setParentCommand] = useState<Command | null>(null);
 
   // Get all commands and filter out hidden ones
   const allCommands = getAllCommands().filter(cmd => !cmd.hidden);
@@ -42,11 +46,11 @@ const CommandPalette = observer(() => {
     ? allCommands.filter(cmd => cmd.label.toLowerCase().includes(searchQuery.toLowerCase()))
     : allCommands;
 
-  // Get recent commands (only if no search query)
+  // Get recent commands (only if no search query) - filter out disabled ones
   const recentCommands = !searchQuery
     ? (global.commandHistory
         .map(id => allCommands.find(cmd => cmd.id === id))
-        .filter(Boolean) as Command[])
+        .filter((cmd): cmd is Command => Boolean(cmd) && cmd.isEnabled(global, session)))
     : [];
 
   // Group filtered commands by category
@@ -66,11 +70,23 @@ const CommandPalette = observer(() => {
       ? [...recentCommands, ...groupedCommands.flatMap(group => group.commands)]
       : groupedCommands.flatMap(group => group.commands);
 
+  // Filter options by search query if in options mode
+  const filteredOptions = commandOptions
+    ? commandOptions.filter(
+        opt =>
+          opt.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          opt.detail?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          opt.schema?.toLowerCase().includes(searchQuery.toLowerCase()),
+      )
+    : [];
+
   useEffect(() => {
     if (global.showCommandPalette) {
       // Reset state when modal opens
       setSearchQuery('');
       setSelectedIndex(0);
+      setCommandOptions(null);
+      setParentCommand(null);
 
       // Focus the search input when modal opens
       requestAnimationFrame(() => {
@@ -79,38 +95,80 @@ const CommandPalette = observer(() => {
     }
   }, [global.showCommandPalette]);
 
-  // Update selected index when filtered commands change
+  // Update selected index when filtered items change
   useEffect(() => {
-    if (selectedIndex >= flatCommands.length) {
-      setSelectedIndex(Math.max(0, flatCommands.length - 1));
+    const maxLength = commandOptions ? filteredOptions.length : flatCommands.length;
+    if (selectedIndex >= maxLength) {
+      setSelectedIndex(Math.max(0, maxLength - 1));
     }
-  }, [flatCommands.length, selectedIndex]);
+  }, [flatCommands.length, filteredOptions.length, selectedIndex, commandOptions]);
 
   const handleClose = useCallback(() => {
     global.setShowCommandPalette(false);
   }, [global]);
 
-  const executeCommand = (command: Command) => {
-    global.executeCommand(command.id);
+  const executeCommand = async (command: Command) => {
+    const result = command.handler(global, session);
+
+    // Check if this is a two-stage command (returns options)
+    if (result instanceof Promise) {
+      const options = await result;
+      if (options && Array.isArray(options) && options.length > 0) {
+        // Enter two-stage mode: show options
+        setCommandOptions(options);
+        setParentCommand(command);
+        setSearchQuery('');
+        setSelectedIndex(0);
+        return; // Don't close palette
+      }
+    }
+
+    // Single-stage command or empty options: close palette and add to history
+    global.addToCommandHistory(command.id);
+    handleClose();
+  };
+
+  const executeOption = (option: CommandOption) => {
+    option.handler(global, session);
+    if (parentCommand) {
+      global.addToCommandHistory(parentCommand.id);
+    }
     handleClose();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    const maxLength = commandOptions ? filteredOptions.length : flatCommands.length;
+
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setSelectedIndex(prev => Math.min(prev + 1, flatCommands.length - 1));
+      setSelectedIndex(prev => Math.min(prev + 1, maxLength - 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setSelectedIndex(prev => Math.max(prev - 1, 0));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      const command = flatCommands[selectedIndex];
-      if (command && command.isEnabled(global, session)) {
-        executeCommand(command);
+      if (commandOptions) {
+        // In options mode
+        const option = filteredOptions[selectedIndex];
+        if (option) executeOption(option);
+      } else {
+        // In commands mode
+        const command = flatCommands[selectedIndex];
+        if (command && command.isEnabled(global, session)) {
+          executeCommand(command);
+        }
       }
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      handleClose();
+      if (commandOptions) {
+        // Exit two-stage mode, return to commands
+        setCommandOptions(null);
+        setParentCommand(null);
+        setSearchQuery('');
+        setSelectedIndex(0);
+      } else {
+        handleClose();
+      }
     }
   };
 
@@ -200,6 +258,22 @@ const CommandPalette = observer(() => {
           }}
         />
 
+        {/* Breadcrumb for two-stage mode */}
+        {parentCommand && (
+          <Box
+            sx={{
+              px: 2,
+              py: 1,
+              borderBottom: '1px solid var(--border-color)',
+              backgroundColor: 'var(--node-column-bg)',
+            }}
+          >
+            <Typography variant="caption" sx={{ color: 'var(--text-color)', opacity: 0.7 }}>
+              {parentCommand.label} → Select option
+            </Typography>
+          </Box>
+        )}
+
         {/* Commands List */}
         <Box
           ref={listRef}
@@ -224,7 +298,72 @@ const CommandPalette = observer(() => {
             },
           }}
         >
-          {groupedCommands.length === 0 && recentCommands.length === 0 ? (
+          {/* Two-stage mode: Show options */}
+          {commandOptions ? (
+            filteredOptions.length === 0 ? (
+              <Box sx={{ p: 3, textAlign: 'center' }}>
+                <Typography sx={{ color: 'var(--text-color)', opacity: 0.6 }}>
+                  No options found
+                </Typography>
+              </Box>
+            ) : (
+              <List disablePadding>
+                {filteredOptions.map((option, index) => {
+                  const isSelected = index === selectedIndex;
+
+                  return (
+                    <ListItem
+                      key={option.id}
+                      data-index={index}
+                      component="div"
+                      onClick={() => executeOption(option)}
+                      sx={{
+                        px: 2,
+                        py: 0.5,
+                        cursor: 'pointer',
+                        backgroundColor: isSelected ? 'var(--primary-color)' : 'transparent',
+                        color: isSelected ? 'var(--primary-text-color)' : 'var(--text-color)',
+                        '&:hover': {
+                          backgroundColor: isSelected
+                            ? 'var(--primary-color)'
+                            : 'var(--node-column-bg)',
+                        },
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
+                        <Typography
+                          sx={{
+                            color: 'inherit',
+                            fontWeight: isSelected ? 500 : 400,
+                            fontSize: '0.875rem',
+                          }}
+                        >
+                          {option.label}
+                        </Typography>
+                        {option.schema && (
+                          <Chip
+                            label={option.schema}
+                            size="small"
+                            sx={{
+                              height: 20,
+                              fontSize: '0.7rem',
+                              backgroundColor: option.schemaColor,
+                              color: '#000000',
+                              border: 'none',
+                              fontFamily: 'monospace',
+                            }}
+                          />
+                        )}
+                      </Box>
+                    </ListItem>
+                  );
+                })}
+              </List>
+            )
+          ) : groupedCommands.length === 0 && recentCommands.length === 0 ? (
             <Box sx={{ p: 3, textAlign: 'center' }}>
               <Typography sx={{ color: 'var(--text-color)', opacity: 0.6 }}>
                 No commands found
@@ -263,27 +402,23 @@ const CommandPalette = observer(() => {
                   <List disablePadding>
                     {recentCommands.map((cmd, index) => {
                       const isSelected = index === selectedIndex;
-                      const isDisabled = !cmd.isEnabled(global, session);
 
                       return (
                         <ListItem
                           key={cmd.id}
                           data-index={index}
                           component="div"
-                          onClick={() => !isDisabled && executeCommand(cmd)}
+                          onClick={() => executeCommand(cmd)}
                           sx={{
                             px: 2,
                             py: 0.5,
-                            cursor: isDisabled ? 'not-allowed' : 'pointer',
+                            cursor: 'pointer',
                             backgroundColor: isSelected ? 'var(--primary-color)' : 'transparent',
                             color: isSelected ? 'var(--primary-text-color)' : 'var(--text-color)',
-                            opacity: isDisabled ? 0.5 : 1,
                             '&:hover': {
-                              backgroundColor: isDisabled
-                                ? 'transparent'
-                                : isSelected
-                                  ? 'var(--primary-color)'
-                                  : 'var(--node-column-bg)',
+                              backgroundColor: isSelected
+                                ? 'var(--primary-color)'
+                                : 'var(--node-column-bg)',
                             },
                             display: 'flex',
                             justifyContent: 'space-between',

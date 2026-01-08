@@ -189,7 +189,7 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
     setSidebarWidth(storedWidth);
   }, []);
 
-  const compactMode = isSmallScreen || session.forceCompactMode;
+  const compactMode = isSmallScreen || global.forceCompactMode;
 
   return (
     <Grid
