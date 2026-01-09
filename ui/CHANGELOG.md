@@ -5,6 +5,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-01-09
+### Added
+- Command palette for finding and running commands. This is similar to how VS Code lets you find and run commands.
+
 ## [0.35.1] - 2025-12-26
 ### Added
 - Support for hints at cursor position.

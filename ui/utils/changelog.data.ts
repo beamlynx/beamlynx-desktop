@@ -15,6 +15,15 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.36.0',
+    date: '2026-01-09',
+    added: [
+      {
+        description: 'Command palette for finding and running commands. This is similar to how VS Code lets you find and run commands.',
+      },
+    ],
+  },
+  {
     version: '0.35.1',
     date: '2025-12-26',
     added: [
