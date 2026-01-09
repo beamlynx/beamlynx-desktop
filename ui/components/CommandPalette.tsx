@@ -50,7 +50,7 @@ const CommandPalette = observer(() => {
   const recentCommands = !searchQuery
     ? (global.commandHistory
         .map(id => allCommands.find(cmd => cmd.id === id))
-        .filter((cmd): cmd is Command => Boolean(cmd) && cmd.isEnabled(global, session)))
+        .filter((cmd): cmd is Command => cmd !== undefined && cmd.isEnabled(global, session)))
     : [];
 
   // Group filtered commands by category
