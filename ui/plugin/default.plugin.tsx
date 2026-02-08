@@ -82,6 +82,7 @@ export class DefaultPlugin implements PluginInterface {
     session.rows = rows.slice(1).map((row, index) => {
       return { ...row, _id: index };
     });
+    session.expressionAtLastEval = session.inputMode === 'sql' ? session.query : session.expression;
 
     // session.message = pickSuccessMessage();
     session.loading = false;
