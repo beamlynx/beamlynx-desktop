@@ -11,3 +11,11 @@ When working in this codebase, if you discover a new pattern, convention, archit
 - Deprecated patterns and their replacements
 - Module boundaries and ownership (e.g. which module owns which concept)
 - Corrections to previously held assumptions
+
+## Crediting Contributors
+
+When updating the changelog (CHANGELOG.md and utils/changelog.data.ts), contributors should be credited in the changelog entries themselves. The format is:
+
+- Add contributor attribution at the end of each changelog entry in parentheses, e.g.:
+  - `- Resizable sidebar functionality. The sidebar width can now be adjusted by dragging the divider. (by @username)`
+  - Or for multiple contributors: `(by @username1, @username2)`

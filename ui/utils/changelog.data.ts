@@ -19,12 +19,12 @@ export const CHANGELOG: ChangelogVersion[] = [
     date: '2026-02-08',
     added: [
       {
-        description: 'Resizable sidebar functionality. The sidebar width can now be adjusted by dragging the divider',
+        description: 'Resizable sidebar functionality. The sidebar width can now be adjusted by dragging the divider (by @Koziar)',
       },
     ],
     changed: [
       {
-        description: 'Improved dark theme candidate node contrast for better visibility',
+        description: 'Improved dark theme candidate node contrast for better visibility (by @Koziar)',
       },
     ],
   },

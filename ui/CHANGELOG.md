@@ -7,10 +7,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [0.37.0] - 2026-02-08
 ### Added
-- Resizable sidebar functionality. The sidebar width can now be adjusted by dragging the divider.
+- Resizable sidebar functionality. The sidebar width can now be adjusted by dragging the divider. (by @Koziar)
 
 ### Changed
-- Improved dark theme candidate node contrast for better visibility.
+- Improved dark theme candidate node contrast for better visibility. (by @Koziar)
 
 ## [0.36.0] - 2026-01-09
 ### Added
