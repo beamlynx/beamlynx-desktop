@@ -6,6 +6,14 @@ export const MAX_COUNT = 300;
 export const DEFAULT_SIDEBAR_WIDTH = 400;
 export const MIN_SIDEBAR_WIDTH = 200;
 
+/* Sidebar input area - minimum height so it cannot be resized to zero */
+export const MIN_SIDEBAR_INPUT_HEIGHT = 100;
+
+/* Sidebar second view (Query / Graph / Error) height - resizable vertically */
+export const DEFAULT_SIDEBAR_SECOND_VIEW_HEIGHT = 280;
+export const MIN_SIDEBAR_SECOND_VIEW_HEIGHT = 120;
+export const MAX_SIDEBAR_SECOND_VIEW_HEIGHT = 800;
+
 /* Pine Server */
 export const RequiredVersion = '0.29.0';
 

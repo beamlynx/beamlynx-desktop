@@ -277,7 +277,7 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
       ref={inputRef}
       id="input"
       value={session.expression}
-      height="177px"
+      height="100%"
       theme={global.theme === 'dark' ? oneDark : 'light'}
       extensions={extensions}
       onFocus={() => {

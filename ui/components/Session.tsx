@@ -1,13 +1,16 @@
-import { Box, Divider, Grid, useMediaQuery, useTheme } from '@mui/material';
+import { Box, Grid, useMediaQuery, useTheme } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
 import {
   DEFAULT_SIDEBAR_WIDTH,
+  DEFAULT_SIDEBAR_SECOND_VIEW_HEIGHT,
   getSecondaryViewHeight,
   getTabHeight,
-  MIN_SIDEBAR_WIDTH,
+  MIN_SIDEBAR_INPUT_HEIGHT,
+  MIN_SIDEBAR_SECOND_VIEW_HEIGHT,
 } from '../constants';
-import { getUserPreference, setUserPreference, STORAGE_KEYS } from '../store/preferences';
+import { getUserPreference, STORAGE_KEYS } from '../store/preferences';
+import { ResizableDivider, ResizableHorizontalDivider } from './ResizableDividers';
 import { Mode, Session as SessionType } from '../store/session';
 import { useStores } from '../store/store-container';
 import { Documentation } from './docs/docs';
@@ -26,31 +29,70 @@ const Sidebar = ({
   session,
   firstView,
   secondView,
+  secondViewHeight,
+  setSecondViewHeight,
 }: {
   session: SessionType;
   firstView: React.ReactNode;
   secondView: React.ReactNode;
+  secondViewHeight?: number;
+  setSecondViewHeight?: (height: number) => void;
 }) => {
+  const isResizable = secondViewHeight !== undefined && setSecondViewHeight !== undefined;
+
   return (
-    <Box sx={{ flex: 1, mr: 1, flexDirection: 'column', height: '100%' }}>
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        mr: 1,
+        height: '100%',
+        minHeight: 0,
+      }}
+    >
       <Box
         sx={{
-          alignItems: 'center',
-          mb: 1,
+          flex: 1,
+          minHeight: MIN_SIDEBAR_INPUT_HEIGHT,
+          overflow: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
         }}
       >
         {firstView}
       </Box>
-      <Box
-        sx={{
-          border: '1px solid var(--border-color)',
-          borderRadius: 1,
-          mt: 1,
-          height: getSecondaryViewHeight(),
-        }}
-      >
-        {secondView}
-      </Box>
+      {isResizable ? (
+        <>
+          <ResizableHorizontalDivider
+            secondViewHeight={secondViewHeight!}
+            setSecondViewHeight={setSecondViewHeight!}
+          />
+          <Box
+            sx={{
+              border: '1px solid var(--border-color)',
+              borderRadius: 1,
+              height: secondViewHeight,
+              minHeight: MIN_SIDEBAR_SECOND_VIEW_HEIGHT,
+              overflow: 'auto',
+              flexShrink: 0,
+            }}
+          >
+            {secondView}
+          </Box>
+        </>
+      ) : (
+        <Box
+          sx={{
+            border: '1px solid var(--border-color)',
+            borderRadius: 1,
+            mt: 1,
+            height: getSecondaryViewHeight(),
+            overflow: 'auto',
+          }}
+        >
+          {secondView}
+        </Box>
+      )}
     </Box>
   );
 };
@@ -98,84 +140,6 @@ const MainView = ({
   );
 };
 
-const ResizableDivider = ({
-  sidebarWidth,
-  setSidebarWidth,
-}: {
-  sidebarWidth: number;
-  setSidebarWidth: (width: number) => void;
-}) => {
-  const [isResizing, setIsResizing] = useState(false);
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    setIsResizing(true);
-
-    const startX = e.pageX;
-    const startWidth = sidebarWidth;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const newWidth = startWidth + e.pageX - startX;
-      const constrainedWidth = Math.min(
-        Math.max(newWidth, MIN_SIDEBAR_WIDTH),
-        window.innerWidth * 0.5,
-      );
-      setSidebarWidth(constrainedWidth);
-      setUserPreference(STORAGE_KEYS.SIDEBAR_WIDTH, constrainedWidth);
-    };
-
-    const handleMouseUp = () => {
-      setIsResizing(false);
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  };
-
-  return (
-    <Divider
-      orientation="vertical"
-      sx={{
-        position: 'absolute',
-        right: 0,
-        top: 0,
-        bottom: 0,
-        cursor: 'col-resize',
-        width: '10px',
-        opacity: 0,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        '&:hover': {
-          backgroundColor: 'action.hover',
-          transition: 'background-color 0.2s',
-          opacity: 1,
-        },
-      }}
-      onMouseDown={handleMouseDown}
-    >
-      <Box
-        sx={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '8px',
-        }}
-      >
-        <Box
-          sx={{
-            width: '4px',
-            height: '24px',
-            backgroundColor: 'var(--divider-color)',
-            borderRadius: '2px',
-          }}
-        />
-      </Box>
-    </Divider>
-  );
-};
-
 const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
   const { global } = useStores();
   const session = global.getSession(sessionId);
@@ -183,10 +147,19 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('lg'));
 
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
+  const [secondViewHeight, setSecondViewHeight] = useState(DEFAULT_SIDEBAR_SECOND_VIEW_HEIGHT);
 
   useEffect(() => {
     const storedWidth = getUserPreference(STORAGE_KEYS.SIDEBAR_WIDTH, DEFAULT_SIDEBAR_WIDTH);
     setSidebarWidth(storedWidth);
+  }, []);
+
+  useEffect(() => {
+    const storedHeight = getUserPreference(
+      STORAGE_KEYS.SIDEBAR_SECOND_VIEW_HEIGHT,
+      DEFAULT_SIDEBAR_SECOND_VIEW_HEIGHT,
+    );
+    setSecondViewHeight(storedHeight);
   }, []);
 
   const compactMode = isSmallScreen || global.forceCompactMode;
@@ -196,11 +169,12 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
       container
       sx={{
         mt: 1,
+        height: getTabHeight(),
       }}
     >
       {!compactMode && (
         <>
-          <Grid item style={{ width: sidebarWidth, position: 'relative' }}>
+          <Grid item style={{ width: sidebarWidth, position: 'relative', height: '100%' }}>
             <Sidebar
               session={session}
               firstView={<Input session={session} />}
@@ -213,6 +187,8 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
                   <Query sessionId={sessionId} />
                 )
               }
+              secondViewHeight={secondViewHeight}
+              setSecondViewHeight={setSecondViewHeight}
             />
             <ResizableDivider sidebarWidth={sidebarWidth} setSidebarWidth={setSidebarWidth} />
           </Grid>
@@ -240,9 +216,11 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
                 sessionId={sessionId}
                 mode={session.mode}
                 input={session.textInputFocused}
-                height={getSecondaryViewHeight()}
+                height={`${secondViewHeight}px`}
               />
             }
+            secondViewHeight={secondViewHeight}
+            setSecondViewHeight={setSecondViewHeight}
           />
         </Grid>
       )}

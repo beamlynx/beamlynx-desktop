@@ -1,5 +1,6 @@
 export const STORAGE_KEYS = {
   SIDEBAR_WIDTH: 'pine-sidebar-width',
+  SIDEBAR_SECOND_VIEW_HEIGHT: 'pine-sidebar-second-view-height',
   THEME: 'pine-theme',
   VIM_MODE: 'pine-vim-mode',
   FORCE_COMPACT_MODE: 'pine-force-compact-mode',

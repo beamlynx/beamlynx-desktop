@@ -73,13 +73,25 @@ const Input: React.FC<InputProps> = observer(({ session, onRun }) => {
   };
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        width: '100%',
+        height: '100%',
+        minHeight: 0,
+      }}
+    >
       <Box
         sx={{
+          flex: 1,
+          minHeight: 0,
           border: '1px solid var(--border-color)',
           borderRadius: 1,
           overflow: 'hidden',
           position: 'relative',
+          display: 'flex',
+          flexDirection: 'column',
         }}
       >
         {/* Input mode toggle positioned at top right */}
@@ -153,9 +165,13 @@ const Input: React.FC<InputProps> = observer(({ session, onRun }) => {
 
         <Box
           sx={{
+            flex: 1,
+            minHeight: 0,
+            overflow: 'hidden',
             transition: 'all 0.3s ease-in-out',
             '& > *': {
               transition: 'opacity 0.2s ease-in-out',
+              height: '100%',
             },
           }}
         >
