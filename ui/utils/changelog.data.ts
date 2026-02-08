@@ -15,6 +15,20 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.37.0',
+    date: '2026-02-08',
+    added: [
+      {
+        description: 'Resizable sidebar functionality. The sidebar width can now be adjusted by dragging the divider',
+      },
+    ],
+    changed: [
+      {
+        description: 'Improved dark theme candidate node contrast for better visibility',
+      },
+    ],
+  },
+  {
     version: '0.36.0',
     date: '2026-01-09',
     added: [
@@ -770,4 +784,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.35.1';
+export const LATEST_VERSION = '0.37.0';

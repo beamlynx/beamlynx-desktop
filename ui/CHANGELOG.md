@@ -5,6 +5,13 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-02-08
+### Added
+- Resizable sidebar functionality. The sidebar width can now be adjusted by dragging the divider.
+
+### Changed
+- Improved dark theme candidate node contrast for better visibility.
+
 ## [0.36.0] - 2026-01-09
 ### Added
 - Command palette for finding and running commands. This is similar to how VS Code lets you find and run commands.
