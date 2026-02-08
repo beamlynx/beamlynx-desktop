@@ -75,7 +75,7 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session }) => {
       '&': {
         fontSize: '12px',
         fontFamily: 'monospace',
-        height: '177px',
+        height: '100%',
       },
       '.cm-editor': {
         height: '100%',
@@ -114,7 +114,7 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session }) => {
       ref={inputRef}
       id="sql-input"
       value={session.query}
-      height="177px"
+      height="100%"
       theme={global.theme === 'dark' ? oneDark : 'light'}
       extensions={extensions}
       onFocus={() => {
