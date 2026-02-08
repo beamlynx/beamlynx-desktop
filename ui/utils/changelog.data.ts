@@ -15,6 +15,15 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.37.1',
+    date: '2026-02-08',
+    fixed: [
+      {
+        description: 'Notification bell animation no longer affects scrollbars by preventing layout shifts during animation',
+      },
+    ],
+  },
+  {
     version: '0.37.0',
     date: '2026-02-08',
     added: [
@@ -784,4 +793,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.37.0';
+export const LATEST_VERSION = '0.37.1';

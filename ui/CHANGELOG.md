@@ -5,6 +5,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.37.1] - 2026-02-08
+### Fixed
+- Notification bell animation no longer affects scrollbars by preventing layout shifts during animation.
+
 ## [0.37.0] - 2026-02-08
 ### Added
 - Resizable sidebar functionality. The sidebar width can now be adjusted by dragging the divider. (by @Koziar)
