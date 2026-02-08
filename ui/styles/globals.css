@@ -101,7 +101,7 @@ a {
 }
 
 /* Candidate node text contrast fix */
-[data-theme='dark'] .react-flow__node-suggested-node > div[style*="--node-candidate-bg"] {
+[data-theme='dark'] .react-flow__node-suggested-node > div[style*='--node-candidate-bg'] {
   color: #282c34 !important;
 }
 
@@ -122,4 +122,11 @@ a {
 
 .cm-editor ::-webkit-scrollbar-thumb:hover {
   background: var(--text-color);
+}
+
+/* Pine autocomplete: selected item highlight (override CodeMirror theme) */
+.cm-editor .cm-tooltip-autocomplete ul li[aria-selected],
+.cm-editor.cm-dark .cm-tooltip-autocomplete ul li[aria-selected] {
+  background: #90caf9 !important;
+  color: #0d47a1 !important;
 }
