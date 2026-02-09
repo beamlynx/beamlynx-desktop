@@ -118,7 +118,7 @@ export class GlobalStore {
   constructor() {
     this._theme = getUserPreference(STORAGE_KEYS.THEME, 'dark');
     this._forceCompactMode = getUserPreference(STORAGE_KEYS.FORCE_COMPACT_MODE, false);
-    this._pineTableColorsEnabled = getUserPreference(STORAGE_KEYS.PINE_TABLE_COLORS, true);
+    this._pineTableColorsEnabled = getUserPreference(STORAGE_KEYS.PINE_TABLE_COLORS, false);
     this._onboardingServer = getUserPreference(STORAGE_KEYS.ONBOARDING_SERVER, false);
     this._commandHistory = getUserPreference(STORAGE_KEYS.COMMAND_HISTORY, []);
     makeAutoObservable(this);
