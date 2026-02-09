@@ -58,6 +58,18 @@ export class GlobalStore {
     setUserPreference(STORAGE_KEYS.FORCE_COMPACT_MODE, value);
   }
 
+  // Pine / result table coloring (segment and column tints)
+  _pineTableColorsEnabled: boolean;
+
+  get pineTableColorsEnabled(): boolean {
+    return this._pineTableColorsEnabled;
+  }
+
+  set pineTableColorsEnabled(value: boolean) {
+    this._pineTableColorsEnabled = value;
+    setUserPreference(STORAGE_KEYS.PINE_TABLE_COLORS, value);
+  }
+
   // User
   email = '';
   domain = '';
@@ -106,6 +118,7 @@ export class GlobalStore {
   constructor() {
     this._theme = getUserPreference(STORAGE_KEYS.THEME, 'dark');
     this._forceCompactMode = getUserPreference(STORAGE_KEYS.FORCE_COMPACT_MODE, false);
+    this._pineTableColorsEnabled = getUserPreference(STORAGE_KEYS.PINE_TABLE_COLORS, true);
     this._onboardingServer = getUserPreference(STORAGE_KEYS.ONBOARDING_SERVER, false);
     this._commandHistory = getUserPreference(STORAGE_KEYS.COMMAND_HISTORY, []);
     makeAutoObservable(this);
@@ -181,6 +194,10 @@ export class GlobalStore {
 
   public toggleCompactMode() {
     this.forceCompactMode = !this.forceCompactMode;
+  }
+
+  public togglePineTableColors() {
+    this.pineTableColorsEnabled = !this.pineTableColorsEnabled;
   }
 
   getConnectionName = () => {
