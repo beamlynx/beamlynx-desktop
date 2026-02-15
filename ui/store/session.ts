@@ -35,12 +35,12 @@ const client = new HttpClient();
  * The expressions are built for each character inserted i.e. if the pine
  * expression is updated, it is automatically being built using mobx reactions.
  *
- * The evaluation is explicit. A function is called to evaluate the expressoin.
+ * The evaluation is explicit. A function is called to evaluate the expression.
  *
- * Depending on the operatoin type, we are using the appropriate plugin i.e.
+ * Depending on the operation type, we are using the appropriate plugin i.e.
  * default vs recursive delete.
  *
- * I would like to merge the logic for all invokations the the backend i.e.
+ * I would like to merge the logic for all invocations the the backend i.e.
  * build the expression, get the results, or evaluate in the recursive delete
  * mode.
  *
@@ -52,7 +52,7 @@ const client = new HttpClient();
  * deleted - but that requires more work to copy all the delete queries (and not
  * go throw each tab in the session and manually copy the queries).
  *
- * For now I'll keep it like this and let it perculate until I am convinced of a
+ * For now I'll keep it like this and let it percolate until I am convinced of a
  * way to refactor is in a better way.
  */
 export class Session {
@@ -82,11 +82,14 @@ export class Session {
   monitor: boolean = false;
   connectionCountLogs: { time: string; count: number }[] = [];
 
+  /** Expression/query that was last successfully evaluated (for coloring only after eval) */
+  expressionAtLastEval: string = '';
+
   /** Result */
   loading: boolean = false; // observable
   columns: GridColDef[] = [];
   // The field name - which is the index of the column (stringified) - and the
-  // value is false The id fields are hiddlen by default but kept in the list of
+  // value is false The id fields are hidden by default but kept in the list of
   // columns so that finding the correct id of the row being updated is possible
   columnVisibilityModel: Record<string, boolean> = {};
   columnMetadata: ColumnMetadata = {
@@ -108,7 +111,7 @@ export class Session {
   textInputFocused: boolean = false;
 
   /**
-   * Resonse
+   * Response
    *  |_ Connection
    *  |_ Error
    *  |_ ErrorType

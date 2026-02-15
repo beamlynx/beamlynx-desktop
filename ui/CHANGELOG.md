@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- Table color decoration for Pine expressions and results. Expression segments and result columns are color-coded by table to help visualize the relationship between them. (by @Koziar)
+
 ### Changed
 - Prettify the expression server side to parse the expression correctly instead of splitting on `|` which doesn't work if string values contains `|` characters. 
 
