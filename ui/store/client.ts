@@ -123,13 +123,19 @@ export class HttpClient {
     return await res.json();
   }
 
-  private cleanExpression(expression: string): string {
-    const e = expression.trim();
-    return e.endsWith('|') ? e.slice(0, -1) : e;
+  public async prettify(expression: string): Promise<string> {
+    const response = await this.post('prettify', { expression });
+    if (!response) {
+      throw new Error('No response when trying to prettify');
+    }
+    if (response.error) {
+      return expression;
+    }
+    return response.result as unknown as string;
   }
 
   public async eval(expression: string): Promise<Response> {
-    const response = await this.post('eval', { expression: this.cleanExpression(expression) });
+    const response = await this.post('eval', { expression });
     if (!response) {
       throw new Error('No response when trying to eval');
     }
@@ -171,10 +177,8 @@ export class HttpClient {
   public async makeChildExpressions(
     expression: string,
   ): Promise<{ expressions: { expression: string; column: string }[]; ast: Ast }> {
-    // Here we can't use the `build` function as it cleans the expression and
-    // hence removing the trailing `|`, but we want to keep it. So we clean the
-    // expression and add it explicitly
-    const x = `${this.cleanExpression(expression)} |`;
+    // Add trailing `|` explicitly for child expressions
+    const x = `${expression} |`;
     const response = await this.post('build', { expression: x });
     if (!response) {
       throw new Error('No response when trying to make child Expressions');

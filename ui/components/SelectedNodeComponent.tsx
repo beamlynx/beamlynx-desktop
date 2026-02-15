@@ -5,8 +5,8 @@ import { Session } from '../store/session';
 import { useStores } from '../store/store-container';
 type PineNodeProps = NodeProps<SelectedNodeData>;
 
-const onSelectedNodeClick = (session: Session, alias: string) => {
-  session.setContext(alias);
+const onSelectedNodeClick = async (session: Session, alias: string) => {
+  await session.setContext(alias);
 };
 
 const onCandidateColumnClick = (session: Session, column: string, type: 'select' | 'order' | 'where') => {

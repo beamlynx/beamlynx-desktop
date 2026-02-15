@@ -132,7 +132,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
 
     const column = columns[parseInt(contextMenu.fieldIndex)];
     if (column?.headerName) {
-      session.pipeAndUpdateExpression(
+      await session.pipeAndUpdateExpression(
         `where: ${column.headerName} = '${contextMenu.cellValue}'`,
         false,
       );
@@ -173,7 +173,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     // The modal is only shown when the inspect icon is clicked
     try {
       // Create the update expression using the helper function
-      const updateExpression = createUpdateExpression(
+      const updateExpression = await createUpdateExpression(
         session.expression,
         alias,
         id,
@@ -202,7 +202,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   };
 
   // Helper function to create update expression
-  const createUpdateExpression = (
+  const createUpdateExpression = async (
     baseExpression: string,
     alias: string,
     id: string | number,
@@ -219,12 +219,12 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
 
     // Set up the update query
     vs.expression = baseExpression;
-    vs.prettify();
-    vs.pipeAndUpdateExpression(`from: ${alias}`);
-    vs.pipeAndUpdateExpression(
+    await vs.prettify();
+    await vs.pipeAndUpdateExpression(`from: ${alias}`);
+    await vs.pipeAndUpdateExpression(
       `where: id = ${Number.isInteger(id) ? parseInt(id as string, 10) : `'${pineEscape(id as string)}'`}`,
     );
-    vs.pipeAndUpdateExpression(`update! ${column} = '${pineEscape(value)}'`);
+    await vs.pipeAndUpdateExpression(`update! ${column} = '${pineEscape(value)}'`);
 
     return vs.expression;
   };
@@ -234,7 +234,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     const { id, field, value, api, ...other } = props;
     const [inputValue, setInputValue] = useState(value ?? '');
 
-    const handleInspectClick = () => {
+    const handleInspectClick = async () => {
       // Find the column information
       const columnIndex = field;
       const alias = session.columnMetadata.colIndexToAliasLookup[columnIndex];
@@ -252,7 +252,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
       const column = session.columnMetadata.colIndexToColumnLookup[columnIndex];
 
       // Create the update expression
-      const updateExpression = createUpdateExpression(
+      const updateExpression = await createUpdateExpression(
         session.expression,
         alias,
         rowId,

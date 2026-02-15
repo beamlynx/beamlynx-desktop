@@ -7,7 +7,7 @@ import { RecursiveDeletePlugin } from '../plugin/recursive-delete.plugin';
 import { Ast, Hints, HttpClient, Operation, Response } from './client';
 import { generateGraph, getCandidateIndex, Graph } from './graph.util';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
-import { debounce, prettifyExpression } from './util';
+import { debounce } from './util';
 
 export type Mode = 'documentation' | 'graph' | 'result' | 'monitor';
 
@@ -291,44 +291,50 @@ export class Session {
     this.candidateIndex = this.candidateIndex === undefined ? 0 : this.candidateIndex + offset;
   }
 
-  private getExpressionUsingCandidate() {
+  private async getExpressionUsingCandidate() {
     if (!this.graph.candidate) {
       throw new Error('Unable to update the expression as no candidate is selected.');
     }
     const { pine } = this.graph.candidate;
-    return this.pipeExpression(pine, true);
+    return await this.pipeExpression(pine, true);
   }
 
-  private pipeExpression(pine: string, overwriteLastOperation: boolean) {
-    const parts = this.expression.split('|').map(p => p.trim());
+  private async pipeExpression(pine: string, overwriteLastOperation: boolean) {
+    const parts = this.expression.split('|');
     const last = parts.pop();
-    if (!overwriteLastOperation && last) {
+    if (!overwriteLastOperation && last?.trim()) {
       parts.push(last);
     }
     parts.push(pine);
-    const expression = parts.join(' | ').trimEnd();
-    return prettifyExpression(expression, true);
+    const expression = parts.join('|');
+    const prettified = await client.prettify(expression);
+    return prettified + '\n | ';
   }
 
-  public updateExpressionUsingCandidate() {
-    this.expression = this.getExpressionUsingCandidate();
+  public async updateExpressionUsingCandidate() {
+    this.expression = await this.getExpressionUsingCandidate();
   }
 
-  public prettify(appendPipe = false) {
-    this.expression = prettifyExpression(this.expression, appendPipe);
+  public async prettifyExpression(expression: string, appendPipe: boolean = false): Promise<string> {
+    const prettified = await client.prettify(expression);
+    return appendPipe ? prettified + '\n | ' : prettified;
+  }
+
+  public async prettify(appendPipe = false) {
+    this.expression = await this.prettifyExpression(this.expression, appendPipe);
   }
 
   public appendAndUpdateExpression(string: string) {
     this.expression = this.expression + string;
   }
 
-  public pipeAndUpdateExpression(pine: string, overwriteLastOperation: boolean = false) {
-    this.expression = this.pipeExpression(pine, overwriteLastOperation);
+  public async pipeAndUpdateExpression(pine: string, overwriteLastOperation: boolean = false) {
+    this.expression = await this.pipeExpression(pine, overwriteLastOperation);
   }
 
-  public setContext(alias: string) {
+  public async setContext(alias: string) {
     const pine = `from: ${alias}`;
-    this.expression = this.pipeExpression(pine, true);
+    this.expression = await this.pipeExpression(pine, true);
   }
 
   public async evaluate() {

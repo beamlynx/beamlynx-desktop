@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Changed
+- Prettify the expression server side to parse the expression correctly instead of splitting on `|` which doesn't work if string values contains `|` characters. 
 
 ## [0.37.1] - 2026-02-08
 ### Fixed

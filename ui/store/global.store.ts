@@ -115,7 +115,7 @@ export class GlobalStore {
     this.sessions[initSession.id] = initSession;
   }
 
-  public handleUrlParameters() {
+  public async handleUrlParameters() {
     if (typeof window === 'undefined') return; // Skip on server-side
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -141,7 +141,7 @@ export class GlobalStore {
         const session = this.getSession(this.activeSessionId);
         if (session) {
           session.expression = decodeURIComponent(queryParam);
-          session.prettify();
+          await session.prettify();
         }
         urlParams.delete('query');
         hasChanges = true;
@@ -158,7 +158,7 @@ export class GlobalStore {
         const session = this.getSession(this.activeSessionId);
         if (session && data.expression) {
           session.expression = data.expression;
-          session.prettify();
+          await session.prettify();
         }
         urlParams.delete('data');
         hasChanges = true;

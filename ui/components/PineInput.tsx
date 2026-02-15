@@ -12,7 +12,6 @@ import { observer } from 'mobx-react-lite';
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Session } from '../store/session';
 import { useStores } from '../store/store-container';
-import { prettifyExpression } from '../store/util';
 import { createPineAutocompletion } from './pine-autocomplete';
 import { pineLanguage } from './pine-language';
 
@@ -91,7 +90,7 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
     return (view: EditorView, expectedContent: string) => {
       clearTimeout(timeoutId);
 
-      timeoutId = setTimeout(() => {
+      timeoutId = setTimeout(async () => {
         const currentContent = view.state.doc.toString();
 
         // If expectedContent was provided, check if the content has changed unexpectedly
@@ -100,7 +99,7 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
           return;
         }
 
-        const prettifiedContent = prettifyExpression(currentContent, true);
+        const prettifiedContent = await session.prettifyExpression(currentContent, false);
 
         if (prettifiedContent === currentContent) {
           return;
