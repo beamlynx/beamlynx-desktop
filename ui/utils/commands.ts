@@ -145,6 +145,13 @@ const COMMANDS: Command[] = [
     hidden: true,
     isEnabled: ALWAYS_ENABLED,
   },
+  {
+    id: 'toggle-table-colors',
+    label: 'Toggle Table Colors',
+    category: 'Preferences',
+    handler: global => global.togglePineTableColors(),
+    isEnabled: ALWAYS_ENABLED,
+  },
 
   // Experimental Category
   {
@@ -161,13 +168,6 @@ const COMMANDS: Command[] = [
     label: 'Open Analysis',
     category: 'Experimental',
     handler: global => global.setShowAnalysis(true),
-    isEnabled: ALWAYS_ENABLED,
-  },
-  {
-    id: 'toggle-table-colors',
-    label: 'Toggle Table Colors',
-    category: 'Preferences',
-    handler: global => global.togglePineTableColors(),
     isEnabled: ALWAYS_ENABLED,
   },
 
