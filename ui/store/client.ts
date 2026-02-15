@@ -46,6 +46,15 @@ export type Operation = {
 export type WhereCondition = [string, string, null, string, { type: string; value: string } | null];
 
 export type Column = { alias: string; column: string; 'column-alias': string; hidden: boolean };
+
+/** Range returned by the build endpoint mapping segments to table aliases */
+export type PineRange = {
+  alias: string;
+  line: number;
+  from: number;
+  to: number;
+};
+
 export type Ast = {
   hints: Hints;
   'selected-tables': Table[];
@@ -56,6 +65,7 @@ export type Ast = {
   columns: Column[];
   order: Column[];
   where: WhereCondition[];
+  prettified: string;
 };
 
 export type Response = {
@@ -66,6 +76,7 @@ export type Response = {
   // build
   ast: Ast;
   query: string;
+  ranges: PineRange[];
   // eval
   result: (string | number)[][];
   columns: Column[];
@@ -124,14 +135,14 @@ export class HttpClient {
   }
 
   public async prettify(expression: string): Promise<string> {
-    const response = await this.post('prettify', { expression });
+    const response: Response | undefined = await this.post('build', { expression });
     if (!response) {
       throw new Error('No response when trying to prettify');
     }
-    if (response.error) {
+    if (response.error || !response.ast?.prettified) {
       return expression;
     }
-    return response.result as unknown as string;
+    return response.ast.prettified;
   }
 
   public async eval(expression: string): Promise<Response> {
