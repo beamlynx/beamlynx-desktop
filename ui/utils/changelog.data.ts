@@ -19,15 +19,17 @@ export const CHANGELOG: ChangelogVersion[] = [
     date: '2026-02-16',
     added: [
       {
-        description: 'Table color decoration for Pine expressions and results. Expression segments and result columns are color-coded by table to help visualize the relationship between them (by @Koziar)',
+        description: 'Table color decoration for Pine expressions and results. Expression segments and result columns are color-coded by table to help visualize the relationship between them (collaboration with @Koziar)',
       },
     ],
     changed: [
       {
         description: 'Use server-side prettified expression and ranges from the build endpoint instead of client-side expression parsing. This fixes incorrect highlighting when string values contain `|` characters',
       },
+    ],
+    breaking: [
       {
-        description: 'Minimum required server version is now `0.31.0`',
+        description: 'Minimum required server version: 0.31.0',
       },
     ],
   },
