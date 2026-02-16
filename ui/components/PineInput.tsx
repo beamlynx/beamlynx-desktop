@@ -11,10 +11,11 @@ import CodeMirror, { ReactCodeMirrorRef } from '@uiw/react-codemirror';
 import { observer } from 'mobx-react-lite';
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Session } from '../store/session';
+import { shouldShowTableColors } from '../store/table-colors.util';
 import { useStores } from '../store/store-container';
-import { prettifyExpression } from '../store/util';
 import { createPineAutocompletion } from './pine-autocomplete';
 import { pineLanguage } from './pine-language';
+import { tableColorDecoration } from './table-colors';
 
 interface PineInputProps {
   session: Session;
@@ -65,14 +66,6 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
     }
   }, [session.textInputFocused]);
 
-  const isPrintableChar = (key: string) => {
-    return key.length === 1 && !key.match(/[\u0000-\u001F\u007F-\u009F]/);
-  };
-
-  const isModifierKeyCombo = (e: React.KeyboardEvent) => {
-    return e.ctrlKey || e.metaKey || e.altKey || e.key === 'Meta';
-  };
-
   // Optimized onChange handler to prevent unnecessary updates
   const handleChange = useCallback(
     (value: string) => {
@@ -91,7 +84,7 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
     return (view: EditorView, expectedContent: string) => {
       clearTimeout(timeoutId);
 
-      timeoutId = setTimeout(() => {
+      timeoutId = setTimeout(async () => {
         const currentContent = view.state.doc.toString();
 
         // If expectedContent was provided, check if the content has changed unexpectedly
@@ -100,7 +93,7 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
           return;
         }
 
-        const prettifiedContent = prettifyExpression(currentContent, true);
+        const prettifiedContent = await session.prettifyExpression(currentContent, false);
 
         if (prettifiedContent === currentContent) {
           return;
@@ -168,11 +161,17 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
     });
   }, [session]);
 
+  // Only color segments when we should show table colors (pref + rows + in-sync)
+  const showColors = shouldShowTableColors(global.pineTableColorsEnabled, session);
+  const colorAst = showColors ? session.ast : null;
+  const isDark = global.theme === 'dark';
+
   // Create extensions array with Pine language support and custom keymap
   const extensions = [
     pineLanguage,
     autocompletionExtension,
     cursorUpdateExtension,
+    ...tableColorDecoration(colorAst, isDark),
     // Browser shortcuts - highest precedence to ensure they always work
     Prec.highest(
       keymap.of([

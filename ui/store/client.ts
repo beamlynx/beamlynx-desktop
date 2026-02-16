@@ -46,6 +46,14 @@ export type Operation = {
 export type WhereCondition = [string, string, null, string, { type: string; value: string } | null];
 
 export type Column = { alias: string; column: string; 'column-alias': string; hidden: boolean };
+
+/** Range returned by the build endpoint mapping segments to table aliases */
+export type PineRange = {
+  alias: string;
+  start: { line: number; character: number };
+  end: { line: number; character: number };
+};
+
 export type Ast = {
   hints: Hints;
   'selected-tables': Table[];
@@ -56,6 +64,8 @@ export type Ast = {
   columns: Column[];
   order: Column[];
   where: WhereCondition[];
+  prettified: string;
+  ranges: PineRange[];
 };
 
 export type Response = {
@@ -123,13 +133,19 @@ export class HttpClient {
     return await res.json();
   }
 
-  private cleanExpression(expression: string): string {
-    const e = expression.trim();
-    return e.endsWith('|') ? e.slice(0, -1) : e;
+  public async prettify(expression: string): Promise<string> {
+    const response: Response | undefined = await this.post('build', { expression });
+    if (!response) {
+      throw new Error('No response when trying to prettify');
+    }
+    if (response.error || !response.ast?.prettified) {
+      return expression;
+    }
+    return response.ast.prettified;
   }
 
   public async eval(expression: string): Promise<Response> {
-    const response = await this.post('eval', { expression: this.cleanExpression(expression) });
+    const response = await this.post('eval', { expression });
     if (!response) {
       throw new Error('No response when trying to eval');
     }
@@ -171,10 +187,8 @@ export class HttpClient {
   public async makeChildExpressions(
     expression: string,
   ): Promise<{ expressions: { expression: string; column: string }[]; ast: Ast }> {
-    // Here we can't use the `build` function as it cleans the expression and
-    // hence removing the trailing `|`, but we want to keep it. So we clean the
-    // expression and add it explicitly
-    const x = `${this.cleanExpression(expression)} |`;
+    // Add trailing `|` explicitly for child expressions
+    const x = `${expression} |`;
     const response = await this.post('build', { expression: x });
     if (!response) {
       throw new Error('No response when trying to make child Expressions');

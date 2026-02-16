@@ -5,6 +5,16 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-02-16
+### Added
+- Table color decoration for Pine expressions and results. Expression segments and result columns are color-coded by table to help visualize the relationship between them. (collaboration with @Koziar)
+
+### Changed
+- Use server-side prettified expression and ranges from the build endpoint instead of client-side expression parsing. This fixes incorrect highlighting when string values contain `|` characters.
+
+### Breaking
+- Minimum required server version is now `0.31.0`.
+
 ## [0.37.1] - 2026-02-08
 ### Fixed
 - Notification bell animation no longer affects scrollbars by preventing layout shifts during animation.

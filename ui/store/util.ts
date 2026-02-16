@@ -1,15 +1,5 @@
 import { DevState } from './dev-state';
 
-export const prettifyExpression = (expression: string, appendPipe: boolean = false): string => {
-  const parts = expression.split('|');
-  return (
-    parts
-      .map(x => x.trim())
-      .filter(Boolean)
-      .join('\n | ') + (appendPipe ? '\n | ' : '')
-  );
-};
-
 /**
  * Creates a debounced version of a function that delays execution until after
  * a specified wait time has elapsed since the last call.

@@ -4,6 +4,7 @@ export const STORAGE_KEYS = {
   THEME: 'pine-theme',
   VIM_MODE: 'pine-vim-mode',
   FORCE_COMPACT_MODE: 'pine-force-compact-mode',
+  PINE_TABLE_COLORS: 'pine-table-colors',
   ONBOARDING_SERVER: 'pine-onboarding-server',
   LAST_READ_VERSION: 'pine-last-read-version',
   COMMAND_HISTORY: 'pine-command-history',

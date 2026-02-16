@@ -14,10 +14,17 @@ import {
   ListItemIcon,
   ListItemText,
 } from '@mui/material';
-import { FileDownload, ContentCopy, FilterAlt, Code, BarChart as BarChartIcon } from '@mui/icons-material';
+import {
+  FileDownload,
+  ContentCopy,
+  FilterAlt,
+  Code,
+  BarChart as BarChartIcon,
+} from '@mui/icons-material';
 import UpdateModal from './UpdateModal';
 import DownloadResultsModal from './DownloadResultsModal';
 import { pineEscape } from '../store/util';
+import { getColorForAlias, shouldShowTableColors } from '../store/table-colors.util';
 import { BarChart } from './BarChart';
 
 interface ResultProps {
@@ -50,12 +57,42 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const rows = toJS(session.rows);
   const baseColumns = toJS(session.columns);
 
-  // Add custom edit component to columns
-  const columns = baseColumns.map(column => ({
-    ...column,
-    renderEditCell: (params: any) => <CellEditComponent {...params} />,
-  }));
   const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
+  const colIndexToAlias = session.columnMetadata.colIndexToAliasLookup;
+
+  const showResultColors = shouldShowTableColors(global.pineTableColorsEnabled, session);
+
+  // Add custom edit component and column color classes by table alias
+  const columns = baseColumns.map(column => {
+    const alias = colIndexToAlias[column.field] ?? '';
+    const aliasClass =
+      showResultColors && alias ? `result-col-${alias.replace(/[^a-z0-9_]/gi, '_')}` : '';
+    return {
+      ...column,
+      renderEditCell: (params: any) => <CellEditComponent {...params} />,
+      ...(aliasClass && {
+        headerClassName: aliasClass,
+        cellClassName: aliasClass,
+      }),
+    };
+  });
+
+  const ast = session.response?.ast ?? null;
+  const uniqueAliases = Array.from(new Set(Object.values(colIndexToAlias).filter(Boolean)));
+  const columnColorSx =
+    showResultColors && uniqueAliases.length
+      ? Object.fromEntries(
+          uniqueAliases.flatMap(alias => {
+            const safeClass = `result-col-${alias.replace(/[^a-z0-9_]/gi, '_')}`;
+            const color = getColorForAlias(alias, ast, isDark);
+            return [
+              [`& .MuiDataGrid-columnHeader.${safeClass}`, { backgroundColor: color }],
+              [`& .MuiDataGrid-cell.${safeClass}`, { backgroundColor: color }],
+            ];
+          }),
+        )
+      : {};
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('lg'));
   const compactMode = isSmallScreen || global.forceCompactMode;
 
@@ -77,11 +114,11 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     // Check: exactly 2 columns (excluding _id)
     const visibleColumns = columns.filter(col => col.field !== '_id');
     if (visibleColumns.length !== 2) return false;
-    
+
     // Check: second column has numeric values
     const secondColField = visibleColumns[1].field;
     if (rows.length === 0) return false;
-    
+
     return rows.every(row => {
       const value = row[secondColField];
       return value !== null && value !== undefined && !isNaN(Number(value));
@@ -132,7 +169,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
 
     const column = columns[parseInt(contextMenu.fieldIndex)];
     if (column?.headerName) {
-      session.pipeAndUpdateExpression(
+      await session.pipeAndUpdateExpression(
         `where: ${column.headerName} = '${contextMenu.cellValue}'`,
         false,
       );
@@ -173,7 +210,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     // The modal is only shown when the inspect icon is clicked
     try {
       // Create the update expression using the helper function
-      const updateExpression = createUpdateExpression(
+      const updateExpression = await createUpdateExpression(
         session.expression,
         alias,
         id,
@@ -202,7 +239,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   };
 
   // Helper function to create update expression
-  const createUpdateExpression = (
+  const createUpdateExpression = async (
     baseExpression: string,
     alias: string,
     id: string | number,
@@ -219,12 +256,12 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
 
     // Set up the update query
     vs.expression = baseExpression;
-    vs.prettify();
-    vs.pipeAndUpdateExpression(`from: ${alias}`);
-    vs.pipeAndUpdateExpression(
+    await vs.prettify();
+    await vs.pipeAndUpdateExpression(`from: ${alias}`);
+    await vs.pipeAndUpdateExpression(
       `where: id = ${Number.isInteger(id) ? parseInt(id as string, 10) : `'${pineEscape(id as string)}'`}`,
     );
-    vs.pipeAndUpdateExpression(`update! ${column} = '${pineEscape(value)}'`);
+    await vs.pipeAndUpdateExpression(`update! ${column} = '${pineEscape(value)}'`);
 
     return vs.expression;
   };
@@ -234,7 +271,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     const { id, field, value, api, ...other } = props;
     const [inputValue, setInputValue] = useState(value ?? '');
 
-    const handleInspectClick = () => {
+    const handleInspectClick = async () => {
       // Find the column information
       const columnIndex = field;
       const alias = session.columnMetadata.colIndexToAliasLookup[columnIndex];
@@ -252,7 +289,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
       const column = session.columnMetadata.colIndexToColumnLookup[columnIndex];
 
       // Create the update expression
-      const updateExpression = createUpdateExpression(
+      const updateExpression = await createUpdateExpression(
         session.expression,
         alias,
         rowId,
@@ -379,7 +416,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     // Create CSV content and open modal
     const csvContent = csvRows.join('\n');
     const defaultFilename = `pine-export-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`;
-    
+
     setExportData({ filename: defaultFilename, csvContent });
     setExportModalOpen(true);
   };
@@ -427,7 +464,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
             <FileDownload fontSize="small" />
           </IconButton>
         </Tooltip>
-        
+
         {/* Bar Chart Toggle Button */}
         {isBarChartSuitable() && (
           <Tooltip title={viewMode === 'table' ? 'View as Bar Chart' : 'View as Table'}>
@@ -458,7 +495,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
             </IconButton>
           </Tooltip>
         )}
-        
+
         {/* Conditional rendering: Table or Bar Chart */}
         {viewMode === 'table' ? (
           <Box
@@ -515,7 +552,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
                   '-moz-user-select': 'none',
                   '-ms-user-select': 'none',
                 },
-
+                ...columnColorSx,
                 '& .MuiDataGrid-row:hover': {
                   backgroundColor: 'var(--node-bg)',
                 },

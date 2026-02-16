@@ -7,7 +7,7 @@ import { RecursiveDeletePlugin } from '../plugin/recursive-delete.plugin';
 import { Ast, Hints, HttpClient, Operation, Response } from './client';
 import { generateGraph, getCandidateIndex, Graph } from './graph.util';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
-import { debounce, prettifyExpression } from './util';
+import { debounce } from './util';
 
 export type Mode = 'documentation' | 'graph' | 'result' | 'monitor';
 
@@ -35,12 +35,12 @@ const client = new HttpClient();
  * The expressions are built for each character inserted i.e. if the pine
  * expression is updated, it is automatically being built using mobx reactions.
  *
- * The evaluation is explicit. A function is called to evaluate the expressoin.
+ * The evaluation is explicit. A function is called to evaluate the expression.
  *
- * Depending on the operatoin type, we are using the appropriate plugin i.e.
+ * Depending on the operation type, we are using the appropriate plugin i.e.
  * default vs recursive delete.
  *
- * I would like to merge the logic for all invokations the the backend i.e.
+ * I would like to merge the logic for all invocations the the backend i.e.
  * build the expression, get the results, or evaluate in the recursive delete
  * mode.
  *
@@ -52,7 +52,7 @@ const client = new HttpClient();
  * deleted - but that requires more work to copy all the delete queries (and not
  * go throw each tab in the session and manually copy the queries).
  *
- * For now I'll keep it like this and let it perculate until I am convinced of a
+ * For now I'll keep it like this and let it percolate until I am convinced of a
  * way to refactor is in a better way.
  */
 export class Session {
@@ -82,11 +82,14 @@ export class Session {
   monitor: boolean = false;
   connectionCountLogs: { time: string; count: number }[] = [];
 
+  /** Expression/query that was last successfully evaluated (for coloring only after eval) */
+  expressionAtLastEval: string = '';
+
   /** Result */
   loading: boolean = false; // observable
   columns: GridColDef[] = [];
   // The field name - which is the index of the column (stringified) - and the
-  // value is false The id fields are hiddlen by default but kept in the list of
+  // value is false The id fields are hidden by default but kept in the list of
   // columns so that finding the correct id of the row being updated is possible
   columnVisibilityModel: Record<string, boolean> = {};
   columnMetadata: ColumnMetadata = {
@@ -108,7 +111,7 @@ export class Session {
   textInputFocused: boolean = false;
 
   /**
-   * Resonse
+   * Response
    *  |_ Connection
    *  |_ Error
    *  |_ ErrorType
@@ -127,6 +130,8 @@ export class Session {
   ast: Ast | null = null; // observable
   query: string = '';
   hints: Hints | null = null; // observable
+
+
 
   /** Graph */
   candidateIndex: number | undefined = undefined; // observable
@@ -291,44 +296,50 @@ export class Session {
     this.candidateIndex = this.candidateIndex === undefined ? 0 : this.candidateIndex + offset;
   }
 
-  private getExpressionUsingCandidate() {
+  private async getExpressionUsingCandidate() {
     if (!this.graph.candidate) {
       throw new Error('Unable to update the expression as no candidate is selected.');
     }
     const { pine } = this.graph.candidate;
-    return this.pipeExpression(pine, true);
+    return await this.pipeExpression(pine, true);
   }
 
-  private pipeExpression(pine: string, overwriteLastOperation: boolean) {
-    const parts = this.expression.split('|').map(p => p.trim());
+  private async pipeExpression(pine: string, overwriteLastOperation: boolean) {
+    const parts = this.expression.split('|');
     const last = parts.pop();
-    if (!overwriteLastOperation && last) {
+    if (!overwriteLastOperation && last?.trim()) {
       parts.push(last);
     }
     parts.push(pine);
-    const expression = parts.join(' | ').trimEnd();
-    return prettifyExpression(expression, true);
+    const expression = parts.join('|');
+    const prettified = await client.prettify(expression);
+    return prettified + '\n | ';
   }
 
-  public updateExpressionUsingCandidate() {
-    this.expression = this.getExpressionUsingCandidate();
+  public async updateExpressionUsingCandidate() {
+    this.expression = await this.getExpressionUsingCandidate();
   }
 
-  public prettify(appendPipe = false) {
-    this.expression = prettifyExpression(this.expression, appendPipe);
+  public async prettifyExpression(expression: string, appendPipe: boolean = false): Promise<string> {
+    const prettified = await client.prettify(expression);
+    return appendPipe ? prettified + '\n | ' : prettified;
+  }
+
+  public async prettify(appendPipe = false) {
+    this.expression = await this.prettifyExpression(this.expression, appendPipe);
   }
 
   public appendAndUpdateExpression(string: string) {
     this.expression = this.expression + string;
   }
 
-  public pipeAndUpdateExpression(pine: string, overwriteLastOperation: boolean = false) {
-    this.expression = this.pipeExpression(pine, overwriteLastOperation);
+  public async pipeAndUpdateExpression(pine: string, overwriteLastOperation: boolean = false) {
+    this.expression = await this.pipeExpression(pine, overwriteLastOperation);
   }
 
-  public setContext(alias: string) {
+  public async setContext(alias: string) {
     const pine = `from: ${alias}`;
-    this.expression = this.pipeExpression(pine, true);
+    this.expression = await this.pipeExpression(pine, true);
   }
 
   public async evaluate() {

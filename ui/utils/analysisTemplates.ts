@@ -35,7 +35,7 @@ export const runAnalysisFromExpressions = async (
 
   // Set the pine expression for the first session
   firstSession.expression = expressions[0];
-  firstSession.prettify();
+  await firstSession.prettify();
   await firstSession.evaluate();
 
   // Process remaining expressions
@@ -44,7 +44,7 @@ export const runAnalysisFromExpressions = async (
     sessionIds.push(session.id);
     
     session.expression = expressions[i];
-    session.prettify();
+    await session.prettify();
     await session.evaluate();
   }
 
