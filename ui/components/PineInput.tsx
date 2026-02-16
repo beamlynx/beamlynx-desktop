@@ -15,7 +15,7 @@ import { shouldShowTableColors } from '../store/table-colors.util';
 import { useStores } from '../store/store-container';
 import { createPineAutocompletion } from './pine-autocomplete';
 import { pineLanguage } from './pine-language';
-import { pineTableColorDecoration, astChangedEffect } from './pine-table-colors';
+import { tableColorDecoration } from './table-colors';
 
 interface PineInputProps {
   session: Session;
@@ -65,14 +65,6 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
       inputRef.current?.view?.focus();
     }
   }, [session.textInputFocused]);
-
-  const isPrintableChar = (key: string) => {
-    return key.length === 1 && !key.match(/[\u0000-\u001F\u007F-\u009F]/);
-  };
-
-  const isModifierKeyCombo = (e: React.KeyboardEvent) => {
-    return e.ctrlKey || e.metaKey || e.altKey || e.key === 'Meta';
-  };
 
   // Optimized onChange handler to prevent unnecessary updates
   const handleChange = useCallback(
@@ -170,24 +162,16 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
   }, [session]);
 
   // Only color segments when we should show table colors (pref + rows + in-sync)
-  const astForColors = shouldShowTableColors(global.pineTableColorsEnabled, session)
-    ? session.ast
-    : null;
-
-  // Recompute table-color decorations when ast changes (e.g. after Run)
-  useEffect(() => {
-    const view = inputRef.current?.view;
-    if (view && astForColors) {
-      view.dispatch({ effects: astChangedEffect.of(undefined) });
-    }
-  }, [astForColors]);
+  const showColors = shouldShowTableColors(global.pineTableColorsEnabled, session);
+  const colorAst = showColors ? session.ast : null;
+  const isDark = global.theme === 'dark';
 
   // Create extensions array with Pine language support and custom keymap
   const extensions = [
     pineLanguage,
     autocompletionExtension,
     cursorUpdateExtension,
-    ...pineTableColorDecoration(astForColors, global.theme === 'dark'),
+    ...tableColorDecoration(colorAst, isDark),
     // Browser shortcuts - highest precedence to ensure they always work
     Prec.highest(
       keymap.of([

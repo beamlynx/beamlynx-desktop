@@ -50,9 +50,8 @@ export type Column = { alias: string; column: string; 'column-alias': string; hi
 /** Range returned by the build endpoint mapping segments to table aliases */
 export type PineRange = {
   alias: string;
-  line: number;
-  from: number;
-  to: number;
+  start: { line: number; character: number };
+  end: { line: number; character: number };
 };
 
 export type Ast = {
@@ -66,6 +65,7 @@ export type Ast = {
   order: Column[];
   where: WhereCondition[];
   prettified: string;
+  ranges: PineRange[];
 };
 
 export type Response = {
@@ -76,7 +76,6 @@ export type Response = {
   // build
   ast: Ast;
   query: string;
-  ranges: PineRange[];
   // eval
   result: (string | number)[][];
   columns: Column[];

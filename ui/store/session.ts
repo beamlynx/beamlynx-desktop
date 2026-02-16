@@ -4,7 +4,7 @@ import { format } from 'sql-formatter';
 import { TOTAL_BARS } from '../constants';
 import { DefaultPlugin } from '../plugin/default.plugin';
 import { RecursiveDeletePlugin } from '../plugin/recursive-delete.plugin';
-import { Ast, Hints, HttpClient, Operation, PineRange, Response } from './client';
+import { Ast, Hints, HttpClient, Operation, Response } from './client';
 import { generateGraph, getCandidateIndex, Graph } from './graph.util';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
 import { debounce } from './util';
@@ -131,8 +131,7 @@ export class Session {
   query: string = '';
   hints: Hints | null = null; // observable
 
-  /** Ranges from build response – maps segments to table aliases (for future highlighting) */
-  ranges: PineRange[] = [];
+
 
   /** Graph */
   candidateIndex: number | undefined = undefined; // observable
@@ -220,9 +219,6 @@ export class Session {
 
         // ast
         this.ast = response.ast;
-
-        // ranges (for future segment highlighting)
-        this.ranges = response.ranges || [];
 
         // query
         this.query = formatQuery(response.query);
