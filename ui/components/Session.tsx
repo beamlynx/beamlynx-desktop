@@ -109,7 +109,7 @@ const MainView = ({
   height: string;
 }) => {
   return (
-    <Box sx={{ flex: 1 }}>
+    <Box sx={{ flex: 1, minHeight: 0 }}>
       {(() => {
         switch (mode) {
           case 'monitor':
@@ -193,7 +193,7 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
             <ResizableDivider sidebarWidth={sidebarWidth} setSidebarWidth={setSidebarWidth} />
           </Grid>
 
-          <Grid item style={{ width: `calc(100% - ${sidebarWidth}px)` }}>
+          <Grid item style={{ width: `calc(100% - ${sidebarWidth}px)`, minHeight: 0 }} sx={{ display: 'flex', flexDirection: 'column' }}>
             {
               <MainView
                 sessionId={sessionId}

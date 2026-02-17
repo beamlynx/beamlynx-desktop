@@ -426,11 +426,14 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   }
 
   return (
-    <div className="copy-data-grid">
+    <div
+      className="copy-data-grid"
+      style={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}
+    >
       {/* The following Box wrapppers were added because the grid was not
       respecting the max width. Hack taken from here:
       https://github.com/mui/mui-x/issues/8895#issuecomment-1793433389*/}
-      <Box sx={{ flex: 1, position: 'relative' }}>
+      <Box sx={{ flex: 1, position: 'relative', minHeight: 0 }}>
         {/* CSV Export Button */}
         <Tooltip title="Export to CSV">
           <IconButton
@@ -528,6 +531,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
           >
             <DataGrid
               sx={{
+                height: '100%',
                 '--DataGrid-containerBackground': 'var(--node-column-bg)',
                 '--DataGrid-rowBorderColor': 'var(--border-color)',
                 color: 'var(--text-color)',
@@ -576,7 +580,6 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
                 },
               }}
               density="compact"
-              autoHeight={true}
               rows={rows}
               columns={columns}
               getRowId={row => row._id ?? ''}
