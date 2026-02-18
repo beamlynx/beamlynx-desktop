@@ -443,8 +443,8 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
               position: 'absolute',
               ...(compactMode
                 ? {
-                    top: 0,
-                    right: -44,
+                    top: 4,
+                    right: 4,
                   }
                 : {
                     top: -40,
@@ -477,8 +477,8 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
                 position: 'absolute',
                 ...(compactMode
                   ? {
-                      top: 0,
-                      right: -88,
+                      top: 4,
+                      right: 48,
                     }
                   : {
                       top: -40,

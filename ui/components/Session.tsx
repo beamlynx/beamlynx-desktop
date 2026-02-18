@@ -109,7 +109,7 @@ const MainView = ({
   height: string;
 }) => {
   return (
-    <Box sx={{ flex: 1, minHeight: 0 }}>
+    <Box sx={{ flex: 1, minHeight: 0, height: '100%' }}>
       {(() => {
         switch (mode) {
           case 'monitor':
