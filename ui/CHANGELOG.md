@@ -5,6 +5,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-02-18
+### Fixed
+- Sticky column headers in the results table. The table header now stays visible when scrolling through results. (by @Koziar)
+
 ## [0.38.0] - 2026-02-16
 ### Added
 - Table color decoration for Pine expressions and results. Expression segments and result columns are color-coded by table to help visualize the relationship between them. (collaboration with @Koziar)

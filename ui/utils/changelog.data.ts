@@ -15,6 +15,15 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.39.0',
+    date: '2026-02-18',
+    fixed: [
+      {
+        description: 'Sticky column headers in the results table. The table header now stays visible when scrolling through results (by @Koziar)',
+      },
+    ],
+  },
+  {
     version: '0.38.0',
     date: '2026-02-16',
     added: [
