@@ -15,6 +15,23 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.39.1',
+    date: '2026-03-30',
+    added: [
+      {
+        description: 'Multi-table `update!` support: assignments targeting different tables now run as separate UPDATE queries.',
+      },
+    ],
+    fixed: [
+      {
+        description: 'Recursive delete no longer follows heuristic relations. Only tables with real foreign key constraints are included in the generated DELETE statements.',
+      },
+      {
+        description: '`update!` now correctly uses table aliases when columns are qualified (e.g. `c.name`).',
+      },
+    ],
+  },
+  {
     version: '0.39.0',
     date: '2026-02-18',
     fixed: [
@@ -821,4 +838,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.37.1';
+export const LATEST_VERSION = '0.39.1';

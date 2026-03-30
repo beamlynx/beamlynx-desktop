@@ -5,6 +5,14 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.39.1] - 2026-03-30
+### Added
+- Multi-table `update!` support: assignments targeting different tables now run as separate UPDATE queries.
+
+### Fixed
+- Recursive delete no longer follows heuristic relations. Only tables with real foreign key constraints are included in the generated DELETE statements.
+- `update!` now correctly uses table aliases when columns are qualified (e.g. `c.name`).
+
 ## [0.39.0] - 2026-02-18
 ### Fixed
 - Sticky column headers in the results table. The table header now stays visible when scrolling through results. (by @Koziar)

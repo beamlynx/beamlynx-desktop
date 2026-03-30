@@ -10,6 +10,7 @@ export type TableHint = {
   table: string;
   column: string;
   parent: boolean;
+  heuristic: boolean;
   pine: string;
 };
 
@@ -195,7 +196,7 @@ export class HttpClient {
     }
     this.onBuild && (await this.onBuild(response.ast));
     const expressions = response.ast.hints.table
-      .filter(h => !h.parent)
+      .filter(h => !h.parent && !h.heuristic)
       .map((h: TableHint) => ({
         expression: `${x} ${h.pine}`,
         column: h.column,

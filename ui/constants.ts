@@ -15,7 +15,7 @@ export const MIN_SIDEBAR_SECOND_VIEW_HEIGHT = 120;
 export const MAX_SIDEBAR_SECOND_VIEW_HEIGHT = 800;
 
 /* Pine Server */
-export const RequiredVersion = '0.31.0';
+export const RequiredVersion = '0.32.0';
 
 /* Layout Constants */
 // Height calculations for main content areas
