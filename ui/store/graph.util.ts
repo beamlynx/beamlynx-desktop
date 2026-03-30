@@ -104,7 +104,7 @@ export const makeSuggestedNode = (
   candidate = false,
   isDark: boolean = false,
 ): PineSuggestedNode => {
-  const { schema, table, column, pine, parent } = n;
+  const { schema, table, column, pine, parent, heuristic } = n;
   const { color } = getSchemaColor(schema, isDark);
 
   const id = pine;
@@ -120,6 +120,7 @@ export const makeSuggestedNode = (
       type: candidate ? 'candidate' : 'suggested',
       pine,
       parent,
+      heuristic,
       sessionId,
     },
     position: { x: 0, y: 0 },

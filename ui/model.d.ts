@@ -25,6 +25,7 @@ export type SuggestedNodeData = BaseNode & {
   type: 'suggested' | 'candidate';
   pine: string;
   parent: boolean;
+  heuristic: boolean;
 };
 
 export type InputNodeData = {
