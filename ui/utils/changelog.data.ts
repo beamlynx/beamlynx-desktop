@@ -15,6 +15,20 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.40.0',
+    date: '2026-04-20',
+    added: [
+      {
+        description: 'Column hints for the `update!` / `u!` operation. Typing `u!` or `u! col = val,` suggests remaining assignable columns.',
+      },
+    ],
+    breaking: [
+      {
+        description: 'Minimum required server version: 0.33.0',
+      },
+    ],
+  },
+  {
     version: '0.39.1',
     date: '2026-03-30',
     added: [
@@ -838,4 +852,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.39.1';
+export const LATEST_VERSION = '0.40.0';

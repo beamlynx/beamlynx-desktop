@@ -5,6 +5,13 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.40.0] - 2026-04-20
+### Added
+- Column hints for the `update!` / `u!` operation. Typing `u!` or `u! col = val,` suggests remaining assignable columns.
+
+### Breaking
+- Minimum required server version is now `0.33.0`.
+
 ## [0.39.1] - 2026-03-30
 ### Added
 - Multi-table `update!` support: assignments targeting different tables now run as separate UPDATE queries.

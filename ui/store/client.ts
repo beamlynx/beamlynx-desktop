@@ -29,6 +29,7 @@ export type Hints = {
   select: ColumnHint[];
   order: ColumnHint[];
   where: ColumnHint[];
+  update: ColumnHint[];
   context: string;
 };
 // There are more operations. I'll add them as we need to handle them here
@@ -40,7 +41,9 @@ export type OperationType =
   | 'order'
   | 'order-partial'
   | 'where'
-  | 'where-partial';
+  | 'where-partial'
+  | 'update-action'
+  | 'update-partial';
 export type Operation = {
   type: OperationType;
 };
