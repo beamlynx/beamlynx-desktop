@@ -93,6 +93,30 @@ const COMMANDS: Command[] = [
     handler: (_global, session) => session.evaluate(),
     isEnabled: (_global, session) => !!(session.expression || session.query) && !session.loading,
   },
+  {
+    id: 'copy-pine-expression',
+    label: 'Copy Pine Expression',
+    category: 'Query',
+    handler: (global, session) => {
+      const text = session.expression;
+      navigator.clipboard.writeText(text).then(() => {
+        global.setCopiedMessage(session.id, text);
+      });
+    },
+    isEnabled: (_global, session) => session.expression.trim() !== '',
+  },
+  {
+    id: 'copy-sql-expression',
+    label: 'Copy SQL Expression',
+    category: 'Query',
+    handler: (global, session) => {
+      const text = session.getSqlClipboardText();
+      navigator.clipboard.writeText(text).then(() => {
+        global.setCopiedMessage(session.id, text);
+      });
+    },
+    isEnabled: (_global, session) => session.query.trim() !== '',
+  },
 
   // Hidden commands
   {

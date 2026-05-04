@@ -404,6 +404,22 @@ export class Session {
     }
   }
 
+  /**
+   * Clipboard text for SQL: each line of pine as a -- line comment (if non-empty), then the query.
+   */
+  getSqlClipboardText(): string {
+    const sql = this.query;
+    const pine = this.expression;
+    if (!pine.trim()) {
+      return sql;
+    }
+    const commentedPine = pine
+      .split(/\r?\n/)
+      .map(line => (line ? `-- ${line}` : '--'))
+      .join('\n');
+    return `${commentedPine}\n\n${sql}`;
+  }
+
   async updateConnectionLogs() {
     const stats = await client.getConnectionStats();
     if (!stats) return;

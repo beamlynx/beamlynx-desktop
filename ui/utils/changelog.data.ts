@@ -15,6 +15,20 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.41.0',
+    date: '2026-05-04',
+    added: [
+      {
+        description:
+          'Command palette entries to copy the current Pine expression and the current SQL.',
+      },
+      {
+        description:
+          'Copying SQL (command palette or SQL panel click) prepends each line of the Pine expression as `--` line comments above the SQL.',
+      },
+    ],
+  },
+  {
     version: '0.40.0',
     date: '2026-04-20',
     added: [
@@ -852,4 +866,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.40.0';
+export const LATEST_VERSION = '0.41.0';

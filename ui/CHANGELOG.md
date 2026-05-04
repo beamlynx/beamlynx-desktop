@@ -5,6 +5,11 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.41.0] - 2026-05-04
+### Added
+- Command palette entries to copy the current Pine expression and the current SQL.
+- Copying SQL (command palette or SQL panel click) prepends each line of the Pine expression as `--` line comments above the SQL.
+
 ## [0.40.0] - 2026-04-20
 ### Added
 - Column hints for the `update!` / `u!` operation. Typing `u!` or `u! col = val,` suggests remaining assignable columns.

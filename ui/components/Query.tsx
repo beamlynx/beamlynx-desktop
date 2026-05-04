@@ -20,11 +20,11 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
     if (!session.query) {
       return;
     }
-    const v = session.query;
+    const v = session.getSqlClipboardText();
     navigator.clipboard.writeText(v).then(() => {
       store.setCopiedMessage(sessionId, v);
     });
-  }, [session.query, store, sessionId]);
+  }, [session.query, session.expression, store, sessionId]);
 
   useEffect(() => {
     if (!editorRef.current || !session.query) return;
