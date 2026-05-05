@@ -137,8 +137,15 @@ export class HttpClient {
     return await res.json();
   }
 
-  public async prettify(expression: string): Promise<string> {
-    const response: Response | undefined = await this.post('build', { expression });
+  private withConnectionId(body: object, connectionId?: string): object {
+    if (connectionId) {
+      return { ...body, 'connection-id': connectionId };
+    }
+    return body;
+  }
+
+  public async prettify(expression: string, connectionId?: string): Promise<string> {
+    const response: Response | undefined = await this.post('build', this.withConnectionId({ expression }, connectionId));
     if (!response) {
       throw new Error('No response when trying to prettify');
     }
@@ -148,28 +155,28 @@ export class HttpClient {
     return response.ast.prettified;
   }
 
-  public async eval(expression: string): Promise<Response> {
-    const response = await this.post('eval', { expression });
+  public async eval(expression: string, connectionId?: string): Promise<Response> {
+    const response = await this.post('eval', this.withConnectionId({ expression }, connectionId));
     if (!response) {
       throw new Error('No response when trying to eval');
     }
     return response;
   }
 
-  public async sql(query: string): Promise<Response> {
-    const response = await this.post('sql', { query: query.trim() });
+  public async sql(query: string, connectionId?: string): Promise<Response> {
+    const response = await this.post('sql', this.withConnectionId({ query: query.trim() }, connectionId));
     if (!response) {
       throw new Error('No response when trying to execute SQL');
     }
     return response;
   }
 
-  public async build(expression: string, cursor?: CursorPosition): Promise<Response> {
+  public async build(expression: string, cursor?: CursorPosition, connectionId?: string): Promise<Response> {
     const body: { expression: string; cursor?: CursorPosition } = { expression };
     if (cursor) {
       body.cursor = cursor;
     }
-    const response = await this.post('build', body);
+    const response = await this.post('build', this.withConnectionId(body, connectionId));
     if (!response) {
       throw new Error('No response when trying to build');
     }
@@ -177,8 +184,8 @@ export class HttpClient {
     return response;
   }
 
-  public async count(expression: string): Promise<number> {
-    const response = await this.eval(`${expression} | count:`);
+  public async count(expression: string, connectionId?: string): Promise<number> {
+    const response = await this.eval(`${expression} | count:`, connectionId);
     if (!response) {
       throw new Error('No respnse when trying to count');
     }
@@ -190,10 +197,11 @@ export class HttpClient {
 
   public async makeChildExpressions(
     expression: string,
+    connectionId?: string,
   ): Promise<{ expressions: { expression: string; column: string }[]; ast: Ast }> {
     // Add trailing `|` explicitly for child expressions
     const x = `${expression} |`;
-    const response = await this.post('build', { expression: x });
+    const response = await this.post('build', this.withConnectionId({ expression: x }, connectionId));
     if (!response) {
       throw new Error('No response when trying to make child Expressions');
     }
@@ -211,9 +219,10 @@ export class HttpClient {
     expression: string,
     column: string,
     limit: number,
+    connectionId?: string,
   ): Promise<string> {
     const x = `${expression} | limit: ${limit} | delete! .${column}`;
-    const response = await this.build(x);
+    const response = await this.build(x, undefined, connectionId);
     if (!response) {
       throw new Error('No response when trying to build the delete query');
     }

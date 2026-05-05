@@ -55,16 +55,30 @@ const PineTabs = observer(() => {
           >
             {tabs.map((tab, index) => {
               const session = global.getSession(tab.sessionId);
+              const sessionConnectionId = session.connectionId || global.connection;
+              const connectionColor = global.getConnectionColor(sessionConnectionId);
               return (
                 <Tab
                   key={tab.sessionId}
                   tabIndex={-1} // Prevent tab focus
                   label={
                     <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      {sessionConnectionId && (
+                        <span
+                          style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: '50%',
+                            backgroundColor: connectionColor,
+                            display: 'inline-block',
+                            flexShrink: 0,
+                          }}
+                        />
+                      )}
                       {session.loading && (
-                        <CircularProgress 
-                          size={12} 
-                          sx={{ color: 'inherit' }} 
+                        <CircularProgress
+                          size={12}
+                          sx={{ color: 'inherit' }}
                         />
                       )}
                       {global.getSessionName(tab.sessionId)}

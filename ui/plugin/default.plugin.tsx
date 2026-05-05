@@ -18,8 +18,8 @@ export class DefaultPlugin implements PluginInterface {
     // Use SQL endpoint if in SQL mode, otherwise use Pine eval endpoint
     const response =
       session.inputMode === 'sql'
-        ? await this.client.sql(session.query)
-        : await this.client.eval(session.expression);
+        ? await this.client.sql(session.query, session.connectionId)
+        : await this.client.eval(session.expression, session.connectionId);
 
     if (!response) {
       session.message = '🤷 No response';
