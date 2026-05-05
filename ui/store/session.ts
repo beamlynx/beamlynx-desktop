@@ -78,6 +78,9 @@ export class Session {
   /** Input mode - pine or sql */
   inputMode: InputMode = 'pine';
 
+  /** Per-session database connection id */
+  connectionId: string = '';
+
   /** Database connection monitoring */
   monitor: boolean = false;
   connectionCountLogs: { time: string; count: number }[] = [];
@@ -194,7 +197,7 @@ export class Session {
 
         // response - use current cursor position (not watched, but always current)
         try {
-          this.response = await client.build(expression, this.cursorPosition);
+          this.response = await client.build(expression, this.cursorPosition, this.connectionId);
         } catch (e) {
           this.error = (e as any).message || 'Failed to build';
         }
@@ -312,7 +315,7 @@ export class Session {
     }
     parts.push(pine);
     const expression = parts.join('|');
-    const prettified = await client.prettify(expression);
+    const prettified = await client.prettify(expression, this.connectionId);
     return prettified + '\n | ';
   }
 
@@ -321,7 +324,7 @@ export class Session {
   }
 
   public async prettifyExpression(expression: string, appendPipe: boolean = false): Promise<string> {
-    const prettified = await client.prettify(expression);
+    const prettified = await client.prettify(expression, this.connectionId);
     return appendPipe ? prettified + '\n | ' : prettified;
   }
 
@@ -362,7 +365,7 @@ export class Session {
    * Similar to evaluate() but only builds without executing.
    */
   public async build(expression: string): Promise<Ast> {
-    const response = await client.build(expression, this.cursorPosition);
+    const response = await client.build(expression, this.cursorPosition, this.connectionId);
     return response.ast;
   }
 

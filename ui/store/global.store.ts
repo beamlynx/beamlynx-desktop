@@ -6,6 +6,7 @@ import { RequiredVersion } from '../constants';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
 import { DevState } from './dev-state';
 import { getCommandById } from '../utils/commands';
+import { CONNECTION_COLOR_PALETTE } from './util';
 
 const client = new HttpClient();
 type ConnectionParams = {
@@ -21,13 +22,16 @@ export class GlobalStore {
   connection = '';
   version: string | undefined = undefined;
   requiresUpgrade = false;
+  connectionColors: Record<string, string> = {};
 
   get pineConnected() {
     return DevState.pineConnected ?? !!this.version;
   }
 
   get dbConnected() {
-    return DevState.dbConnected ?? !!this.connection;
+    const activeSession = this.sessions[this.activeSessionId];
+    const connectionId = activeSession?.connectionId || this.connection;
+    return DevState.dbConnected ?? !!connectionId;
   }
 
   activeSessionId = 'session-0';
@@ -121,12 +125,31 @@ export class GlobalStore {
     this._pineTableColorsEnabled = getUserPreference(STORAGE_KEYS.PINE_TABLE_COLORS, false);
     this._onboardingServer = getUserPreference(STORAGE_KEYS.ONBOARDING_SERVER, false);
     this._commandHistory = getUserPreference(STORAGE_KEYS.COMMAND_HISTORY, []);
+    this.connectionColors = getUserPreference(STORAGE_KEYS.CONNECTION_COLORS, {});
     makeAutoObservable(this);
 
     // Initialize the default session
     const initSession = new Session('0', this);
     this.sessions[initSession.id] = initSession;
   }
+
+  getConnectionColor = (connectionId: string): string => {
+    return this.connectionColors[connectionId] ?? '';
+  };
+
+  setConnectionColor = (connectionId: string, color: string) => {
+    this.connectionColors[connectionId] = color;
+    setUserPreference(STORAGE_KEYS.CONNECTION_COLORS, this.connectionColors);
+  };
+
+  private assignConnectionColor = (connectionId: string) => {
+    if (!connectionId || this.connectionColors[connectionId]) return;
+    const used = new Set(Object.values(this.connectionColors));
+    const color =
+      CONNECTION_COLOR_PALETTE.find(c => !used.has(c)) ??
+      CONNECTION_COLOR_PALETTE[Object.keys(this.connectionColors).length % CONNECTION_COLOR_PALETTE.length];
+    this.setConnectionColor(connectionId, color);
+  };
 
   public async handleUrlParameters() {
     if (typeof window === 'undefined') return; // Skip on server-side
@@ -219,6 +242,15 @@ export class GlobalStore {
     }
     this.connection = id;
     this.version = version ?? '0.0.0';
+    this.assignConnectionColor(id);
+
+    const activeSession = this.sessions[this.activeSessionId];
+    if (activeSession) {
+      activeSession.connectionId = id;
+    }
+    if (this.virtualSession) {
+      this.virtualSession.connectionId = id;
+    }
 
     if (!this.onboardingServer) {
       this.onboardingServer = true;
@@ -228,6 +260,7 @@ export class GlobalStore {
 
   createSessionUsingId = (id: string) => {
     const session = new Session(id, this);
+    session.connectionId = this.connection;
     this.sessions[session.id] = session;
     return session;
   };
@@ -306,6 +339,18 @@ export class GlobalStore {
       };
       this.version = result.version ?? '0.0.0';
       this.connection = result['connection-id'] || '';
+      this.assignConnectionColor(this.connection);
+
+      if (this.connection) {
+        Object.values(this.sessions).forEach(session => {
+          if (!session.connectionId) {
+            session.connectionId = this.connection;
+          }
+        });
+        if (this.virtualSession && !this.virtualSession.connectionId) {
+          this.virtualSession.connectionId = this.connection;
+        }
+      }
 
       if (this.pineConnected && !this.onboardingServer) {
         this.onboardingServer = true;

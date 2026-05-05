@@ -15,6 +15,20 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.42.0',
+    date: '2026-05-05',
+    added: [
+      {
+        description:
+          'Per-session database connections: each tab can connect to a different database. Queries from that tab always use its own connection.',
+      },
+      {
+        description:
+          'Connection color indicators: each database gets a distinct color shown in the header and tab bar. Click the dot to pick a different color. Colors are saved across sessions.',
+      },
+    ],
+  },
+  {
     version: '0.41.0',
     date: '2026-05-04',
     added: [
@@ -866,4 +880,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.41.0';
+export const LATEST_VERSION = '0.42.0';

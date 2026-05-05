@@ -72,10 +72,21 @@ export const isDevelopment = () => {
 
 /**
  * Escapes a string for use in a SQL query
- * 
+ *
  * TODO: I am replacing the single quote with an underscore but a more robust
  * solution is needed.
  */
 export const pineEscape = (x: string) => {
   return x.replace(/'/g, "_");
-} 
+};
+
+export const CONNECTION_COLOR_PALETTE = [
+  '#4ade80', // green
+  '#f87171', // red
+  '#60a5fa', // blue
+  '#fb923c', // orange
+  '#a78bfa', // purple
+  '#2dd4bf', // teal
+  '#f472b6', // pink
+  '#facc15', // yellow
+];
