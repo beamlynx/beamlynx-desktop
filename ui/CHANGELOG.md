@@ -10,6 +10,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - Per-session database connections: each tab can connect to a different database. Queries from that tab always use its own connection.
 - Connection color indicators: each database connection gets a distinct color (green, red, blue, orange, purple, teal, pink, yellow) shown as a dot in the header and tab bar. Click the dot to pick a different color. Colors persist across page refreshes.
 
+### Breaking
+- Minimum required server version is now `0.35.0`.
+
 ## [0.41.0] - 2026-05-04
 ### Added
 - Command palette entries to copy the current Pine expression and the current SQL.

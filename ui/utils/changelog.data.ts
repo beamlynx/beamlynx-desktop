@@ -27,6 +27,11 @@ export const CHANGELOG: ChangelogVersion[] = [
           'Connection color indicators: each database gets a distinct color shown in the header and tab bar. Click the dot to pick a different color. Colors are saved across sessions.',
       },
     ],
+    breaking: [
+      {
+        description: 'Minimum required server version is now `0.35.0`.',
+      },
+    ],
   },
   {
     version: '0.41.0',
