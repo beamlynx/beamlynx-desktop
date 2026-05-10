@@ -368,7 +368,16 @@ export class Session {
   }
 
   public async prettifyExpression(expression: string, appendPipe: boolean = false): Promise<string> {
-    const prettified = await client.prettify(expression, this.connectionId);
+    const blocks = splitExpressions(expression);
+    let prettified: string;
+    if (blocks.length <= 1) {
+      prettified = await client.prettify(expression, this.connectionId);
+    } else {
+      const prettifiedBlocks = await Promise.all(
+        blocks.map(b => client.prettify(b.text, this.connectionId))
+      );
+      prettified = prettifiedBlocks.join('\n\n');
+    }
     return appendPipe ? prettified + '\n | ' : prettified;
   }
 
