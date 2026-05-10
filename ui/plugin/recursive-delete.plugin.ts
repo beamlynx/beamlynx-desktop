@@ -66,7 +66,7 @@ export class RecursiveDeletePlugin implements PluginInterface {
     column: string,
     deleteQueries: string[],
   ): Promise<void> {
-    await this.client.build(expression, undefined, this.session.connectionId);
+    await this.client.build([expression], undefined, this.session.connectionId);
     const count = await this.client.count(expression, this.session.connectionId);
 
     if (count === 0) {

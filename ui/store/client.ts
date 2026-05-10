@@ -163,7 +163,7 @@ export class HttpClient {
   public async prettify(expression: string, connectionId?: string): Promise<string> {
     const response: Response | undefined = await this.post(
       'build',
-      this.withConnectionId({ expression }, connectionId),
+      this.withConnectionId({ expressions: [expression] }, connectionId),
     );
     if (!response) {
       throw new Error('No response when trying to prettify');
@@ -174,8 +174,8 @@ export class HttpClient {
     return response.ast.prettified;
   }
 
-  public async eval(expression: string, connectionId?: string): Promise<Response> {
-    const response = await this.post('eval', this.withConnectionId({ expression }, connectionId));
+  public async eval(expressions: string[], connectionId?: string): Promise<Response> {
+    const response = await this.post('eval', this.withConnectionId({ expressions }, connectionId));
     if (!response) {
       throw new Error('No response when trying to eval');
     }
@@ -194,11 +194,11 @@ export class HttpClient {
   }
 
   public async build(
-    expression: string,
+    expressions: string[],
     cursor?: CursorPosition,
     connectionId?: string,
   ): Promise<Response> {
-    const body: { expression: string; cursor?: CursorPosition } = { expression };
+    const body: { expressions: string[]; cursor?: CursorPosition } = { expressions };
     if (cursor) {
       body.cursor = cursor;
     }
@@ -211,7 +211,7 @@ export class HttpClient {
   }
 
   public async count(expression: string, connectionId?: string): Promise<number> {
-    const response = await this.eval(`${expression} | count:`, connectionId);
+    const response = await this.eval([`${expression} | count:`], connectionId);
     if (!response) {
       throw new Error('No respnse when trying to count');
     }
@@ -229,7 +229,7 @@ export class HttpClient {
     const x = `${expression} |`;
     const response = await this.post(
       'build',
-      this.withConnectionId({ expression: x }, connectionId),
+      this.withConnectionId({ expressions: [x] }, connectionId),
     );
     if (!response) {
       throw new Error('No response when trying to make child Expressions');
@@ -251,7 +251,7 @@ export class HttpClient {
     connectionId?: string,
   ): Promise<string> {
     const x = `${expression} | limit: ${limit} | delete! .${column}`;
-    const response = await this.build(x, undefined, connectionId);
+    const response = await this.build([x], undefined, connectionId);
     if (!response) {
       throw new Error('No response when trying to build the delete query');
     }

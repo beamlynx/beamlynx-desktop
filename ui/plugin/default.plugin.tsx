@@ -19,7 +19,7 @@ export class DefaultPlugin implements PluginInterface {
     const response =
       session.inputMode === 'sql'
         ? await this.client.sql(session.query, session.connectionId)
-        : await this.client.eval(session.expression, session.connectionId);
+        : await this.client.eval(session.expressions, session.connectionId);
 
     if (!response) {
       session.message = '🤷 No response';

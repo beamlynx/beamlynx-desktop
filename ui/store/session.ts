@@ -9,6 +9,36 @@ import { generateGraph, getCandidateIndex, Graph } from './graph.util';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
 import { debounce } from './util';
 
+type ExpressionBlock = { text: string; startLine: number };
+
+function splitExpressions(text: string): ExpressionBlock[] {
+  const lines = text.split('\n');
+  const blocks: ExpressionBlock[] = [];
+  let current: string[] = [];
+  let currentStart = 0;
+
+  for (let i = 0; i <= lines.length; i++) {
+    const line = lines[i];
+    if (i === lines.length || line.trim() === '') {
+      const joined = current.join('\n').trim();
+      if (joined) blocks.push({ text: joined, startLine: currentStart });
+      current = [];
+      currentStart = i + 1;
+    } else {
+      if (current.length === 0) currentStart = i;
+      current.push(line);
+    }
+  }
+  return blocks;
+}
+
+function findActiveBlock(blocks: ExpressionBlock[], cursorLine: number): number {
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    if (blocks[i].startLine <= cursorLine) return i;
+  }
+  return blocks.length - 1;
+}
+
 export type Mode = 'documentation' | 'graph' | 'result' | 'monitor';
 
 export type Theme = 'light' | 'dark';
@@ -149,6 +179,11 @@ export class Session {
   /** Cursor position */
   cursorPosition?: { line: number; character: number };
 
+  /** All expression blocks split from the editor text (blank-line separated) */
+  get expressions(): string[] {
+    return splitExpressions(this.expression).map(b => b.text);
+  }
+
   /** Counter to trigger hint regeneration on demand */
   hintsRequestedCounter: number = 0;
 
@@ -197,7 +232,16 @@ export class Session {
 
         // response - use current cursor position (not watched, but always current)
         try {
-          this.response = await client.build(expression, this.cursorPosition, this.connectionId);
+          const blocks = splitExpressions(expression);
+          const cursor = this.cursorPosition;
+          const activeIdx = cursor !== undefined
+            ? findActiveBlock(blocks, cursor.line)
+            : blocks.length - 1;
+          const activeExpressions = blocks.slice(0, activeIdx + 1).map(b => b.text);
+          const adjustedCursor = cursor && blocks[activeIdx]
+            ? { line: cursor.line - blocks[activeIdx].startLine, character: cursor.character }
+            : cursor;
+          this.response = await client.build(activeExpressions, adjustedCursor, this.connectionId);
         } catch (e) {
           this.error = (e as any).message || 'Failed to build';
         }
@@ -365,7 +409,7 @@ export class Session {
    * Similar to evaluate() but only builds without executing.
    */
   public async build(expression: string): Promise<Ast> {
-    const response = await client.build(expression, this.cursorPosition, this.connectionId);
+    const response = await client.build([expression], this.cursorPosition, this.connectionId);
     return response.ast;
   }
 
