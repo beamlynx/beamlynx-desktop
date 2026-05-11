@@ -1,7 +1,7 @@
 import { Edge, Position } from 'reactflow';
-import { PineEdge, PineNode, PineSelectedNode, PineSuggestedNode } from '../model';
+import { PineEdge, PineNode, PineSelectedNode, PineSuggestedNode, PineVariableNode, VariableInnerTable } from '../model';
 import { NodeType } from '../components/Graph.box';
-import { Ast, Column, ColumnHint, Table, TableHint, WhereCondition } from './client';
+import { Ast, Column, ColumnHint, Table, TableHint, VariableAst, WhereCondition } from './client';
 import dagre from 'dagre';
 
 export type Graph = {
@@ -9,7 +9,7 @@ export type Graph = {
   candidate: { pine: string } | null;
 
   // Reactflow nodes and edges - this is ready to be rendered
-  selectedNodes: PineSelectedNode[];
+  selectedNodes: PineNode[];
   suggestedNodes: PineSuggestedNode[];
   edges: PineEdge[];
 };
@@ -169,6 +169,53 @@ const makeWhereColumnsLookup = (whereConditions: WhereCondition[]): Record<strin
   );
 };
 
+const makeVariableNodes = (
+  outerSelectedTables: Table[],
+  variables: Record<string, VariableAst>,
+  sessionId: string,
+  isDark: boolean,
+): {
+  containerNodes: PineVariableNode[];
+  containersByOuterAlias: Record<string, PineVariableNode>;
+} => {
+  const containerNodes: PineVariableNode[] = [];
+  const containersByOuterAlias: Record<string, PineVariableNode> = {};
+
+  for (const outerTable of outerSelectedTables) {
+    const varAst = variables[outerTable.table];
+    if (!varAst) continue;
+
+    const variableName = outerTable.table;
+    // Use :tables (raw accumulation) not :selected-tables, which strips the last
+    // table when operation type is :table (intended for live graph, wrong for variables).
+    const innerTables: VariableInnerTable[] = (varAst['tables'] ?? varAst['selected-tables'] ?? []).map(t => ({
+      table: t.table,
+      schema: t.schema,
+      alias: t.alias,
+      color: getSchemaColor(t.schema, isDark).color,
+    }));
+
+    const containerId = `var:${variableName}`;
+
+    const containerNode: PineVariableNode = {
+      id: containerId,
+      type: NodeType.Variable,
+      data: {
+        type: 'variable',
+        variableName,
+        sessionId,
+        innerTables,
+      },
+      position: { x: 0, y: 0 },
+    };
+
+    containerNodes.push(containerNode);
+    containersByOuterAlias[outerTable.alias] = containerNode;
+  }
+
+  return { containerNodes, containersByOuterAlias };
+};
+
 const makeSelectedNodes = (ast: Ast, sessionId: string, isDark: boolean = false): PineSelectedNode[] => {
   const {
     'selected-tables': selectedTables,
@@ -236,6 +283,7 @@ const makeSuggestedNodes = (ast: Ast, sessionId: string, isDark: boolean = false
 
 export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = false): Graph => {
   const { 'selected-tables': selectedTables, joins, context } = ast;
+  const variables = ast.variables ?? {};
 
   const graph: Graph = {
     candidate: null,
@@ -245,81 +293,73 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
   };
 
   /**
-   * 1. Selected Nodes
+   * 1. Variable container nodes
    */
-
-  const selectedNodes = makeSelectedNodes(ast, sessionId, isDark);
-
-  // Find the context node
-  const selectedNodesLookup = selectedNodes.reduce(
-    (acc, x) => {
-      acc[x.id] = x;
-      return acc;
-    },
-    {} as Record<string, PineNode>,
+  const { containerNodes, containersByOuterAlias } = makeVariableNodes(
+    selectedTables ?? [],
+    variables,
+    sessionId,
+    isDark,
   );
+  const variableOuterAliases = new Set(Object.keys(containersByOuterAlias));
+
+  /**
+   * 2. Normal selected nodes (non-variable tables)
+   */
+  const allSelectedNodes = makeSelectedNodes(ast, sessionId, isDark);
+  const normalSelectedNodes = allSelectedNodes.filter(n => !variableOuterAliases.has(n.id));
+
+  /**
+   * 3. Build node lookup for edges (variable outer alias → container node)
+   */
+  const selectedNodesLookup: Record<string, PineNode> = {};
+  for (const n of normalSelectedNodes) selectedNodesLookup[n.id] = n;
+  for (const [outerAlias, containerNode] of Object.entries(containersByOuterAlias)) {
+    selectedNodesLookup[outerAlias] = containerNode;
+  }
   const contextNode: PineNode = selectedNodesLookup[context];
 
   /**
-   * 2. Suggested Nodes
+   * 4. Suggested nodes
    */
-
   const suggestedNodes = makeSuggestedNodes(ast, sessionId, isDark);
 
-  graph.selectedNodes = selectedNodes;
+  graph.selectedNodes = [...normalSelectedNodes, ...containerNodes];
   graph.suggestedNodes = suggestedNodes;
 
   /**
-   * 3. Edges
+   * 5. Edges
    */
-
-  // If there are no selected tables, there are no edges
-  if (selectedTables.length < 1) {
+  if (!selectedTables || selectedTables.length < 1) {
     graph.edges = [];
     return graph;
   }
 
-  if (suggestedNodes.length === 0) {
-    graph.edges = [];
-  }
-
-  // TODO: we don't always have to regenerate the lookup. This can be cached
   const edgeLookup: Record<string, Edge> = {};
-
   const makeId = ({ from: x, to: y }: { from: PineNode; to: PineNode }) => `${x.id} ${y.id}`;
 
   for (const [fromAlias, toAlias, relation] of joins) {
     const x = selectedNodesLookup[fromAlias];
     const y = selectedNodesLookup[toAlias];
-    if (!x || !y || !relation) {
-      continue;
-    }
+    if (!x || !y || !relation) continue;
     const e = relation[2] === 'has' ? { from: x, to: y } : { from: y, to: x };
     const id = makeId(e);
     if (!edgeLookup[id]) {
-      edgeLookup[id] = {
-        id,
-        source: e.from.id,
-        target: e.to.id,
-      };
+      edgeLookup[id] = { id, source: e.from.id, target: e.to.id };
     }
   }
 
   for (const y of suggestedNodes) {
+    if (!contextNode) continue;
     const isParent = y.data.parent;
     const e = { to: isParent ? contextNode : y, from: isParent ? y : contextNode };
     const id = makeId(e);
     if (!edgeLookup[id]) {
-      edgeLookup[id] = {
-        id,
-        source: e.from.id,
-        target: e.to.id,
-      };
+      edgeLookup[id] = { id, source: e.from.id, target: e.to.id };
     }
   }
 
   graph.edges = Object.values(edgeLookup);
-
   return graph;
 };
 
@@ -335,18 +375,13 @@ export const getLayoutedElements = (
 ) => {
   const dagreGraph = new dagre.graphlib.Graph();
   dagreGraph.setDefaultEdgeLabel(() => ({}));
+  dagreGraph.setGraph({ rankdir: 'LR' });
 
-  dagreGraph.setGraph({
-    rankdir: 'LR',
-  });
-
-  // Count total selected nodes and find max order
   const selectedNodes = nodes.filter(
     (node): node is PineSelectedNode => node.data.type === 'selected',
   );
-  const maxOrder = Math.max(...selectedNodes.map(node => node.data.order));
+  const maxOrder = selectedNodes.length > 0 ? Math.max(...selectedNodes.map(n => n.data.order)) : 0;
 
-  // First pass to set nodes and edges
   nodes.forEach(node => {
     dagreGraph.setNode(node.id, { width: nodeWidth, height: getNodeHeight(node) });
   });
@@ -359,22 +394,29 @@ export const getLayoutedElements = (
 
   nodes.forEach(node => {
     const nodeWithPosition = dagreGraph.node(node.id);
+    if (!nodeWithPosition) return;
+
     node.targetPosition = Position.Left;
     node.sourcePosition = Position.Right;
 
-    // Use cache only if it's not the last node by order
-    if (node.data.type === 'selected' && cache[node.data.alias] && node.data.order !== maxOrder) {
+    const h = getNodeHeight(node);
+
+    if (node.data.type === 'variable') {
+      const cacheKey = `var:${node.data.variableName}`;
+      node.position = cache[cacheKey] ?? {
+        x: nodeWithPosition.x - nodeWidth / 2,
+        y: nodeWithPosition.y - h / 2,
+      };
+    } else if (node.data.type === 'selected' && cache[node.data.alias] && node.data.order !== maxOrder) {
       node.position = cache[node.data.alias];
     } else if (node.data.type === 'input' && cache[node.id]) {
       node.position = cache[node.data.alias];
     } else {
       node.position = {
         x: nodeWithPosition.x - nodeWidth / 2,
-        y: nodeWithPosition.y - getNodeHeight(node) / 2,
+        y: nodeWithPosition.y - h / 2,
       };
     }
-
-    return node;
   });
 
   return { nodes, edges };

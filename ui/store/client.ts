@@ -58,6 +58,13 @@ export type PineRange = {
   end: { line: number; character: number };
 };
 
+export type VariableAst = {
+  'selected-tables': Table[];
+  tables?: Table[];
+  joins: string[][];
+  columns: Column[];
+};
+
 export type Ast = {
   hints: Hints;
   'selected-tables': Table[];
@@ -70,6 +77,8 @@ export type Ast = {
   where: WhereCondition[];
   prettified: string;
   ranges: PineRange[];
+  variables?: Record<string, VariableAst>;
+  assign?: string;
 };
 
 export type Response = {

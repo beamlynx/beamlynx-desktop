@@ -21,15 +21,18 @@ import {
 import { useStores } from '../store/store-container';
 import SelectedNodeComponent from './SelectedNodeComponent';
 import SuggestedNodeComponent from './SuggestedNodeComponent';
+import VariableNodeComponent from './VariableNodeComponent';
 import { CloseFullscreen, OpenInFull } from '@mui/icons-material';
 
 export const NodeType = {
   Selected: 'selected-node',
   Suggested: 'suggested-node',
+  Variable: 'variable-node',
 };
 const nodeTypes: NodeTypes = {
   [NodeType.Suggested]: SuggestedNodeComponent,
   [NodeType.Selected]: SelectedNodeComponent,
+  [NodeType.Variable]: VariableNodeComponent,
 };
 
 const nodePositionCache: Record<string, { x: number; y: number }> = {};
@@ -138,8 +141,9 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId, containerRef }) => {
   // Add handler for node movement
   const onNodeDragStop = (event: React.MouseEvent, node: PineNode) => {
     if (node.data.type === 'selected') {
-      // Cache the position using the node's alias as the key
       nodePositionCache[node.data.alias] = node.position;
+    } else if (node.data.type === 'variable') {
+      nodePositionCache[`var:${node.data.variableName}`] = node.position;
     }
   };
 

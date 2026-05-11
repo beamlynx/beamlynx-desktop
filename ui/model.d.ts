@@ -37,10 +37,25 @@ export type InputNodeData = {
   isFocused?: boolean;
 };
 
+export type VariableInnerTable = {
+  table: string;
+  schema: string;
+  alias: string;
+  color: string;
+};
+
+export type VariableNodeData = {
+  type: 'variable';
+  variableName: string;
+  sessionId: string;
+  innerTables: VariableInnerTable[];
+};
+
 export type PineInputNode = Node<InputNodeData>;
 
 export type PineSelectedNode = Node<SelectedNodeData>;
 export type PineSuggestedNode = Node<SuggestedNodeData>;
-export type PineNode = PineSelectedNode | PineSuggestedNode | PineInputNode;
+export type PineVariableNode = Node<VariableNodeData>;
+export type PineNode = PineSelectedNode | PineSuggestedNode | PineInputNode | PineVariableNode;
 
 export type PineEdge = Edge;
