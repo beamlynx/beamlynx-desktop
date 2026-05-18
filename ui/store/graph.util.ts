@@ -399,7 +399,9 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
 
 export const nodeWidth = 172;
 export const getNodeHeight = (node: PineNode) => {
-  return node.data.type === 'selected' ? 60 : 20;
+  if (node.data.type === 'selected') return 60;
+  if (node.data.type === 'variable') return 28; // collapsed header height
+  return 20;
 };
 
 export const getLayoutedElements = (

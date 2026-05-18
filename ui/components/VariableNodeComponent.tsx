@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Handle, NodeProps, Position } from 'reactflow';
 import { VariableInnerTable, VariableNodeData } from '../model';
 
@@ -56,6 +56,8 @@ const InnerTableRow = ({ table, schema, alias, color }: VariableInnerTable) => (
 
 const VariableNodeComponent: React.FC<Props> = ({ data }) => {
   const { variableName, innerTables } = data;
+  const [expanded, setExpanded] = useState(false);
+
   return (
     <div
       style={{
@@ -66,21 +68,31 @@ const VariableNodeComponent: React.FC<Props> = ({ data }) => {
       }}
     >
       <div
+        onClick={() => setExpanded(e => !e)}
         style={{
-          padding: '4px 10px 4px 10px',
+          padding: '4px 8px 4px 10px',
           fontSize: '10px',
           fontFamily: 'Courier, monospace',
           color: 'var(--node-variable-label-color, #7c5cbf)',
-          borderBottom: '1px dashed var(--node-variable-border, #7c5cbf)',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          userSelect: 'none',
         }}
       >
-        = {variableName}
+        <span>= {variableName}</span>
+        <span style={{ fontSize: '8px', opacity: 0.7, marginLeft: 6 }}>
+          {expanded ? '▼' : '▶'}
+        </span>
       </div>
-      <div style={{ paddingTop: '6px', paddingBottom: '2px' }}>
-        {innerTables.map(t => (
-          <InnerTableRow key={t.alias} {...t} />
-        ))}
-      </div>
+      {expanded && (
+        <div style={{ paddingTop: '6px', paddingBottom: '2px' }}>
+          {innerTables.map(t => (
+            <InnerTableRow key={t.alias} {...t} />
+          ))}
+        </div>
+      )}
       <Handle type="target" position={Position.Left} style={handleStyle} />
       <Handle type="source" position={Position.Right} style={handleStyle} />
     </div>
