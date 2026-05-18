@@ -216,6 +216,7 @@ const makeVariableNodes = (
   return { containerNodes, containersByOuterAlias };
 };
 
+
 const makeSelectedNodes = (ast: Ast, sessionId: string, isDark: boolean = false): PineSelectedNode[] => {
   const {
     'selected-tables': selectedTables,
@@ -284,6 +285,7 @@ const makeSuggestedNodes = (ast: Ast, sessionId: string, isDark: boolean = false
 export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = false): Graph => {
   const { 'selected-tables': selectedTables, joins, context } = ast;
   const variables = ast.variables ?? {};
+  const pendingAssignments = ast['pending-assignments'] ?? {};
 
   const graph: Graph = {
     candidate: null,
@@ -293,42 +295,51 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
   };
 
   /**
-   * 1. Variable container nodes
+   * 1. Variable container nodes (cross-expression, edges connect them to neighbors)
    */
-  const { containerNodes, containersByOuterAlias } = makeVariableNodes(
-    selectedTables ?? [],
-    variables,
-    sessionId,
-    isDark,
-  );
-  const variableOuterAliases = new Set(Object.keys(containersByOuterAlias));
+  const { containerNodes: varContainerNodes, containersByOuterAlias: varContainersByAlias } =
+    makeVariableNodes(selectedTables ?? [], variables, sessionId, isDark);
+  const variableOuterAliases = new Set(Object.keys(varContainersByAlias));
 
   /**
-   * 2. Normal selected nodes (non-variable tables)
+   * 2. Checkpoint container nodes (current expression, same visual as variables but no edges).
+   *    Reuses makeVariableNodes since pending-assignments has the same shape as variables.
+   */
+  const { containerNodes: cpContainerNodes, containersByOuterAlias: cpContainersByAlias } =
+    makeVariableNodes(selectedTables ?? [], pendingAssignments, sessionId, isDark);
+  const checkpointOuterAliases = new Set(Object.keys(cpContainersByAlias));
+
+  /**
+   * 3. Normal selected nodes — exclude variable and checkpoint CTE tables
    */
   const allSelectedNodes = makeSelectedNodes(ast, sessionId, isDark);
-  const normalSelectedNodes = allSelectedNodes.filter(n => !variableOuterAliases.has(n.id));
+  const normalSelectedNodes = allSelectedNodes.filter(
+    n => !variableOuterAliases.has(n.id) && !checkpointOuterAliases.has(n.id),
+  );
 
   /**
-   * 3. Build node lookup for edges (variable outer alias → container node)
+   * 4. Node lookup for edges.
+   *    Variable containers are included so edges connect them to their neighbors.
+   *    Checkpoint containers are excluded — they are intentionally disconnected.
    */
   const selectedNodesLookup: Record<string, PineNode> = {};
   for (const n of normalSelectedNodes) selectedNodesLookup[n.id] = n;
-  for (const [outerAlias, containerNode] of Object.entries(containersByOuterAlias)) {
+  for (const [outerAlias, containerNode] of Object.entries(varContainersByAlias)) {
     selectedNodesLookup[outerAlias] = containerNode;
   }
   const contextNode: PineNode = selectedNodesLookup[context];
 
   /**
-   * 4. Suggested nodes
+   * 5. Suggested nodes
    */
   const suggestedNodes = makeSuggestedNodes(ast, sessionId, isDark);
 
-  graph.selectedNodes = [...normalSelectedNodes, ...containerNodes];
+  graph.selectedNodes = [...normalSelectedNodes, ...varContainerNodes, ...cpContainerNodes];
   graph.suggestedNodes = suggestedNodes;
 
   /**
-   * 5. Edges
+   * 6. Edges — checkpoint aliases are absent from selectedNodesLookup,
+   *    so their joins are silently skipped by the !x || !y guard below.
    */
   if (!selectedTables || selectedTables.length < 1) {
     graph.edges = [];

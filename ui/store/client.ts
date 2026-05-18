@@ -78,6 +78,7 @@ export type Ast = {
   prettified: string;
   ranges: PineRange[];
   variables?: Record<string, VariableAst>;
+  'pending-assignments'?: Record<string, VariableAst>;
   assign?: string;
 };
 
