@@ -302,12 +302,35 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
   const variableOuterAliases = new Set(Object.keys(varContainersByAlias));
 
   /**
-   * 2. Checkpoint container nodes (current expression, same visual as variables but no edges).
-   *    Reuses makeVariableNodes since pending-assignments has the same shape as variables.
+   * 2. Checkpoint container nodes (current expression, no edges).
+   *    Iterate all pending-assignments, not just those in selected-tables — earlier
+   *    checkpoints are consumed into later ones and don't appear in selected-tables.
+   *    Inner tables that are themselves checkpoint CTEs are excluded (they get their
+   *    own container).
    */
-  const { containerNodes: cpContainerNodes, containersByOuterAlias: cpContainersByAlias } =
-    makeVariableNodes(selectedTables ?? [], pendingAssignments, sessionId, isDark);
-  const checkpointOuterAliases = new Set(Object.keys(cpContainersByAlias));
+  const checkpointOuterAliases = new Set<string>();
+  const cpContainerNodes: PineVariableNode[] = [];
+
+  for (const [cteName, varAst] of Object.entries(pendingAssignments)) {
+    const outerTable = (selectedTables ?? []).find(t => t.table === cteName);
+    if (outerTable) checkpointOuterAliases.add(outerTable.alias);
+
+    const innerTables: VariableInnerTable[] = (varAst['tables'] ?? varAst['selected-tables'] ?? [])
+      .filter(t => !pendingAssignments[t.table])
+      .map(t => ({
+        table: t.table,
+        schema: t.schema,
+        alias: t.alias,
+        color: getSchemaColor(t.schema, isDark).color,
+      }));
+
+    cpContainerNodes.push({
+      id: `var:${cteName}`,
+      type: NodeType.Variable,
+      data: { type: 'variable', variableName: cteName, sessionId, innerTables },
+      position: { x: 0, y: 0 },
+    });
+  }
 
   /**
    * 3. Normal selected nodes — exclude variable and checkpoint CTE tables
