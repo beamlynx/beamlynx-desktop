@@ -29,8 +29,6 @@ const ActiveConnection = () => {
       ? connectionLabel.substring(0, 24) + '...'
       : connectionLabel
     : 'Not connected to database';
-  const status = isDbConnected ? '⚡' : '🔌';
-
   const displayText = global.pineConnected
     ? `${status} ${displayName}`
     : '🔌 No connection to Pine server!';
