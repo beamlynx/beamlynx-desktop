@@ -29,9 +29,8 @@ const ActiveConnection = () => {
       ? connectionLabel.substring(0, 24) + '...'
       : connectionLabel
     : 'Not connected to database';
-  const displayText = global.pineConnected
-    ? `${status} ${displayName}`
-    : '🔌 No connection to Pine server!';
+
+  const displayText = global.pineConnected ? displayName : '🔌 No connection to Pine server!';
 
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
