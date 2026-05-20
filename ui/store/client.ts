@@ -20,7 +20,7 @@ export type ColumnHint = {
 };
 
 export type CursorPosition = {
-  line: number;      // 0-indexed line number
+  line: number; // 0-indexed line number
   character: number; // 0-indexed character offset within line
 };
 
@@ -90,6 +90,17 @@ export type ConnectionStatsResponse = {
   time: Date;
 };
 
+export type ConnectionInfo = {
+  id: string;
+  label: string;
+};
+
+export type ConnectionsListResult = {
+  version: string;
+  'selected-connection-id': string | null;
+  connections: ConnectionInfo[];
+};
+
 export class HttpClient {
   constructor(private readonly onBuild?: (ast: Ast) => void) {}
 
@@ -123,6 +134,11 @@ export class HttpClient {
     };
   }
 
+  public async listConnections(): Promise<ConnectionsListResult | undefined> {
+    const res = await this.baseGet<{ result: ConnectionsListResult }>('connections');
+    return res?.result;
+  }
+
   private async post(path: string, body: object): Promise<Response | undefined> {
     const res = await fetch(`${getBaseUrl()}/api/v1/${path}`, {
       method: 'POST',
@@ -145,7 +161,10 @@ export class HttpClient {
   }
 
   public async prettify(expression: string, connectionId?: string): Promise<string> {
-    const response: Response | undefined = await this.post('build', this.withConnectionId({ expression }, connectionId));
+    const response: Response | undefined = await this.post(
+      'build',
+      this.withConnectionId({ expression }, connectionId),
+    );
     if (!response) {
       throw new Error('No response when trying to prettify');
     }
@@ -164,14 +183,21 @@ export class HttpClient {
   }
 
   public async sql(query: string, connectionId?: string): Promise<Response> {
-    const response = await this.post('sql', this.withConnectionId({ query: query.trim() }, connectionId));
+    const response = await this.post(
+      'sql',
+      this.withConnectionId({ query: query.trim() }, connectionId),
+    );
     if (!response) {
       throw new Error('No response when trying to execute SQL');
     }
     return response;
   }
 
-  public async build(expression: string, cursor?: CursorPosition, connectionId?: string): Promise<Response> {
+  public async build(
+    expression: string,
+    cursor?: CursorPosition,
+    connectionId?: string,
+  ): Promise<Response> {
     const body: { expression: string; cursor?: CursorPosition } = { expression };
     if (cursor) {
       body.cursor = cursor;
@@ -201,7 +227,10 @@ export class HttpClient {
   ): Promise<{ expressions: { expression: string; column: string }[]; ast: Ast }> {
     // Add trailing `|` explicitly for child expressions
     const x = `${expression} |`;
-    const response = await this.post('build', this.withConnectionId({ expression: x }, connectionId));
+    const response = await this.post(
+      'build',
+      this.withConnectionId({ expression: x }, connectionId),
+    );
     if (!response) {
       throw new Error('No response when trying to make child Expressions');
     }

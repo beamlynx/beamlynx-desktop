@@ -1,6 +1,6 @@
 import { makeAutoObservable } from 'mobx';
 import { lt } from 'semver';
-import { HttpClient } from './client';
+import { HttpClient, ConnectionInfo } from './client';
 import { Session, Theme } from './session';
 import { RequiredVersion } from '../constants';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
@@ -23,6 +23,7 @@ export class GlobalStore {
   version: string | undefined = undefined;
   requiresUpgrade = false;
   connectionColors: Record<string, string> = {};
+  connections: ConnectionInfo[] = [];
 
   get pineConnected() {
     return DevState.pineConnected ?? !!this.version;
@@ -137,6 +138,41 @@ export class GlobalStore {
     return this.connectionColors[connectionId] ?? '';
   };
 
+  getConnectionLabel = (connectionId: string): string => {
+    if (!connectionId) return '';
+    const conn = this.connections.find(c => c.id === connectionId);
+    return conn?.label ?? connectionId;
+  };
+
+  private pruneConnectionColors = (liveIds: string[]) => {
+    const live = new Set(liveIds);
+    let changed = false;
+    for (const id of Object.keys(this.connectionColors)) {
+      if (!live.has(id)) {
+        delete this.connectionColors[id];
+        changed = true;
+      }
+    }
+    if (changed) {
+      setUserPreference(STORAGE_KEYS.CONNECTION_COLORS, this.connectionColors);
+    }
+  };
+
+  refreshConnections = async (): Promise<ConnectionInfo[]> => {
+    const result = await client.listConnections();
+    if (!result) {
+      return this.connections;
+    }
+    this.connections = result.connections ?? [];
+    this.connections.forEach(c => this.assignConnectionColor(c.id));
+    this.pruneConnectionColors(this.connections.map(c => c.id));
+    if (result.version) {
+      this.version = result.version;
+    }
+    this.connection = result['selected-connection-id'] ?? '';
+    return this.connections;
+  };
+
   setConnectionColor = (connectionId: string, color: string) => {
     this.connectionColors[connectionId] = color;
     setUserPreference(STORAGE_KEYS.CONNECTION_COLORS, this.connectionColors);
@@ -147,7 +183,9 @@ export class GlobalStore {
     const used = new Set(Object.values(this.connectionColors));
     const color =
       CONNECTION_COLOR_PALETTE.find(c => !used.has(c)) ??
-      CONNECTION_COLOR_PALETTE[Object.keys(this.connectionColors).length % CONNECTION_COLOR_PALETTE.length];
+      CONNECTION_COLOR_PALETTE[
+        Object.keys(this.connectionColors).length % CONNECTION_COLOR_PALETTE.length
+      ];
     this.setConnectionColor(connectionId, color);
   };
 
@@ -223,11 +261,34 @@ export class GlobalStore {
     this.pineTableColorsEnabled = !this.pineTableColorsEnabled;
   }
 
-  getConnectionName = () => {
-    if (!this.connection) return '';
-    const length = this.connection.length;
-    const maxLength = 24;
-    return length > maxLength ? this.connection.substring(0, maxLength) + '...' : this.connection;
+  /**
+   * Select an existing server connection from the picker. Opens a new tab if the
+   * active tab has content; otherwise assigns the connection to the active tab.
+   */
+  selectConnection = async (connectionId: string) => {
+    const activeSession = this.sessions[this.activeSessionId];
+    if (!activeSession) {
+      return;
+    }
+    if (activeSession.connectionId === connectionId && this.connection === connectionId) {
+      return;
+    }
+    try {
+      const { id, version } = await client.useConnection(connectionId);
+      this.connection = id;
+      this.version = version ?? '0.0.0';
+      if (activeSession.expression.trim()) {
+        const session = this.createSession();
+        this.activeSessionId = session.id;
+      } else {
+        activeSession.connectionId = id;
+      }
+      await this.refreshConnections();
+    } catch (e) {
+      const message = (e as Error)?.message ?? 'Unknown error';
+      activeSession.message = `⚠ Failed to switch connection: ${message}`;
+      throw e;
+    }
   };
 
   connect = async (params: ConnectionParams): Promise<string> => {
@@ -246,7 +307,12 @@ export class GlobalStore {
 
     const activeSession = this.sessions[this.activeSessionId];
     if (activeSession) {
-      activeSession.connectionId = id;
+      if (activeSession.expression.trim()) {
+        const session = this.createSession();
+        this.activeSessionId = session.id;
+      } else {
+        activeSession.connectionId = id;
+      }
     }
     if (this.virtualSession) {
       this.virtualSession.connectionId = id;
@@ -255,6 +321,7 @@ export class GlobalStore {
     if (!this.onboardingServer) {
       this.onboardingServer = true;
     }
+    await this.refreshConnections();
     return id;
   };
 
@@ -279,7 +346,9 @@ export class GlobalStore {
    * This is the proper way to create a new tab in the UI.
    */
   addTab = () => {
+    const activeSession = this.sessions[this.activeSessionId];
     const session = this.createSession();
+    session.connectionId = activeSession?.connectionId || this.connection;
     this.activeSessionId = session.id;
   };
 
@@ -359,6 +428,8 @@ export class GlobalStore {
       if (lt(this.version, RequiredVersion)) {
         this.requiresUpgrade = true;
       }
+
+      await this.refreshConnections();
     } catch (e) {
       console.error('Failed to load connection metadata', e);
       this.connection = '';

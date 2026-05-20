@@ -12,10 +12,14 @@ import { IconButton, CircularProgress } from '@mui/material';
 
 const PineTabs = observer(() => {
   const { global } = useStores();
-  
+
   // Derive tabs directly from global sessions
   const tabs = Object.keys(global.sessions).map(sessionId => ({ sessionId }));
   const sessionId = global.activeSessionId;
+  const activeSession = global.sessions[sessionId];
+  const activeConnectionId = activeSession?.connectionId || global.connection;
+  const activeIndicatorColor =
+    global.getConnectionColor(activeConnectionId) || 'var(--border-color)';
 
   const setActiveTab = (newSessionId: string) => {
     global.activeSessionId = newSessionId;
@@ -37,9 +41,15 @@ const PineTabs = observer(() => {
     <Box sx={{ width: '100%', mt: 0, pt: 0 }}>
       <TabContext value={sessionId}>
         <Box
-          sx={{ borderBottom: 1, borderColor: 'divider', display: 'flex', alignItems: 'center', mt: 0 }}
+          sx={{
+            borderBottom: 1,
+            borderColor: 'divider',
+            display: 'flex',
+            alignItems: 'center',
+            mt: 0,
+          }}
         >
-          <TabList 
+          <TabList
             onChange={handleChange}
             sx={{
               '& .MuiTab-root': {
@@ -49,7 +59,7 @@ const PineTabs = observer(() => {
                 },
               },
               '& .MuiTabs-indicator': {
-                backgroundColor: 'var(--primary-color)',
+                backgroundColor: activeIndicatorColor,
               },
             }}
           >
@@ -75,12 +85,7 @@ const PineTabs = observer(() => {
                           }}
                         />
                       )}
-                      {session.loading && (
-                        <CircularProgress
-                          size={12}
-                          sx={{ color: 'inherit' }}
-                        />
-                      )}
+                      {session.loading && <CircularProgress size={12} sx={{ color: 'inherit' }} />}
                       {global.getSessionName(tab.sessionId)}
                       <IconButton
                         style={{ marginLeft: '5px' }}
@@ -110,16 +115,16 @@ const PineTabs = observer(() => {
           </TabList>
 
           {/* Button to add new tab */}
-          <AddCircle 
-            sx={{ 
-              ml: 2, 
+          <AddCircle
+            sx={{
+              ml: 2,
               cursor: 'pointer',
               color: 'var(--primary-color)',
               '&:hover': {
                 color: 'var(--primary-color-hover)',
               },
-            }} 
-            onClick={addTab} 
+            }}
+            onClick={addTab}
           />
         </Box>
 

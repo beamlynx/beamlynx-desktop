@@ -1,11 +1,4 @@
-import {
-  Box,
-  Grid,
-  Typography,
-  useTheme,
-  useMediaQuery,
-  Link,
-} from '@mui/material';
+import { Box, Grid, Typography, useTheme, useMediaQuery, Link } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
 import PineTabs from './PineTabs';
@@ -53,7 +46,7 @@ const AppView = observer(() => {
 
   useEffect(() => {
     setMounted(true);
-    
+
     // Check for unread updates
     const lastReadVersion = getUserPreference(STORAGE_KEYS.LAST_READ_VERSION, '0.0.0');
     const hasUpdates = compare(LATEST_VERSION, lastReadVersion) > 0;
@@ -194,12 +187,22 @@ const AppView = observer(() => {
         </Grid>
 
         <Grid item xs={3}>
-          <Box sx={{ m: 1, mt: 0, mb: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+          <Box
+            sx={{
+              m: 1,
+              mt: 0,
+              mb: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              gap: 1,
+            }}
+          >
+            <Typography variant="caption" color="gray" component="code">
+              [{global.version ?? 'obsolete'}]
+            </Typography>
             {UserContent}
-            <NotificationBell
-              hasUnreadUpdates={hasUnreadUpdates}
-              onClick={handleOpenChangelog}
-            />
+            <NotificationBell hasUnreadUpdates={hasUnreadUpdates} onClick={handleOpenChangelog} />
           </Box>
         </Grid>
       </Grid>
