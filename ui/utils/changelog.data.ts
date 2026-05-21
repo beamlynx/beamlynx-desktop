@@ -15,6 +15,20 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.43.0',
+    date: '2026-05-21',
+    added: [
+      {
+        description: 'Connection picker in each tab: click the connection dot to switch which database that tab queries.',
+      },
+    ],
+    breaking: [
+      {
+        description: 'Minimum required server version is now `0.36.0`.',
+      },
+    ],
+  },
+  {
     version: '0.42.0',
     date: '2026-05-05',
     added: [
@@ -885,4 +899,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.42.0';
+export const LATEST_VERSION = '0.43.0';

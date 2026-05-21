@@ -5,6 +5,13 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.43.0] - 2026-05-21
+### Added
+- Connection picker in each tab: click the connection dot to switch which database that tab queries.
+
+### Breaking
+- Minimum required server version is now `0.36.0`.
+
 ## [0.42.0] - 2026-05-05
 ### Added
 - Per-session database connections: each tab can connect to a different database. Queries from that tab always use its own connection.
