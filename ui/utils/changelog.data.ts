@@ -19,7 +19,7 @@ export const CHANGELOG: ChangelogVersion[] = [
     date: '2026-05-21',
     added: [
       {
-        description: 'Connection picker in each tab: click the connection dot to switch which database that tab queries.',
+        description: 'Connection picker in each tab: click the connection dot to switch which database that tab queries (by @Koziar).',
       },
     ],
     breaking: [
