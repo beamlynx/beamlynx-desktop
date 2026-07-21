@@ -42,6 +42,9 @@ export type VariableInnerTable = {
   schema: string;
   alias: string;
   color: string;
+  /** True when `table` is itself a variable/CTE (not a real database table) —
+   * e.g. a checkpoint sealing over a table that was itself assigned via `|=`. */
+  isVariable: boolean;
 };
 
 export type VariableNodeData = {

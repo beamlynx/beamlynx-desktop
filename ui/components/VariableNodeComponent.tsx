@@ -11,20 +11,25 @@ const handleStyle: React.CSSProperties = {
   borderRadius: '50%',
 };
 
-const InnerTableRow = ({ table, schema, alias, color }: VariableInnerTable) => (
+const InnerTableRow = ({ table, schema, alias, color, isVariable }: VariableInnerTable) => (
   <div
     style={{
       position: 'relative',
       padding: '6px 10px',
       margin: '0 8px 6px 8px',
-      border: '1px solid var(--node-border)',
-      background: 'var(--node-bg)',
+      border: isVariable
+        ? '1px dashed var(--node-variable-border, #7c5cbf)'
+        : '1px solid var(--node-border)',
+      background: isVariable ? 'var(--node-variable-bg, rgba(124, 92, 191, 0.05))' : 'var(--node-bg)',
       borderRadius: '4px',
-      color: 'var(--node-text-color)',
+      color: isVariable ? 'var(--node-variable-label-color, #7c5cbf)' : 'var(--node-text-color)',
       fontSize: '12px',
     }}
   >
-    <span>{table}</span>
+    {/* Same dashed-purple + "=" prefix language as the outer container's own
+        header, so a variable nested inside another one reads as a variable
+        wherever it appears, not as a plain table. */}
+    <span>{isVariable ? '= ' : ''}{table}</span>
     <span
       style={{
         marginLeft: '6px',
