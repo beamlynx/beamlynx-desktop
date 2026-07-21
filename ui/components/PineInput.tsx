@@ -166,110 +166,139 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
   const colorAst = showColors ? session.ast : null;
   const isDark = global.theme === 'dark';
 
+  // tableColorDecoration builds a brand-new CodeMirror StateField every call, so it must
+  // only be recreated when the underlying ast/theme actually changes, not on every render.
+  const tableColorExtension = useMemo(
+    () => tableColorDecoration(colorAst, isDark),
+    [colorAst, isDark],
+  );
+
   // Create extensions array with Pine language support and custom keymap
-  const extensions = [
-    pineLanguage,
-    autocompletionExtension,
-    cursorUpdateExtension,
-    ...tableColorDecoration(colorAst, isDark),
-    // Browser shortcuts - highest precedence to ensure they always work
-    Prec.highest(
-      keymap.of([
-        {
-          key: 'Mod-r', // Ctrl+R (Windows/Linux) or Cmd+R (Mac)
-          run: () => false, // Let browser handle reload
-        },
-        {
-          key: 'Mod-t', // Ctrl+T (Windows/Linux) or Cmd+T (Mac)
-          run: () => false, // Let browser handle new tab
-        },
-        {
-          key: 'Mod-w', // Ctrl+W (Windows/Linux) or Cmd+W (Mac)
-          run: () => false, // Let browser handle close tab
-        },
-        {
-          key: 'F5',
-          run: () => false, // Let browser handle F5 (reload)
-        },
-      ]),
-    ),
-    Prec.high(
-      keymap.of([
-        {
-          key: 'Mod-Enter',
-          run: () => {
-            // Trigger evaluation with Cmd/Ctrl+Enter
-            session.evaluate();
-            return true;
+  //
+  // Memoized: react-codemirror reconfigures (tears down and rebuilds) the entire editor
+  // — decorations, autocompletion, keymaps, cursor tracking — whenever this array's
+  // *reference* changes (see its internal useEffect keyed on the extensions prop). Without
+  // memoization this array was rebuilt fresh on every render of this observer component,
+  // i.e. on every keystroke, forcing a full reconfigure each time. That cost scales with
+  // document size, which is why it got worse with more expression blocks.
+  const extensions = useMemo(() => {
+    const exts = [
+      pineLanguage,
+      autocompletionExtension,
+      cursorUpdateExtension,
+      ...tableColorExtension,
+      // Browser shortcuts - highest precedence to ensure they always work
+      Prec.highest(
+        keymap.of([
+          {
+            key: 'Mod-r', // Ctrl+R (Windows/Linux) or Cmd+R (Mac)
+            run: () => false, // Let browser handle reload
           },
-        },
-        {
-          key: 'Mod-Space',
-          run: view => {
-            // Trigger autocompletion with Cmd/Ctrl+Space
-            session.requestHints(); // Trigger rebuild
-            return startCompletion(view);
+          {
+            key: 'Mod-t', // Ctrl+T (Windows/Linux) or Cmd+T (Mac)
+            run: () => false, // Let browser handle new tab
           },
-        },
-        {
-          key: 'Tab',
-          run: view => {
-            const status = completionStatus(view.state);
-            if (status === 'active') {
-              return moveCompletionSelection(true)(view);
-            } else {
+          {
+            key: 'Mod-w', // Ctrl+W (Windows/Linux) or Cmd+W (Mac)
+            run: () => false, // Let browser handle close tab
+          },
+          {
+            key: 'F5',
+            run: () => false, // Let browser handle F5 (reload)
+          },
+        ]),
+      ),
+      Prec.high(
+        keymap.of([
+          {
+            key: 'Mod-Enter',
+            run: () => {
+              // Trigger evaluation with Cmd/Ctrl+Enter
+              session.evaluate();
+              return true;
+            },
+          },
+          {
+            key: 'Mod-Space',
+            run: view => {
+              // Trigger autocompletion with Cmd/Ctrl+Space
               session.requestHints(); // Trigger rebuild
               return startCompletion(view);
-            }
+            },
           },
-        },
-        {
-          key: 'Shift-Tab',
-          run: view => {
-            // Check if autocompletion is currently active
-            const status = completionStatus(view.state);
-
-            if (status === 'active') {
-              // If suggestions are showing, move to the previous suggestion
-              return moveCompletionSelection(false)(view);
-            } else {
-              // If no suggestions are showing, let default behavior handle it
-              return false;
-            }
+          {
+            key: 'Tab',
+            run: view => {
+              const status = completionStatus(view.state);
+              if (status === 'active') {
+                return moveCompletionSelection(true)(view);
+              } else {
+                session.requestHints(); // Trigger rebuild
+                return startCompletion(view);
+              }
+            },
           },
-        },
-        {
-          key: '|',
-          run: view => {
-            // Get current cursor position and document
-            const pos = view.state.selection.main.head;
-            const doc = view.state.doc;
+          {
+            key: 'Shift-Tab',
+            run: view => {
+              // Check if autocompletion is currently active
+              const status = completionStatus(view.state);
 
-            // If not at end, let the default behavior handle it
-            if (pos !== doc.length) {
-              return false;
-            }
-
-            // Insert the pipe character first
-            view.dispatch({
-              changes: { from: pos, to: pos, insert: '|' },
-              selection: { anchor: pos + 1 },
-            });
-
-            // Call prettify with the current editor content to avoid race conditions
-            debouncedPrettifyOnPipe(view, view.state.doc.toString());
-
-            return true;
+              if (status === 'active') {
+                // If suggestions are showing, move to the previous suggestion
+                return moveCompletionSelection(false)(view);
+              } else {
+                // If no suggestions are showing, let default behavior handle it
+                return false;
+              }
+            },
           },
-        },
-      ]),
-    ),
-  ];
+          {
+            key: '|',
+            run: view => {
+              // Get current cursor position and document
+              const pos = view.state.selection.main.head;
+              const doc = view.state.doc;
 
-  if (session.vimMode) {
-    // Add vim mode with high precedence, but lower than browser shortcuts
-    extensions.push(Prec.high(vim()));
-  }
+              // If not at end, let the default behavior handle it
+              if (pos !== doc.length) {
+                return false;
+              }
+
+              // Insert the pipe character first
+              view.dispatch({
+                changes: { from: pos, to: pos, insert: '|' },
+                selection: { anchor: pos + 1 },
+              });
+
+              // Call prettify with the current editor content to avoid race conditions
+              debouncedPrettifyOnPipe(view, view.state.doc.toString());
+
+              return true;
+            },
+          },
+        ]),
+      ),
+    ];
+
+    if (session.vimMode) {
+      // Add vim mode with high precedence, but lower than browser shortcuts
+      exts.push(Prec.high(vim()));
+    }
+
+    return exts;
+    // session.vimMode is listed deliberately, not redundantly: session itself is a stable
+    // reference for this component's lifetime (each tab is keyed by sessionId), so depending
+    // on session alone would never re-run this memo when vim mode is toggled.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    autocompletionExtension,
+    cursorUpdateExtension,
+    tableColorExtension,
+    session,
+    session.vimMode,
+    debouncedPrettifyOnPipe,
+  ]);
 
   return (
     <CodeMirror
