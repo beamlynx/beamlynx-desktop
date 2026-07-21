@@ -193,7 +193,6 @@ const makeVariableNodes = (
       schema: t.schema,
       alias: t.alias,
       color: getSchemaColor(t.schema, isDark).color,
-      isVariable: Boolean(variables[t.table]),
     }));
 
     const containerId = `var:${variableName}`;
@@ -328,7 +327,6 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
         schema: t.schema,
         alias: t.alias,
         color: getSchemaColor(t.schema, isDark).color,
-        isVariable: Boolean(variables[t.table]),
       }));
 
     const containerNode: PineVariableNode = {
