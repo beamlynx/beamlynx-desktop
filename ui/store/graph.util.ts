@@ -302,18 +302,23 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
   const variableOuterAliases = new Set(Object.keys(varContainersByAlias));
 
   /**
-   * 2. Checkpoint container nodes (current expression, no edges).
-   *    Iterate all pending-assignments, not just those in selected-tables — earlier
-   *    checkpoints are consumed into later ones and don't appear in selected-tables.
+   * 2. Checkpoint container nodes (current expression).
+   *    pending-assignments holds every `|= name`, whether or not it actually sealed
+   *    anything — a bare `|= name` with no preceding group:/limit: never resets the
+   *    pipeline, so its wrapped table(s) stay in selected-tables and render normally.
+   *    Only build a container for entries that truly replaced a table in
+   *    selected-tables (found via outerTable below); anything else has nothing to
+   *    represent in this expression's graph — it only matters to later expressions.
    *    Inner tables that are themselves checkpoint CTEs are excluded (they get their
    *    own container).
    */
   const checkpointOuterAliases = new Set<string>();
+  const checkpointContainersByOuterAlias: Record<string, PineVariableNode> = {};
   const cpContainerNodes: PineVariableNode[] = [];
 
   for (const [cteName, varAst] of Object.entries(pendingAssignments)) {
     const outerTable = (selectedTables ?? []).find(t => t.table === cteName);
-    if (outerTable) checkpointOuterAliases.add(outerTable.alias);
+    if (!outerTable) continue;
 
     const innerTables: VariableInnerTable[] = (varAst['tables'] ?? varAst['selected-tables'] ?? [])
       .filter(t => !pendingAssignments[t.table])
@@ -324,12 +329,16 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
         color: getSchemaColor(t.schema, isDark).color,
       }));
 
-    cpContainerNodes.push({
+    const containerNode: PineVariableNode = {
       id: `var:${cteName}`,
       type: NodeType.Variable,
       data: { type: 'variable', variableName: cteName, sessionId, innerTables },
       position: { x: 0, y: 0 },
-    });
+    };
+
+    checkpointOuterAliases.add(outerTable.alias);
+    checkpointContainersByOuterAlias[outerTable.alias] = containerNode;
+    cpContainerNodes.push(containerNode);
   }
 
   /**
@@ -341,13 +350,17 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
   );
 
   /**
-   * 4. Node lookup for edges.
-   *    Variable containers are included so edges connect them to their neighbors.
-   *    Checkpoint containers are excluded — they are intentionally disconnected.
+   * 4. Node lookup for edges. Variable and checkpoint containers are both included
+   *    so joins/suggested-node edges connect to them like any other table — a
+   *    sealed checkpoint replaces a real table in the pipeline, so it needs to be
+   *    joinable the same way.
    */
   const selectedNodesLookup: Record<string, PineNode> = {};
   for (const n of normalSelectedNodes) selectedNodesLookup[n.id] = n;
   for (const [outerAlias, containerNode] of Object.entries(varContainersByAlias)) {
+    selectedNodesLookup[outerAlias] = containerNode;
+  }
+  for (const [outerAlias, containerNode] of Object.entries(checkpointContainersByOuterAlias)) {
     selectedNodesLookup[outerAlias] = containerNode;
   }
   const contextNode: PineNode = selectedNodesLookup[context];
@@ -361,8 +374,9 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
   graph.suggestedNodes = suggestedNodes;
 
   /**
-   * 6. Edges — checkpoint aliases are absent from selectedNodesLookup,
-   *    so their joins are silently skipped by the !x || !y guard below.
+   * 6. Edges — resolved through selectedNodesLookup, which now includes both
+   *    variable and checkpoint containers, so joins/suggested edges connect to
+   *    them the same as any real table.
    */
   if (!selectedTables || selectedTables.length < 1) {
     graph.edges = [];
