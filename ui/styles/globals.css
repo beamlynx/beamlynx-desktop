@@ -63,6 +63,10 @@ a {
   fill: var(--text-color);
 }
 
+.react-flow__edge-textbg {
+  fill: var(--graph-background) !important;
+}
+
 .react-flow__edge.react-flow__edge-straight,
 .react-flow__edge.react-flow__edge-step,
 .react-flow__edge.react-flow__edge-bezier {

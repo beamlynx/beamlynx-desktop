@@ -1,5 +1,13 @@
 import { Edge, Position } from 'reactflow';
-import { PineEdge, PineNode, PineSelectedNode, PineSuggestedNode, PineVariableNode, VariableInnerTable } from '../model';
+import {
+  PineEdge,
+  PineNode,
+  PineSelectedNode,
+  PineSuggestedNode,
+  PineVariableNode,
+  SuggestedNodeData,
+  VariableInnerTable,
+} from '../model';
 import { NodeType } from '../components/Graph.box';
 import { Ast, Column, ColumnHint, Table, TableHint, VariableAst, WhereCondition } from './client';
 import dagre from 'dagre';
@@ -126,6 +134,15 @@ export const makeSuggestedNode = (
     position: { x: 0, y: 0 },
   };
 };
+
+/**
+ * Relation label for the edge to whichever suggested node is currently the
+ * candidate. `hint.column` is always the FK column, i.e. the child side of
+ * the relation — the parent's referenced column isn't exposed by the hints
+ * API, so (as with a confirmed join) only the column is shown, no alias.
+ */
+export const makeHintEdgeLabel = (hint: SuggestedNodeData): string | undefined =>
+  hint.column ? `.${hint.column}` : undefined;
 
 const makeColumnsLookup = (columns: Column[]): Record<string, string[]> => {
   return columns.reduce(
@@ -393,7 +410,13 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
     const e = relation[2] === 'has' ? { from: x, to: y } : { from: y, to: x };
     const id = makeId(e);
     if (!edgeLookup[id]) {
-      edgeLookup[id] = { id, source: e.from.id, target: e.to.id };
+      // e.from/e.to are always parent/child respectively (see the `e` computation
+      // above), so the label can drop the alias and lean on that fixed position
+      // instead: parent's column always on the left, child's always on the right.
+      const [, col1, relType, , col2] = relation;
+      const [parentCol, childCol] = relType === 'has' ? [col1, col2] : [col2, col1];
+      const label = `.${parentCol} = .${childCol}`;
+      edgeLookup[id] = { id, source: e.from.id, target: e.to.id, label };
     }
   }
 
@@ -403,6 +426,9 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
     const e = { to: isParent ? contextNode : y, from: isParent ? y : contextNode };
     const id = makeId(e);
     if (!edgeLookup[id]) {
+      // No label here — a plain (non-candidate) hint edge stays unlabeled. The
+      // graph re-labels this edge only for whichever suggested node is
+      // currently the candidate (see makeHintEdgeLabel / Graph.box.tsx).
       edgeLookup[id] = { id, source: e.from.id, target: e.to.id };
     }
   }

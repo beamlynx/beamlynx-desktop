@@ -49,6 +49,11 @@ export type Operation = {
 };
 export type WhereCondition = [string, string, null, string, { type: string; value: string } | null];
 
+/** ON-clause equality: `${alias1}.${col1} = ${alias2}.${col2}`. Position 2 (`'has'`/`'of'`) records which side owns the FK. */
+export type JoinRelation = [string, string, 'has' | 'of', string, string];
+/** `[from-alias, to-alias, relation, join-type]` — join-type is `'LEFT'`/`'RIGHT'`/null (inner). */
+export type JoinTuple = [string, string, JoinRelation | null, string | null];
+
 export type Column = { alias: string; column: string; 'column-alias': string; hidden: boolean };
 
 /** Range returned by the build endpoint mapping segments to table aliases */
@@ -61,14 +66,14 @@ export type PineRange = {
 export type VariableAst = {
   'selected-tables': Table[];
   tables?: Table[];
-  joins: string[][];
+  joins: JoinTuple[];
   columns: Column[];
 };
 
 export type Ast = {
   hints: Hints;
   'selected-tables': Table[];
-  joins: string[][];
+  joins: JoinTuple[];
   context: string;
   // current: string;
   operation: Operation;
