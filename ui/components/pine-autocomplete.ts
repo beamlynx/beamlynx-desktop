@@ -19,6 +19,11 @@ interface PineCompletion extends Completion {
 
 interface PineCompletionContext {
   hints: Hints | null;
+  // A live getter rather than a snapshot value: reading it fresh on every
+  // completion query reflects the current build status without needing the
+  // (memoized, teardown-on-change) autocompletion extension to be rebuilt
+  // whenever loading starts/stops.
+  isLoading: () => boolean;
 }
 
 // Callback interface for autocomplete highlight events
@@ -137,7 +142,7 @@ function getPineCompletions(
     completions.push({
       expression: '',
       label: '',
-      detail: 'Nothing found',
+      detail: pineContext.isLoading() ? 'Loading...' : 'Nothing found',
       apply: () => {},
       boost: 100,
     });

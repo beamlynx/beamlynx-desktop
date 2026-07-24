@@ -186,6 +186,10 @@ export class Session {
    */
   private lastHintsCursorPosition?: { line: number; character: number };
 
+  /** True while a build request is in flight, so the autocomplete dropdown can
+   * show a loading state instead of misreporting "Nothing found". */
+  hintsLoading: boolean = false;
+
   /** All expression blocks split from the editor text (blank-line separated) */
   get expressions(): string[] {
     return splitExpressions(this.expression).map(b => b.text);
@@ -214,6 +218,27 @@ export class Session {
     };
 
     /**
+     * Mark hints as loading the moment a build is queued, not once it starts
+     * running. The debounced reaction below only flips `hintsLoading` back to
+     * false once its (debounced, then awaited) fetch actually completes, but
+     * flipping it true has to happen synchronously here: the autocomplete
+     * dropdown reads `isLoading()` once, when it opens, and only re-queries
+     * on the next document change or hints update — not on every store
+     * change — so by the time the debounced body below would set it, the
+     * dropdown may already have rendered its (possibly empty) "Nothing
+     * found" state from the stale hints.
+     */
+    reaction(
+      () => ({
+        expression: this.expression,
+        trigger: this.hintsRequestedCounter,
+      }),
+      () => {
+        this.hintsLoading = true;
+      },
+    );
+
+    /**
      * Handle the expression and explicit hint requests
      * - Get the http response
      */
@@ -225,6 +250,7 @@ export class Session {
       debounce(async ({ expression }) => {
         // Skip building if in SQL mode - no Pine expression to build
         if (this.inputMode === 'sql') {
+          this.hintsLoading = false;
           return;
         }
 
@@ -252,6 +278,8 @@ export class Session {
           this.lastHintsCursorPosition = cursor;
         } catch (e) {
           this.error = (e as any).message || 'Failed to build';
+        } finally {
+          this.hintsLoading = false;
         }
       }, 200),
     );
