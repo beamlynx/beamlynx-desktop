@@ -179,6 +179,13 @@ export class Session {
   /** Cursor position */
   cursorPosition?: { line: number; character: number };
 
+  /**
+   * Cursor position used by the most recently resolved build. Lets
+   * requestHints() skip firing when the cursor hasn't moved since — see its
+   * doc comment for why that redundant rebuild is worth avoiding.
+   */
+  private lastHintsCursorPosition?: { line: number; character: number };
+
   /** All expression blocks split from the editor text (blank-line separated) */
   get expressions(): string[] {
     return splitExpressions(this.expression).map(b => b.text);
@@ -242,6 +249,7 @@ export class Session {
             ? { line: cursor.line - blocks[activeIdx].startLine, character: cursor.character }
             : cursor;
           this.response = await client.build(activeExpressions, adjustedCursor, this.connectionId);
+          this.lastHintsCursorPosition = cursor;
         } catch (e) {
           this.error = (e as any).message || 'Failed to build';
         }
@@ -444,6 +452,25 @@ export class Session {
   }
 
   public requestHints() {
+    // Only needed when the cursor moved without a text change — e.g. clicking
+    // or arrow-keying into an earlier segment, then pressing Tab — since the
+    // build reaction above is keyed on `expression`, not cursor position, and
+    // won't refire on its own. If the cursor hasn't moved since the last
+    // build, hints are already fresh for it: skip the rebuild. Firing it
+    // anyway would still resolve to the same hints, but the new (structurally
+    // identical) response replaces `ast`, which recreates the CodeMirror
+    // autocompletion extension mid-open and flickers the just-highlighted
+    // candidate.
+    const { cursorPosition, lastHintsCursorPosition } = this;
+    if (
+      cursorPosition &&
+      lastHintsCursorPosition &&
+      cursorPosition.line === lastHintsCursorPosition.line &&
+      cursorPosition.character === lastHintsCursorPosition.character
+    ) {
+      return;
+    }
+
     // Increment counter to trigger the reaction
     this.hintsRequestedCounter++;
   }
