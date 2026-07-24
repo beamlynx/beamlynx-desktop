@@ -134,3 +134,18 @@ a {
   background: #90caf9 !important;
   color: #0d47a1 !important;
 }
+
+/* The loading/no-results row is auto-selected (it's the only option), but
+ * it isn't a real candidate — give it its own colors instead of the
+ * selected-candidate highlight above. */
+.cm-editor .cm-tooltip-autocomplete ul li.pine-autocomplete-loading,
+.cm-editor .cm-tooltip-autocomplete ul li.pine-autocomplete-loading[aria-selected] {
+  background: transparent !important;
+  color: var(--icon-color) !important;
+}
+
+.cm-editor .cm-tooltip-autocomplete ul li.pine-autocomplete-empty,
+.cm-editor .cm-tooltip-autocomplete ul li.pine-autocomplete-empty[aria-selected] {
+  background: transparent !important;
+  color: var(--node-suggested-border) !important;
+}

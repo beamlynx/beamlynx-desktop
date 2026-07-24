@@ -139,10 +139,14 @@ function getPineCompletions(
   }
 
   if (completions.length === 0) {
+    const loading = pineContext.isLoading();
     completions.push({
       expression: '',
       label: '',
-      detail: pineContext.isLoading() ? 'Loading...' : 'Nothing found',
+      detail: loading ? 'Loading...' : 'Nothing found',
+      // Marks this as a non-candidate placeholder so optionClass (below) can
+      // style it distinctly instead of inheriting the selected-candidate look.
+      type: loading ? 'pine-loading' : 'pine-empty',
       apply: () => {},
       boost: 100,
     });
@@ -213,7 +217,13 @@ export function createPineAutocompletion(
       maxRenderedOptions: MAX_AUTOCOMPLETE_OPTIONS,
       defaultKeymap: true,
       tooltipClass: () => 'pine-autocomplete-tooltip',
-      optionClass: () => 'pine-autocomplete-option',
+      optionClass: (completion: Completion) => {
+        if (completion.type === 'pine-loading')
+          return 'pine-autocomplete-option pine-autocomplete-loading';
+        if (completion.type === 'pine-empty')
+          return 'pine-autocomplete-option pine-autocomplete-empty';
+        return 'pine-autocomplete-option';
+      },
       aboveCursor: false,
       icons: false,
     }),
