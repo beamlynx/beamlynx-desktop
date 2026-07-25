@@ -10,6 +10,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - Suggested and candidate table nodes now show the relevant FK column beneath the table name, matching the column labels already shown on confirmed handles.
 
 ### Fixed
+- A relation handle's column label sat visibly above its dot on the right side of a node (left-side labels happened to look fine) — these short, descender-less labels (e.g. "id") render high within their own line box regardless of side, and the right side's proximity to the dot made the offset far more noticeable. Nudged the label to match the dot's visual center instead of just its box center.
 - The FK column label on a candidate node (the highlighted Tab-cycled suggestion) was nearly illegible in dark mode — it kept the same muted secondary-text color used on plain suggestions instead of switching to the candidate's higher-contrast text color.
 - A selected node's relation handle lost its column label (fell back to a blank placeholder) whenever the other end of that relation was the pipeline's still-being-typed last table, which isn't promoted to a real selected node until something follows it — the real column from the confirmed join is now used instead of discarding it.
 - A node's lone relation handle (only one FK relation on that side) now shows its column label instead of staying an anonymous dot — a single dot could be any column, so it's identified the same as multi-handle sides.

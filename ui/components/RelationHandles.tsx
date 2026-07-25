@@ -61,7 +61,13 @@ export const RelationHandles = ({
                 style={{
                   position: 'absolute',
                   top,
-                  transform: 'translateY(-50%)',
+                  // A tight line-height limits font-metric leading, but the
+                  // glyphs themselves (no descenders in these labels) still
+                  // render high within even a 1-line-height box - nudge the
+                  // box down a couple px so the visible ink lines up with
+                  // the dot instead of just the (empty-looking) box center.
+                  lineHeight: 1,
+                  transform: 'translateY(calc(-50% + 2px))',
                   maxWidth: maxLabelWidth,
                   fontSize: '7px',
                   fontFamily: 'Courier, monospace',
