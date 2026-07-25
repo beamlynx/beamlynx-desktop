@@ -10,7 +10,13 @@ import {
 } from '../model';
 import { NodeType } from '../components/Graph.box';
 import { Ast, Column, ColumnHint, Table, TableHint, VariableAst, WhereCondition } from './client';
-import { effectiveHandleCount, getSelectedNodeHeight, getVariableNodeHeight, nodeWidth } from './node-layout';
+import {
+  effectiveHandleCount,
+  getSelectedNodeHeight,
+  getSuggestedNodeHeight,
+  getVariableNodeHeight,
+  nodeWidth,
+} from './node-layout';
 import dagre from 'dagre';
 
 export type Graph = {
@@ -483,8 +489,12 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
         } else {
           // Context is the parent/source side. The hint only exposes the
           // suggested (child) table's FK column, never context's own
-          // referenced column, so every such relation collapses onto one
-          // shared handle — matching the single-handle behavior this replaces.
+          // referenced column - pine-lang has no primary-key concept at all
+          // (see db/postgres.clj), so this is never something we're told,
+          // confirmed relation or not. "id" is a hardcoded guess (virtually
+          // always right in practice) standing in until a real join gives us
+          // the actual column - every such relation collapses onto one
+          // shared handle, matching the single-handle behavior this replaces.
           // If a confirmed join already gave this node exactly one right
           // handle, reuse it (it's virtually always the same referenced
           // column) instead of adding a second, redundant-looking dot.
@@ -492,7 +502,7 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
           sourceHandle =
             existing?.size === 1
               ? Array.from(existing.values())[0].id
-              : addHandle(rightHandlesByNode, contextNode.id, '', 'r', y.id);
+              : addHandle(rightHandlesByNode, contextNode.id, 'id', 'r', y.id);
         }
       }
       edgeLookup[id] = { id, source: e.from.id, target: e.to.id, sourceHandle, targetHandle };
@@ -532,6 +542,9 @@ export const getNodeHeight = (node: PineNode) => {
       effectiveHandleCount(node.data.leftHandles),
       effectiveHandleCount(node.data.rightHandles),
     );
+  }
+  if (node.data.type === 'suggested') {
+    return getSuggestedNodeHeight(!!node.data.column);
   }
   return 20;
 };

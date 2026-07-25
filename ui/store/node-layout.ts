@@ -40,3 +40,14 @@ export const getVariableNodeHeight = (leftEffectiveCount: number, rightEffective
   if (maxHandles === 0) return minVariableNodeHeight;
   return variableNodeHeaderHeight + maxHandles * handleRowHeight + handleListBottomPadding;
 };
+
+// A suggested/candidate node has at most one relation, so unlike the other
+// node types it never needs more than a single handle row - just a fixed
+// header (the table name line, measured at ~46px with the component's actual
+// font-size/line-height/padding) plus, when the hint carries a column, one
+// caption row below it that the handle must line up with.
+export const suggestedNodeHeaderHeight = 46;
+const minSuggestedNodeHeight = suggestedNodeHeaderHeight + 12;
+
+export const getSuggestedNodeHeight = (hasColumn: boolean) =>
+  hasColumn ? suggestedNodeHeaderHeight + handleRowHeight + handleListBottomPadding : minSuggestedNodeHeight;

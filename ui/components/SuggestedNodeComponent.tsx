@@ -3,6 +3,13 @@ import { Handle, NodeProps, Position } from 'reactflow';
 import { SuggestedNodeData } from '../model';
 import { Session } from '../store/session';
 import { useStores } from '../store/store-container';
+import {
+  getSuggestedNodeHeight,
+  handleRowHeight,
+  nodeWidth,
+  suggestedNodeHeaderHeight,
+} from '../store/node-layout';
+import { handleLabelInset } from './RelationHandles';
 
 const handleStyle: React.CSSProperties = {
   width: '2px',
@@ -10,6 +17,13 @@ const handleStyle: React.CSSProperties = {
   background: 'darkgray',
   borderRadius: '50%',
 };
+
+// Row 0's vertical center below the header - the only row a suggested node
+// ever has, so both its handle and column label anchor here (see
+// RelationHandles, which uses the same headerHeight + 0.5*rowHeight math for
+// a selected/variable node's rows).
+const columnRowTop = suggestedNodeHeaderHeight + 0.5 * handleRowHeight;
+const columnLabelMaxWidth = nodeWidth - handleLabelInset * 2;
 
 type PineNodeProps = NodeProps<SuggestedNodeData>;
 
@@ -48,6 +62,9 @@ const SuggestedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
       style={{
         cursor: 'pointer',
         position: 'relative',
+        boxSizing: 'border-box',
+        width: nodeWidth,
+        minHeight: getSuggestedNodeHeight(!!data.column),
         padding: '12px 10px 12px 10px',
         border,
         background,
@@ -55,12 +72,22 @@ const SuggestedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
         color: textColor,
       }}
     >
-      <div>{isVariable ? `= ${data.table}` : data.table}</div>
+      <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        {isVariable ? `= ${data.table}` : data.table}
+      </div>
       {data.column && (
         <div
           title={data.column}
           style={{
-            fontSize: '8px',
+            position: 'absolute',
+            top: columnRowTop,
+            // Matches RelationHandles' own centering fix: these short,
+            // descender-less labels render high within their line box
+            // regardless of line-height, so nudge down to meet the dot.
+            lineHeight: 1,
+            transform: 'translateY(calc(-50% + 2px))',
+            maxWidth: columnLabelMaxWidth,
+            fontSize: '7px',
             fontFamily: 'Courier, monospace',
             // --node-secondary-text-color is a muted gray tuned for contrast
             // against the normal suggested background - against the bright
@@ -70,6 +97,8 @@ const SuggestedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
+            pointerEvents: 'none',
+            ...(data.parent ? { right: handleLabelInset } : { left: handleLabelInset }),
           }}
         >
           {data.column}
@@ -97,9 +126,25 @@ const SuggestedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
           only ever attaches on one side: a child suggestion (data.parent
           false) receives the edge on its left, a parent suggestion attaches
           from its right. Rendering the other side's handle unconditionally
-          suggested a connection that doesn't exist. */}
-      {!data.parent && <Handle type="target" position={Position.Left} style={handleStyle} />}
-      {data.parent && <Handle type="source" position={Position.Right} style={handleStyle} />}
+          suggested a connection that doesn't exist.
+          Positioned at the same columnRowTop as the column label above -
+          without this it falls back to React Flow's default vertical
+          center, which doesn't line up with the label once the node grows
+          taller than its old single-line-only height. */}
+      {!data.parent && (
+        <Handle
+          type="target"
+          position={Position.Left}
+          style={{ ...handleStyle, top: columnRowTop }}
+        />
+      )}
+      {data.parent && (
+        <Handle
+          type="source"
+          position={Position.Right}
+          style={{ ...handleStyle, top: columnRowTop }}
+        />
+      )}
     </div>
   );
 };
