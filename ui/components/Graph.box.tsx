@@ -169,6 +169,13 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId, containerRef }) => {
       nodesConnectable={false}
       draggable={true}
       elementsSelectable={true}
+      // The graph is a derived view of the Pine expression, not an editable
+      // canvas - React Flow's default Backspace/Delete key removes the
+      // selected node/edge from local state, but nothing about the
+      // underlying expression changes, so it silently reappears on the next
+      // graph regeneration. Disable it so there's no dead-end "delete" that
+      // doesn't actually do anything.
+      deleteKeyCode={null}
       minZoom={0.5}
       maxZoom={1.2}
       proOptions={{ hideAttribution: true }}

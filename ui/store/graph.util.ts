@@ -198,7 +198,8 @@ const makeVariableNodes = (
   const containerNodes: PineVariableNode[] = [];
   const containersByOuterAlias: Record<string, PineVariableNode> = {};
 
-  for (const outerTable of outerSelectedTables) {
+  for (let i = 0; i < outerSelectedTables.length; i++) {
+    const outerTable = outerSelectedTables[i];
     const varAst = variables[outerTable.table];
     if (!varAst) continue;
 
@@ -222,6 +223,7 @@ const makeVariableNodes = (
         variableName,
         sessionId,
         innerTables,
+        order: i + 1,
         leftHandles: [],
         rightHandles: [],
       },
@@ -336,8 +338,9 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
   const cpContainerNodes: PineVariableNode[] = [];
 
   for (const [cteName, varAst] of Object.entries(pendingAssignments)) {
-    const outerTable = (selectedTables ?? []).find(t => t.table === cteName);
-    if (!outerTable) continue;
+    const outerTableIndex = (selectedTables ?? []).findIndex(t => t.table === cteName);
+    if (outerTableIndex === -1) continue;
+    const outerTable = selectedTables![outerTableIndex];
 
     const innerTables: VariableInnerTable[] = (varAst['tables'] ?? varAst['selected-tables'] ?? [])
       .filter(t => !pendingAssignments[t.table])
@@ -351,7 +354,15 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
     const containerNode: PineVariableNode = {
       id: `var:${cteName}`,
       type: NodeType.Variable,
-      data: { type: 'variable', variableName: cteName, sessionId, innerTables, leftHandles: [], rightHandles: [] },
+      data: {
+        type: 'variable',
+        variableName: cteName,
+        sessionId,
+        innerTables,
+        order: outerTableIndex + 1,
+        leftHandles: [],
+        rightHandles: [],
+      },
       position: { x: 0, y: 0 },
     };
 

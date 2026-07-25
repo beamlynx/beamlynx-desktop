@@ -6,7 +6,9 @@ type BaseNode = {
   // rather than a real table (see TableHint in client.ts).
   schema: string | null;
   table: string;
-  column: string | null; // TODO: rename to joinOn column
+  // undefined on a suggested node with no context at all (the first table
+  // typed, with no relation to describe yet) - see TableHint in client.ts.
+  column?: string | null; // TODO: rename to joinOn column
   color?: string | null;
 };
 
@@ -38,8 +40,10 @@ export type SelectedNodeData = BaseNode & {
 export type SuggestedNodeData = BaseNode & {
   type: 'suggested' | 'candidate';
   pine: string;
-  parent: boolean;
-  heuristic: boolean;
+  // Both undefined together on a no-context hint (the first table typed) -
+  // there's no relation direction to describe yet.
+  parent?: boolean;
+  heuristic?: boolean;
 };
 
 export type InputNodeData = {
@@ -63,6 +67,10 @@ export type VariableNodeData = {
   variableName: string;
   sessionId: string;
   innerTables: VariableInnerTable[];
+  // Its position among selected-tables, same as SelectedNodeData.order — a
+  // container replaces one of those entries rather than adding a new one, so
+  // it takes over that entry's position number.
+  order: number;
   // Same per-relation handle treatment as SelectedNodeData — a checkpoint
   // container replaces a real table in the pipeline, so joins/hints connect
   // to it the same way and it needs the same handles.

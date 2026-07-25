@@ -13,9 +13,12 @@ export type TableHint = {
   table: string;
   // null for synthetic variable-to-variable join hints, which don't expose a
   // specific column (see create-hint-from-relation-array in pine-lang).
-  column: string | null;
-  parent: boolean;
-  heuristic: boolean;
+  // Both column and parent/heuristic are entirely absent (not even null) on
+  // a no-context hint (create-hint-from-table, the very first table in a
+  // pipeline) - there's no relation at all yet to describe.
+  column?: string | null;
+  parent?: boolean;
+  heuristic?: boolean;
   pine: string;
 };
 

@@ -62,7 +62,7 @@ const InnerTableRow = ({ table, schema, alias, color }: VariableInnerTable) => (
 );
 
 const VariableNodeComponent: React.FC<Props> = ({ id, data }) => {
-  const { variableName, innerTables, leftHandles, rightHandles } = data;
+  const { variableName, innerTables, order, leftHandles, rightHandles } = data;
   const [expanded, setExpanded] = useState(false);
   const updateNodeInternals = useUpdateNodeInternals();
   const handleKey = [...leftHandles, ...rightHandles].map(h => h.id).join(',');
@@ -89,6 +89,31 @@ const VariableNodeComponent: React.FC<Props> = ({ id, data }) => {
           expandedTablesHeight,
       }}
     >
+      {/* Order - same badge/position as SelectedNodeComponent's; a
+          container replaces one of the pipeline's selected-tables entries
+          rather than adding a new one, so it takes over that entry's
+          position number. */}
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          transform: 'translate(-50%, -50%)',
+          width: '20px',
+          height: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: '50%',
+          background: 'var(--node-order-bg)',
+          color: 'var(--node-order-text-color)',
+          fontSize: '12px',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.25)',
+          fontWeight: 'bold',
+        }}
+      >
+        {order}
+      </div>
       <div
         onClick={() => setExpanded(e => !e)}
         style={{

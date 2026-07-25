@@ -122,23 +122,26 @@ const SuggestedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
           {data.schema}
         </div>
       )}
-      {/* A suggested node has exactly one real relation - to context - and it
+      {/* A suggested node has at most one real relation - to context - and it
           only ever attaches on one side: a child suggestion (data.parent
           false) receives the edge on its left, a parent suggestion attaches
-          from its right. Rendering the other side's handle unconditionally
-          suggested a connection that doesn't exist.
+          from its right. `parent` is entirely absent (not false) on a
+          no-context hint - the very first table typed, with no relation to
+          anything yet - so that case renders neither handle; checking
+          `!data.parent` here would treat undefined the same as false and
+          show a left handle for a relation that doesn't exist.
           Positioned at the same columnRowTop as the column label above -
           without this it falls back to React Flow's default vertical
           center, which doesn't line up with the label once the node grows
           taller than its old single-line-only height. */}
-      {!data.parent && (
+      {data.parent === false && (
         <Handle
           type="target"
           position={Position.Left}
           style={{ ...handleStyle, top: columnRowTop }}
         />
       )}
-      {data.parent && (
+      {data.parent === true && (
         <Handle
           type="source"
           position={Position.Right}
