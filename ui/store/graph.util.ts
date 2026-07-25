@@ -10,6 +10,7 @@ import {
 } from '../model';
 import { NodeType } from '../components/Graph.box';
 import { Ast, Column, ColumnHint, Table, TableHint, VariableAst, WhereCondition } from './client';
+import { getSelectedNodeHeight } from './node-layout';
 import dagre from 'dagre';
 
 export type Graph = {
@@ -100,6 +101,8 @@ const makeSelectedNode = (
       suggestedColumns,
       suggestedOrderColumns,
       suggestedWhereColumns,
+      leftHandles: [],
+      rightHandles: [],
       sessionId,
     },
     position: { x: 0, y: 0 },
@@ -402,21 +405,48 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
 
   const edgeLookup: Record<string, Edge> = {};
   const makeId = ({ from: x, to: y }: { from: PineNode; to: PineNode }) => `${x.id} ${y.id}`;
+  const isSelectedNode = (n: PineNode): n is PineSelectedNode => n.data.type === 'selected';
+
+  // Selected nodes get one handle per distinct relation column instead of a
+  // single anonymous handle per side, so multiple FK relations (to the same or
+  // different tables) render as separate connection points. Suggested/variable
+  // nodes are untouched and keep their existing single anonymous handle.
+  const leftHandlesByNode: Record<string, Map<string, string>> = {};
+  const rightHandlesByNode: Record<string, Map<string, string>> = {};
+  const addHandle = (
+    lookup: Record<string, Map<string, string>>,
+    nodeId: string,
+    column: string,
+    prefix: 'l' | 'r',
+  ): string => {
+    if (!lookup[nodeId]) lookup[nodeId] = new Map();
+    const id = `${prefix}:${column}`;
+    lookup[nodeId].set(column, id);
+    return id;
+  };
 
   for (const [fromAlias, toAlias, relation] of joins) {
     const x = selectedNodesLookup[fromAlias];
     const y = selectedNodesLookup[toAlias];
     if (!x || !y || !relation) continue;
     const e = relation[2] === 'has' ? { from: x, to: y } : { from: y, to: x };
-    const id = makeId(e);
+    // e.from/e.to are always parent/child respectively (see the `e` computation
+    // above), so the label can drop the alias and lean on that fixed position
+    // instead: parent's column always on the left, child's always on the right.
+    const [, col1, relType, , col2] = relation;
+    const [parentCol, childCol] = relType === 'has' ? [col1, col2] : [col2, col1];
+    // Keyed by column too (not just the node pair) so two distinct FK relations
+    // between the same pair of nodes each get their own edge and handle.
+    const id = `${makeId(e)} ${parentCol}=${childCol}`;
     if (!edgeLookup[id]) {
-      // e.from/e.to are always parent/child respectively (see the `e` computation
-      // above), so the label can drop the alias and lean on that fixed position
-      // instead: parent's column always on the left, child's always on the right.
-      const [, col1, relType, , col2] = relation;
-      const [parentCol, childCol] = relType === 'has' ? [col1, col2] : [col2, col1];
       const label = `.${parentCol} = .${childCol}`;
-      edgeLookup[id] = { id, source: e.from.id, target: e.to.id, label };
+      const sourceHandle = isSelectedNode(e.from)
+        ? addHandle(rightHandlesByNode, e.from.id, parentCol, 'r')
+        : undefined;
+      const targetHandle = isSelectedNode(e.to)
+        ? addHandle(leftHandlesByNode, e.to.id, childCol, 'l')
+        : undefined;
+      edgeLookup[id] = { id, source: e.from.id, target: e.to.id, label, sourceHandle, targetHandle };
     }
   }
 
@@ -426,11 +456,38 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
     const e = { to: isParent ? contextNode : y, from: isParent ? y : contextNode };
     const id = makeId(e);
     if (!edgeLookup[id]) {
+      let sourceHandle: string | undefined;
+      let targetHandle: string | undefined;
+      if (isSelectedNode(contextNode)) {
+        if (isParent) {
+          // Context is the child/target side here, and the hint's column is
+          // exactly the FK column context owns, so it gets its own handle.
+          targetHandle = addHandle(leftHandlesByNode, contextNode.id, y.data.column, 'l');
+        } else {
+          // Context is the parent/source side. The hint only exposes the
+          // suggested (child) table's FK column, never context's own
+          // referenced column, so every such relation collapses onto one
+          // shared handle — matching the single-handle behavior this replaces.
+          sourceHandle = addHandle(rightHandlesByNode, contextNode.id, '', 'r');
+        }
+      }
       // No label here — a plain (non-candidate) hint edge stays unlabeled. The
       // graph re-labels this edge only for whichever suggested node is
       // currently the candidate (see makeHintEdgeLabel / Graph.box.tsx).
-      edgeLookup[id] = { id, source: e.from.id, target: e.to.id };
+      edgeLookup[id] = { id, source: e.from.id, target: e.to.id, sourceHandle, targetHandle };
     }
+  }
+
+  const sortHandles = (m: Map<string, string> | undefined) =>
+    m
+      ? Array.from(m.entries())
+          .map(([column, id]) => ({ id, column }))
+          .sort((a, b) => a.column.localeCompare(b.column))
+      : [];
+
+  for (const n of normalSelectedNodes) {
+    n.data.leftHandles = sortHandles(leftHandlesByNode[n.id]);
+    n.data.rightHandles = sortHandles(rightHandlesByNode[n.id]);
   }
 
   graph.edges = Object.values(edgeLookup);
@@ -438,8 +495,11 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
 };
 
 export const nodeWidth = 172;
+
 export const getNodeHeight = (node: PineNode) => {
-  if (node.data.type === 'selected') return 60;
+  if (node.data.type === 'selected') {
+    return getSelectedNodeHeight(node.data.leftHandles.length, node.data.rightHandles.length);
+  }
   if (node.data.type === 'variable') return 28; // collapsed header height
   return 20;
 };

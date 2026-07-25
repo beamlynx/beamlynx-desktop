@@ -6,6 +6,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ## [Unreleased]
 ### Added
 - Join relation shown on graph edges: a confirmed join shows its column relation on the edge (e.g. `.id = .customer_id`, parent column on the left, child on the right), and the currently highlighted autocomplete candidate's edge shows its join column too.
+- A selected table node now shows one connection handle per distinct FK relation instead of a single shared handle per side — e.g. a table with two FK columns to the same parent table gets two separate, labeled handles on that side.
 
 ### Fixed
 - Editor sluggishness that worsened with more expression blocks/variables: the Pine input's CodeMirror extensions were being fully reconfigured on every keystroke instead of only when the AST or theme actually changed.

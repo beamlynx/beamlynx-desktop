@@ -1,9 +1,70 @@
 import React, { useEffect, useState } from 'react';
-import { Handle, NodeProps, Position } from 'reactflow';
-import { SelectedNodeData } from '../model';
+import { Handle, NodeProps, Position, useUpdateNodeInternals } from 'reactflow';
+import { NodeHandle, SelectedNodeData } from '../model';
 import { Session } from '../store/session';
 import { useStores } from '../store/store-container';
+import { getSelectedNodeHeight, handleRowHeight, selectedNodeHeaderHeight } from '../store/node-layout';
 type PineNodeProps = NodeProps<SelectedNodeData>;
+
+const handleDotStyle: React.CSSProperties = {
+  width: '2px',
+  height: '2px',
+  background: 'var(--node-handle-bg)',
+  borderRadius: '50%',
+};
+
+/**
+ * Renders one handle per relation on this side. With a single relation, this
+ * stays pixel-identical to a plain centered anonymous handle (no label) — the
+ * common case is unaffected. With more than one, handles are laid out below
+ * the title/alias text (which the box grows to make room for — see
+ * getSelectedNodeHeight) and each gets a small column label so multiple FK
+ * relations to the same or different tables are visually distinguishable.
+ */
+const RelationHandles = ({
+  handles,
+  type,
+  position,
+}: {
+  handles: NodeHandle[];
+  type: 'target' | 'source';
+  position: Position;
+}) => {
+  if (handles.length === 0) return null;
+  if (handles.length === 1) {
+    return <Handle type={type} position={position} id={handles[0].id} style={handleDotStyle} />;
+  }
+  const sideStyle: React.CSSProperties = position === Position.Left ? { left: 6 } : { right: 6 };
+  return (
+    <>
+      {handles.map((h, i) => {
+        const top = selectedNodeHeaderHeight + (i + 0.5) * handleRowHeight;
+        return (
+          <React.Fragment key={h.id}>
+            <Handle type={type} position={position} id={h.id} style={{ ...handleDotStyle, top }} />
+            {h.column && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top,
+                  transform: 'translateY(-50%)',
+                  fontSize: '7px',
+                  fontFamily: 'Courier, monospace',
+                  color: 'var(--node-secondary-text-color)',
+                  whiteSpace: 'nowrap',
+                  pointerEvents: 'none',
+                  ...sideStyle,
+                }}
+              >
+                {h.column}
+              </div>
+            )}
+          </React.Fragment>
+        );
+      })}
+    </>
+  );
+};
 
 const onSelectedNodeClick = async (session: Session, alias: string) => {
   await session.setContext(alias);
@@ -20,22 +81,33 @@ const onCandidateColumnClick = (session: Session, column: string, type: 'select'
 };
 
 const TableNode = ({
+  id,
   order,
   table,
   schema,
   color,
   alias,
   sessionId,
+  leftHandles,
+  rightHandles,
 }: {
+  id: string;
   order: number;
   table: string;
   schema: string;
   color?: string | null;
   alias: string;
   sessionId: string;
+  leftHandles: NodeHandle[];
+  rightHandles: NodeHandle[];
 }) => {
   const { global } = useStores();
   const session = global.getSession(sessionId);
+  const updateNodeInternals = useUpdateNodeInternals();
+  const handleKey = [...leftHandles, ...rightHandles].map(h => h.id).join(',');
+  useEffect(() => {
+    updateNodeInternals(id);
+  }, [id, handleKey, updateNodeInternals]);
   return (
     <div
       style={{
@@ -51,6 +123,7 @@ const TableNode = ({
         onClick={() => onSelectedNodeClick(session, alias)}
         style={{
           position: 'relative',
+          minHeight: getSelectedNodeHeight(leftHandles.length, rightHandles.length),
           padding: '12px 10px 5px 10px',
           border: '2px solid var(--node-border)',
           background: 'var(--node-bg)',
@@ -119,26 +192,8 @@ const TableNode = ({
           </div>
         )}
 
-        <Handle
-          type="target"
-          position={Position.Left}
-          style={{
-            width: '2px',
-            height: '2px',
-            background: 'var(--node-handle-bg)',
-            borderRadius: '50%',
-          }}
-        />
-        <Handle
-          type="source"
-          position={Position.Right}
-          style={{
-            width: '2px',
-            height: '2px',
-            background: 'var(--node-handle-bg)',
-            borderRadius: '50%',
-          }}
-        />
+        <RelationHandles handles={leftHandles} type="target" position={Position.Left} />
+        <RelationHandles handles={rightHandles} type="source" position={Position.Right} />
       </div>
     </div>
   );
@@ -287,7 +342,7 @@ const Columns = ({
   );
 };
 
-const SelectedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
+const SelectedNodeComponent: React.FC<PineNodeProps> = ({ id, data }) => {
   const {
     order,
     table,
@@ -300,17 +355,22 @@ const SelectedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
     suggestedColumns,
     suggestedOrderColumns,
     suggestedWhereColumns,
+    leftHandles,
+    rightHandles,
     sessionId,
   } = data;
   return (
     <div>
       <TableNode
+        id={id}
         order={order}
         table={table}
         schema={schema}
         color={color}
         alias={alias}
         sessionId={sessionId}
+        leftHandles={leftHandles}
+        rightHandles={rightHandles}
       />
       <Columns
         columns={selectedColumns}

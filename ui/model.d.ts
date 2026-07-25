@@ -8,6 +8,9 @@ type BaseNode = {
   color?: string | null;
 };
 
+/** One connection point on a selected node's left/right side, keyed by its join column. */
+export type NodeHandle = { id: string; column: string };
+
 export type SelectedNodeData = BaseNode & {
   type: 'selected';
   alias: string;
@@ -19,6 +22,10 @@ export type SelectedNodeData = BaseNode & {
   suggestedColumns: string[];
   suggestedOrderColumns: string[];
   suggestedWhereColumns: string[];
+  // One handle per distinct FK relation touching this node (left = this node is
+  // the child/target, right = this node is the parent/source).
+  leftHandles: NodeHandle[];
+  rightHandles: NodeHandle[];
 };
 
 export type SuggestedNodeData = BaseNode & {
