@@ -9,6 +9,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ### Fixed
 - Editor sluggishness that worsened with more expression blocks/variables: the Pine input's CodeMirror extensions were being fully reconfigured on every keystroke instead of only when the AST or theme actually changed.
+- Remaining typing lag/dropped keystrokes in the Pine input: the read-only SQL panel's CodeMirror view was being destroyed and rebuilt on every keystroke, because its click handler unnecessarily depended on the Pine expression.
 - Candidate node in the graph briefly flickering back to a plain suggestion right after pressing Tab, caused by a redundant hints rebuild when the cursor hadn't actually moved.
 - Autocomplete dropdown incorrectly showing "Nothing found" while results were still loading; it now shows a distinct "Loading..." state, and neither that nor a genuine "Nothing found" is styled like a selected candidate anymore.
 

@@ -24,7 +24,13 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
     navigator.clipboard.writeText(v).then(() => {
       store.setCopiedMessage(sessionId, v);
     });
-  }, [session.query, session.expression, store, sessionId]);
+    // session.expression is deliberately not a dependency: getSqlClipboardText()
+    // reads it fresh from the live session at call time, so listing it here only
+    // sees a mobx-tracked read that changes on every keystroke in the Pine input.
+    // That gave this callback a new identity every keystroke, which retriggered
+    // the effect below and rebuilt the entire read-only SQL CodeMirror view each
+    // time - the actual source of the "typing feels laggy" symptom.
+  }, [session.query, store, sessionId]);
 
   useEffect(() => {
     if (!editorRef.current || !session.query) return;
