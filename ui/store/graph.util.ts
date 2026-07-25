@@ -1,5 +1,6 @@
 import { Edge, Position } from 'reactflow';
 import {
+  NodeHandle,
   PineEdge,
   PineNode,
   PineSelectedNode,
@@ -410,18 +411,23 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
   // Selected nodes get one handle per distinct relation column instead of a
   // single anonymous handle per side, so multiple FK relations (to the same or
   // different tables) render as separate connection points. Suggested/variable
-  // nodes are untouched and keep their existing single anonymous handle.
-  const leftHandlesByNode: Record<string, Map<string, string>> = {};
-  const rightHandlesByNode: Record<string, Map<string, string>> = {};
+  // nodes are untouched and keep their existing single anonymous handle. Each
+  // handle also records the id of the node it connects to, so
+  // getLayoutedElements can later order handles to match that node's actual
+  // rendered position (minimizing edge crossings) once layout is known.
+  type HandleEntry = { id: string; connectedNodeId: string };
+  const leftHandlesByNode: Record<string, Map<string, HandleEntry>> = {};
+  const rightHandlesByNode: Record<string, Map<string, HandleEntry>> = {};
   const addHandle = (
-    lookup: Record<string, Map<string, string>>,
+    lookup: Record<string, Map<string, HandleEntry>>,
     nodeId: string,
     column: string,
     prefix: 'l' | 'r',
+    connectedNodeId: string,
   ): string => {
     if (!lookup[nodeId]) lookup[nodeId] = new Map();
     const id = `${prefix}:${column}`;
-    lookup[nodeId].set(column, id);
+    lookup[nodeId].set(column, { id, connectedNodeId });
     return id;
   };
 
@@ -441,10 +447,10 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
     if (!edgeLookup[id]) {
       const label = `.${parentCol} = .${childCol}`;
       const sourceHandle = isSelectedNode(e.from)
-        ? addHandle(rightHandlesByNode, e.from.id, parentCol, 'r')
+        ? addHandle(rightHandlesByNode, e.from.id, parentCol, 'r', e.to.id)
         : undefined;
       const targetHandle = isSelectedNode(e.to)
-        ? addHandle(leftHandlesByNode, e.to.id, childCol, 'l')
+        ? addHandle(leftHandlesByNode, e.to.id, childCol, 'l', e.from.id)
         : undefined;
       edgeLookup[id] = { id, source: e.from.id, target: e.to.id, label, sourceHandle, targetHandle };
     }
@@ -462,7 +468,7 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
         if (isParent) {
           // Context is the child/target side here, and the hint's column is
           // exactly the FK column context owns, so it gets its own handle.
-          targetHandle = addHandle(leftHandlesByNode, contextNode.id, y.data.column, 'l');
+          targetHandle = addHandle(leftHandlesByNode, contextNode.id, y.data.column, 'l', y.id);
         } else {
           // Context is the parent/source side. The hint only exposes the
           // suggested (child) table's FK column, never context's own
@@ -474,8 +480,8 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
           const existing = rightHandlesByNode[contextNode.id];
           sourceHandle =
             existing?.size === 1
-              ? Array.from(existing.values())[0]
-              : addHandle(rightHandlesByNode, contextNode.id, '', 'r');
+              ? Array.from(existing.values())[0].id
+              : addHandle(rightHandlesByNode, contextNode.id, '', 'r', y.id);
         }
       }
       // No label here — a plain (non-candidate) hint edge stays unlabeled. The
@@ -485,16 +491,18 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
     }
   }
 
-  const sortHandles = (m: Map<string, string> | undefined) =>
+  // Initial order is by column name — a deterministic placeholder that
+  // getLayoutedElements replaces once real node positions are known.
+  const toHandles = (m: Map<string, HandleEntry> | undefined): NodeHandle[] =>
     m
       ? Array.from(m.entries())
-          .map(([column, id]) => ({ id, column }))
+          .map(([column, { id, connectedNodeId }]) => ({ id, column, connectedNodeId }))
           .sort((a, b) => a.column.localeCompare(b.column))
       : [];
 
   for (const n of normalSelectedNodes) {
-    n.data.leftHandles = sortHandles(leftHandlesByNode[n.id]);
-    n.data.rightHandles = sortHandles(rightHandlesByNode[n.id]);
+    n.data.leftHandles = toHandles(leftHandlesByNode[n.id]);
+    n.data.rightHandles = toHandles(rightHandlesByNode[n.id]);
   }
 
   graph.edges = Object.values(edgeLookup);
@@ -535,10 +543,13 @@ export const getLayoutedElements = (
 
   dagre.layout(dagreGraph);
 
+  const dagreYById: Record<string, number> = {};
+
   nodes.forEach(node => {
     const nodeWithPosition = dagreGraph.node(node.id);
     if (!nodeWithPosition) return;
 
+    dagreYById[node.id] = nodeWithPosition.y;
     node.targetPosition = Position.Left;
     node.sourcePosition = Position.Right;
 
@@ -560,6 +571,21 @@ export const getLayoutedElements = (
         y: nodeWithPosition.y - h / 2,
       };
     }
+  });
+
+  // Order each selected node's handles to match the vertical order of the
+  // nodes they connect to (rather than alphabetically by column), so edges
+  // fan out top-to-bottom in the same order as their targets and cross each
+  // other as little as possible.
+  const byConnectedNodeY = (h: NodeHandle) => dagreYById[h.connectedNodeId] ?? 0;
+  nodes.forEach(node => {
+    if (node.data.type !== 'selected') return;
+    node.data.leftHandles = [...node.data.leftHandles].sort(
+      (a, b) => byConnectedNodeY(a) - byConnectedNodeY(b),
+    );
+    node.data.rightHandles = [...node.data.rightHandles].sort(
+      (a, b) => byConnectedNodeY(a) - byConnectedNodeY(b),
+    );
   });
 
   return { nodes, edges };

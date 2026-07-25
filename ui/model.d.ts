@@ -8,8 +8,13 @@ type BaseNode = {
   color?: string | null;
 };
 
-/** One connection point on a selected node's left/right side, keyed by its join column. */
-export type NodeHandle = { id: string; column: string };
+/**
+ * One connection point on a selected node's left/right side, keyed by its
+ * join column. `connectedNodeId` is the id of the node on the other end of
+ * the relation — used to order handles by that node's actual rendered
+ * position once layout is known (see getLayoutedElements).
+ */
+export type NodeHandle = { id: string; column: string; connectedNodeId: string };
 
 export type SelectedNodeData = BaseNode & {
   type: 'selected';

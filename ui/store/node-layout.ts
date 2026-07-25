@@ -6,8 +6,12 @@
 export const selectedNodeHeaderHeight = 48;
 export const handleRowHeight = 14;
 const minSelectedNodeHeight = 60;
+// Extra breathing room below the last handle's label — only applies once
+// labels are actually shown (i.e. more than one handle on a side).
+const handleListBottomPadding = 10;
 
 export const getSelectedNodeHeight = (leftHandleCount: number, rightHandleCount: number) => {
   const maxHandles = Math.max(leftHandleCount, rightHandleCount, 1);
-  return Math.max(minSelectedNodeHeight, selectedNodeHeaderHeight + maxHandles * handleRowHeight);
+  if (maxHandles <= 1) return minSelectedNodeHeight;
+  return selectedNodeHeaderHeight + maxHandles * handleRowHeight + handleListBottomPadding;
 };
