@@ -8,8 +8,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - A selected table node now shows one connection handle per distinct FK relation instead of a single shared handle per side — e.g. a table with two FK columns to the same parent table gets two separate, labeled handles on that side. (Superseded the join-relation-on-edges entry from this same series — the column is now shown on the handle instead of the edge.)
 - A suggested variable/checkpoint reference in the graph now renders with the same dashed-border container look it'll have once piped in, instead of looking like a plain table suggestion.
 - Suggested and candidate table nodes now show the relevant FK column beneath the table name, matching the column labels already shown on confirmed handles.
+- The edge connecting the current Tab-cycled candidate node now highlights along with the node itself, instead of only the node standing out.
 
 ### Fixed
+- The vertical gap between stacked suggested nodes had gotten needlessly airy after they picked up a real measured height (previously dagre assumed a flat, too-small 20px for all of them) — tightened dagre's node spacing to match.
 - Pressing Backspace/Delete after clicking a node or edge in the graph removed it from view, even though the graph is a derived, read-only reflection of the Pine expression — nothing about the underlying query changed, so it silently reappeared on the next graph update. Disabled deletion entirely.
 - A variable/checkpoint container was missing the numbered order badge that every other selected node has, even though it replaces one of the pipeline's table positions the same way.
 - A suggested table with no relation at all yet (the very first table typed, before any context exists) showed a connection dot anyway — pine-lang's no-context hints omit `parent` entirely rather than sending `false`, and that was being treated the same as an actual child relation.

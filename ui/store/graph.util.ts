@@ -568,7 +568,11 @@ export const getLayoutedElements = (
 ) => {
   const dagreGraph = new dagre.graphlib.Graph();
   dagreGraph.setDefaultEdgeLabel(() => ({}));
-  dagreGraph.setGraph({ rankdir: 'LR' });
+  // nodesep is the gap between nodes stacked in the same rank (i.e.
+  // vertically, given rankdir: LR) - dagre's default (50) reads as
+  // needlessly airy now that suggested nodes have a real measured height
+  // instead of a flat, too-small guess (see getSuggestedNodeHeight).
+  dagreGraph.setGraph({ rankdir: 'LR', nodesep: 20 });
 
   const selectedNodes = nodes.filter(
     (node): node is PineSelectedNode => node.data.type === 'selected',

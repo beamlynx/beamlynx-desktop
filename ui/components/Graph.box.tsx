@@ -97,6 +97,7 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId, containerRef }) => {
   // Update graph nodes and edges
   useEffect(() => {
     let finalNodes: PineNode[] = layoutedNodes;
+    let finalEdges = layoutedEdges;
 
     if (candidateNode) {
       finalNodes = layoutedNodes.map(n => {
@@ -108,10 +109,20 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId, containerRef }) => {
         }
         return n;
       });
+
+      // A suggested node has at most one relation, so at most one edge
+      // touches it - highlight that edge the same way the node itself gets
+      // highlighted, so the candidate's connection is as obvious as the
+      // candidate itself.
+      finalEdges = layoutedEdges.map(e =>
+        e.source === candidateNode.id || e.target === candidateNode.id
+          ? { ...e, style: { ...e.style, stroke: 'var(--node-candidate-border)', strokeWidth: 2.5 }, zIndex: 1 }
+          : e,
+      );
     }
 
     setNodes(finalNodes);
-    setEdges(layoutedEdges);
+    setEdges(finalEdges);
   }, [layoutedNodes, layoutedEdges, candidateNode, global.theme, sessionId, setNodes, setEdges]);
 
   // Center view on candidate or fit view
