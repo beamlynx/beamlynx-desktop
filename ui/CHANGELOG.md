@@ -7,8 +7,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Added
 - A selected table node now shows one connection handle per distinct FK relation instead of a single shared handle per side — e.g. a table with two FK columns to the same parent table gets two separate, labeled handles on that side. (Superseded the join-relation-on-edges entry from this same series — the column is now shown on the handle instead of the edge.)
 - A suggested variable/checkpoint reference in the graph now renders with the same dashed-border container look it'll have once piped in, instead of looking like a plain table suggestion.
+- Suggested and candidate table nodes now show the relevant FK column beneath the table name, matching the column labels already shown on confirmed handles.
 
 ### Fixed
+- A selected node's relation handle lost its column label (fell back to a blank placeholder) whenever the other end of that relation was the pipeline's still-being-typed last table, which isn't promoted to a real selected node until something follows it — the real column from the confirmed join is now used instead of discarding it.
 - A node's lone relation handle (only one FK relation on that side) now shows its column label instead of staying an anonymous dot — a single dot could be any column, so it's identified the same as multi-handle sides.
 - Expanding a checkpoint/variable container's inner-table list no longer overlaps the relation handle labels below it — the container now grows to fit the expanded list.
 - Editor sluggishness that worsened with more expression blocks/variables: the Pine input's CodeMirror extensions were being fully reconfigured on every keystroke instead of only when the AST or theme actually changed.

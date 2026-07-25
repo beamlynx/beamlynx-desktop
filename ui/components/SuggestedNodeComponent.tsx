@@ -56,6 +56,21 @@ const SuggestedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
       }}
     >
       <div>{isVariable ? `= ${data.table}` : data.table}</div>
+      {data.column && (
+        <div
+          title={data.column}
+          style={{
+            fontSize: '8px',
+            fontFamily: 'Courier, monospace',
+            color: 'var(--node-secondary-text-color)',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {data.column}
+        </div>
+      )}
       {data.schema && data.schema !== 'public' && (
         <div
           style={{

@@ -427,26 +427,40 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
   };
 
   for (const [fromAlias, toAlias, relation] of joins) {
+    if (!relation) continue;
     const x = selectedNodesLookup[fromAlias];
     const y = selectedNodesLookup[toAlias];
-    if (!x || !y || !relation) continue;
-    const e = relation[2] === 'has' ? { from: x, to: y } : { from: y, to: x };
-    // e.from/e.to are always parent/child respectively (see the `e` computation
-    // above): parentCol is always the column e.from (the parent) owns, childCol
-    // is always the column e.to (the child) owns.
-    const [, col1, relType, , col2] = relation;
-    const [parentCol, childCol] = relType === 'has' ? [col1, col2] : [col2, col1];
-    // Keyed by column too (not just the node pair) so two distinct FK relations
-    // between the same pair of nodes each get their own edge and handle.
-    const id = `${makeId(e)} ${parentCol}=${childCol}`;
-    if (!edgeLookup[id]) {
-      const sourceHandle = canHaveHandles(e.from)
-        ? addHandle(rightHandlesByNode, e.from.id, parentCol, 'r', e.to.id)
+    const parentIsFrom = relation[2] === 'has';
+    // The "to" side of a still-typed-but-not-yet-finalized last table (see the
+    // selected-tables/hints comment elsewhere in this file) has no selected
+    // node yet - it only exists as a suggested candidate. The relation's real
+    // column names are still known though, so give the side that DOES have a
+    // node its handle now rather than losing that info to the suggested-hint
+    // fallback's anonymous placeholder; the edge itself still needs both real
+    // endpoints; the alias covers the handle's connectedNodeId until then.
+    const from = parentIsFrom ? x : y;
+    const to = parentIsFrom ? y : x;
+    const fromAliasOf = parentIsFrom ? fromAlias : toAlias;
+    const toAliasOf = parentIsFrom ? toAlias : fromAlias;
+    // parentCol is always the column `from` (the parent) owns, childCol is
+    // always the column `to` (the child) owns.
+    const [, col1, , , col2] = relation;
+    const [parentCol, childCol] = parentIsFrom ? [col1, col2] : [col2, col1];
+    const sourceHandle =
+      from && canHaveHandles(from)
+        ? addHandle(rightHandlesByNode, from.id, parentCol, 'r', to?.id ?? toAliasOf)
         : undefined;
-      const targetHandle = canHaveHandles(e.to)
-        ? addHandle(leftHandlesByNode, e.to.id, childCol, 'l', e.from.id)
+    const targetHandle =
+      to && canHaveHandles(to)
+        ? addHandle(leftHandlesByNode, to.id, childCol, 'l', from?.id ?? fromAliasOf)
         : undefined;
-      edgeLookup[id] = { id, source: e.from.id, target: e.to.id, sourceHandle, targetHandle };
+    if (from && to) {
+      // Keyed by column too (not just the node pair) so two distinct FK
+      // relations between the same pair of nodes each get their own edge.
+      const id = `${makeId({ from, to })} ${parentCol}=${childCol}`;
+      if (!edgeLookup[id]) {
+        edgeLookup[id] = { id, source: from.id, target: to.id, sourceHandle, targetHandle };
+      }
     }
   }
 
