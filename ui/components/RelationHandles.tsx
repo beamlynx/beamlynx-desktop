@@ -44,7 +44,13 @@ export const RelationHandles = ({
 }) => {
   if (handles.length === 0) return null;
   if (!needsHandleRows(handles)) {
-    return <Handle type={type} position={position} id={handles[0].id} style={handleDotStyle} />;
+    // Row 0's position, same as the labeled case below - without this, the
+    // dot falls back to React Flow's default vertical-center-of-node
+    // placement, which doesn't line up with the OTHER side's handles when
+    // that side does have labeled rows (the node's height, and so its true
+    // center, grows to fit them).
+    const top = headerOffset + 0.5 * handleRowHeight;
+    return <Handle type={type} position={position} id={handles[0].id} style={{ ...handleDotStyle, top }} />;
   }
   const sideStyle: React.CSSProperties =
     position === Position.Left ? { left: handleLabelInset } : { right: handleLabelInset };

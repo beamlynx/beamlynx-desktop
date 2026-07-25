@@ -93,8 +93,13 @@ const SuggestedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
           {data.schema}
         </div>
       )}
-      <Handle type="target" position={Position.Left} style={handleStyle} />
-      <Handle type="source" position={Position.Right} style={handleStyle} />
+      {/* A suggested node has exactly one real relation - to context - and it
+          only ever attaches on one side: a child suggestion (data.parent
+          false) receives the edge on its left, a parent suggestion attaches
+          from its right. Rendering the other side's handle unconditionally
+          suggested a connection that doesn't exist. */}
+      {!data.parent && <Handle type="target" position={Position.Left} style={handleStyle} />}
+      {data.parent && <Handle type="source" position={Position.Right} style={handleStyle} />}
     </div>
   );
 };
