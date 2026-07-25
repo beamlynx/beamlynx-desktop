@@ -9,7 +9,6 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - A suggested variable/checkpoint reference in the graph now renders with the same dashed-border container look it'll have once piped in, instead of looking like a plain table suggestion.
 
 ### Fixed
-- Suggested tables in the graph are now ordered alphabetically instead of by table-name length — the backend's hint order otherwise put short names (including variable references) first regardless of relevance.
 - A node's lone relation handle (only one FK relation on that side) now shows its column label instead of staying an anonymous dot — a single dot could be any column, so it's identified the same as multi-handle sides.
 - Expanding a checkpoint/variable container's inner-table list no longer overlaps the relation handle labels below it — the container now grows to fit the expanded list.
 - Editor sluggishness that worsened with more expression blocks/variables: the Pine input's CodeMirror extensions were being fully reconfigured on every keystroke instead of only when the AST or theme actually changed.

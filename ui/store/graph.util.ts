@@ -287,15 +287,8 @@ const makeSuggestedNodes = (ast: Ast, sessionId: string, isDark: boolean = false
   const {
     hints: { table: suggestedTables },
   } = ast;
-  // The backend sorts hints by table-name length (shorter names first), not by
-  // relevance or type - a short variable name like `x` would otherwise always
-  // land at the front of the suggestion list. Sort alphabetically for display;
-  // candidate cycling (Tab) still walks the original backend order (see
-  // session.ts) and node identity is matched by pine string, not position, so
-  // this doesn't affect which node gets highlighted as the current candidate.
-  const sortedTables = [...suggestedTables].sort((a, b) => a.table.localeCompare(b.table));
   const suggestedNodes: PineSuggestedNode[] = [];
-  for (const h of sortedTables) {
+  for (const h of suggestedTables) {
     const node = makeSuggestedNode(h, sessionId, false, isDark);
     suggestedNodes.push(node);
   }
