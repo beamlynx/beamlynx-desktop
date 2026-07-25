@@ -468,7 +468,14 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
           // suggested (child) table's FK column, never context's own
           // referenced column, so every such relation collapses onto one
           // shared handle — matching the single-handle behavior this replaces.
-          sourceHandle = addHandle(rightHandlesByNode, contextNode.id, '', 'r');
+          // If a confirmed join already gave this node exactly one right
+          // handle, reuse it (it's virtually always the same referenced
+          // column) instead of adding a second, redundant-looking dot.
+          const existing = rightHandlesByNode[contextNode.id];
+          sourceHandle =
+            existing?.size === 1
+              ? Array.from(existing.values())[0]
+              : addHandle(rightHandlesByNode, contextNode.id, '', 'r');
         }
       }
       // No label here — a plain (non-candidate) hint edge stays unlabeled. The
