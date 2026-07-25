@@ -3,7 +3,13 @@ import { Handle, NodeProps, Position, useUpdateNodeInternals } from 'reactflow';
 import { NodeHandle, SelectedNodeData } from '../model';
 import { Session } from '../store/session';
 import { useStores } from '../store/store-container';
-import { getSelectedNodeHeight, handleRowHeight, selectedNodeHeaderHeight } from '../store/node-layout';
+import { getSelectedNodeHeight, handleRowHeight, nodeWidth, selectedNodeHeaderHeight } from '../store/node-layout';
+
+// How far a handle's label is inset from its node edge (see sideStyle below) —
+// subtracted from nodeWidth to keep long column names from overflowing the
+// fixed-width box.
+const handleLabelInset = 8;
+const handleLabelMaxWidth = nodeWidth - handleLabelInset * 2;
 type PineNodeProps = NodeProps<SelectedNodeData>;
 
 const handleDotStyle: React.CSSProperties = {
@@ -34,7 +40,8 @@ const RelationHandles = ({
   if (handles.length === 1) {
     return <Handle type={type} position={position} id={handles[0].id} style={handleDotStyle} />;
   }
-  const sideStyle: React.CSSProperties = position === Position.Left ? { left: 6 } : { right: 6 };
+  const sideStyle: React.CSSProperties =
+    position === Position.Left ? { left: handleLabelInset } : { right: handleLabelInset };
   return (
     <>
       {handles.map((h, i) => {
@@ -44,14 +51,18 @@ const RelationHandles = ({
             <Handle type={type} position={position} id={h.id} style={{ ...handleDotStyle, top }} />
             {h.column && (
               <div
+                title={h.column}
                 style={{
                   position: 'absolute',
                   top,
                   transform: 'translateY(-50%)',
+                  maxWidth: handleLabelMaxWidth,
                   fontSize: '7px',
                   fontFamily: 'Courier, monospace',
                   color: 'var(--node-secondary-text-color)',
                   whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
                   pointerEvents: 'none',
                   ...sideStyle,
                 }}
@@ -123,6 +134,8 @@ const TableNode = ({
         onClick={() => onSelectedNodeClick(session, alias)}
         style={{
           position: 'relative',
+          boxSizing: 'border-box',
+          width: nodeWidth,
           minHeight: getSelectedNodeHeight(leftHandles.length, rightHandles.length),
           padding: '12px 10px 5px 10px',
           border: '2px solid var(--node-border)',
@@ -134,7 +147,12 @@ const TableNode = ({
       >
         {/* Table */}
         <div>
-          {table}
+          <div
+            title={table}
+            style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+          >
+            {table}
+          </div>
           <div
             style={{
               textAlign: 'right',

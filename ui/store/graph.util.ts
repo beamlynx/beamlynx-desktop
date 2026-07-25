@@ -11,7 +11,7 @@ import {
 } from '../model';
 import { NodeType } from '../components/Graph.box';
 import { Ast, Column, ColumnHint, Table, TableHint, VariableAst, WhereCondition } from './client';
-import { getSelectedNodeHeight } from './node-layout';
+import { getSelectedNodeHeight, nodeWidth } from './node-layout';
 import dagre from 'dagre';
 
 export type Graph = {
@@ -509,7 +509,7 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
   return graph;
 };
 
-export const nodeWidth = 172;
+export { nodeWidth };
 
 export const getNodeHeight = (node: PineNode) => {
   if (node.data.type === 'selected') {
