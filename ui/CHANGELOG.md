@@ -8,6 +8,8 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - A selected table node now shows one connection handle per distinct FK relation instead of a single shared handle per side — e.g. a table with two FK columns to the same parent table gets two separate, labeled handles on that side. (Superseded the join-relation-on-edges entry from this same series — the column is now shown on the handle instead of the edge.)
 
 ### Fixed
+- A node's lone relation handle (only one FK relation on that side) now shows its column label instead of staying an anonymous dot — a single dot could be any column, so it's identified the same as multi-handle sides.
+- Expanding a checkpoint/variable container's inner-table list no longer overlaps the relation handle labels below it — the container now grows to fit the expanded list.
 - Editor sluggishness that worsened with more expression blocks/variables: the Pine input's CodeMirror extensions were being fully reconfigured on every keystroke instead of only when the AST or theme actually changed.
 - Remaining typing lag/dropped keystrokes in the Pine input: the read-only SQL panel's CodeMirror view was being destroyed and rebuilt on every keystroke, because its click handler unnecessarily depended on the Pine expression.
 - Candidate node in the graph briefly flickering back to a plain suggestion right after pressing Tab, caused by a redundant hints rebuild when the cursor hadn't actually moved.

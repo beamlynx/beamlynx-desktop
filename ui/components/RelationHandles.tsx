@@ -13,12 +13,21 @@ const handleDotStyle: React.CSSProperties = {
 export const handleLabelInset = 8;
 
 /**
- * Renders one handle per relation on a node's side. With a single relation,
- * this stays pixel-identical to a plain centered anonymous handle (no
- * label) — the common case is unaffected. With more than one, handles are
- * laid out below the node's header (`headerOffset`, tailored per node type)
- * and each gets a small, truncated column label so multiple FK relations to
- * the same or different tables are visually distinguishable.
+ * A single handle whose column is genuinely unknown (the backend never
+ * exposes it — see the collapsed-suggested-parent-handle case in
+ * graph.util.ts) has nothing to label, so it stays a plain anonymous dot.
+ * Every other case — including a single handle with a known column — shows
+ * its label, since a lone dot can be any column and shouldn't be left
+ * unidentified.
+ */
+export const needsHandleRows = (handles: NodeHandle[]): boolean =>
+  handles.length > 1 || (handles.length === 1 && handles[0].column !== '');
+
+/**
+ * Renders one handle per relation on a node's side, laid out below the
+ * node's header (`headerOffset`, tailored per node type) with a small,
+ * truncated column label each, so relations are visually identifiable and
+ * distinguishable from one another.
  */
 export const RelationHandles = ({
   handles,
@@ -34,7 +43,7 @@ export const RelationHandles = ({
   maxLabelWidth: number;
 }) => {
   if (handles.length === 0) return null;
-  if (handles.length === 1) {
+  if (!needsHandleRows(handles)) {
     return <Handle type={type} position={position} id={handles[0].id} style={handleDotStyle} />;
   }
   const sideStyle: React.CSSProperties =

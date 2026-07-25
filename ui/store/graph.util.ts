@@ -10,7 +10,7 @@ import {
 } from '../model';
 import { NodeType } from '../components/Graph.box';
 import { Ast, Column, ColumnHint, Table, TableHint, VariableAst, WhereCondition } from './client';
-import { getSelectedNodeHeight, getVariableNodeHeight, nodeWidth } from './node-layout';
+import { effectiveHandleCount, getSelectedNodeHeight, getVariableNodeHeight, nodeWidth } from './node-layout';
 import dagre from 'dagre';
 
 export type Graph = {
@@ -505,10 +505,16 @@ export { nodeWidth };
 
 export const getNodeHeight = (node: PineNode) => {
   if (node.data.type === 'selected') {
-    return getSelectedNodeHeight(node.data.leftHandles.length, node.data.rightHandles.length);
+    return getSelectedNodeHeight(
+      effectiveHandleCount(node.data.leftHandles),
+      effectiveHandleCount(node.data.rightHandles),
+    );
   }
   if (node.data.type === 'variable') {
-    return getVariableNodeHeight(node.data.leftHandles.length, node.data.rightHandles.length);
+    return getVariableNodeHeight(
+      effectiveHandleCount(node.data.leftHandles),
+      effectiveHandleCount(node.data.rightHandles),
+    );
   }
   return 20;
 };

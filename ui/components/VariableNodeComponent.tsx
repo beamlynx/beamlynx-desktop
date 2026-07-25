@@ -1,13 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import { NodeProps, Position, useUpdateNodeInternals } from 'reactflow';
 import { VariableInnerTable, VariableNodeData } from '../model';
-import { getVariableNodeHeight, variableNodeHeaderHeight } from '../store/node-layout';
+import { effectiveHandleCount, getVariableNodeHeight, variableNodeHeaderHeight } from '../store/node-layout';
 import { RelationHandles, handleLabelInset } from './RelationHandles';
 
 type Props = NodeProps<VariableNodeData>;
 
 const nodeContentWidth = 188;
 const handleLabelMaxWidth = nodeContentWidth - handleLabelInset * 2;
+
+// Approximate rendered height of one InnerTableRow (padding + margin-bottom +
+// border + content line), plus the expanded list's own top/bottom padding —
+// used so relation handles/labels are pushed below the expanded table list
+// instead of overlapping it (see innerTablesListStyle/InnerTableRow below).
+const innerTableRowHeight = 36;
+const innerTablesListPadding = 8;
+
+const innerTablesListStyle: React.CSSProperties = { paddingTop: '6px', paddingBottom: '2px' };
 
 const InnerTableRow = ({ table, schema, alias, color }: VariableInnerTable) => (
   <div
@@ -59,7 +68,13 @@ const VariableNodeComponent: React.FC<Props> = ({ id, data }) => {
   const handleKey = [...leftHandles, ...rightHandles].map(h => h.id).join(',');
   useEffect(() => {
     updateNodeInternals(id);
-  }, [id, handleKey, updateNodeInternals]);
+  }, [id, handleKey, expanded, updateNodeInternals]);
+
+  // Expanding reveals the inner-table list between the header and the
+  // handles — push the handles/labels down by that same amount so they
+  // don't render on top of it.
+  const expandedTablesHeight = expanded ? innerTablesListPadding + innerTables.length * innerTableRowHeight : 0;
+  const handleOffset = variableNodeHeaderHeight + expandedTablesHeight;
 
   return (
     <div
@@ -69,7 +84,9 @@ const VariableNodeComponent: React.FC<Props> = ({ id, data }) => {
         borderRadius: '8px',
         background: 'var(--node-variable-bg, rgba(124, 92, 191, 0.05))',
         minWidth: `${nodeContentWidth}px`,
-        minHeight: getVariableNodeHeight(leftHandles.length, rightHandles.length),
+        minHeight:
+          getVariableNodeHeight(effectiveHandleCount(leftHandles), effectiveHandleCount(rightHandles)) +
+          expandedTablesHeight,
       }}
     >
       <div
@@ -92,7 +109,7 @@ const VariableNodeComponent: React.FC<Props> = ({ id, data }) => {
         </span>
       </div>
       {expanded && (
-        <div style={{ paddingTop: '6px', paddingBottom: '2px' }}>
+        <div style={innerTablesListStyle}>
           {innerTables.map(t => (
             <InnerTableRow key={t.alias} {...t} />
           ))}
@@ -102,14 +119,14 @@ const VariableNodeComponent: React.FC<Props> = ({ id, data }) => {
         handles={leftHandles}
         type="target"
         position={Position.Left}
-        headerOffset={variableNodeHeaderHeight}
+        headerOffset={handleOffset}
         maxLabelWidth={handleLabelMaxWidth}
       />
       <RelationHandles
         handles={rightHandles}
         type="source"
         position={Position.Right}
-        headerOffset={variableNodeHeaderHeight}
+        headerOffset={handleOffset}
         maxLabelWidth={handleLabelMaxWidth}
       />
     </div>

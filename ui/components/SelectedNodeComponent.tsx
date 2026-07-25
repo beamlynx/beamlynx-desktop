@@ -3,7 +3,7 @@ import { NodeProps, Position, useUpdateNodeInternals } from 'reactflow';
 import { NodeHandle, SelectedNodeData } from '../model';
 import { Session } from '../store/session';
 import { useStores } from '../store/store-container';
-import { getSelectedNodeHeight, nodeWidth, selectedNodeHeaderHeight } from '../store/node-layout';
+import { effectiveHandleCount, getSelectedNodeHeight, nodeWidth, selectedNodeHeaderHeight } from '../store/node-layout';
 import { RelationHandles, handleLabelInset } from './RelationHandles';
 
 // Subtracted from nodeWidth to keep long column names from overflowing the
@@ -70,7 +70,10 @@ const TableNode = ({
           position: 'relative',
           boxSizing: 'border-box',
           width: nodeWidth,
-          minHeight: getSelectedNodeHeight(leftHandles.length, rightHandles.length),
+          minHeight: getSelectedNodeHeight(
+            effectiveHandleCount(leftHandles),
+            effectiveHandleCount(rightHandles),
+          ),
           padding: '12px 10px 5px 10px',
           border: '2px solid var(--node-border)',
           background: 'var(--node-bg)',
