@@ -62,7 +62,11 @@ const SuggestedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
           style={{
             fontSize: '8px',
             fontFamily: 'Courier, monospace',
-            color: 'var(--node-secondary-text-color)',
+            // --node-secondary-text-color is a muted gray tuned for contrast
+            // against the normal suggested background - against the bright
+            // candidate background it's nearly illegible, so match the
+            // primary text color (already candidate-aware) there instead.
+            color: candidate ? textColor : 'var(--node-secondary-text-color)',
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
