@@ -6,9 +6,14 @@ const getBaseUrl = () => {
 
 export type Table = { schema: string; table: string; alias: string };
 export type TableHint = {
-  schema: string;
+  // null identifies a hint that refers to a variable/checkpoint rather than a
+  // real table - see pine-lang's create-hint-from-table/relation-hints, which
+  // only null the schema for a variable name match.
+  schema: string | null;
   table: string;
-  column: string;
+  // null for synthetic variable-to-variable join hints, which don't expose a
+  // specific column (see create-hint-from-relation-array in pine-lang).
+  column: string | null;
   parent: boolean;
   heuristic: boolean;
   pine: string;
@@ -251,8 +256,10 @@ export class HttpClient {
     }
     this.onBuild && (await this.onBuild(response.ast));
     const expressions = response.ast.hints.table
-      .filter(h => !h.parent && !h.heuristic)
-      .map((h: TableHint) => ({
+      // A null column (variable-to-variable join hint) can't be recursively
+      // deleted through - there's no real FK column to build a WHERE on.
+      .filter((h): h is TableHint & { column: string } => !h.parent && !h.heuristic && h.column !== null)
+      .map(h => ({
         expression: `${x} ${h.pine}`,
         column: h.column,
       }));

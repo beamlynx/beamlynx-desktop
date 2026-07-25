@@ -39,7 +39,7 @@ const TableNode = ({
   id: string;
   order: number;
   table: string;
-  schema: string;
+  schema: string | null;
   color?: string | null;
   alias: string;
   sessionId: string;

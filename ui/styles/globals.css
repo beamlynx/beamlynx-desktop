@@ -93,6 +93,13 @@ a {
   border: 2px solid var(--node-suggested-border) !important;
 }
 
+/* Suggested variable/checkpoint reference - dashed border like the real
+ * container it becomes once piped in. Higher specificity than the rule
+ * above (extra class) so it wins despite both using !important. */
+.react-flow__node-suggested-node > div.suggested-node-variable {
+  border: 2px dashed var(--node-variable-border, #7c5cbf) !important;
+}
+
 /* Dark mode node styling enhancements */
 [data-theme='dark'] .selected-node-inner {
   border: 3px solid var(--node-border) !important;
@@ -102,6 +109,11 @@ a {
 [data-theme='dark'] .react-flow__node-suggested-node > div {
   border: 2px solid var(--node-suggested-border) !important;
   box-shadow: 0 0 4px rgba(243, 156, 18, 0.2) !important;
+}
+
+[data-theme='dark'] .react-flow__node-suggested-node > div.suggested-node-variable {
+  border: 2px dashed var(--node-variable-border, #7c5cbf) !important;
+  box-shadow: 0 0 4px rgba(124, 92, 191, 0.25) !important;
 }
 
 /* Candidate node text contrast fix */

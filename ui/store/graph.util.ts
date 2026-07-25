@@ -41,7 +41,7 @@ const DarkColors = ['#cf6679', '#d4995c', '#e6c07b', '#98c379', '#61afef'];
  * Get the color for the schema. Note: this function probably has collisions.
  * TODO: Keep track of the schemas and colors to avoid collisions.
  */
-export const getSchemaColor = (schema: string, isDark: boolean = false) => {
+export const getSchemaColor = (schema: string | null, isDark: boolean = false) => {
   if (!schema) schema = 'public';
   const hash = schema.split('').reduce((acc, x) => acc + x.charCodeAt(0), 0);
   const colors = isDark ? DarkColors : LightColors;
@@ -469,7 +469,10 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
         if (isParent) {
           // Context is the child/target side here, and the hint's column is
           // exactly the FK column context owns, so it gets its own handle.
-          targetHandle = addHandle(leftHandlesByNode, contextNode.id, y.data.column, 'l', y.id);
+          // Variable-to-variable join hints don't expose a real column (see
+          // TableHint.column) - treat that the same as the other "genuinely
+          // unknown column" case below: an anonymous, unlabeled handle.
+          targetHandle = addHandle(leftHandlesByNode, contextNode.id, y.data.column ?? '', 'l', y.id);
         } else {
           // Context is the parent/source side. The hint only exposes the
           // suggested (child) table's FK column, never context's own

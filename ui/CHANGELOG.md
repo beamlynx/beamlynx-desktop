@@ -6,6 +6,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ## [Unreleased]
 ### Added
 - A selected table node now shows one connection handle per distinct FK relation instead of a single shared handle per side — e.g. a table with two FK columns to the same parent table gets two separate, labeled handles on that side. (Superseded the join-relation-on-edges entry from this same series — the column is now shown on the handle instead of the edge.)
+- A suggested variable/checkpoint reference in the graph now renders with the same dashed-border container look it'll have once piped in, instead of looking like a plain table suggestion.
 
 ### Fixed
 - Suggested tables in the graph are now ordered alphabetically instead of by table-name length — the backend's hint order otherwise put short names (including variable references) first regardless of relevance.

@@ -2,9 +2,11 @@ import { Edge, Node } from 'reactflow';
 
 type BaseNode = {
   sessionId: string;
-  schema: string;
+  // null on a suggested node identifies a variable/checkpoint reference
+  // rather than a real table (see TableHint in client.ts).
+  schema: string | null;
   table: string;
-  column: string; // TODO: rename to joinOn column
+  column: string | null; // TODO: rename to joinOn column
   color?: string | null;
 };
 

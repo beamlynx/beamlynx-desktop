@@ -21,14 +21,29 @@ const SuggestedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
   const { global } = useStores();
   const session = global.getSession(data.sessionId);
   const candidate = data.type === 'candidate';
+  // A suggested variable/checkpoint reference (schema is null - see TableHint
+  // in client.ts) gets the same dashed-border container look as the real
+  // checkpoint node it would become once piped in, instead of looking like a
+  // plain table suggestion.
+  const isVariable = data.schema === null;
   const background = candidate ? 'var(--node-candidate-bg)' : 'var(--node-suggested-bg)';
-  const border = candidate
-    ? `2px solid var(--node-candidate-border)`
-    : `2px solid var(--node-suggested-border)`;
-  const textColor = candidate ? 'var(--node-candidate-text-color)' : 'var(--node-text-color)';
+  const border = isVariable
+    ? '2px dashed var(--node-variable-border, #7c5cbf)'
+    : candidate
+      ? `2px solid var(--node-candidate-border)`
+      : `2px solid var(--node-suggested-border)`;
+  const textColor = isVariable
+    ? 'var(--node-variable-label-color, #7c5cbf)'
+    : candidate
+      ? 'var(--node-candidate-text-color)'
+      : 'var(--node-text-color)';
 
   return (
     <div
+      // globals.css forces a solid border (!important) on suggested-node's
+      // direct div children; the variable class there overrides it back to
+      // dashed with higher selector specificity.
+      className={isVariable ? 'suggested-node-variable' : undefined}
       onClick={() => onSuggestedNodeClick(session, data.pine)}
       style={{
         cursor: 'pointer',
@@ -40,7 +55,7 @@ const SuggestedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
         color: textColor,
       }}
     >
-      <div>{data.table}</div>
+      <div>{isVariable ? `= ${data.table}` : data.table}</div>
       {data.schema && data.schema !== 'public' && (
         <div
           style={{
