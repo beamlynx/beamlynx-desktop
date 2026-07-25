@@ -18,3 +18,14 @@ export const getSelectedNodeHeight = (leftHandleCount: number, rightHandleCount:
   if (maxHandles <= 1) return minSelectedNodeHeight;
   return selectedNodeHeaderHeight + maxHandles * handleRowHeight + handleListBottomPadding;
 };
+
+// A variable/checkpoint container's collapsed `= name` header is shorter than
+// a selected node's title+alias block.
+export const variableNodeHeaderHeight = 26;
+const minVariableNodeHeight = 28; // matches the pre-existing collapsed header height
+
+export const getVariableNodeHeight = (leftHandleCount: number, rightHandleCount: number) => {
+  const maxHandles = Math.max(leftHandleCount, rightHandleCount, 1);
+  if (maxHandles <= 1) return minVariableNodeHeight;
+  return variableNodeHeaderHeight + maxHandles * handleRowHeight + handleListBottomPadding;
+};

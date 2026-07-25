@@ -6,12 +6,11 @@ import {
   PineSelectedNode,
   PineSuggestedNode,
   PineVariableNode,
-  SuggestedNodeData,
   VariableInnerTable,
 } from '../model';
 import { NodeType } from '../components/Graph.box';
 import { Ast, Column, ColumnHint, Table, TableHint, VariableAst, WhereCondition } from './client';
-import { getSelectedNodeHeight, nodeWidth } from './node-layout';
+import { getSelectedNodeHeight, getVariableNodeHeight, nodeWidth } from './node-layout';
 import dagre from 'dagre';
 
 export type Graph = {
@@ -139,15 +138,6 @@ export const makeSuggestedNode = (
   };
 };
 
-/**
- * Relation label for the edge to whichever suggested node is currently the
- * candidate. `hint.column` is always the FK column, i.e. the child side of
- * the relation — the parent's referenced column isn't exposed by the hints
- * API, so (as with a confirmed join) only the column is shown, no alias.
- */
-export const makeHintEdgeLabel = (hint: SuggestedNodeData): string | undefined =>
-  hint.column ? `.${hint.column}` : undefined;
-
 const makeColumnsLookup = (columns: Column[]): Record<string, string[]> => {
   return columns.reduce(
     (acc, x) => {
@@ -226,6 +216,8 @@ const makeVariableNodes = (
         variableName,
         sessionId,
         innerTables,
+        leftHandles: [],
+        rightHandles: [],
       },
       position: { x: 0, y: 0 },
     };
@@ -353,7 +345,7 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
     const containerNode: PineVariableNode = {
       id: `var:${cteName}`,
       type: NodeType.Variable,
-      data: { type: 'variable', variableName: cteName, sessionId, innerTables },
+      data: { type: 'variable', variableName: cteName, sessionId, innerTables, leftHandles: [], rightHandles: [] },
       position: { x: 0, y: 0 },
     };
 
@@ -406,15 +398,18 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
 
   const edgeLookup: Record<string, Edge> = {};
   const makeId = ({ from: x, to: y }: { from: PineNode; to: PineNode }) => `${x.id} ${y.id}`;
-  const isSelectedNode = (n: PineNode): n is PineSelectedNode => n.data.type === 'selected';
-
-  // Selected nodes get one handle per distinct relation column instead of a
-  // single anonymous handle per side, so multiple FK relations (to the same or
-  // different tables) render as separate connection points. Suggested/variable
-  // nodes are untouched and keep their existing single anonymous handle. Each
-  // handle also records the id of the node it connects to, so
-  // getLayoutedElements can later order handles to match that node's actual
-  // rendered position (minimizing edge crossings) once layout is known.
+  // Selected nodes and variable/checkpoint containers (a sealed checkpoint
+  // replaces a real table in the pipeline, so it's joinable the same way —
+  // see the container-lookup comment above) get one handle per distinct
+  // relation column instead of a single anonymous handle per side, so
+  // multiple FK relations (to the same or different tables) render as
+  // separate connection points. Suggested nodes are untouched and keep their
+  // existing single anonymous handle. Each handle also records the id of the
+  // node it connects to, so getLayoutedElements can later order handles to
+  // match that node's actual rendered position (minimizing edge crossings)
+  // once layout is known.
+  const canHaveHandles = (n: PineNode): n is PineSelectedNode | PineVariableNode =>
+    n.data.type === 'selected' || n.data.type === 'variable';
   type HandleEntry = { id: string; connectedNodeId: string };
   const leftHandlesByNode: Record<string, Map<string, HandleEntry>> = {};
   const rightHandlesByNode: Record<string, Map<string, HandleEntry>> = {};
@@ -437,22 +432,21 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
     if (!x || !y || !relation) continue;
     const e = relation[2] === 'has' ? { from: x, to: y } : { from: y, to: x };
     // e.from/e.to are always parent/child respectively (see the `e` computation
-    // above), so the label can drop the alias and lean on that fixed position
-    // instead: parent's column always on the left, child's always on the right.
+    // above): parentCol is always the column e.from (the parent) owns, childCol
+    // is always the column e.to (the child) owns.
     const [, col1, relType, , col2] = relation;
     const [parentCol, childCol] = relType === 'has' ? [col1, col2] : [col2, col1];
     // Keyed by column too (not just the node pair) so two distinct FK relations
     // between the same pair of nodes each get their own edge and handle.
     const id = `${makeId(e)} ${parentCol}=${childCol}`;
     if (!edgeLookup[id]) {
-      const label = `.${parentCol} = .${childCol}`;
-      const sourceHandle = isSelectedNode(e.from)
+      const sourceHandle = canHaveHandles(e.from)
         ? addHandle(rightHandlesByNode, e.from.id, parentCol, 'r', e.to.id)
         : undefined;
-      const targetHandle = isSelectedNode(e.to)
+      const targetHandle = canHaveHandles(e.to)
         ? addHandle(leftHandlesByNode, e.to.id, childCol, 'l', e.from.id)
         : undefined;
-      edgeLookup[id] = { id, source: e.from.id, target: e.to.id, label, sourceHandle, targetHandle };
+      edgeLookup[id] = { id, source: e.from.id, target: e.to.id, sourceHandle, targetHandle };
     }
   }
 
@@ -464,7 +458,7 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
     if (!edgeLookup[id]) {
       let sourceHandle: string | undefined;
       let targetHandle: string | undefined;
-      if (isSelectedNode(contextNode)) {
+      if (canHaveHandles(contextNode)) {
         if (isParent) {
           // Context is the child/target side here, and the hint's column is
           // exactly the FK column context owns, so it gets its own handle.
@@ -484,9 +478,6 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
               : addHandle(rightHandlesByNode, contextNode.id, '', 'r', y.id);
         }
       }
-      // No label here — a plain (non-candidate) hint edge stays unlabeled. The
-      // graph re-labels this edge only for whichever suggested node is
-      // currently the candidate (see makeHintEdgeLabel / Graph.box.tsx).
       edgeLookup[id] = { id, source: e.from.id, target: e.to.id, sourceHandle, targetHandle };
     }
   }
@@ -500,7 +491,8 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
           .sort((a, b) => a.column.localeCompare(b.column))
       : [];
 
-  for (const n of normalSelectedNodes) {
+  for (const n of graph.selectedNodes) {
+    if (!canHaveHandles(n)) continue;
     n.data.leftHandles = toHandles(leftHandlesByNode[n.id]);
     n.data.rightHandles = toHandles(rightHandlesByNode[n.id]);
   }
@@ -515,7 +507,9 @@ export const getNodeHeight = (node: PineNode) => {
   if (node.data.type === 'selected') {
     return getSelectedNodeHeight(node.data.leftHandles.length, node.data.rightHandles.length);
   }
-  if (node.data.type === 'variable') return 28; // collapsed header height
+  if (node.data.type === 'variable') {
+    return getVariableNodeHeight(node.data.leftHandles.length, node.data.rightHandles.length);
+  }
   return 20;
 };
 
@@ -573,13 +567,13 @@ export const getLayoutedElements = (
     }
   });
 
-  // Order each selected node's handles to match the vertical order of the
-  // nodes they connect to (rather than alphabetically by column), so edges
-  // fan out top-to-bottom in the same order as their targets and cross each
-  // other as little as possible.
+  // Order each selected/variable node's handles to match the vertical order
+  // of the nodes they connect to (rather than alphabetically by column), so
+  // edges fan out top-to-bottom in the same order as their targets and cross
+  // each other as little as possible.
   const byConnectedNodeY = (h: NodeHandle) => dagreYById[h.connectedNodeId] ?? 0;
   nodes.forEach(node => {
-    if (node.data.type !== 'selected') return;
+    if (node.data.type !== 'selected' && node.data.type !== 'variable') return;
     node.data.leftHandles = [...node.data.leftHandles].sort(
       (a, b) => byConnectedNodeY(a) - byConnectedNodeY(b),
     );

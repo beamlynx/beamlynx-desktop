@@ -61,6 +61,11 @@ export type VariableNodeData = {
   variableName: string;
   sessionId: string;
   innerTables: VariableInnerTable[];
+  // Same per-relation handle treatment as SelectedNodeData — a checkpoint
+  // container replaces a real table in the pipeline, so joins/hints connect
+  // to it the same way and it needs the same handles.
+  leftHandles: NodeHandle[];
+  rightHandles: NodeHandle[];
 };
 
 export type PineInputNode = Node<InputNodeData>;

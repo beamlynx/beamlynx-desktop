@@ -1,81 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { Handle, NodeProps, Position, useUpdateNodeInternals } from 'reactflow';
+import { NodeProps, Position, useUpdateNodeInternals } from 'reactflow';
 import { NodeHandle, SelectedNodeData } from '../model';
 import { Session } from '../store/session';
 import { useStores } from '../store/store-container';
-import { getSelectedNodeHeight, handleRowHeight, nodeWidth, selectedNodeHeaderHeight } from '../store/node-layout';
+import { getSelectedNodeHeight, nodeWidth, selectedNodeHeaderHeight } from '../store/node-layout';
+import { RelationHandles, handleLabelInset } from './RelationHandles';
 
-// How far a handle's label is inset from its node edge (see sideStyle below) —
-// subtracted from nodeWidth to keep long column names from overflowing the
+// Subtracted from nodeWidth to keep long column names from overflowing the
 // fixed-width box.
-const handleLabelInset = 8;
 const handleLabelMaxWidth = nodeWidth - handleLabelInset * 2;
 type PineNodeProps = NodeProps<SelectedNodeData>;
-
-const handleDotStyle: React.CSSProperties = {
-  width: '2px',
-  height: '2px',
-  background: 'var(--node-handle-bg)',
-  borderRadius: '50%',
-};
-
-/**
- * Renders one handle per relation on this side. With a single relation, this
- * stays pixel-identical to a plain centered anonymous handle (no label) — the
- * common case is unaffected. With more than one, handles are laid out below
- * the title/alias text (which the box grows to make room for — see
- * getSelectedNodeHeight) and each gets a small column label so multiple FK
- * relations to the same or different tables are visually distinguishable.
- */
-const RelationHandles = ({
-  handles,
-  type,
-  position,
-}: {
-  handles: NodeHandle[];
-  type: 'target' | 'source';
-  position: Position;
-}) => {
-  if (handles.length === 0) return null;
-  if (handles.length === 1) {
-    return <Handle type={type} position={position} id={handles[0].id} style={handleDotStyle} />;
-  }
-  const sideStyle: React.CSSProperties =
-    position === Position.Left ? { left: handleLabelInset } : { right: handleLabelInset };
-  return (
-    <>
-      {handles.map((h, i) => {
-        const top = selectedNodeHeaderHeight + (i + 0.5) * handleRowHeight;
-        return (
-          <React.Fragment key={h.id}>
-            <Handle type={type} position={position} id={h.id} style={{ ...handleDotStyle, top }} />
-            {h.column && (
-              <div
-                title={h.column}
-                style={{
-                  position: 'absolute',
-                  top,
-                  transform: 'translateY(-50%)',
-                  maxWidth: handleLabelMaxWidth,
-                  fontSize: '7px',
-                  fontFamily: 'Courier, monospace',
-                  color: 'var(--node-secondary-text-color)',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  pointerEvents: 'none',
-                  ...sideStyle,
-                }}
-              >
-                {h.column}
-              </div>
-            )}
-          </React.Fragment>
-        );
-      })}
-    </>
-  );
-};
 
 const onSelectedNodeClick = async (session: Session, alias: string) => {
   await session.setContext(alias);
@@ -210,8 +144,20 @@ const TableNode = ({
           </div>
         )}
 
-        <RelationHandles handles={leftHandles} type="target" position={Position.Left} />
-        <RelationHandles handles={rightHandles} type="source" position={Position.Right} />
+        <RelationHandles
+          handles={leftHandles}
+          type="target"
+          position={Position.Left}
+          headerOffset={selectedNodeHeaderHeight}
+          maxLabelWidth={handleLabelMaxWidth}
+        />
+        <RelationHandles
+          handles={rightHandles}
+          type="source"
+          position={Position.Right}
+          headerOffset={selectedNodeHeaderHeight}
+          maxLabelWidth={handleLabelMaxWidth}
+        />
       </div>
     </div>
   );

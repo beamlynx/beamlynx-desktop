@@ -11,14 +11,8 @@ import ReactFlow, {
 import { Box, BoxProps } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import 'reactflow/dist/style.css';
-import { PineEdge, PineNode, PineSuggestedNode } from '../model';
-import {
-  getLayoutedElements,
-  getNodeHeight,
-  makeHintEdgeLabel,
-  makeSuggestedNode,
-  nodeWidth,
-} from '../store/graph.util';
+import { PineNode, PineSuggestedNode } from '../model';
+import { getLayoutedElements, getNodeHeight, makeSuggestedNode, nodeWidth } from '../store/graph.util';
 import { useStores } from '../store/store-container';
 import SelectedNodeComponent from './SelectedNodeComponent';
 import SuggestedNodeComponent from './SuggestedNodeComponent';
@@ -103,7 +97,6 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId, containerRef }) => {
   // Update graph nodes and edges
   useEffect(() => {
     let finalNodes: PineNode[] = layoutedNodes;
-    let finalEdges: PineEdge[] = layoutedEdges;
 
     if (candidateNode) {
       finalNodes = layoutedNodes.map(n => {
@@ -115,17 +108,10 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId, containerRef }) => {
         }
         return n;
       });
-
-      // Only the candidate's own edge gets a relation label — other suggested
-      // (non-candidate) edges stay unlabeled.
-      finalEdges = layoutedEdges.map(e => {
-        if (e.source !== candidateNode.id && e.target !== candidateNode.id) return e;
-        return { ...e, label: makeHintEdgeLabel(candidateNode.data) };
-      });
     }
 
     setNodes(finalNodes);
-    setEdges(finalEdges);
+    setEdges(layoutedEdges);
   }, [layoutedNodes, layoutedEdges, candidateNode, global.theme, sessionId, setNodes, setEdges]);
 
   // Center view on candidate or fit view
