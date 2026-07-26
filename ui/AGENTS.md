@@ -14,7 +14,7 @@ When working in this codebase, if you discover a new pattern, convention, archit
 
 ## Graph Node Types
 
-See [GRAPH_NODE_TYPES.md](./GRAPH_NODE_TYPES.md) for the vocabulary used to discuss the
+See [docs/graph-node-types.md](./docs/graph-node-types.md) for the vocabulary used to discuss the
 query graph (selected/current/suggested/candidate/variable-container, handle conventions).
 
 ## Crediting Contributors
