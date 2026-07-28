@@ -9,6 +9,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - A suggested variable/checkpoint reference in the graph now renders with the same dashed-border container look it'll have once piped in, instead of looking like a plain table suggestion.
 - Suggested and candidate table nodes now show the relevant FK column beneath the table name, matching the column labels already shown on confirmed handles.
 - The edge connecting the current Tab-cycled candidate node now highlights along with the node itself, instead of only the node standing out.
+- A suggested-node edge now renders dashed when the underlying join is a heuristic naming-convention guess or a synthetic (no-FK, same-source) join, matching pine-lang's `resolution` field — a plain FK-backed join stays solid. Both join columns are shown on the edge instead of a "•" placeholder on one side, since pine-lang now exposes both.
 
 ### Fixed
 - The vertical gap between stacked suggested nodes had gotten needlessly airy after they picked up a real measured height (previously dagre assumed a flat, too-small 20px for all of them) — tightened dagre's node spacing to match.
@@ -28,6 +29,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - Remaining typing lag/dropped keystrokes in the Pine input: the read-only SQL panel's CodeMirror view was being destroyed and rebuilt on every keystroke, because its click handler unnecessarily depended on the Pine expression.
 - Candidate node in the graph briefly flickering back to a plain suggestion right after pressing Tab, caused by a redundant hints rebuild when the cursor hadn't actually moved.
 - Autocomplete dropdown incorrectly showing "Nothing found" while results were still loading; it now shows a distinct "Loading..." state, and neither that nor a genuine "Nothing found" is styled like a selected candidate anymore.
+- A crash that blanked the entire graph view on almost any keystroke: a style object built inside the MobX-observable session state got wrapped into an observable proxy by MobX, and React Flow's DOM style diffing couldn't handle it. Edge styling is now computed outside the observable tree.
+- A "Couldn't create edge for handle" React Flow console error for every suggested node, when the cursor landed at a position that made pine-lang return relation-less hints for an already-selected table — the graph tried to draw an edge to a suggested node that (correctly) renders no handle in that case.
+- Numerous MobX "changing an observable value without an action" strict-mode console warnings, firing on nearly every keystroke and re-render.
+- A "kebab-case CSS properties" React console warning from the result table's cell styling.
 
 ## [0.43.0] - 2026-05-21
 ### Added
