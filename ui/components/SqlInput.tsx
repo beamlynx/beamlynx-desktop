@@ -6,6 +6,7 @@ import { sql } from '@codemirror/lang-sql';
 import React, { useRef, useEffect, useCallback } from 'react';
 import { Session } from '../store/session';
 import { observer } from 'mobx-react-lite';
+import { runInAction } from 'mobx';
 import { vim } from '@replit/codemirror-vim';
 import { Box } from '@mui/material';
 import { useStores } from '../store/store-container';
@@ -61,7 +62,9 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session }) => {
   const handleChange = useCallback(
     (value: string) => {
       if (value !== session.query) {
-        session.query = value;
+        runInAction(() => {
+          session.query = value;
+        });
         lastValueRef.current = value;
       }
     },

@@ -1,3 +1,4 @@
+import { runInAction } from 'mobx';
 import { GlobalStore } from '../store/global.store';
 import { Session } from '../store/session';
 import { getSchemaColor } from '../store/graph.util';
@@ -183,7 +184,9 @@ const COMMANDS: Command[] = [
     label: 'Toggle Connection Monitor',
     category: 'Experimental',
     handler: (_global, session) => {
-      session.mode = session.mode === 'monitor' ? 'graph' : 'monitor';
+      runInAction(() => {
+        session.mode = session.mode === 'monitor' ? 'graph' : 'monitor';
+      });
     },
     isEnabled: ALWAYS_ENABLED,
   },

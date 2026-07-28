@@ -9,6 +9,7 @@ import { EditorView, keymap } from '@codemirror/view';
 import { vim } from '@replit/codemirror-vim';
 import CodeMirror, { ReactCodeMirrorRef } from '@uiw/react-codemirror';
 import { observer } from 'mobx-react-lite';
+import { runInAction } from 'mobx';
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Session } from '../store/session';
 import { shouldShowTableColors } from '../store/table-colors.util';
@@ -71,7 +72,9 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
     (value: string) => {
       if (value !== lastValueRef.current) {
         lastValueRef.current = value;
-        session.expression = value;
+        runInAction(() => {
+          session.expression = value;
+        });
       }
     },
     [session],
@@ -100,7 +103,9 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
         }
 
         // Update the session and editor with the prettified content
-        session.expression = prettifiedContent;
+        runInAction(() => {
+          session.expression = prettifiedContent;
+        });
         lastValueRef.current = prettifiedContent;
 
         // Update the editor directly to avoid the useEffect cycle
@@ -119,11 +124,9 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
 
   const onHighlight = useCallback(
     (completion: any) => {
-      if (!completion?.expression) {
-        session.graph.candidate = null;
-        return;
-      }
-      session.graph.candidate = { pine: completion.expression };
+      runInAction(() => {
+        session.graph.candidate = completion?.expression ? { pine: completion.expression } : null;
+      });
     },
     [session.graph], // Only depend on graph, not entire session
   );

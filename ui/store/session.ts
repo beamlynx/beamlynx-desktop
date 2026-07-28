@@ -1,5 +1,5 @@
 import { GridColDef } from '@mui/x-data-grid';
-import { makeAutoObservable, reaction } from 'mobx';
+import { makeAutoObservable, reaction, runInAction } from 'mobx';
 import { format } from 'sql-formatter';
 import { TOTAL_BARS } from '../constants';
 import { DefaultPlugin } from '../plugin/default.plugin';
@@ -234,7 +234,9 @@ export class Session {
         trigger: this.hintsRequestedCounter,
       }),
       () => {
-        this.hintsLoading = true;
+        runInAction(() => {
+          this.hintsLoading = true;
+        });
       },
     );
 
@@ -250,18 +252,22 @@ export class Session {
       debounce(async ({ expression }) => {
         // Skip building if in SQL mode - no Pine expression to build
         if (this.inputMode === 'sql') {
-          this.hintsLoading = false;
+          runInAction(() => {
+            this.hintsLoading = false;
+          });
           return;
         }
 
-        // reset the candidate
-        this.candidateIndex = undefined;
+        runInAction(() => {
+          // reset the candidate
+          this.candidateIndex = undefined;
 
-        if (expression.trim() === '' && this.mode === 'graph') {
-          this.mode = 'documentation';
-        } else if (expression.trim() !== '' && this.mode === 'documentation') {
-          this.mode = 'graph';
-        }
+          if (expression.trim() === '' && this.mode === 'graph') {
+            this.mode = 'documentation';
+          } else if (expression.trim() !== '' && this.mode === 'documentation') {
+            this.mode = 'graph';
+          }
+        });
 
         // response - use current cursor position (not watched, but always current)
         try {
@@ -274,12 +280,19 @@ export class Session {
           const adjustedCursor = cursor && blocks[activeIdx]
             ? { line: cursor.line - blocks[activeIdx].startLine, character: cursor.character }
             : cursor;
-          this.response = await client.build(activeExpressions, adjustedCursor, this.connectionId);
-          this.lastHintsCursorPosition = cursor;
+          const response = await client.build(activeExpressions, adjustedCursor, this.connectionId);
+          runInAction(() => {
+            this.response = response;
+            this.lastHintsCursorPosition = cursor;
+          });
         } catch (e) {
-          this.error = (e as any).message || 'Failed to build';
+          runInAction(() => {
+            this.error = (e as any).message || 'Failed to build';
+          });
         } finally {
-          this.hintsLoading = false;
+          runInAction(() => {
+            this.hintsLoading = false;
+          });
         }
       }, 200),
     );
@@ -294,25 +307,27 @@ export class Session {
      */
     reaction(
       () => this.response,
-      async response => {
+      response => {
         if (!response) return;
 
-        // connection
-        this.connection = response['connection-id'] || '-';
+        runInAction(() => {
+          // connection
+          this.connection = response['connection-id'] || '-';
 
-        // ast
-        this.ast = response.ast;
+          // ast
+          this.ast = response.ast;
 
-        // query
-        this.query = formatQuery(response.query);
+          // query
+          this.query = formatQuery(response.query);
 
-        // operation
-        this.operation = handleOperation(response);
+          // operation
+          this.operation = handleOperation(response);
 
-        // error
-        const { error, errorType } = handleError(response);
-        this.error = error;
-        this.errorType = errorType;
+          // error
+          const { error, errorType } = handleError(response);
+          this.error = error;
+          this.errorType = errorType;
+        });
       },
     );
 
@@ -322,12 +337,14 @@ export class Session {
      */
     reaction(
       () => this.ast,
-      async ast => {
+      ast => {
         if (!ast) return;
 
         const isDark = this.globalStore?.theme === 'dark';
         const graph = generateGraph(ast, this.id, isDark);
-        this.graph = graph;
+        runInAction(() => {
+          this.graph = graph;
+        });
       },
     );
 
@@ -337,7 +354,7 @@ export class Session {
      */
     reaction(
       () => this.candidateIndex,
-      async ci => {
+      ci => {
         if (ci === undefined) return;
         const ast = this.ast;
         if (!ast?.hints) return;
@@ -349,7 +366,9 @@ export class Session {
         const sanitizedCandidateIndex = getCandidateIndex(suggestedTables, ci);
         for (const { h, i } of suggestedTables.map((h, i) => ({ h, i }))) {
           if (i === sanitizedCandidateIndex) {
-            this.graph.candidate = h;
+            runInAction(() => {
+              this.graph.candidate = h;
+            });
             break;
           }
         }
@@ -362,10 +381,12 @@ export class Session {
      */
     reaction(
       () => this.graph.candidate,
-      async candidate => {
+      candidate => {
         if (!candidate) return;
         const { pine } = candidate;
-        this.message = pine;
+        runInAction(() => {
+          this.message = pine;
+        });
       },
     );
   }
@@ -400,7 +421,10 @@ export class Session {
   }
 
   public async updateExpressionUsingCandidate() {
-    this.expression = await this.getExpressionUsingCandidate();
+    const expression = await this.getExpressionUsingCandidate();
+    runInAction(() => {
+      this.expression = expression;
+    });
   }
 
   public async prettifyExpression(expression: string, appendPipe: boolean = false): Promise<string> {
@@ -423,7 +447,10 @@ export class Session {
   }
 
   public async prettify(appendPipe = false) {
-    this.expression = await this.prettifyExpression(this.expression, appendPipe);
+    const expression = await this.prettifyExpression(this.expression, appendPipe);
+    runInAction(() => {
+      this.expression = expression;
+    });
   }
 
   public appendAndUpdateExpression(string: string) {
@@ -431,12 +458,18 @@ export class Session {
   }
 
   public async pipeAndUpdateExpression(pine: string, overwriteLastOperation: boolean = false) {
-    this.expression = await this.pipeExpression(pine, overwriteLastOperation);
+    const expression = await this.pipeExpression(pine, overwriteLastOperation);
+    runInAction(() => {
+      this.expression = expression;
+    });
   }
 
   public async setContext(alias: string) {
     const pine = `from: ${alias}`;
-    this.expression = await this.pipeExpression(pine, true);
+    const expression = await this.pipeExpression(pine, true);
+    runInAction(() => {
+      this.expression = expression;
+    });
   }
 
   public async evaluate() {
@@ -512,10 +545,12 @@ export class Session {
 
     if (autoClearMs > 0) {
       setTimeout(() => {
-        // Only clear if the message hasn't been changed by something else
-        if (this.message === message) {
-          this.message = '';
-        }
+        runInAction(() => {
+          // Only clear if the message hasn't been changed by something else
+          if (this.message === message) {
+            this.message = '';
+          }
+        });
       }, autoClearMs);
     }
   }
@@ -546,11 +581,13 @@ export class Session {
     };
 
     // Update logs array
-    if (this.connectionCountLogs.length >= TOTAL_BARS) {
-      this.connectionCountLogs = [...this.connectionCountLogs.slice(1), newLog];
-    } else {
-      this.connectionCountLogs = [...this.connectionCountLogs, newLog];
-    }
+    runInAction(() => {
+      if (this.connectionCountLogs.length >= TOTAL_BARS) {
+        this.connectionCountLogs = [...this.connectionCountLogs.slice(1), newLog];
+      } else {
+        this.connectionCountLogs = [...this.connectionCountLogs, newLog];
+      }
+    });
   }
 }
 
