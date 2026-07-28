@@ -558,9 +558,9 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
                   color: 'var(--text-color)',
                   borderBottom: '1px solid var(--border-color)',
                   userSelect: 'none', // Prevent text selection
-                  '-webkit-user-select': 'none',
-                  '-moz-user-select': 'none',
-                  '-ms-user-select': 'none',
+                  WebkitUserSelect: 'none',
+                  MozUserSelect: 'none',
+                  msUserSelect: 'none',
                 },
                 ...columnColorSx,
                 '& .MuiDataGrid-row:hover': {
