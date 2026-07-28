@@ -43,6 +43,19 @@ export const getCandidateIndex = (suggestedTables: TableHint[], ci: number) => {
 const LightColors = ['#ff4e50', '#ff9f51', '#ffea51', '#4caf50', '#64b6ac'];
 const DarkColors = ['#cf6679', '#d4995c', '#e6c07b', '#98c379', '#61afef'];
 
+// A heuristic or synthetic resolution isn't a real FK constraint - a guessed
+// naming-convention match or a made-up id=id join respectively (see
+// pine-lang's docs/joins.md) - so the suggestion edge is dashed to flag that
+// it's not a guaranteed relationship, unlike a plain solid "fk" edge. This
+// stays a plain, module-level object (not something built inside
+// generateGraph/session.graph, which is a deep MobX observable) - handing
+// ReactFlow a style object that MobX has turned into an observable Proxy
+// crashes its DOM style diffing, so styling is applied in Graph.box.tsx's
+// local (non-observable) edge list instead - see isUncertainResolution.
+export const uncertainEdgeStyle = { strokeDasharray: '4 4' };
+export const isUncertainResolution = (resolution: TableHint['resolution']) =>
+  resolution === 'heuristic' || resolution === 'synthetic';
+
 /**
  * Get the color for the schema. Note: this function probably has collisions.
  * TODO: Keep track of the schemas and colors to avoid collisions.
@@ -121,7 +134,8 @@ export const makeSuggestedNode = (
   candidate = false,
   isDark: boolean = false,
 ): PineSuggestedNode => {
-  const { schema, table, column, pine, parent, heuristic } = n;
+  const { schema, table, column, pine, parent, resolution } = n;
+  const relatedColumn = n['related-column'];
   const { color } = getSchemaColor(schema, isDark);
 
   const id = pine;
@@ -133,11 +147,12 @@ export const makeSuggestedNode = (
       schema,
       table,
       column,
+      relatedColumn,
       color,
       type: candidate ? 'candidate' : 'suggested',
       pine,
       parent,
-      heuristic,
+      resolution,
       sessionId,
     },
     position: { x: 0, y: 0 },
@@ -483,6 +498,14 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
 
   for (const y of suggestedNodes) {
     if (!contextNode) continue;
+    // `parent` is entirely absent (not false) on a no-context hint - the very
+    // first table typed, with no relation to anything yet (see TableHint in
+    // client.ts). SuggestedNodeComponent renders no Handle at all for that
+    // case (only `=== false`/`=== true` get one), so drawing an edge to/from
+    // it here would target a handle that doesn't exist in the DOM - the
+    // "Couldn't create edge for target handle id: undefined" React Flow
+    // error. Skip the edge entirely; there's no relation to depict.
+    if (y.data.parent === undefined) continue;
     const isParent = y.data.parent;
     const e = { to: isParent ? contextNode : y, from: isParent ? y : contextNode };
     const id = makeId(e);
@@ -490,31 +513,17 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
       let sourceHandle: string | undefined;
       let targetHandle: string | undefined;
       if (canHaveHandles(contextNode)) {
+        // The hint now carries both sides of the relation - y.data.column is
+        // always the suggested table's own column, y.data.relatedColumn is
+        // always context's own column (see TableHint in client.ts) -
+        // regardless of which side is the parent. addHandle keys its lookup
+        // by column name, so multiple suggestions that share the same real
+        // context column (e.g. several child tables all referencing
+        // company.id) naturally collapse onto the same handle.
         if (isParent) {
-          // Context is the child/target side here, and the hint's column is
-          // exactly the FK column context owns, so it gets its own handle.
-          // Variable-to-variable join hints don't expose a real column (see
-          // TableHint.column) - treat that the same as the other "genuinely
-          // unknown column" case below: an anonymous, unlabeled handle.
-          targetHandle = addHandle(leftHandlesByNode, contextNode.id, y.data.column ?? '', 'l', y.id);
+          targetHandle = addHandle(leftHandlesByNode, contextNode.id, y.data.relatedColumn ?? '•', 'l', y.id);
         } else {
-          // Context is the parent/source side. The hint only exposes the
-          // suggested (child) table's FK column, never context's own
-          // referenced column - pine-lang has no primary-key concept at all
-          // (see db/postgres.clj), so this is never something we're told,
-          // confirmed relation or not. "•" is a neutral placeholder standing
-          // in for "there's a real column here, just not one we know" until
-          // a real join gives us the actual column - every such relation
-          // collapses onto one shared handle, matching the single-handle
-          // behavior this replaces.
-          // If a confirmed join already gave this node exactly one right
-          // handle, reuse it (it's virtually always the same referenced
-          // column) instead of adding a second, redundant-looking dot.
-          const existing = rightHandlesByNode[contextNode.id];
-          sourceHandle =
-            existing?.size === 1
-              ? Array.from(existing.values())[0].id
-              : addHandle(rightHandlesByNode, contextNode.id, '•', 'r', y.id);
+          sourceHandle = addHandle(rightHandlesByNode, contextNode.id, y.data.relatedColumn ?? '•', 'r', y.id);
         }
       }
       edgeLookup[id] = { id, source: e.from.id, target: e.to.id, sourceHandle, targetHandle };
@@ -561,6 +570,13 @@ export const getNodeHeight = (node: PineNode) => {
   return 20;
 };
 
+// Pure with respect to `nodes`: the input nodes are the actual node objects
+// living inside session.graph, a deep MobX observable (makeAutoObservable in
+// session.ts). Writing layout results (position/handles/etc.) onto them
+// directly would mutate observable state outside an action - the same class
+// of problem as the style-object bug fixed in Graph.box.tsx (see comment
+// there) - so every layout result is returned as a new node/data object
+// instead of an in-place assignment.
 export const getLayoutedElements = (
   cache: Record<string, { x: number; y: number }>,
   nodes: PineNode[],
@@ -591,32 +607,33 @@ export const getLayoutedElements = (
 
   const dagreYById: Record<string, number> = {};
 
-  nodes.forEach(node => {
+  const positionedNodes: PineNode[] = nodes.map(node => {
     const nodeWithPosition = dagreGraph.node(node.id);
-    if (!nodeWithPosition) return;
+    if (!nodeWithPosition) return node;
 
     dagreYById[node.id] = nodeWithPosition.y;
-    node.targetPosition = Position.Left;
-    node.sourcePosition = Position.Right;
 
     const h = getNodeHeight(node);
 
+    let position: { x: number; y: number };
     if (node.data.type === 'variable') {
       const cacheKey = `var:${node.data.variableName}`;
-      node.position = cache[cacheKey] ?? {
+      position = cache[cacheKey] ?? {
         x: nodeWithPosition.x - nodeWidth / 2,
         y: nodeWithPosition.y - h / 2,
       };
     } else if (node.data.type === 'selected' && cache[node.data.alias] && node.data.order !== maxOrder) {
-      node.position = cache[node.data.alias];
+      position = cache[node.data.alias];
     } else if (node.data.type === 'input' && cache[node.id]) {
-      node.position = cache[node.data.alias];
+      position = cache[node.data.alias];
     } else {
-      node.position = {
+      position = {
         x: nodeWithPosition.x - nodeWidth / 2,
         y: nodeWithPosition.y - h / 2,
       };
     }
+
+    return { ...node, position, targetPosition: Position.Left, sourcePosition: Position.Right };
   });
 
   // Order each selected/variable node's handles to match the vertical order
@@ -624,15 +641,31 @@ export const getLayoutedElements = (
   // edges fan out top-to-bottom in the same order as their targets and cross
   // each other as little as possible.
   const byConnectedNodeY = (h: NodeHandle) => dagreYById[h.connectedNodeId] ?? 0;
-  nodes.forEach(node => {
-    if (node.data.type !== 'selected' && node.data.type !== 'variable') return;
-    node.data.leftHandles = [...node.data.leftHandles].sort(
-      (a, b) => byConnectedNodeY(a) - byConnectedNodeY(b),
-    );
-    node.data.rightHandles = [...node.data.rightHandles].sort(
-      (a, b) => byConnectedNodeY(a) - byConnectedNodeY(b),
-    );
+  const sortHandles = (handles: NodeHandle[]) =>
+    [...handles].sort((a, b) => byConnectedNodeY(a) - byConnectedNodeY(b));
+  const finalNodes: PineNode[] = positionedNodes.map((node): PineNode => {
+    if (node.data.type === 'selected') {
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          leftHandles: sortHandles(node.data.leftHandles),
+          rightHandles: sortHandles(node.data.rightHandles),
+        },
+      };
+    }
+    if (node.data.type === 'variable') {
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          leftHandles: sortHandles(node.data.leftHandles),
+          rightHandles: sortHandles(node.data.rightHandles),
+        },
+      };
+    }
+    return node;
   });
 
-  return { nodes, edges };
+  return { nodes: finalNodes, edges };
 };

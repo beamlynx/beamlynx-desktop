@@ -11,14 +11,23 @@ export type TableHint = {
   // only null the schema for a variable name match.
   schema: string | null;
   table: string;
-  // null for synthetic variable-to-variable join hints, which don't expose a
-  // specific column (see create-hint-from-relation-array in pine-lang).
-  // Both column and parent/heuristic are entirely absent (not even null) on
-  // a no-context hint (create-hint-from-table, the very first table in a
-  // pipeline) - there's no relation at all yet to describe.
-  column?: string | null;
+  // This table's own join column. 'related-column' is the already-selected
+  // context table's own join column - together they're both ends of the edge
+  // this hint describes (see create-hint-from-relation-array in pine-lang).
+  // Both are entirely absent (not even null) on a no-context hint
+  // (create-hint-from-table, the very first table in a pipeline) - there's no
+  // relation at all yet to describe.
+  column?: string;
+  'related-column'?: string;
   parent?: boolean;
-  heuristic?: boolean;
+  // 'synthetic' is a made-up id=id join with no real FK behind it (today only
+  // ever the same-source case - see docs/variables.md in pine-lang - but not
+  // inherently variable-specific; a future self-join between two real tables
+  // would use the same tag). 'manual' (explicit `.col1 = .col2`) is never
+  // emitted by hints today - that syntax bypasses the reference map entirely,
+  // so there's nothing to suggest - but it's reserved here for
+  // forward-completeness.
+  resolution?: 'fk' | 'heuristic' | 'synthetic' | 'manual';
   pine: string;
 };
 
@@ -259,9 +268,13 @@ export class HttpClient {
     }
     this.onBuild && (await this.onBuild(response.ast));
     const expressions = response.ast.hints.table
-      // A null column (variable-to-variable join hint) can't be recursively
-      // deleted through - there's no real FK column to build a WHERE on.
-      .filter((h): h is TableHint & { column: string } => !h.parent && !h.heuristic && h.column !== null)
+      // A synthetic-join hint's column is made up (always "id"), not a real
+      // FK column on an actual table, so it can't be recursively deleted
+      // through.
+      .filter(
+        (h): h is TableHint & { column: string } =>
+          !h.parent && h.resolution !== 'heuristic' && h.resolution !== 'synthetic' && h.column !== undefined,
+      )
       .map(h => ({
         expression: `${x} ${h.pine}`,
         column: h.column,

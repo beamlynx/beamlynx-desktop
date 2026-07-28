@@ -10,9 +10,17 @@ import ReactFlow, {
 
 import { Box, BoxProps } from '@mui/material';
 import { observer } from 'mobx-react-lite';
+import { runInAction } from 'mobx';
 import 'reactflow/dist/style.css';
 import { PineNode, PineSuggestedNode } from '../model';
-import { getLayoutedElements, getNodeHeight, makeSuggestedNode, nodeWidth } from '../store/graph.util';
+import {
+  getLayoutedElements,
+  getNodeHeight,
+  isUncertainResolution,
+  makeSuggestedNode,
+  nodeWidth,
+  uncertainEdgeStyle,
+} from '../store/graph.util';
 import { useStores } from '../store/store-container';
 import SelectedNodeComponent from './SelectedNodeComponent';
 import SuggestedNodeComponent from './SuggestedNodeComponent';
@@ -91,7 +99,19 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId, containerRef }) => {
       }
     }
 
-    return { layoutedNodes: nodes, layoutedEdges: edges, candidateNode: foundCandidate };
+    // An edge touching a suggested node gets styled here, in local component
+    // state, rather than inside generateGraph/session.graph - session.graph is
+    // a deep MobX observable (makeAutoObservable), and handing ReactFlow a
+    // style object that MobX has wrapped into an observable Proxy crashes its
+    // DOM style diffing. Building fresh, plain style objects here keeps them
+    // out of the observable tree entirely.
+    const suggestedResolutionById = new Map(graph.suggestedNodes.map(n => [n.id, n.data.resolution]));
+    const styledEdges = edges.map(e => {
+      const resolution = suggestedResolutionById.get(e.source) ?? suggestedResolutionById.get(e.target);
+      return isUncertainResolution(resolution) ? { ...e, style: uncertainEdgeStyle } : e;
+    });
+
+    return { layoutedNodes: nodes, layoutedEdges: styledEdges, candidateNode: foundCandidate };
   }, [graph.selectedNodes, graph.suggestedNodes, graph.edges, graph.candidate]);
 
   // Update graph nodes and edges
@@ -205,7 +225,11 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId, containerRef }) => {
             color: 'var(--primary-color)',
           },
         }}
-        onClick={() => (session.mode = session.mode === 'graph' ? 'result' : 'graph')}
+        onClick={() =>
+          runInAction(() => {
+            session.mode = session.mode === 'graph' ? 'result' : 'graph';
+          })
+        }
       >
         {session.mode === 'graph' ? <CloseFullscreen /> : <OpenInFull />}
       </Box>

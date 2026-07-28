@@ -1,4 +1,5 @@
 import { Edge, Node } from 'reactflow';
+import { TableHint } from './store/client';
 
 type BaseNode = {
   sessionId: string;
@@ -8,7 +9,7 @@ type BaseNode = {
   table: string;
   // undefined on a suggested node with no context at all (the first table
   // typed, with no relation to describe yet) - see TableHint in client.ts.
-  column?: string | null; // TODO: rename to joinOn column
+  column?: string; // TODO: rename to joinOn column
   color?: string | null;
 };
 
@@ -43,7 +44,10 @@ export type SuggestedNodeData = BaseNode & {
   // Both undefined together on a no-context hint (the first table typed) -
   // there's no relation direction to describe yet.
   parent?: boolean;
-  heuristic?: boolean;
+  resolution?: TableHint['resolution'];
+  // The already-selected context node's own join column - the other end of
+  // the edge this suggestion would create (see TableHint['related-column']).
+  relatedColumn?: string;
 };
 
 export type InputNodeData = {
