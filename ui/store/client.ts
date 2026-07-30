@@ -185,6 +185,19 @@ export class HttpClient {
     return await res.json();
   }
 
+  private async del(path: string): Promise<Response | undefined> {
+    const res = await fetch(`${getBaseUrl()}/api/v1/${path}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!res.ok) {
+      return;
+    }
+    return await res.json();
+  }
+
   private withConnectionId(body: object, connectionId?: string): object {
     if (connectionId) {
       return { ...body, 'connection-id': connectionId };
@@ -341,5 +354,15 @@ export class HttpClient {
       throw new Error(response.error);
     }
     return { id: response['connection-id'], version: response.version };
+  }
+
+  public async deleteConnection(connectionId: string): Promise<void> {
+    const response = await this.del(`connections/${connectionId}`);
+    if (!response) {
+      throw new Error('No response when trying to remove connection');
+    }
+    if (response.error) {
+      throw new Error(response.error);
+    }
   }
 }

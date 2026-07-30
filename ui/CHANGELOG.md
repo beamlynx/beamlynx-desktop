@@ -5,6 +5,8 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 ### Added
+- The database connection dialog now accepts a Postgres connection string (e.g. `postgresql://user:password@host:5432/database`), parsing it to fill in the existing host/port/user/password/database fields instead of requiring them to be typed individually. Manual entry fields are now tucked behind a "Connection Details" accordion (auto-expanding once a pasted string parses), and pressing Enter in either the connection string or manual fields now submits the form.
+- The connection picker menu can now remove a saved connection: click its trash icon once to arm it, click again to confirm. Removing the currently active connection disconnects the current tab, same as before ever connecting.
 - A selected table node now shows one connection handle per distinct FK relation instead of a single shared handle per side — e.g. a table with two FK columns to the same parent table gets two separate, labeled handles on that side. (Superseded the join-relation-on-edges entry from this same series — the column is now shown on the handle instead of the edge.)
 - A suggested variable/checkpoint reference in the graph now renders with the same dashed-border container look it'll have once piped in, instead of looking like a plain table suggestion.
 - Suggested and candidate table nodes now show the relevant FK column beneath the table name, matching the column labels already shown on confirmed handles.

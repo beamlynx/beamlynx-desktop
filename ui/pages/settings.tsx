@@ -1,9 +1,20 @@
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SecurityIcon from '@mui/icons-material/Security';
-import { Box, Button, Modal, TextField, Typography } from '@mui/material';
+import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
+  Box,
+  Button,
+  Modal,
+  TextField,
+  Typography,
+} from '@mui/material';
 import { observer } from 'mobx-react-lite';
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useStores } from '../store/store-container';
 import { Alert } from '@mui/material';
+import { parseConnectionString } from '../utils/connectionString';
 
 const SecurityNotice = () => (
   <Box
@@ -28,9 +39,9 @@ const SecurityNotice = () => (
 );
 
 const SuccessMessage = () => (
-  <Alert 
-    severity="success" 
-    sx={{ 
+  <Alert
+    severity="success"
+    sx={{
       mb: 2,
       '&.MuiAlert-standardSuccess': {
         backgroundColor: '#e8f5e8',
@@ -56,9 +67,9 @@ const SuccessMessage = () => (
 );
 
 const ErrorMessage = ({ message }: { message: string }) => (
-  <Alert 
-    severity="error" 
-    sx={{ 
+  <Alert
+    severity="error"
+    sx={{
       mb: 2,
       '&.MuiAlert-standardError': {
         backgroundColor: 'var(--text-warning-color)',
@@ -89,11 +100,45 @@ const Settings = () => {
   const [dbName, setDbName] = useState('');
   const [dbUser, setDbUser] = useState('');
   const [dbPassword, setDbPassword] = useState('');
+  const [connectionString, setConnectionString] = useState('');
+  const [connectionStringError, setConnectionStringError] = useState('');
+  const [fieldsExpanded, setFieldsExpanded] = useState(false);
   const [error, setError] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [connected, setConnected] = useState(false);
 
+  const handleConnectionStringChange = (value: string) => {
+    setConnectionString(value);
+
+    if (!value.trim()) {
+      setConnectionStringError('');
+      return;
+    }
+
+    try {
+      const parsed = parseConnectionString(value);
+      setDbUser(parsed.dbUser);
+      setDbPassword(parsed.dbPassword);
+      setDbHost(parsed.dbHost);
+      setDbPort(parsed.dbPort);
+      setDbName(parsed.dbName);
+      setConnectionStringError('');
+      setFieldsExpanded(true);
+    } catch (parseError) {
+      // Only surface the error once the string looks like a connection string;
+      // otherwise every keystroke of a partial paste flashes an error.
+      if (value.includes('://')) {
+        setConnectionStringError((parseError as Error).message);
+      } else {
+        setConnectionStringError('');
+      }
+    }
+  };
+
   const handleConnect = async () => {
+    if (connected || connecting) {
+      return;
+    }
     try {
       setConnecting(true);
       const connectionId = await global.connect({
@@ -152,64 +197,31 @@ const Settings = () => {
         {!connected && !error && <SecurityNotice />}
         {connected && !error && <SuccessMessage />}
         {error && <ErrorMessage message={error} />}
+        {!error && connectionStringError && <ErrorMessage message={connectionStringError} />}
 
-        <Box>
+        <Box
+          component="form"
+          onSubmit={(e: FormEvent<HTMLFormElement>) => {
+            e.preventDefault();
+            handleConnect();
+          }}
+        >
           <TextField
             fullWidth
             margin="dense"
-            label="Username"
-            id="db-username"
-            name="username"
-            autoComplete="username"
-            value={dbUser}
-            onChange={e => setDbUser(e.target.value)}
-            disabled={connected}
-            sx={{
-              '& .MuiInputLabel-root': { color: 'var(--text-color)' },
-              '& .MuiInputLabel-root.Mui-focused': { color: 'var(--primary-color)' },
-              '& .MuiOutlinedInput-root': {
-                color: 'var(--text-color)',
-                '& fieldset': { borderColor: 'var(--border-color)' },
-                '&:hover fieldset': { borderColor: 'var(--text-color)' },
-                '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
-              },
-            }}
-          />
-          <TextField
-            fullWidth
-            margin="dense"
-            label="Password"
-            id="db-password"
-            type="password"
-            name="password"
-            autoComplete="current-password"
-            value={dbPassword}
-            onChange={e => setDbPassword(e.target.value)}
-            disabled={connected}
-            sx={{
-              '& .MuiInputLabel-root': { color: 'var(--text-color)' },
-              '& .MuiInputLabel-root.Mui-focused': { color: 'var(--primary-color)' },
-              '& .MuiOutlinedInput-root': {
-                color: 'var(--text-color)',
-                '& fieldset': { borderColor: 'var(--border-color)' },
-                '&:hover fieldset': { borderColor: 'var(--text-color)' },
-                '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
-              },
-            }}
-          />
-          <TextField
-            fullWidth
-            margin="dense"
-            label="Server"
-            id="db-server"
-            name="server"
+            label="Connection string"
+            id="db-connection-string"
+            name="connection-string"
             autoComplete="off"
-            value={dbHost}
-            onChange={e => setDbHost(e.target.value)}
+            placeholder="postgresql://user:password@host:5432/database"
+            value={connectionString}
+            onChange={e => handleConnectionStringChange(e.target.value)}
             disabled={connected}
             sx={{
+              mb: 1,
               '& .MuiInputLabel-root': { color: 'var(--text-color)' },
               '& .MuiInputLabel-root.Mui-focused': { color: 'var(--primary-color)' },
+              '& .MuiInputBase-input': { fontFamily: 'monospace', fontSize: '0.85rem' },
               '& .MuiOutlinedInput-root': {
                 color: 'var(--text-color)',
                 '& fieldset': { borderColor: 'var(--border-color)' },
@@ -218,48 +230,145 @@ const Settings = () => {
               },
             }}
           />
-          <TextField
-            fullWidth
-            margin="dense"
-            label="Port"
-            id="db-port"
-            name="port"
-            autoComplete="off"
-            value={dbPort}
-            onChange={e => setDbPort(e.target.value)}
-            disabled={connected}
+          <Accordion
+            expanded={fieldsExpanded}
+            onChange={(_e, isExpanded) => setFieldsExpanded(isExpanded)}
+            disableGutters
+            elevation={0}
+            square
             sx={{
-              '& .MuiInputLabel-root': { color: 'var(--text-color)' },
-              '& .MuiInputLabel-root.Mui-focused': { color: 'var(--primary-color)' },
-              '& .MuiOutlinedInput-root': {
-                color: 'var(--text-color)',
-                '& fieldset': { borderColor: 'var(--border-color)' },
-                '&:hover fieldset': { borderColor: 'var(--text-color)' },
-                '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
-              },
+              mt: 0.5,
+              bgcolor: 'transparent',
+              color: 'var(--text-color)',
+              '&:before': { display: 'none' },
             }}
-          />
-          <TextField
-            fullWidth
-            margin="dense"
-            label="Database name"
-            id="db-name"
-            name="database"
-            autoComplete="off"
-            value={dbName}
-            onChange={e => setDbName(e.target.value)}
-            disabled={connected}
-            sx={{
-              '& .MuiInputLabel-root': { color: 'var(--text-color)' },
-              '& .MuiInputLabel-root.Mui-focused': { color: 'var(--primary-color)' },
-              '& .MuiOutlinedInput-root': {
-                color: 'var(--text-color)',
-                '& fieldset': { borderColor: 'var(--border-color)' },
-                '&:hover fieldset': { borderColor: 'var(--text-color)' },
-                '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
-              },
-            }}
-          />
+          >
+            <AccordionSummary
+              expandIcon={<ExpandMoreIcon sx={{ color: 'var(--text-color)' }} />}
+              sx={{
+                p: 0,
+                minHeight: 'auto',
+                opacity: 0.8,
+                '&:hover': { opacity: 1 },
+                '& .MuiAccordionSummary-content': { m: 0 },
+              }}
+            >
+              <Typography variant="caption">Connection Details</Typography>
+            </AccordionSummary>
+            <AccordionDetails
+              sx={{
+                p: 0,
+                '& .MuiInputBase-input': { fontFamily: 'monospace', fontSize: '0.85rem' },
+              }}
+            >
+              <TextField
+                fullWidth
+                margin="dense"
+                label="Username"
+                id="db-username"
+                name="username"
+                autoComplete="username"
+                value={dbUser}
+                onChange={e => setDbUser(e.target.value)}
+                disabled={connected}
+                sx={{
+                  '& .MuiInputLabel-root': { color: 'var(--text-color)' },
+                  '& .MuiInputLabel-root.Mui-focused': { color: 'var(--primary-color)' },
+                  '& .MuiOutlinedInput-root': {
+                    color: 'var(--text-color)',
+                    '& fieldset': { borderColor: 'var(--border-color)' },
+                    '&:hover fieldset': { borderColor: 'var(--text-color)' },
+                    '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
+                  },
+                }}
+              />
+              <TextField
+                fullWidth
+                margin="dense"
+                label="Password"
+                id="db-password"
+                type="password"
+                name="password"
+                autoComplete="current-password"
+                value={dbPassword}
+                onChange={e => setDbPassword(e.target.value)}
+                disabled={connected}
+                sx={{
+                  '& .MuiInputLabel-root': { color: 'var(--text-color)' },
+                  '& .MuiInputLabel-root.Mui-focused': { color: 'var(--primary-color)' },
+                  '& .MuiOutlinedInput-root': {
+                    color: 'var(--text-color)',
+                    '& fieldset': { borderColor: 'var(--border-color)' },
+                    '&:hover fieldset': { borderColor: 'var(--text-color)' },
+                    '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
+                  },
+                }}
+              />
+              <TextField
+                fullWidth
+                margin="dense"
+                label="Server"
+                id="db-server"
+                name="server"
+                autoComplete="off"
+                value={dbHost}
+                onChange={e => setDbHost(e.target.value)}
+                disabled={connected}
+                sx={{
+                  '& .MuiInputLabel-root': { color: 'var(--text-color)' },
+                  '& .MuiInputLabel-root.Mui-focused': { color: 'var(--primary-color)' },
+                  '& .MuiOutlinedInput-root': {
+                    color: 'var(--text-color)',
+                    '& fieldset': { borderColor: 'var(--border-color)' },
+                    '&:hover fieldset': { borderColor: 'var(--text-color)' },
+                    '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
+                  },
+                }}
+              />
+              <TextField
+                fullWidth
+                margin="dense"
+                label="Port"
+                id="db-port"
+                name="port"
+                autoComplete="off"
+                value={dbPort}
+                onChange={e => setDbPort(e.target.value)}
+                disabled={connected}
+                sx={{
+                  '& .MuiInputLabel-root': { color: 'var(--text-color)' },
+                  '& .MuiInputLabel-root.Mui-focused': { color: 'var(--primary-color)' },
+                  '& .MuiOutlinedInput-root': {
+                    color: 'var(--text-color)',
+                    '& fieldset': { borderColor: 'var(--border-color)' },
+                    '&:hover fieldset': { borderColor: 'var(--text-color)' },
+                    '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
+                  },
+                }}
+              />
+              <TextField
+                fullWidth
+                margin="dense"
+                label="Database name"
+                id="db-name"
+                name="database"
+                autoComplete="off"
+                value={dbName}
+                onChange={e => setDbName(e.target.value)}
+                disabled={connected}
+                sx={{
+                  '& .MuiInputLabel-root': { color: 'var(--text-color)' },
+                  '& .MuiInputLabel-root.Mui-focused': { color: 'var(--primary-color)' },
+                  '& .MuiOutlinedInput-root': {
+                    color: 'var(--text-color)',
+                    '& fieldset': { borderColor: 'var(--border-color)' },
+                    '&:hover fieldset': { borderColor: 'var(--text-color)' },
+                    '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
+                  },
+                }}
+              />
+            </AccordionDetails>
+          </Accordion>
           <Box
             sx={{
               mt: 2,
@@ -269,8 +378,9 @@ const Settings = () => {
               justifyContent: 'space-between',
             }}
           >
-            <Button 
-              variant="outlined" 
+            <Button
+              type="button"
+              variant="outlined"
               onClick={handleClose}
               sx={{
                 borderColor: 'var(--border-color)',
@@ -284,8 +394,8 @@ const Settings = () => {
               Close
             </Button>
             <Button
+              type="submit"
               variant="contained"
-              onClick={handleConnect}
               disabled={!!connected || connecting}
               sx={{
                 backgroundColor: 'var(--primary-color)',

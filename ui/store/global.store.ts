@@ -301,6 +301,28 @@ export class GlobalStore {
     }
   };
 
+  /**
+   * Remove a saved server connection. Disconnects any tab currently using it,
+   * the same "not connected" state a brand-new session starts in.
+   */
+  removeConnection = async (connectionId: string) => {
+    await client.deleteConnection(connectionId);
+    runInAction(() => {
+      if (this.connection === connectionId) {
+        this.connection = '';
+      }
+      Object.values(this.sessions).forEach(session => {
+        if (session.connectionId === connectionId) {
+          session.connectionId = '';
+        }
+      });
+      if (this.virtualSession?.connectionId === connectionId) {
+        this.virtualSession.connectionId = '';
+      }
+    });
+    await this.refreshConnections();
+  };
+
   connect = async (params: ConnectionParams): Promise<string> => {
     const connectionId = await client.createConnection(params);
     if (!connectionId) {
