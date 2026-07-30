@@ -1,11 +1,15 @@
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SecurityIcon from '@mui/icons-material/Security';
+import Visibility from '@mui/icons-material/Visibility';
+import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import {
   Accordion,
   AccordionDetails,
   AccordionSummary,
   Box,
   Button,
+  IconButton,
+  InputAdornment,
   Modal,
   TextField,
   Typography,
@@ -102,6 +106,7 @@ const Settings = () => {
   const [dbPassword, setDbPassword] = useState('');
   const [connectionString, setConnectionString] = useState('');
   const [connectionStringError, setConnectionStringError] = useState('');
+  const [showConnectionString, setShowConnectionString] = useState(false);
   const [fieldsExpanded, setFieldsExpanded] = useState(false);
   const [error, setError] = useState('');
   const [connecting, setConnecting] = useState(false);
@@ -212,11 +217,35 @@ const Settings = () => {
             label="Connection string"
             id="db-connection-string"
             name="connection-string"
-            autoComplete="off"
+            type={showConnectionString ? 'text' : 'password'}
+            autoComplete="current-password"
             placeholder="postgresql://user:password@host:5432/database"
             value={connectionString}
             onChange={e => handleConnectionStringChange(e.target.value)}
             disabled={connected}
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton
+                      aria-label={
+                        showConnectionString ? 'Hide connection string' : 'Show connection string'
+                      }
+                      onClick={() => setShowConnectionString(show => !show)}
+                      edge="end"
+                      size="small"
+                      sx={{ color: 'var(--icon-color)' }}
+                    >
+                      {showConnectionString ? (
+                        <VisibilityOff fontSize="small" />
+                      ) : (
+                        <Visibility fontSize="small" />
+                      )}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              },
+            }}
             sx={{
               mb: 1,
               '& .MuiInputLabel-root': { color: 'var(--text-color)' },
