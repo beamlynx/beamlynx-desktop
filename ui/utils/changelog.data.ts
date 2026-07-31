@@ -15,11 +15,45 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.44.0',
+    date: '2026-07-31',
+    added: [
+      {
+        description:
+          'Pine variables: write multi-expression queries and name/reuse an intermediate result with `|= name` in a new multi-expression editor. Variables and checkpoint (`group:`/`limit:`) results render in the graph as collapsible container nodes, with the same FK-relation handles and join-type-aware (solid/dashed) edges as regular tables.',
+      },
+      {
+        description:
+          'The database connection dialog accepts a Postgres connection string (`postgresql://user:password@host:5432/database`) and parses it to fill in the host/port/user/password/database fields; manual entry stays the default, with pasting a string as a secondary, collapsible option. The connection string field is masked like a password so password managers can autofill it.',
+      },
+      {
+        description:
+          "The connection picker can remove a saved connection (click its trash icon to arm, click again to confirm), backed by pine-lang's new DELETE endpoint.",
+      },
+    ],
+    fixed: [
+      {
+        description:
+          'Typing lag in the Pine input that worsened with more expression blocks/variables (unnecessary CodeMirror rebuilds on every keystroke).',
+      },
+      {
+        description:
+          'The autocomplete dropdown now shows a "Loading..." state instead of flashing "Nothing found" while results are still loading.',
+      },
+    ],
+    breaking: [
+      {
+        description: 'Minimum required server version is now `0.37.0`.',
+      },
+    ],
+  },
+  {
     version: '0.43.0',
     date: '2026-05-21',
     added: [
       {
-        description: 'Connection picker in each tab: click the connection dot to switch which database that tab queries (by @Koziar).',
+        description:
+          'Connection picker in each tab: click the connection dot to switch which database that tab queries (by @Koziar).',
       },
     ],
     breaking: [
@@ -66,7 +100,8 @@ export const CHANGELOG: ChangelogVersion[] = [
     date: '2026-04-20',
     added: [
       {
-        description: 'Column hints for the `update!` / `u!` operation. Typing `u!` or `u! col = val,` suggests remaining assignable columns.',
+        description:
+          'Column hints for the `update!` / `u!` operation. Typing `u!` or `u! col = val,` suggests remaining assignable columns.',
       },
     ],
     breaking: [
@@ -80,15 +115,18 @@ export const CHANGELOG: ChangelogVersion[] = [
     date: '2026-03-30',
     added: [
       {
-        description: 'Multi-table `update!` support: assignments targeting different tables now run as separate UPDATE queries.',
+        description:
+          'Multi-table `update!` support: assignments targeting different tables now run as separate UPDATE queries.',
       },
     ],
     fixed: [
       {
-        description: 'Recursive delete no longer follows heuristic relations. Only tables with real foreign key constraints are included in the generated DELETE statements.',
+        description:
+          'Recursive delete no longer follows heuristic relations. Only tables with real foreign key constraints are included in the generated DELETE statements.',
       },
       {
-        description: '`update!` now correctly uses table aliases when columns are qualified (e.g. `c.name`).',
+        description:
+          '`update!` now correctly uses table aliases when columns are qualified (e.g. `c.name`).',
       },
     ],
   },
@@ -97,7 +135,8 @@ export const CHANGELOG: ChangelogVersion[] = [
     date: '2026-02-18',
     fixed: [
       {
-        description: 'Sticky column headers in the results table. The table header now stays visible when scrolling through results (by @Koziar)',
+        description:
+          'Sticky column headers in the results table. The table header now stays visible when scrolling through results (by @Koziar)',
       },
     ],
   },
@@ -106,12 +145,14 @@ export const CHANGELOG: ChangelogVersion[] = [
     date: '2026-02-16',
     added: [
       {
-        description: 'Table color decoration for Pine expressions and results. Expression segments and result columns are color-coded by table to help visualize the relationship between them (collaboration with @Koziar)',
+        description:
+          'Table color decoration for Pine expressions and results. Expression segments and result columns are color-coded by table to help visualize the relationship between them (collaboration with @Koziar)',
       },
     ],
     changed: [
       {
-        description: 'Use server-side prettified expression and ranges from the build endpoint instead of client-side expression parsing. This fixes incorrect highlighting when string values contain `|` characters',
+        description:
+          'Use server-side prettified expression and ranges from the build endpoint instead of client-side expression parsing. This fixes incorrect highlighting when string values contain `|` characters',
       },
     ],
     breaking: [
@@ -125,7 +166,8 @@ export const CHANGELOG: ChangelogVersion[] = [
     date: '2026-02-08',
     fixed: [
       {
-        description: 'Notification bell animation no longer affects scrollbars by preventing layout shifts during animation',
+        description:
+          'Notification bell animation no longer affects scrollbars by preventing layout shifts during animation',
       },
     ],
   },
@@ -134,12 +176,14 @@ export const CHANGELOG: ChangelogVersion[] = [
     date: '2026-02-08',
     added: [
       {
-        description: 'Resizable sidebar functionality. The sidebar width can now be adjusted by dragging the divider (by @Koziar)',
+        description:
+          'Resizable sidebar functionality. The sidebar width can now be adjusted by dragging the divider (by @Koziar)',
       },
     ],
     changed: [
       {
-        description: 'Improved dark theme candidate node contrast for better visibility (by @Koziar)',
+        description:
+          'Improved dark theme candidate node contrast for better visibility (by @Koziar)',
       },
     ],
   },
@@ -148,7 +192,8 @@ export const CHANGELOG: ChangelogVersion[] = [
     date: '2026-01-09',
     added: [
       {
-        description: 'Command palette for finding and running commands. This is similar to how VS Code lets you find and run commands.',
+        description:
+          'Command palette for finding and running commands. This is similar to how VS Code lets you find and run commands.',
       },
     ],
   },
@@ -165,12 +210,14 @@ export const CHANGELOG: ChangelogVersion[] = [
     ],
     changed: [
       {
-        description: 'Pine operations will not be shown in suggestions e.g. when pressing `Tab`, etc',
+        description:
+          'Pine operations will not be shown in suggestions e.g. when pressing `Tab`, etc',
       },
     ],
     fixed: [
       {
-        description: 'The candidate node was not being selected when cycling through suggestions. This was only happening when there were multiple nodes with the same table name',
+        description:
+          'The candidate node was not being selected when cycling through suggestions. This was only happening when there were multiple nodes with the same table name',
       },
     ],
   },
@@ -899,4 +946,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.43.0';
+export const LATEST_VERSION = '0.44.0';

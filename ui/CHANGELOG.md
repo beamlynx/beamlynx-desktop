@@ -4,17 +4,19 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.44.0] - 2026-07-31
 ### Added
+- Pine variables: write multi-expression queries and name/reuse an intermediate result with `|= name` in a new multi-expression editor. Variables and checkpoint (`group:`/`limit:`) results render in the graph as collapsible container nodes, with the same FK-relation handles and join-type-aware (solid/dashed) edges as regular tables.
 - The database connection dialog accepts a Postgres connection string (`postgresql://user:password@host:5432/database`) and parses it to fill in the host/port/user/password/database fields; manual entry stays the default, with pasting a string as a secondary, collapsible option. The connection string field is masked like a password so password managers can autofill it.
 - The connection picker can remove a saved connection (click its trash icon to arm, click again to confirm), backed by pine-lang's new DELETE endpoint.
-- Selected table nodes in the graph show one handle per distinct FK relation instead of one shared handle per side, each labeled with its join column. Suggested and candidate nodes show the same column info, and a suggested edge renders dashed when the join is a heuristic guess or a synthetic (no-FK) join, per pine-lang's `resolution` field.
-- Suggested variable/checkpoint references in the graph render with the same dashed-container look they'll have once piped in.
 
 ### Fixed
-- A crash that blanked the entire graph view on almost any keystroke (a MobX-observable style object broke React Flow's DOM diffing).
-- Pressing Backspace/Delete after clicking a graph node or edge no longer removes it — the graph is a read-only reflection of the query, not directly editable.
-- Typing lag in the Pine input that worsened with more expression blocks/variables, from CodeMirror extensions and the SQL panel view rebuilding on every keystroke instead of only when needed.
+- Typing lag in the Pine input that worsened with more expression blocks/variables (unnecessary CodeMirror rebuilds on every keystroke).
 - The autocomplete dropdown now shows a "Loading..." state instead of flashing "Nothing found" while results are still loading.
+
+### Breaking
+- Minimum required server version is now `0.37.0`.
 
 ## [0.43.0] - 2026-05-21
 ### Added
