@@ -6,6 +6,7 @@ import TabList from '@mui/lab/TabList';
 import TabPanel from '@mui/lab/TabPanel';
 import Session from './Session';
 import { observer } from 'mobx-react-lite';
+import { runInAction } from 'mobx';
 import { useStores } from '../store/store-container';
 import { AddCircle, CloseOutlined } from '@mui/icons-material';
 import { IconButton, CircularProgress } from '@mui/material';
@@ -22,7 +23,9 @@ const PineTabs = observer(() => {
     global.getConnectionColor(activeConnectionId) || 'var(--border-color)';
 
   const setActiveTab = (newSessionId: string) => {
-    global.activeSessionId = newSessionId;
+    runInAction(() => {
+      global.activeSessionId = newSessionId;
+    });
   };
 
   const handleChange = (event: React.SyntheticEvent, newSessionId: string) => {

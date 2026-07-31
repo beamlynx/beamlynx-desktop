@@ -1,3 +1,4 @@
+import { runInAction } from 'mobx';
 import { Column, HttpClient } from '../store/client';
 import { ColumnMetadata, Row, Session } from '../store/session';
 import { PluginInterface } from './plugin.interface';
@@ -11,31 +12,39 @@ export class DefaultPlugin implements PluginInterface {
 
   public async evaluate(): Promise<Row[]> {
     const session = this.session;
-    // session.message = '⏳ Fetching rows ...';
-    session.error = '';
-    session.loading = true;
+    runInAction(() => {
+      // session.message = '⏳ Fetching rows ...';
+      session.error = '';
+      session.loading = true;
+    });
 
     // Use SQL endpoint if in SQL mode, otherwise use Pine eval endpoint
     const response =
       session.inputMode === 'sql'
         ? await this.client.sql(session.query, session.connectionId)
-        : await this.client.eval(session.expression, session.connectionId);
+        : await this.client.eval(session.expressions, session.connectionId);
 
     if (!response) {
-      session.message = '🤷 No response';
-      session.loading = false;
+      runInAction(() => {
+        session.message = '🤷 No response';
+        session.loading = false;
+      });
       return [];
     }
 
     if (response.error) {
-      session.message = '';
-      session.error = response.error;
-      session.loading = false;
+      runInAction(() => {
+        session.message = '';
+        session.error = response.error;
+        session.loading = false;
+      });
       return [];
     }
 
     if (!response.result) {
-      session.loading = false;
+      runInAction(() => {
+        session.loading = false;
+      });
       return [];
     }
 
@@ -76,18 +85,20 @@ export class DefaultPlugin implements PluginInterface {
       {} as Record<string, boolean>,
     );
 
-    session.columns = columns;
-    session.columnVisibilityModel = columnVisibilityModel;
-    session.columnMetadata = columnMetadata;
-    session.rows = rows.slice(1).map((row, index) => {
-      return { ...row, _id: index };
-    });
-    session.expressionAtLastEval = session.inputMode === 'sql' ? session.query : session.expression;
+    runInAction(() => {
+      session.columns = columns;
+      session.columnVisibilityModel = columnVisibilityModel;
+      session.columnMetadata = columnMetadata;
+      session.rows = rows.slice(1).map((row, index) => {
+        return { ...row, _id: index };
+      });
+      session.expressionAtLastEval = session.inputMode === 'sql' ? session.query : session.expression;
 
-    // session.message = pickSuccessMessage();
-    session.loading = false;
-    session.focusTextInput();
-    session.mode = 'result';
+      // session.message = pickSuccessMessage();
+      session.loading = false;
+      session.focusTextInput();
+      session.mode = 'result';
+    });
 
     return result;
   }

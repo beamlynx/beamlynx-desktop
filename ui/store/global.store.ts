@@ -1,4 +1,4 @@
-import { makeAutoObservable } from 'mobx';
+import { makeAutoObservable, runInAction } from 'mobx';
 import { lt } from 'semver';
 import { HttpClient, ConnectionInfo } from './client';
 import { Session, Theme } from './session';
@@ -163,13 +163,15 @@ export class GlobalStore {
     if (!result) {
       return this.connections;
     }
-    this.connections = result.connections ?? [];
-    this.connections.forEach(c => this.assignConnectionColor(c.id));
-    this.pruneConnectionColors(this.connections.map(c => c.id));
-    if (result.version) {
-      this.version = result.version;
-    }
-    this.connection = result['selected-connection-id'] ?? '';
+    runInAction(() => {
+      this.connections = result.connections ?? [];
+      this.connections.forEach(c => this.assignConnectionColor(c.id));
+      this.pruneConnectionColors(this.connections.map(c => c.id));
+      if (result.version) {
+        this.version = result.version;
+      }
+      this.connection = result['selected-connection-id'] ?? '';
+    });
     return this.connections;
   };
 
@@ -214,7 +216,9 @@ export class GlobalStore {
       if (queryParam) {
         const session = this.getSession(this.activeSessionId);
         if (session) {
-          session.expression = decodeURIComponent(queryParam);
+          runInAction(() => {
+            session.expression = decodeURIComponent(queryParam);
+          });
           await session.prettify();
         }
         urlParams.delete('query');
@@ -231,7 +235,9 @@ export class GlobalStore {
         const data = JSON.parse(dataParam);
         const session = this.getSession(this.activeSessionId);
         if (session && data.expression) {
-          session.expression = data.expression;
+          runInAction(() => {
+            session.expression = data.expression;
+          });
           await session.prettify();
         }
         urlParams.delete('data');
@@ -275,20 +281,46 @@ export class GlobalStore {
     }
     try {
       const { id, version } = await client.useConnection(connectionId);
-      this.connection = id;
-      this.version = version ?? '0.0.0';
-      if (activeSession.expression.trim()) {
-        const session = this.createSession();
-        this.activeSessionId = session.id;
-      } else {
-        activeSession.connectionId = id;
-      }
+      runInAction(() => {
+        this.connection = id;
+        this.version = version ?? '0.0.0';
+        if (activeSession.expression.trim()) {
+          const session = this.createSession();
+          this.activeSessionId = session.id;
+        } else {
+          activeSession.connectionId = id;
+        }
+      });
       await this.refreshConnections();
     } catch (e) {
       const message = (e as Error)?.message ?? 'Unknown error';
-      activeSession.message = `⚠ Failed to switch connection: ${message}`;
+      runInAction(() => {
+        activeSession.message = `⚠ Failed to switch connection: ${message}`;
+      });
       throw e;
     }
+  };
+
+  /**
+   * Remove a saved server connection. Disconnects any tab currently using it,
+   * the same "not connected" state a brand-new session starts in.
+   */
+  removeConnection = async (connectionId: string) => {
+    await client.deleteConnection(connectionId);
+    runInAction(() => {
+      if (this.connection === connectionId) {
+        this.connection = '';
+      }
+      Object.values(this.sessions).forEach(session => {
+        if (session.connectionId === connectionId) {
+          session.connectionId = '';
+        }
+      });
+      if (this.virtualSession?.connectionId === connectionId) {
+        this.virtualSession.connectionId = '';
+      }
+    });
+    await this.refreshConnections();
   };
 
   connect = async (params: ConnectionParams): Promise<string> => {
@@ -298,29 +330,33 @@ export class GlobalStore {
     }
     const { id, version } = await client.useConnection(connectionId);
     if (!id) {
-      this.connection = '';
+      runInAction(() => {
+        this.connection = '';
+      });
       throw new Error('Failed to connect');
     }
-    this.connection = id;
-    this.version = version ?? '0.0.0';
-    this.assignConnectionColor(id);
+    runInAction(() => {
+      this.connection = id;
+      this.version = version ?? '0.0.0';
+      this.assignConnectionColor(id);
 
-    const activeSession = this.sessions[this.activeSessionId];
-    if (activeSession) {
-      if (activeSession.expression.trim()) {
-        const session = this.createSession();
-        this.activeSessionId = session.id;
-      } else {
-        activeSession.connectionId = id;
+      const activeSession = this.sessions[this.activeSessionId];
+      if (activeSession) {
+        if (activeSession.expression.trim()) {
+          const session = this.createSession();
+          this.activeSessionId = session.id;
+        } else {
+          activeSession.connectionId = id;
+        }
       }
-    }
-    if (this.virtualSession) {
-      this.virtualSession.connectionId = id;
-    }
+      if (this.virtualSession) {
+        this.virtualSession.connectionId = id;
+      }
 
-    if (!this.onboardingServer) {
-      this.onboardingServer = true;
-    }
+      if (!this.onboardingServer) {
+        this.onboardingServer = true;
+      }
+    });
     await this.refreshConnections();
     return id;
   };
@@ -398,42 +434,48 @@ export class GlobalStore {
     try {
       const response = await client.get('connection');
       if (!response?.result) {
-        this.connection = '';
-        this.version = undefined;
+        runInAction(() => {
+          this.connection = '';
+          this.version = undefined;
+        });
         return;
       }
       const result = response.result as unknown as {
         version: string;
         'connection-id': string;
       };
-      this.version = result.version ?? '0.0.0';
-      this.connection = result['connection-id'] || '';
-      this.assignConnectionColor(this.connection);
+      runInAction(() => {
+        this.version = result.version ?? '0.0.0';
+        this.connection = result['connection-id'] || '';
+        this.assignConnectionColor(this.connection);
 
-      if (this.connection) {
-        Object.values(this.sessions).forEach(session => {
-          if (!session.connectionId) {
-            session.connectionId = this.connection;
+        if (this.connection) {
+          Object.values(this.sessions).forEach(session => {
+            if (!session.connectionId) {
+              session.connectionId = this.connection;
+            }
+          });
+          if (this.virtualSession && !this.virtualSession.connectionId) {
+            this.virtualSession.connectionId = this.connection;
           }
-        });
-        if (this.virtualSession && !this.virtualSession.connectionId) {
-          this.virtualSession.connectionId = this.connection;
         }
-      }
 
-      if (this.pineConnected && !this.onboardingServer) {
-        this.onboardingServer = true;
-      }
+        if (this.pineConnected && !this.onboardingServer) {
+          this.onboardingServer = true;
+        }
 
-      if (lt(this.version, RequiredVersion)) {
-        this.requiresUpgrade = true;
-      }
+        if (lt(this.version, RequiredVersion)) {
+          this.requiresUpgrade = true;
+        }
+      });
 
       await this.refreshConnections();
     } catch (e) {
       console.error('Failed to load connection metadata', e);
-      this.connection = '';
-      this.version = undefined;
+      runInAction(() => {
+        this.connection = '';
+        this.version = undefined;
+      });
     }
     return this.connection;
   };

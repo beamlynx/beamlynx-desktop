@@ -1,3 +1,4 @@
+import { runInAction } from 'mobx';
 import { GlobalStore } from '../store/global.store';
 import { AnalysisTemplates } from './analysisTemplates.data';
 
@@ -24,7 +25,9 @@ export const runAnalysisFromExpressions = async (
   // Create the first session and set it as active immediately to avoid race conditions
   const firstSession = global.createSession();
   sessionIds.push(firstSession.id);
-  global.activeSessionId = firstSession.id;
+  runInAction(() => {
+    global.activeSessionId = firstSession.id;
+  });
 
   // Clear all other existing sessions now that we have a new active session
   Object.keys(global.sessions).forEach(sessionId => {
@@ -34,7 +37,9 @@ export const runAnalysisFromExpressions = async (
   });
 
   // Set the pine expression for the first session
-  firstSession.expression = expressions[0];
+  runInAction(() => {
+    firstSession.expression = expressions[0];
+  });
   await firstSession.prettify();
   await firstSession.evaluate();
 
@@ -42,8 +47,10 @@ export const runAnalysisFromExpressions = async (
   for (let i = 1; i < expressions.length; i++) {
     const session = global.createSession();
     sessionIds.push(session.id);
-    
-    session.expression = expressions[i];
+
+    runInAction(() => {
+      session.expression = expressions[i];
+    });
     await session.prettify();
     await session.evaluate();
   }
@@ -63,6 +70,8 @@ export const runAnalysis = async (input: string, templateId: string, global: Glo
   }
   const sessionIds = await template.run(x, global);
   if (sessionIds.length > 0) {
-    global.activeSessionId = sessionIds[0];
+    runInAction(() => {
+      global.activeSessionId = sessionIds[0];
+    });
   }
 }; 

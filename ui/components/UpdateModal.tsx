@@ -1,6 +1,7 @@
 import { Box, Modal, Typography, IconButton, Tooltip } from '@mui/material';
 import { Close } from '@mui/icons-material';
 import { observer } from 'mobx-react-lite';
+import { runInAction } from 'mobx';
 import React, { useEffect, useState } from 'react';
 import { Session } from '../store/session';
 import Input from './Input';
@@ -45,14 +46,18 @@ const UpdateModal: React.FC<UpdateModalProps> = observer(({ updateExpression, up
 
     // Reset virtual session state
     vs.setMessage('');
-    vs.error = '';
-    vs.loading = false;
+    runInAction(() => {
+      vs.error = '';
+      vs.loading = false;
+    });
 
     // Always start in Pine mode to ensure the build process triggers
     vs.setInputMode('pine');
 
     // Use the pre-built update expression
-    vs.expression = updateExpression;
+    runInAction(() => {
+      vs.expression = updateExpression;
+    });
 
     // Update title to be more specific
     setTitle(`Update ${alias}.${column}`);

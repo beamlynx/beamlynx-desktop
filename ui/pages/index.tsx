@@ -2,7 +2,7 @@ import { ClerkProvider } from '@clerk/nextjs';
 import Container from '@mui/material/Container';
 import type { NextPage } from 'next';
 import { useEffect, useState } from 'react';
-import { reaction } from 'mobx';
+import { reaction, runInAction } from 'mobx';
 import AppView from '../components/AppView';
 import { useStores } from '../store/store-container';
 import { isDevelopment, isPlayground } from '../store/util';
@@ -31,9 +31,13 @@ const Home: NextPage = () => {
     };
 
     // Initial load
-    global.connecting = true;
+    runInAction(() => {
+      global.connecting = true;
+    });
     global.loadConnectionMetadata().finally(() => {
-      global.connecting = false;
+      runInAction(() => {
+        global.connecting = false;
+      });
     });
 
     // Setup a reaction to manage polling based on connection status

@@ -10,26 +10,32 @@ import ReactFlow, {
 
 import { Box, BoxProps } from '@mui/material';
 import { observer } from 'mobx-react-lite';
+import { runInAction } from 'mobx';
 import 'reactflow/dist/style.css';
 import { PineNode, PineSuggestedNode } from '../model';
 import {
   getLayoutedElements,
   getNodeHeight,
+  isUncertainResolution,
   makeSuggestedNode,
   nodeWidth,
+  uncertainEdgeStyle,
 } from '../store/graph.util';
 import { useStores } from '../store/store-container';
 import SelectedNodeComponent from './SelectedNodeComponent';
 import SuggestedNodeComponent from './SuggestedNodeComponent';
+import VariableNodeComponent from './VariableNodeComponent';
 import { CloseFullscreen, OpenInFull } from '@mui/icons-material';
 
 export const NodeType = {
   Selected: 'selected-node',
   Suggested: 'suggested-node',
+  Variable: 'variable-node',
 };
 const nodeTypes: NodeTypes = {
   [NodeType.Suggested]: SuggestedNodeComponent,
   [NodeType.Selected]: SelectedNodeComponent,
+  [NodeType.Variable]: VariableNodeComponent,
 };
 
 const nodePositionCache: Record<string, { x: number; y: number }> = {};
@@ -93,12 +99,25 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId, containerRef }) => {
       }
     }
 
-    return { layoutedNodes: nodes, layoutedEdges: edges, candidateNode: foundCandidate };
+    // An edge touching a suggested node gets styled here, in local component
+    // state, rather than inside generateGraph/session.graph - session.graph is
+    // a deep MobX observable (makeAutoObservable), and handing ReactFlow a
+    // style object that MobX has wrapped into an observable Proxy crashes its
+    // DOM style diffing. Building fresh, plain style objects here keeps them
+    // out of the observable tree entirely.
+    const suggestedResolutionById = new Map(graph.suggestedNodes.map(n => [n.id, n.data.resolution]));
+    const styledEdges = edges.map(e => {
+      const resolution = suggestedResolutionById.get(e.source) ?? suggestedResolutionById.get(e.target);
+      return isUncertainResolution(resolution) ? { ...e, style: uncertainEdgeStyle } : e;
+    });
+
+    return { layoutedNodes: nodes, layoutedEdges: styledEdges, candidateNode: foundCandidate };
   }, [graph.selectedNodes, graph.suggestedNodes, graph.edges, graph.candidate]);
 
   // Update graph nodes and edges
   useEffect(() => {
     let finalNodes: PineNode[] = layoutedNodes;
+    let finalEdges = layoutedEdges;
 
     if (candidateNode) {
       finalNodes = layoutedNodes.map(n => {
@@ -110,10 +129,20 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId, containerRef }) => {
         }
         return n;
       });
+
+      // A suggested node has at most one relation, so at most one edge
+      // touches it - highlight that edge the same way the node itself gets
+      // highlighted, so the candidate's connection is as obvious as the
+      // candidate itself.
+      finalEdges = layoutedEdges.map(e =>
+        e.source === candidateNode.id || e.target === candidateNode.id
+          ? { ...e, style: { ...e.style, stroke: 'var(--node-candidate-border)', strokeWidth: 2.5 }, zIndex: 1 }
+          : e,
+      );
     }
 
     setNodes(finalNodes);
-    setEdges(layoutedEdges);
+    setEdges(finalEdges);
   }, [layoutedNodes, layoutedEdges, candidateNode, global.theme, sessionId, setNodes, setEdges]);
 
   // Center view on candidate or fit view
@@ -138,8 +167,9 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId, containerRef }) => {
   // Add handler for node movement
   const onNodeDragStop = (event: React.MouseEvent, node: PineNode) => {
     if (node.data.type === 'selected') {
-      // Cache the position using the node's alias as the key
       nodePositionCache[node.data.alias] = node.position;
+    } else if (node.data.type === 'variable') {
+      nodePositionCache[`var:${node.data.variableName}`] = node.position;
     }
   };
 
@@ -170,6 +200,13 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId, containerRef }) => {
       nodesConnectable={false}
       draggable={true}
       elementsSelectable={true}
+      // The graph is a derived view of the Pine expression, not an editable
+      // canvas - React Flow's default Backspace/Delete key removes the
+      // selected node/edge from local state, but nothing about the
+      // underlying expression changes, so it silently reappears on the next
+      // graph regeneration. Disable it so there's no dead-end "delete" that
+      // doesn't actually do anything.
+      deleteKeyCode={null}
       minZoom={0.5}
       maxZoom={1.2}
       proOptions={{ hideAttribution: true }}
@@ -188,7 +225,11 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId, containerRef }) => {
             color: 'var(--primary-color)',
           },
         }}
-        onClick={() => (session.mode = session.mode === 'graph' ? 'result' : 'graph')}
+        onClick={() =>
+          runInAction(() => {
+            session.mode = session.mode === 'graph' ? 'result' : 'graph';
+          })
+        }
       >
         {session.mode === 'graph' ? <CloseFullscreen /> : <OpenInFull />}
       </Box>

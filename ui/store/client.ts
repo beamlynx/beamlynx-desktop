@@ -6,11 +6,28 @@ const getBaseUrl = () => {
 
 export type Table = { schema: string; table: string; alias: string };
 export type TableHint = {
-  schema: string;
+  // null identifies a hint that refers to a variable/checkpoint rather than a
+  // real table - see pine-lang's create-hint-from-table/relation-hints, which
+  // only null the schema for a variable name match.
+  schema: string | null;
   table: string;
-  column: string;
-  parent: boolean;
-  heuristic: boolean;
+  // This table's own join column. 'related-column' is the already-selected
+  // context table's own join column - together they're both ends of the edge
+  // this hint describes (see create-hint-from-relation-array in pine-lang).
+  // Both are entirely absent (not even null) on a no-context hint
+  // (create-hint-from-table, the very first table in a pipeline) - there's no
+  // relation at all yet to describe.
+  column?: string;
+  'related-column'?: string;
+  parent?: boolean;
+  // 'synthetic' is a made-up id=id join with no real FK behind it (today only
+  // ever the same-source case - see docs/variables.md in pine-lang - but not
+  // inherently variable-specific; a future self-join between two real tables
+  // would use the same tag). 'manual' (explicit `.col1 = .col2`) is never
+  // emitted by hints today - that syntax bypasses the reference map entirely,
+  // so there's nothing to suggest - but it's reserved here for
+  // forward-completeness.
+  resolution?: 'fk' | 'heuristic' | 'synthetic' | 'manual';
   pine: string;
 };
 
@@ -49,6 +66,11 @@ export type Operation = {
 };
 export type WhereCondition = [string, string, null, string, { type: string; value: string } | null];
 
+/** ON-clause equality: `${alias1}.${col1} = ${alias2}.${col2}`. Position 2 (`'has'`/`'of'`) records which side owns the FK. */
+export type JoinRelation = [string, string, 'has' | 'of', string, string];
+/** `[from-alias, to-alias, relation, join-type]` — join-type is `'LEFT'`/`'RIGHT'`/null (inner). */
+export type JoinTuple = [string, string, JoinRelation | null, string | null];
+
 export type Column = { alias: string; column: string; 'column-alias': string; hidden: boolean };
 
 /** Range returned by the build endpoint mapping segments to table aliases */
@@ -58,10 +80,17 @@ export type PineRange = {
   end: { line: number; character: number };
 };
 
+export type VariableAst = {
+  'selected-tables': Table[];
+  tables?: Table[];
+  joins: JoinTuple[];
+  columns: Column[];
+};
+
 export type Ast = {
   hints: Hints;
   'selected-tables': Table[];
-  joins: string[][];
+  joins: JoinTuple[];
   context: string;
   // current: string;
   operation: Operation;
@@ -70,6 +99,9 @@ export type Ast = {
   where: WhereCondition[];
   prettified: string;
   ranges: PineRange[];
+  variables?: Record<string, VariableAst>;
+  'pending-assignments'?: Record<string, VariableAst>;
+  assign?: string;
 };
 
 export type Response = {
@@ -153,6 +185,19 @@ export class HttpClient {
     return await res.json();
   }
 
+  private async del(path: string): Promise<Response | undefined> {
+    const res = await fetch(`${getBaseUrl()}/api/v1/${path}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!res.ok) {
+      return;
+    }
+    return await res.json();
+  }
+
   private withConnectionId(body: object, connectionId?: string): object {
     if (connectionId) {
       return { ...body, 'connection-id': connectionId };
@@ -163,7 +208,7 @@ export class HttpClient {
   public async prettify(expression: string, connectionId?: string): Promise<string> {
     const response: Response | undefined = await this.post(
       'build',
-      this.withConnectionId({ expression }, connectionId),
+      this.withConnectionId({ expressions: [expression] }, connectionId),
     );
     if (!response) {
       throw new Error('No response when trying to prettify');
@@ -174,8 +219,8 @@ export class HttpClient {
     return response.ast.prettified;
   }
 
-  public async eval(expression: string, connectionId?: string): Promise<Response> {
-    const response = await this.post('eval', this.withConnectionId({ expression }, connectionId));
+  public async eval(expressions: string[], connectionId?: string): Promise<Response> {
+    const response = await this.post('eval', this.withConnectionId({ expressions }, connectionId));
     if (!response) {
       throw new Error('No response when trying to eval');
     }
@@ -194,11 +239,11 @@ export class HttpClient {
   }
 
   public async build(
-    expression: string,
+    expressions: string[],
     cursor?: CursorPosition,
     connectionId?: string,
   ): Promise<Response> {
-    const body: { expression: string; cursor?: CursorPosition } = { expression };
+    const body: { expressions: string[]; cursor?: CursorPosition } = { expressions };
     if (cursor) {
       body.cursor = cursor;
     }
@@ -211,7 +256,7 @@ export class HttpClient {
   }
 
   public async count(expression: string, connectionId?: string): Promise<number> {
-    const response = await this.eval(`${expression} | count:`, connectionId);
+    const response = await this.eval([`${expression} | count:`], connectionId);
     if (!response) {
       throw new Error('No respnse when trying to count');
     }
@@ -229,15 +274,21 @@ export class HttpClient {
     const x = `${expression} |`;
     const response = await this.post(
       'build',
-      this.withConnectionId({ expression: x }, connectionId),
+      this.withConnectionId({ expressions: [x] }, connectionId),
     );
     if (!response) {
       throw new Error('No response when trying to make child Expressions');
     }
     this.onBuild && (await this.onBuild(response.ast));
     const expressions = response.ast.hints.table
-      .filter(h => !h.parent && !h.heuristic)
-      .map((h: TableHint) => ({
+      // A synthetic-join hint's column is made up (always "id"), not a real
+      // FK column on an actual table, so it can't be recursively deleted
+      // through.
+      .filter(
+        (h): h is TableHint & { column: string } =>
+          !h.parent && h.resolution !== 'heuristic' && h.resolution !== 'synthetic' && h.column !== undefined,
+      )
+      .map(h => ({
         expression: `${x} ${h.pine}`,
         column: h.column,
       }));
@@ -251,7 +302,7 @@ export class HttpClient {
     connectionId?: string,
   ): Promise<string> {
     const x = `${expression} | limit: ${limit} | delete! .${column}`;
-    const response = await this.build(x, undefined, connectionId);
+    const response = await this.build([x], undefined, connectionId);
     if (!response) {
       throw new Error('No response when trying to build the delete query');
     }
@@ -303,5 +354,15 @@ export class HttpClient {
       throw new Error(response.error);
     }
     return { id: response['connection-id'], version: response.version };
+  }
+
+  public async deleteConnection(connectionId: string): Promise<void> {
+    const response = await this.del(`connections/${connectionId}`);
+    if (!response) {
+      throw new Error('No response when trying to remove connection');
+    }
+    if (response.error) {
+      throw new Error(response.error);
+    }
   }
 }

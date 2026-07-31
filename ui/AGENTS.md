@@ -12,6 +12,11 @@ When working in this codebase, if you discover a new pattern, convention, archit
 - Module boundaries and ownership (e.g. which module owns which concept)
 - Corrections to previously held assumptions
 
+## Graph Node Types
+
+See [docs/graph-node-types.md](./docs/graph-node-types.md) for the vocabulary used to discuss the
+query graph (selected/current/suggested/candidate/variable-container, handle conventions).
+
 ## Crediting Contributors
 
 When updating the changelog (CHANGELOG.md and utils/changelog.data.ts), contributors should be credited in the changelog entries themselves. The format is:

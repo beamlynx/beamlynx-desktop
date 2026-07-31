@@ -1,5 +1,4 @@
 import { Introduction } from './intro';
-import { Navigation } from './navigate';
 
 export const Documentation = (
   <div style={{ display: 'flex', margin: 20 }}>

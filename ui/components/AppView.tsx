@@ -1,5 +1,6 @@
 import { Box, Grid, Typography, useTheme, useMediaQuery, Link } from '@mui/material';
 import { observer } from 'mobx-react-lite';
+import { runInAction } from 'mobx';
 import { useStores } from '../store/store-container';
 import PineTabs from './PineTabs';
 import { Welcome } from './docs/Welcome';
@@ -56,6 +57,12 @@ const AppView = observer(() => {
   useEffect(() => {
     global.handleUrlParameters();
   }, [global]);
+
+  useEffect(() => {
+    runInAction(() => {
+      session.isSmallScreen = isSmallScreen;
+    });
+  }, [session, isSmallScreen]);
 
   // Prevent hydration errors by ensuring the same component is rendered on server and client initial render
   if (!mounted) {
@@ -130,8 +137,6 @@ const AppView = observer(() => {
       </Box>
     );
   }
-
-  session.isSmallScreen = isSmallScreen;
 
   if (global.getRequiresUpgrade()) {
     return <UpgradeRequired />;

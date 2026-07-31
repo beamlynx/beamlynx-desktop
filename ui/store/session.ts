@@ -1,5 +1,5 @@
 import { GridColDef } from '@mui/x-data-grid';
-import { makeAutoObservable, reaction } from 'mobx';
+import { makeAutoObservable, reaction, runInAction } from 'mobx';
 import { format } from 'sql-formatter';
 import { TOTAL_BARS } from '../constants';
 import { DefaultPlugin } from '../plugin/default.plugin';
@@ -8,6 +8,36 @@ import { Ast, Hints, HttpClient, Operation, Response } from './client';
 import { generateGraph, getCandidateIndex, Graph } from './graph.util';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
 import { debounce } from './util';
+
+type ExpressionBlock = { text: string; startLine: number };
+
+function splitExpressions(text: string): ExpressionBlock[] {
+  const lines = text.split('\n');
+  const blocks: ExpressionBlock[] = [];
+  let current: string[] = [];
+  let currentStart = 0;
+
+  for (let i = 0; i <= lines.length; i++) {
+    const line = lines[i];
+    if (i === lines.length || line.trim() === '') {
+      const joined = current.join('\n').trim();
+      if (joined) blocks.push({ text: joined, startLine: currentStart });
+      current = [];
+      currentStart = i + 1;
+    } else {
+      if (current.length === 0) currentStart = i;
+      current.push(line);
+    }
+  }
+  return blocks;
+}
+
+function findActiveBlock(blocks: ExpressionBlock[], cursorLine: number): number {
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    if (blocks[i].startLine <= cursorLine) return i;
+  }
+  return blocks.length - 1;
+}
 
 export type Mode = 'documentation' | 'graph' | 'result' | 'monitor';
 
@@ -149,6 +179,22 @@ export class Session {
   /** Cursor position */
   cursorPosition?: { line: number; character: number };
 
+  /**
+   * Cursor position used by the most recently resolved build. Lets
+   * requestHints() skip firing when the cursor hasn't moved since — see its
+   * doc comment for why that redundant rebuild is worth avoiding.
+   */
+  private lastHintsCursorPosition?: { line: number; character: number };
+
+  /** True while a build request is in flight, so the autocomplete dropdown can
+   * show a loading state instead of misreporting "Nothing found". */
+  hintsLoading: boolean = false;
+
+  /** All expression blocks split from the editor text (blank-line separated) */
+  get expressions(): string[] {
+    return splitExpressions(this.expression).map(b => b.text);
+  }
+
   /** Counter to trigger hint regeneration on demand */
   hintsRequestedCounter: number = 0;
 
@@ -172,6 +218,29 @@ export class Session {
     };
 
     /**
+     * Mark hints as loading the moment a build is queued, not once it starts
+     * running. The debounced reaction below only flips `hintsLoading` back to
+     * false once its (debounced, then awaited) fetch actually completes, but
+     * flipping it true has to happen synchronously here: the autocomplete
+     * dropdown reads `isLoading()` once, when it opens, and only re-queries
+     * on the next document change or hints update — not on every store
+     * change — so by the time the debounced body below would set it, the
+     * dropdown may already have rendered its (possibly empty) "Nothing
+     * found" state from the stale hints.
+     */
+    reaction(
+      () => ({
+        expression: this.expression,
+        trigger: this.hintsRequestedCounter,
+      }),
+      () => {
+        runInAction(() => {
+          this.hintsLoading = true;
+        });
+      },
+    );
+
+    /**
      * Handle the expression and explicit hint requests
      * - Get the http response
      */
@@ -183,23 +252,47 @@ export class Session {
       debounce(async ({ expression }) => {
         // Skip building if in SQL mode - no Pine expression to build
         if (this.inputMode === 'sql') {
+          runInAction(() => {
+            this.hintsLoading = false;
+          });
           return;
         }
 
-        // reset the candidate
-        this.candidateIndex = undefined;
+        runInAction(() => {
+          // reset the candidate
+          this.candidateIndex = undefined;
 
-        if (expression.trim() === '' && this.mode === 'graph') {
-          this.mode = 'documentation';
-        } else if (expression.trim() !== '' && this.mode === 'documentation') {
-          this.mode = 'graph';
-        }
+          if (expression.trim() === '' && this.mode === 'graph') {
+            this.mode = 'documentation';
+          } else if (expression.trim() !== '' && this.mode === 'documentation') {
+            this.mode = 'graph';
+          }
+        });
 
         // response - use current cursor position (not watched, but always current)
         try {
-          this.response = await client.build(expression, this.cursorPosition, this.connectionId);
+          const blocks = splitExpressions(expression);
+          const cursor = this.cursorPosition;
+          const activeIdx = cursor !== undefined
+            ? findActiveBlock(blocks, cursor.line)
+            : blocks.length - 1;
+          const activeExpressions = blocks.slice(0, activeIdx + 1).map(b => b.text);
+          const adjustedCursor = cursor && blocks[activeIdx]
+            ? { line: cursor.line - blocks[activeIdx].startLine, character: cursor.character }
+            : cursor;
+          const response = await client.build(activeExpressions, adjustedCursor, this.connectionId);
+          runInAction(() => {
+            this.response = response;
+            this.lastHintsCursorPosition = cursor;
+          });
         } catch (e) {
-          this.error = (e as any).message || 'Failed to build';
+          runInAction(() => {
+            this.error = (e as any).message || 'Failed to build';
+          });
+        } finally {
+          runInAction(() => {
+            this.hintsLoading = false;
+          });
         }
       }, 200),
     );
@@ -214,25 +307,27 @@ export class Session {
      */
     reaction(
       () => this.response,
-      async response => {
+      response => {
         if (!response) return;
 
-        // connection
-        this.connection = response['connection-id'] || '-';
+        runInAction(() => {
+          // connection
+          this.connection = response['connection-id'] || '-';
 
-        // ast
-        this.ast = response.ast;
+          // ast
+          this.ast = response.ast;
 
-        // query
-        this.query = formatQuery(response.query);
+          // query
+          this.query = formatQuery(response.query);
 
-        // operation
-        this.operation = handleOperation(response);
+          // operation
+          this.operation = handleOperation(response);
 
-        // error
-        const { error, errorType } = handleError(response);
-        this.error = error;
-        this.errorType = errorType;
+          // error
+          const { error, errorType } = handleError(response);
+          this.error = error;
+          this.errorType = errorType;
+        });
       },
     );
 
@@ -242,12 +337,14 @@ export class Session {
      */
     reaction(
       () => this.ast,
-      async ast => {
+      ast => {
         if (!ast) return;
 
         const isDark = this.globalStore?.theme === 'dark';
         const graph = generateGraph(ast, this.id, isDark);
-        this.graph = graph;
+        runInAction(() => {
+          this.graph = graph;
+        });
       },
     );
 
@@ -257,7 +354,7 @@ export class Session {
      */
     reaction(
       () => this.candidateIndex,
-      async ci => {
+      ci => {
         if (ci === undefined) return;
         const ast = this.ast;
         if (!ast?.hints) return;
@@ -269,7 +366,9 @@ export class Session {
         const sanitizedCandidateIndex = getCandidateIndex(suggestedTables, ci);
         for (const { h, i } of suggestedTables.map((h, i) => ({ h, i }))) {
           if (i === sanitizedCandidateIndex) {
-            this.graph.candidate = h;
+            runInAction(() => {
+              this.graph.candidate = h;
+            });
             break;
           }
         }
@@ -282,10 +381,12 @@ export class Session {
      */
     reaction(
       () => this.graph.candidate,
-      async candidate => {
+      candidate => {
         if (!candidate) return;
         const { pine } = candidate;
-        this.message = pine;
+        runInAction(() => {
+          this.message = pine;
+        });
       },
     );
   }
@@ -320,16 +421,36 @@ export class Session {
   }
 
   public async updateExpressionUsingCandidate() {
-    this.expression = await this.getExpressionUsingCandidate();
+    const expression = await this.getExpressionUsingCandidate();
+    runInAction(() => {
+      this.expression = expression;
+    });
   }
 
   public async prettifyExpression(expression: string, appendPipe: boolean = false): Promise<string> {
-    const prettified = await client.prettify(expression, this.connectionId);
-    return appendPipe ? prettified + '\n | ' : prettified;
+    const blocks = splitExpressions(expression);
+    if (blocks.length <= 1) {
+      const prettified = await client.prettify(expression, this.connectionId);
+      return appendPipe ? prettified + '\n | ' : prettified;
+    }
+    const cursor = this.cursorPosition;
+    const activeIdx = cursor !== undefined
+      ? findActiveBlock(blocks, cursor.line)
+      : blocks.length - 1;
+    const activeBlock = blocks[activeIdx];
+    const prettifiedBlock = await client.prettify(activeBlock.text, this.connectionId);
+    const result = appendPipe ? prettifiedBlock + '\n | ' : prettifiedBlock;
+    // Reconstruct: blocks before active, prettified active, blocks after
+    const before = blocks.slice(0, activeIdx).map(b => b.text);
+    const after = blocks.slice(activeIdx + 1).map(b => b.text);
+    return [...before, result, ...after].join('\n\n');
   }
 
   public async prettify(appendPipe = false) {
-    this.expression = await this.prettifyExpression(this.expression, appendPipe);
+    const expression = await this.prettifyExpression(this.expression, appendPipe);
+    runInAction(() => {
+      this.expression = expression;
+    });
   }
 
   public appendAndUpdateExpression(string: string) {
@@ -337,12 +458,18 @@ export class Session {
   }
 
   public async pipeAndUpdateExpression(pine: string, overwriteLastOperation: boolean = false) {
-    this.expression = await this.pipeExpression(pine, overwriteLastOperation);
+    const expression = await this.pipeExpression(pine, overwriteLastOperation);
+    runInAction(() => {
+      this.expression = expression;
+    });
   }
 
   public async setContext(alias: string) {
     const pine = `from: ${alias}`;
-    this.expression = await this.pipeExpression(pine, true);
+    const expression = await this.pipeExpression(pine, true);
+    runInAction(() => {
+      this.expression = expression;
+    });
   }
 
   public async evaluate() {
@@ -365,7 +492,7 @@ export class Session {
    * Similar to evaluate() but only builds without executing.
    */
   public async build(expression: string): Promise<Ast> {
-    const response = await client.build(expression, this.cursorPosition, this.connectionId);
+    const response = await client.build([expression], this.cursorPosition, this.connectionId);
     return response.ast;
   }
 
@@ -386,6 +513,25 @@ export class Session {
   }
 
   public requestHints() {
+    // Only needed when the cursor moved without a text change — e.g. clicking
+    // or arrow-keying into an earlier segment, then pressing Tab — since the
+    // build reaction above is keyed on `expression`, not cursor position, and
+    // won't refire on its own. If the cursor hasn't moved since the last
+    // build, hints are already fresh for it: skip the rebuild. Firing it
+    // anyway would still resolve to the same hints, but the new (structurally
+    // identical) response replaces `ast`, which recreates the CodeMirror
+    // autocompletion extension mid-open and flickers the just-highlighted
+    // candidate.
+    const { cursorPosition, lastHintsCursorPosition } = this;
+    if (
+      cursorPosition &&
+      lastHintsCursorPosition &&
+      cursorPosition.line === lastHintsCursorPosition.line &&
+      cursorPosition.character === lastHintsCursorPosition.character
+    ) {
+      return;
+    }
+
     // Increment counter to trigger the reaction
     this.hintsRequestedCounter++;
   }
@@ -399,10 +545,12 @@ export class Session {
 
     if (autoClearMs > 0) {
       setTimeout(() => {
-        // Only clear if the message hasn't been changed by something else
-        if (this.message === message) {
-          this.message = '';
-        }
+        runInAction(() => {
+          // Only clear if the message hasn't been changed by something else
+          if (this.message === message) {
+            this.message = '';
+          }
+        });
       }, autoClearMs);
     }
   }
@@ -433,11 +581,13 @@ export class Session {
     };
 
     // Update logs array
-    if (this.connectionCountLogs.length >= TOTAL_BARS) {
-      this.connectionCountLogs = [...this.connectionCountLogs.slice(1), newLog];
-    } else {
-      this.connectionCountLogs = [...this.connectionCountLogs, newLog];
-    }
+    runInAction(() => {
+      if (this.connectionCountLogs.length >= TOTAL_BARS) {
+        this.connectionCountLogs = [...this.connectionCountLogs.slice(1), newLog];
+      } else {
+        this.connectionCountLogs = [...this.connectionCountLogs, newLog];
+      }
+    });
   }
 }
 

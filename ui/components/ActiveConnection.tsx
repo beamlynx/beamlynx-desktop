@@ -1,21 +1,58 @@
 import CheckIcon from '@mui/icons-material/Check';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { Box, ClickAwayListener, Divider, Menu, MenuItem, Typography } from '@mui/material';
 import { observer } from 'mobx-react-lite';
-import { useEffect, useState, type MouseEvent } from 'react';
+import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import { useStores } from '../store/store-container';
 import { CONNECTION_COLOR_PALETTE } from '../store/util';
 import Settings from '../pages/settings';
+
+const REMOVE_CONFIRM_TIMEOUT_MS = 3000;
 
 const ActiveConnection = () => {
   const { global } = useStores();
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [connectionMenuAnchor, setConnectionMenuAnchor] = useState<null | HTMLElement>(null);
   const [switchingConnection, setSwitchingConnection] = useState(false);
+  const [confirmingRemoveId, setConfirmingRemoveId] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const confirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearConfirmTimeout = () => {
+    if (confirmTimeoutRef.current) {
+      clearTimeout(confirmTimeoutRef.current);
+      confirmTimeoutRef.current = null;
+    }
+  };
+
+  useEffect(() => clearConfirmTimeout, []);
 
   const activeSession = global.sessions[global.activeSessionId];
   const connectionId = activeSession?.connectionId || global.connection;
   const connectionColor = global.getConnectionColor(connectionId);
   const isDbConnected = !!connectionId;
+
+  const handleRemoveClick = (e: MouseEvent<SVGSVGElement>, id: string) => {
+    e.stopPropagation();
+    clearConfirmTimeout();
+    if (confirmingRemoveId === id) {
+      setConfirmingRemoveId(null);
+      setRemovingId(id);
+      const wasActive = id === (activeSession?.connectionId || global.connection);
+      global.removeConnection(id).finally(() => {
+        setRemovingId(null);
+        // Removing the active connection triggers the "Database Connection" modal
+        // to auto-open (see the effect below) — close the picker menu so it
+        // doesn't sit open behind/alongside that modal.
+        if (wasActive) {
+          setConnectionMenuAnchor(null);
+        }
+      });
+      return;
+    }
+    setConfirmingRemoveId(id);
+    confirmTimeoutRef.current = setTimeout(() => setConfirmingRemoveId(null), REMOVE_CONFIRM_TIMEOUT_MS);
+  };
 
   useEffect(() => {
     if (global.pineConnected && !isDbConnected) {
@@ -111,7 +148,11 @@ const ActiveConnection = () => {
       <Menu
         anchorEl={connectionMenuAnchor}
         open={Boolean(connectionMenuAnchor)}
-        onClose={() => setConnectionMenuAnchor(null)}
+        onClose={() => {
+          setConnectionMenuAnchor(null);
+          clearConfirmTimeout();
+          setConfirmingRemoveId(null);
+        }}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
         transformOrigin={{ vertical: 'top', horizontal: 'left' }}
         slotProps={{
@@ -130,7 +171,7 @@ const ActiveConnection = () => {
           <MenuItem
             key={id}
             selected={id === activeSession?.connectionId}
-            disabled={switchingConnection}
+            disabled={switchingConnection || !!removingId}
             onClick={async () => {
               if (activeSession && id === activeSession.connectionId && id === global.connection) {
                 setConnectionMenuAnchor(null);
@@ -173,18 +214,33 @@ const ActiveConnection = () => {
             >
               {label}
             </Typography>
-            {id === activeSession?.connectionId ? (
-              <CheckIcon sx={{ fontSize: 16, opacity: 0.7, flexShrink: 0 }} />
-            ) : (
-              <Box sx={{ width: 16, flexShrink: 0 }} />
-            )}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
+              {id === activeSession?.connectionId ? (
+                <CheckIcon sx={{ fontSize: 16, opacity: 0.7 }} />
+              ) : (
+                <Box sx={{ width: 16 }} />
+              )}
+              <DeleteOutlineIcon
+                onClick={e => handleRemoveClick(e, id)}
+                titleAccess={
+                  confirmingRemoveId === id ? 'Click again to remove' : 'Remove connection'
+                }
+                sx={{
+                  fontSize: 16,
+                  cursor: 'pointer',
+                  opacity: confirmingRemoveId === id ? 1 : 0.35,
+                  color: confirmingRemoveId === id ? 'var(--text-warning-color)' : 'inherit',
+                  '&:hover': { opacity: 0.9 },
+                }}
+              />
+            </Box>
           </MenuItem>
         ))}
         {global.connections.length > 0 ? (
           <Divider sx={{ borderColor: 'var(--border-color)' }} />
         ) : null}
         <MenuItem
-          disabled={switchingConnection}
+          disabled={switchingConnection || !!removingId}
           onClick={() => {
             global.setShowSettings(true);
             setConnectionMenuAnchor(null);

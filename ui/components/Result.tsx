@@ -1,5 +1,5 @@
 import { DataGrid } from '@mui/x-data-grid';
-import { toJS } from 'mobx';
+import { runInAction, toJS } from 'mobx';
 import { observer } from 'mobx-react-lite';
 import React, { useState, useEffect, useRef } from 'react';
 import { useStores } from '../store/store-container';
@@ -220,7 +220,9 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
 
       // Get virtual session and execute the update
       const vs = global.getVirtualSession();
-      vs.expression = updateExpression;
+      runInAction(() => {
+        vs.expression = updateExpression;
+      });
       await vs.evaluate();
 
       // Refresh the main session
@@ -250,12 +252,16 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
 
     // Reset virtual session state
     vs.setMessage('');
-    vs.error = '';
-    vs.loading = false;
+    runInAction(() => {
+      vs.error = '';
+      vs.loading = false;
+    });
     vs.setInputMode('pine');
 
     // Set up the update query
-    vs.expression = baseExpression;
+    runInAction(() => {
+      vs.expression = baseExpression;
+    });
     await vs.prettify();
     await vs.pipeAndUpdateExpression(`from: ${alias}`);
     await vs.pipeAndUpdateExpression(
@@ -552,9 +558,9 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
                   color: 'var(--text-color)',
                   borderBottom: '1px solid var(--border-color)',
                   userSelect: 'none', // Prevent text selection
-                  '-webkit-user-select': 'none',
-                  '-moz-user-select': 'none',
-                  '-ms-user-select': 'none',
+                  WebkitUserSelect: 'none',
+                  MozUserSelect: 'none',
+                  msUserSelect: 'none',
                 },
                 ...columnColorSx,
                 '& .MuiDataGrid-row:hover': {
