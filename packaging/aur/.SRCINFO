@@ -1,0 +1,25 @@
+pkgbase = beamlynx-desktop-bin
+	pkgdesc = Desktop app bundling the pine-lang server and beamlynx-ui UI, no Docker required
+	pkgver = 0.1.5
+	pkgrel = 1
+	url = https://github.com/beamlynx/beamlynx-desktop
+	install = beamlynx-desktop-bin.install
+	arch = x86_64
+	license = LICENSE
+	depends = gtk3
+	depends = libnotify
+	depends = nss
+	depends = libxss
+	depends = libxtst
+	depends = xdg-utils
+	depends = at-spi2-core
+	depends = util-linux-libs
+	depends = libsecret
+	optdepends = libayatana-appindicator: tray icon support
+	provides = beamlynx-desktop
+	conflicts = beamlynx-desktop
+	options = !strip
+	source = https://github.com/beamlynx/beamlynx-desktop/releases/download/0.1.5/beamlynx-0.1.5.deb
+	sha256sums = SKIP
+
+pkgname = beamlynx-desktop-bin
