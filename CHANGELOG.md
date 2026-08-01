@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- A loading splash (`assets/loading.html`) shown immediately on launch, instead of a blank window for several seconds while the bundled server boots.
+- Desktop-only keybindings: `Ctrl/Cmd+K` (command palette), `Ctrl/Cmd+T` (new tab), `Ctrl/Cmd+W` (close tab). See `beamlynx-ui`'s `utils/keybindings.ts`.
+- `DEVELOPMENT.md` documenting the local dev/test workflow.
+
+### Changed
+- An explicit application menu, so `Ctrl/Cmd+W` reaches the page's own close-tab handler instead of Electron's default menu closing the whole window.
+
+### Fixed
+- The window now appears immediately on launch instead of only after the bundled server finishes booting (up to ~15s).
 
 ## [0.1.8] - 2026-08-02
 ### Changed

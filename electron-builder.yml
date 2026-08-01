@@ -23,6 +23,7 @@ publish:
 
 files:
   - dist/**/*
+  - assets/**/*
   - package.json
 
 # Opt into the new static, FUSE-less AppImage runtime (electron-builder PR
