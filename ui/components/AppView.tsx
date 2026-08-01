@@ -204,9 +204,11 @@ const AppView = observer(() => {
               gap: 1,
             }}
           >
-            <Typography variant="caption" color="gray" component="code">
-              [{global.version ?? 'obsolete'}]
-            </Typography>
+            {!isDesktop() && (
+              <Typography variant="caption" color="gray" component="code">
+                [{global.version ?? 'obsolete'}]
+              </Typography>
+            )}
             {UserContent}
             <NotificationBell hasUnreadUpdates={hasUnreadUpdates} onClick={handleOpenChangelog} />
           </Box>

@@ -5,7 +5,18 @@
  * Keybindings can either:
  * 1. Map to a command ID (which gets executed via GlobalStore.executeCommand)
  * 2. Be app-level keybindings with custom behavior (like escape, select-all, reload)
+ *
+ * Some keybindings have a desktop-only "primary" binding and a browser
+ * "fallback". This is needed because a real browser reserves combos like
+ * Ctrl+T/Ctrl+W/Ctrl+K for its own chrome (new browser tab, close browser
+ * tab, address bar) -- our JS never even sees the keydown there. Electron
+ * has no browser chrome above our window, so those combos are free to use,
+ * but the browser build (e.g. try.pine-lang.org) still needs a combo that
+ * isn't fought over by the host browser, hence the existing Ctrl+Shift+P
+ * for the command palette.
  */
+
+import { isDesktop } from '../store/util';
 
 export interface KeybindingConfig {
   /** Unique identifier for this keybinding */
@@ -82,10 +93,41 @@ export const KEYBINDINGS: KeybindingConfig[] = [
   {
     name: 'command-palette',
     description: 'Open Command Palette',
-    display: createKeybindingDisplay(['ctrl', 'shift'], 'P'),
+    // Primary (desktop): Ctrl/Cmd+K. Fallback (browser): Ctrl/Cmd+Shift+P --
+    // Ctrl+K is left alone in the browser since it's commonly reserved for
+    // the address bar / search there.
+    display: isDesktop()
+      ? createKeybindingDisplay(['ctrl'], 'K')
+      : createKeybindingDisplay(['ctrl', 'shift'], 'P'),
     matches: (e: KeyboardEvent) =>
-      (e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'p',
+      isDesktop()
+        ? (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'k'
+        : (e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'p',
     commandId: 'command-palette',
+  },
+
+  {
+    // Desktop-only: a real browser owns Ctrl/Cmd+T for its own new-tab
+    // chrome, so there's no usable fallback there -- this stays unbound
+    // (empty display, non-matching predicate) in the browser build, so the
+    // Command Palette doesn't advertise a shortcut that can't fire there.
+    name: 'new-tab',
+    description: 'New Tab',
+    display: isDesktop() ? createKeybindingDisplay(['ctrl'], 'T') : '',
+    matches: (e: KeyboardEvent) =>
+      isDesktop() && (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 't',
+    commandId: 'new-tab',
+  },
+
+  {
+    // Desktop-only, same reasoning as new-tab above (Ctrl/Cmd+W closes the
+    // host browser's own tab before our JS ever runs).
+    name: 'close-tab',
+    description: 'Close Tab',
+    display: isDesktop() ? createKeybindingDisplay(['ctrl'], 'W') : '',
+    matches: (e: KeyboardEvent) =>
+      isDesktop() && (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'w',
+    commandId: 'close-tab',
   },
 
   {
@@ -127,5 +169,5 @@ export const KEYBINDINGS: KeybindingConfig[] = [
  */
 export function getKeybindingDisplayForCommand(commandId: string): string | undefined {
   const keybinding = KEYBINDINGS.find(config => config.commandId === commandId);
-  return keybinding?.display;
+  return keybinding?.display || undefined;
 }
