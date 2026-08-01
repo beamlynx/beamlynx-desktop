@@ -13,6 +13,21 @@ export function initAutoUpdater(): void {
   autoUpdater.on('error', err => {
     console.error('Auto-update error:', err);
   });
+  autoUpdater.on('checking-for-update', () => {
+    console.log('Auto-update: checking for update...');
+  });
+  autoUpdater.on('update-available', info => {
+    console.log('Auto-update: update available:', info.version);
+  });
+  autoUpdater.on('update-not-available', info => {
+    console.log('Auto-update: no update available, current is latest:', info.version);
+  });
+  autoUpdater.on('download-progress', progress => {
+    console.log(`Auto-update: downloading... ${Math.round(progress.percent)}%`);
+  });
+  autoUpdater.on('update-downloaded', info => {
+    console.log('Auto-update: update downloaded, will apply on next quit:', info.version);
+  });
 
   autoUpdater.checkForUpdatesAndNotify().catch(err => {
     console.error('checkForUpdatesAndNotify failed:', err);
