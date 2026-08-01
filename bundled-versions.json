@@ -1,5 +1,5 @@
 {
-  "_comment": "Exact git refs (tag, branch, or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per the beamlynx-desktop release checklist in AGENTS.md. Currently pinned to the desktop-app branches because the fixes required for desktop packaging (classpath-based grammar load, Clerk gating) aren't in a tagged pine-lang/beamlynx-ui release yet -- switch to specific version tags once those land in a real release.",
-  "pineLangRef": "desktop-app",
-  "beamlynxUiRef": "desktop-app"
+  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per the beamlynx-desktop release checklist in AGENTS.md. Pinned to commit SHAs, not the desktop-app branch name, as of 0.1.9 -- a branch pin silently picks up whatever that branch's HEAD is at tag-push time, which twice produced a release missing work that had already been committed to the branch but not accounted for when the tag was cut. A SHA pin makes exactly what's bundled explicit and reviewable in this file's own diff. Switch to real version tags once these fixes land in a tagged pine-lang/beamlynx-ui release.",
+  "pineLangRef": "27d7f7a4598a6a1ae460d1608f7bfdb95fa8b178",
+  "beamlynxUiRef": "f718d8a9b6beaa57f81ab7a51902ea4cbad34137"
 }
