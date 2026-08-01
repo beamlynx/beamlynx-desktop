@@ -17,6 +17,12 @@ When working in this codebase, if you discover a new pattern, convention, archit
 See [docs/graph-node-types.md](./docs/graph-node-types.md) for the vocabulary used to discuss the
 query graph (selected/current/suggested/candidate/variable-container, handle conventions).
 
+## Desktop Auth
+
+See [docs/desktop-auth.md](./docs/desktop-auth.md) for why the desktop build gates Clerk
+auth client-side instead of via middleware, and — important — why that gate doesn't
+actually protect anything today (`pine-lang` has no concept of Clerk sessions).
+
 ## Crediting Contributors
 
 When updating the changelog (CHANGELOG.md and utils/changelog.data.ts), contributors should be credited in the changelog entries themselves. The format is:
