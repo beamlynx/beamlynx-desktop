@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as http from 'http';
 import * as net from 'net';
 import * as path from 'path';
+import { getResourcesRoot } from './resources';
 
 const PINE_PORT = 33333;
 const READY_TIMEOUT_MS = 15000;
@@ -46,19 +47,30 @@ export type ServerHandle = {
   onUnexpectedExit: (cb: (info: UnexpectedExitInfo) => void) => void;
 };
 
-// Packaged layout: resources/server/pine-server/{bin,lib}/... staged by
-// scripts/stage-server.sh from pine-lang/desktop/build/app-image.
-function getServerDir(): string {
-  return path.join(__dirname, '..', '..', 'resources', 'server', 'pine-server');
+// Packaged layout: resources/server/ -- staged by scripts/stage-server.sh
+// from pine-lang/desktop/build/app-image, plus a VERSION file it writes
+// alongside. jpackage's app-image layout differs by OS, not just by binary
+// extension:
+//   Linux:   pine-server/bin/pine-server
+//   Windows: pine-server/pine-server.exe          (no bin/ subdir)
+//   macOS:   pine-server.app/Contents/MacOS/pine-server  (an app bundle)
+function getServerRoot(): string {
+  return path.join(getResourcesRoot(), 'server');
 }
 
 function getServerBinaryPath(): string {
-  const binName = process.platform === 'win32' ? 'pine-server.exe' : 'pine-server';
-  return path.join(getServerDir(), 'bin', binName);
+  const root = getServerRoot();
+  if (process.platform === 'darwin') {
+    return path.join(root, 'pine-server.app', 'Contents', 'MacOS', 'pine-server');
+  }
+  if (process.platform === 'win32') {
+    return path.join(root, 'pine-server', 'pine-server.exe');
+  }
+  return path.join(root, 'pine-server', 'bin', 'pine-server');
 }
 
 function getExpectedVersion(): string {
-  const versionFile = path.join(getServerDir(), '..', 'VERSION');
+  const versionFile = path.join(getServerRoot(), 'VERSION');
   if (!fs.existsSync(versionFile)) {
     throw new ServerProcessError(`Expected bundled server version file not found at ${versionFile}`);
   }
@@ -133,8 +145,11 @@ export async function startServer(): Promise<ServerHandle> {
     );
   }
 
+  // cwd no longer matters for correctness -- pine-lang loads its grammar
+  // from the classpath, not a cwd-relative path -- but the binary's own
+  // directory is still the sensible default.
   const child = spawn(binaryPath, [], {
-    cwd: getServerDir(),
+    cwd: path.dirname(binaryPath),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   if (child.pid) {

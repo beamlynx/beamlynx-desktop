@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog } from 'electron';
 import * as path from 'path';
+import { getResourcesRoot } from './resources';
 import { ServerHandle, startServer } from './server-process';
 
 let mainWindow: BrowserWindow | null = null;
@@ -15,7 +16,7 @@ function createWindow(): void {
     },
   });
 
-  mainWindow.loadFile(path.join(__dirname, '..', '..', 'resources', 'ui', 'index.html'));
+  mainWindow.loadFile(path.join(getResourcesRoot(), 'ui', 'index.html'));
 
   mainWindow.on('closed', () => {
     mainWindow = null;

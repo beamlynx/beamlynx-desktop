@@ -10,11 +10,19 @@ set -e
 cd "$(dirname "$0")/.."
 
 PINE_LANG_DIR="../pine-lang"
-APP_IMAGE_SRC="$PINE_LANG_DIR/desktop/build/app-image/pine-server"
+APP_IMAGE_BASE="$PINE_LANG_DIR/desktop/build/app-image"
 DEST="resources/server"
 
-if [ ! -d "$APP_IMAGE_SRC" ]; then
-  echo "No app-image found at $APP_IMAGE_SRC -- run pine-lang/desktop/build-app-image.sh first." >&2
+# jpackage names the app-image root differently by OS: a plain "pine-server"
+# directory on Linux/Windows, or a "pine-server.app" bundle on macOS. Copy
+# whichever exists under its own name -- server-process.ts's
+# getServerBinaryPath() knows how to find the actual binary inside either.
+if [ -d "$APP_IMAGE_BASE/pine-server.app" ]; then
+  APP_IMAGE_NAME="pine-server.app"
+elif [ -d "$APP_IMAGE_BASE/pine-server" ]; then
+  APP_IMAGE_NAME="pine-server"
+else
+  echo "No app-image found under $APP_IMAGE_BASE -- run pine-lang/desktop/build-app-image.sh first." >&2
   exit 1
 fi
 
@@ -22,7 +30,7 @@ PINE_VERSION=$(grep -oP '\b\d+\.\d+\.\d+(-[a-zA-Z0-9]+)?\b' "$PINE_LANG_DIR/src/
 
 rm -rf "$DEST"
 mkdir -p "$DEST"
-cp -a "$APP_IMAGE_SRC" "$DEST/pine-server"
+cp -a "$APP_IMAGE_BASE/$APP_IMAGE_NAME" "$DEST/$APP_IMAGE_NAME"
 echo "$PINE_VERSION" > "$DEST/VERSION"
 
 echo "Staged pine-server $PINE_VERSION into $DEST"
