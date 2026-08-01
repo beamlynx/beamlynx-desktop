@@ -15,10 +15,7 @@ function createWindow(): void {
     },
   });
 
-  // M2: no bundled UI yet -- point at the bundled server directly so this
-  // milestone proves spawn/readiness/lifecycle without depending on M3's
-  // static UI export. Replaced by resources/ui/index.html in M3.
-  mainWindow.loadURL('http://localhost:33333/api/v1/connections');
+  mainWindow.loadFile(path.join(__dirname, '..', '..', 'resources', 'ui', 'index.html'));
 
   mainWindow.on('closed', () => {
     mainWindow = null;
