@@ -1,4 +1,4 @@
-import { ClerkProvider, SignedIn, SignedOut, SignIn } from '@clerk/nextjs';
+import { ClerkProvider } from '@clerk/nextjs';
 import Container from '@mui/material/Container';
 import type { NextPage } from 'next';
 import { useEffect, useState } from 'react';
@@ -80,32 +80,11 @@ const Home: NextPage = () => {
     return AppContent;
   }
 
-  if (isDevelopment() || isPlayground()) {
-    return AppContent;
-  }
-
-  if (isDesktop()) {
-    // The hosted build's sign-in requirement is enforced by middleware.ts's
-    // authMiddleware, which can't run at all in a static export -- gate
-    // client-side instead. routing="hash" needs no dedicated route or
-    // middleware, unlike the default "path" mode.
-    return (
-      <ClerkProvider>
-        <SignedIn>{AppContent}</SignedIn>
-        <SignedOut>
-          <Container
-            maxWidth={false}
-            disableGutters={true}
-            sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}
-          >
-            <SignIn routing="hash" />
-          </Container>
-        </SignedOut>
-      </ClerkProvider>
-    );
-  }
-
-  return <ClerkProvider>{AppContent}</ClerkProvider>;
+  return isDevelopment() || isPlayground() || isDesktop() ? (
+    AppContent
+  ) : (
+    <ClerkProvider>{AppContent}</ClerkProvider>
+  );
 };
 
 export default Home;

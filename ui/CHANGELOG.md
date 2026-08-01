@@ -6,7 +6,6 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ## [Unreleased]
 ### Added
 - Support for a `NEXT_DESKTOP`/`NEXT_PUBLIC_DESKTOP`-gated static export build, used by the new `beamlynx-desktop` Electron app so the UI can run bundled with a local pine-lang server instead of pointed at a Docker container. No change to the hosted build.
-- The desktop build now requires Clerk sign-in too, matching the hosted build, instead of skipping auth entirely. Since a static export can't run `middleware.ts`'s `authMiddleware`, desktop gates client-side instead (`SignedIn`/`SignedOut` + a `routing="hash"` `<SignIn/>`) rather than via a server-side redirect.
 
 ## [0.44.0] - 2026-07-31
 ### Added
