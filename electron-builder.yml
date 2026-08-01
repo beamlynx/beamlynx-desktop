@@ -20,6 +20,19 @@ files:
   - dist/**/*
   - package.json
 
+# Opt into the new static, FUSE-less AppImage runtime (electron-builder PR
+# #9558) rather than the legacy runtime, which depends on the system having
+# libfuse.so.2 (FUSE2) installed -- increasingly not the case by default on
+# newer distros (Arch, Ubuntu 22.04+, Fedora, etc. dropped it), causing
+# "dlopen(): error loading libfuse.so.2". Available since electron-builder
+# 26.8.0 as an opt-in, becomes the v27 default -- opting in now avoids both
+# the FUSE dependency and the risk of v27, which is still alpha-only.
+toolsets:
+  # 1.0.3, not the newer 1.1.0 -- electron-builder 26.15.7's schema only
+  # accepts "0.0.0" | "1.0.2" | "1.0.3" for this version; 1.1.0 isn't in its
+  # enum yet (verified against node_modules/app-builder-lib's own .d.ts).
+  appimage: '1.0.3'
+
 # Populated at build time by scripts/stage-server.sh and
 # scripts/build-ui-export.sh -- lands under process.resourcesPath in the
 # packaged app (see src/main/resources.ts).

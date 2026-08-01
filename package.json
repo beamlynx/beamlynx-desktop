@@ -1,6 +1,6 @@
 {
   "name": "beamlynx-desktop",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "Desktop app bundling the pine-lang server and beamlynx-ui UI, no Docker required",
   "author": {
@@ -19,7 +19,7 @@
   "devDependencies": {
     "@types/node": "^20.12.2",
     "electron": "^31.0.0",
-    "electron-builder": "^24.13.3",
+    "electron-builder": "^26.15.7",
     "typescript": "^5.5.4"
   }
 }
