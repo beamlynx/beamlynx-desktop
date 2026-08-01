@@ -10,22 +10,23 @@
 cask "beamlynx" do
   version "0.1.5"
   # `brew bump-cask-pr` (or a hand run of `shasum -a 256`) recomputes this
-  # against the real dmg -- placeholder until the tap repo's bump automation
-  # exists.
-  sha256 "REPLACE_WITH_SHA256_OF_DMG"
+  # against the real dmg -- update this by hand per release until the tap
+  # repo's bump automation exists.
+  sha256 "08ac71583617b3c7b76c20dc45bc194898bd584c6d65f29a99c738290b1b0515"
 
   url "https://github.com/beamlynx/beamlynx-desktop/releases/download/#{version}/beamlynx-#{version}.dmg"
   name "beamlynx"
   desc "Desktop app bundling the pine-lang server and beamlynx-ui UI, no Docker required"
   homepage "https://github.com/beamlynx/beamlynx-desktop"
 
-  # TODO verify: GitHub's macos-latest runner has been Apple Silicon (arm64)
-  # since 2024, and electron-builder.yml's `mac.target` doesn't set an
-  # explicit arch array, so the published dmg is likely arm64-only today.
-  # Installing on an Intel Mac would produce a cask that "installs" but
-  # doesn't launch. Either add `depends_on arch: :arm64` here, or add an
-  # x64 leg to release.yml's package matrix (macos-13 runner) so both
-  # architectures ship and this cask can pick the right one.
+  # GitHub's macos-latest runner has been Apple Silicon (arm64) since 2024,
+  # and electron-builder.yml's mac.target doesn't set an explicit arch
+  # array, so the published dmg is arm64-only. Decided to ship arm64-only
+  # for now rather than add an Intel (x64) leg to release.yml's package
+  # matrix first -- most Macs from the last ~4 years are arm64, and this
+  # restriction means an Intel colleague gets a clear "not supported"
+  # instead of a cask that installs but doesn't launch. Revisit if that
+  # turns out to matter.
   depends_on arch: :arm64
 
   app "beamlynx.app"
