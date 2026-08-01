@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "description": "Desktop app bundling the pine-lang server and beamlynx-ui UI, no Docker required",
+  "author": {
+    "name": "Beamlynx",
+    "email": "ahmad@avallone.io"
+  },
   "license": "SEE LICENSE IN LICENSE",
   "main": "dist/main/index.js",
   "scripts": {

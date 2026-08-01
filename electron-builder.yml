@@ -1,0 +1,32 @@
+appId: com.beamlynx.desktop
+productName: beamlynx
+directories:
+  output: release
+
+files:
+  - dist/**/*
+  - package.json
+
+# Populated at build time by scripts/stage-server.sh and
+# scripts/build-ui-export.sh -- lands under process.resourcesPath in the
+# packaged app (see src/main/resources.ts).
+extraResources:
+  - from: resources/server
+    to: server
+  - from: resources/ui
+    to: ui
+
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Development
+
+mac:
+  target:
+    - dmg
+  category: public.app-category.developer-tools
+
+win:
+  target:
+    - nsis
