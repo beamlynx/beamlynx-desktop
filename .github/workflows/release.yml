@@ -90,8 +90,6 @@ jobs:
 
   package:
     needs: [read-pins, build-jar, build-ui]
-    permissions:
-      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -156,18 +154,16 @@ jobs:
       - name: Package with electron-builder (unsigned)
         shell: bash
         working-directory: beamlynx-desktop
-        # Only actually publish (upload installers + latest*.yml update
-        # metadata to a GitHub Release) on a real tag push -- workflow_dispatch
-        # test runs stay --publish=never so they don't create public releases.
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            PUBLISH=always
-          else
-            PUBLISH=never
-          fi
-          npx electron-builder --publish="$PUBLISH" --config electron-builder.yml
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Always --publish=never here -- letting each OS in the matrix
+        # publish directly to the same GitHub Release in parallel is racy:
+        # electron-builder's GitHub publisher does a non-atomic
+        # get-or-create-release + upload sequence, and concurrent runs from
+        # independent jobs can clobber each other's uploads (confirmed: the
+        # windows job's own log clearly showed it uploading its .exe, but
+        # the release ended up missing it entirely). The publish-release
+        # job below uploads everything from one place, sequentially,
+        # instead.
+        run: npx electron-builder --publish=never --config electron-builder.yml
 
       - uses: actions/upload-artifact@v4
         with:
@@ -177,5 +173,30 @@ jobs:
             beamlynx-desktop/release/*.deb
             beamlynx-desktop/release/*.dmg
             beamlynx-desktop/release/*.exe
+            beamlynx-desktop/release/*.blockmap
             beamlynx-desktop/release/latest*.yml
           if-no-files-found: error
+
+  publish-release:
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all platform artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: beamlynx-desktop-*
+          path: dist-artifacts
+          merge-multiple: true
+
+      - name: Create or update the GitHub Release, upload all assets sequentially
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --generate-notes
+          fi
+          gh release upload "$TAG" dist-artifacts/* --repo "$GITHUB_REPOSITORY" --clobber
