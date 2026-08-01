@@ -1,0 +1,87 @@
+name: CI
+
+# Cheap build-validation on every push/PR: compiles, builds a Linux
+# app-image + UI export, and runs electron-builder against an unpacked
+# (`dir`) target -- no installer formats, no other OSes, no publish. Catches
+# breakage immediately rather than only at release time. The full signed,
+# multi-OS installer matrix lives in release.yml, triggered by a version tag.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout beamlynx-desktop
+        uses: actions/checkout@v4
+        with:
+          path: beamlynx-desktop
+
+      - name: Read bundled version pins
+        id: pins
+        working-directory: beamlynx-desktop
+        run: |
+          echo "pine_ref=$(jq -r .pineLangRef bundled-versions.json)" >> "$GITHUB_OUTPUT"
+          echo "ui_ref=$(jq -r .beamlynxUiRef bundled-versions.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout pine-lang
+        uses: actions/checkout@v4
+        with:
+          repository: beamlynx/pine-lang
+          ref: ${{ steps.pins.outputs.pine_ref }}
+          path: pine-lang
+
+      - name: Checkout beamlynx-ui
+        uses: actions/checkout@v4
+        with:
+          repository: beamlynx/beamlynx-ui
+          ref: ${{ steps.pins.outputs.ui_ref }}
+          path: beamlynx-ui
+
+      - name: Read pinned JDK version
+        id: jdk
+        run: echo "version=$(grep -v '^#' pine-lang/desktop/JDK_VERSION | grep -v '^\s*$')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ steps.jdk.outputs.version }}
+
+      - uses: DeLaGuardo/setup-clojure@11.0
+        with:
+          cli: 1.11.3.1463
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build pine-lang app-image
+        working-directory: pine-lang
+        run: ./desktop/build-app-image.sh
+
+      - name: Install beamlynx-ui deps
+        working-directory: beamlynx-ui
+        run: npm ci
+
+      - name: Build UI export
+        working-directory: beamlynx-desktop
+        run: ./scripts/build-ui-export.sh
+
+      - name: Stage server
+        working-directory: beamlynx-desktop
+        run: ./scripts/stage-server.sh
+
+      - name: Install beamlynx-desktop deps
+        working-directory: beamlynx-desktop
+        run: npm ci
+
+      - name: TypeScript build
+        working-directory: beamlynx-desktop
+        run: npm run build
+
+      - name: electron-builder config sanity check (unpacked dir, no installer)
+        working-directory: beamlynx-desktop
+        run: npx electron-builder --linux dir --config electron-builder.yml
