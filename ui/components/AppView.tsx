@@ -9,7 +9,7 @@ import { UpgradeRequired } from './docs/UpgradeRequired';
 import ActiveConnection from './ActiveConnection';
 import Message from './Message';
 import UserBox from './UserBox';
-import { isDesktop, isDevelopment, isPlayground } from '../store/util';
+import { isDevelopment, isPlayground } from '../store/util';
 import { useState, useEffect, useCallback } from 'react';
 import { getUserPreference, STORAGE_KEYS } from '../store/preferences';
 import AnalysisModal from './AnalysisModal';
@@ -69,13 +69,15 @@ const AppView = observer(() => {
     return null;
   }
 
-  // Define UserContent inside the component so it can access the state
+  // Define UserContent inside the component so it can access the state.
+  // Desktop now uses real Clerk auth like the hosted build (see
+  // pages/index.tsx), so it gets UserBox too -- only dev/playground get the
+  // plain label.
   const UserContent =
-    isDevelopment() || isPlayground() || isDesktop() ? (
+    isDevelopment() || isPlayground() ? (
       <Typography variant="caption" color="gray">
         {isDevelopment() ? '[Develoment]' : ''}
         {isPlayground() ? '[Playground]' : ''}
-        {isDesktop() ? '[Desktop]' : ''}
       </Typography>
     ) : (
       <UserBox />
