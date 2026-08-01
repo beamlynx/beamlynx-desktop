@@ -82,6 +82,8 @@ jobs:
       - name: Build UI export
         working-directory: beamlynx-desktop
         run: ./scripts/build-ui-export.sh
+        env:
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.CLERK_PUBLISHABLE_KEY }}
 
       - uses: actions/upload-artifact@v4
         with:

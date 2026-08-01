@@ -69,6 +69,8 @@ jobs:
       - name: Build UI export
         working-directory: beamlynx-desktop
         run: ./scripts/build-ui-export.sh
+        env:
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.CLERK_PUBLISHABLE_KEY }}
 
       - name: Stage server
         working-directory: beamlynx-desktop
