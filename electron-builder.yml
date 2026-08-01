@@ -2,6 +2,11 @@ appId: com.beamlynx.desktop
 productName: beamlynx
 directories:
   output: release
+# NSIS's default artifact name template has a literal space
+# ("beamlynx Setup 0.1.4.exe"), which broke an unquoted shell glob in the
+# publish step (word-split into fragments) and got inconsistently
+# sanitized on upload. No spaces, no ambiguity, consistent across targets.
+artifactName: '${productName}-${version}.${ext}'
 
 publish:
   provider: github
