@@ -26,7 +26,8 @@ else
   exit 1
 fi
 
-PINE_VERSION=$(grep -oP '\b\d+\.\d+\.\d+(-[a-zA-Z0-9]+)?\b' "$PINE_LANG_DIR/src/pine/version.clj")
+# -E, not -P -- this runs on macOS's BSD grep too, which has no -P support.
+PINE_VERSION=$(grep -oE '"[0-9]+\.[0-9]+\.[0-9]+[^"]*"' "$PINE_LANG_DIR/src/pine/version.clj" | tr -d '"')
 
 rm -rf "$DEST"
 mkdir -p "$DEST"
