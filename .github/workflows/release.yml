@@ -51,7 +51,7 @@ jobs:
 
       - name: Build uberjar
         working-directory: pine-lang
-        run: clj -T:build uber
+        run: clojure -T:build uber
 
       - uses: actions/upload-artifact@v4
         with:
