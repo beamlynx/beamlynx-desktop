@@ -1,4 +1,5 @@
-import { app, BrowserWindow, dialog, Menu } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import * as path from 'path';
 import { initAutoUpdater } from './auto-update';
 import { getResourcesRoot } from './resources';
@@ -147,8 +148,24 @@ async function main(): Promise<void> {
   });
 
   loadRealUi();
-  initAutoUpdater();
+  if (mainWindow) {
+    initAutoUpdater(mainWindow);
+  }
 }
+
+// Triggered by the renderer's "Restart to install" button (see
+// beamlynx-ui's DesktopUpdateBanner). Stops the server and marks `quitting`
+// ourselves first, same as a normal quit -- so that by the time
+// quitAndInstall() gets to firing its own 'before-quit', our handler below
+// just no-ops instead of calling event.preventDefault() and interfering
+// with electron-updater's native install-and-relaunch handoff.
+ipcMain.on('restart-to-update', async () => {
+  quitting = true;
+  if (serverHandle) {
+    await serverHandle.stop();
+  }
+  autoUpdater.quitAndInstall();
+});
 
 app.on('ready', main);
 
