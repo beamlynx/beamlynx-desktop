@@ -5,6 +5,13 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-08-01
+### Added
+- Sign-in is now required, matching the hosted product, via `beamlynx-ui`'s `desktop-app` branch (client-side Clerk gating, since a static export can't run `middleware.ts`). Not present in any earlier release -- this is the first one that includes it.
+
+### Fixed
+- The Linux AppImage's filename no longer changes across auto-updates (was `beamlynx-X.Y.Z.AppImage`, now a stable `beamlynx.AppImage`) -- previously, a symlink pointing at a specific version's filename would dangle the moment the app self-updated.
+
 ## [0.1.5] - 2026-08-01
 ### Changed
 - No functional change -- verifies that differential/delta auto-update still works now that the new AppImage toolset embeds the blockmap inside the binary instead of publishing it as a separate sidecar file.
