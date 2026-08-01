@@ -7,6 +7,14 @@ publish:
   provider: github
   owner: beamlynx
   repo: beamlynx-desktop
+  # Match the plain X.Y.Z tag convention (see AGENTS.md) -- electron-builder
+  # defaults to creating its own "v"-prefixed release tag, which would be a
+  # second, redundant tag alongside the real one already pushed to trigger
+  # this build.
+  vPrefixedTagName: false
+  # Publish directly instead of leaving a draft -- electron-updater's update
+  # feed only sees published releases, not drafts.
+  releaseType: release
 
 files:
   - dist/**/*
