@@ -107,6 +107,20 @@ function createWindow(): void {
 // already has onboardingServer=true from a prior successful connection --
 // that's a worse first impression during the several-second JVM boot than
 // a simple splash.
+// Chromium buffers localStorage writes in memory and only periodically
+// flushes them to disk -- it doesn't happen on every write. An abrupt quit
+// (exactly what auto-update does: quit, replace the binary, relaunch) can
+// race that flush and lose whatever the renderer had just written, which
+// looks like user preferences (vim mode, sidebar width, theme, etc. -- see
+// beamlynx-ui's store/preferences.ts) silently reverting after an update.
+// Call this before every quit path so pending writes are forced to disk
+// first.
+function flushRendererStorage(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.session.flushStorageData();
+  }
+}
+
 function loadRealUi(): void {
   if (!mainWindow) return;
 
@@ -161,6 +175,7 @@ async function main(): Promise<void> {
 // with electron-updater's native install-and-relaunch handoff.
 ipcMain.on('restart-to-update', async () => {
   quitting = true;
+  flushRendererStorage();
   if (serverHandle) {
     await serverHandle.stop();
   }
@@ -177,6 +192,7 @@ app.on('before-quit', async event => {
   if (quitting || !serverHandle) return;
   quitting = true;
   event.preventDefault();
+  flushRendererStorage();
   await serverHandle.stop();
   app.quit();
 });
