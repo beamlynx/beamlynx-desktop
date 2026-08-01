@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { reaction, runInAction } from 'mobx';
 import AppView from '../components/AppView';
 import { useStores } from '../store/store-container';
-import { isDevelopment, isPlayground } from '../store/util';
+import { isDesktop, isDevelopment, isPlayground } from '../store/util';
 
 const Home: NextPage = () => {
   const { global } = useStores();
@@ -80,7 +80,7 @@ const Home: NextPage = () => {
     return AppContent;
   }
 
-  return isDevelopment() || isPlayground() ? (
+  return isDevelopment() || isPlayground() || isDesktop() ? (
     AppContent
   ) : (
     <ClerkProvider>{AppContent}</ClerkProvider>

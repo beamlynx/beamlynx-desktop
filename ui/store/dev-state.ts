@@ -8,6 +8,7 @@ export const DevState = {
   // Playground - set to undefined to allow URL-based detection (playground.beamlynx.com)
   development: undefined,
   playground: undefined,
+  desktop: undefined,
 };
 
 

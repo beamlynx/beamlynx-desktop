@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- Support for a `NEXT_DESKTOP`/`NEXT_PUBLIC_DESKTOP`-gated static export build, used by the new `beamlynx-desktop` Electron app so the UI can run bundled with a local pine-lang server instead of pointed at a Docker container. No change to the hosted build.
 
 ## [0.44.0] - 2026-07-31
 ### Added

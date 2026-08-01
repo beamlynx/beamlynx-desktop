@@ -9,7 +9,7 @@ import { UpgradeRequired } from './docs/UpgradeRequired';
 import ActiveConnection from './ActiveConnection';
 import Message from './Message';
 import UserBox from './UserBox';
-import { isDevelopment, isPlayground } from '../store/util';
+import { isDesktop, isDevelopment, isPlayground } from '../store/util';
 import { useState, useEffect, useCallback } from 'react';
 import { getUserPreference, STORAGE_KEYS } from '../store/preferences';
 import AnalysisModal from './AnalysisModal';
@@ -71,10 +71,11 @@ const AppView = observer(() => {
 
   // Define UserContent inside the component so it can access the state
   const UserContent =
-    isDevelopment() || isPlayground() ? (
+    isDevelopment() || isPlayground() || isDesktop() ? (
       <Typography variant="caption" color="gray">
         {isDevelopment() ? '[Develoment]' : ''}
         {isPlayground() ? '[Playground]' : ''}
+        {isDesktop() ? '[Desktop]' : ''}
       </Typography>
     ) : (
       <UserBox />

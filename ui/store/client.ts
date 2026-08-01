@@ -1,5 +1,10 @@
 import { isPlayground } from './util';
 
+// Also correct for the beamlynx-desktop static export loaded via file://:
+// window.location.hostname is '' there, so isPlayground() already returns
+// false and this falls through to localhost:33333 -- which is exactly the
+// bundled local pine-server. Don't "fix" the empty-hostname case without
+// checking this.
 const getBaseUrl = () => {
   return isPlayground() ? 'https://api.playground.beamlynx.com' : 'http://localhost:33333';
 };

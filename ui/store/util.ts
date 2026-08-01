@@ -70,6 +70,20 @@ export const isDevelopment = () => {
   return process.env.NODE_ENV === 'development';
 };
 
+// True only for the beamlynx-desktop static-export build (see
+// beamlynx-desktop/scripts/build-ui-export.sh, which sets NEXT_PUBLIC_DESKTOP
+// alongside next.config.js's NEXT_DESKTOP). Note: isPlayground() already
+// happens to return false when loaded via file:// (empty window.location.hostname),
+// so getBaseUrl() in client.ts falls through to http://localhost:33333
+// correctly without needing this flag -- this is only for gating things
+// that assume a hosted context, like Clerk auth in pages/index.tsx.
+export const isDesktop = () => {
+  if (DevState.desktop !== undefined) {
+    return DevState.desktop;
+  }
+  return process.env.NEXT_PUBLIC_DESKTOP === '1';
+};
+
 /**
  * Escapes a string for use in a SQL query
  *
