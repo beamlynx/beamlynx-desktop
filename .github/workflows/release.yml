@@ -151,7 +151,7 @@ jobs:
         working-directory: beamlynx-desktop
         run: npm run build
 
-      - name: Package with electron-builder (unsigned)
+      - name: Package with electron-builder
         shell: bash
         working-directory: beamlynx-desktop
         # Always --publish=never here -- letting each OS in the matrix
@@ -164,6 +164,18 @@ jobs:
         # job below uploads everything from one place, sequentially,
         # instead.
         run: npx electron-builder --publish=never --config electron-builder.yml
+        env:
+          # Signing/notarization activate automatically based on which of
+          # these are actually set -- harmless (build stays unsigned, as
+          # today) until real secrets are added to the repo. See SIGNING.md
+          # for what each secret is and how to obtain it.
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
       - uses: actions/upload-artifact@v4
         with:

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <!--
+      Minimal set for Electron's hardened runtime, not @electron/osx-sign's
+      default template (which also grants camera/bluetooth/USB/location/
+      photos access this app has no use for). allow-jit and
+      allow-unsigned-executable-memory are required for V8's JIT compiler
+      under hardened runtime; disable-library-validation is needed because
+      this app spawns an external, separately-built binary (pine-server)
+      rather than only loading same-team-signed native Node addons.
+    -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+  </dict>
+</plist>
