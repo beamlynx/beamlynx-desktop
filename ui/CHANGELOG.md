@@ -7,6 +7,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Added
 - Support for a `NEXT_DESKTOP`/`NEXT_PUBLIC_DESKTOP`-gated static export build, used by the new `beamlynx-desktop` Electron app so the UI can run bundled with a local pine-lang server instead of pointed at a Docker container. No change to the hosted build.
 - Desktop-only keybindings: `Ctrl/Cmd+K` for the Command Palette, `Ctrl/Cmd+T` for New Tab, `Ctrl/Cmd+W` for Close Tab (`utils/keybindings.ts`). Unbound in the browser build, where the host browser already owns those combos -- the Command Palette shortcut stays `Ctrl/Cmd+Shift+P` there, same as before.
+- `DesktopUpdateBanner`: shows Electron's auto-update progress in-app ("Downloading update... NN%", then "Update ready -- Restart to install") instead of it being silent/console-only. Reads `beamlynx-desktop`'s new `window.beamlynxDesktop` preload API (`desktop.d.ts`); renders nothing in the browser build or in a desktop dev-server run without the real Electron preload.
 
 ### Changed
 - The connected server's version chip (e.g. `[0.37.0]`) is now hidden when running in the desktop app -- it isn't beamlynx-ui's own version, and desktop users have their own release notes instead. Still shown in the browser/hosted build.
