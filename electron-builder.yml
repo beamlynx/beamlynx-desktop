@@ -3,6 +3,11 @@ productName: beamlynx
 directories:
   output: release
 
+publish:
+  provider: github
+  owner: beamlynx
+  repo: beamlynx-desktop
+
 files:
   - dist/**/*
   - package.json

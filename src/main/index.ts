@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog } from 'electron';
 import * as path from 'path';
+import { initAutoUpdater } from './auto-update';
 import { getResourcesRoot } from './resources';
 import { ServerHandle, startServer } from './server-process';
 
@@ -41,6 +42,7 @@ async function main(): Promise<void> {
   });
 
   createWindow();
+  initAutoUpdater();
 }
 
 app.on('ready', main);

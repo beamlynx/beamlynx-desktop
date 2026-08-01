@@ -13,6 +13,9 @@
     "build": "tsc -p tsconfig.json",
     "start": "npm run build && electron ."
   },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
   "devDependencies": {
     "@types/node": "^20.12.2",
     "electron": "^31.0.0",

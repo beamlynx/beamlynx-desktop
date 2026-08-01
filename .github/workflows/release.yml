@@ -90,6 +90,8 @@ jobs:
 
   package:
     needs: [read-pins, build-jar, build-ui]
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -154,7 +156,18 @@ jobs:
       - name: Package with electron-builder (unsigned)
         shell: bash
         working-directory: beamlynx-desktop
-        run: npx electron-builder --publish=never --config electron-builder.yml
+        # Only actually publish (upload installers + latest*.yml update
+        # metadata to a GitHub Release) on a real tag push -- workflow_dispatch
+        # test runs stay --publish=never so they don't create public releases.
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            PUBLISH=always
+          else
+            PUBLISH=never
+          fi
+          npx electron-builder --publish="$PUBLISH" --config electron-builder.yml
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/upload-artifact@v4
         with:
@@ -164,4 +177,5 @@ jobs:
             beamlynx-desktop/release/*.deb
             beamlynx-desktop/release/*.dmg
             beamlynx-desktop/release/*.exe
+            beamlynx-desktop/release/latest*.yml
           if-no-files-found: error
