@@ -11,5 +11,6 @@
    - Update `LATEST_VERSION` at the bottom to `"X.Y.Z"`.
 6. Commit all changed files: `Release X.Y.Z: <short description>`.
 7. Push the branch and open a PR against `main`.
+8. Once the PR merges, tag the merge commit on `main` and push the tag: `git tag X.Y.Z && git push origin X.Y.Z`. `beamlynx-desktop`'s `bundled-versions.json` pins a real tag rather than a SHA once one exists for the bundled version — skipping this leaves no tag for it to pin to.
 
 `changelog.data.ts` must mirror `CHANGELOG.md` exactly — this drives both the in-app changelog modal and the notification-bell "unread updates" check (`LATEST_VERSION` compared against the user's last-read version in `localStorage`).
