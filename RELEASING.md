@@ -38,6 +38,12 @@ merging, rather than via a PR.
     - `gh release view X.Y.Z` — confirm the expected assets are present: `beamlynx.AppImage` (stable, unversioned filename), `beamlynx-X.Y.Z.deb`, `beamlynx-X.Y.Z.dmg` + `.blockmap`, `beamlynx-X.Y.Z.exe` + `.blockmap`, `latest.yml`/`latest-mac.yml`/`latest-linux.yml`.
     - Download at least the Linux artifact and confirm a real database connection + query round-trip works.
 
+11. **Update the personal Homebrew tap** (`beamlynx/homebrew-tap`, separate repo) so `brew install --cask beamlynx/tap/beamlynx` / `brew upgrade --cask` picks up this release:
+    - Compute the real dmg sha256 from the published asset (don't reuse a locally-rebuilt dmg — it won't match): `gh release download X.Y.Z -R beamlynx/beamlynx-desktop -p '*.dmg' -O /tmp/beamlynx-X.Y.Z.dmg && shasum -a 256 /tmp/beamlynx-X.Y.Z.dmg`.
+    - In `beamlynx/homebrew-tap`, edit `Casks/beamlynx.rb`: bump `version` to `X.Y.Z` and `sha256` to the hash above.
+    - Commit (e.g. `Bump to X.Y.Z`) and push directly — like this repo, the tap has no PR-review flow.
+    - This step is mandatory on every release, not just ones that touch macOS-specific code — the tap always points at the latest dmg regardless of what changed.
+
 ## Local dev/test workflow
 
 See `DEVELOPMENT.md` for how to iterate on changes before cutting a release — it covers the fast browser-based path for most UI changes, and how to run the real Electron shell (menu, native window, bundled server) when that's what's actually being changed.
