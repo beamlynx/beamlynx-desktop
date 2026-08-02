@@ -5,6 +5,11 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.46.1] - 2026-08-03
+### Fixed
+- The playground's shared connection could be deleted from the connection picker, breaking the playground for everyone else using it; the delete action is now hidden (and refused as a backstop) in playground mode.
+- The changelog's relative-date label showed "-1 days ago" for a same-day entry when the local timezone is behind UTC.
+
 ## [0.46.0] - 2026-08-03
 ### Added
 - Tabs (Pine/SQL text, input mode, connection) are now restored on reload instead of always starting from a single blank session.
