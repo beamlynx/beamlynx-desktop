@@ -23,7 +23,7 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
       <IconButton onClick={onClick} color="inherit" tabIndex={1}>
         <Notifications
           sx={{
-            color: hasUnreadUpdates ? 'var(--primary-color)' : 'inherit',
+            color: hasUnreadUpdates ? 'var(--notification-color)' : 'inherit',
           }}
         />
       </IconButton>
