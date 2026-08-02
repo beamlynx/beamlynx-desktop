@@ -1,6 +1,6 @@
 pkgbase = beamlynx-desktop-bin
 	pkgdesc = Desktop app bundling the pine-lang server and beamlynx-ui UI, no Docker required
-	pkgver = 0.1.5
+	pkgver = 0.1.15
 	pkgrel = 1
 	url = https://github.com/beamlynx/beamlynx-desktop
 	install = beamlynx-desktop-bin.install
@@ -19,7 +19,7 @@ pkgbase = beamlynx-desktop-bin
 	provides = beamlynx-desktop
 	conflicts = beamlynx-desktop
 	options = !strip
-	source = https://github.com/beamlynx/beamlynx-desktop/releases/download/0.1.5/beamlynx-0.1.5.deb
-	sha256sums = SKIP
+	source = https://github.com/beamlynx/beamlynx-desktop/releases/download/0.1.15/beamlynx-0.1.15.deb
+	sha256sums = 3d56a8ddf050b6e99265a55031ce6a6336d784a584d82750c59bffa6b754dd68
 
 pkgname = beamlynx-desktop-bin

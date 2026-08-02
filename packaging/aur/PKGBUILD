@@ -4,11 +4,12 @@
 #
 # Repackages the .deb release asset rather than building from source: the
 # deb already ships electron-builder's FHS layout (/opt/beamlynx binary,
-# .desktop file, hicolor icons, apparmor profile), verified by extracting
-# beamlynx-0.1.5.deb from the 0.1.5 GitHub release. `-bin` suffix is the
-# required AUR convention for a prebuilt-binary package.
+# .desktop file, hicolor icons, apparmor profile), originally verified by
+# extracting beamlynx-0.1.5.deb from the 0.1.5 GitHub release; layout is
+# unchanged as of 0.1.15. `-bin` suffix is the required AUR convention for
+# a prebuilt-binary package.
 pkgname=beamlynx-desktop-bin
-pkgver=0.1.5
+pkgver=0.1.15
 pkgrel=1
 pkgdesc="Desktop app bundling the pine-lang server and beamlynx-ui UI, no Docker required"
 arch=('x86_64')
@@ -39,10 +40,7 @@ optdepends=(
 # against the system, so no extra Depends needed for those.
 options=('!strip')  # stripping Electron's prebuilt binaries is pointless and can break them
 source=("https://github.com/beamlynx/beamlynx-desktop/releases/download/${pkgver}/beamlynx-${pkgver}.deb")
-# TODO: replace with the real sha256sum of that asset before submitting --
-# left as SKIP here since this draft was authored without re-verifying it
-# against a byte-for-byte re-download at submission time.
-sha256sums=('SKIP')
+sha256sums=('3d56a8ddf050b6e99265a55031ce6a6336d784a584d82750c59bffa6b754dd68')
 
 package() {
   # bsdtar handles both the outer ar(1) .deb container and the inner
