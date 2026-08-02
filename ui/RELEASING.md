@@ -1,8 +1,5 @@
 # Releasing beamlynx-ui
 
-beamlynx-ui is versioned and released independently of `pine-lang` and
-`beamlynx-desktop` — do not conflate version numbers across the three.
-
 ## Checklist
 
 1. Create branch `release/X.Y.Z` from `main`.
@@ -16,7 +13,3 @@ beamlynx-ui is versioned and released independently of `pine-lang` and
 7. Push the branch and open a PR against `main`.
 
 `changelog.data.ts` must mirror `CHANGELOG.md` exactly — this drives both the in-app changelog modal and the notification-bell "unread updates" check (`LATEST_VERSION` compared against the user's last-read version in `localStorage`).
-
-## After merging
-
-If `beamlynx-desktop` bundles a pinned commit/branch of beamlynx-ui (see its `next.config.js` `NEXT_DESKTOP` gating and `store/util.ts`'s `isDesktop()`), and this release includes fixes that pin depended on, update `beamlynx-desktop/bundled-versions.json`'s `beamlynxUiRef` to this new tag rather than leaving it pointed at a raw commit SHA once a real tagged release is available — see `beamlynx-desktop/RELEASING.md`.
