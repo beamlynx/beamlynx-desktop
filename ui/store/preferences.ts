@@ -9,6 +9,7 @@ export const STORAGE_KEYS = {
   LAST_READ_VERSION: 'pine-last-read-version',
   COMMAND_HISTORY: 'pine-command-history',
   CONNECTION_COLORS: 'pine-connection-colors',
+  SESSIONS: 'pine-sessions',
 } as const;
 
 export const getUserPreference = (key: string, defaultValue: any) => {

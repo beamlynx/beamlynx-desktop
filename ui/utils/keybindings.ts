@@ -138,6 +138,18 @@ export const KEYBINDINGS: KeybindingConfig[] = [
     commandId: 'run-query',
   },
 
+  {
+    // Unlike new-tab/close-tab, Ctrl/Cmd+S's default ("Save Page As") is a
+    // page-level browser action, not host-window chrome, so preventDefault()
+    // on keydown reliably suppresses it in both the browser build and
+    // desktop -- no desktop-only gating needed here.
+    name: 'save-tab',
+    description: 'Save Tab',
+    display: createKeybindingDisplay(['ctrl'], 'S'),
+    matches: (e: KeyboardEvent) => (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 's',
+    commandId: 'save-tab',
+  },
+
   // Command-triggering keybinding
   {
     name: 'escape',

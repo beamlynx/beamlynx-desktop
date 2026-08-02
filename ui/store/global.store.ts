@@ -1,13 +1,31 @@
-import { makeAutoObservable, runInAction } from 'mobx';
+import { makeAutoObservable, reaction, runInAction } from 'mobx';
 import { lt } from 'semver';
 import { HttpClient, ConnectionInfo } from './client';
 import type { CredentialsStatus } from '../desktop';
-import { Session, Theme } from './session';
+import { Session, Theme, InputMode } from './session';
 import { RequiredVersion } from '../constants';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
 import { DevState } from './dev-state';
 import { getCommandById } from '../utils/commands';
 import { CONNECTION_COLOR_PALETTE, isDesktop } from './util';
+
+/**
+ * The subset of a Session that's worth restoring on reload: the pine/sql
+ * text and enough connection context to re-run it. Deliberately excludes
+ * results (rows/columns/ast/graph/etc.) -- those are re-derived by
+ * re-evaluating, and persisting them would mean stashing arbitrary query
+ * result data (and its DB row values) into localStorage.
+ */
+type PersistedSession = {
+  expression: string;
+  inputMode: InputMode;
+  connectionId: string;
+};
+
+type PersistedSessionsState = {
+  sessions: PersistedSession[];
+  activeIndex: number;
+};
 
 // Thrown by connectToSavedProfile when the saved password can't be decrypted
 // (e.g. connections.json copied onto a different machine/user -- safeStorage
@@ -116,6 +134,14 @@ export class GlobalStore {
   // Changelog
   showChangelog = false;
 
+  // Save-as-file modal (Ctrl/Cmd+S)
+  showSaveModal = false;
+
+  // Connections list modal (the "List Database Connections" command -- the
+  // ActiveConnection dropdown covers the same data but is anchored to a
+  // clicked DOM element, which a command handler doesn't have).
+  showConnectionsModal = false;
+
   get commandHistory(): string[] {
     return this._commandHistory;
   }
@@ -152,10 +178,72 @@ export class GlobalStore {
     this.connectionColors = getUserPreference(STORAGE_KEYS.CONNECTION_COLORS, {});
     makeAutoObservable(this);
 
-    // Initialize the default session
-    const initSession = new Session('0', this);
-    this.sessions[initSession.id] = initSession;
+    // Restore tabs/sessions from a previous visit, if any were saved.
+    // getUserPreference safely no-ops (returns the default) during SSR, so
+    // this always falls through to a single fresh session there.
+    const restored = this.restoreSessions();
+    if (!restored) {
+      const initSession = new Session('0', this);
+      this.sessions[initSession.id] = initSession;
+    }
+
+    // Persist tabs (pine/sql text, input mode, connection) on change, debounced
+    // so typing doesn't hit localStorage on every keystroke.
+    reaction(
+      () => this.snapshotSessions(),
+      snapshot => setUserPreference(STORAGE_KEYS.SESSIONS, snapshot),
+      { delay: 1000 },
+    );
+
+    // The debounce above can drop the last keystrokes if the tab is closed
+    // right after typing -- flush unconditionally on the way out.
+    if (typeof window !== 'undefined') {
+      window.addEventListener('beforeunload', () => {
+        setUserPreference(STORAGE_KEYS.SESSIONS, this.snapshotSessions());
+      });
+    }
   }
+
+  /**
+   * Build the persisted shape of the current tabs -- see PersistedSessionsState.
+   */
+  private snapshotSessions = (): PersistedSessionsState => {
+    const ids = Object.keys(this.sessions);
+    return {
+      sessions: ids.map(id => {
+        const session = this.sessions[id];
+        return {
+          expression: session.expression,
+          inputMode: session.inputMode,
+          connectionId: session.connectionId,
+        };
+      }),
+      activeIndex: Math.max(ids.indexOf(this.activeSessionId), 0),
+    };
+  };
+
+  /**
+   * Recreate tabs from a previously persisted snapshot, if one exists and
+   * looks well-formed. Returns whether anything was restored, so the caller
+   * knows whether it still needs to create the usual blank default session.
+   */
+  private restoreSessions = (): boolean => {
+    const persisted = getUserPreference(STORAGE_KEYS.SESSIONS, null) as PersistedSessionsState | null;
+    if (!persisted || !Array.isArray(persisted.sessions) || persisted.sessions.length === 0) {
+      return false;
+    }
+
+    persisted.sessions.forEach((persistedSession, index) => {
+      const session = this.createSessionUsingId(String(index));
+      session.expression = persistedSession.expression ?? '';
+      session.inputMode = persistedSession.inputMode === 'sql' ? 'sql' : 'pine';
+      session.connectionId = persistedSession.connectionId ?? '';
+    });
+
+    const ids = Object.keys(this.sessions);
+    this.activeSessionId = ids[persisted.activeIndex] ?? ids[0];
+    return true;
+  };
 
   // In desktop mode, `connections` is keyed by saved-profile id, while
   // `activeSession.connectionId`/`this.connection` are pine's own id
@@ -718,6 +806,14 @@ export class GlobalStore {
 
   setShowChangelog = (show: boolean) => {
     this.showChangelog = show;
+  };
+
+  setShowSaveModal = (show: boolean) => {
+    this.showSaveModal = show;
+  };
+
+  setShowConnectionsModal = (show: boolean) => {
+    this.showConnectionsModal = show;
   };
 
   /**

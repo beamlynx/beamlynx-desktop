@@ -15,6 +15,8 @@ import { getUserPreference, STORAGE_KEYS } from '../store/preferences';
 import AnalysisModal from './AnalysisModal';
 import ChangelogModal from './ChangelogModal';
 import CommandPalette from './CommandPalette';
+import SavePineModal from './SavePineModal';
+import ConnectionsListModal from './ConnectionsListModal';
 import NotificationBell from './NotificationBell';
 import { useGlobalKeybindings } from '../hooks/useGlobalKeybindings';
 import { LATEST_VERSION } from '../utils/changelog.data';
@@ -148,6 +150,8 @@ const AppView = observer(() => {
       <AnalysisModal />
       <ChangelogModal open={global.showChangelog} onClose={handleCloseChangelog} />
       <CommandPalette />
+      <SavePineModal />
+      <ConnectionsListModal />
       <Grid container>
         <Grid item xs={3}>
           <Box sx={{ m: 2, mt: 1, mb: 0 }}>

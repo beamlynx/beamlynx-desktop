@@ -94,6 +94,24 @@ export const pineEscape = (x: string) => {
   return x.replace(/'/g, "_");
 };
 
+/**
+ * Triggers a browser download of `content` as a file named `filename`, using
+ * the anchor+Blob+ObjectURL pattern (no server round-trip, no native save
+ * dialog available from a browser tab or Electron's static export).
+ */
+export const downloadTextFile = (filename: string, content: string, mimeType: string) => {
+  const blob = new Blob([content], { type: mimeType });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  link.setAttribute('href', url);
+  link.setAttribute('download', filename);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
 export const CONNECTION_COLOR_PALETTE = [
   '#4ade80', // green
   '#f87171', // red

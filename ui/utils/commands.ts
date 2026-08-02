@@ -85,6 +85,20 @@ const COMMANDS: Command[] = [
     handler: (global, session) => global.closeTab(session.id),
     isEnabled: ALWAYS_ENABLED,
   },
+  {
+    id: 'list-connections',
+    label: 'List Database Connections',
+    category: 'View',
+    handler: global => global.setShowConnectionsModal(true),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'new-connection',
+    label: 'New Database Connection',
+    category: 'View',
+    handler: global => global.setShowSettings(true),
+    isEnabled: ALWAYS_ENABLED,
+  },
 
   // Query Category
   {
@@ -117,6 +131,13 @@ const COMMANDS: Command[] = [
       });
     },
     isEnabled: (_global, session) => session.query.trim() !== '',
+  },
+  {
+    id: 'save-tab',
+    label: 'Save Tab',
+    category: 'Query',
+    handler: global => global.setShowSaveModal(true),
+    isEnabled: (_global, session) => session.expression.trim() !== '',
   },
 
   // Hidden commands
