@@ -15,6 +15,20 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.46.1',
+    date: '2026-08-03',
+    fixed: [
+      {
+        description:
+          "The playground's shared connection could be deleted from the connection picker, breaking the playground for everyone else using it; the delete action is now hidden (and refused as a backstop) in playground mode.",
+      },
+      {
+        description:
+          'The changelog\'s relative-date label showed "-1 days ago" for a same-day entry when the local timezone is behind UTC.',
+      },
+    ],
+  },
+  {
     version: '0.46.0',
     date: '2026-08-03',
     added: [
@@ -1026,4 +1040,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.46.0';
+export const LATEST_VERSION = '0.46.1';
