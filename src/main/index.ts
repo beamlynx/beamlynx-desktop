@@ -10,6 +10,29 @@ let mainWindow: BrowserWindow | null = null;
 let serverHandle: ServerHandle | null = null;
 let quitting = false;
 
+// Without this, nothing stops a second instance from launching against the
+// same userData dir (e.g. a stale process left behind by a crash or a
+// SIGKILL that the pine-server.pid handling below already has to account
+// for on the server side, or simply double-clicking the launcher). Two
+// live instances each hold their own in-memory copy of the renderer's
+// localStorage; whichever one's Chromium session happens to flush to disk
+// *last* wins, silently overwriting newer changes from the other with
+// stale data -- this is a well-documented Electron footgun, not specific
+// to this app. requestSingleInstanceLock() makes any second launch quit
+// immediately instead, and focuses the already-running window so it's not
+// just a silent no-op from the user's perspective.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
+
 // Chromium's desktop-environment auto-detection (which safeStorage's Linux
 // backend selection relies on) only recognizes a fixed list of DEs --
 // GNOME, KDE, XFCE, Cinnamon, Unity, etc. On anything outside that list
@@ -105,9 +128,22 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    // A BrowserWindow shown immediately (Electron's default) paints blank/
+    // white for a brief moment before its first frame -- loading.html hasn't
+    // loaded and rendered yet. backgroundColor matches loading.html's own
+    // background (assets/loading.html, itself matched to beamlynx-ui's dark
+    // theme default) so there's a solid, correctly-colored window from the
+    // instant it appears, and show only once that first frame is actually
+    // ready to display.
+    show: false,
+    backgroundColor: '#21252b',
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'index.js'),
     },
+  });
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show();
   });
 
   // Shown immediately, before the server is up -- see loadRealUi() below for
@@ -201,32 +237,41 @@ async function main(): Promise<void> {
   }
 }
 
-// Triggered by the renderer's "Restart to install" button (see
-// beamlynx-ui's DesktopUpdateBanner). Stops the server and marks `quitting`
-// ourselves first, same as a normal quit -- so that by the time
-// quitAndInstall() gets to firing its own 'before-quit', our handler below
-// just no-ops instead of calling event.preventDefault() and interfering
-// with electron-updater's native install-and-relaunch handoff.
-ipcMain.on('restart-to-update', async () => {
-  quitting = true;
-  await flushRendererStorage();
-  if (serverHandle) {
+// Guarded on gotSingleInstanceLock -- without this guard, a second instance
+// that loses the lock still fell through to registering 'ready' below (and
+// so still ran main(), spawning its own pine-server) before the app.quit()
+// called above actually took effect, leaving an orphaned second server
+// process behind. Nothing past this point should ever run for a losing
+// second instance.
+if (gotSingleInstanceLock) {
+  // Triggered by the renderer's "Restart to install" button (see
+  // beamlynx-ui's DesktopUpdateBanner). Stops the server and marks
+  // `quitting` ourselves first, same as a normal quit -- so that by the
+  // time quitAndInstall() gets to firing its own 'before-quit', our handler
+  // below just no-ops instead of calling event.preventDefault() and
+  // interfering with electron-updater's native install-and-relaunch
+  // handoff.
+  ipcMain.on('restart-to-update', async () => {
+    quitting = true;
+    await flushRendererStorage();
+    if (serverHandle) {
+      await serverHandle.stop();
+    }
+    autoUpdater.quitAndInstall();
+  });
+
+  app.on('ready', main);
+
+  app.on('window-all-closed', () => {
+    app.quit();
+  });
+
+  app.on('before-quit', async event => {
+    if (quitting || !serverHandle) return;
+    quitting = true;
+    event.preventDefault();
+    await flushRendererStorage();
     await serverHandle.stop();
-  }
-  autoUpdater.quitAndInstall();
-});
-
-app.on('ready', main);
-
-app.on('window-all-closed', () => {
-  app.quit();
-});
-
-app.on('before-quit', async event => {
-  if (quitting || !serverHandle) return;
-  quitting = true;
-  event.preventDefault();
-  await flushRendererStorage();
-  await serverHandle.stop();
-  app.quit();
-});
+    app.quit();
+  });
+}
