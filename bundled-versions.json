@@ -1,5 +1,5 @@
 {
-  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. Pinned to commit SHAs, not a branch name, as of 0.1.9 -- a branch pin silently picks up whatever that branch's HEAD is at tag-push time, which twice produced a release missing work that had already been committed to the branch but not accounted for when the tag was cut. A SHA pin makes exactly what's bundled explicit and reviewable in this file's own diff. pine-lang unchanged, still 0.37.1. beamlynx-ui bumped to its tagged 0.46.0 (tab persistence, save-to-file, connections command palette, graph Tab-focus fix).",
+  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. Pinned to commit SHAs, not a branch name, as of 0.1.9 -- a branch pin silently picks up whatever that branch's HEAD is at tag-push time, which twice produced a release missing work that had already been committed to the branch but not accounted for when the tag was cut. A SHA pin makes exactly what's bundled explicit and reviewable in this file's own diff. pine-lang unchanged, still 0.37.1. beamlynx-ui bumped to its tagged 0.46.1 (playground connection delete-guard, changelog date fix).",
   "pineLangRef": "0.37.1",
-  "beamlynxUiRef": "0.46.0"
+  "beamlynxUiRef": "0.46.1"
 }
