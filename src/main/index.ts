@@ -2,12 +2,32 @@ import { app, BrowserWindow, dialog, ipcMain, Menu } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import * as path from 'path';
 import { initAutoUpdater } from './auto-update';
+import { registerCredentialIpc } from './credential-store';
 import { getResourcesRoot } from './resources';
 import { ServerHandle, startServer } from './server-process';
 
 let mainWindow: BrowserWindow | null = null;
 let serverHandle: ServerHandle | null = null;
 let quitting = false;
+
+// Chromium's desktop-environment auto-detection (which safeStorage's Linux
+// backend selection relies on) only recognizes a fixed list of DEs --
+// GNOME, KDE, XFCE, Cinnamon, Unity, etc. On anything outside that list
+// (tiling WMs like Hyprland, Sway, i3), it reports no key storage available
+// at all, even when a real secret service (most commonly gnome-keyring) is
+// running and reachable on the session bus -- confirmed empirically: with
+// no override, safeStorage.isEncryptionAvailable() returns false under
+// Hyprland despite gnome-keyring-daemon owning org.freedesktop.secrets.
+// Force a backend explicitly instead of relying on that heuristic. Must run
+// before the app is ready, so it's called at module load, before any
+// app.on/app.whenReady registration below.
+function configureLinuxPasswordStore(): void {
+  if (process.platform !== 'linux') return;
+  const desktop = `${process.env.XDG_CURRENT_DESKTOP ?? ''} ${process.env.DESKTOP_SESSION ?? ''}`.toLowerCase();
+  const isKde = desktop.includes('kde') || !!process.env.KDE_SESSION_VERSION;
+  app.commandLine.appendSwitch('password-store', isKde ? 'kwallet6' : 'gnome-libsecret');
+}
+configureLinuxPasswordStore();
 
 // Electron's built-in default menu (used automatically whenever no menu is
 // set) binds Cmd/Ctrl+W to role: 'close', which would intercept the
@@ -139,6 +159,7 @@ function loadRealUi(): void {
 
 async function main(): Promise<void> {
   Menu.setApplicationMenu(buildMenu());
+  registerCredentialIpc();
 
   // Show the window (with a loading splash) immediately instead of waiting
   // on startServer() (JVM boot + port-readiness polling, up to ~15s) --

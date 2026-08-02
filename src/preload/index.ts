@@ -6,6 +6,13 @@
 // beamlynx-ui can show it in-app instead of it being silent/console-only.
 import { contextBridge, ipcRenderer } from 'electron';
 import type { UpdateStatus } from '../main/auto-update';
+import type {
+  CredentialsStatus,
+  GetConnectionResult,
+  SaveConnectionInput,
+  SaveConnectionResult,
+  SavedConnectionMeta,
+} from '../main/credential-store';
 
 contextBridge.exposeInMainWorld('beamlynxDesktop', {
   onUpdateStatus: (callback: (status: UpdateStatus) => void) => {
@@ -14,4 +21,12 @@ contextBridge.exposeInMainWorld('beamlynxDesktop', {
     return () => ipcRenderer.removeListener('update-status', listener);
   },
   restartToUpdate: () => ipcRenderer.send('restart-to-update'),
+  credentials: {
+    status: (): Promise<CredentialsStatus> => ipcRenderer.invoke('credentials:status'),
+    list: (): Promise<SavedConnectionMeta[]> => ipcRenderer.invoke('credentials:list'),
+    save: (input: SaveConnectionInput): Promise<SaveConnectionResult> =>
+      ipcRenderer.invoke('credentials:save', input),
+    get: (id: string): Promise<GetConnectionResult> => ipcRenderer.invoke('credentials:get', id),
+    delete: (id: string): Promise<void> => ipcRenderer.invoke('credentials:delete', id),
+  },
 });
