@@ -5,6 +5,15 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.46.0] - 2026-08-03
+### Added
+- Tabs (Pine/SQL text, input mode, connection) are now restored on reload instead of always starting from a single blank session.
+- `Ctrl/Cmd+S` ("Save Tab") downloads the active tab's Pine expression as a `.pine` file.
+- New "List Database Connections" / "New Database Connection" command palette entries.
+
+### Fixed
+- Pressing Tab while the graph had focus was falling through to React Flow's own node/edge navigation instead of cycling through Pine completion candidates.
+
 ## [0.45.2] - 2026-08-02
 ### Fixed
 - The notification bell's color (for unread updates) was showing as blue instead of the intended warm accent.

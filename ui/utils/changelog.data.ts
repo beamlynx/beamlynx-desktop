@@ -15,6 +15,30 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.46.0',
+    date: '2026-08-03',
+    added: [
+      {
+        description:
+          'Tabs (Pine/SQL text, input mode, connection) are now restored on reload instead of always starting from a single blank session.',
+      },
+      {
+        description:
+          "`Ctrl/Cmd+S` (\"Save Tab\") downloads the active tab's Pine expression as a `.pine` file.",
+      },
+      {
+        description:
+          'New "List Database Connections" / "New Database Connection" command palette entries.',
+      },
+    ],
+    fixed: [
+      {
+        description:
+          "Pressing Tab while the graph had focus was falling through to React Flow's own node/edge navigation instead of cycling through Pine completion candidates.",
+      },
+    ],
+  },
+  {
     version: '0.45.2',
     date: '2026-08-02',
     fixed: [
@@ -1002,4 +1026,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.45.2';
+export const LATEST_VERSION = '0.46.0';
