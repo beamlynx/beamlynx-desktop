@@ -15,6 +15,34 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.45.0',
+    date: '2026-08-02',
+    added: [
+      {
+        description:
+          'Support for a `NEXT_DESKTOP`/`NEXT_PUBLIC_DESKTOP`-gated static export build, used by the new `beamlynx-desktop` Electron app so the UI can run bundled with a local pine-lang server instead of pointed at a Docker container. No change to the hosted build.',
+      },
+      {
+        description:
+          'Desktop-only keybindings: `Ctrl/Cmd+K` for the Command Palette, `Ctrl/Cmd+T` for New Tab, `Ctrl/Cmd+W` for Close Tab. Unbound in the browser build, where the host browser already owns those combos -- the Command Palette shortcut stays `Ctrl/Cmd+Shift+P` there, same as before.',
+      },
+      {
+        description:
+          "Auto-update progress is now shown in-app (\"Downloading update... NN%\", then \"Update ready -- Restart to install\") instead of it being silent/console-only, in the desktop app.",
+      },
+      {
+        description:
+          "In the desktop app, connections you add are now saved on your device (encrypted via the OS's own credential storage) and reloaded the next time you open the app, instead of only lasting for the current session. The connection picker's delete action now also forgets the saved connection, in addition to closing it. No change to the hosted/browser build, which still never stores credentials.",
+      },
+    ],
+    changed: [
+      {
+        description:
+          "The connected server's version chip (e.g. `[0.37.0]`) is now hidden when running in the desktop app -- it isn't beamlynx-ui's own version, and desktop users have their own release notes instead. Still shown in the browser/hosted build.",
+      },
+    ],
+  },
+  {
     version: '0.44.0',
     date: '2026-07-31',
     added: [
@@ -946,4 +974,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.44.0';
+export const LATEST_VERSION = '0.45.0';
