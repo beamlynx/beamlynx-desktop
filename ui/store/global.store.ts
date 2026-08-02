@@ -1,12 +1,24 @@
 import { makeAutoObservable, runInAction } from 'mobx';
 import { lt } from 'semver';
 import { HttpClient, ConnectionInfo } from './client';
+import type { CredentialsStatus } from '../desktop';
 import { Session, Theme } from './session';
 import { RequiredVersion } from '../constants';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
 import { DevState } from './dev-state';
 import { getCommandById } from '../utils/commands';
-import { CONNECTION_COLOR_PALETTE } from './util';
+import { CONNECTION_COLOR_PALETTE, isDesktop } from './util';
+
+// Thrown by connectToSavedProfile when the saved password can't be decrypted
+// (e.g. connections.json copied onto a different machine/user -- safeStorage
+// keys are OS/user/machine-scoped) -- distinguishable so the UI can offer to
+// re-enter the password instead of showing a generic connect failure.
+export class DecryptionFailedError extends Error {
+  constructor() {
+    super('Failed to decrypt the saved password for this connection');
+    this.name = 'DecryptionFailedError';
+  }
+}
 
 const client = new HttpClient();
 type ConnectionParams = {
@@ -24,6 +36,17 @@ export class GlobalStore {
   requiresUpgrade = false;
   connectionColors: Record<string, string> = {};
   connections: ConnectionInfo[] = [];
+  // Desktop only: which saved profile (if any) is behind whatever pine
+  // currently considers the selected connection. Needed because pine's own
+  // connection id is derived only from host:port (coarser than a saved
+  // profile's host+port+db+user), so it can't be used to reliably tell which
+  // profile is active when highlighting the picker.
+  activeProfileId = '';
+  credentialsStatus: CredentialsStatus | null = null;
+  // Set by connectToSavedProfile on a decryption failure, so the settings
+  // form can pre-fill the (still-plaintext) host/port/db/user and prompt the
+  // user to just re-enter the password, instead of retyping everything.
+  reconnectHint: { dbHost: string; dbPort: string; dbName: string; dbUser: string } | null = null;
 
   get pineConnected() {
     return DevState.pineConnected ?? !!this.version;
@@ -159,6 +182,33 @@ export class GlobalStore {
   };
 
   refreshConnections = async (): Promise<ConnectionInfo[]> => {
+    // Desktop mode: pine-server is a fresh JVM every launch, so its own live
+    // connection list is empty until something reconnects this session --
+    // not useful as "what connections does the user have". Source the list
+    // from locally saved profiles instead. `this.connection` is left alone
+    // here; it's driven by actual connect operations (connect /
+    // connectToSavedProfile), not by loading the list.
+    console.log(
+      `[credentials] refreshConnections: isDesktop()=${isDesktop()} window.beamlynxDesktop=${
+        typeof window !== 'undefined' && !!window.beamlynxDesktop
+      }`,
+    );
+    if (isDesktop() && typeof window !== 'undefined' && window.beamlynxDesktop) {
+      const profiles = await window.beamlynxDesktop.credentials.list();
+      console.log('[credentials] refreshConnections (desktop): profiles ->', profiles);
+      runInAction(() => {
+        this.connections = profiles.map(p => ({
+          id: p.id,
+          label: p.label,
+          dbHost: p.dbHost,
+          dbPort: p.dbPort,
+        }));
+        this.connections.forEach(c => this.assignConnectionColor(c.id));
+        this.pruneConnectionColors(this.connections.map(c => c.id));
+      });
+      return this.connections;
+    }
+
     const result = await client.listConnections();
     if (!result) {
       return this.connections;
@@ -173,6 +223,30 @@ export class GlobalStore {
       this.connection = result['selected-connection-id'] ?? '';
     });
     return this.connections;
+  };
+
+  consumeReconnectHint = () => {
+    const hint = this.reconnectHint;
+    runInAction(() => {
+      this.reconnectHint = null;
+    });
+    return hint;
+  };
+
+  loadCredentialsStatus = async () => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) {
+      console.log(
+        `[credentials] loadCredentialsStatus: skipped (window.beamlynxDesktop=${
+          typeof window !== 'undefined' && !!window.beamlynxDesktop
+        })`,
+      );
+      return;
+    }
+    const status = await window.beamlynxDesktop.credentials.status();
+    console.log('[credentials] loadCredentialsStatus ->', status);
+    runInAction(() => {
+      this.credentialsStatus = status;
+    });
   };
 
   setConnectionColor = (connectionId: string, color: string) => {
@@ -302,21 +376,86 @@ export class GlobalStore {
   };
 
   /**
-   * Remove a saved server connection. Disconnects any tab currently using it,
-   * the same "not connected" state a brand-new session starts in.
+   * Connect to a saved (desktop-only) profile that may not have a live pine
+   * pool yet this session -- fetches the decrypted credentials and goes
+   * through the normal `connect` (create + use) path, rather than assuming
+   * a pool already exists the way `selectConnection` does.
    */
-  removeConnection = async (connectionId: string) => {
-    await client.deleteConnection(connectionId);
+  connectToSavedProfile = async (id: string): Promise<string> => {
+    console.log(`[credentials] connectToSavedProfile called for id=${id}`);
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) {
+      throw new Error('Saved connections are only available in desktop mode');
+    }
+    const result = await window.beamlynxDesktop.credentials.get(id);
+    console.log('[credentials] connectToSavedProfile: get result ->', result);
+    if (!result.ok) {
+      if (result.error === 'decryption-failed') {
+        const { dbHost, dbPort, dbName, dbUser } = result.profile;
+        runInAction(() => {
+          this.reconnectHint = { dbHost, dbPort, dbName, dbUser };
+        });
+        throw new DecryptionFailedError();
+      }
+      throw new Error('Saved connection not found');
+    }
+    const { profile, dbPassword } = result;
+    return this.connect({
+      dbHost: profile.dbHost,
+      dbPort: profile.dbPort,
+      dbName: profile.dbName,
+      dbUser: profile.dbUser,
+      dbPassword,
+    });
+  };
+
+  /**
+   * Delete a connection: best-effort, silently close any live pine session
+   * for it, and (desktop only) forget the saved credential -- both are
+   * independent and safe to attempt even if the other has nothing to do
+   * (e.g. deleting a saved profile that was never connected this session,
+   * or deleting in browser mode where there's no saved credential at all).
+   */
+  deleteConnection = async (id: string) => {
+    const desktopApi = typeof window !== 'undefined' ? window.beamlynxDesktop : undefined;
+    const useDesktop = isDesktop() && !!desktopApi;
+    const conn = this.connections.find(c => c.id === id);
+    // In desktop mode, `id` is the saved profile's id, not pine's -- derive
+    // pine's own id (host:port) the same way pine derives it itself
+    // (pine.db.connections/make-connection-id) so the close attempt targets
+    // the right pool.
+    const pineId = useDesktop && conn?.dbHost && conn?.dbPort ? `${conn.dbHost}:${conn.dbPort}` : id;
+    console.log(`[credentials] deleteConnection: id=${id} useDesktop=${useDesktop} pineId=${pineId}`);
+
+    try {
+      await client.deleteConnection(pineId);
+    } catch {
+      // No live session under this id -- nothing to close, not an error.
+    }
+
+    if (useDesktop && desktopApi) {
+      try {
+        await desktopApi.credentials.delete(id);
+      } catch {
+        // Best effort -- nothing more useful to do if this fails.
+      }
+    }
+
     runInAction(() => {
-      if (this.connection === connectionId) {
+      if (this.connection === id || this.connection === pineId) {
         this.connection = '';
       }
+      if (this.activeProfileId === id) {
+        this.activeProfileId = '';
+      }
       Object.values(this.sessions).forEach(session => {
-        if (session.connectionId === connectionId) {
+        if (session.connectionId === id || session.connectionId === pineId) {
           session.connectionId = '';
         }
       });
-      if (this.virtualSession?.connectionId === connectionId) {
+      if (
+        this.virtualSession &&
+        (this.virtualSession.connectionId === id || this.virtualSession.connectionId === pineId)
+      ) {
         this.virtualSession.connectionId = '';
       }
     });
@@ -357,6 +496,27 @@ export class GlobalStore {
         this.onboardingServer = true;
       }
     });
+
+    console.log(
+      `[credentials] connect: isDesktop()=${isDesktop()} window.beamlynxDesktop=${
+        typeof window !== 'undefined' && !!window.beamlynxDesktop
+      }`,
+    );
+    if (isDesktop() && typeof window !== 'undefined' && window.beamlynxDesktop) {
+      try {
+        const saveResult = await window.beamlynxDesktop.credentials.save(params);
+        console.log('[credentials] connect: save result ->', saveResult);
+        runInAction(() => {
+          this.activeProfileId = saveResult.persisted ? saveResult.profile.id : '';
+        });
+      } catch (e) {
+        console.error('[credentials] connect: credentials.save threw ->', e);
+        runInAction(() => {
+          this.activeProfileId = '';
+        });
+      }
+    }
+
     await this.refreshConnections();
     return id;
   };

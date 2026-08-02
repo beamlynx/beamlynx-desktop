@@ -4,7 +4,8 @@ import { Box, ClickAwayListener, Divider, Menu, MenuItem, Typography } from '@mu
 import { observer } from 'mobx-react-lite';
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import { useStores } from '../store/store-container';
-import { CONNECTION_COLOR_PALETTE } from '../store/util';
+import { CONNECTION_COLOR_PALETTE, isDesktop } from '../store/util';
+import { DecryptionFailedError } from '../store/global.store';
 import Settings from '../pages/settings';
 
 const REMOVE_CONFIRM_TIMEOUT_MS = 3000;
@@ -39,7 +40,7 @@ const ActiveConnection = () => {
       setConfirmingRemoveId(null);
       setRemovingId(id);
       const wasActive = id === (activeSession?.connectionId || global.connection);
-      global.removeConnection(id).finally(() => {
+      global.deleteConnection(id).finally(() => {
         setRemovingId(null);
         // Removing the active connection triggers the "Database Connection" modal
         // to auto-open (see the effect below) — close the picker menu so it
@@ -170,10 +171,39 @@ const ActiveConnection = () => {
         {global.connections.map(({ id, label }) => (
           <MenuItem
             key={id}
-            selected={id === activeSession?.connectionId}
+            selected={isDesktop() ? id === global.activeProfileId : id === activeSession?.connectionId}
             disabled={switchingConnection || !!removingId}
             onClick={async () => {
+              console.log(
+                `[credentials] connection item clicked: id=${id} isDesktop()=${isDesktop()} activeProfileId=${global.activeProfileId}`,
+              );
+              if (isDesktop()) {
+                if (id === global.activeProfileId) {
+                  console.log('[credentials] click: already the active profile, no-op');
+                  setConnectionMenuAnchor(null);
+                  return;
+                }
+                setSwitchingConnection(true);
+                try {
+                  await global.connectToSavedProfile(id);
+                } catch (e) {
+                  // A saved profile may not have a live pool yet this session
+                  // (or, on decryption failure, opening Settings lets the
+                  // user re-enter just the password) -- either way there's
+                  // nothing more to do here; connectToSavedProfile/connect
+                  // already surface the failure via session state.
+                  console.error('[credentials] click: connectToSavedProfile threw ->', e);
+                  if (e instanceof DecryptionFailedError) {
+                    global.setShowSettings(true);
+                  }
+                } finally {
+                  setSwitchingConnection(false);
+                  setConnectionMenuAnchor(null);
+                }
+                return;
+              }
               if (activeSession && id === activeSession.connectionId && id === global.connection) {
+                console.log('[credentials] click: already the active session (browser mode), no-op');
                 setConnectionMenuAnchor(null);
                 return;
               }
@@ -215,7 +245,7 @@ const ActiveConnection = () => {
               {label}
             </Typography>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
-              {id === activeSession?.connectionId ? (
+              {(isDesktop() ? id === global.activeProfileId : id === activeSession?.connectionId) ? (
                 <CheckIcon sx={{ fontSize: 16, opacity: 0.7 }} />
               ) : (
                 <Box sx={{ width: 16 }} />

@@ -130,6 +130,12 @@ export type ConnectionStatsResponse = {
 export type ConnectionInfo = {
   id: string;
   label: string;
+  // Only present in desktop mode, where entries come from locally saved
+  // profiles rather than pine-server's live session list -- carried here so
+  // GlobalStore.deleteConnection can derive pine's own connection id
+  // (`${dbHost}:${dbPort}`) without an extra round trip.
+  dbHost?: string;
+  dbPort?: string;
 };
 
 export type ConnectionsListResult = {

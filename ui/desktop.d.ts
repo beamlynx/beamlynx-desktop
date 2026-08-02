@@ -11,9 +11,47 @@ type DesktopUpdateStatus =
   | { state: 'downloaded'; version: string }
   | { state: 'error'; message: string };
 
+type SavedConnectionMeta = {
+  id: string;
+  label: string;
+  dbHost: string;
+  dbPort: string;
+  dbName: string;
+  dbUser: string;
+  createdAt: string;
+  lastUsedAt: string;
+};
+
+type CredentialsStatus = {
+  persistenceAvailable: boolean;
+  linuxBackend?: string;
+};
+
+type SaveConnectionInput = {
+  dbHost: string;
+  dbPort: string;
+  dbName: string;
+  dbUser: string;
+  dbPassword: string;
+};
+
+type SaveConnectionResult = { persisted: true; profile: SavedConnectionMeta } | { persisted: false };
+
+type GetConnectionResult =
+  | { ok: true; profile: SavedConnectionMeta; dbPassword: string }
+  | { ok: false; error: 'not-found' }
+  | { ok: false; error: 'decryption-failed'; profile: SavedConnectionMeta };
+
 interface BeamlynxDesktopApi {
   onUpdateStatus: (callback: (status: DesktopUpdateStatus) => void) => () => void;
   restartToUpdate: () => void;
+  credentials: {
+    status: () => Promise<CredentialsStatus>;
+    list: () => Promise<SavedConnectionMeta[]>;
+    save: (input: SaveConnectionInput) => Promise<SaveConnectionResult>;
+    get: (id: string) => Promise<GetConnectionResult>;
+    delete: (id: string) => Promise<void>;
+  };
 }
 
 declare global {
@@ -22,4 +60,11 @@ declare global {
   }
 }
 
-export type { DesktopUpdateStatus };
+export type {
+  DesktopUpdateStatus,
+  SavedConnectionMeta,
+  CredentialsStatus,
+  SaveConnectionInput,
+  SaveConnectionResult,
+  GetConnectionResult,
+};

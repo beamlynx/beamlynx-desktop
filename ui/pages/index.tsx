@@ -40,6 +40,9 @@ const Home: NextPage = () => {
         global.connecting = false;
       });
     });
+    if (isDesktop()) {
+      global.loadCredentialsStatus();
+    }
 
     // Setup a reaction to manage polling based on connection status
     const disposer = reaction(

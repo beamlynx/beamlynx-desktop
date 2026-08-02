@@ -19,28 +19,36 @@ import { useState, type FormEvent } from 'react';
 import { useStores } from '../store/store-container';
 import { Alert } from '@mui/material';
 import { parseConnectionString } from '../utils/connectionString';
+import { isDesktop } from '../store/util';
 
-const SecurityNotice = () => (
-  <Box
-    sx={{
-      border: '1px solid var(--border-color)',
-      borderRadius: 1,
-      p: 2,
-      mb: 2,
-      bgcolor: 'var(--node-column-bg)',
-      display: 'flex',
-      alignItems: 'center',
-    }}
-  >
-    <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
-      <SecurityIcon sx={{ fontSize: 20, mr: 1, color: 'var(--icon-color)' }} />
-      <Typography variant="caption" sx={{ color: 'var(--text-color)' }}>
-        Pine never stores credentials. Your connection details are securely held in memory only for
-        the duration of the server session.
-      </Typography>
+const SecurityNotice = ({ persistenceAvailable }: { persistenceAvailable?: boolean }) => {
+  const message = !isDesktop()
+    ? 'Pine never stores credentials. Your connection details are securely held in memory only for the duration of the server session.'
+    : persistenceAvailable === false
+      ? "This device has no secure OS credential storage available, so connections can't be saved between sessions — you'll need to re-enter details each time you restart the app."
+      : "Beamlynx securely stores your connection details on this device (encrypted using your operating system's keychain) so you don't have to re-enter them next time.";
+
+  return (
+    <Box
+      sx={{
+        border: '1px solid var(--border-color)',
+        borderRadius: 1,
+        p: 2,
+        mb: 2,
+        bgcolor: 'var(--node-column-bg)',
+        display: 'flex',
+        alignItems: 'center',
+      }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
+        <SecurityIcon sx={{ fontSize: 20, mr: 1, color: 'var(--icon-color)' }} />
+        <Typography variant="caption" sx={{ color: 'var(--text-color)' }}>
+          {message}
+        </Typography>
+      </Box>
     </Box>
-  </Box>
-);
+  );
+};
 
 const SuccessMessage = () => (
   <Alert
@@ -99,16 +107,23 @@ const ErrorMessage = ({ message }: { message: string }) => (
 
 const Settings = () => {
   const { global } = useStores();
-  const [dbHost, setDbHost] = useState('');
-  const [dbPort, setDbPort] = useState('');
-  const [dbName, setDbName] = useState('');
-  const [dbUser, setDbUser] = useState('');
+  // Consumed once on mount: if the settings modal was opened because a saved
+  // connection's password couldn't be decrypted, pre-fill everything except
+  // the password (still plaintext metadata) rather than making the user
+  // retype the whole form.
+  const [reconnectHint] = useState(() => global.consumeReconnectHint());
+  const [dbHost, setDbHost] = useState(reconnectHint?.dbHost ?? '');
+  const [dbPort, setDbPort] = useState(reconnectHint?.dbPort ?? '');
+  const [dbName, setDbName] = useState(reconnectHint?.dbName ?? '');
+  const [dbUser, setDbUser] = useState(reconnectHint?.dbUser ?? '');
   const [dbPassword, setDbPassword] = useState('');
   const [connectionString, setConnectionString] = useState('');
   const [connectionStringError, setConnectionStringError] = useState('');
   const [showConnectionString, setShowConnectionString] = useState(false);
   const [connectionStringExpanded, setConnectionStringExpanded] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(
+    reconnectHint ? "Couldn't unlock the saved password for this connection — please re-enter it." : '',
+  );
   const [connecting, setConnecting] = useState(false);
   const [connected, setConnected] = useState(false);
 
@@ -198,7 +213,9 @@ const Settings = () => {
           Database Connection
         </Typography>
 
-        {!connected && !error && <SecurityNotice />}
+        {!connected && !error && (
+          <SecurityNotice persistenceAvailable={global.credentialsStatus?.persistenceAvailable} />
+        )}
         {connected && !error && <SuccessMessage />}
         {error && <ErrorMessage message={error} />}
         {!error && connectionStringError && <ErrorMessage message={connectionStringError} />}
