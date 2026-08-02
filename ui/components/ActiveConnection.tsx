@@ -4,7 +4,7 @@ import { Box, ClickAwayListener, Divider, Menu, MenuItem, Typography } from '@mu
 import { observer } from 'mobx-react-lite';
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import { useStores } from '../store/store-container';
-import { CONNECTION_COLOR_PALETTE, isDesktop } from '../store/util';
+import { CONNECTION_COLOR_PALETTE, isDesktop, isPlayground } from '../store/util';
 import { DecryptionFailedError } from '../store/global.store';
 import Settings from '../pages/settings';
 
@@ -253,19 +253,23 @@ const ActiveConnection = () => {
               ) : (
                 <Box sx={{ width: 16 }} />
               )}
-              <DeleteOutlineIcon
-                onClick={e => handleRemoveClick(e, id)}
-                titleAccess={
-                  confirmingRemoveId === id ? 'Click again to remove' : 'Remove connection'
-                }
-                sx={{
-                  fontSize: 16,
-                  cursor: 'pointer',
-                  opacity: confirmingRemoveId === id ? 1 : 0.35,
-                  color: confirmingRemoveId === id ? 'var(--text-warning-color)' : 'inherit',
-                  '&:hover': { opacity: 0.9 },
-                }}
-              />
+              {isPlayground() ? (
+                <Box sx={{ width: 16 }} />
+              ) : (
+                <DeleteOutlineIcon
+                  onClick={e => handleRemoveClick(e, id)}
+                  titleAccess={
+                    confirmingRemoveId === id ? 'Click again to remove' : 'Remove connection'
+                  }
+                  sx={{
+                    fontSize: 16,
+                    cursor: 'pointer',
+                    opacity: confirmingRemoveId === id ? 1 : 0.35,
+                    color: confirmingRemoveId === id ? 'var(--text-warning-color)' : 'inherit',
+                    '&:hover': { opacity: 0.9 },
+                  }}
+                />
+              )}
             </Box>
           </MenuItem>
         ))}

@@ -7,7 +7,7 @@ import { RequiredVersion } from '../constants';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
 import { DevState } from './dev-state';
 import { getCommandById } from '../utils/commands';
-import { CONNECTION_COLOR_PALETTE, isDesktop } from './util';
+import { CONNECTION_COLOR_PALETTE, isDesktop, isPlayground } from './util';
 
 /**
  * The subset of a Session that's worth restoring on reload: the pine/sql
@@ -529,6 +529,12 @@ export class GlobalStore {
    * or deleting in browser mode where there's no saved credential at all).
    */
   deleteConnection = async (id: string) => {
+    // The playground's connection is shared infrastructure -- deleting it
+    // breaks the playground for everyone else using it, so refuse here as a
+    // backstop even though the UI already hides the delete action.
+    if (isPlayground()) {
+      return;
+    }
     const desktopApi = typeof window !== 'undefined' ? window.beamlynxDesktop : undefined;
     const useDesktop = isDesktop() && !!desktopApi;
     const conn = this.connections.find(c => c.id === id);
