@@ -5,6 +5,14 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.45.1] - 2026-08-02
+### Fixed
+- In the desktop app, saved connections weren't showing their color or proper name in the connection picker.
+- The "Database Connection" dialog no longer pops up automatically when you already have saved or active connections to pick from -- it now only does that when there's genuinely nothing to connect to yet.
+
+### Changed
+- The notification bell no longer shakes when there's something new -- it still changes color, just more subtly.
+
 ## [0.45.0] - 2026-08-02
 ### Added
 - Beamlynx can now be downloaded and run as a desktop app, with no Docker required.

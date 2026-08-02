@@ -15,6 +15,26 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.45.1',
+    date: '2026-08-02',
+    fixed: [
+      {
+        description:
+          'In the desktop app, saved connections weren\'t showing their color or proper name in the connection picker.',
+      },
+      {
+        description:
+          'The "Database Connection" dialog no longer pops up automatically when you already have saved or active connections to pick from -- it now only does that when there\'s genuinely nothing to connect to yet.',
+      },
+    ],
+    changed: [
+      {
+        description:
+          "The notification bell no longer shakes when there's something new -- it still changes color, just more subtly.",
+      },
+    ],
+  },
+  {
     version: '0.45.0',
     date: '2026-08-02',
     added: [
@@ -972,4 +992,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.45.0';
+export const LATEST_VERSION = '0.45.1';
