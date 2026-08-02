@@ -26,7 +26,27 @@ const DesktopUpdateBanner = () => {
   if (status.state === 'downloading') {
     return (
       <Snackbar open anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>
-        <Alert severity="info" variant="filled">
+        <Alert
+          severity="info"
+          sx={{
+            '&.MuiAlert-standardInfo': {
+              backgroundColor: '#e8f0fe',
+              border: '1px solid var(--primary-color)',
+              color: 'var(--primary-color)',
+              '& .MuiAlert-icon': {
+                color: 'var(--primary-color)',
+              },
+            },
+            '[data-theme="dark"] &': {
+              backgroundColor: 'var(--node-column-bg)',
+              border: '1px solid var(--primary-color)',
+              color: 'var(--text-color)',
+              '& .MuiAlert-icon': {
+                color: 'var(--primary-color)',
+              },
+            },
+          }}
+        >
           Downloading update... {status.percent}%
         </Alert>
       </Snackbar>
@@ -38,7 +58,6 @@ const DesktopUpdateBanner = () => {
       <Snackbar open anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>
         <Alert
           severity="success"
-          variant="filled"
           onClose={() => setDismissed(true)}
           action={
             <Button
@@ -49,6 +68,24 @@ const DesktopUpdateBanner = () => {
               Restart Now
             </Button>
           }
+          sx={{
+            '&.MuiAlert-standardSuccess': {
+              backgroundColor: '#e8f5e8',
+              border: '1px solid var(--icon-color-highlight)',
+              color: '#2e7d32',
+              '& .MuiAlert-icon': {
+                color: 'var(--icon-color-highlight)',
+              },
+            },
+            '[data-theme="dark"] &': {
+              backgroundColor: 'var(--node-column-bg)',
+              border: '1px solid var(--icon-color-highlight)',
+              color: 'var(--text-color)',
+              '& .MuiAlert-icon': {
+                color: 'var(--icon-color-highlight)',
+              },
+            },
+          }}
         >
           Update ready ({status.version}) -- restart to install
         </Alert>
