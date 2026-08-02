@@ -5,6 +5,68 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.1.15] - 2026-08-02
+### Fixed
+- Changes could fail to survive a restart if a stale/orphaned instance of the app was still running in the background (e.g. left behind by a crash) -- the app now refuses to run a second instance at all, and instead brings the existing window to the front.
+- A brief blank/white flash when the app first opens, before the loading screen has rendered.
+- Notification bell color correction (bundled beamlynx-ui 0.45.2).
+
+## [0.1.14] - 2026-08-02
+### Fixed
+- Saved connections weren't showing their color or proper name in the connection picker.
+- The "Database Connection" dialog no longer pops up automatically when you already have connections to pick from.
+
+### Changed
+- The notification bell no longer shakes for new updates -- it still changes color, just more subtly.
+
+## [0.1.13] - 2026-08-02
+### Added
+- Connections you add are now saved to disk, encrypted via the OS's own credential storage (`safeStorage` -- Keychain on macOS, DPAPI on Windows, the Secret Service/libsecret or KWallet on Linux), and reloaded the next time you open the app instead of only lasting for the session. If no real OS secret store is available, connections aren't persisted rather than being stored with weak/no protection -- you'll need to re-enter them, same as before.
+- Forces the Linux `safeStorage` backend explicitly (`--password-store`) instead of relying on Chromium's desktop-environment auto-detection, which only recognizes a fixed list of DEs (GNOME, KDE, XFCE, ...) -- on tiling window managers like Hyprland it reported no key storage available at all, even with a real secret service (e.g. gnome-keyring) running.
+
+### Changed
+- Deleting a connection from the picker now also forgets its saved credential, in addition to closing the live session.
+
+## [0.1.12] - 2026-08-02
+### Changed
+- The auto-update banner (introduced in 0.1.10) now uses the app's own palette colors instead of MUI's stock info/success colors, matching the existing `Alert` styling convention in `beamlynx-ui`'s settings page.
+
+## [0.1.11] - 2026-08-02
+### Fixed
+- User preferences (vim mode, sidebar width, theme, etc.) could silently revert after an auto-update -- Chromium buffers localStorage writes and only periodically flushes them to disk, and the abrupt quit-and-relaunch auto-update performs could race that flush and lose whatever hadn't been written yet. Both quit paths now force a flush (`session.flushStorageData()`) before quitting.
+
+## [0.1.10] - 2026-08-02
+### Added
+- Auto-update progress is now shown in-app (bundled from `beamlynx-ui`'s `DesktopUpdateBanner`) -- "Downloading update... NN%", then "Update ready -- Restart to install". Replaces the previous console-only/native-OS-notification behavior (`checkForUpdatesAndNotify()` swapped for `checkForUpdates()` to avoid a redundant native toast alongside the in-app one).
+
+## [0.1.9] - 2026-08-02
+### Added
+- A loading splash (`assets/loading.html`) shown immediately on launch, instead of a blank window for several seconds while the bundled server boots.
+- Desktop-only keybindings: `Ctrl/Cmd+K` (command palette), `Ctrl/Cmd+T` (new tab), `Ctrl/Cmd+W` (close tab), bundled from `beamlynx-ui`'s `desktop-app` branch. See its `utils/keybindings.ts`.
+- `DEVELOPMENT.md` documenting the local dev/test workflow.
+
+### Changed
+- An explicit application menu, so `Ctrl/Cmd+W` reaches the page's own close-tab handler instead of Electron's default menu closing the whole window.
+- The connected server's version chip (e.g. `[0.37.0]`) no longer shows in the UI -- bundled from the same `beamlynx-ui` commit as the keybindings above.
+
+### Fixed
+- The window now appears immediately on launch instead of only after the bundled server finishes booting (up to ~15s).
+
+## [0.1.8] - 2026-08-02
+### Changed
+- Sign-in is no longer required -- reverts the Clerk auth added in 0.1.6. Google OAuth's redirect flow doesn't work from a `file://`-loaded static export ("The provided redirect url has a prohibited URL scheme"), and email/password-only auth wasn't enough on its own to justify keeping it. Desktop goes back to the pre-0.1.6 behavior: no login screen, `[Desktop]` label shown instead of the user box.
+
+## [0.1.7] - 2026-08-01
+### Changed
+- No functional change -- verifies that a symlink pointing at the stable `beamlynx.AppImage` filename (introduced in 0.1.6) survives an actual auto-update instead of dangling.
+
+## [0.1.6] - 2026-08-01
+### Added
+- Sign-in is now required, matching the hosted product, via `beamlynx-ui`'s `desktop-app` branch (client-side Clerk gating, since a static export can't run `middleware.ts`). Not present in any earlier release -- this is the first one that includes it.
+
+### Fixed
+- The Linux AppImage's filename no longer changes across auto-updates (was `beamlynx-X.Y.Z.AppImage`, now a stable `beamlynx.AppImage`) -- previously, a symlink pointing at a specific version's filename would dangle the moment the app self-updated.
+
 ## [0.1.5] - 2026-08-01
 ### Changed
 - No functional change -- verifies that differential/delta auto-update still works now that the new AppImage toolset embeds the blockmap inside the binary instead of publishing it as a separate sidecar file.

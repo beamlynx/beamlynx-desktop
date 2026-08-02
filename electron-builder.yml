@@ -23,6 +23,7 @@ publish:
 
 files:
   - dist/**/*
+  - assets/**/*
   - package.json
 
 # Opt into the new static, FUSE-less AppImage runtime (electron-builder PR
@@ -52,6 +53,19 @@ linux:
     - AppImage
     - deb
   category: Development
+
+# electron-updater's Linux AppImage updater replaces the running file
+# in-place with the new version -- and specifically preserves the original
+# filename only if artifactName has no ${version} in it (electron-builder
+# added this deliberately, see electron-userland/electron-builder#2964).
+# Without this override, a user who symlinks e.g. ~/bin/beamlynx ->
+# beamlynx-0.1.5.AppImage finds the symlink dangling after the app updates
+# itself to beamlynx-0.1.6.AppImage. Scoped to appImage only (not the top-
+# level artifactName) -- .deb doesn't self-update via electron-updater at
+# all (expected to go through apt instead), so a version in its filename
+# doesn't have this problem.
+appImage:
+  artifactName: '${productName}.${ext}'
 
 mac:
   target:

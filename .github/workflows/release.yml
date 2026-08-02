@@ -82,8 +82,6 @@ jobs:
       - name: Build UI export
         working-directory: beamlynx-desktop
         run: ./scripts/build-ui-export.sh
-        env:
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.CLERK_PUBLISHABLE_KEY }}
 
       - uses: actions/upload-artifact@v4
         with:
@@ -165,19 +163,35 @@ jobs:
         # the release ended up missing it entirely). The publish-release
         # job below uploads everything from one place, sequentially,
         # instead.
-        run: npx electron-builder --publish=never --config electron-builder.yml
+        #
+        # Signing env vars are exported conditionally, only when the
+        # underlying secret is actually non-empty -- confirmed the hard way
+        # that GitHub Actions' `env:` block sets a var to an *empty string*
+        # (not "unset") when the referenced secret doesn't exist yet, and
+        # electron-builder treats "present but empty" as "please sign" (logs
+        # "empty password will be used for code signing", then fails trying
+        # to read a cert file at an empty path) rather than "skip signing".
+        run: |
+          [ -n "$CSC_LINK_IN" ] && export CSC_LINK="$CSC_LINK_IN"
+          [ -n "$CSC_KEY_PASSWORD_IN" ] && export CSC_KEY_PASSWORD="$CSC_KEY_PASSWORD_IN"
+          [ -n "$APPLE_API_KEY_IN" ] && export APPLE_API_KEY="$APPLE_API_KEY_IN"
+          [ -n "$APPLE_API_KEY_ID_IN" ] && export APPLE_API_KEY_ID="$APPLE_API_KEY_ID_IN"
+          [ -n "$APPLE_API_ISSUER_IN" ] && export APPLE_API_ISSUER="$APPLE_API_ISSUER_IN"
+          [ -n "$WIN_CSC_LINK_IN" ] && export WIN_CSC_LINK="$WIN_CSC_LINK_IN"
+          [ -n "$WIN_CSC_KEY_PASSWORD_IN" ] && export WIN_CSC_KEY_PASSWORD="$WIN_CSC_KEY_PASSWORD_IN"
+          npx electron-builder --publish=never --config electron-builder.yml
         env:
           # Signing/notarization activate automatically based on which of
           # these are actually set -- harmless (build stays unsigned, as
           # today) until real secrets are added to the repo. See SIGNING.md
           # for what each secret is and how to obtain it.
-          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          CSC_LINK_IN: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD_IN: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_IN: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID_IN: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_IN: ${{ secrets.APPLE_API_ISSUER }}
+          WIN_CSC_LINK_IN: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD_IN: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
       - uses: actions/upload-artifact@v4
         with:

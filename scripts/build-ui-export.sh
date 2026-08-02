@@ -30,19 +30,9 @@ rsync -a \
 # nothing here writes to node_modules.
 ln -s "$(cd "$UI_SRC/node_modules" && pwd)" "$STAGE_DIR/node_modules"
 
-if [ -z "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" ]; then
-  echo "Warning: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is not set. The build will" >&2
-  echo "still succeed (ClerkProvider isn't invoked during static generation)," >&2
-  echo "but the packaged app will fail to sign in at runtime with" >&2
-  echo "'Missing publishableKey' until this is set to a real key from" >&2
-  echo "https://dashboard.clerk.com." >&2
-fi
-
 (
   cd "$STAGE_DIR"
-  NEXT_DESKTOP=1 NEXT_PUBLIC_DESKTOP=1 \
-    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" \
-    npm run build
+  NEXT_DESKTOP=1 NEXT_PUBLIC_DESKTOP=1 npm run build
 )
 
 rm -rf resources/ui
