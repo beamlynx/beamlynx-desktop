@@ -5,6 +5,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.1.12] - 2026-08-02
+### Changed
+- The auto-update banner (introduced in 0.1.10) now uses the app's own palette colors instead of MUI's stock info/success colors, matching the existing `Alert` styling convention in `beamlynx-ui`'s settings page.
+
 ## [0.1.11] - 2026-08-02
 ### Fixed
 - User preferences (vim mode, sidebar width, theme, etc.) could silently revert after an auto-update -- Chromium buffers localStorage writes and only periodically flushes them to disk, and the abrupt quit-and-relaunch auto-update performs could race that flush and lose whatever hadn't been written yet. Both quit paths now force a flush (`session.flushStorageData()`) before quitting.
