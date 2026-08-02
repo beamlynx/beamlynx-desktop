@@ -15,6 +15,16 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.45.2',
+    date: '2026-08-02',
+    fixed: [
+      {
+        description:
+          "The notification bell's color (for unread updates) was showing as blue instead of the intended warm accent.",
+      },
+    ],
+  },
+  {
     version: '0.45.1',
     date: '2026-08-02',
     fixed: [
@@ -992,4 +1002,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.45.1';
+export const LATEST_VERSION = '0.45.2';

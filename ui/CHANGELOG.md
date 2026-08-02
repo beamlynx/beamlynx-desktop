@@ -5,6 +5,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.45.2] - 2026-08-02
+### Fixed
+- The notification bell's color (for unread updates) was showing as blue instead of the intended warm accent.
+
 ## [0.45.1] - 2026-08-02
 ### Fixed
 - In the desktop app, saved connections weren't showing their color or proper name in the connection picker.
