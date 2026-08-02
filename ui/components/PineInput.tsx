@@ -81,6 +81,40 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
     }
   }, [session.textInputFocused]);
 
+  // Cycle through candidate relations -- advances the CodeMirror completion
+  // dropdown's selection if it's already open, otherwise opens it. This is
+  // what Tab runs when the input itself is focused (see the keymap below);
+  // pulled out so the graph can trigger the exact same behavior (see the
+  // tabCycleRequestCount effect below) instead of duplicating it.
+  const cycleCompletion = useCallback(
+    (view: EditorView): boolean => {
+      const status = completionStatus(view.state);
+      if (status === 'active') {
+        return moveCompletionSelection(true)(view);
+      } else {
+        session.requestHints(); // Trigger rebuild
+        return startCompletion(view);
+      }
+    },
+    [session],
+  );
+
+  // Tab pressed while the graph (not this input) has focus -- session
+  // bumps tabCycleRequestCount (see components/Graph.box.tsx), and this
+  // brings focus back here and runs the same candidate-cycling Tab already
+  // does, so Tab means the same thing everywhere instead of falling through
+  // to React Flow's own node/edge tab navigation.
+  const prevTabCycleRequestRef = useRef(session.tabCycleRequestCount);
+  useEffect(() => {
+    if (session.tabCycleRequestCount === prevTabCycleRequestRef.current) return;
+    prevTabCycleRequestRef.current = session.tabCycleRequestCount;
+    const view = inputRef.current?.view;
+    if (view) {
+      view.focus();
+      cycleCompletion(view);
+    }
+  }, [session.tabCycleRequestCount, cycleCompletion]);
+
   // Optimized onChange handler to prevent unnecessary updates
   const handleChange = useCallback(
     (value: string) => {
@@ -246,15 +280,7 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
           },
           {
             key: 'Tab',
-            run: view => {
-              const status = completionStatus(view.state);
-              if (status === 'active') {
-                return moveCompletionSelection(true)(view);
-              } else {
-                session.requestHints(); // Trigger rebuild
-                return startCompletion(view);
-              }
-            },
+            run: cycleCompletion,
           },
           {
             key: 'Shift-Tab',
@@ -316,6 +342,7 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
     session,
     session.vimMode,
     debouncedPrettifyOnPipe,
+    cycleCompletion,
   ]);
 
   // A fresh EditorState (created from initialValueRef.current, see below)

@@ -144,6 +144,16 @@ export class Session {
   textInputFocused: boolean = false;
 
   /**
+   * Bumped by the graph view when Tab is pressed while it (not the input)
+   * has focus. PineInput watches this to refocus itself and run the exact
+   * same "cycle through candidate relations" logic Tab already runs when
+   * the input is focused -- so Tab always means the same thing, regardless
+   * of where the graph happened to leave keyboard focus (React Flow makes
+   * every node/edge natively tabbable, which is what this replaces).
+   */
+  tabCycleRequestCount: number = 0;
+
+  /**
    * Response
    *  |_ Connection
    *  |_ Error
@@ -506,6 +516,10 @@ export class Session {
 
   public blurTextInput() {
     this.textInputFocused = false;
+  }
+
+  public requestTabCycle() {
+    this.tabCycleRequestCount++;
   }
 
   public updateCursorPosition(line: number, character: number) {

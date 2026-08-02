@@ -244,8 +244,33 @@ interface GraphBoxProps extends BoxProps {
 
 const GraphBox: React.FC<GraphBoxProps> = observer(({ sessionId, ...boxProps }) => {
   const ref = useRef<HTMLDivElement>(null);
+  const { global } = useStores();
+  const session = global.getSession(sessionId);
   return (
-    <Box {...boxProps} ref={ref} sx={{ height: '100%', width: '100%' }}>
+    <Box
+      {...boxProps}
+      ref={ref}
+      sx={{ height: '100%', width: '100%' }}
+      onFocus={e => {
+        // React Flow makes every node/edge natively tabbable (tabIndex=0),
+        // so pressing Tab anywhere near the graph can land keyboard focus
+        // on one -- confirmed this isn't gated on the click itself giving
+        // the clicked node DOM focus (it doesn't; focus stays on <body>
+        // until Tab's own default browser navigation lands it on a node).
+        // The graph is a read-only view of the expression, not something to
+        // navigate independently of it, so redirect immediately: blur
+        // whatever just got focused and hand off to the same
+        // candidate-cycling Tab already does in the input (see PineInput's
+        // tabCycleRequestCount effect). React's onFocus (unlike the native
+        // `focus` event) bubbles, so this catches every node/edge without
+        // needing a listener on each one.
+        const target = e.target as HTMLElement;
+        if (target !== e.currentTarget) {
+          target.blur();
+          session.requestTabCycle();
+        }
+      }}
+    >
       <ReactFlowProvider>
         <Flow sessionId={sessionId} containerRef={ref} />
       </ReactFlowProvider>
