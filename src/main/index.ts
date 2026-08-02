@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, session } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import * as path from 'path';
 import { initAutoUpdater } from './auto-update';
@@ -129,16 +129,29 @@ function createWindow(): void {
 // a simple splash.
 // Chromium buffers localStorage writes in memory and only periodically
 // flushes them to disk -- it doesn't happen on every write. An abrupt quit
-// (exactly what auto-update does: quit, replace the binary, relaunch) can
-// race that flush and lose whatever the renderer had just written, which
-// looks like user preferences (vim mode, sidebar width, theme, etc. -- see
-// beamlynx-ui's store/preferences.ts) silently reverting after an update.
-// Call this before every quit path so pending writes are forced to disk
-// first.
-function flushRendererStorage(): void {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.session.flushStorageData();
-  }
+// can race that flush and lose whatever the renderer had just written,
+// which looks like user preferences (vim mode, sidebar width, theme, etc.
+// -- see beamlynx-ui's store/preferences.ts) or saved connections silently
+// reverting/disappearing after a restart. Call this before every quit path
+// so pending writes are forced to disk first.
+//
+// Uses session.defaultSession rather than mainWindow.webContents.session --
+// confirmed empirically that mainWindow is already null by the time this
+// matters for a normal window-close quit: Electron's window 'closed' event
+// (which nulls out our reference, see createWindow() below) fires before
+// 'window-all-closed'/'before-quit' does, so a mainWindow-guarded flush
+// silently no-ops on that path. It only ever worked for the
+// restart-to-update path below, where the renderer is still alive when
+// it's called (the IPC message that triggers it could only have been sent
+// by a live renderer) -- not a real fix for the more common "just close
+// the window" quit.
+//
+// flushStorageData() itself has no completion signal (fire-and-forget), so
+// a short grace delay follows to give the actual disk write a chance to
+// land before the process exits for real.
+async function flushRendererStorage(): Promise<void> {
+  session.defaultSession.flushStorageData();
+  await new Promise(resolve => setTimeout(resolve, 300));
 }
 
 function loadRealUi(): void {
@@ -196,7 +209,7 @@ async function main(): Promise<void> {
 // with electron-updater's native install-and-relaunch handoff.
 ipcMain.on('restart-to-update', async () => {
   quitting = true;
-  flushRendererStorage();
+  await flushRendererStorage();
   if (serverHandle) {
     await serverHandle.stop();
   }
@@ -213,7 +226,7 @@ app.on('before-quit', async event => {
   if (quitting || !serverHandle) return;
   quitting = true;
   event.preventDefault();
-  flushRendererStorage();
+  await flushRendererStorage();
   await serverHandle.stop();
   app.quit();
 });
