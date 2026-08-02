@@ -5,6 +5,14 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.1.14] - 2026-08-02
+### Fixed
+- Saved connections weren't showing their color or proper name in the connection picker.
+- The "Database Connection" dialog no longer pops up automatically when you already have connections to pick from.
+
+### Changed
+- The notification bell no longer shakes for new updates -- it still changes color, just more subtly.
+
 ## [0.1.13] - 2026-08-02
 ### Added
 - Connections you add are now saved to disk, encrypted via the OS's own credential storage (`safeStorage` -- Keychain on macOS, DPAPI on Windows, the Secret Service/libsecret or KWallet on Linux), and reloaded the next time you open the app instead of only lasting for the session. If no real OS secret store is available, connections aren't persisted rather than being stored with weak/no protection -- you'll need to re-enter them, same as before.
