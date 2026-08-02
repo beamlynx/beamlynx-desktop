@@ -5,6 +5,15 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.1.16] - 2026-08-03
+### Added
+- Tabs (Pine/SQL text, input mode, connection) are now restored on reload instead of always starting from a single blank session (bundled beamlynx-ui 0.46.0).
+- `Ctrl/Cmd+S` ("Save Tab") downloads the active tab's Pine expression as a `.pine` file (bundled beamlynx-ui 0.46.0).
+- New "List Database Connections" / "New Database Connection" command palette entries (bundled beamlynx-ui 0.46.0).
+
+### Fixed
+- Pressing Tab while the graph had focus was falling through to React Flow's own node/edge navigation instead of cycling through Pine completion candidates (bundled beamlynx-ui 0.46.0).
+
 ## [0.1.15] - 2026-08-02
 ### Fixed
 - Changes could fail to survive a restart if a stale/orphaned instance of the app was still running in the background (e.g. left behind by a crash) -- the app now refuses to run a second instance at all, and instead brings the existing window to the front.
