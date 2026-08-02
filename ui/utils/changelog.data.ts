@@ -19,26 +19,24 @@ export const CHANGELOG: ChangelogVersion[] = [
     date: '2026-08-02',
     added: [
       {
-        description:
-          'Support for a `NEXT_DESKTOP`/`NEXT_PUBLIC_DESKTOP`-gated static export build, used by the new `beamlynx-desktop` Electron app so the UI can run bundled with a local pine-lang server instead of pointed at a Docker container. No change to the hosted build.',
+        description: 'Beamlynx can now be downloaded and run as a desktop app, with no Docker required.',
       },
       {
         description:
-          'Desktop-only keybindings: `Ctrl/Cmd+K` for the Command Palette, `Ctrl/Cmd+T` for New Tab, `Ctrl/Cmd+W` for Close Tab. Unbound in the browser build, where the host browser already owns those combos -- the Command Palette shortcut stays `Ctrl/Cmd+Shift+P` there, same as before.',
+          'New keyboard shortcuts in the desktop app: `Ctrl/Cmd+K` for the Command Palette, `Ctrl/Cmd+T` for a new tab, `Ctrl/Cmd+W` to close a tab.',
+      },
+      {
+        description: 'The desktop app now shows update progress in-app, instead of only in the background.',
       },
       {
         description:
-          "Auto-update progress is now shown in-app (\"Downloading update... NN%\", then \"Update ready -- Restart to install\") instead of it being silent/console-only, in the desktop app.",
-      },
-      {
-        description:
-          "In the desktop app, connections you add are now saved on your device (encrypted via the OS's own credential storage) and reloaded the next time you open the app, instead of only lasting for the current session. The connection picker's delete action now also forgets the saved connection, in addition to closing it. No change to the hosted/browser build, which still never stores credentials.",
+          "In the desktop app, your saved connections are now remembered between sessions, encrypted using your device's own secure storage. The hosted/browser version is unchanged -- it still never stores credentials.",
       },
     ],
     changed: [
       {
         description:
-          "The connected server's version chip (e.g. `[0.37.0]`) is now hidden when running in the desktop app -- it isn't beamlynx-ui's own version, and desktop users have their own release notes instead. Still shown in the browser/hosted build.",
+          "The small server-version label is now hidden in the desktop app, since it has its own separate release notes.",
       },
     ],
   },

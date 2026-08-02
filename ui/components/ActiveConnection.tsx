@@ -56,10 +56,13 @@ const ActiveConnection = () => {
   };
 
   useEffect(() => {
-    if (global.pineConnected && !isDbConnected) {
+    // Only force the modal open when there's truly nothing to connect to --
+    // if saved (desktop) or live (browser) connections already exist, let
+    // the user pick one from the menu instead of being interrupted.
+    if (global.pineConnected && !isDbConnected && global.connections.length === 0) {
       global.setShowSettings(true);
     }
-  }, [global, global.pineConnected, isDbConnected]);
+  }, [global, global.pineConnected, isDbConnected, global.connections.length]);
 
   const connectionLabel = connectionId ? global.getConnectionLabel(connectionId) : '';
   const displayName = connectionId
