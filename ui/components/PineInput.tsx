@@ -26,6 +26,20 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
   const { global } = useStores();
   const inputRef = useRef<ReactCodeMirrorRef | null>(null);
   const lastValueRef = useRef<string>(session.expression);
+  // Frozen at mount, never updated: @uiw/react-codemirror's own internal
+  // effect (useCodeMirror.ts) treats `value` as a controlled prop and
+  // re-syncs the doc whenever it changes, but does so with no explicit
+  // selection -- collapsing the cursor to position 0 on every programmatic
+  // expression change (URL-param injection, clicking a graph node, etc.).
+  // Worse, since <CodeMirror> is a child of this component, its effect runs
+  // first, so by the time updateEditorValue's own effect below runs (which
+  // *does* set the cursor correctly, to the end), the doc already matches
+  // and its early-exit guard skips re-applying the fix. `value` is only
+  // read by that library effect and by the initial EditorState.create call
+  // on mount -- passing a value that never changes after mount permanently
+  // disables the competing effect, leaving updateEditorValue as the sole
+  // authority for programmatic updates.
+  const initialValueRef = useRef<string>(session.expression);
 
   /**
    * Optimized value update function that uses CodeMirror's transaction API
@@ -304,14 +318,27 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
     debouncedPrettifyOnPipe,
   ]);
 
+  // A fresh EditorState (created from initialValueRef.current, see below)
+  // defaults its selection to position 0 unless one is explicitly given --
+  // and by the time this component first mounts, session.expression may
+  // already hold a non-empty value injected before mount (e.g. the `query`
+  // URL param, handled in GlobalStore.handleUrlParameters, runs before this
+  // tab's editor exists), so there's never a subsequent "expression changed"
+  // moment for updateEditorValue's effect above to correct the cursor on.
+  // Set it explicitly, once, right after creation.
+  const onCreateEditor = useCallback((view: EditorView) => {
+    view.dispatch({ selection: { anchor: initialValueRef.current.length } });
+  }, []);
+
   return (
     <CodeMirror
       ref={inputRef}
       id="input"
-      value={session.expression}
+      value={initialValueRef.current}
       height="100%"
       theme={global.theme === 'dark' ? oneDark : 'light'}
       extensions={extensions}
+      onCreateEditor={onCreateEditor}
       onFocus={() => {
         session.focusTextInput();
       }}
