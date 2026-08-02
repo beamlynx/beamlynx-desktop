@@ -157,14 +157,28 @@ export class GlobalStore {
     this.sessions[initSession.id] = initSession;
   }
 
+  // In desktop mode, `connections` is keyed by saved-profile id, while
+  // `activeSession.connectionId`/`this.connection` are pine's own id
+  // (`host:port`) -- two different id spaces for the same logical
+  // connection. Resolve pine's id back to its profile by comparing
+  // host:port, so color/label lookups work regardless of which id space
+  // they were called with. A no-op in browser mode, where `connections`
+  // is already keyed by pine's own id (first condition matches directly).
+  private resolveConnectionEntry = (connectionId: string): ConnectionInfo | undefined => {
+    if (!connectionId) return undefined;
+    return this.connections.find(
+      c => c.id === connectionId || (c.dbHost && c.dbPort && `${c.dbHost}:${c.dbPort}` === connectionId),
+    );
+  };
+
   getConnectionColor = (connectionId: string): string => {
-    return this.connectionColors[connectionId] ?? '';
+    const key = this.resolveConnectionEntry(connectionId)?.id ?? connectionId;
+    return this.connectionColors[key] ?? '';
   };
 
   getConnectionLabel = (connectionId: string): string => {
     if (!connectionId) return '';
-    const conn = this.connections.find(c => c.id === connectionId);
-    return conn?.label ?? connectionId;
+    return this.resolveConnectionEntry(connectionId)?.label ?? connectionId;
   };
 
   private pruneConnectionColors = (liveIds: string[]) => {
@@ -204,7 +218,11 @@ export class GlobalStore {
           dbPort: p.dbPort,
         }));
         this.connections.forEach(c => this.assignConnectionColor(c.id));
-        this.pruneConnectionColors(this.connections.map(c => c.id));
+        // Keep the active pine connection's own color alive even though it's
+        // keyed differently from the saved-profile list (see connect() below)
+        // -- otherwise this prune would delete it the instant it's assigned,
+        // since it's never "in" this desktop-mode list of profile ids.
+        this.pruneConnectionColors([...this.connections.map(c => c.id), this.connection].filter(Boolean));
       });
       return this.connections;
     }
@@ -250,12 +268,19 @@ export class GlobalStore {
   };
 
   setConnectionColor = (connectionId: string, color: string) => {
-    this.connectionColors[connectionId] = color;
+    const key = this.resolveConnectionEntry(connectionId)?.id ?? connectionId;
+    this.connectionColors[key] = color;
     setUserPreference(STORAGE_KEYS.CONNECTION_COLORS, this.connectionColors);
   };
 
   private assignConnectionColor = (connectionId: string) => {
-    if (!connectionId || this.connectionColors[connectionId]) return;
+    if (!connectionId) return;
+    // Resolve first: connectionId may be pine's own id for a connection that
+    // already has a color stored under its saved-profile id -- checking the
+    // raw id here would miss that and reassign a new color on every
+    // reconnect.
+    const existingKey = this.resolveConnectionEntry(connectionId)?.id ?? connectionId;
+    if (this.connectionColors[existingKey]) return;
     const used = new Set(Object.values(this.connectionColors));
     const color =
       CONNECTION_COLOR_PALETTE.find(c => !used.has(c)) ??
