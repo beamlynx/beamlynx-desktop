@@ -5,6 +5,15 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.46.2] - 2026-08-04
+### Breaking
+- Requires pine-lang 0.37.2 or later.
+
+### Fixed
+- A failed attempt to connect (unreachable DB, wrong credentials, etc.) used to fail silently — the toolbar just stopped showing a "connecting" spinner with no indication anything went wrong. A new error toast now surfaces the actual failure.
+- A previously-used connection restored from a past session could show as "connected" in the toolbar even when nothing was actually connected this session (pine-server's connection pools don't survive a process restart). Restored connections are now checked against the backend's live state before being trusted.
+- When disconnected, the app now automatically opens the connections picker (or the add-connection form, if none exist yet) instead of leaving a dead "Not connected to database" label with no obvious next step.
+
 ## [0.46.1] - 2026-08-03
 ### Fixed
 - The playground's shared connection could be deleted from the connection picker, breaking the playground for everyone else using it; the delete action is now hidden (and refused as a backstop) in playground mode.
