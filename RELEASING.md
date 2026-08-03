@@ -34,9 +34,7 @@ merging, rather than via a PR.
 
 9. Watch the release workflow through to completion (`gh run watch <run-id> --exit-status`) — it takes longer than CI (full matrix build + sequential publish job).
 
-10. Verify the published release before announcing:
-    - `gh release view X.Y.Z` — confirm the expected assets are present: `beamlynx.AppImage` (stable, unversioned filename), `beamlynx-X.Y.Z.deb`, `beamlynx-X.Y.Z.dmg` + `.blockmap`, `beamlynx-X.Y.Z.exe` + `.blockmap`, `latest.yml`/`latest-mac.yml`/`latest-linux.yml`.
-    - Download at least the Linux artifact and confirm a real database connection + query round-trip works.
+10. Verify the published release before announcing: `gh release view X.Y.Z` — confirm the expected assets are present: `beamlynx.AppImage` (stable, unversioned filename), `beamlynx-X.Y.Z.deb`, `beamlynx-X.Y.Z.dmg` + `.blockmap`, `beamlynx-X.Y.Z.exe` + `.blockmap`, `latest.yml`/`latest-mac.yml`/`latest-linux.yml`.
 
 11. **Update the personal Homebrew tap** (`beamlynx/homebrew-tap`, separate repo) so `brew install --cask beamlynx/tap/beamlynx` / `brew upgrade --cask` picks up this release:
     - Compute the real dmg sha256 from the published asset (don't reuse a locally-rebuilt dmg — it won't match): `gh release download X.Y.Z -R beamlynx/beamlynx-desktop -p '*.dmg' -O /tmp/beamlynx-X.Y.Z.dmg && shasum -a 256 /tmp/beamlynx-X.Y.Z.dmg`.
