@@ -182,6 +182,24 @@ export class HttpClient {
     return res?.result;
   }
 
+  // A non-2xx response here is usually an uncaught exception on the server
+  // (e.g. an unreachable DB during connection setup), not the app's normal
+  // `{ error: "..." }` JSON shape - so its body may not even be JSON. Try to
+  // pull a real message out of it before falling back to the HTTP status,
+  // rather than discarding it and forcing every caller to show a generic
+  // "no response" message.
+  private async describeFailure(res: globalThis.Response): Promise<string> {
+    try {
+      const body = await res.json();
+      if (body && typeof body.error === 'string' && body.error) {
+        return body.error;
+      }
+    } catch {
+      // Not JSON (e.g. a raw stack trace from an unhandled exception).
+    }
+    return `${res.status} ${res.statusText || 'Request failed'}`;
+  }
+
   private async post(path: string, body: object): Promise<Response | undefined> {
     const res = await fetch(`${getBaseUrl()}/api/v1/${path}`, {
       method: 'POST',
@@ -191,7 +209,7 @@ export class HttpClient {
       body: JSON.stringify(body),
     });
     if (!res.ok) {
-      return;
+      throw new Error(await this.describeFailure(res));
     }
     return await res.json();
   }
@@ -204,7 +222,7 @@ export class HttpClient {
       },
     });
     if (!res.ok) {
-      return;
+      throw new Error(await this.describeFailure(res));
     }
     return await res.json();
   }

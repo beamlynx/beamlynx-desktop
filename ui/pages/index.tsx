@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { reaction, runInAction } from 'mobx';
 import AppView from '../components/AppView';
 import DesktopUpdateBanner from '../components/DesktopUpdateBanner';
+import ConnectionErrorSnackbar from '../components/ConnectionErrorSnackbar';
 import { useStores } from '../store/store-container';
 import { isDesktop, isDevelopment, isPlayground } from '../store/util';
 
@@ -77,6 +78,7 @@ const Home: NextPage = () => {
     >
       <AppView />
       <DesktopUpdateBanner />
+      <ConnectionErrorSnackbar />
     </Container>
   );
 

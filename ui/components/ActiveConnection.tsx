@@ -56,11 +56,17 @@ const ActiveConnection = () => {
   };
 
   useEffect(() => {
-    // Only force the modal open when there's truly nothing to connect to --
-    // if saved (desktop) or live (browser) connections already exist, let
-    // the user pick one from the menu instead of being interrupted.
-    if (global.pineConnected && !isDbConnected && global.connections.length === 0) {
+    // Disconnected with nothing to click isn't useful -- auto-surface a way
+    // to connect: the add-connection form if there's truly nothing saved
+    // yet, otherwise the connections picker so the user can pick one of
+    // their existing (saved/live) connections without hunting for the menu.
+    if (!global.pineConnected || isDbConnected) {
+      return;
+    }
+    if (global.connections.length === 0) {
       global.setShowSettings(true);
+    } else {
+      global.setShowConnectionsModal(true);
     }
   }, [global, global.pineConnected, isDbConnected, global.connections.length]);
 
@@ -194,7 +200,8 @@ const ActiveConnection = () => {
                   // (or, on decryption failure, opening Settings lets the
                   // user re-enter just the password) -- either way there's
                   // nothing more to do here; connectToSavedProfile/connect
-                  // already surface the failure via session state.
+                  // already surface the failure via global.connectionError
+                  // (see ConnectionErrorSnackbar).
                   console.error('[credentials] click: connectToSavedProfile threw ->', e);
                   if (e instanceof DecryptionFailedError) {
                     global.setShowSettings(true);

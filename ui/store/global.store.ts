@@ -123,6 +123,11 @@ export class GlobalStore {
   // Settings
   showSettings = false;
 
+  // Set whenever connecting to a saved/existing connection fails (e.g. the
+  // DB is down or unreachable) so the UI can surface it -- see connect() and
+  // selectConnection() below.
+  connectionError: string | null = null;
+
   // Analysis
   showAnalysis = false;
   analysisInitialValue = '';
@@ -483,6 +488,7 @@ export class GlobalStore {
       const message = (e as Error)?.message ?? 'Unknown error';
       runInAction(() => {
         activeSession.message = `⚠ Failed to switch connection: ${message}`;
+        this.connectionError = `Failed to switch connection: ${message}`;
       });
       throw e;
     }
@@ -582,16 +588,25 @@ export class GlobalStore {
   };
 
   connect = async (params: ConnectionParams): Promise<string> => {
-    const connectionId = await client.createConnection(params);
-    if (!connectionId) {
-      throw new Error("Connection wasn't created");
-    }
-    const { id, version } = await client.useConnection(connectionId);
-    if (!id) {
+    let connectionId: string;
+    let id: string;
+    let version: string;
+    try {
+      connectionId = await client.createConnection(params);
+      if (!connectionId) {
+        throw new Error("Connection wasn't created");
+      }
+      ({ id, version } = await client.useConnection(connectionId));
+      if (!id) {
+        throw new Error('Failed to connect');
+      }
+    } catch (e) {
+      const message = (e as Error)?.message ?? 'Unknown error';
       runInAction(() => {
         this.connection = '';
+        this.connectionError = `Failed to connect: ${message}`;
       });
-      throw new Error('Failed to connect');
+      throw e;
     }
     runInAction(() => {
       this.connection = id;
@@ -723,10 +738,43 @@ export class GlobalStore {
         version: string;
         'connection-id': string;
       };
+
+      // A session's connectionId can be restored from localStorage
+      // (restoreSessions) from a previous visit -- but pine-server's actual
+      // pools don't survive a process restart (desktop is a fresh JVM every
+      // launch; a shared/browser server can restart too), so a non-empty
+      // persisted connectionId doesn't mean it's actually connected right
+      // now. Cross-check against the backend's real live pools before
+      // trusting it, so a stale id doesn't make the UI look connected when
+      // it isn't (see ActiveConnection/dbConnected, which treat any
+      // non-empty connectionId as "connected").
+      const liveConnections = await client.listConnections();
+
       runInAction(() => {
         this.version = result.version ?? '0.0.0';
         this.connection = result['connection-id'] || '';
         this.assignConnectionColor(this.connection);
+
+        // Only reconcile if the live-pools fetch actually succeeded -- fail
+        // open (leave persisted connectionIds alone) rather than wipe them
+        // out over a transient network hiccup.
+        if (liveConnections) {
+          const liveIds = new Set(
+            [...liveConnections.connections.map(c => c.id), this.connection].filter(Boolean),
+          );
+          Object.values(this.sessions).forEach(session => {
+            if (session.connectionId && !liveIds.has(session.connectionId)) {
+              session.connectionId = '';
+            }
+          });
+          if (
+            this.virtualSession &&
+            this.virtualSession.connectionId &&
+            !liveIds.has(this.virtualSession.connectionId)
+          ) {
+            this.virtualSession.connectionId = '';
+          }
+        }
 
         if (this.connection) {
           Object.values(this.sessions).forEach(session => {
@@ -797,6 +845,10 @@ export class GlobalStore {
 
   setShowSettings = (show: boolean) => {
     this.showSettings = show;
+  };
+
+  setConnectionError = (message: string | null) => {
+    this.connectionError = message;
   };
 
   setShowAnalysis = (show: boolean) => {

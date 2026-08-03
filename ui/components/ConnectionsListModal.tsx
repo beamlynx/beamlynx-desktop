@@ -38,6 +38,9 @@ const ConnectionsListModal = observer(() => {
     } catch (e) {
       // Same recovery path as ActiveConnection's dropdown: a decryption
       // failure re-opens Settings to let the user re-enter the password.
+      // Any other failure (e.g. the DB is unreachable) is already surfaced
+      // via global.connectionError (see ConnectionErrorSnackbar) -- leave
+      // the modal open so the user can pick a different connection.
       if (e instanceof DecryptionFailedError) {
         global.setShowSettings(true);
         handleClose();
