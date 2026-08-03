@@ -15,6 +15,29 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.46.2',
+    date: '2026-08-04',
+    breaking: [
+      {
+        description: 'Requires pine-lang 0.37.2 or later.',
+      },
+    ],
+    fixed: [
+      {
+        description:
+          'A failed attempt to connect (unreachable DB, wrong credentials, etc.) used to fail silently — the toolbar just stopped showing a "connecting" spinner with no indication anything went wrong. A new error toast now surfaces the actual failure.',
+      },
+      {
+        description:
+          "A previously-used connection restored from a past session could show as \"connected\" in the toolbar even when nothing was actually connected this session (pine-server's connection pools don't survive a process restart). Restored connections are now checked against the backend's live state before being trusted.",
+      },
+      {
+        description:
+          'When disconnected, the app now automatically opens the connections picker (or the add-connection form, if none exist yet) instead of leaving a dead "Not connected to database" label with no obvious next step.',
+      },
+    ],
+  },
+  {
     version: '0.46.1',
     date: '2026-08-03',
     fixed: [
@@ -1040,4 +1063,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.46.1';
+export const LATEST_VERSION = '0.46.2';
