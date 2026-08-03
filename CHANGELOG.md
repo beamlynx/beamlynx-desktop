@@ -5,6 +5,14 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.1.18] - 2026-08-04
+### Fixed
+- Relation/join hints for a column like `tenant_id` were lost whenever a checkpoint (`l:`/`group:`) sealed the selection into an anonymous CTE and `id` wasn't also selected (bundled pine-lang 0.37.2).
+- Creating a database connection now returns a proper error instead of an uncaught server error when the target database is unreachable (bundled pine-lang 0.37.2).
+- A failed attempt to connect (unreachable DB, wrong credentials, etc.) used to fail silently; a new error toast now surfaces the actual failure (bundled beamlynx-ui 0.46.2).
+- A saved connection could show as "connected" on launch even though nothing was actually connected yet this session — pine-server is a fresh process every launch, so a previously-used connection is no longer trusted until it's confirmed live (bundled beamlynx-ui 0.46.2).
+- When disconnected, the app now automatically opens the connections picker (or the add-connection form, if none exist yet) instead of leaving a dead "Not connected to database" label (bundled beamlynx-ui 0.46.2).
+
 ## [0.1.17] - 2026-08-03
 ### Fixed
 - The changelog's relative-date label showed "-1 days ago" for a same-day entry when the local timezone is behind UTC (bundled beamlynx-ui 0.46.1).
