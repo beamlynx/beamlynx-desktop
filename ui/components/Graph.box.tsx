@@ -246,28 +246,48 @@ const GraphBox: React.FC<GraphBoxProps> = observer(({ sessionId, ...boxProps }) 
   const ref = useRef<HTMLDivElement>(null);
   const { global } = useStores();
   const session = global.getSession(sessionId);
+
+  // React Flow wraps every node/edge in a tabIndex=0 element, so clicking on
+  // non-focusable content inside one (plain text/divs) makes the browser
+  // walk up and focus that wrapper - a real click, not keyboard navigation.
+  // Set on pointerdown (capture phase, so it lands before the focus this
+  // click is about to cause) and consumed by onFocus below, so only that one
+  // click-caused focus event gets treated as "not a real Tab" - a later
+  // genuine Tab keypress has no preceding pointerdown and isn't affected.
+  const pointerDownRef = useRef(false);
+
   return (
     <Box
       {...boxProps}
       ref={ref}
       sx={{ height: '100%', width: '100%' }}
+      onPointerDownCapture={() => {
+        pointerDownRef.current = true;
+      }}
       onFocus={e => {
         // React Flow makes every node/edge natively tabbable (tabIndex=0),
         // so pressing Tab anywhere near the graph can land keyboard focus
-        // on one -- confirmed this isn't gated on the click itself giving
-        // the clicked node DOM focus (it doesn't; focus stays on <body>
-        // until Tab's own default browser navigation lands it on a node).
-        // The graph is a read-only view of the expression, not something to
-        // navigate independently of it, so redirect immediately: blur
+        // on one. The graph is a read-only view of the expression, not
+        // something to navigate independently of it, so redirect: blur
         // whatever just got focused and hand off to the same
         // candidate-cycling Tab already does in the input (see PineInput's
         // tabCycleRequestCount effect). React's onFocus (unlike the native
         // `focus` event) bubbles, so this catches every node/edge without
         // needing a listener on each one.
+        //
+        // But a plain click on a node also lands focus here (see
+        // pointerDownRef above) - that's not "Tab was pressed", so it must
+        // not steal focus into the input or jump the candidate highlight.
+        // Still blur so React Flow's own focus ring/keyboard-nav state
+        // doesn't linger on the clicked node.
         const target = e.target as HTMLElement;
         if (target !== e.currentTarget) {
           target.blur();
-          session.requestTabCycle();
+          const wasPointerClick = pointerDownRef.current;
+          pointerDownRef.current = false;
+          if (!wasPointerClick) {
+            session.requestTabCycle();
+          }
         }
       }}
     >
