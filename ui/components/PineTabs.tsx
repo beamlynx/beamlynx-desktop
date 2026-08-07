@@ -18,7 +18,7 @@ const PineTabs = observer(() => {
   const tabs = Object.keys(global.sessions).map(sessionId => ({ sessionId }));
   const sessionId = global.activeSessionId;
   const activeSession = global.sessions[sessionId];
-  const activeConnectionId = activeSession?.connectionId || global.connection;
+  const activeConnectionId = activeSession?.connectionId || '';
   const activeIndicatorColor =
     global.getConnectionColor(activeConnectionId) || 'var(--border-color)';
 
@@ -68,8 +68,9 @@ const PineTabs = observer(() => {
           >
             {tabs.map((tab, index) => {
               const session = global.getSession(tab.sessionId);
-              const sessionConnectionId = session.connectionId || global.connection;
+              const sessionConnectionId = session.connectionId || '';
               const connectionColor = global.getConnectionColor(sessionConnectionId);
+              const isLive = global.isConnectionLive(sessionConnectionId);
               return (
                 <Tab
                   key={tab.sessionId}
@@ -78,17 +79,22 @@ const PineTabs = observer(() => {
                     <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                       {sessionConnectionId && (
                         <span
+                          title={isLive ? undefined : 'Assigned but not connected yet'}
                           style={{
                             width: 6,
                             height: 6,
                             borderRadius: '50%',
-                            backgroundColor: connectionColor,
+                            backgroundColor: isLive ? connectionColor : 'transparent',
+                            border: isLive ? 'none' : `1.5px solid ${connectionColor || 'var(--border-color)'}`,
+                            boxSizing: 'border-box',
                             display: 'inline-block',
                             flexShrink: 0,
                           }}
                         />
                       )}
-                      {session.loading && <CircularProgress size={12} sx={{ color: 'inherit' }} />}
+                      {(session.loading || session.connecting) && (
+                        <CircularProgress size={12} sx={{ color: 'inherit' }} />
+                      )}
                       {global.getSessionName(tab.sessionId)}
                       <IconButton
                         style={{ marginLeft: '5px' }}

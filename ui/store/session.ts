@@ -108,8 +108,20 @@ export class Session {
   /** Input mode - pine or sql */
   inputMode: InputMode = 'pine';
 
-  /** Per-session database connection id */
+  /** Per-session database connection id (pine's own id, e.g. `host:port` in desktop mode) */
   connectionId: string = '';
+
+  /**
+   * Desktop-only: which saved profile `connectionId` came from. Needed
+   * because pine's own id is derived only from host:port -- coarser than a
+   * saved profile's host+port+db+user, so two profiles can share one
+   * connectionId. Blank in browser mode, where there's no separate profile
+   * concept.
+   */
+  profileId: string = '';
+
+  /** True while lazily (re)connecting this tab's assigned connection in the background. */
+  connecting: boolean = false;
 
   /** Database connection monitoring */
   monitor: boolean = false;

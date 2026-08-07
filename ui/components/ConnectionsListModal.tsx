@@ -102,6 +102,7 @@ const ConnectionsListModal = observer(() => {
           )}
           {global.connections.map(({ id, label }) => {
             const isActive = isDesktop() ? id === global.activeProfileId : id === activeSession?.connectionId;
+            const isLive = global.isConnectionLive(id);
             return (
               <ListItemButton
                 key={id}
@@ -110,12 +111,15 @@ const ConnectionsListModal = observer(() => {
                 sx={{ borderRadius: 1, gap: 1 }}
               >
                 <Box
+                  title={isLive ? undefined : 'Not connected yet'}
                   sx={{
                     width: 8,
                     height: 8,
                     borderRadius: '50%',
                     flexShrink: 0,
-                    backgroundColor: global.getConnectionColor(id) || 'var(--border-color)',
+                    boxSizing: 'border-box',
+                    backgroundColor: isLive ? global.getConnectionColor(id) || 'var(--border-color)' : 'transparent',
+                    border: isLive ? 'none' : `1.5px solid ${global.getConnectionColor(id) || 'var(--border-color)'}`,
                   }}
                 />
                 <ListItemText

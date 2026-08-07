@@ -29,9 +29,9 @@ const ActiveConnection = () => {
   useEffect(() => clearConfirmTimeout, []);
 
   const activeSession = global.sessions[global.activeSessionId];
-  const connectionId = activeSession?.connectionId || global.connection;
+  const connectionId = activeSession?.connectionId || '';
   const connectionColor = global.getConnectionColor(connectionId);
-  const isDbConnected = !!connectionId;
+  const isConnectionLive = global.isConnectionLive(connectionId);
 
   const handleRemoveClick = (e: MouseEvent<SVGSVGElement>, id: string) => {
     e.stopPropagation();
@@ -55,27 +55,24 @@ const ActiveConnection = () => {
     confirmTimeoutRef.current = setTimeout(() => setConfirmingRemoveId(null), REMOVE_CONFIRM_TIMEOUT_MS);
   };
 
-  useEffect(() => {
-    // Disconnected with nothing to click isn't useful -- auto-surface a way
-    // to connect: the add-connection form if there's truly nothing saved
-    // yet, otherwise the connections picker so the user can pick one of
-    // their existing (saved/live) connections without hunting for the menu.
-    if (!global.pineConnected || isDbConnected) {
-      return;
-    }
-    if (global.connections.length === 0) {
-      global.setShowSettings(true);
-    } else {
-      global.setShowConnectionsModal(true);
-    }
-  }, [global, global.pineConnected, isDbConnected, global.connections.length]);
+  // No auto-popup here: a disconnected tab's own connection (if it has one)
+  // is reconnected lazily and silently by GlobalStore's activeSessionId/
+  // pineConnected reactions (see ensureSessionConnected). Forcing a modal
+  // open on every tab that happens to not be live yet is exactly the bad
+  // UX this replaced -- connecting is now automatic, and the connections
+  // picker/settings form stay available only as a manual click (the label
+  // below, or the "Add new connection…" menu item).
 
   const connectionLabel = connectionId ? global.getConnectionLabel(connectionId) : '';
-  const displayName = connectionId
-    ? connectionLabel.length > 24
-      ? connectionLabel.substring(0, 24) + '...'
-      : connectionLabel
-    : 'Not connected to database';
+  const truncatedLabel =
+    connectionLabel.length > 24 ? connectionLabel.substring(0, 24) + '...' : connectionLabel;
+  const displayName = !connectionId
+    ? 'Not connected to database'
+    : activeSession?.connecting
+      ? `${truncatedLabel} (connecting…)`
+      : isConnectionLive
+        ? truncatedLabel
+        : `${truncatedLabel} (not connected)`;
 
   const displayText = global.pineConnected ? displayName : '🔌 No connection to Pine server!';
 
@@ -91,7 +88,14 @@ const ActiveConnection = () => {
                 width: 10,
                 height: 10,
                 borderRadius: '50%',
-                backgroundColor: connectionColor,
+                // Solid once the connection actually has a live pool;
+                // outline-only while it's just this tab's assigned
+                // connection but not connected yet (or currently
+                // reconnecting) -- same color either way, so it's still
+                // obvious which connection this is.
+                backgroundColor: isConnectionLive ? connectionColor : 'transparent',
+                border: isConnectionLive ? 'none' : `1.5px solid ${connectionColor || 'var(--border-color)'}`,
+                boxSizing: 'border-box',
                 flexShrink: 0,
                 cursor: 'pointer',
                 transition: 'opacity 0.15s',
@@ -234,12 +238,19 @@ const ActiveConnection = () => {
             }}
           >
             <Box
+              title={global.isConnectionLive(id) ? undefined : 'Not connected yet'}
               sx={{
                 width: 8,
                 height: 8,
                 borderRadius: '50%',
                 flexShrink: 0,
-                backgroundColor: global.getConnectionColor(id) || 'var(--border-color)',
+                boxSizing: 'border-box',
+                backgroundColor: global.isConnectionLive(id)
+                  ? global.getConnectionColor(id) || 'var(--border-color)'
+                  : 'transparent',
+                border: global.isConnectionLive(id)
+                  ? 'none'
+                  : `1.5px solid ${global.getConnectionColor(id) || 'var(--border-color)'}`,
               }}
             />
             <Typography

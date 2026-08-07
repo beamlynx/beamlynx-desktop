@@ -20,6 +20,7 @@ type PersistedSession = {
   expression: string;
   inputMode: InputMode;
   connectionId: string;
+  profileId: string;
 };
 
 type PersistedSessionsState = {
@@ -54,17 +55,26 @@ export class GlobalStore {
   requiresUpgrade = false;
   connectionColors: Record<string, string> = {};
   connections: ConnectionInfo[] = [];
-  // Desktop only: which saved profile (if any) is behind whatever pine
-  // currently considers the selected connection. Needed because pine's own
-  // connection id is derived only from host:port (coarser than a saved
-  // profile's host+port+db+user), so it can't be used to reliably tell which
-  // profile is active when highlighting the picker.
-  activeProfileId = '';
+  // False until refreshConnections' first successful run. A session's
+  // connectionId restores from localStorage synchronously, but `connections`
+  // (needed to resolve it to a friendly saved-profile label) only loads
+  // async -- without this, getConnectionLabel can't tell "no matching
+  // profile" apart from "haven't checked yet" and would flash the raw
+  // connection id (e.g. "localhost:5432") as if it were the name.
+  connectionsLoaded = false;
   credentialsStatus: CredentialsStatus | null = null;
   // Set by connectToSavedProfile on a decryption failure, so the settings
   // form can pre-fill the (still-plaintext) host/port/db/user and prompt the
   // user to just re-enter the password, instead of retyping everything.
   reconnectHint: { dbHost: string; dbPort: string; dbName: string; dbUser: string } | null = null;
+
+  // Pine's own ids that are actually live (a pool exists) *right now* --
+  // refreshed via listConnections() (loadConnectionMetadata,
+  // ensureSessionConnected) or appended to directly the instant a
+  // connect/reconnect call confirms one. Distinct from `connections`, which
+  // in desktop mode lists saved *profiles* regardless of whether they're
+  // currently live -- see refreshConnections.
+  liveConnectionIds: string[] = [];
 
   get pineConnected() {
     return DevState.pineConnected ?? !!this.version;
@@ -72,9 +82,37 @@ export class GlobalStore {
 
   get dbConnected() {
     const activeSession = this.sessions[this.activeSessionId];
-    const connectionId = activeSession?.connectionId || this.connection;
-    return DevState.dbConnected ?? !!connectionId;
+    return DevState.dbConnected ?? this.isConnectionLive(activeSession?.connectionId ?? '');
   }
+
+  // Desktop only: which saved profile is behind the *active tab's own*
+  // connection. Derived from the active session directly (not a separately
+  // tracked field) so it can never go stale -- it used to be a standalone
+  // field only written by connect()/connectToSavedProfile, which meant the
+  // picker kept showing whichever profile was last *manually* selected even
+  // after switching to a different tab silently reconnected a different one
+  // (ensureSessionConnected never had a reason to touch a separate field).
+  get activeProfileId(): string {
+    return this.sessions[this.activeSessionId]?.profileId ?? '';
+  }
+
+  // Whether `connectionId` currently has a live pool on the server -- as
+  // opposed to merely being a tab's *assigned* connection (see
+  // Session.connectionId), which persists across restarts/reconnects even
+  // while nothing is live. `liveConnectionIds` is always keyed by pine's own
+  // id (host:port), but callers here (the saved-connections list/picker)
+  // pass a saved-profile id in desktop mode -- a different id space for the
+  // same logical connection (see resolveConnectionEntry). Resolve both sides
+  // to the same identity before comparing, so this works regardless of
+  // which id space the caller happens to have on hand.
+  isConnectionLive = (connectionId: string): boolean => {
+    if (!connectionId) return false;
+    if (this.liveConnectionIds.includes(connectionId)) return true;
+    const resolvedSelf = this.resolveConnectionEntry(connectionId)?.id ?? connectionId;
+    return this.liveConnectionIds.some(
+      liveId => (this.resolveConnectionEntry(liveId)?.id ?? liveId) === resolvedSelf,
+    );
+  };
 
   activeSessionId = 'session-0';
   sessions: Record<string, Session> = {};
@@ -207,6 +245,27 @@ export class GlobalStore {
         setUserPreference(STORAGE_KEYS.SESSIONS, this.snapshotSessions());
       });
     }
+
+    // Connect lazily, one tab at a time, instead of eagerly reconnecting
+    // everything or forcing the user through a picker: whenever the active
+    // tab changes (including right after startup, once pine itself becomes
+    // reachable), bring up that tab's *own* assigned connection if it isn't
+    // already live. A tab with no assigned connection, or one that's
+    // already live, is a no-op -- see ensureSessionConnected.
+    reaction(
+      () => this.activeSessionId,
+      sessionId => {
+        this.ensureSessionConnected(sessionId);
+      },
+    );
+    reaction(
+      () => this.pineConnected,
+      connected => {
+        if (connected) {
+          this.ensureSessionConnected(this.activeSessionId);
+        }
+      },
+    );
   }
 
   /**
@@ -221,6 +280,7 @@ export class GlobalStore {
           expression: session.expression,
           inputMode: session.inputMode,
           connectionId: session.connectionId,
+          profileId: session.profileId,
         };
       }),
       activeIndex: Math.max(ids.indexOf(this.activeSessionId), 0),
@@ -243,6 +303,7 @@ export class GlobalStore {
       session.expression = persistedSession.expression ?? '';
       session.inputMode = persistedSession.inputMode === 'sql' ? 'sql' : 'pine';
       session.connectionId = persistedSession.connectionId ?? '';
+      session.profileId = persistedSession.profileId ?? '';
     });
 
     const ids = Object.keys(this.sessions);
@@ -271,7 +332,15 @@ export class GlobalStore {
 
   getConnectionLabel = (connectionId: string): string => {
     if (!connectionId) return '';
-    return this.resolveConnectionEntry(connectionId)?.label ?? connectionId;
+    const resolved = this.resolveConnectionEntry(connectionId)?.label;
+    if (resolved) return resolved;
+    // No matching saved profile -- either genuinely none (browser mode, or
+    // a profile that was since deleted/renamed) or `connections` just
+    // hasn't loaded yet. Only fall back to the raw id (pine's host:port,
+    // not a real name) once we know it's the former; otherwise showing it
+    // reads as "the connection's name changed" the moment the real label
+    // loads a beat later.
+    return this.connectionsLoaded ? connectionId : '…';
   };
 
   private pruneConnectionColors = (liveIds: string[]) => {
@@ -316,6 +385,7 @@ export class GlobalStore {
         // -- otherwise this prune would delete it the instant it's assigned,
         // since it's never "in" this desktop-mode list of profile ids.
         this.pruneConnectionColors([...this.connections.map(c => c.id), this.connection].filter(Boolean));
+        this.connectionsLoaded = true;
       });
       return this.connections;
     }
@@ -332,6 +402,7 @@ export class GlobalStore {
         this.version = result.version;
       }
       this.connection = result['selected-connection-id'] ?? '';
+      this.connectionsLoaded = true;
     });
     return this.connections;
   };
@@ -476,9 +547,11 @@ export class GlobalStore {
       runInAction(() => {
         this.connection = id;
         this.version = version ?? '0.0.0';
+        this.liveConnectionIds = Array.from(new Set([...this.liveConnectionIds, id]));
         if (activeSession.expression.trim()) {
           const session = this.createSession();
           this.activeSessionId = session.id;
+          session.connectionId = id;
         } else {
           activeSession.connectionId = id;
         }
@@ -495,18 +568,16 @@ export class GlobalStore {
   };
 
   /**
-   * Connect to a saved (desktop-only) profile that may not have a live pine
-   * pool yet this session -- fetches the decrypted credentials and goes
-   * through the normal `connect` (create + use) path, rather than assuming
-   * a pool already exists the way `selectConnection` does.
+   * Fetch and decrypt a saved (desktop-only) profile's credentials. Throws
+   * DecryptionFailedError (with reconnectHint populated) or a generic error
+   * if the profile is gone -- callers decide what to do next.
    */
-  connectToSavedProfile = async (id: string): Promise<string> => {
-    console.log(`[credentials] connectToSavedProfile called for id=${id}`);
+  private getSavedProfileCredentials = async (profileId: string): Promise<ConnectionParams> => {
     if (typeof window === 'undefined' || !window.beamlynxDesktop) {
       throw new Error('Saved connections are only available in desktop mode');
     }
-    const result = await window.beamlynxDesktop.credentials.get(id);
-    console.log('[credentials] connectToSavedProfile: get result ->', result);
+    const result = await window.beamlynxDesktop.credentials.get(profileId);
+    console.log('[credentials] getSavedProfileCredentials: get result ->', result);
     if (!result.ok) {
       if (result.error === 'decryption-failed') {
         const { dbHost, dbPort, dbName, dbUser } = result.profile;
@@ -518,13 +589,37 @@ export class GlobalStore {
       throw new Error('Saved connection not found');
     }
     const { profile, dbPassword } = result;
-    return this.connect({
+    return {
       dbHost: profile.dbHost,
       dbPort: profile.dbPort,
       dbName: profile.dbName,
       dbUser: profile.dbUser,
       dbPassword,
-    });
+    };
+  };
+
+  /**
+   * Connect to a saved (desktop-only) profile that may not have a live pine
+   * pool yet this session -- fetches the decrypted credentials and goes
+   * through the normal `connect` (create + use) path, rather than assuming
+   * a pool already exists the way `selectConnection` does. Manual/UI entry
+   * point: forks a new tab if the active one has content, same as `connect`.
+   * For a silent background reconnect of one specific (possibly inactive)
+   * tab, see ensureSessionConnected instead.
+   */
+  connectToSavedProfile = async (id: string): Promise<string> => {
+    console.log(`[credentials] connectToSavedProfile called for id=${id}`);
+    let params: ConnectionParams;
+    try {
+      params = await this.getSavedProfileCredentials(id);
+    } catch (e) {
+      const message = (e as Error)?.message ?? 'Unknown error';
+      runInAction(() => {
+        this.connectionError = `Failed to connect: ${message}`;
+      });
+      throw e;
+    }
+    return this.connect(params, id);
   };
 
   /**
@@ -569,12 +664,14 @@ export class GlobalStore {
       if (this.connection === id || this.connection === pineId) {
         this.connection = '';
       }
-      if (this.activeProfileId === id) {
-        this.activeProfileId = '';
-      }
+      // activeProfileId is derived from the active session's own profileId
+      // (see its getter) -- clearing it below, in the same sweep as every
+      // other session, is enough; no separate field to reset here.
+      this.liveConnectionIds = this.liveConnectionIds.filter(c => c !== id && c !== pineId);
       Object.values(this.sessions).forEach(session => {
         if (session.connectionId === id || session.connectionId === pineId) {
           session.connectionId = '';
+          session.profileId = '';
         }
       });
       if (
@@ -587,19 +684,39 @@ export class GlobalStore {
     await this.refreshConnections();
   };
 
-  connect = async (params: ConnectionParams): Promise<string> => {
-    let connectionId: string;
+  /**
+   * Bare createConnection + useConnection round trip -- no session/tab or
+   * credential side effects. Shared by `connect` (the full user-facing flow)
+   * and ensureSessionConnected's silent background reconnect, which must
+   * not fork tabs or touch activeSessionId the way `connect` does.
+   */
+  private establishConnection = async (params: ConnectionParams): Promise<{ id: string; version: string }> => {
+    const connectionId = await client.createConnection(params);
+    if (!connectionId) {
+      throw new Error("Connection wasn't created");
+    }
+    const { id, version } = await client.useConnection(connectionId);
+    if (!id) {
+      throw new Error('Failed to connect');
+    }
+    return { id, version };
+  };
+
+  /**
+   * Create (or re-establish) a connection and make it the active tab's.
+   * Opens a new tab instead if the active tab already has content, so an
+   * in-progress query isn't silently switched to a different database.
+   *
+   * @param knownProfileId Pass the saved profile id when it's already known
+   * (connectToSavedProfile) so the session can be tagged with it directly,
+   * skipping the credentials.save round trip used for a brand-new connection
+   * (Settings' "add connection" form, which has no profile yet to know).
+   */
+  connect = async (params: ConnectionParams, knownProfileId?: string): Promise<string> => {
     let id: string;
     let version: string;
     try {
-      connectionId = await client.createConnection(params);
-      if (!connectionId) {
-        throw new Error("Connection wasn't created");
-      }
-      ({ id, version } = await client.useConnection(connectionId));
-      if (!id) {
-        throw new Error('Failed to connect');
-      }
+      ({ id, version } = await this.establishConnection(params));
     } catch (e) {
       const message = (e as Error)?.message ?? 'Unknown error';
       runInAction(() => {
@@ -608,18 +725,40 @@ export class GlobalStore {
       });
       throw e;
     }
+
+    let profileId = knownProfileId ?? '';
+    console.log(
+      `[credentials] connect: isDesktop()=${isDesktop()} window.beamlynxDesktop=${
+        typeof window !== 'undefined' && !!window.beamlynxDesktop
+      }`,
+    );
+    if (!knownProfileId && isDesktop() && typeof window !== 'undefined' && window.beamlynxDesktop) {
+      try {
+        const saveResult = await window.beamlynxDesktop.credentials.save(params);
+        console.log('[credentials] connect: save result ->', saveResult);
+        profileId = saveResult.persisted ? saveResult.profile.id : '';
+      } catch (e) {
+        console.error('[credentials] connect: credentials.save threw ->', e);
+        profileId = '';
+      }
+    }
+
     runInAction(() => {
       this.connection = id;
       this.version = version ?? '0.0.0';
       this.assignConnectionColor(id);
+      this.liveConnectionIds = Array.from(new Set([...this.liveConnectionIds, id]));
 
       const activeSession = this.sessions[this.activeSessionId];
       if (activeSession) {
         if (activeSession.expression.trim()) {
           const session = this.createSession();
           this.activeSessionId = session.id;
+          session.connectionId = id;
+          session.profileId = profileId;
         } else {
           activeSession.connectionId = id;
+          activeSession.profileId = profileId;
         }
       }
       if (this.virtualSession) {
@@ -631,33 +770,107 @@ export class GlobalStore {
       }
     });
 
-    console.log(
-      `[credentials] connect: isDesktop()=${isDesktop()} window.beamlynxDesktop=${
-        typeof window !== 'undefined' && !!window.beamlynxDesktop
-      }`,
-    );
-    if (isDesktop() && typeof window !== 'undefined' && window.beamlynxDesktop) {
-      try {
-        const saveResult = await window.beamlynxDesktop.credentials.save(params);
-        console.log('[credentials] connect: save result ->', saveResult);
-        runInAction(() => {
-          this.activeProfileId = saveResult.persisted ? saveResult.profile.id : '';
-        });
-      } catch (e) {
-        console.error('[credentials] connect: credentials.save threw ->', e);
-        runInAction(() => {
-          this.activeProfileId = '';
-        });
-      }
-    }
-
     await this.refreshConnections();
     return id;
+  };
+
+  /**
+   * Silently (re)connect one specific tab's *own* assigned connection if
+   * it isn't already live -- never opens a modal, never forks a new tab,
+   * never touches any other tab. This is what makes "connect lazily, only
+   * when needed" work: called whenever a tab becomes active (see the
+   * activeSessionId/pineConnected reactions in the constructor), not
+   * eagerly for every tab up front.
+   */
+  ensureSessionConnected = async (sessionId: string): Promise<void> => {
+    const session = this.sessions[sessionId];
+    if (!session || !session.connectionId || !this.pineConnected) {
+      console.log(
+        `[credentials] ensureSessionConnected(${sessionId}): skip -- session=${!!session} connectionId=${session?.connectionId} pineConnected=${this.pineConnected}`,
+      );
+      return;
+    }
+    if (this.isConnectionLive(session.connectionId)) {
+      console.log(`[credentials] ensureSessionConnected(${sessionId}): already live (${session.connectionId}), no-op`);
+      return;
+    }
+
+    console.log(
+      `[credentials] ensureSessionConnected(${sessionId}): reconnecting connectionId=${session.connectionId} profileId=${session.profileId}`,
+    );
+    runInAction(() => {
+      session.connecting = true;
+    });
+    try {
+      let id: string;
+      let version: string;
+      if (isDesktop()) {
+        let profileId = session.profileId;
+        if (!profileId) {
+          // Sessions persisted before profileId existed only have pine's
+          // own (coarser) host:port id -- best-effort resolve it back to a
+          // saved profile so autoconnect still works for them instead of
+          // silently giving up. `connections` (the saved-profiles list)
+          // may not have loaded yet if this is running right as pine just
+          // became reachable -- refresh once and retry before giving up.
+          let resolved = this.resolveConnectionEntry(session.connectionId);
+          if (!resolved) {
+            await this.refreshConnections();
+            resolved = this.resolveConnectionEntry(session.connectionId);
+          }
+          profileId = resolved?.id ?? '';
+          console.log(
+            `[credentials] ensureSessionConnected(${sessionId}): resolved profileId=${profileId || '(none found)'} for connectionId=${session.connectionId}`,
+          );
+        }
+        if (!profileId) {
+          // Genuinely nothing to reconnect from -- leave it for the user
+          // to reconnect manually via the picker.
+          return;
+        }
+        const params = await this.getSavedProfileCredentials(profileId);
+        ({ id, version } = await this.establishConnection(params));
+        runInAction(() => {
+          session.profileId = profileId;
+        });
+      } else {
+        ({ id, version } = await client.useConnection(session.connectionId));
+      }
+      console.log(`[credentials] ensureSessionConnected(${sessionId}): reconnected -> id=${id}`);
+      runInAction(() => {
+        session.connectionId = id;
+        this.assignConnectionColor(id);
+        this.liveConnectionIds = Array.from(new Set([...this.liveConnectionIds, id]));
+        if (sessionId === this.activeSessionId) {
+          this.connection = id;
+          this.version = version ?? this.version;
+        }
+      });
+    } catch (e) {
+      const message = (e as Error)?.message ?? 'Unknown error';
+      console.error(`[credentials] ensureSessionConnected(${sessionId}): failed ->`, e);
+      runInAction(() => {
+        session.message = `⚠ Failed to reconnect: ${message}`;
+        // Only surface the global Snackbar for the tab the user is actually
+        // looking at -- a background tab silently failing to reconnect
+        // (e.g. one of several stale tabs from a previous session) would
+        // otherwise pop an alert for something not currently on screen; its
+        // own per-tab message above is enough for that case.
+        if (sessionId === this.activeSessionId) {
+          this.connectionError = `Failed to reconnect: ${message}`;
+        }
+      });
+    } finally {
+      runInAction(() => {
+        session.connecting = false;
+      });
+    }
   };
 
   createSessionUsingId = (id: string) => {
     const session = new Session(id, this);
     session.connectionId = this.connection;
+    session.profileId = this.activeProfileId;
     this.sessions[session.id] = session;
     return session;
   };
@@ -679,6 +892,7 @@ export class GlobalStore {
     const activeSession = this.sessions[this.activeSessionId];
     const session = this.createSession();
     session.connectionId = activeSession?.connectionId || this.connection;
+    session.profileId = activeSession?.profileId || this.activeProfileId;
     this.activeSessionId = session.id;
   };
 
@@ -744,10 +958,11 @@ export class GlobalStore {
       // pools don't survive a process restart (desktop is a fresh JVM every
       // launch; a shared/browser server can restart too), so a non-empty
       // persisted connectionId doesn't mean it's actually connected right
-      // now. Cross-check against the backend's real live pools before
-      // trusting it, so a stale id doesn't make the UI look connected when
-      // it isn't (see ActiveConnection/dbConnected, which treat any
-      // non-empty connectionId as "connected").
+      // now. Fetch the backend's real live pools to reflect that (see
+      // isConnectionLive/liveConnectionIds) -- but a persisted connectionId
+      // itself is left alone: it's the tab's *assigned* connection, which
+      // ensureSessionConnected lazily reconnects on demand rather than this
+      // silently clearing it every time it isn't live yet.
       const liveConnections = await client.listConnections();
 
       runInAction(() => {
@@ -755,25 +970,12 @@ export class GlobalStore {
         this.connection = result['connection-id'] || '';
         this.assignConnectionColor(this.connection);
 
-        // Only reconcile if the live-pools fetch actually succeeded -- fail
-        // open (leave persisted connectionIds alone) rather than wipe them
-        // out over a transient network hiccup.
+        // Fail open on a transient fetch failure -- leave the previous
+        // liveConnectionIds alone rather than wiping the indicator out.
         if (liveConnections) {
-          const liveIds = new Set(
-            [...liveConnections.connections.map(c => c.id), this.connection].filter(Boolean),
+          this.liveConnectionIds = Array.from(
+            new Set([...liveConnections.connections.map(c => c.id), this.connection].filter(Boolean)),
           );
-          Object.values(this.sessions).forEach(session => {
-            if (session.connectionId && !liveIds.has(session.connectionId)) {
-              session.connectionId = '';
-            }
-          });
-          if (
-            this.virtualSession &&
-            this.virtualSession.connectionId &&
-            !liveIds.has(this.virtualSession.connectionId)
-          ) {
-            this.virtualSession.connectionId = '';
-          }
         }
 
         if (this.connection) {
