@@ -5,6 +5,21 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.1.19] - 2026-08-09
+### Changed
+- Each tab now connects to its own database lazily, only when it becomes the active tab, instead of every tab eagerly following whatever connection was picked most recently. Opening the app no longer forces the connections picker open -- it silently reconnects the tab you were on. A tab whose connection isn't live yet shows a hollow (outline-only) dot in its own connection's color, filling in solid once connected (bundled beamlynx-ui 0.47.0).
+
+### Fixed
+- A checkpoint feeding into a pipeline's terminal `group:` had its own CTE silently dropped from the generated SQL, leaving the group's wrapper CTE referencing a relation that was never defined (bundled pine-lang 0.37.3).
+- Clicking a graph node (e.g. expanding a variable/checkpoint container) was mistaken for a Tab keypress, stealing focus into the Pine input and jumping the candidate-relation highlight to the first suggestion (bundled beamlynx-ui 0.47.0).
+- Picking a connection from the auto-opened startup picker could open an unrelated new tab and silently change which connection *other*, already-open tabs appeared to be using (bundled beamlynx-ui 0.47.0).
+- A tab restored from before this session-connection rework had no saved-profile id to reconnect from, so it silently never auto-connected -- it now falls back to resolving one from its connection id (bundled beamlynx-ui 0.47.0).
+- The connections picker's "currently active" checkmark could point at a stale profile after switching tabs silently reconnected a different one in the background (bundled beamlynx-ui 0.47.0).
+- Every tab's assigned connection was silently wiped back to "not connected" on every app launch, before pine-server (a fresh process each launch) had any chance to reconnect it -- restarting the app looked like every saved connection had been forgotten (bundled beamlynx-ui 0.47.0).
+- Failing to reconnect a saved profile (deleted/renamed on disk, or its DB unreachable) via the connections picker only logged to the console -- now shows the same connection-error banner as every other connection failure (bundled beamlynx-ui 0.47.0).
+- The connections list/picker always showed a solid dot for every saved connection regardless of whether it actually had a live pool -- not-yet-connected entries now correctly show as a hollow (outline-only) dot (bundled beamlynx-ui 0.47.0).
+- On launch, a tab's connection briefly displayed as its raw `host:port` id instead of its saved name, before flashing to the real name once the saved-profile list finished loading (bundled beamlynx-ui 0.47.0).
+
 ## [0.1.18] - 2026-08-04
 ### Fixed
 - Relation/join hints for a column like `tenant_id` were lost whenever a checkpoint (`l:`/`group:`) sealed the selection into an anonymous CTE and `id` wasn't also selected (bundled pine-lang 0.37.2).
