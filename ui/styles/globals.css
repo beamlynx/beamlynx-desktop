@@ -121,23 +121,33 @@ a {
   color: #282c34 !important;
 }
 
-/* CodeMirror scrollbar styling for dark mode */
-.cm-editor ::-webkit-scrollbar {
+/* Scrollbar styling for dark mode - shared by CodeMirror and any other
+   scrollable panel (e.g. the canvas picker) via .styled-scrollbar. */
+.cm-editor ::-webkit-scrollbar,
+.styled-scrollbar::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 
-.cm-editor ::-webkit-scrollbar-track {
+.cm-editor ::-webkit-scrollbar-track,
+.styled-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.cm-editor ::-webkit-scrollbar-thumb {
+.cm-editor ::-webkit-scrollbar-thumb,
+.styled-scrollbar::-webkit-scrollbar-thumb {
   background-color: var(--node-handle-bg);
   border-radius: 5px;
 }
 
-.cm-editor ::-webkit-scrollbar-thumb:hover {
+.cm-editor ::-webkit-scrollbar-thumb:hover,
+.styled-scrollbar::-webkit-scrollbar-thumb:hover {
   background: var(--text-color);
+}
+
+.styled-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--node-handle-bg) transparent;
 }
 
 /* Pine autocomplete: selected item highlight (override CodeMirror theme) */

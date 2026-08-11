@@ -10,6 +10,7 @@ export const STORAGE_KEYS = {
   COMMAND_HISTORY: 'pine-command-history',
   CONNECTION_COLORS: 'pine-connection-colors',
   SESSIONS: 'pine-sessions',
+  CANVAS_MODE: 'pine-canvas-mode',
 } as const;
 
 export const getUserPreference = (key: string, defaultValue: any) => {

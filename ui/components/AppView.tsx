@@ -90,7 +90,14 @@ const AppView = observer(() => {
       </Box>
     );
 
-  if (!global.pineConnected) {
+  // Interactive/canvas mode is an explicit, already-opted-into experiment -
+  // showing it the marketing "Hey there" onboarding (or its "server not
+  // running" sibling) every time pineConnected hasn't caught up yet (e.g. a
+  // session with no saved connection, whose only ping is the background
+  // polling in pages/index.tsx) just blocks the thing the user already chose
+  // to use. Skip straight to the normal app shell instead; Canvas.tsx already
+  // degrades on its own (dimmed graph + banner) when there's nothing to show.
+  if (!global.pineConnected && !global.canvasModeEnabled) {
     if (isPlayground()) {
       return (
         <Box

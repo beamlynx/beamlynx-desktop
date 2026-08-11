@@ -36,6 +36,29 @@ export const lightColors = {
   '--node-candidate-bg': '#FFD700',
   '--node-candidate-border': '#ffa500',
   '--node-candidate-text-color': '#000000',
+
+  // Canvas mode's own palette ("schematic/blueprint" - see the plan doc's
+  // follow-up pass 7) - a separate namespace rather than reusing --node-*,
+  // which SelectedNodeComponent/RelationHandles/the classic graph etc. also
+  // read; redefining those here would restyle the classic graph too.
+  '--canvas-bg': '#eef4fa',
+  '--canvas-grid-dot': '#c8dced',
+  '--canvas-node-bg': '#ffffff',
+  '--canvas-node-bg-current': '#dbeeff',
+  '--canvas-node-border': '#9fc0dc',
+  '--canvas-node-border-current': '#1c6fa8',
+  '--canvas-trace': '#1c6fa8',
+  '--canvas-trace-uncertain': '#6a93ad',
+  '--canvas-trace-unresolved': '#c97a12',
+  '--canvas-warn': '#c1484c',
+  '--canvas-pin': '#5c86a8',
+  '--canvas-text': '#0f2337',
+  '--canvas-text-dim': '#4d6d85',
+  '--canvas-accent-text': '#ffffff',
+  '--canvas-chip-bg': '#e3edf6',
+  '--canvas-chip-border': '#b7d0e4',
+  '--canvas-picker-bg': '#ffffff',
+  '--canvas-picker-border': '#9fc0dc',
 };
 
 export const darkColors = {
@@ -76,4 +99,25 @@ export const darkColors = {
   '--node-candidate-bg': '#61afef',
   '--node-candidate-border': '#61afef',
   '--node-candidate-text-color': '#1a1a1a',
-}; 
+
+  // Canvas mode's own palette ("schematic/blueprint") - see the light
+  // palette's matching comment above for why this is a separate namespace.
+  '--canvas-bg': '#0a1826',
+  '--canvas-grid-dot': '#1c3b57',
+  '--canvas-node-bg': '#0f2337',
+  '--canvas-node-bg-current': '#123554',
+  '--canvas-node-border': '#2c5578',
+  '--canvas-node-border-current': '#4fd1ff',
+  '--canvas-trace': '#4fd1ff',
+  '--canvas-trace-uncertain': '#7fb8d6',
+  '--canvas-trace-unresolved': '#f5a623',
+  '--canvas-warn': '#e0575b',
+  '--canvas-pin': '#5c86a8',
+  '--canvas-text': '#dbeeff',
+  '--canvas-text-dim': '#7ba3c2',
+  '--canvas-accent-text': '#0a1826',
+  '--canvas-chip-bg': '#132a41',
+  '--canvas-chip-border': '#28577c',
+  '--canvas-picker-bg': '#0f2337',
+  '--canvas-picker-border': '#2c5578',
+};

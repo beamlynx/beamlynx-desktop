@@ -154,6 +154,20 @@ export class GlobalStore {
     setUserPreference(STORAGE_KEYS.PINE_TABLE_COLORS, value);
   }
 
+  // Canvas mode - global (like theme), not per-session: every tab's "graph"
+  // view shows the experimental canvas instead of the classic node graph
+  // while this is on, rather than each session remembering its own choice.
+  _canvasModeEnabled: boolean;
+
+  get canvasModeEnabled(): boolean {
+    return this._canvasModeEnabled;
+  }
+
+  set canvasModeEnabled(value: boolean) {
+    this._canvasModeEnabled = value;
+    setUserPreference(STORAGE_KEYS.CANVAS_MODE, value);
+  }
+
   // User
   email = '';
   domain = '';
@@ -216,6 +230,7 @@ export class GlobalStore {
     this._theme = getUserPreference(STORAGE_KEYS.THEME, 'dark');
     this._forceCompactMode = getUserPreference(STORAGE_KEYS.FORCE_COMPACT_MODE, false);
     this._pineTableColorsEnabled = getUserPreference(STORAGE_KEYS.PINE_TABLE_COLORS, false);
+    this._canvasModeEnabled = getUserPreference(STORAGE_KEYS.CANVAS_MODE, false);
     this._onboardingServer = getUserPreference(STORAGE_KEYS.ONBOARDING_SERVER, false);
     this._commandHistory = getUserPreference(STORAGE_KEYS.COMMAND_HISTORY, []);
     this.connectionColors = getUserPreference(STORAGE_KEYS.CONNECTION_COLORS, {});
@@ -524,6 +539,10 @@ export class GlobalStore {
 
   public toggleCompactMode() {
     this.forceCompactMode = !this.forceCompactMode;
+  }
+
+  public toggleCanvasMode() {
+    this.canvasModeEnabled = !this.canvasModeEnabled;
   }
 
   public togglePineTableColors() {

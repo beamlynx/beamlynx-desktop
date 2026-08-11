@@ -218,6 +218,17 @@ const COMMANDS: Command[] = [
     handler: global => global.setShowAnalysis(true),
     isEnabled: ALWAYS_ENABLED,
   },
+  {
+    id: 'toggle-canvas',
+    label: 'Toggle Interactive View',
+    category: 'Experimental',
+    // Global (like theme), not per-session - see global.store.ts's
+    // canvasModeEnabled and Session.tsx's MainView, which is what actually
+    // decides whether the 'graph' view renders the interactive canvas or
+    // the classic view.
+    handler: global => global.toggleCanvasMode(),
+    isEnabled: ALWAYS_ENABLED,
+  },
 
 
   // Help Category

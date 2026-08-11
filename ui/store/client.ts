@@ -68,11 +68,23 @@ export type OperationType =
   | 'update-partial';
 export type Operation = {
   type: OperationType;
+  // Shape varies by operation type (e.g. `{schema, table, alias?}` for
+  // 'table', a column array for 'select-partial', ...) - only the 'table'
+  // shape is currently consumed (canvas mode's still-being-typed node; see
+  // layout.ts), so this is intentionally loose rather than a full union.
+  value?: unknown;
 };
 export type WhereCondition = [string, string, null, string, { type: string; value: string } | null];
 
-/** ON-clause equality: `${alias1}.${col1} = ${alias2}.${col2}`. Position 2 (`'has'`/`'of'`) records which side owns the FK. */
-export type JoinRelation = [string, string, 'has' | 'of', string, string];
+/**
+ * ON-clause equality: `${alias1}.${col1} = ${alias2}.${col2}`. Position 2
+ * (`'has'`/`'of'`) records which side owns the FK. Position 6 is the same
+ * confidence tag a `TableHint` carries (see `TableHint.resolution`) - added
+ * by pine-lang so an already-committed join doesn't need a client-side
+ * workaround (re-deriving it from the picker hint that produced it) to know
+ * whether it's backed by a real FK.
+ */
+export type JoinRelation = [string, string, 'has' | 'of', string, string, TableHint['resolution']];
 /** `[from-alias, to-alias, relation, join-type]` — join-type is `'LEFT'`/`'RIGHT'`/null (inner). */
 export type JoinTuple = [string, string, JoinRelation | null, string | null];
 
@@ -92,14 +104,21 @@ export type VariableAst = {
   columns: Column[];
 };
 
+/** An order-by entry - distinct from Column: no `column-alias`/`hidden`, but carries direction. */
+export type OrderColumn = { alias: string; column: string; direction: 'ASC' | 'DESC'; 'operation-index'?: number };
+
 export type Ast = {
   hints: Hints;
   'selected-tables': Table[];
   joins: JoinTuple[];
   context: string;
-  // current: string;
+  current: string;
   operation: Operation;
   columns: Column[];
+  // Wire shape is actually OrderColumn (below), not Column - no `column-alias`/`hidden`,
+  // but carries `direction`. Left as Column[] here since store/graph.util.ts's
+  // makeColumnsLookup(orderColumns: Column[]) only ever reads `.alias`/`.column`
+  // and is out of scope to touch; canvas mode casts to OrderColumn[] where it needs `direction`.
   order: Column[];
   where: WhereCondition[];
   prettified: string;
