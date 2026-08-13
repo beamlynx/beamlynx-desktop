@@ -35,7 +35,12 @@ const edgeTypes = { trace: TraceEdge };
 
 const START_NODE_ID = '__canvas_start__';
 
-const Banner = ({ children }: { children: React.ReactNode }) => (
+// 'info' (connecting/loading - nothing wrong, just not ready yet) reuses the
+// same neutral accent the rest of canvas mode already uses for "in
+// progress" (--canvas-trace, the trace/pin color), rather than the warning
+// red - a session waiting on its first build isn't an error, and badging it
+// like one read as broken/stuck rather than "give it a moment".
+const Banner = ({ children, variant = 'warn' }: { children: React.ReactNode; variant?: 'warn' | 'info' }) => (
   <div
     style={{
       position: 'absolute',
@@ -46,7 +51,7 @@ const Banner = ({ children }: { children: React.ReactNode }) => (
       borderRadius: 3,
       fontSize: 11,
       fontFamily: 'var(--canvas-font)',
-      background: 'var(--canvas-warn)',
+      background: variant === 'warn' ? 'var(--canvas-warn)' : 'var(--canvas-trace)',
       color: 'var(--canvas-accent-text)',
     }}
   >
@@ -176,7 +181,10 @@ const Flow: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasStore }) 
       {!canvasGraph.singleBlock && (
         <Banner>Canvas mode only supports a single expression block</Banner>
       )}
-      {canvasGraph.singleBlock && !canvasGraph.parsing && (
+      {canvasGraph.singleBlock && !canvasGraph.parsing && canvasStore.isConnecting && (
+        <Banner variant="info">Connecting…</Banner>
+      )}
+      {canvasGraph.singleBlock && !canvasGraph.parsing && !canvasStore.isConnecting && (
         <Banner>Not parsing - showing last valid graph</Banner>
       )}
       <div

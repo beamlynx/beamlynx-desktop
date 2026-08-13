@@ -315,10 +315,49 @@ export class GlobalStore {
 
     persisted.sessions.forEach((persistedSession, index) => {
       const session = this.createSessionUsingId(String(index));
-      session.expression = persistedSession.expression ?? '';
-      session.inputMode = persistedSession.inputMode === 'sql' ? 'sql' : 'pine';
-      session.connectionId = persistedSession.connectionId ?? '';
-      session.profileId = persistedSession.profileId ?? '';
+      const expression = persistedSession.expression ?? '';
+      runInAction(() => {
+        session.expression = expression;
+        session.inputMode = persistedSession.inputMode === 'sql' ? 'sql' : 'pine';
+        session.connectionId = persistedSession.connectionId ?? '';
+        session.profileId = persistedSession.profileId ?? '';
+      });
+      // `new Session()` (inside createSessionUsingId, just above) wires up its
+      // own expression -> build reaction *while this whole forEach is still
+      // one in-flight action* (restoreSessions is itself an auto-actioned
+      // method, per makeAutoObservable on GlobalStore) - a reaction created
+      // mid-action defers its first tracked read until the action fully
+      // unwinds, so that first read already sees `expression` set to
+      // `persistedSession.expression` above, not the `''` the field started
+      // at. No "before -> after" transition is ever observed, so the
+      // reaction's effect (the debounced /build call) never fires - ast stays
+      // null forever, and canvas mode's "not parsing" placeholder is the
+      // visible symptom (confirmed live: zero /build requests fire for a
+      // restored session, vs. two for the same expression entered by hand).
+      //
+      // Forcing it via a bare `setTimeout(0)` (an earlier version of this
+      // fix) fires it far too early against a cold-started backend - the
+      // desktop app's bundled pine-lang process can take real time to start
+      // accepting connections, and `client.build` doesn't wait for that; it
+      // just fails ("Failed to fetch"), same silent-no-retry problem as
+      // before, just with a network error this time instead of an unfired
+      // reaction. So wait on the real readiness signal (`pineConnected`,
+      // already tracked for reconnecting the active tab below) rather than
+      // guessing a delay - `fireImmediately` covers the case where pine is
+      // already up by the time this subscribes (a fast/local connection),
+      // and the reaction disposes itself right after firing once, since this
+      // is only ever needed for the one build that never happened.
+      if (expression.trim() !== '') {
+        const disposeOnceConnected = reaction(
+          () => this.pineConnected,
+          connected => {
+            if (!connected) return;
+            session.requestHints();
+            disposeOnceConnected();
+          },
+          { fireImmediately: true },
+        );
+      }
     });
 
     const ids = Object.keys(this.sessions);
