@@ -8,11 +8,14 @@ interface BarChartProps {
 
 export const BarChart: React.FC<BarChartProps> = ({ data, height = '400px' }) => {
   const [hoveredBar, setHoveredBar] = useState<number | null>(null);
-  
+
   if (!data || data.length === 0) {
     return (
       <Box sx={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Typography variant="body2" color="gray">
+        <Typography
+          variant="body2"
+          sx={{ color: 'var(--canvas-text-dim)', fontFamily: 'var(--canvas-font)' }}
+        >
           No data to display
         </Typography>
       </Box>
@@ -22,9 +25,10 @@ export const BarChart: React.FC<BarChartProps> = ({ data, height = '400px' }) =>
   const maxValue = Math.max(...data.map(item => item.value));
   const minValue = Math.min(...data.map(item => item.value));
   const valueRange = maxValue - minValue;
-  
+
   // Handle case where all values are the same
-  const yAxisMax = valueRange === 0 ? maxValue + Math.abs(maxValue * 0.1) + 1 : maxValue + valueRange * 0.1;
+  const yAxisMax =
+    valueRange === 0 ? maxValue + Math.abs(maxValue * 0.1) + 1 : maxValue + valueRange * 0.1;
   const yAxisMin = minValue < 0 ? minValue - valueRange * 0.1 : 0;
   const yAxisRange = yAxisMax - yAxisMin;
   const yAxisTicks = 10;
@@ -36,9 +40,10 @@ export const BarChart: React.FC<BarChartProps> = ({ data, height = '400px' }) =>
           borderRadius: 1,
           height: '100%',
           padding: 2,
-          border: '1px solid var(--border-color)',
+          border: '1px solid var(--canvas-node-border)',
           display: 'flex',
-          backgroundColor: 'var(--background-color)',
+          backgroundColor: 'var(--canvas-node-bg)',
+          fontFamily: 'var(--canvas-font)',
         }}
       >
         {/* Y-axis */}
@@ -48,7 +53,7 @@ export const BarChart: React.FC<BarChartProps> = ({ data, height = '400px' }) =>
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'space-between',
-            borderRight: '1px solid var(--border-color)',
+            borderRight: '1px solid var(--canvas-node-border)',
             paddingRight: 1,
             height: 'calc(100% - 100px)',
             marginTop: 0,
@@ -66,7 +71,8 @@ export const BarChart: React.FC<BarChartProps> = ({ data, height = '400px' }) =>
                   transform: 'translateY(50%)',
                   textAlign: 'right',
                   width: '100%',
-                  color: 'var(--text-color)',
+                  color: 'var(--canvas-text-dim)',
+                  fontFamily: 'var(--canvas-font)',
                 }}
               >
                 {displayValue}
@@ -97,7 +103,7 @@ export const BarChart: React.FC<BarChartProps> = ({ data, height = '400px' }) =>
               // Calculate normalized values for SVG coordinate system
               const barHeightNorm = ((item.value - yAxisMin) / yAxisRange) * 100;
               const barWidth = (100 / data.length) * 0.8; // 80% of available space
-              const barX = (index / data.length) * 100 + ((100 / data.length) - barWidth) / 2;
+              const barX = (index / data.length) * 100 + (100 / data.length - barWidth) / 2;
               const barY = 100 - barHeightNorm;
               const isHovered = hoveredBar === index;
 
@@ -110,9 +116,7 @@ export const BarChart: React.FC<BarChartProps> = ({ data, height = '400px' }) =>
                         {item.label}
                       </Typography>
                       <br />
-                      <Typography variant="body2">
-                        {item.value.toLocaleString()}
-                      </Typography>
+                      <Typography variant="body2">{item.value.toLocaleString()}</Typography>
                     </Box>
                   }
                   arrow
@@ -123,8 +127,8 @@ export const BarChart: React.FC<BarChartProps> = ({ data, height = '400px' }) =>
                     y={barY}
                     width={barWidth}
                     height={barHeightNorm}
-                    fill={isHovered ? '#6b6fe8' : '#8884d8'}
-                    stroke={isHovered ? '#6b6fe8' : '#8884d8'}
+                    fill={isHovered ? 'var(--canvas-node-border-current)' : 'var(--canvas-trace)'}
+                    stroke={isHovered ? 'var(--canvas-node-border-current)' : 'var(--canvas-trace)'}
                     strokeWidth="0.1"
                     style={{ cursor: 'pointer', transition: 'fill 0.2s' }}
                     onMouseEnter={() => setHoveredBar(index)}
@@ -147,7 +151,7 @@ export const BarChart: React.FC<BarChartProps> = ({ data, height = '400px' }) =>
             }}
           >
             {data.map((item, index) => {
-              const labelXPercent = (index / data.length) * 100 + (100 / data.length) / 2;
+              const labelXPercent = (index / data.length) * 100 + 100 / data.length / 2;
               return (
                 <Typography
                   key={index}
@@ -157,7 +161,8 @@ export const BarChart: React.FC<BarChartProps> = ({ data, height = '400px' }) =>
                     left: `${labelXPercent}%`,
                     transform: 'translateX(-50%) rotate(-90deg)',
                     transformOrigin: 'top center',
-                    color: 'var(--text-color)',
+                    color: 'var(--canvas-text-dim)',
+                    fontFamily: 'var(--canvas-font)',
                     fontSize: '0.7rem',
                     whiteSpace: 'nowrap',
                     maxWidth: '120px',
@@ -176,4 +181,3 @@ export const BarChart: React.FC<BarChartProps> = ({ data, height = '400px' }) =>
     </Box>
   );
 };
-

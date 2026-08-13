@@ -18,7 +18,7 @@ import {
   CanvasStartNodeData,
   CanvasTableNodeData,
 } from '../../store/canvas/canvas.model';
-import { canvasFont } from '../../styles/canvas-font';
+import { appFont } from '../../styles/app-font';
 import { CanvasStoreContext } from './canvas-context';
 import TableNode from './nodes/TableNode';
 import StartNode from './nodes/StartNode';
@@ -165,7 +165,7 @@ const Flow: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasStore }) 
 
   return (
     <div
-      className={canvasFont.variable}
+      className={appFont.variable}
       style={{
         position: 'relative',
         width: '100%',

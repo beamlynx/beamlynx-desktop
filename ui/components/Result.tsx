@@ -366,11 +366,12 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
               right: 4,
               top: '50%',
               transform: 'translateY(-50%)',
-              backgroundColor: 'var(--background-color)',
-              border: '1px solid var(--border-color)',
-              color: 'var(--text-color)',
+              borderRadius: '4px',
+              backgroundColor: 'var(--canvas-node-bg)',
+              border: '1px solid var(--canvas-node-border)',
+              color: 'var(--canvas-trace)',
               '&:hover': {
-                backgroundColor: 'var(--node-bg)',
+                backgroundColor: 'var(--canvas-chip-bg)',
               },
               width: 24,
               height: 24,
@@ -428,7 +429,32 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   };
 
   if (columns.length === 0) {
-    return <div style={{ textAlign: 'center', color: 'gray', padding: '20px' }}>No results</div>;
+    return (
+      <Box
+        sx={{
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Box
+          sx={{
+            border: '2px dashed var(--canvas-node-border)',
+            borderRadius: '3px',
+            color: 'var(--canvas-text-dim)',
+            fontFamily: 'var(--canvas-font)',
+            fontSize: '12px',
+            fontWeight: 600,
+            textTransform: 'uppercase',
+            letterSpacing: '0.4px',
+            padding: '20px 32px',
+          }}
+        >
+          Run a query to see results here
+        </Box>
+      </Box>
+    );
   }
 
   return (
@@ -457,15 +483,17 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
                     right: 0,
                   }),
               zIndex: 1000,
-              backgroundColor: 'var(--background-color)',
-              border: '1px solid var(--border-color)',
-              color: 'var(--text-color)',
+              borderRadius: '4px',
+              backgroundColor: 'var(--canvas-node-bg)',
+              border: '1px solid var(--canvas-node-border)',
+              color: 'var(--canvas-trace)',
+              fontFamily: 'var(--canvas-font)',
               '&:hover': {
-                backgroundColor: 'var(--node-bg)',
+                backgroundColor: 'var(--canvas-chip-bg)',
               },
               '&:disabled': {
                 opacity: 0.5,
-                color: 'var(--icon-color)',
+                color: 'var(--canvas-text-dim)',
               },
             }}
             size="small"
@@ -491,11 +519,13 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
                       right: 44,
                     }),
                 zIndex: 1000,
-                backgroundColor: 'var(--background-color)',
-                border: '1px solid var(--border-color)',
-                color: viewMode === 'chart' ? '#8884d8' : 'var(--text-color)',
+                borderRadius: '4px',
+                backgroundColor: 'var(--canvas-node-bg)',
+                border: '1px solid var(--canvas-node-border)',
+                color: viewMode === 'chart' ? 'var(--canvas-trace)' : 'var(--canvas-text-dim)',
+                fontFamily: 'var(--canvas-font)',
                 '&:hover': {
-                  backgroundColor: 'var(--node-bg)',
+                  backgroundColor: 'var(--canvas-chip-bg)',
                 },
               }}
               size="small"
@@ -538,25 +568,31 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
             <DataGrid
               sx={{
                 height: '100%',
-                '--DataGrid-containerBackground': 'var(--node-column-bg)',
-                '--DataGrid-rowBorderColor': 'var(--border-color)',
-                color: 'var(--text-color)',
-                border: '1px solid var(--border-color)',
-                borderRadius: 1,
+                '--DataGrid-containerBackground': 'var(--canvas-node-bg)',
+                '--DataGrid-rowBorderColor': 'var(--canvas-node-border)',
+                color: 'var(--canvas-text)',
+                fontFamily: 'var(--canvas-font)',
+                border: '1px solid var(--canvas-node-border)',
+                borderRadius: '3px',
                 overflow: 'hidden',
                 '& .MuiDataGrid-withBorderColor': {
                   borderColor: 'transparent',
                 },
+                // A tonal step up from the body (the same "labeled section"
+                // idea as canvas mode's picker group headers), not just a
+                // border, so the header row reads as its own row rather
+                // than the first row of data.
                 '& .MuiDataGrid-columnHeaders': {
-                  backgroundColor: 'var(--node-bg)',
-                  borderBottom: '1px solid var(--border-color)',
+                  backgroundColor: 'var(--canvas-chip-bg)',
+                  borderBottom: '1px solid var(--canvas-node-border)',
                 },
                 '& .MuiDataGrid-columnHeaderTitle': {
-                  color: 'var(--text-color)',
+                  color: 'var(--canvas-text)',
+                  fontWeight: 600,
                 },
                 '& .MuiDataGrid-cell': {
-                  color: 'var(--text-color)',
-                  borderBottom: '1px solid var(--border-color)',
+                  color: 'var(--canvas-text)',
+                  borderBottom: '1px solid var(--canvas-node-border)',
                   userSelect: 'none', // Prevent text selection
                   WebkitUserSelect: 'none',
                   MozUserSelect: 'none',
@@ -564,11 +600,12 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
                 },
                 ...columnColorSx,
                 '& .MuiDataGrid-row:hover': {
-                  backgroundColor: 'var(--node-bg)',
+                  backgroundColor: 'var(--canvas-chip-bg)',
                 },
                 '& .MuiTablePagination-root, & .MuiTablePagination-root .MuiSvgIcon-root, & .MuiTablePagination-root .MuiIconButton-root':
                   {
-                    color: 'var(--text-color)',
+                    color: 'var(--canvas-text-dim)',
+                    fontFamily: 'var(--canvas-font)',
                   },
                 '& ::-webkit-scrollbar': {
                   width: '10px',
@@ -578,11 +615,11 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
                   background: 'transparent',
                 },
                 '& ::-webkit-scrollbar-thumb': {
-                  backgroundColor: 'var(--node-handle-bg)',
+                  backgroundColor: 'var(--canvas-pin)',
                   borderRadius: '5px',
                 },
                 '& ::-webkit-scrollbar-thumb:hover': {
-                  background: 'var(--text-color)',
+                  background: 'var(--canvas-trace)',
                 },
               }}
               density="compact"
@@ -626,15 +663,36 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
               ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
               : undefined
           }
+          slotProps={{
+            paper: {
+              sx: {
+                backgroundColor: 'var(--canvas-picker-bg)',
+                // See ActiveConnection.tsx's matching comment - MUI's Paper
+                // otherwise lightens this with a dark-mode elevation
+                // overlay, rendering it visibly different from every other
+                // panel using the same token.
+                backgroundImage: 'none',
+                border: '1px solid var(--canvas-picker-border)',
+                color: 'var(--canvas-text)',
+                fontFamily: 'var(--canvas-font)',
+              },
+            },
+          }}
         >
-          <MenuItem onClick={handleCopyAction}>
-            <ListItemIcon>
+          <MenuItem
+            onClick={handleCopyAction}
+            sx={{ '&:hover': { backgroundColor: 'var(--canvas-chip-bg)' } }}
+          >
+            <ListItemIcon sx={{ color: 'var(--canvas-trace)' }}>
               <ContentCopy fontSize="small" />
             </ListItemIcon>
             <ListItemText primary="Copy" />
           </MenuItem>
-          <MenuItem onClick={handleFilterAction}>
-            <ListItemIcon>
+          <MenuItem
+            onClick={handleFilterAction}
+            sx={{ '&:hover': { backgroundColor: 'var(--canvas-chip-bg)' } }}
+          >
+            <ListItemIcon sx={{ color: 'var(--canvas-trace)' }}>
               <FilterAlt fontSize="small" />
             </ListItemIcon>
             <ListItemText primary="Filter" />

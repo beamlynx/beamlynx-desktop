@@ -1,11 +1,11 @@
 import { sql } from '@codemirror/lang-sql';
 import { EditorState } from '@codemirror/state';
-import { oneDark } from '@codemirror/theme-one-dark';
 import { Box, Typography } from '@mui/material';
 import { EditorView } from 'codemirror';
 import { observer } from 'mobx-react-lite';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useStores } from '../store/store-container';
+import { editorChrome, editorDarkSyntax } from './editor-theme';
 
 interface QueryProps {
   sessionId: string;
@@ -38,10 +38,14 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
     const extensions = [
       EditorView.lineWrapping,
       sql(),
+      editorChrome(store.theme === 'dark'),
+      ...(store.theme === 'dark' ? [editorDarkSyntax] : []),
+      // Structural overrides on top of editorChrome - this view is read-only
+      // (no cursor/selection/active-line to show) and click-to-copy, not
+      // click-to-edit.
       EditorView.theme({
         '&': {
           fontSize: '12px',
-          fontFamily: 'monospace',
           height: '100%',
         },
         '.cm-editor': {
@@ -67,20 +71,12 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
         '.cm-gutters': {
           display: 'none',
         },
-        '.cm-scroller': {
-          fontFamily: 'monospace',
-          height: '100%',
-        },
       }),
       EditorView.editable.of(false),
       EditorView.domEventHandlers({
         click: onClick,
       }),
     ];
-
-    if (store.theme === 'dark') {
-      extensions.push(oneDark);
-    }
 
     const state = EditorState.create({
       doc: session.query,
@@ -102,8 +98,8 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
       style={{
         padding: '8px 12px',
         fontSize: '12px',
-        fontFamily: 'monospace',
-        color: 'gray',
+        fontFamily: 'var(--canvas-font)',
+        color: 'var(--canvas-text-dim)',
       }}
     >
       SQL mode enabled. You can edit the SQL query directly in the input.
@@ -124,8 +120,8 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
       style={{
         padding: '8px 12px',
         fontSize: '12px',
-        fontFamily: 'monospace',
-        color: 'gray',
+        fontFamily: 'var(--canvas-font)',
+        color: 'var(--canvas-text-dim)',
       }}
     >
       SQL shows here for a valid pine expression.

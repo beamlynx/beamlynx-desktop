@@ -47,6 +47,7 @@ const RunButton: React.FC<{ session: Session; onRun?: () => void | Promise<void>
           minWidth: 'auto',
           px: 1.5,
           py: 0.5,
+          fontFamily: 'var(--canvas-font)',
         }}
       >
         Run
@@ -114,10 +115,11 @@ const Input: React.FC<InputProps> = observer(({ session, onRun }) => {
             size="small"
             sx={{
               backgroundColor: 'var(--background-color)',
-              borderRadius: '12px',
+              borderRadius: '4px',
               border: '1px solid var(--border-color)',
               '& .MuiToggleButton-root': {
                 textTransform: 'none',
+                fontFamily: 'var(--canvas-font)',
                 fontSize: '0.75rem',
                 fontWeight: 600,
                 px: 1.5,
@@ -126,9 +128,9 @@ const Input: React.FC<InputProps> = observer(({ session, onRun }) => {
                 minWidth: '44px',
                 color: 'var(--text-color)',
                 border: 'none',
-                borderRadius: '12px',
+                borderRadius: '4px',
                 '&:hover': {
-                  backgroundColor: 'rgba(25, 118, 210, 0.08)',
+                  backgroundColor: 'var(--canvas-chip-bg)',
                   color: 'var(--primary-color)',
                 },
                 '&.Mui-selected': {
@@ -136,7 +138,7 @@ const Input: React.FC<InputProps> = observer(({ session, onRun }) => {
                   color: 'var(--text-color)',
                   fontWeight: 700,
                   '&:hover': {
-                    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+                    backgroundColor: 'color-mix(in srgb, var(--canvas-trace) 20%, var(--border-color))',
                   },
                 },
                 '&:first-of-type': {

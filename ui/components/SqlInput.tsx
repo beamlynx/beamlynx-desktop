@@ -1,5 +1,4 @@
 import CodeMirror, { ReactCodeMirrorRef } from '@uiw/react-codemirror';
-import { oneDark } from '@codemirror/theme-one-dark';
 import { EditorView, keymap } from '@codemirror/view';
 import { Prec } from '@codemirror/state';
 import { sql } from '@codemirror/lang-sql';
@@ -10,6 +9,7 @@ import { runInAction } from 'mobx';
 import { vim } from '@replit/codemirror-vim';
 import { Box } from '@mui/material';
 import { useStores } from '../store/store-container';
+import { editorChrome, editorDarkSyntax } from './editor-theme';
 
 interface SqlInputProps {
   session: Session;
@@ -71,13 +71,18 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session }) => {
     [session],
   );
 
+  const isDark = global.theme === 'dark';
+
   const extensions = [
     EditorView.lineWrapping,
     sql(),
+    editorChrome(isDark),
+    ...(isDark ? [editorDarkSyntax] : []),
+    // Structural only (height/padding) - color and font-family now come
+    // entirely from editorChrome, shared with PineInput.tsx.
     EditorView.theme({
       '&': {
-        fontSize: '12px',
-        fontFamily: 'monospace',
+        fontSize: '13px',
         height: '100%',
       },
       '.cm-editor': {
@@ -91,7 +96,6 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session }) => {
         minHeight: '100%',
       },
       '.cm-scroller': {
-        fontFamily: 'monospace',
         height: '100%',
       },
     }),
@@ -118,7 +122,7 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session }) => {
       id="sql-input"
       value={session.query}
       height="100%"
-      theme={global.theme === 'dark' ? oneDark : 'light'}
+      theme="none"
       extensions={extensions}
       onFocus={() => {
         session.focusTextInput();

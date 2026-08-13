@@ -94,7 +94,7 @@ const TableNode = ({
             style={{
               textAlign: 'right',
               fontSize: '8px',
-              fontFamily: 'Courier, monospace',
+              fontFamily: 'var(--canvas-font)',
               color: 'var(--node-secondary-text-color)',
             }}
           >
@@ -115,10 +115,11 @@ const TableNode = ({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              borderRadius: '50%',
+              borderRadius: '4px',
               background: 'var(--node-order-bg)',
               color: 'var(--node-order-text-color)',
               fontSize: '12px',
+              fontFamily: 'var(--canvas-font)',
               boxShadow: '0 2px 4px rgba(0,0,0,0.25)',
               fontWeight: 'bold',
             }}
@@ -186,7 +187,7 @@ const SelectedColumns = ({ columns }: { columns: string[] }) => (
           key={column}
           style={{
             fontSize: '8px',
-            fontFamily: 'Courier, monospace',
+            fontFamily: 'var(--canvas-font)',
             background: 'var(--node-column-bg)',
             padding: '2px 6px',
             borderRadius: '8px',
@@ -235,7 +236,7 @@ const CandidateColumns = ({
             onClick={() => onCandidateColumnClick(session, column, type)}
             style={{
               fontSize: '8px',
-              fontFamily: 'Courier, monospace',
+              fontFamily: 'var(--canvas-font)',
               background: 'transparent',
               padding: '2px 6px',
               borderRadius: '8px',
@@ -280,7 +281,7 @@ const Columns = ({
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <span
             style={{
-              fontFamily: 'Courier, monospace',
+              fontFamily: 'var(--canvas-font)',
               fontSize: '8px',
               color: 'var(--node-operation-label-color)',
               whiteSpace: 'nowrap',

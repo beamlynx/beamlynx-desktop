@@ -8,6 +8,7 @@ import DesktopUpdateBanner from '../components/DesktopUpdateBanner';
 import ConnectionErrorSnackbar from '../components/ConnectionErrorSnackbar';
 import { useStores } from '../store/store-container';
 import { isDesktop, isDevelopment, isPlayground } from '../store/util';
+import { appFont } from '../styles/app-font';
 
 const Home: NextPage = () => {
   const { global } = useStores();
@@ -67,9 +68,16 @@ const Home: NextPage = () => {
   }, []);
 
   const AppContent = (
+    // appFont.variable defines --canvas-font as a CSS custom property on
+    // this element and everything below it - applied once, here, at the
+    // app's actual root, so every surface (results grid, editors, tabs,
+    // modals, canvas mode) can read var(--canvas-font) regardless of which
+    // subtree it lives in, rather than each one needing its own copy of
+    // this className.
     <Container
       maxWidth={false}
       disableGutters={true}
+      className={appFont.variable}
       sx={{
         display: 'flex',
         flexDirection: 'column',

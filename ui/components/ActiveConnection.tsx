@@ -148,7 +148,7 @@ const ActiveConnection = () => {
       <Typography
         variant="caption"
         component="code"
-        color="gray"
+        sx={{ color: 'var(--canvas-text-dim)', fontFamily: 'var(--canvas-font)' }}
         {...(global.pineConnected && {
           onClick: (e: MouseEvent<HTMLElement>) => {
             setShowColorPicker(false);
@@ -175,6 +175,13 @@ const ActiveConnection = () => {
               minWidth: 260,
               maxHeight: 320,
               bgcolor: 'var(--background-color)',
+              // MUI's Paper applies a dark-mode "elevation overlay" (a
+              // semi-transparent white gradient, opacity scaling with
+              // elevation) by default - confirmed live that it rendered
+              // this menu visibly lighter than ConnectionsListModal.tsx's
+              // plain Box, even though both set the exact same background
+              // token. Suppressed so the two connection UIs actually match.
+              backgroundImage: 'none',
               border: '1px solid var(--border-color)',
               color: 'var(--text-color)',
             },
@@ -259,6 +266,7 @@ const ActiveConnection = () => {
               sx={{
                 flex: 1,
                 fontSize: '0.75rem',
+                fontFamily: 'var(--canvas-font)',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
               }}
@@ -300,7 +308,7 @@ const ActiveConnection = () => {
             global.setShowSettings(true);
             setConnectionMenuAnchor(null);
           }}
-          sx={{ fontSize: '0.85rem' }}
+          sx={{ fontSize: '0.85rem', fontFamily: 'var(--canvas-font)' }}
         >
           Add new connection…
         </MenuItem>

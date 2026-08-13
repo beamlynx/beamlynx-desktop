@@ -14,8 +14,8 @@ import { handleLabelInset } from './RelationHandles';
 const handleStyle: React.CSSProperties = {
   width: '2px',
   height: '2px',
-  background: 'darkgray',
-  borderRadius: '50%',
+  background: 'var(--node-handle-bg)',
+  borderRadius: 0,
 };
 
 // Row 0's vertical center below the header - the only row a suggested node
@@ -70,6 +70,7 @@ const SuggestedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
         background,
         borderRadius: '5px',
         color: textColor,
+        fontFamily: 'var(--canvas-font)',
       }}
     >
       <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -88,7 +89,7 @@ const SuggestedNodeComponent: React.FC<PineNodeProps> = ({ data }) => {
             transform: 'translateY(calc(-50% + 2px))',
             maxWidth: columnLabelMaxWidth,
             fontSize: '7px',
-            fontFamily: 'Courier, monospace',
+            fontFamily: 'var(--canvas-font)',
             // --node-secondary-text-color is a muted gray tuned for contrast
             // against the normal suggested background - against the bright
             // candidate background it's nearly illegible, so match the

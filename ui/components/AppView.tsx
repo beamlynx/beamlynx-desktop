@@ -226,7 +226,11 @@ const AppView = observer(() => {
         </Grid>
       </Grid>
 
-      <Box sx={{ m: 1, mt: 0, mb: 0, display: 'flex', flexDirection: 'column' }}>
+      {/* mt: 1 (not 0) - the header row above and the tab row below both
+          have their own solid background now (previously neither did, so
+          zero margin was invisible); with no gap the search box's bottom
+          edge visually touched the tab row's top edge. */}
+      <Box sx={{ m: 1, mt: 1, mb: 0, display: 'flex', flexDirection: 'column' }}>
         <PineTabs></PineTabs>
       </Box>
     </>

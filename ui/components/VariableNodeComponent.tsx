@@ -29,6 +29,7 @@ const InnerTableRow = ({ table, schema, alias, color }: VariableInnerTable) => (
       borderRadius: '4px',
       color: 'var(--node-text-color)',
       fontSize: '12px',
+      fontFamily: 'var(--canvas-font)',
     }}
   >
     <span>{table}</span>
@@ -36,7 +37,7 @@ const InnerTableRow = ({ table, schema, alias, color }: VariableInnerTable) => (
       style={{
         marginLeft: '6px',
         fontSize: '8px',
-        fontFamily: 'Courier, monospace',
+        fontFamily: 'var(--canvas-font)',
         color: 'var(--node-secondary-text-color)',
       }}
     >
@@ -104,10 +105,11 @@ const VariableNodeComponent: React.FC<Props> = ({ id, data }) => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          borderRadius: '50%',
+          borderRadius: '4px',
           background: 'var(--node-order-bg)',
           color: 'var(--node-order-text-color)',
           fontSize: '12px',
+          fontFamily: 'var(--canvas-font)',
           boxShadow: '0 2px 4px rgba(0,0,0,0.25)',
           fontWeight: 'bold',
         }}
@@ -119,7 +121,7 @@ const VariableNodeComponent: React.FC<Props> = ({ id, data }) => {
         style={{
           padding: '4px 8px 4px 10px',
           fontSize: '10px',
-          fontFamily: 'Courier, monospace',
+          fontFamily: 'var(--canvas-font)',
           color: 'var(--node-variable-label-color, #7c5cbf)',
           cursor: 'pointer',
           display: 'flex',

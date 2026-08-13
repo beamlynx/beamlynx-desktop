@@ -20,7 +20,7 @@ const PineTabs = observer(() => {
   const activeSession = global.sessions[sessionId];
   const activeConnectionId = activeSession?.connectionId || '';
   const activeIndicatorColor =
-    global.getConnectionColor(activeConnectionId) || 'var(--border-color)';
+    global.getConnectionColor(activeConnectionId) || 'var(--canvas-node-border)';
 
   const setActiveTab = (newSessionId: string) => {
     runInAction(() => {
@@ -45,8 +45,8 @@ const PineTabs = observer(() => {
       <TabContext value={sessionId}>
         <Box
           sx={{
-            borderBottom: 1,
-            borderColor: 'divider',
+            backgroundColor: 'var(--canvas-node-bg)',
+            borderBottom: '1px solid var(--canvas-node-border)',
             display: 'flex',
             alignItems: 'center',
             mt: 0,
@@ -56,9 +56,11 @@ const PineTabs = observer(() => {
             onChange={handleChange}
             sx={{
               '& .MuiTab-root': {
-                color: 'var(--text-color)',
+                color: 'var(--canvas-text-dim)',
+                fontFamily: 'var(--canvas-font)',
+                minHeight: 40,
                 '&.Mui-selected': {
-                  color: 'var(--primary-color)',
+                  color: 'var(--canvas-trace)',
                 },
               },
               '& .MuiTabs-indicator': {
@@ -85,7 +87,9 @@ const PineTabs = observer(() => {
                             height: 6,
                             borderRadius: '50%',
                             backgroundColor: isLive ? connectionColor : 'transparent',
-                            border: isLive ? 'none' : `1.5px solid ${connectionColor || 'var(--border-color)'}`,
+                            border: isLive
+                              ? 'none'
+                              : `1.5px solid ${connectionColor || 'var(--canvas-node-border)'}`,
                             boxSizing: 'border-box',
                             display: 'inline-block',
                             flexShrink: 0,
@@ -106,10 +110,10 @@ const PineTabs = observer(() => {
                           removeTab(tab.sessionId);
                         }}
                         sx={{
-                          color: 'var(--icon-color)',
+                          color: 'var(--canvas-text-dim)',
                           '&:hover': {
-                            color: 'var(--text-color)',
-                            backgroundColor: 'var(--node-bg)',
+                            color: 'var(--canvas-text)',
+                            backgroundColor: 'var(--canvas-chip-bg)',
                           },
                         }}
                       >
@@ -128,9 +132,9 @@ const PineTabs = observer(() => {
             sx={{
               ml: 2,
               cursor: 'pointer',
-              color: 'var(--primary-color)',
+              color: 'var(--canvas-trace)',
               '&:hover': {
-                color: 'var(--primary-color-hover)',
+                color: 'var(--canvas-node-border-current)',
               },
             }}
             onClick={addTab}

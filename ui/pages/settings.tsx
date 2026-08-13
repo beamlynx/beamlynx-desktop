@@ -361,7 +361,7 @@ const Settings = () => {
             <AccordionDetails
               sx={{
                 p: 0,
-                '& .MuiInputBase-input': { fontFamily: 'monospace', fontSize: '0.85rem' },
+                '& .MuiInputBase-input': { fontFamily: 'var(--canvas-font)', fontSize: '0.85rem' },
               }}
             >
               <TextField
