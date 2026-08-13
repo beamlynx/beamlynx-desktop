@@ -5,6 +5,16 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.48.0] - 2026-08-13
+### Breaking
+- Requires pine-lang 0.38.1 or later.
+
+### Added
+- An experimental interactive view for building Pine queries by clicking through tables in a graph instead of writing text -- toggle it from the header, next to the version number.
+
+### Changed
+- Unified the app's visual design (the "schematic/blueprint" look) across the whole app.
+
 ## [0.47.0] - 2026-08-09
 ### Changed
 - Each tab now connects to its own database lazily, only when it becomes the active tab, instead of every tab eagerly following whatever connection was picked most recently. Opening the app no longer forces the connections picker open -- it silently reconnects the tab you were on. A tab whose connection isn't live yet shows a hollow (outline-only) dot in its own connection's color, filling in solid once connected.
