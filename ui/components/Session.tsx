@@ -99,48 +99,6 @@ const Sidebar = ({
   );
 };
 
-/**
- * Cross-links the two graph experiences - canvas mode is a global preference
- * (global.canvasModeEnabled, like theme), not a per-session toggle, so every
- * tab's 'graph' view switches together. Whichever one isn't currently
- * showing gets a one-line, one-click way back to the other, rather than
- * requiring the command palette. Bottom-right (not bottom-left, its first
- * placement) - that's the conventional corner for an opt-in/beta nudge
- * (feedback widgets, "what's new" pills), and keeps it away from the editor
- * panel, which sits at the left edge of this same view.
- */
-const GraphExperienceBanner = ({
-  usingCanvas,
-  global,
-}: {
-  usingCanvas: boolean;
-  global: GlobalStore;
-}) => (
-  <Box
-    onClick={() => global.toggleCanvasMode()}
-    sx={{
-      position: 'absolute',
-      bottom: 8,
-      right: 8,
-      zIndex: 10,
-      padding: '3px 10px',
-      borderRadius: 1,
-      fontSize: 12,
-      cursor: 'pointer',
-      color: 'var(--primary-color)',
-      background: 'var(--node-bg)',
-      // No border - in light mode --border-color and --node-bg are the same
-      // gray, so a border here was invisible and the banner read as a
-      // washed-out blob with no edge. A shadow gives it definition in both
-      // themes without depending on a border/background contrast that only
-      // happens to work in one of them.
-      boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
-    }}
-  >
-    {usingCanvas ? '← Back to the classic view' : 'Try the new interactive view (experimental) →'}
-  </Box>
-);
-
 // Reads global.canvasModeEnabled directly (rather than only receiving
 // pre-computed booleans as props) - must be its own observer, not just a
 // plain function called from Session's render. MobX only establishes a
@@ -196,7 +154,6 @@ const MainView = observer(
                   ) : (
                     <GraphBox sessionId={sessionId} />
                   )}
-                  <GraphExperienceBanner usingCanvas={global.canvasModeEnabled} global={global} />
                 </Box>
               );
             default:
