@@ -1,6 +1,6 @@
 import dagre from 'dagre';
 import { Position } from 'reactflow';
-import { Ast, OrderColumn } from '../client';
+import { Ast, GroupColumn, OrderColumn } from '../client';
 import {
   CanvasEdge,
   CanvasGraph,
@@ -104,6 +104,20 @@ const deriveGraph = (ast: Ast): { nodes: CanvasNode[]; edges: CanvasEdge[] } => 
   const whereByAlias = byAlias(ast.where ?? [], w => w[0]);
   // See the `order: Column[]` comment in client.ts - the real wire shape is OrderColumn.
   const orderByAlias = byAlias((ast.order ?? []) as unknown as OrderColumn[], o => o.alias);
+  const groupByAlias = byAlias((ast.group ?? []) as GroupColumn[], g => g.alias);
+  // pine-lang merges every group: column into ast.columns too - required so
+  // the generated SQL's SELECT list actually includes what it groups by, not
+  // a canvas-specific quirk. Left unfiltered, a grouped column would render
+  // under BOTH the "sel" and "group" chip rows - the same column appearing
+  // twice reads as "did I select this too, or is this a display bug?" when
+  // the user only ever did the one gesture (group). Whether or not the user
+  // also separately wrote select: for it is unrecoverable from ast.columns
+  // alone (pine-lang adds it regardless) - "sel" just excludes anything
+  // already shown under "group" for that same alias, full stop.
+  const groupedColumnNamesByAlias: Record<string, Set<string>> = {};
+  for (const [alias, cols] of Object.entries(groupByAlias)) {
+    groupedColumnNamesByAlias[alias] = new Set(cols.map(g => g.column));
+  }
 
   const leftHandlesByAlias: Record<string, Map<string, CanvasHandle>> = {};
   const rightHandlesByAlias: Record<string, Map<string, CanvasHandle>> = {};
@@ -145,9 +159,12 @@ const deriveGraph = (ast: Ast): { nodes: CanvasNode[]; edges: CanvasEdge[] } => 
       order: i + 1,
       isCurrent: t.alias === ast.current,
       removable: i === allTables.length - 1,
-      selectColumns: (selectByAlias[t.alias] ?? []).map(c => c.column),
+      selectColumns: (selectByAlias[t.alias] ?? [])
+        .map(c => c.column)
+        .filter(column => !groupedColumnNamesByAlias[t.alias]?.has(column)),
       whereChips,
       orderChips: (orderByAlias[t.alias] ?? []).map(o => `${o.column} ${o.direction}`),
+      groupChips: (groupByAlias[t.alias] ?? []).map(g => g.column),
       leftHandles: toHandles(leftHandlesByAlias[t.alias]),
       rightHandles: toHandles(rightHandlesByAlias[t.alias]),
     };

@@ -19,6 +19,7 @@ export type CanvasTableNodeData = {
   selectColumns: string[];
   whereChips: string[]; // display text, e.g. "id = 1"
   orderChips: string[]; // display text, e.g. "name desc"
+  groupChips: string[]; // this alias's own contribution to the one shared group: segment
   leftHandles: CanvasHandle[];
   rightHandles: CanvasHandle[];
 };
@@ -47,7 +48,7 @@ export type PickerItem = {
   label: string;
   detail?: string;
   group?: string;
-  /** hint.pine for table/join items; bare column name for select/where/order items. */
+  /** hint.pine for table/join items; bare column name for select/where/order/group items. */
   value: string;
 };
 
@@ -56,7 +57,8 @@ export type PickerRequest =
   | { kind: 'join'; alias: string }
   | { kind: 'select'; alias: string }
   | { kind: 'where'; alias: string }
-  | { kind: 'order'; alias: string };
+  | { kind: 'order'; alias: string }
+  | { kind: 'group'; alias: string };
 
 /** Viewport coordinates (clientX/clientY) of the action button that opened the picker - see Picker.tsx. */
 export type PickerAnchor = { x: number; y: number };

@@ -182,3 +182,39 @@ export const setLimit = (base: PinnedBase, value: number | null): string => {
   if (value === null) return toText(withoutLimit);
   return toText([...withoutLimit, { text: `limit: ${value}`, start: -1, end: -1, kind: 'limit', owner: null }]);
 };
+
+/**
+ * `group:` is unowned like `limit:` (applies once across the whole pipeline,
+ * not per table) but unlike every other clause here, more than one table can
+ * contribute to it - "company -> tenant, grouped by both tenant_id and
+ * company_id" is one shared `group: t.tenant_id, c.company_id` segment, not
+ * two. getGroupColumns/setGroupColumns read and rewrite only `alias`'s own
+ * qualified entries within that one list, leaving every other alias's
+ * columns untouched - so there's no need to track "where" a given alias's
+ * contribution lives; it's re-derived from the segment's own text every time.
+ */
+export const getGroupColumns = (base: PinnedBase, alias: string): string[] => {
+  const existing = base.segments.find(s => s.kind === 'group');
+  if (!existing) return [];
+  const body = existing.text.replace(/^(group:|g:)\s*/i, '');
+  return splitTopLevel(body)
+    .filter(part => part.startsWith(`${alias}.`))
+    .map(part => part.slice(alias.length + 1));
+};
+
+// Always appended at the very end, same as setLimit - for now, group: only
+// ever needs to be the pipeline's true last operation, since canvas mode has
+// nothing that runs after it yet (no sealing a checkpoint into its own
+// variable/CTE mid-pipeline - that's future work). Once it does, this will
+// need to target "the end of the current segment, before whatever comes
+// next" instead of the literal end of the whole expression.
+export const setGroupColumns = (base: PinnedBase, alias: string, columns: string[]): string => {
+  const existing = base.segments.find(s => s.kind === 'group');
+  const priorAll = existing ? splitTopLevel(existing.text.replace(/^(group:|g:)\s*/i, '')) : [];
+  const others = priorAll.filter(part => !part.startsWith(`${alias}.`));
+  const mine = columns.map(c => `${alias}.${c}`);
+  const nextAll = [...others, ...mine];
+  const withoutGroup = base.segments.filter(s => s.kind !== 'group');
+  if (nextAll.length === 0) return toText(withoutGroup);
+  return toText([...withoutGroup, { text: `group: ${nextAll.join(', ')}`, start: -1, end: -1, kind: 'group', owner: null }]);
+};

@@ -3,7 +3,7 @@ import { TableHint } from '../client';
 import { Session } from '../session';
 import { CanvasGraph, PickerAnchor, PickerItem, PickerRequest, PickerState } from './canvas.model';
 import { buildCanvasGraph } from './layout';
-import { makeAlias } from './pine-text';
+import { makeAlias, segmentsFromAst, splitTrailingCheckpoints, toText } from './pine-text';
 import * as actions from './pine-actions';
 import { probeBuild } from './probe';
 
@@ -43,6 +43,22 @@ export class CanvasStore {
 
   private readonly session: Session;
 
+  /**
+   * True until this session has ever produced a build response - `ast` only
+   * ever reverts to the literal `null` primitive when no build has completed
+   * yet (a genuine parse failure still returns a real `ast` object, just
+   * with `ranges`/`selected-tables` null inside it - see recompute's own
+   * `!ast || !ast['selected-tables'] || !ast.ranges` check). Distinguishes
+   * "still connecting/loading" from "genuinely not parsing" for the same
+   * `!canvasGraph.parsing` state Canvas.tsx already renders a banner for -
+   * without this, a restored session's brief window before its first build
+   * completes (see global.store.ts's restoreSessions) showed the same
+   * alarming "Not parsing" banner a real syntax error would.
+   */
+  get isConnecting(): boolean {
+    return this.session.ast === null;
+  }
+
   constructor(session: Session) {
     this.session = session;
     makeAutoObservable<CanvasStore, 'session'>(this, { session: false });
@@ -60,11 +76,28 @@ export class CanvasStore {
    * on whatever it last rendered. Subscribing here, called from the same
    * `useEffect` that disposes it (see components/canvas/Canvas.tsx), keeps
    * the two symmetric so the double-invoke cancels itself out.
+   *
+   * `fireImmediately: true` - a restored session (one loaded with an
+   * expression already set, e.g. from localStorage) already has its build
+   * ticking via `Session`'s own debounced reaction (store/session.ts) *before*
+   * this component/store even exists - that reaction started at module-eval
+   * time, well before React mounts. Whether `session.ast` flips from null to
+   * populated *before or after* this `start()` call (a real, effect-timing-
+   * dependent race, not a hypothetical) determined whether the graph ever
+   * rendered: this constructor's own `recompute()` runs at render time and
+   * can catch a null `ast`, but a plain `reaction()` only fires on a change
+   * *after* subscribing - if the transition already happened by the time
+   * `start()` subscribes, the reaction's baseline is the post-transition
+   * value and it never fires again, leaving the canvas stuck on the empty/
+   * degraded graph it computed at construction until the user's next edit.
+   * `fireImmediately` makes this call itself always resync to whatever is
+   * actually current the moment it subscribes, independent of that race.
    */
   start(): () => void {
     return reaction(
       () => [this.session.expression, this.session.ast] as const,
       () => this.recompute(),
+      { fireImmediately: true },
     );
   }
 
@@ -181,10 +214,30 @@ export class CanvasStore {
 
   private buildProbeExpression(request: PickerRequest): string {
     if (request.kind === 'table') return '';
-    const base = this.session.expression.replace(/\|\s*$/, '').trimEnd();
+    // Drop any trailing group:/limit: - both are pine-lang "checkpoint"
+    // operations that seal the pipeline into its aggregated/limited output,
+    // so a hint probe built *after* one reflects that output's shape (just
+    // the grouped columns, plus aggregate function names) rather than the
+    // actual table the gesture is about. Confirmed live: grouping on one
+    // node, then opening group on a *different* node, offered only the
+    // first node's already-grouped column and "count" - the post-checkpoint
+    // shape, not the second node's real columns. See splitTrailingCheckpoints
+    // (pine-text.ts) - the same helper also fixes appendTableSegment, which
+    // had the identical issue committing a join after a group/limit instead
+    // of before it.
+    const segments = segmentsFromAst(this.session.expression, this.session.ast) ?? [];
+    const { body } = splitTrailingCheckpoints(segments);
+    const base = (body.length ? toText(body) : this.session.expression).replace(/\|\s*$/, '').trimEnd();
     const current = this.session.ast?.current;
     const focusPrefix = request.alias !== current ? `${base} | from: ${request.alias}` : base;
-    const opPrefix = request.kind === 'join' ? '' : `${request.kind === 'select' ? 's' : request.kind === 'where' ? 'w' : 'o'}: `;
+    // pine-lang has no dedicated hint category for group-by candidates (see
+    // pine-actions.ts's getGroupColumns/setGroupColumns comment) - reuse
+    // select's, since "which columns exist on this table" is exactly the
+    // same question either way.
+    const opPrefix =
+      request.kind === 'join'
+        ? ''
+        : `${request.kind === 'where' ? 'w' : request.kind === 'order' ? 'o' : 's'}: `;
     return `${focusPrefix} | ${opPrefix}`.trimEnd();
   }
 
@@ -268,12 +321,18 @@ export class CanvasStore {
     });
   }
 
-  openColumnPicker(kind: 'select' | 'where' | 'order', alias: string, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
+  openColumnPicker(
+    kind: 'select' | 'where' | 'order' | 'group',
+    alias: string,
+    anchor: PickerAnchor = CanvasStore.defaultAnchor,
+  ) {
     const request: PickerRequest = { kind, alias };
     void this.openListPicker(request, anchor, async () => {
       const expr = this.buildProbeExpression(request);
       const ast = await probeBuild(expr, this.session.connectionId);
-      const hints = kind === 'select' ? ast.hints.select : kind === 'where' ? ast.hints.where : ast.hints.order;
+      // No dedicated hint category for group - see buildProbeExpression's
+      // matching comment; reuses select's.
+      const hints = kind === 'where' ? ast.hints.where : kind === 'order' ? ast.hints.order : ast.hints.select;
       const items: PickerItem[] = hints.map(h => ({ id: h.column, label: h.column, value: h.column }));
       return { groups: [{ label: '', items }] };
     });
@@ -379,6 +438,21 @@ export class CanvasStore {
 
   async removeOrderAt(alias: string, index: number) {
     await this.commit(base => actions.removeOrderColumnAt(base, actions.resolveAlias(base, alias), index));
+  }
+
+  /**
+   * Toggles one column in/out of `alias`'s own contribution to the single,
+   * pipeline-wide `group:` segment - see pine-actions.ts's getGroupColumns/
+   * setGroupColumns for how that stays merged with every other table's
+   * contribution rather than producing a second `group:` segment.
+   */
+  async toggleGroupColumn(alias: string, column: string) {
+    await this.commit(base => {
+      const resolvedAlias = actions.resolveAlias(base, alias);
+      const current = actions.getGroupColumns(base, resolvedAlias);
+      const next = current.includes(column) ? current.filter(c => c !== column) : [...current, column];
+      return actions.setGroupColumns(base, resolvedAlias, next);
+    });
   }
 
   async deleteNode(alias: string) {

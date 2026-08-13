@@ -176,6 +176,18 @@ const synthetic = (text: string, kind: SegmentKind, owner: string | null): Segme
  * `text: null` removes it. Insertion point is right after the last existing
  * segment owned by `ownerAlias` (so repeated upserts on the same node stack
  * in a stable order instead of drifting toward the end of the expression).
+ *
+ * Scans within the pre-checkpoint body only (see splitTrailingCheckpoints),
+ * not the raw segment list - `assignOwners` gives a trailing group:/limit:
+ * the *same* owner as whatever table alias was current when it was written
+ * (it inherits, same as every non-table/from segment), so on the table that
+ * happens to be current, the naive "last segment owned by this alias" scan
+ * found the checkpoint itself and inserted right after it. Found live: add a
+ * `where:` on the same node a `group:` was just set on - the new condition
+ * landed after `group:` instead of before it, same class of bug as
+ * appendTableSegment's (pass 16) but here regardless of which alias the
+ * gesture targets, since a checkpoint's inherited owner is real ownership as
+ * far as this scan is concerned.
  */
 export const upsertOwnedSegment = (
   segments: Segment[],
@@ -183,26 +195,46 @@ export const upsertOwnedSegment = (
   kind: SegmentKind,
   text: string | null,
 ): Segment[] => {
-  const next = [...segments];
-  const idx = next.findIndex(s => s.owner === ownerAlias && s.kind === kind);
+  const { body, checkpoints } = splitTrailingCheckpoints(segments);
+  const idx = body.findIndex(s => s.owner === ownerAlias && s.kind === kind);
   if (idx >= 0) {
     if (text === null) {
-      next.splice(idx, 1);
+      body.splice(idx, 1);
     } else {
-      next[idx] = { ...next[idx], text };
+      body[idx] = { ...body[idx], text };
     }
-    return next;
+    return [...body, ...checkpoints];
   }
-  if (text === null) return next; // nothing to remove
-  let insertAt = next.length;
-  for (let i = next.length - 1; i >= 0; i--) {
-    if (next[i].owner === ownerAlias) {
+  if (text === null) return [...body, ...checkpoints]; // nothing to remove
+  let insertAt = body.length;
+  for (let i = body.length - 1; i >= 0; i--) {
+    if (body[i].owner === ownerAlias) {
       insertAt = i + 1;
       break;
     }
   }
-  next.splice(insertAt, 0, synthetic(text, kind, ownerAlias));
-  return next;
+  body.splice(insertAt, 0, synthetic(text, kind, ownerAlias));
+  return [...body, ...checkpoints];
+};
+
+const CHECKPOINT_KINDS: SegmentKind[] = ['group', 'limit'];
+
+/**
+ * Split off a trailing run of group:/limit: segments - both are pine-lang
+ * "checkpoint" operations that seal the pipeline's current output shape
+ * (src/pine/ast/main.clj's `checkpoint-op-types`), so nothing can validly
+ * follow one in the same block - not a new table/join, not a hint probe.
+ * Both are always appended at the literal end (see setGroupColumns/
+ * setLimit in pine-actions.ts), so popping a trailing run off the end is
+ * enough; nothing earlier in the list needs checking.
+ */
+export const splitTrailingCheckpoints = (segments: Segment[]): { body: Segment[]; checkpoints: Segment[] } => {
+  const body = [...segments];
+  const checkpoints: Segment[] = [];
+  while (body.length && CHECKPOINT_KINDS.includes(body[body.length - 1].kind)) {
+    checkpoints.unshift(body.pop()!);
+  }
+  return { body, checkpoints };
 };
 
 /**
@@ -210,6 +242,12 @@ export const upsertOwnedSegment = (
  * reaches back to a node that is not already the current one - `from:` is a
  * context reset, not a join construct (see the plan doc); the common case
  * (joining from the node that's already current) omits it entirely.
+ *
+ * Inserted before any trailing group:/limit:, not after - a table/join op
+ * can never legally follow a checkpoint, so appending at the *literal* end
+ * would land the new join after an already-set group/limit instead of
+ * extending the graph. (Found live: group a node, then join another table -
+ * the new table's op ended up after `group:` in the committed text.)
  */
 export const appendTableSegment = (
   segments: Segment[],
@@ -222,7 +260,8 @@ export const appendTableSegment = (
     additions.push(synthetic(`from: ${fromAlias}`, 'from', fromAlias));
   }
   additions.push(synthetic(`${hintPine} as ${alias}`, 'table', alias));
-  return [...segments, ...additions];
+  const { body, checkpoints } = splitTrailingCheckpoints(segments);
+  return [...body, ...additions, ...checkpoints];
 };
 
 /**

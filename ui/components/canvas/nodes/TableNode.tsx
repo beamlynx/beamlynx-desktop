@@ -338,6 +338,12 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
           testId={`action-order-${data.alias}`}
           onClick={anchor => canvasStore.openColumnPicker('order', data.alias, anchor)}
         />
+        <ActionDivider />
+        <ActionButton
+          label="group"
+          testId={`action-group-${data.alias}`}
+          onClick={anchor => canvasStore.openColumnPicker('group', data.alias, anchor)}
+        />
       </div>
 
       {/* Identity - the outer wrapper here is the positioning context for the
@@ -473,6 +479,11 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
         label="order"
         chips={data.orderChips}
         onRemove={i => void canvasStore.removeOrderAt(data.alias, i)}
+      />
+      <ChipRow
+        label="group"
+        chips={data.groupChips}
+        onRemove={i => void canvasStore.toggleGroupColumn(data.alias, data.groupChips[i])}
       />
     </div>
   );

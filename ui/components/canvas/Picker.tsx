@@ -129,13 +129,14 @@ const Picker: React.FC = observer(() => {
   // Computed unconditionally (rather than after the where-value early
   // return below) so `flatItems` can already sink selected columns to the
   // bottom - keyboard nav and the rendered rows must agree on one order.
-  // Covers 'select' and 'order' - the two picker kinds that stay open for
-  // repeat picks and therefore need "already picked" reflected in the list.
+  // Covers 'select', 'order' and 'group' - the picker kinds that stay open
+  // for repeat picks and therefore need "already picked" reflected in the
+  // list.
   let selectedColumns: string[] = [];
   if (
     picker.open &&
     picker.mode === 'list' &&
-    (picker.request.kind === 'select' || picker.request.kind === 'order')
+    (picker.request.kind === 'select' || picker.request.kind === 'order' || picker.request.kind === 'group')
   ) {
     const alias = picker.request.alias;
     const kind = picker.request.kind;
@@ -145,7 +146,9 @@ const Picker: React.FC = observer(() => {
     selectedColumns =
       kind === 'select'
         ? node?.data.selectColumns ?? []
-        : (node?.data.orderChips ?? []).map(chip => chip.replace(/\s+(asc|desc)$/i, ''));
+        : kind === 'group'
+          ? node?.data.groupChips ?? []
+          : (node?.data.orderChips ?? []).map(chip => chip.replace(/\s+(asc|desc)$/i, ''));
   }
 
   const flatItems: PickerItem[] =
@@ -266,12 +269,15 @@ const Picker: React.FC = observer(() => {
         return;
       case 'select':
       case 'order':
-        // Unlike join/where, these two stay open for repeat picks - leaving
+      case 'group':
+        // Unlike join/where, these three stay open for repeat picks - leaving
         // the just-typed filter in place would hide every other column
         // behind it, so clear it to hand the input back ready for the next.
         void (request.kind === 'select'
           ? store.toggleSelectColumn(request.alias, item.value)
-          : store.toggleOrderColumn(request.alias, item.value));
+          : request.kind === 'order'
+            ? store.toggleOrderColumn(request.alias, item.value)
+            : store.toggleGroupColumn(request.alias, item.value));
         store.setPickerFilter('');
         return;
       case 'where':
@@ -392,7 +398,9 @@ const Picker: React.FC = observer(() => {
                       onMouseEnter={() => setHighlighted(flatIdx)}
                     >
                       <span>
-                        {(picker.request.kind === 'select' || picker.request.kind === 'order') &&
+                        {(picker.request.kind === 'select' ||
+                          picker.request.kind === 'order' ||
+                          picker.request.kind === 'group') &&
                         selectedColumns.includes(item.value)
                           ? '☑ '
                           : ''}

@@ -107,6 +107,9 @@ export type VariableAst = {
 /** An order-by entry - distinct from Column: no `column-alias`/`hidden`, but carries direction. */
 export type OrderColumn = { alias: string; column: string; direction: 'ASC' | 'DESC'; 'operation-index'?: number };
 
+/** A group-by entry (pine-lang's ast/group.clj) - alias/column only, no aggregation info canvas mode needs. */
+export type GroupColumn = { alias: string; column: string; 'operation-index'?: number };
+
 export type Ast = {
   hints: Hints;
   'selected-tables': Table[];
@@ -121,6 +124,7 @@ export type Ast = {
   // and is out of scope to touch; canvas mode casts to OrderColumn[] where it needs `direction`.
   order: Column[];
   where: WhereCondition[];
+  group?: GroupColumn[];
   prettified: string;
   ranges: PineRange[];
   variables?: Record<string, VariableAst>;

@@ -28,13 +28,21 @@ const disabledButtonStyle: React.CSSProperties = {
 /**
  * Appears once 2+ nodes are box/shift-selected (see Canvas.tsx's
  * onSelectionChange). `limit` is fully wired - a pipeline-wide `limit: N`,
- * unrelated to which specific nodes are selected. `assign` and `group`
- * are shown per the requested design but not yet wired to a mutation:
- * `group:` naturally lives on one table's context, and `assign` implies
- * pine's `|=` variable/checkpoint syntax, which needs multi-block support
- * canvas mode doesn't have yet (see the plan doc's scope boundaries) - both
- * need a decision on exact semantics before they do anything real, rather
- * than guessing and shipping the wrong gesture.
+ * unrelated to which specific nodes are selected. `assign` is shown per the
+ * requested design but not yet wired to a mutation - it implies pine's `|=`
+ * variable/checkpoint syntax, which needs multi-block support canvas mode
+ * doesn't have yet (see the plan doc's scope boundaries) - needs a decision
+ * on exact semantics before it does anything real, rather than guessing and
+ * shipping the wrong gesture.
+ *
+ * `group` used to live here too, disabled - removed (commented out below,
+ * not deleted) in favor of a per-node "group" action on TableNode.tsx's own
+ * action bar instead, alongside select/where/order. `group:` is a single
+ * pipeline-wide segment that multiple tables can each contribute columns to
+ * (see pine-actions.ts's getGroupColumns/setGroupColumns), which reads more
+ * naturally as "add this column to grouping" from the node it belongs to,
+ * the same gesture shape as select/where/order, than as a bulk action
+ * requiring a multi-select first.
  */
 const MultiSelectToolbar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasStore }) => {
   const [limitOpen, setLimitOpen] = useState(false);
@@ -98,9 +106,11 @@ const MultiSelectToolbar: React.FC<{ canvasStore: CanvasStore }> = observer(({ c
           limit
         </span>
       )}
+      {/* group moved to a per-node action (TableNode.tsx) - see the comment above.
       <span title="Not implemented yet" style={disabledButtonStyle}>
         group
       </span>
+      */}
     </div>
   );
 });
