@@ -5,6 +5,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-14
+### Added
+- `beamlynx --app-version` prints the installed desktop app's own version and exits, without opening the GUI.
+
 ## [0.2.2] - 2026-08-14
 ### Changed
 - macOS builds are now code-signed and notarized by Apple.
