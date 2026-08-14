@@ -1,5 +1,5 @@
 {
-  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. Pinned to commit SHAs, not a branch name, as of 0.1.9 -- a branch pin silently picks up whatever that branch's HEAD is at tag-push time, which twice produced a release missing work that had already been committed to the branch but not accounted for when the tag was cut. A SHA pin makes exactly what's bundled explicit and reviewable in this file's own diff. pine-lang bumped to its tagged 0.37.3 (checkpoint-feeding-terminal-group CTE fix). beamlynx-ui bumped to its tagged 0.47.0 (lazy per-tab database connections, connection-picker fixes).",
-  "pineLangRef": "0.37.3",
-  "beamlynxUiRef": "0.47.0"
+  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. Pinned to commit SHAs, not a branch name, as of 0.1.9 -- a branch pin silently picks up whatever that branch's HEAD is at tag-push time, which twice produced a release missing work that had already been committed to the branch but not accounted for when the tag was cut. A SHA pin makes exactly what's bundled explicit and reviewable in this file's own diff. pine-lang bumped to master's 0.38.1 (exposes group-by columns in the build response) -- pinned by SHA rather than a tag since pine-lang's own release process doesn't tag releases. beamlynx-ui bumped to its tagged 0.48.0 (experimental interactive view, unified visual design).",
+  "pineLangRef": "1b88b5fe4c9b3e9c0ef1e3f3b25024cc152b2fab",
+  "beamlynxUiRef": "0.48.0"
 }
