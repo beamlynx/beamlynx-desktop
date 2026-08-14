@@ -15,6 +15,26 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.48.0',
+    date: '2026-08-13',
+    breaking: [
+      {
+        description: 'Requires pine-lang 0.38.1 or later.',
+      },
+    ],
+    added: [
+      {
+        description:
+          'An experimental interactive view for building Pine queries by clicking through tables in a graph instead of writing text -- toggle it from the header, next to the version number.',
+      },
+    ],
+    changed: [
+      {
+        description: 'Unified the app\'s visual design (the "schematic/blueprint" look) across the whole app.',
+      },
+    ],
+  },
+  {
     version: '0.47.0',
     date: '2026-08-09',
     changed: [
@@ -1107,4 +1127,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.47.0';
+export const LATEST_VERSION = '0.48.0';

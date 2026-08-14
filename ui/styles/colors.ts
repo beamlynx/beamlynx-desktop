@@ -1,79 +1,161 @@
+// The base/shared tokens below (background, text, border, primary, node-*)
+// used to hold their own generic dark-IDE palette, independent of canvas
+// mode's "schematic/blueprint" identity (--canvas-* further down) - meaning
+// only canvas mode had a real designed identity, and everything else (the
+// results grid, editors, tabs, the classic graph, modals, command palette)
+// still looked like a generic MUI dark theme. They're now literal duplicates
+// of the matching --canvas-* values, so the entire app shares one palette
+// from a single conceptual source of truth (--canvas-* below).
+//
+// Literal duplicates, not `var(--canvas-*)` references: styles/theme.ts reads
+// a handful of these (`--primary-color`, `--background-color`, `--node-
+// column-bg`, `--text-color`, `--node-secondary-text-color`) back as plain JS
+// strings to build MUI's palette, and MUI's `createTheme` runs actual color
+// math on `palette.primary.main` (via `augmentColor`/`darken`/`lighten`) to
+// derive `light`/`dark`/`contrastText` - confirmed live that a `var(...)`
+// string there throws ("MUI: Unsupported `var(--canvas-trace)` color") since
+// that math needs a real parseable color, not a CSS custom property
+// reference resolved later by the browser. Every token below is therefore
+// safe to read from either JS or CSS.
+//
+// Tokens with their own real distinct meaning (--node-candidate-*/--node-
+// suggested-*/--node-variable-* - the classic graph's suggestion/candidate/
+// checkpoint states) keep their own values, updated to *fit* the blueprint
+// palette rather than clash with it.
 export const lightColors = {
-  '--background-color': '#ffffff',
-  '--text-color': '#333333',
-  '--border-color': '#d3d3d3',
-  '--focus-border-color': 'rgb(25, 118, 210)',
-  '--text-primary-color': '#333333',
-  '--text-warning-color': '#333333',
-  '--icon-color': '#9e9e9e',
+  '--background-color': '#eef4fa',
+  '--text-color': '#0f2337',
+  '--border-color': '#9fc0dc',
+  '--focus-border-color': '#1c6fa8',
+  '--text-primary-color': '#0f2337',
+  '--text-warning-color': '#c1484c',
+  '--icon-color': '#4d6d85',
   '--icon-color-highlight': '#4caf50',
-  '--primary-color': '#1976d2',
-  '--primary-color-hover': '#1565c0',
+  '--primary-color': '#1c6fa8',
+  '--primary-color-hover': '#1c6fa8',
   '--primary-text-color': '#ffffff',
-  '--notification-color': '#e08e3d',
-  '--graph-background': '#ffffff',
-  '--component-border-color': '#d3d3d3',
-  '--divider-color': '#808080',
-  '--node-bg': '#d3d3d3',
-  '--node-border': '#000000',
-  '--node-text-color': '#000000',
-  '--node-secondary-text-color': '#000000',
-  '--node-handle-bg': '#a9a9a9',
-  '--node-schema-bg': '#ffffff',
-  '--node-schema-text-color': '#000000',
-  '--node-order-bg': '#800000',
+  '--notification-color': '#c97a12',
+  '--graph-background': '#eef4fa',
+  '--component-border-color': '#9fc0dc',
+  '--divider-color': '#9fc0dc',
+  '--node-bg': '#ffffff',
+  '--node-border': '#9fc0dc',
+  '--node-text-color': '#0f2337',
+  '--node-secondary-text-color': '#4d6d85',
+  '--node-handle-bg': '#5c86a8',
+  '--node-schema-bg': '#e3edf6',
+  '--node-schema-text-color': '#0f2337',
+  '--node-order-bg': '#1c6fa8',
   '--node-order-text-color': '#ffffff',
-  '--node-column-bg': '#f0f0f0',
-  '--node-column-border': '#dddddd',
-  '--node-column-text-color': '#000000',
-  '--node-candidate-column-border': '#f39c12',
-  '--node-candidate-column-text-color': '#666666',
+  '--node-column-bg': '#e3edf6',
+  '--node-column-border': '#b7d0e4',
+  '--node-column-text-color': '#0f2337',
+  '--node-candidate-column-border': '#c97a12',
+  '--node-candidate-column-text-color': '#4d6d85',
   '--node-candidate-container-bg': 'transparent',
-  '--node-candidate-container-border': '#eeeeee',
-  '--node-operation-label-color': '#666666',
+  '--node-candidate-container-border': '#9fc0dc',
+  '--node-operation-label-color': '#4d6d85',
   '--node-suggested-bg': '#ffffff',
-  '--node-suggested-border': '#ffa500',
-  '--node-candidate-bg': '#FFD700',
-  '--node-candidate-border': '#ffa500',
-  '--node-candidate-text-color': '#000000',
+  '--node-suggested-border': '#9fc0dc',
+  '--node-candidate-bg': '#dbeeff',
+  '--node-candidate-border': '#1c6fa8',
+  '--node-candidate-text-color': '#0f2337',
+  // The classic graph's checkpoint/variable (`|=`) nodes - a genuinely
+  // distinct concept (a saved reference, not a table), so it keeps its own
+  // accent rather than blending into the trace/cyan language everywhere
+  // else, the same way canvas mode keeps destructive red separate from its
+  // accent cyan. Previously undefined here entirely - VariableNodeComponent
+  // referenced these exact var() names with inline fallback defaults
+  // (`var(--node-variable-border, #7c5cbf)`), so both themes silently used
+  // the same hardcoded violet regardless of light/dark.
+  '--node-variable-border': '#7c5cbf',
+  '--node-variable-bg': 'rgba(124, 92, 191, 0.08)',
+  '--node-variable-label-color': '#5b3f99',
+
+  // Canvas mode's own palette ("schematic/blueprint" - see the plan doc's
+  // follow-up pass 7), now the app's shared identity (follow-up pass 10) -
+  // every token above is a literal duplicate of the matching value here (see
+  // the file-level comment for why duplicates rather than var() references).
+  '--canvas-bg': '#eef4fa',
+  '--canvas-grid-dot': '#c8dced',
+  '--canvas-node-bg': '#ffffff',
+  '--canvas-node-bg-current': '#dbeeff',
+  '--canvas-node-border': '#9fc0dc',
+  '--canvas-node-border-current': '#1c6fa8',
+  '--canvas-trace': '#1c6fa8',
+  '--canvas-trace-uncertain': '#6a93ad',
+  '--canvas-trace-unresolved': '#c97a12',
+  '--canvas-warn': '#c1484c',
+  '--canvas-pin': '#5c86a8',
+  '--canvas-text': '#0f2337',
+  '--canvas-text-dim': '#4d6d85',
+  '--canvas-accent-text': '#ffffff',
+  '--canvas-chip-bg': '#e3edf6',
+  '--canvas-chip-border': '#b7d0e4',
+  '--canvas-picker-bg': '#ffffff',
+  '--canvas-picker-border': '#9fc0dc',
 };
 
 export const darkColors = {
-  '--background-color': '#21252b',
-  '--text-color': '#abb2bf',
-  '--border-color': '#4b5263',
-  '--focus-border-color': '#61afef',
-  '--text-primary-color': '#abb2bf',
-  '--text-warning-color': '#e06c75',
-  '--icon-color': '#5c6370',
+  '--background-color': '#0a1826',
+  '--text-color': '#dbeeff',
+  '--border-color': '#2c5578',
+  '--focus-border-color': '#4fd1ff',
+  '--text-primary-color': '#dbeeff',
+  '--text-warning-color': '#e0575b',
+  '--icon-color': '#7ba3c2',
   '--icon-color-highlight': '#98c379',
-  '--primary-color': '#61afef',
-  '--primary-color-hover': '#528bff',
-  '--primary-text-color': '#282c34',
-  '--notification-color': '#e08e3d',
-  '--graph-background': '#21252b',
-  '--component-border-color': '#4b5263',
-  '--divider-color': '#5c6370',
-  '--node-bg': '#4b5263',
-  '--node-border': '#61afef',
-  '--node-text-color': '#d7dce2',
-  '--node-secondary-text-color': '#9ca3af',
-  '--node-handle-bg': '#5c6370',
-  '--node-schema-bg': '#282c34',
-  '--node-schema-text-color': '#d7dce2',
-  '--node-order-bg': '#e06c75',
-  '--node-order-text-color': '#282c34',
-  '--node-column-bg': '#282c34',
-  '--node-column-border': '#5c6370',
-  '--node-column-text-color': '#d7dce2',
-  '--node-candidate-column-border': '#f39c12',
-  '--node-candidate-column-text-color': '#abb2bf',
+  '--primary-color': '#4fd1ff',
+  '--primary-color-hover': '#4fd1ff',
+  '--primary-text-color': '#0a1826',
+  '--notification-color': '#f5a623',
+  '--graph-background': '#0a1826',
+  '--component-border-color': '#2c5578',
+  '--divider-color': '#2c5578',
+  '--node-bg': '#0f2337',
+  '--node-border': '#2c5578',
+  '--node-text-color': '#dbeeff',
+  '--node-secondary-text-color': '#7ba3c2',
+  '--node-handle-bg': '#5c86a8',
+  '--node-schema-bg': '#132a41',
+  '--node-schema-text-color': '#dbeeff',
+  '--node-order-bg': '#4fd1ff',
+  '--node-order-text-color': '#0a1826',
+  '--node-column-bg': '#132a41',
+  '--node-column-border': '#28577c',
+  '--node-column-text-color': '#dbeeff',
+  '--node-candidate-column-border': '#f5a623',
+  '--node-candidate-column-text-color': '#7ba3c2',
   '--node-candidate-container-bg': 'transparent',
-  '--node-candidate-container-border': '#4b5263',
-  '--node-operation-label-color': '#9ca3af',
-  '--node-suggested-bg': '#4b5263',
-  '--node-suggested-border': '#f39c12',
-  '--node-candidate-bg': '#61afef',
-  '--node-candidate-border': '#61afef',
-  '--node-candidate-text-color': '#1a1a1a',
-}; 
+  '--node-candidate-container-border': '#2c5578',
+  '--node-operation-label-color': '#7ba3c2',
+  '--node-suggested-bg': '#0f2337',
+  '--node-suggested-border': '#2c5578',
+  '--node-candidate-bg': '#123554',
+  '--node-candidate-border': '#4fd1ff',
+  '--node-candidate-text-color': '#dbeeff',
+  '--node-variable-border': '#9b7fd4',
+  '--node-variable-bg': 'rgba(155, 127, 212, 0.12)',
+  '--node-variable-label-color': '#c3aef0',
+
+  // Canvas mode's own palette ("schematic/blueprint") - see the light
+  // palette's matching comment above.
+  '--canvas-bg': '#0a1826',
+  '--canvas-grid-dot': '#1c3b57',
+  '--canvas-node-bg': '#0f2337',
+  '--canvas-node-bg-current': '#123554',
+  '--canvas-node-border': '#2c5578',
+  '--canvas-node-border-current': '#4fd1ff',
+  '--canvas-trace': '#4fd1ff',
+  '--canvas-trace-uncertain': '#7fb8d6',
+  '--canvas-trace-unresolved': '#f5a623',
+  '--canvas-warn': '#e0575b',
+  '--canvas-pin': '#5c86a8',
+  '--canvas-text': '#dbeeff',
+  '--canvas-text-dim': '#7ba3c2',
+  '--canvas-accent-text': '#0a1826',
+  '--canvas-chip-bg': '#132a41',
+  '--canvas-chip-border': '#28577c',
+  '--canvas-picker-bg': '#0f2337',
+  '--canvas-picker-border': '#2c5578',
+};

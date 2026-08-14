@@ -179,8 +179,8 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId, containerRef }) => {
         style={{
           padding: '8px 12px',
           fontSize: '12px',
-          fontFamily: 'monospace',
-          color: 'gray',
+          fontFamily: 'var(--canvas-font)',
+          color: 'var(--canvas-text-dim)',
         }}
       >
         SQL mode enabled. You can edit the SQL query directly in the input.

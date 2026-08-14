@@ -154,6 +154,20 @@ export class GlobalStore {
     setUserPreference(STORAGE_KEYS.PINE_TABLE_COLORS, value);
   }
 
+  // Canvas mode - global (like theme), not per-session: every tab's "graph"
+  // view shows the experimental canvas instead of the classic node graph
+  // while this is on, rather than each session remembering its own choice.
+  _canvasModeEnabled: boolean;
+
+  get canvasModeEnabled(): boolean {
+    return this._canvasModeEnabled;
+  }
+
+  set canvasModeEnabled(value: boolean) {
+    this._canvasModeEnabled = value;
+    setUserPreference(STORAGE_KEYS.CANVAS_MODE, value);
+  }
+
   // User
   email = '';
   domain = '';
@@ -216,6 +230,7 @@ export class GlobalStore {
     this._theme = getUserPreference(STORAGE_KEYS.THEME, 'dark');
     this._forceCompactMode = getUserPreference(STORAGE_KEYS.FORCE_COMPACT_MODE, false);
     this._pineTableColorsEnabled = getUserPreference(STORAGE_KEYS.PINE_TABLE_COLORS, false);
+    this._canvasModeEnabled = getUserPreference(STORAGE_KEYS.CANVAS_MODE, false);
     this._onboardingServer = getUserPreference(STORAGE_KEYS.ONBOARDING_SERVER, false);
     this._commandHistory = getUserPreference(STORAGE_KEYS.COMMAND_HISTORY, []);
     this.connectionColors = getUserPreference(STORAGE_KEYS.CONNECTION_COLORS, {});
@@ -300,10 +315,49 @@ export class GlobalStore {
 
     persisted.sessions.forEach((persistedSession, index) => {
       const session = this.createSessionUsingId(String(index));
-      session.expression = persistedSession.expression ?? '';
-      session.inputMode = persistedSession.inputMode === 'sql' ? 'sql' : 'pine';
-      session.connectionId = persistedSession.connectionId ?? '';
-      session.profileId = persistedSession.profileId ?? '';
+      const expression = persistedSession.expression ?? '';
+      runInAction(() => {
+        session.expression = expression;
+        session.inputMode = persistedSession.inputMode === 'sql' ? 'sql' : 'pine';
+        session.connectionId = persistedSession.connectionId ?? '';
+        session.profileId = persistedSession.profileId ?? '';
+      });
+      // `new Session()` (inside createSessionUsingId, just above) wires up its
+      // own expression -> build reaction *while this whole forEach is still
+      // one in-flight action* (restoreSessions is itself an auto-actioned
+      // method, per makeAutoObservable on GlobalStore) - a reaction created
+      // mid-action defers its first tracked read until the action fully
+      // unwinds, so that first read already sees `expression` set to
+      // `persistedSession.expression` above, not the `''` the field started
+      // at. No "before -> after" transition is ever observed, so the
+      // reaction's effect (the debounced /build call) never fires - ast stays
+      // null forever, and canvas mode's "not parsing" placeholder is the
+      // visible symptom (confirmed live: zero /build requests fire for a
+      // restored session, vs. two for the same expression entered by hand).
+      //
+      // Forcing it via a bare `setTimeout(0)` (an earlier version of this
+      // fix) fires it far too early against a cold-started backend - the
+      // desktop app's bundled pine-lang process can take real time to start
+      // accepting connections, and `client.build` doesn't wait for that; it
+      // just fails ("Failed to fetch"), same silent-no-retry problem as
+      // before, just with a network error this time instead of an unfired
+      // reaction. So wait on the real readiness signal (`pineConnected`,
+      // already tracked for reconnecting the active tab below) rather than
+      // guessing a delay - `fireImmediately` covers the case where pine is
+      // already up by the time this subscribes (a fast/local connection),
+      // and the reaction disposes itself right after firing once, since this
+      // is only ever needed for the one build that never happened.
+      if (expression.trim() !== '') {
+        const disposeOnceConnected = reaction(
+          () => this.pineConnected,
+          connected => {
+            if (!connected) return;
+            session.requestHints();
+            disposeOnceConnected();
+          },
+          { fireImmediately: true },
+        );
+      }
     });
 
     const ids = Object.keys(this.sessions);
@@ -524,6 +578,10 @@ export class GlobalStore {
 
   public toggleCompactMode() {
     this.forceCompactMode = !this.forceCompactMode;
+  }
+
+  public toggleCanvasMode() {
+    this.canvasModeEnabled = !this.canvasModeEnabled;
   }
 
   public togglePineTableColors() {

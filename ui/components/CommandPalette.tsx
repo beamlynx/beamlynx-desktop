@@ -242,6 +242,7 @@ const CommandPalette = observer(() => {
               backgroundColor: 'var(--node-column-bg)',
               borderRadius: '4px 4px 0 0', // Match search box border radius (4px at top)
               fontSize: '0.875rem', // Match button text size
+              fontFamily: 'var(--canvas-font)',
             },
             '& .MuiInputBase-input': {
               fontSize: '0.875rem', // Match button text size
@@ -339,6 +340,7 @@ const CommandPalette = observer(() => {
                             color: 'inherit',
                             fontWeight: isSelected ? 500 : 400,
                             fontSize: '0.875rem',
+                            fontFamily: 'var(--canvas-font)',
                           }}
                         >
                           {option.label}
@@ -353,7 +355,7 @@ const CommandPalette = observer(() => {
                               backgroundColor: option.schemaColor,
                               color: '#000000',
                               border: 'none',
-                              fontFamily: 'monospace',
+                              fontFamily: 'var(--canvas-font)',
                             }}
                           />
                         )}
@@ -432,6 +434,7 @@ const CommandPalette = observer(() => {
                                 color: 'inherit',
                                 fontWeight: isSelected ? 500 : 400,
                                 fontSize: '0.875rem', // Match button text size
+                                fontFamily: 'var(--canvas-font)',
                               },
                             }}
                           />
@@ -452,7 +455,7 @@ const CommandPalette = observer(() => {
                                 borderColor: isSelected
                                   ? 'rgba(255, 255, 255, 0.3)'
                                   : 'var(--border-color)',
-                                fontFamily: 'monospace',
+                                fontFamily: 'var(--canvas-font)',
                               }}
                             />
                           )}
@@ -537,6 +540,7 @@ const CommandPalette = observer(() => {
                                   color: 'inherit',
                                   fontWeight: isSelected ? 500 : 400,
                                   fontSize: '0.875rem', // Match button text size
+                                  fontFamily: 'var(--canvas-font)',
                                 },
                               }}
                             />
@@ -557,7 +561,7 @@ const CommandPalette = observer(() => {
                                   borderColor: isSelected
                                     ? 'rgba(255, 255, 255, 0.3)'
                                     : 'var(--border-color)',
-                                  fontFamily: 'monospace',
+                                  fontFamily: 'var(--canvas-font)',
                                 }}
                               />
                             )}

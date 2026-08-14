@@ -82,13 +82,17 @@ const ConnectionsListModal = observer(() => {
             mb: 1,
           }}
         >
-          <Typography variant="h6" component="h2" sx={{ color: 'var(--text-color)', fontWeight: 500 }}>
+          <Typography
+            variant="h6"
+            component="h2"
+            sx={{ color: 'var(--text-color)', fontWeight: 500, fontFamily: 'var(--canvas-font)' }}
+          >
             Database Connections
           </Typography>
           <IconButton
             onClick={handleClose}
             size="small"
-            sx={{ color: 'var(--text-color)', '&:hover': { backgroundColor: 'var(--hover-color)' } }}
+            sx={{ color: 'var(--text-color)', '&:hover': { backgroundColor: 'var(--canvas-chip-bg)' } }}
           >
             <Close fontSize="small" />
           </IconButton>
@@ -96,7 +100,10 @@ const ConnectionsListModal = observer(() => {
 
         <List sx={{ py: 0 }}>
           {global.connections.length === 0 && (
-            <Typography variant="body2" sx={{ color: 'var(--text-color)', opacity: 0.7, py: 1 }}>
+            <Typography
+              variant="body2"
+              sx={{ color: 'var(--text-color)', opacity: 0.7, py: 1, fontFamily: 'var(--canvas-font)' }}
+            >
               No connections yet.
             </Typography>
           )}
@@ -124,7 +131,9 @@ const ConnectionsListModal = observer(() => {
                 />
                 <ListItemText
                   primary={label}
-                  primaryTypographyProps={{ sx: { color: 'var(--text-color)', fontSize: '0.85rem' } }}
+                  primaryTypographyProps={{
+                    sx: { color: 'var(--text-color)', fontSize: '0.85rem', fontFamily: 'var(--canvas-font)' },
+                  }}
                 />
                 {isActive && <CheckIcon sx={{ fontSize: 16, opacity: 0.7, color: 'var(--text-color)' }} />}
               </ListItemButton>
@@ -137,7 +146,9 @@ const ConnectionsListModal = observer(() => {
         <ListItemButton onClick={handleAddNew} sx={{ borderRadius: 1 }}>
           <ListItemText
             primary="Add new connection…"
-            primaryTypographyProps={{ sx: { color: 'var(--text-color)', fontSize: '0.85rem' } }}
+            primaryTypographyProps={{
+              sx: { color: 'var(--text-color)', fontSize: '0.85rem', fontFamily: 'var(--canvas-font)' },
+            }}
           />
         </ListItemButton>
       </Box>

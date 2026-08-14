@@ -12,9 +12,11 @@ import {
 import { getUserPreference, STORAGE_KEYS } from '../store/preferences';
 import { ResizableDivider, ResizableHorizontalDivider } from './ResizableDividers';
 import { Mode, Session as SessionType } from '../store/session';
+import { GlobalStore } from '../store/global.store';
 import { useStores } from '../store/store-container';
 import { Documentation } from './docs/docs';
 import GraphBox from './Graph.box';
+import Canvas from './canvas/Canvas';
 import Input from './Input';
 import { Monitor } from './Monitor';
 import Query from './Query';
@@ -97,48 +99,71 @@ const Sidebar = ({
   );
 };
 
-const MainView = ({
-  sessionId,
-  mode,
-  input,
-  height,
-}: {
-  sessionId: string;
-  mode: Mode;
-  input: boolean;
-  height: string;
-}) => {
-  return (
-    <Box sx={{ flex: 1, minHeight: 0, height: '100%' }}>
-      {(() => {
-        switch (mode) {
-          case 'monitor':
-            return <Monitor sessionId={sessionId} height={height} />;
-          case 'result':
-            return <Result sessionId={sessionId} />;
-          case 'graph':
-            return (
-              <Box
-                className={input ? 'unfocussed' : 'focussed'}
-                sx={{
-                  borderRadius: 1,
-                  height,
-                  overflow: 'hidden',
-                  backgroundColor: 'var(--graph-background)',
-                }}
-              >
-                <GraphBox sessionId={sessionId} />
-              </Box>
-            );
-          case 'documentation':
-          // intentional fall through
-          default:
-            return Documentation;
-        }
-      })()}
-    </Box>
-  );
-};
+// Reads global.canvasModeEnabled directly (rather than only receiving
+// pre-computed booleans as props) - must be its own observer, not just a
+// plain function called from Session's render. MobX only establishes a
+// reactive subscription where a tracked observable is actually *read*;
+// passing the `global` store reference down as a prop doesn't count as a
+// read, so without this, toggling canvas mode updated the store (confirmed:
+// localStorage changed) but nothing on screen ever re-rendered to reflect it.
+const MainView = observer(
+  ({
+    sessionId,
+    mode,
+    input,
+    height,
+    global,
+  }: {
+    sessionId: string;
+    mode: Mode;
+    input: boolean;
+    height: string;
+    global: GlobalStore;
+  }) => {
+    return (
+      <Box sx={{ flex: 1, minHeight: 0, height: '100%' }}>
+        {(() => {
+          switch (mode) {
+            case 'monitor':
+              return <Monitor sessionId={sessionId} height={height} />;
+            case 'result':
+              return <Result sessionId={sessionId} />;
+            case 'graph':
+            case 'documentation':
+              // 'documentation' is just "nothing typed yet" (see store/session.ts) - normally
+              // that means show the intro docs, since the classic graph has nothing to draw for
+              // an empty expression either. Canvas mode is the exception: its start node ("pick
+              // a table") *is* the meaningful empty state, so canvas stays on screen instead of
+              // being replaced by the intro the moment the expression is cleared.
+              if (mode === 'documentation' && !global.canvasModeEnabled) {
+                return Documentation;
+              }
+              return (
+                <Box
+                  className={input ? 'unfocussed' : 'focussed'}
+                  sx={{
+                    position: 'relative',
+                    borderRadius: 1,
+                    height,
+                    overflow: 'hidden',
+                    backgroundColor: 'var(--graph-background)',
+                  }}
+                >
+                  {global.canvasModeEnabled ? (
+                    <Canvas sessionId={sessionId} />
+                  ) : (
+                    <GraphBox sessionId={sessionId} />
+                  )}
+                </Box>
+              );
+            default:
+              return Documentation;
+          }
+        })()}
+      </Box>
+    );
+  },
+);
 
 const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
   const { global } = useStores();
@@ -182,7 +207,15 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
                 session.error ? (
                   <ErrorMessage />
                 ) : session.mode === 'result' ? (
-                  <GraphBox sessionId={sessionId} />
+                  // This mini graph preview (shown while the main panel is
+                  // displaying results, not the query) was hardcoded to the
+                  // classic graph regardless of the interactive-view
+                  // preference - the one place that preference didn't reach.
+                  global.canvasModeEnabled ? (
+                    <Canvas sessionId={sessionId} />
+                  ) : (
+                    <GraphBox sessionId={sessionId} />
+                  )
                 ) : (
                   <Query sessionId={sessionId} />
                 )
@@ -193,13 +226,18 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
             <ResizableDivider sidebarWidth={sidebarWidth} setSidebarWidth={setSidebarWidth} />
           </Grid>
 
-          <Grid item style={{ width: `calc(100% - ${sidebarWidth}px)`, minHeight: 0 }} sx={{ display: 'flex', flexDirection: 'column' }}>
+          <Grid
+            item
+            style={{ width: `calc(100% - ${sidebarWidth}px)`, minHeight: 0 }}
+            sx={{ display: 'flex', flexDirection: 'column' }}
+          >
             {
               <MainView
                 sessionId={sessionId}
                 mode={session.mode}
                 input={session.textInputFocused}
                 height={getTabHeight()}
+                global={global}
               />
             }
           </Grid>
@@ -217,6 +255,7 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
                 mode={session.mode}
                 input={session.textInputFocused}
                 height={`${secondViewHeight}px`}
+                global={global}
               />
             }
             secondViewHeight={secondViewHeight}

@@ -4,7 +4,6 @@ import {
   startCompletion,
 } from '@codemirror/autocomplete';
 import { Prec } from '@codemirror/state';
-import { oneDark } from '@codemirror/theme-one-dark';
 import { EditorView, keymap } from '@codemirror/view';
 import { vim } from '@replit/codemirror-vim';
 import CodeMirror, { ReactCodeMirrorRef } from '@uiw/react-codemirror';
@@ -14,6 +13,7 @@ import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Session } from '../store/session';
 import { shouldShowTableColors } from '../store/table-colors.util';
 import { useStores } from '../store/store-container';
+import { editorChrome, editorDarkSyntax } from './editor-theme';
 import { createPineAutocompletion } from './pine-autocomplete';
 import { pineLanguage } from './pine-language';
 import { tableColorDecoration } from './table-colors';
@@ -236,6 +236,8 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
   const extensions = useMemo(() => {
     const exts = [
       pineLanguage,
+      editorChrome(isDark),
+      ...(isDark ? [editorDarkSyntax] : []),
       autocompletionExtension,
       cursorUpdateExtension,
       ...tableColorExtension,
@@ -336,6 +338,7 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
     // on session alone would never re-run this memo when vim mode is toggled.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    isDark,
     autocompletionExtension,
     cursorUpdateExtension,
     tableColorExtension,
@@ -363,7 +366,11 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
       id="input"
       value={initialValueRef.current}
       height="100%"
-      theme={global.theme === 'dark' ? oneDark : 'light'}
+      // Chrome (background/gutters/selection/cursor) comes entirely from
+      // `editorChrome` in the extensions array now, not a borrowed
+      // third-party theme - `theme="none"` skips @uiw/react-codemirror's own
+      // built-in 'light'/oneDark bundles instead of layering under them.
+      theme="none"
       extensions={extensions}
       onCreateEditor={onCreateEditor}
       onFocus={() => {

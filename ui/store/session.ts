@@ -39,6 +39,9 @@ function findActiveBlock(blocks: ExpressionBlock[], cursorLine: number): number 
   return blocks.length - 1;
 }
 
+// Canvas is not a distinct mode here - it's a global preference
+// (global.canvasModeEnabled) that decides what the 'graph' mode renders,
+// same session-mode value either way. See components/Session.tsx's MainView.
 export type Mode = 'documentation' | 'graph' | 'result' | 'monitor';
 
 export type Theme = 'light' | 'dark';

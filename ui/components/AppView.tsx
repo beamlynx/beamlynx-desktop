@@ -22,6 +22,76 @@ import { useGlobalKeybindings } from '../hooks/useGlobalKeybindings';
 import { LATEST_VERSION } from '../utils/changelog.data';
 import { compare } from 'semver';
 import { getKeybindingDisplayForCommand } from '../utils/keybindings';
+import { GlobalStore } from '../store/global.store';
+
+/**
+ * Previously a corner banner floating over the graph panel itself (see the
+ * plan doc's canvas-mode follow-up passes) - moved into the header, next to
+ * the [Development]/version markers, so it reads as a standing offer from
+ * the app itself rather than something bolted onto one panel. Only the
+ * "come try it" direction is dressed up: it borrows the classic graph's
+ * "candidate" palette (--node-candidate-*), already this app's color for
+ * "here's something you could add". The way back is deliberately plain -
+ * once someone's already in the experiment, there's nothing left to sell.
+ */
+const InteractiveViewToggle = observer(({ global }: { global: GlobalStore }) => {
+  if (global.canvasModeEnabled) {
+    return (
+      <Typography
+        variant="caption"
+        color="gray"
+        onClick={() => global.toggleCanvasMode()}
+        sx={{
+          cursor: 'pointer',
+          whiteSpace: 'nowrap',
+          '&:hover': { color: 'var(--primary-color)', textDecoration: 'underline' },
+        }}
+      >
+        ← Back to legacy view
+      </Typography>
+    );
+  }
+  return (
+    <Box
+      onClick={() => global.toggleCanvasMode()}
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        padding: '3px 10px',
+        borderRadius: 1,
+        cursor: 'pointer',
+        whiteSpace: 'nowrap',
+        fontSize: 12,
+        border: '1px solid var(--node-candidate-border)',
+        background: 'var(--node-candidate-bg)',
+        color: 'var(--node-candidate-text-color)',
+        '&:hover': {
+          borderColor: 'var(--primary-color)',
+        },
+      }}
+    >
+      <Box
+        sx={{
+          width: 6,
+          height: 6,
+          borderRadius: '50%',
+          background: 'var(--primary-color)',
+          flexShrink: 0,
+          animation: 'pulse-dot 2s ease-in-out infinite',
+          '@keyframes pulse-dot': {
+            '0%, 100%': { opacity: 1 },
+            '50%': { opacity: 0.3 },
+          },
+          '@media (prefers-reduced-motion: reduce)': {
+            animation: 'none',
+          },
+        }}
+      />
+      Switch to interactive view (experimental)
+    </Box>
+  );
+});
 
 const AppView = observer(() => {
   const { global } = useStores();
@@ -71,17 +141,19 @@ const AppView = observer(() => {
     return null;
   }
 
-  // Define UserContent inside the component so it can access the state
-  const UserContent =
-    isDevelopment() || isPlayground() || isDesktop() ? (
-      <Typography variant="caption" color="gray">
-        {isDevelopment() ? '[Develoment]' : ''}
-        {isPlayground() ? '[Playground]' : ''}
-        {isDesktop() ? '[Desktop]' : ''}
-      </Typography>
-    ) : (
-      <UserBox />
-    );
+  // Define UserContent inside the component so it can access the state.
+  // isDesktop() still has to gate out UserBox below - desktop ships without
+  // Clerk (see AGENTS.md), so rendering it there would break, not just show
+  // an unwanted label - but the desktop build no longer needs its own badge
+  // to say so, hence rendering nothing rather than an empty caption.
+  const UserContent = isDevelopment() || isPlayground() ? (
+    <Typography variant="caption" color="gray">
+      {isDevelopment() ? '[Development]' : ''}
+      {isPlayground() ? '[Playground]' : ''}
+    </Typography>
+  ) : isDesktop() ? null : (
+    <UserBox />
+  );
 
   if (global.connecting)
     return (
@@ -90,7 +162,14 @@ const AppView = observer(() => {
       </Box>
     );
 
-  if (!global.pineConnected) {
+  // Interactive/canvas mode is an explicit, already-opted-into experiment -
+  // showing it the marketing "Hey there" onboarding (or its "server not
+  // running" sibling) every time pineConnected hasn't caught up yet (e.g. a
+  // session with no saved connection, whose only ping is the background
+  // polling in pages/index.tsx) just blocks the thing the user already chose
+  // to use. Skip straight to the normal app shell instead; Canvas.tsx already
+  // degrades on its own (dimmed graph + banner) when there's nothing to show.
+  if (!global.pineConnected && !global.canvasModeEnabled) {
     if (isPlayground()) {
       return (
         <Box
@@ -206,8 +285,11 @@ const AppView = observer(() => {
               alignItems: 'center',
               justifyContent: 'flex-end',
               gap: 1,
+              flexWrap: 'wrap',
+              rowGap: 0,
             }}
           >
+            <InteractiveViewToggle global={global} />
             {!isDesktop() && (
               <Typography variant="caption" color="gray" component="code">
                 [{global.version ?? 'obsolete'}]
@@ -219,7 +301,11 @@ const AppView = observer(() => {
         </Grid>
       </Grid>
 
-      <Box sx={{ m: 1, mt: 0, mb: 0, display: 'flex', flexDirection: 'column' }}>
+      {/* mt: 1 (not 0) - the header row above and the tab row below both
+          have their own solid background now (previously neither did, so
+          zero margin was invisible); with no gap the search box's bottom
+          edge visually touched the tab row's top edge. */}
+      <Box sx={{ m: 1, mt: 1, mb: 0, display: 'flex', flexDirection: 'column' }}>
         <PineTabs></PineTabs>
       </Box>
     </>

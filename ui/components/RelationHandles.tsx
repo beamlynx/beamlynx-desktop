@@ -7,7 +7,7 @@ const handleDotStyle: React.CSSProperties = {
   width: '2px',
   height: '2px',
   background: 'var(--node-handle-bg)',
-  borderRadius: '50%',
+  borderRadius: 0,
 };
 
 export const handleLabelInset = 8;
@@ -76,7 +76,7 @@ export const RelationHandles = ({
                   transform: 'translateY(calc(-50% + 2px))',
                   maxWidth: maxLabelWidth,
                   fontSize: '7px',
-                  fontFamily: 'Courier, monospace',
+                  fontFamily: 'var(--canvas-font)',
                   color: 'var(--node-secondary-text-color)',
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',

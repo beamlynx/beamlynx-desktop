@@ -103,15 +103,15 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ open, onClose }) => {
   const getSectionColor = (section: string) => {
     switch (section) {
       case 'added':
-        return '#4caf50'; // Green
+        return '#4caf50'; // Green - universal "addition" meaning, left alone
       case 'changed':
-        return '#2196f3'; // Blue
+        return 'var(--canvas-trace)';
       case 'fixed':
-        return '#ff9800'; // Orange
+        return 'var(--canvas-trace-unresolved)';
       case 'security':
-        return '#9c27b0'; // Purple
+        return 'var(--node-variable-border)'; // Same violet as the classic graph's checkpoint nodes - both read as "a distinct, special category"
       case 'breaking':
-        return '#f44336'; // Red
+        return 'var(--canvas-warn)';
       default:
         return 'var(--text-color)';
     }
@@ -130,7 +130,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ open, onClose }) => {
             mt: 1,
             backgroundColor: 'var(--background-color)',
             border: '1px solid var(--border-color)',
-            fontFamily: 'monospace',
+            fontFamily: 'var(--canvas-font)',
             fontSize: '0.8rem',
             whiteSpace: 'pre-wrap',
             overflow: 'auto',
@@ -175,7 +175,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ open, onClose }) => {
             <Typography variant="body2" sx={{ 
               color: 'var(--text-color)',
               opacity: 0.4,
-              fontFamily: 'monospace',
+              fontFamily: 'var(--canvas-font)',
               fontSize: '0.8rem'
             }}>
               {version.version}
