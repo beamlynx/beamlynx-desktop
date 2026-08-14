@@ -10,6 +10,26 @@ let mainWindow: BrowserWindow | null = null;
 let serverHandle: ServerHandle | null = null;
 let quitting = false;
 
+// `beamlynx --app-version` should just print the desktop app's own version
+// and exit - not launch the GUI, not contend for the single-instance lock
+// below. Deliberately NOT `--version`/`-v`: those are Chromium/Electron's
+// own reserved switches, consumed natively before any of this file's JS
+// ever runs - confirmed live: `electron dist/main/index.js --version`
+// printed Electron's *own* framework version ("31.7.7"), not the app's, and
+// the packaged AppImage produced no output at all for the same flag. There
+// is no way to override that from application code - it's handled below
+// the JS layer. A differently-named flag sidesteps the collision entirely.
+// `app.getVersion()` reads straight from the bundled package.json (see
+// app-builder-lib's handling), so it's already correct with no extra
+// wiring. `process.exit`, not `app.exit`/`app.quit` - this needs to be an
+// immediate, synchronous stop before any of Electron's async startup/
+// lifecycle machinery (single-instance lock, menu, server process) gets a
+// chance to do anything.
+if (process.argv.includes('--app-version')) {
+  console.log(app.getVersion());
+  process.exit(0);
+}
+
 // Without this, nothing stops a second instance from launching against the
 // same userData dir (e.g. a stale process left behind by a crash or a
 // SIGKILL that the pine-server.pid handling below already has to account
