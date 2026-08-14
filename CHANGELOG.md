@@ -5,7 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
-## [0.2.1] - 2026-08-14
+## [0.2.2] - 2026-08-14
 ### Changed
 - macOS builds are now code-signed and notarized by Apple.
 
