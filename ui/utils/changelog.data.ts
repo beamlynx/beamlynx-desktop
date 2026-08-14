@@ -15,6 +15,16 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.48.1',
+    date: '2026-08-14',
+    fixed: [
+      {
+        description:
+          "The desktop build failed outright (\"assetPrefix must start with a leading slash...\") because next/font's self-hosted app font isn't compatible with the relative asset paths the desktop build needs for file:// loading. The desktop build now falls back to a generic monospace stack instead of the self-hosted font in that one case.",
+      },
+    ],
+  },
+  {
     version: '0.48.0',
     date: '2026-08-13',
     breaking: [
@@ -1127,4 +1137,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.48.0';
+export const LATEST_VERSION = '0.48.1';

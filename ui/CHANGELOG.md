@@ -5,6 +5,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.48.1] - 2026-08-14
+### Fixed
+- The desktop build failed outright ("assetPrefix must start with a leading slash...") because `next/font`'s self-hosted app font isn't compatible with the relative asset paths the desktop build needs for `file://` loading. The desktop build now falls back to a generic monospace stack instead of the self-hosted font in that one case.
+
 ## [0.48.0] - 2026-08-13
 ### Breaking
 - Requires pine-lang 0.38.1 or later.

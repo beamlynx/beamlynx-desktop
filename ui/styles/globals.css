@@ -1,3 +1,13 @@
+/* Desktop-build fallback for --canvas-font (see styles/app-font.ts) - the
+ * desktop build can't use next/font (its relative assetPrefix trips next/
+ * font's build-time validation), so it applies this class instead of
+ * next/font's own generated one, keeping --canvas-font defined everywhere
+ * that reads it, just pointing at a generic monospace stack rather than the
+ * self-hosted IBM Plex Mono the hosted build gets. */
+.canvas-font-fallback {
+  --canvas-font: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
 html,
 body {
   padding: 0;
