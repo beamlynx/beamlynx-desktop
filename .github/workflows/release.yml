@@ -187,7 +187,20 @@ jobs:
           if [ "$RUNNER_OS" = "macOS" ]; then
             [ -n "$CSC_LINK_IN" ] && export CSC_LINK="$CSC_LINK_IN"
             [ -n "$CSC_KEY_PASSWORD_IN" ] && export CSC_KEY_PASSWORD="$CSC_KEY_PASSWORD_IN"
-            [ -n "$APPLE_API_KEY_IN" ] && export APPLE_API_KEY="$APPLE_API_KEY_IN"
+            # Unlike CSC_LINK (which electron-builder auto-detects as
+            # base64 vs. a file path vs. a URL and decodes accordingly),
+            # APPLE_API_KEY is passed straight through to Apple's own
+            # `notarytool --key <path>` with no decoding at all (see
+            # app-builder-lib's MacTargetHelper.js) - it has to already be
+            # a real file path on disk, not inline base64 content. Decode
+            # it into $RUNNER_TEMP ourselves first. Confirmed live: without
+            # this, notarytool failed with "The value '***' is invalid for
+            # '--key <key>': The file couldn't be opened because it
+            # doesn't exist" - a base64 string obviously isn't a path.
+            if [ -n "$APPLE_API_KEY_IN" ]; then
+              echo "$APPLE_API_KEY_IN" | base64 -D > "$RUNNER_TEMP/apple_api_key.p8"
+              export APPLE_API_KEY="$RUNNER_TEMP/apple_api_key.p8"
+            fi
             [ -n "$APPLE_API_KEY_ID_IN" ] && export APPLE_API_KEY_ID="$APPLE_API_KEY_ID_IN"
             [ -n "$APPLE_API_ISSUER_IN" ] && export APPLE_API_ISSUER="$APPLE_API_ISSUER_IN"
           fi
