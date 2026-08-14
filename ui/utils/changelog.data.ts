@@ -1127,4 +1127,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.48.1';
+export const LATEST_VERSION = '0.48.2';
