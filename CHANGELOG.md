@@ -5,6 +5,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-08-14
+### Changed
+- macOS builds are now code-signed with a Developer ID Application certificate. Not yet notarized -- Gatekeeper may still warn on first launch, with a right-click-to-open workaround, rather than the app being fully trusted outright.
+
 ## [0.2.0] - 2026-08-14
 ### Added
 - An experimental interactive view for building Pine queries by clicking through tables in a graph instead of writing text (bundled beamlynx-ui 0.48.1).
