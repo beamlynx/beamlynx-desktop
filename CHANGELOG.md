@@ -7,10 +7,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [0.2.0] - 2026-08-14
 ### Added
-- An experimental interactive view for building Pine queries by clicking through tables in a graph instead of writing text (bundled beamlynx-ui 0.48.0).
+- An experimental interactive view for building Pine queries by clicking through tables in a graph instead of writing text (bundled beamlynx-ui 0.48.1).
 
 ### Changed
-- Unified the app's visual design (the "schematic/blueprint" look) across the whole app (bundled beamlynx-ui 0.48.0).
+- Unified the app's visual design (the "schematic/blueprint" look) across the whole app (bundled beamlynx-ui 0.48.1).
 
 ### Fixed
 - The loading screen's colors were hardcoded to the app's old dark-theme palette, so it visually flash-swapped once the real (now "schematic/blueprint") UI loaded -- updated to match.
