@@ -14,6 +14,18 @@ import { IBM_Plex_Mono } from 'next/font/google';
 // DOM subtree - kept as `--canvas-font` (not renamed to something app-
 // generic) purely to avoid a second mechanical rename across every canvas
 // component that already reads it.
+//
+// The desktop build never actually loads this file - next.config.js
+// webpack-aliases this exact module path to app-font.desktop.ts instead,
+// because next/font validates `assetPrefix` at build time and rejects
+// anything that isn't a leading-slash path or an absolute URL. The desktop
+// build sets `assetPrefix: './'` (relative, so file://-loaded assets
+// resolve correctly), which trips that check and fails `next build`
+// outright the moment webpack so much as parses a next/font call - not
+// something a runtime/conditional check inside this file can work around,
+// since next/font's own compiler plugin requires "Font loaders must be
+// called and assigned to a const in module scope", i.e. unconditionally.
+// See app-font.desktop.ts for the substitute this file never gets to run.
 export const appFont = IBM_Plex_Mono({
   subsets: ['latin'],
   weight: ['400', '500', '600', '700'],
