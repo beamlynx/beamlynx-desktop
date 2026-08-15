@@ -14,6 +14,14 @@ not configured) -- see that section below.
 Requires an active [Apple Developer Program](https://developer.apple.com/programs/)
 membership ($99/year).
 
+**`scripts/setup-macos-signing-secrets.sh`** automates steps 2-4 below (the
+`.p12`/`.p8` -> GitHub secrets part) once you have the underlying files --
+run it from whatever directory holds `developerID_application.key`/`.pem`
+(or `.cer`), and/or an `AuthKey_*.p8`, and it'll prompt for the passwords/
+IDs it needs and push everything straight to this repo's secrets. Step 1
+(getting Apple to actually issue the certificate) still has to happen
+manually on their portal -- there's no API for that part.
+
 1. Create a **Developer ID Application** certificate (not "Apple Development" --
    that's for local testing only, not distribution outside the App Store) at
    the [Apple Developer portal](https://developer.apple.com/account/resources/certificates/list).
