@@ -306,9 +306,13 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ open, onClose }) => {
             borderTop: '1px solid var(--border-color)',
             p: 2,
             display: 'flex',
-            justifyContent: 'flex-end',
+            alignItems: 'center',
+            justifyContent: 'space-between',
           }}
         >
+          <Typography variant="caption" sx={{ color: 'var(--text-color)', opacity: 0.5 }}>
+            Beamlynx is supported by Grephyte ApS
+          </Typography>
           <Button
             variant="contained"
             onClick={handleClose}

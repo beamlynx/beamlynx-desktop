@@ -1,6 +1,7 @@
 {
   "name": "pine-app",
   "version": "0.48.2",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "private": true,
   "scripts": {
     "dev": "NODE_OPTIONS='--inspect' next dev",
