@@ -14,8 +14,14 @@ When working in this codebase, if you discover a new pattern, convention, archit
 
 ## Graph Node Types
 
-See [docs/graph-node-types.md](./docs/graph-node-types.md) for the vocabulary used to discuss the
-query graph (selected/current/suggested/candidate/variable-container, handle conventions).
+See [docs/classic-graph-node-types.md](./docs/classic-graph-node-types.md) for the vocabulary used
+to discuss the classic, read-only query graph (selected/current/suggested/candidate/
+variable-container, handle conventions).
+
+## Canvas Mode
+
+See [docs/canvas-mode.md](./docs/canvas-mode.md) for how the experimental interactive canvas
+(text-splice architecture, checkpoint handling, alias pinning) actually works today.
 
 ## Crediting Contributors
 

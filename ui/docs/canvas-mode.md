@@ -161,7 +161,7 @@ Constraints).
 - **No checkpoint/variable nodes.** There's no way to join onto, or select
   from, a `group:`/`limit:` checkpoint's own sealed/aggregated output as a
   node in its own right (the classic graph's variable/checkpoint container is
-  the prior art — see `docs/graph-node-types.md`). Checkpoints today only ever
+  the prior art — see `docs/classic-graph-node-types.md`). Checkpoints today only ever
   sit at the pipeline's literal end.
 - **No `update!`/`delete!` support.** Canvas mode only models read pipelines.
 - **Multi-select `assign` is inert.** Shown in the toolbar but not wired to

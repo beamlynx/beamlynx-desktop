@@ -1,9 +1,11 @@
-# Graph Node Types
+# Classic Graph Node Types
 
-The query graph shows a table's role in the pipeline through a small vocabulary of node
-states. These are the terms to use when discussing or changing graph behavior — exact
-implementation (which file, which flag) drifts and is always faster to re-derive by
-reading the code than to trust a doc for.
+The classic, read-only query graph (`components/Graph.box.tsx`, `store/graph.util.ts`) shows
+a table's role in the pipeline through a small vocabulary of node states. These are the terms
+to use when discussing or changing that graph's behavior — exact implementation (which file,
+which flag) drifts and is always faster to re-derive by reading the code than to trust a doc
+for. This is a distinct model from canvas mode's own node/edge types — see
+[docs/canvas-mode.md](./canvas-mode.md).
 
 - **Selected** — a table already confirmed into the pipeline. Numbered by its position.
 - **Current** — the one selected node presently active; new suggestions attach to it. Not
