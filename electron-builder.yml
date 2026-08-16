@@ -39,6 +39,17 @@ toolsets:
   # enum yet (verified against node_modules/app-builder-lib's own .d.ts).
   appimage: '1.0.3'
 
+# Registers the beamlynx:// URL scheme -- auto-generates the Linux .desktop
+# MimeType=x-scheme-handler/beamlynx; entry (deb only; a portable AppImage
+# doesn't get desktop-file registration without appimaged/AppImageLauncher
+# installed, so that target is a known gap, not handled here) and the macOS
+# CFBundleURLTypes Info.plist entry. See src/main/index.ts's handleDeepLink
+# and beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md.
+protocols:
+  name: beamlynx
+  schemes:
+    - beamlynx
+
 # Populated at build time by scripts/stage-server.sh and
 # scripts/build-ui-export.sh -- lands under process.resourcesPath in the
 # packaged app (see src/main/resources.ts).
@@ -47,6 +58,8 @@ extraResources:
     to: server
   - from: resources/ui
     to: ui
+  - from: resources/docs
+    to: docs
 
 linux:
   target:

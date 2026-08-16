@@ -137,6 +137,11 @@ jobs:
         working-directory: beamlynx-desktop
         run: ./scripts/stage-server.sh
 
+      - name: Stage Pine docs
+        shell: bash
+        working-directory: beamlynx-desktop
+        run: ./scripts/stage-docs.sh
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'

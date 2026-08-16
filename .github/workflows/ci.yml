@@ -74,6 +74,10 @@ jobs:
         working-directory: beamlynx-desktop
         run: ./scripts/stage-server.sh
 
+      - name: Stage Pine docs
+        working-directory: beamlynx-desktop
+        run: ./scripts/stage-docs.sh
+
       - name: Install beamlynx-desktop deps
         working-directory: beamlynx-desktop
         run: npm ci

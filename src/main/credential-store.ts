@@ -17,6 +17,12 @@ export type SavedConnectionMeta = {
   dbUser: string;
   createdAt: string;
   lastUsedAt: string;
+  // Off by default -- this is the access-control lever for the MCP server
+  // (see beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md).
+  // The control-plane server checks this before letting an MCP client touch a
+  // connection at all; a connection a user has never explicitly opted in
+  // stays invisible to MCP clients regardless of what pine-lang itself allows.
+  mcpEnabled: boolean;
 };
 
 type StoredConnectionRecord = SavedConnectionMeta & { dbPasswordEncrypted: string };
@@ -80,7 +86,10 @@ function writeStore(store: StoreFile): void {
 
 function toMeta(record: StoredConnectionRecord): SavedConnectionMeta {
   const { dbPasswordEncrypted: _dbPasswordEncrypted, ...meta } = record;
-  return meta;
+  // Records written before this field existed have no mcpEnabled key --
+  // default them to false (opt-in, not opt-out) rather than leaving it
+  // undefined.
+  return { ...meta, mcpEnabled: meta.mcpEnabled ?? false };
 }
 
 function makeLabel(input: Pick<SaveConnectionInput, 'dbUser' | 'dbHost' | 'dbPort' | 'dbName'>): string {
@@ -158,6 +167,7 @@ export function saveConnection(input: SaveConnectionInput): SaveConnectionResult
       createdAt: now,
       lastUsedAt: now,
       dbPasswordEncrypted,
+      mcpEnabled: false,
     };
     store.connections.push(record);
   }
@@ -192,6 +202,24 @@ export function forgetConnection(id: string): void {
   }
 }
 
+export function setMcpEnabled(id: string, enabled: boolean): SavedConnectionMeta | null {
+  const store = readStore();
+  const index = store.connections.findIndex(c => c.id === id);
+  if (index < 0) return null;
+  store.connections[index] = { ...store.connections[index], mcpEnabled: enabled };
+  writeStore(store);
+  console.log(`[credentials] setMcpEnabled: id=${id} enabled=${enabled}`);
+  return toMeta(store.connections[index]);
+}
+
+// Used by the MCP control-plane server (see src/main/mcp/control-plane-server.ts)
+// to resolve which saved connections an MCP client is allowed to see at all -- a
+// connection absent from this list must be treated as if it doesn't exist,
+// not merely "not returned by list_connections".
+export function listMcpEnabledConnections(): SavedConnectionMeta[] {
+  return listConnections().filter(c => c.mcpEnabled);
+}
+
 export function registerCredentialIpc(): void {
   console.log(`[credentials] registerCredentialIpc: store path = ${getStorePath()}`);
   ipcMain.handle('credentials:status', () => getCredentialsStatus());
@@ -205,4 +233,5 @@ export function registerCredentialIpc(): void {
     console.log(`[credentials] forgetConnection called for id=${id}`);
     forgetConnection(id);
   });
+  ipcMain.handle('credentials:set-mcp-enabled', (_event, id: string, enabled: boolean) => setMcpEnabled(id, enabled));
 }

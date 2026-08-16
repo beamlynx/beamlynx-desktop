@@ -4,4 +4,5 @@ build/*
 !build/entitlements.mac.plist
 resources/server
 resources/ui
+resources/docs
 release

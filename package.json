@@ -1,6 +1,6 @@
 {
   "name": "beamlynx-desktop",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Desktop app bundling the pine-lang server and beamlynx-ui UI, no Docker required",
   "author": {
@@ -11,9 +11,11 @@
   "main": "dist/main/index.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "npm run build && electron ."
+    "start": "npm run build && electron .",
+    "test": "node --test __tests__"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "electron-updater": "^6.3.9"
   },
   "devDependencies": {

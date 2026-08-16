@@ -1,13 +1,17 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, session } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, session, shell } from 'electron';
 import { autoUpdater } from 'electron-updater';
+import * as http from 'http';
 import * as path from 'path';
 import { initAutoUpdater } from './auto-update';
 import { registerCredentialIpc } from './credential-store';
+import { startControlPlaneServer } from './mcp/control-plane-server';
+import { startMcpRelay } from './mcp/stdio-relay';
 import { getResourcesRoot } from './resources';
 import { ServerHandle, startServer } from './server-process';
 
 let mainWindow: BrowserWindow | null = null;
 let serverHandle: ServerHandle | null = null;
+let controlPlaneServer: http.Server | null = null;
 let quitting = false;
 
 // `beamlynx --app-version` should just print the desktop app's own version
@@ -30,27 +34,56 @@ if (process.argv.includes('--app-version')) {
   process.exit(0);
 }
 
-// Without this, nothing stops a second instance from launching against the
-// same userData dir (e.g. a stale process left behind by a crash or a
-// SIGKILL that the pine-server.pid handling below already has to account
-// for on the server side, or simply double-clicking the launcher). Two
-// live instances each hold their own in-memory copy of the renderer's
-// localStorage; whichever one's Chromium session happens to flush to disk
-// *last* wins, silently overwriting newer changes from the other with
-// stale data -- this is a well-documented Electron footgun, not specific
-// to this app. requestSingleInstanceLock() makes any second launch quit
-// immediately instead, and focuses the already-running window so it's not
-// just a silent no-op from the user's perspective.
-const gotSingleInstanceLock = app.requestSingleInstanceLock();
-if (!gotSingleInstanceLock) {
-  app.quit();
-} else {
-  app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
+// `beamlynx --mcp` is what Claude Code/Claude Desktop actually spawn (see
+// beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md) -- a thin
+// stdio relay, not a second GUI. Checked before anything else in this file
+// runs: it must never contend for the single-instance lock below (that's
+// the GUI's lock to hold), never create a window, and must have nothing
+// else in this module's normal startup path racing it.
+if (process.argv.includes('--mcp')) {
+  startMcpRelay().catch(err => {
+    console.error('[mcp] fatal error starting MCP relay:', err);
+    process.exit(1);
   });
+} else {
+  runDesktopApp();
+}
+
+// --- Deep link handling (beamlynx://run?connection=<id>&expression=<pine-expr>) ---
+// A click can arrive before the renderer -- or even the window -- exists:
+// macOS's open-url can fire pre-ready, and a cold Linux launch already has
+// the URL sitting in argv before anything is set up. Queue it and flush
+// once the renderer signals it has mounted (see the 'renderer:ready' IPC
+// handler in runDesktopApp below), rather than dropping a cold-start click
+// silently.
+let pendingDeepLink: { connection?: string; expression?: string } | null = null;
+let rendererReady = false;
+
+function parseDeepLink(url: string): { connection?: string; expression?: string } | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'beamlynx:') return null;
+    return {
+      connection: parsed.searchParams.get('connection') ?? undefined,
+      expression: parsed.searchParams.get('expression') ?? undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function handleDeepLink(url: string): void {
+  const params = parseDeepLink(url);
+  if (!params) return;
+  if (rendererReady && mainWindow) {
+    mainWindow.webContents.send('deep-link:open-query', params);
+  } else {
+    pendingDeepLink = params;
+  }
+}
+
+function findDeepLinkArg(argv: string[]): string | undefined {
+  return argv.find(arg => arg.startsWith('beamlynx://'));
 }
 
 // Chromium's desktop-environment auto-detection (which safeStorage's Linux
@@ -70,7 +103,6 @@ function configureLinuxPasswordStore(): void {
   const isKde = desktop.includes('kde') || !!process.env.KDE_SESSION_VERSION;
   app.commandLine.appendSwitch('password-store', isKde ? 'kwallet6' : 'gnome-libsecret');
 }
-configureLinuxPasswordStore();
 
 // Electron's built-in default menu (used automatically whenever no menu is
 // set) binds Cmd/Ctrl+W to role: 'close', which would intercept the
@@ -166,6 +198,28 @@ function createWindow(): void {
     mainWindow?.show();
   });
 
+  // Without this, an external link (e.g. beamlynx.com in the Settings
+  // About section) navigates the app's own window in place instead of
+  // opening in the user's actual browser -- Electron's default for
+  // target="_blank"/window.open with no handler.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    // file:// covers the packaged static export (loading.html -> index.html,
+    // and index.html's own loads); same-origin covers the dev-mode
+    // `next dev` server (BEAMLYNX_DEV_UI_URL, see loadRealUi() below) hot
+    // reloading itself. Everything else is an outbound link -- the app has
+    // no legitimate reason to navigate its own window anywhere else.
+    const target = new URL(url);
+    if (target.protocol === 'file:') return;
+    const current = new URL(mainWindow?.webContents.getURL() ?? '');
+    if (target.origin === current.origin) return;
+    event.preventDefault();
+    shell.openExternal(url);
+  });
+
   // Shown immediately, before the server is up -- see loadRealUi() below for
   // why this can't just be the real UI loaded early.
   mainWindow.loadFile(path.join(__dirname, '..', '..', 'assets', 'loading.html'));
@@ -230,6 +284,12 @@ async function main(): Promise<void> {
   Menu.setApplicationMenu(buildMenu());
   registerCredentialIpc();
 
+  // Started here rather than after the server/UI are up -- it only starts
+  // accepting real work once a run_query/explain_query request actually
+  // arrives and finds mainWindow set (see control-plane-server.ts), so
+  // there's no ordering requirement with startServer()/loadRealUi() below.
+  controlPlaneServer = startControlPlaneServer({ getMainWindow: () => mainWindow });
+
   // Show the window (with a loading splash) immediately instead of waiting
   // on startServer() (JVM boot + port-readiness polling, up to ~15s) --
   // previously nothing rendered at all during that gap.
@@ -257,13 +317,97 @@ async function main(): Promise<void> {
   }
 }
 
-// Guarded on gotSingleInstanceLock -- without this guard, a second instance
-// that loses the lock still fell through to registering 'ready' below (and
-// so still ran main(), spawning its own pine-server) before the app.quit()
-// called above actually took effect, leaving an orphaned second server
-// process behind. Nothing past this point should ever run for a losing
-// second instance.
-if (gotSingleInstanceLock) {
+// Everything that constitutes the normal GUI app -- pulled into its own
+// function (rather than left at module top level, as it was before the
+// --mcp relay existed) so the branch above can skip all of it entirely for
+// `beamlynx --mcp`. A hoisted function declaration, so calling it before its
+// textual definition (see the branch above) is fine -- same reason
+// buildMenu/createWindow/etc. above can be declared after their call sites.
+function runDesktopApp(): void {
+  // Registered before any app.whenReady()-gated work below, per Electron's
+  // own requirement for 'open-url' (macOS can fire it pre-ready). Harmless
+  // to call on other platforms; setAsDefaultProtocolClient no-ops there
+  // without an electron-builder `protocols` registration to back it, and
+  // the Linux/deb case (the only Linux target this handles registration
+  // for -- see electron-builder.yml) instead delivers the URL via argv,
+  // handled below.
+  app.setAsDefaultProtocolClient('beamlynx');
+  app.on('open-url', (event, url) => {
+    event.preventDefault();
+    handleDeepLink(url);
+  });
+
+  // Without this, nothing stops a second instance from launching against the
+  // same userData dir (e.g. a stale process left behind by a crash or a
+  // SIGKILL that the pine-server.pid handling below already has to account
+  // for on the server side, or simply double-clicking the launcher). Two
+  // live instances each hold their own in-memory copy of the renderer's
+  // localStorage; whichever one's Chromium session happens to flush to disk
+  // *last* wins, silently overwriting newer changes from the other with
+  // stale data -- this is a well-documented Electron footgun, not specific
+  // to this app. requestSingleInstanceLock() makes any second launch quit
+  // immediately instead, and focuses the already-running window so it's not
+  // just a silent no-op from the user's perspective.
+  const gotSingleInstanceLock = app.requestSingleInstanceLock();
+  if (!gotSingleInstanceLock) {
+    app.quit();
+    return;
+  }
+
+  app.on('second-instance', (_event, argv) => {
+    const deepLinkArg = findDeepLinkArg(argv);
+    if (deepLinkArg) {
+      handleDeepLink(deepLinkArg);
+    }
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+
+  // Cold start on Linux: a beamlynx:// click that launched this process
+  // (rather than reaching an already-running one via second-instance above)
+  // has the URL sitting in argv from the very first launch.
+  const coldStartDeepLink = findDeepLinkArg(process.argv);
+  if (coldStartDeepLink) {
+    handleDeepLink(coldStartDeepLink);
+  }
+
+  configureLinuxPasswordStore();
+
+  // Signals that the renderer has mounted DeepLinkHandler and is ready to
+  // receive 'deep-link:open-query' -- flushes anything that arrived before
+  // this point (open-url pre-ready, or the cold-start argv check above).
+  ipcMain.on('renderer:ready', () => {
+    rendererReady = true;
+    if (pendingDeepLink && mainWindow) {
+      mainWindow.webContents.send('deep-link:open-query', pendingDeepLink);
+      pendingDeepLink = null;
+    }
+  });
+
+  // Backs the Settings "MCP setup instructions" panel -- the executable path
+  // varies by install location and packaging format (.app bundle vs.
+  // deb-installed binary), so it's resolved at click time here rather than
+  // baked into any static instructions text.
+  //
+  // Packaged vs. dev mode need different args, not just a different path:
+  // in a packaged build, process.execPath is the final, single-purpose
+  // binary, so `<path> --mcp` alone is a complete invocation. In dev mode
+  // (`npm run start` -> `electron .`), process.execPath is the raw Electron
+  // binary from node_modules. Electron needs an app directory argument to
+  // know which package.json's `main` to load -- without one, it never
+  // reaches this file's `--mcp` check at all, so spawning just `--mcp`
+  // alone gives it no app to load. app.getAppPath() resolves to that
+  // directory in dev (and to the packaged
+  // app's root when packaged, where this branch isn't taken anyway).
+  ipcMain.handle('mcp:get-setup-info', () => {
+    if (app.isPackaged) {
+      return { command: process.execPath, args: ['--mcp'] };
+    }
+    return { command: process.execPath, args: [app.getAppPath(), '--mcp'] };
+  });
+
   // Triggered by the renderer's "Restart to install" button (see
   // beamlynx-ui's DesktopUpdateBanner). Stops the server and marks
   // `quitting` ourselves first, same as a normal quit -- so that by the
@@ -290,6 +434,7 @@ if (gotSingleInstanceLock) {
     if (quitting || !serverHandle) return;
     quitting = true;
     event.preventDefault();
+    controlPlaneServer?.close();
     await flushRendererStorage();
     await serverHandle.stop();
     app.quit();

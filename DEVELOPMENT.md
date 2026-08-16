@@ -38,8 +38,9 @@ One-time (or after a `pine-lang`/`beamlynx-ui` pull), stage both bundled
 pieces:
 
 ```sh
-./scripts/stage-server.sh      # copies pine-lang's jpackage output into resources/server/
-./scripts/build-ui-export.sh   # builds beamlynx-ui's static export into resources/ui/
+./scripts/stage-server.sh              # copies pine-lang's jpackage output into resources/server/
+./scripts/build-ui-export.sh           # builds beamlynx-ui's static export into resources/ui/
+./scripts/stage-docs.sh                # copies src/main/mcp/pine-reference/*.md (hand-maintained, see its README.md) into resources/docs/, for the MCP server's list_pine_docs/get_pine_doc tools
 ```
 
 Then:

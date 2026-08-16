@@ -1,0 +1,92 @@
+// Runs inside the normal GUI process (started from index.ts's main(), once
+// the window has loaded beamlynx-ui) -- NOT inside the --mcp relay process.
+// This is what the --mcp process actually talks to: it enforces the MCP
+// connection whitelist (the one place enforcement can't be bypassed by a
+// hand-rolled client hitting this port directly, since the --mcp relay is
+// just a thin proxy anyone could spawn) and drives real query execution
+// through the renderer, so MCP-driven queries land in a real, visible tab
+// instead of a parallel headless path. See
+// beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md.
+import { BrowserWindow } from 'electron';
+import * as http from 'http';
+import { listMcpEnabledConnections } from '../credential-store';
+import { runInRenderer } from './render-bridge';
+
+export const CONTROL_PLANE_PORT = 33334;
+
+type StartControlPlaneServerOptions = {
+  getMainWindow: () => BrowserWindow | null;
+};
+
+function readJsonBody(req: http.IncomingMessage): Promise<any> {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    req.on('data', chunk => (data += chunk));
+    req.on('end', () => {
+      if (!data) return resolve({});
+      try {
+        resolve(JSON.parse(data));
+      } catch {
+        reject(new Error('Invalid JSON body'));
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+function sendJson(res: http.ServerResponse, status: number, body: unknown): void {
+  const payload = JSON.stringify(body);
+  res.writeHead(status, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) });
+  res.end(payload);
+}
+
+// Whitelist enforcement lives here, not in the --mcp relay: this is the one
+// process boundary a hand-rolled client can't cross to bypass it (anyone on
+// the machine could spawn `beamlynx --mcp` themselves and skip whatever
+// checks lived there instead).
+function assertWhitelisted(profileId: string): void {
+  const allowed = listMcpEnabledConnections();
+  if (!allowed.some(c => c.id === profileId)) {
+    throw new Error(
+      `Connection "${profileId}" is not enabled for MCP access. Enable it in Settings -> Connections first.`,
+    );
+  }
+}
+
+export function startControlPlaneServer(options: StartControlPlaneServerOptions): http.Server {
+  const server = http.createServer(async (req, res) => {
+    try {
+      if (req.method === 'GET' && req.url === '/connections') {
+        return sendJson(res, 200, { connections: listMcpEnabledConnections() });
+      }
+
+      if ((req.method === 'POST' && req.url === '/query') || req.url === '/explain') {
+        const body = await readJsonBody(req);
+        const { profileId, expression } = body ?? {};
+        if (!profileId || typeof expression !== 'string') {
+          return sendJson(res, 400, { error: 'profileId and expression are required' });
+        }
+        assertWhitelisted(profileId);
+
+        const mainWindow = options.getMainWindow();
+        if (!mainWindow) {
+          return sendJson(res, 503, { error: 'The beamlynx window is not available yet' });
+        }
+
+        const kind = req.url === '/explain' ? 'build' : 'eval';
+        const result = await runInRenderer(mainWindow, { kind, profileId, expression });
+        return sendJson(res, 200, { result });
+      }
+
+      sendJson(res, 404, { error: 'Not found' });
+    } catch (e) {
+      sendJson(res, 400, { error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  // Loopback only, explicitly -- this is new attack surface (a second HTTP
+  // server alongside pine-lang's own, see the bind-host hardening in
+  // pine-lang/src/pine/core.clj) and must never be reachable off-machine.
+  server.listen(CONTROL_PLANE_PORT, '127.0.0.1');
+  return server;
+}
