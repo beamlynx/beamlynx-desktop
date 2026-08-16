@@ -12,12 +12,6 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - A Settings page, opened from the gear icon next to the notification bell, for connections, preferences, and MCP setup (bundled beamlynx-ui 0.49.0).
 - A database type field when adding a connection. Picking a type fills in its default port automatically (bundled beamlynx-ui 0.49.0).
 
-### Changed
-- "Connections" is now called "Database Connections" everywhere in the app (bundled beamlynx-ui 0.49.0).
-
-### Fixed
-- An external link (e.g. beamlynx.com in the Settings About section) opened in a second, bare Electron window instead of your actual browser. It now opens in your system browser.
-
 ### Security
 - Bundles pine-lang 0.38.2. The server now binds to `127.0.0.1` (loopback only) by default instead of every network interface -- it has no authentication, so the old default left it reachable from your whole network.
 
