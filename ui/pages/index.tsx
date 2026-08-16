@@ -6,6 +6,8 @@ import { reaction, runInAction } from 'mobx';
 import AppView from '../components/AppView';
 import DesktopUpdateBanner from '../components/DesktopUpdateBanner';
 import ConnectionErrorSnackbar from '../components/ConnectionErrorSnackbar';
+import McpBridge from '../components/McpBridge';
+import DeepLinkHandler from '../components/DeepLinkHandler';
 import { useStores } from '../store/store-container';
 import { isDesktop, isDevelopment, isPlayground } from '../store/util';
 import { appFont } from '../styles/app-font';
@@ -87,6 +89,8 @@ const Home: NextPage = () => {
       <AppView />
       <DesktopUpdateBanner />
       <ConnectionErrorSnackbar />
+      <McpBridge />
+      <DeepLinkHandler />
     </Container>
   );
 

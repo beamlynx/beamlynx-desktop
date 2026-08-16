@@ -15,6 +15,41 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.49.0',
+    date: '2026-08-16',
+    added: [
+      {
+        description:
+          'A Settings page, opened from the gear icon next to the notification bell. It brings database connections, app preferences, and MCP setup into one place instead of scattered menus.',
+      },
+      {
+        description:
+          'MCP support for the desktop app. An AI agent like Claude Code can run queries directly against your saved connections. Turn it on per connection from Settings.',
+      },
+      {
+        description:
+          'A database type field when adding a connection. Picking a type fills in its default port automatically.',
+      },
+      {
+        description: '"Open Settings" and "New Database Connection" command palette entries.',
+      },
+    ],
+    changed: [
+      {
+        description:
+          '"Connections" is now called "Database Connections" everywhere in the app, to leave room for a future connection to the Pine server itself.',
+      },
+      {
+        description:
+          'Adding a connection now uses tabs to switch between typing in the fields and pasting a connection string, instead of an expandable section.',
+      },
+      {
+        description:
+          'The old onboarding screens (the Docker "Welcome" page and the "Pine server is not running" page) are gone. The app now goes straight to its normal view.',
+      },
+    ],
+  },
+  {
     version: '0.48.0',
     date: '2026-08-13',
     breaking: [
@@ -1127,4 +1162,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.48.2';
+export const LATEST_VERSION = '0.49.0';

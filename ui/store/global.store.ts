@@ -8,6 +8,7 @@ import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preference
 import { DevState } from './dev-state';
 import { getCommandById } from '../utils/commands';
 import { CONNECTION_COLOR_PALETTE, isDesktop, isPlayground } from './util';
+import { runMcpQuery as runMcpQueryImpl, explainMcpQuery as explainMcpQueryImpl } from './mcp-query';
 
 /**
  * The subset of a Session that's worth restoring on reload: the pine/sql
@@ -48,6 +49,8 @@ type ConnectionParams = {
   dbPassword: string;
 };
 
+export type SettingsSection = 'connections' | 'preferences' | 'mcp' | 'about';
+
 export class GlobalStore {
   connecting = false;
   connection = '';
@@ -63,6 +66,17 @@ export class GlobalStore {
   // connection id (e.g. "localhost:5432") as if it were the name.
   connectionsLoaded = false;
   credentialsStatus: CredentialsStatus | null = null;
+
+  // Desktop-only: the one dedicated tab MCP-driven queries run in (see
+  // runMcpQuery/explainMcpQuery below and store/mcp-query.ts). Deliberately
+  // separate from activeSessionId -- MCP-driven queries must never hijack
+  // whatever tab the human is currently looking at; they show up in the tab
+  // bar (PineTabs renders every id in `sessions`) without switching focus.
+  mcpSessionId: string | null = null;
+  // profileId -> live pine-lang connection-id, cached per app session so
+  // every MCP query doesn't spin up a fresh Hikari pool. See
+  // store/mcp-query.ts's ensureConnection.
+  private mcpConnectionsByProfile: Record<string, string> = {};
   // Set by connectToSavedProfile on a decryption failure, so the settings
   // form can pre-fill the (still-plaintext) host/port/db/user and prompt the
   // user to just re-enter the password, instead of retyping everything.
@@ -78,11 +92,6 @@ export class GlobalStore {
 
   get pineConnected() {
     return DevState.pineConnected ?? !!this.version;
-  }
-
-  get dbConnected() {
-    const activeSession = this.sessions[this.activeSessionId];
-    return DevState.dbConnected ?? this.isConnectionLive(activeSession?.connectionId ?? '');
   }
 
   // Desktop only: which saved profile is behind the *active tab's own*
@@ -174,6 +183,17 @@ export class GlobalStore {
 
   // Settings
   showSettings = false;
+  // Which section the settings modal opens to -- defaults to Connections
+  // since that's the section a decryption-failure reconnect or "add
+  // connection" click needs to land on; the modal remembers whatever
+  // section was last open otherwise (see SettingsModal.tsx's rail).
+  settingsSection: SettingsSection = 'connections';
+  // Consume-once signal (same pattern as reconnectHint below) telling the
+  // Connections section to open straight to its "add" sub-view instead of
+  // the list -- set by the "New Database Connection" command, which used to
+  // jump straight to a dedicated add-connection modal before Connections
+  // became one section among several.
+  settingsConnectionsAdding = false;
 
   // Set whenever connecting to a saved/existing connection fails (e.g. the
   // DB is down or unreachable) so the UI can surface it -- see connect() and
@@ -194,11 +214,6 @@ export class GlobalStore {
   // Save-as-file modal (Ctrl/Cmd+S)
   showSaveModal = false;
 
-  // Connections list modal (the "List Database Connections" command -- the
-  // ActiveConnection dropdown covers the same data but is anchored to a
-  // clicked DOM element, which a command handler doesn't have).
-  showConnectionsModal = false;
-
   get commandHistory(): string[] {
     return this._commandHistory;
   }
@@ -214,24 +229,11 @@ export class GlobalStore {
     setUserPreference(STORAGE_KEYS.COMMAND_HISTORY, this._commandHistory);
   }
 
-  // Onboarding
-  _onboardingServer: boolean;
-
-  get onboardingServer(): boolean {
-    return DevState.onboardingServer ?? this._onboardingServer;
-  }
-
-  set onboardingServer(value: boolean) {
-    this._onboardingServer = value;
-    setUserPreference(STORAGE_KEYS.ONBOARDING_SERVER, value);
-  }
-
   constructor() {
     this._theme = getUserPreference(STORAGE_KEYS.THEME, 'dark');
     this._forceCompactMode = getUserPreference(STORAGE_KEYS.FORCE_COMPACT_MODE, false);
     this._pineTableColorsEnabled = getUserPreference(STORAGE_KEYS.PINE_TABLE_COLORS, false);
     this._canvasModeEnabled = getUserPreference(STORAGE_KEYS.CANVAS_MODE, false);
-    this._onboardingServer = getUserPreference(STORAGE_KEYS.ONBOARDING_SERVER, false);
     this._commandHistory = getUserPreference(STORAGE_KEYS.COMMAND_HISTORY, []);
     this.connectionColors = getUserPreference(STORAGE_KEYS.CONNECTION_COLORS, {});
     makeAutoObservable(this);
@@ -432,6 +434,7 @@ export class GlobalStore {
           label: p.label,
           dbHost: p.dbHost,
           dbPort: p.dbPort,
+          mcpEnabled: p.mcpEnabled,
         }));
         this.connections.forEach(c => this.assignConnectionColor(c.id));
         // Keep the active pine connection's own color alive even though it's
@@ -467,6 +470,23 @@ export class GlobalStore {
       this.reconnectHint = null;
     });
     return hint;
+  };
+
+  consumeSettingsConnectionsAdding = () => {
+    const adding = this.settingsConnectionsAdding;
+    runInAction(() => {
+      this.settingsConnectionsAdding = false;
+    });
+    return adding;
+  };
+
+  /** Opens Settings straight to the Connections section's "add" sub-view. */
+  openAddConnection = () => {
+    runInAction(() => {
+      this.showSettings = true;
+      this.settingsSection = 'connections';
+      this.settingsConnectionsAdding = true;
+    });
   };
 
   loadCredentialsStatus = async () => {
@@ -680,6 +700,57 @@ export class GlobalStore {
     return this.connect(params, id);
   };
 
+  private getOrCreateMcpSession = (): Session => {
+    let mcpSession = this.mcpSessionId ? this.sessions[this.mcpSessionId] : undefined;
+    if (!mcpSession) {
+      mcpSession = this.createSession();
+      runInAction(() => {
+        mcpSession!.inputMode = 'pine';
+        this.mcpSessionId = mcpSession!.id;
+      });
+    }
+    return mcpSession;
+  };
+
+  private mcpQueryDeps = () => ({
+    client,
+    getSavedProfileCredentials: this.getSavedProfileCredentials,
+    getOrCreateMcpSession: this.getOrCreateMcpSession,
+    getMcpConnectionId: (profileId: string) => this.mcpConnectionsByProfile[profileId],
+    setMcpConnectionId: (profileId: string, connectionId: string) => {
+      runInAction(() => {
+        this.mcpConnectionsByProfile = { ...this.mcpConnectionsByProfile, [profileId]: connectionId };
+      });
+    },
+  });
+
+  /**
+   * The only entry point the `run_query` MCP tool reaches.
+   * Executes in the dedicated MCP tab (getOrCreateMcpSession), never the
+   * human's active tab. See store/mcp-query.ts for the safety rules this
+   * enforces (no raw SQL, no delete!, connection-id always explicit).
+   */
+  runMcpQuery = (args: { profileId: string; expression: string }) => runMcpQueryImpl(this.mcpQueryDeps(), args);
+
+  /** Backing call for the `explain_query` MCP tool -- parse/build only, no execution. */
+  explainMcpQuery = (args: { profileId: string; expression: string }) =>
+    explainMcpQueryImpl(this.mcpQueryDeps(), args);
+
+  /**
+   * Toggles whether MCP clients may use a saved connection at all -- the
+   * access-control lever for the MCP server. Off by default; the
+   * control-plane server (beamlynx-desktop) refuses any MCP tool call
+   * against a connection that isn't in this list, regardless of what's live
+   * in pine-lang's own pool.
+   */
+  setMcpEnabled = async (id: string, enabled: boolean): Promise<void> => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
+    await window.beamlynxDesktop.credentials.setMcpEnabled(id, enabled);
+    runInAction(() => {
+      this.connections = this.connections.map(c => (c.id === id ? { ...c, mcpEnabled: enabled } : c));
+    });
+  };
+
   /**
    * Delete a connection: best-effort, silently close any live pine session
    * for it, and (desktop only) forget the saved credential -- both are
@@ -821,10 +892,6 @@ export class GlobalStore {
       }
       if (this.virtualSession) {
         this.virtualSession.connectionId = id;
-      }
-
-      if (!this.onboardingServer) {
-        this.onboardingServer = true;
       }
     });
 
@@ -1047,10 +1114,6 @@ export class GlobalStore {
           }
         }
 
-        if (this.pineConnected && !this.onboardingServer) {
-          this.onboardingServer = true;
-        }
-
         if (lt(this.version, RequiredVersion)) {
           this.requiresUpgrade = true;
         }
@@ -1098,13 +1161,23 @@ export class GlobalStore {
     const [x, y] = session.expression.split('.');
     const expression = y || x;
 
-    return length > maxLength
-      ? expression.substring(0, maxLength).replaceAll('|', '') + '...'
-      : expression || '...';
+    const name =
+      length > maxLength ? expression.substring(0, maxLength).replaceAll('|', '') + '...' : expression || '...';
+
+    // Visibly distinguish the tab MCP-driven queries run in from the
+    // human's own tabs -- see mcpSessionId/runMcpQuery above.
+    return sessionId === this.mcpSessionId ? `🤖 ${name}` : name;
   };
 
-  setShowSettings = (show: boolean) => {
+  setShowSettings = (show: boolean, section?: SettingsSection) => {
     this.showSettings = show;
+    if (section) {
+      this.settingsSection = section;
+    }
+  };
+
+  setSettingsSection = (section: SettingsSection) => {
+    this.settingsSection = section;
   };
 
   setConnectionError = (message: string | null) => {
@@ -1128,10 +1201,6 @@ export class GlobalStore {
 
   setShowSaveModal = (show: boolean) => {
     this.showSaveModal = show;
-  };
-
-  setShowConnectionsModal = (show: boolean) => {
-    this.showConnectionsModal = show;
   };
 
   /**

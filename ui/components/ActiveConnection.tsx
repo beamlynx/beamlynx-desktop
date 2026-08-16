@@ -1,67 +1,37 @@
 import CheckIcon from '@mui/icons-material/Check';
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { Box, ClickAwayListener, Divider, Menu, MenuItem, Typography } from '@mui/material';
 import { observer } from 'mobx-react-lite';
-import { useEffect, useRef, useState, type MouseEvent } from 'react';
+import { useState, type MouseEvent } from 'react';
 import { useStores } from '../store/store-container';
-import { CONNECTION_COLOR_PALETTE, isDesktop, isPlayground } from '../store/util';
+import { CONNECTION_COLOR_PALETTE, isDesktop } from '../store/util';
 import { DecryptionFailedError } from '../store/global.store';
-import Settings from '../pages/settings';
 
-const REMOVE_CONFIRM_TIMEOUT_MS = 3000;
-
+/**
+ * A quick connection switcher -- click the label, pick a connection, done.
+ * Connection *management* (add/delete/MCP access) lives in the Settings
+ * modal's Connections section (see components/settings/ConnectionsSection.tsx)
+ * now, not here; this dropdown used to also carry that plus an "MCP setup
+ * instructions…" entry, which read as out of place in a menu whose header
+ * is just "pick a connection" -- "Manage database connections…" below opens Settings
+ * instead of duplicating that UI in two places.
+ */
 const ActiveConnection = () => {
   const { global } = useStores();
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [connectionMenuAnchor, setConnectionMenuAnchor] = useState<null | HTMLElement>(null);
   const [switchingConnection, setSwitchingConnection] = useState(false);
-  const [confirmingRemoveId, setConfirmingRemoveId] = useState<string | null>(null);
-  const [removingId, setRemovingId] = useState<string | null>(null);
-  const confirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const clearConfirmTimeout = () => {
-    if (confirmTimeoutRef.current) {
-      clearTimeout(confirmTimeoutRef.current);
-      confirmTimeoutRef.current = null;
-    }
-  };
-
-  useEffect(() => clearConfirmTimeout, []);
 
   const activeSession = global.sessions[global.activeSessionId];
   const connectionId = activeSession?.connectionId || '';
   const connectionColor = global.getConnectionColor(connectionId);
   const isConnectionLive = global.isConnectionLive(connectionId);
 
-  const handleRemoveClick = (e: MouseEvent<SVGSVGElement>, id: string) => {
-    e.stopPropagation();
-    clearConfirmTimeout();
-    if (confirmingRemoveId === id) {
-      setConfirmingRemoveId(null);
-      setRemovingId(id);
-      const wasActive = id === (activeSession?.connectionId || global.connection);
-      global.deleteConnection(id).finally(() => {
-        setRemovingId(null);
-        // Removing the active connection triggers the "Database Connection" modal
-        // to auto-open (see the effect below) — close the picker menu so it
-        // doesn't sit open behind/alongside that modal.
-        if (wasActive) {
-          setConnectionMenuAnchor(null);
-        }
-      });
-      return;
-    }
-    setConfirmingRemoveId(id);
-    confirmTimeoutRef.current = setTimeout(() => setConfirmingRemoveId(null), REMOVE_CONFIRM_TIMEOUT_MS);
-  };
-
   // No auto-popup here: a disconnected tab's own connection (if it has one)
   // is reconnected lazily and silently by GlobalStore's activeSessionId/
   // pineConnected reactions (see ensureSessionConnected). Forcing a modal
   // open on every tab that happens to not be live yet is exactly the bad
   // UX this replaced -- connecting is now automatic, and the connections
-  // picker/settings form stay available only as a manual click (the label
-  // below, or the "Add new connection…" menu item).
+  // picker/settings stay available only as a manual click.
 
   const connectionLabel = connectionId ? global.getConnectionLabel(connectionId) : '';
   const truncatedLabel =
@@ -76,9 +46,45 @@ const ActiveConnection = () => {
 
   const displayText = global.pineConnected ? displayName : '🔌 No connection to Pine server!';
 
+  const handleSwitchTo = async (id: string) => {
+    if (isDesktop()) {
+      if (id === global.activeProfileId) {
+        setConnectionMenuAnchor(null);
+        return;
+      }
+      setSwitchingConnection(true);
+      try {
+        await global.connectToSavedProfile(id);
+      } catch (e) {
+        // A saved profile may not have a live pool yet this session (or, on
+        // decryption failure, opening Settings lets the user re-enter just
+        // the password) -- either way there's nothing more to do here;
+        // connectToSavedProfile/connect already surface the failure via
+        // global.connectionError (see ConnectionErrorSnackbar).
+        if (e instanceof DecryptionFailedError) {
+          global.setShowSettings(true, 'connections');
+        }
+      } finally {
+        setSwitchingConnection(false);
+        setConnectionMenuAnchor(null);
+      }
+      return;
+    }
+    if (activeSession && id === activeSession.connectionId && id === global.connection) {
+      setConnectionMenuAnchor(null);
+      return;
+    }
+    setSwitchingConnection(true);
+    try {
+      await global.selectConnection(id);
+    } finally {
+      setSwitchingConnection(false);
+      setConnectionMenuAnchor(null);
+    }
+  };
+
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-      {global.showSettings && <Settings />}
       {connectionId && (
         <ClickAwayListener onClickAway={() => setShowColorPicker(false)}>
           <Box sx={{ position: 'relative' }}>
@@ -162,11 +168,7 @@ const ActiveConnection = () => {
       <Menu
         anchorEl={connectionMenuAnchor}
         open={Boolean(connectionMenuAnchor)}
-        onClose={() => {
-          setConnectionMenuAnchor(null);
-          clearConfirmTimeout();
-          setConfirmingRemoveId(null);
-        }}
+        onClose={() => setConnectionMenuAnchor(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
         transformOrigin={{ vertical: 'top', horizontal: 'left' }}
         slotProps={{
@@ -178,9 +180,9 @@ const ActiveConnection = () => {
               // MUI's Paper applies a dark-mode "elevation overlay" (a
               // semi-transparent white gradient, opacity scaling with
               // elevation) by default - confirmed live that it rendered
-              // this menu visibly lighter than ConnectionsListModal.tsx's
-              // plain Box, even though both set the exact same background
-              // token. Suppressed so the two connection UIs actually match.
+              // this menu visibly lighter than the rest of the app's plain
+              // Box surfaces, even though both set the exact same
+              // background token. Suppressed so they actually match.
               backgroundImage: 'none',
               border: '1px solid var(--border-color)',
               color: 'var(--text-color)',
@@ -192,50 +194,8 @@ const ActiveConnection = () => {
           <MenuItem
             key={id}
             selected={isDesktop() ? id === global.activeProfileId : id === activeSession?.connectionId}
-            disabled={switchingConnection || !!removingId}
-            onClick={async () => {
-              console.log(
-                `[credentials] connection item clicked: id=${id} isDesktop()=${isDesktop()} activeProfileId=${global.activeProfileId}`,
-              );
-              if (isDesktop()) {
-                if (id === global.activeProfileId) {
-                  console.log('[credentials] click: already the active profile, no-op');
-                  setConnectionMenuAnchor(null);
-                  return;
-                }
-                setSwitchingConnection(true);
-                try {
-                  await global.connectToSavedProfile(id);
-                } catch (e) {
-                  // A saved profile may not have a live pool yet this session
-                  // (or, on decryption failure, opening Settings lets the
-                  // user re-enter just the password) -- either way there's
-                  // nothing more to do here; connectToSavedProfile/connect
-                  // already surface the failure via global.connectionError
-                  // (see ConnectionErrorSnackbar).
-                  console.error('[credentials] click: connectToSavedProfile threw ->', e);
-                  if (e instanceof DecryptionFailedError) {
-                    global.setShowSettings(true);
-                  }
-                } finally {
-                  setSwitchingConnection(false);
-                  setConnectionMenuAnchor(null);
-                }
-                return;
-              }
-              if (activeSession && id === activeSession.connectionId && id === global.connection) {
-                console.log('[credentials] click: already the active session (browser mode), no-op');
-                setConnectionMenuAnchor(null);
-                return;
-              }
-              setSwitchingConnection(true);
-              try {
-                await global.selectConnection(id);
-              } finally {
-                setSwitchingConnection(false);
-                setConnectionMenuAnchor(null);
-              }
-            }}
+            disabled={switchingConnection}
+            onClick={() => handleSwitchTo(id)}
             sx={{
               display: 'flex',
               alignItems: 'center',
@@ -273,44 +233,22 @@ const ActiveConnection = () => {
             >
               {label}
             </Typography>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
-              {(isDesktop() ? id === global.activeProfileId : id === activeSession?.connectionId) ? (
-                <CheckIcon sx={{ fontSize: 16, opacity: 0.7 }} />
-              ) : (
-                <Box sx={{ width: 16 }} />
-              )}
-              {isPlayground() ? (
-                <Box sx={{ width: 16 }} />
-              ) : (
-                <DeleteOutlineIcon
-                  onClick={e => handleRemoveClick(e, id)}
-                  titleAccess={
-                    confirmingRemoveId === id ? 'Click again to remove' : 'Remove connection'
-                  }
-                  sx={{
-                    fontSize: 16,
-                    cursor: 'pointer',
-                    opacity: confirmingRemoveId === id ? 1 : 0.35,
-                    color: confirmingRemoveId === id ? 'var(--text-warning-color)' : 'inherit',
-                    '&:hover': { opacity: 0.9 },
-                  }}
-                />
-              )}
-            </Box>
+            {(isDesktop() ? id === global.activeProfileId : id === activeSession?.connectionId) && (
+              <CheckIcon sx={{ fontSize: 16, opacity: 0.7 }} />
+            )}
           </MenuItem>
         ))}
         {global.connections.length > 0 ? (
           <Divider sx={{ borderColor: 'var(--border-color)' }} />
         ) : null}
         <MenuItem
-          disabled={switchingConnection || !!removingId}
           onClick={() => {
-            global.setShowSettings(true);
+            global.setShowSettings(true, 'connections');
             setConnectionMenuAnchor(null);
           }}
           sx={{ fontSize: '0.85rem', fontFamily: 'var(--canvas-font)' }}
         >
-          Add new connection…
+          Manage database connections…
         </MenuItem>
       </Menu>
     </Box>

@@ -86,17 +86,26 @@ const COMMANDS: Command[] = [
     isEnabled: ALWAYS_ENABLED,
   },
   {
+    id: 'open-settings',
+    label: 'Open Settings',
+    category: 'View',
+    // No section arg -- leaves whatever section was last open, matching
+    // the header gear icon's own behavior (see SettingsModal.tsx).
+    handler: global => global.setShowSettings(true),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
     id: 'list-connections',
     label: 'List Database Connections',
     category: 'View',
-    handler: global => global.setShowConnectionsModal(true),
+    handler: global => global.setShowSettings(true, 'connections'),
     isEnabled: ALWAYS_ENABLED,
   },
   {
     id: 'new-connection',
     label: 'New Database Connection',
     category: 'View',
-    handler: global => global.setShowSettings(true),
+    handler: global => global.openAddConnection(),
     isEnabled: ALWAYS_ENABLED,
   },
 

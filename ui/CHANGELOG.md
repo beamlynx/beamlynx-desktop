@@ -5,6 +5,18 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.49.0] - 2026-08-16
+### Added
+- A Settings page, opened from the gear icon next to the notification bell. It brings database connections, app preferences, and MCP setup into one place instead of scattered menus.
+- MCP support for the desktop app. An AI agent like Claude Code can run queries directly against your saved connections. Turn it on per connection from Settings.
+- A database type field when adding a connection. Picking a type fills in its default port automatically.
+- "Open Settings" and "New Database Connection" command palette entries.
+
+### Changed
+- "Connections" is now called "Database Connections" everywhere in the app, to leave room for a future connection to the Pine server itself.
+- Adding a connection now uses tabs to switch between typing in the fields and pasting a connection string, instead of an expandable section.
+- The old onboarding screens (the Docker "Welcome" page and the "Pine server is not running" page) are gone. The app now goes straight to its normal view.
+
 ## [0.48.0] - 2026-08-13
 ### Breaking
 - Requires pine-lang 0.38.1 or later.
