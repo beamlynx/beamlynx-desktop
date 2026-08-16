@@ -3,8 +3,6 @@ import { observer } from 'mobx-react-lite';
 import { runInAction } from 'mobx';
 import { useStores } from '../store/store-container';
 import PineTabs from './PineTabs';
-import { Welcome } from './docs/Welcome';
-import { PineServerNotRunning } from './docs/PineServerNotRunning';
 import { UpgradeRequired } from './docs/UpgradeRequired';
 import ActiveConnection from './ActiveConnection';
 import Message from './Message';
@@ -16,8 +14,9 @@ import AnalysisModal from './AnalysisModal';
 import ChangelogModal from './ChangelogModal';
 import CommandPalette from './CommandPalette';
 import SavePineModal from './SavePineModal';
-import ConnectionsListModal from './ConnectionsListModal';
 import NotificationBell from './NotificationBell';
+import SettingsButton from './SettingsButton';
+import SettingsModal from './settings/SettingsModal';
 import { useGlobalKeybindings } from '../hooks/useGlobalKeybindings';
 import { LATEST_VERSION } from '../utils/changelog.data';
 import { compare } from 'semver';
@@ -162,60 +161,38 @@ const AppView = observer(() => {
       </Box>
     );
 
-  // Interactive/canvas mode is an explicit, already-opted-into experiment -
-  // showing it the marketing "Hey there" onboarding (or its "server not
-  // running" sibling) every time pineConnected hasn't caught up yet (e.g. a
-  // session with no saved connection, whose only ping is the background
-  // polling in pages/index.tsx) just blocks the thing the user already chose
-  // to use. Skip straight to the normal app shell instead; Canvas.tsx already
-  // degrades on its own (dimmed graph + banner) when there's nothing to show.
-  if (!global.pineConnected && !global.canvasModeEnabled) {
-    if (isPlayground()) {
-      return (
-        <Box
-          sx={{
-            p: 2,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 2,
-            justifyContent: 'center',
-            alignItems: 'center',
-          }}
-        >
-          <Typography className="text-primary">
-            Something went wrong with the playground connection
-          </Typography>
-          <Link
-            href="https://github.com/beamlynx/pine-app/issues/new"
-            target="_blank"
-            underline="hover"
-            sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
-          >
-            Please create an issue on GitHub
-          </Link>
-        </Box>
-      );
-    }
-
+  // Playground's own connection failing is a distinct, genuine error case
+  // (not "you haven't set anything up yet") -- still worth its own screen.
+  // Every other not-connected case (including a fresh install with nothing
+  // configured) falls through to the normal app shell below; there's no
+  // longer a full-page "get started" wall (see ActiveConnection.tsx's own
+  // "Not connected to database"/"🔌 No connection to Pine server!" label
+  // for how that state is surfaced instead -- inline, not a takeover). Was
+  // previously a Docker-run-command onboarding page, which stopped being
+  // the right default once the desktop app became the primary distribution.
+  if (!global.pineConnected && !global.canvasModeEnabled && isPlayground()) {
     return (
       <Box
         sx={{
           p: 2,
           display: 'flex',
+          flexDirection: 'column',
+          gap: 2,
           justifyContent: 'center',
           alignItems: 'center',
-          animation: 'fadeIn 0.5s ease-in',
-          '@keyframes fadeIn': {
-            '0%': {
-              opacity: 0,
-            },
-            '100%': {
-              opacity: 1,
-            },
-          },
         }}
       >
-        {global.onboardingServer ? <PineServerNotRunning /> : <Welcome />}
+        <Typography className="text-primary">
+          Something went wrong with the playground connection
+        </Typography>
+        <Link
+          href="https://github.com/beamlynx/pine-app/issues/new"
+          target="_blank"
+          underline="hover"
+          sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+        >
+          Please create an issue on GitHub
+        </Link>
       </Box>
     );
   }
@@ -230,7 +207,6 @@ const AppView = observer(() => {
       <ChangelogModal open={global.showChangelog} onClose={handleCloseChangelog} />
       <CommandPalette />
       <SavePineModal />
-      <ConnectionsListModal />
       <Grid container>
         <Grid item xs={3}>
           <Box sx={{ m: 2, mt: 1, mb: 0 }}>
@@ -297,9 +273,11 @@ const AppView = observer(() => {
             )}
             {UserContent}
             <NotificationBell hasUnreadUpdates={hasUnreadUpdates} onClick={handleOpenChangelog} />
+            <SettingsButton onClick={() => global.setShowSettings(true)} />
           </Box>
         </Grid>
       </Grid>
+      <SettingsModal />
 
       {/* mt: 1 (not 0) - the header row above and the tab row below both
           have their own solid background now (previously neither did, so

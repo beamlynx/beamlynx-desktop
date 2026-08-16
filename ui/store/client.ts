@@ -159,6 +159,10 @@ export type ConnectionInfo = {
   // (`${dbHost}:${dbPort}`) without an extra round trip.
   dbHost?: string;
   dbPort?: string;
+  // Desktop-only: whether this saved connection has been opted in to MCP
+  // access. See GlobalStore.setMcpEnabled and
+  // beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md.
+  mcpEnabled?: boolean;
 };
 
 export type ConnectionsListResult = {

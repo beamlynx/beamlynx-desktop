@@ -20,7 +20,23 @@ type SavedConnectionMeta = {
   dbUser: string;
   createdAt: string;
   lastUsedAt: string;
+  mcpEnabled: boolean;
 };
+
+// Sent by the main process (control-plane-server.ts) when an MCP client calls
+// the run_query or explain_query MCP tool -- the renderer is the only place
+// that can actually execute a query into a visible tab. See
+// beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md.
+type McpQueryRequest = {
+  requestId: string;
+  kind: 'eval' | 'build';
+  profileId: string;
+  expression: string;
+};
+
+type McpQueryResult =
+  | { requestId: string; ok: true; result: unknown }
+  | { requestId: string; ok: false; error: string };
 
 type CredentialsStatus = {
   persistenceAvailable: boolean;
@@ -51,7 +67,26 @@ interface BeamlynxDesktopApi {
     save: (input: SaveConnectionInput) => Promise<SaveConnectionResult>;
     get: (id: string) => Promise<GetConnectionResult>;
     delete: (id: string) => Promise<void>;
+    setMcpEnabled: (id: string, enabled: boolean) => Promise<SavedConnectionMeta | null>;
   };
+  // Registers the renderer's single handler for MCP-driven query execution.
+  // Call once, at app startup (see components/McpBridge.tsx) -- the handler
+  // must resolve with the eventual result (or throw), the preload layer
+  // reports it back to main correlated by requestId.
+  mcp: {
+    // The resolved command/args to register this install as an MCP server
+    // (e.g. `claude mcp add beamlynx -- <command> <args>`). Resolved at call
+    // time, not baked in statically -- the executable path varies by install
+    // location and packaging format (.app bundle vs. deb-installed binary).
+    getSetupInfo: () => Promise<{ command: string; args: string[] }>;
+    onQueryRequest: (handler: (request: McpQueryRequest) => Promise<unknown>) => void;
+  };
+  // Fired when the user clicks a beamlynx:// deep link and this window is
+  // the one that ends up handling it (see main/index.ts's handleDeepLink).
+  onDeepLink: (callback: (params: { connection?: string; expression?: string }) => void) => () => void;
+  // Call once, on mount -- flushes any deep link that arrived before this
+  // window's renderer was ready to receive it.
+  notifyRendererReady: () => void;
 }
 
 declare global {
@@ -67,4 +102,6 @@ export type {
   SaveConnectionInput,
   SaveConnectionResult,
   GetConnectionResult,
+  McpQueryRequest,
+  McpQueryResult,
 };
