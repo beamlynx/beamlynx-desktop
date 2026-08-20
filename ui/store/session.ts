@@ -187,6 +187,9 @@ export class Session {
   operation: Operation = { type: 'table' };
   ast: Ast | null = null; // observable
   query: string = '';
+  /** Currently selected text in the SQL editor, if any. Running a query while text is
+   * selected runs only the selection instead of the full query. */
+  querySelection: string = '';
   hints: Hints | null = null; // observable
 
 
@@ -537,6 +540,10 @@ export class Session {
     this.tabCycleRequestCount++;
   }
 
+  public setQuerySelection(text: string) {
+    this.querySelection = text;
+  }
+
   public updateCursorPosition(line: number, character: number) {
     this.cursorPosition = { line, character };
   }
@@ -567,6 +574,7 @@ export class Session {
 
   public setInputMode(mode: InputMode) {
     this.inputMode = mode;
+    this.querySelection = '';
   }
 
   public setMessage(message: string, autoClearMs: number = 3000) {

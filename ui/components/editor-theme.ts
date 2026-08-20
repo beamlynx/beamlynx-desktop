@@ -37,9 +37,31 @@ export const editorChrome = (isDark: boolean): Extension =>
         fontFamily: 'var(--canvas-font)',
       },
       '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--canvas-trace)' },
-      '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection':
-        { backgroundColor: 'var(--canvas-chip-bg)' },
-      '.cm-activeLine': { backgroundColor: 'var(--canvas-chip-bg)' },
+      // Selection now decides what actually runs (selecting text in SQL mode runs only
+      // the selection), so it needs to read as its own state, not blend into the
+      // activeLine/matching-bracket chip tone below. Tinted with the app's one accent
+      // (--canvas-trace) rather than a new color, at two strengths so it dims like a
+      // normal editor's selection does once focus leaves the editor. The mix percentage
+      // is much higher in light mode than dark: mixing a color into a near-white
+      // background (light's --canvas-node-bg) needs a far stronger dose to reach the
+      // same contrast that the same percentage gets for free against dark's near-black one.
+      '.cm-selectionBackground, .cm-content ::selection': {
+        backgroundColor: isDark
+          ? 'color-mix(in srgb, var(--canvas-trace) 18%, var(--canvas-node-bg))'
+          : 'color-mix(in srgb, var(--canvas-trace) 35%, var(--canvas-node-bg))',
+      },
+      '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground': {
+        backgroundColor: isDark
+          ? 'color-mix(in srgb, var(--canvas-trace) 38%, var(--canvas-node-bg))'
+          : 'color-mix(in srgb, var(--canvas-trace) 70%, var(--canvas-node-bg))',
+      },
+      // Translucent, not solid: CodeMirror paints the selection layer behind the content
+      // layer (z-index -2), and the active line lives inside the content layer - a solid
+      // fill here would fully hide the selection highlight above whenever the selection
+      // is on the current line, which is the common case.
+      '.cm-activeLine': {
+        backgroundColor: 'color-mix(in srgb, var(--canvas-chip-bg) 60%, transparent)',
+      },
       '.cm-activeLineGutter': { backgroundColor: 'var(--canvas-chip-bg)' },
       '.cm-gutters': {
         backgroundColor: 'var(--canvas-node-bg)',

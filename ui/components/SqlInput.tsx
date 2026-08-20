@@ -2,7 +2,7 @@ import CodeMirror, { ReactCodeMirrorRef } from '@uiw/react-codemirror';
 import { EditorView, keymap } from '@codemirror/view';
 import { Prec } from '@codemirror/state';
 import { sql } from '@codemirror/lang-sql';
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useMemo } from 'react';
 import { Session } from '../store/session';
 import { observer } from 'mobx-react-lite';
 import { runInAction } from 'mobx';
@@ -73,11 +73,20 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session }) => {
 
   const isDark = global.theme === 'dark';
 
+  const selectionUpdateExtension = useMemo(() => {
+    return EditorView.updateListener.of(update => {
+      const { main } = update.state.selection;
+      const text = main.empty ? '' : update.state.sliceDoc(main.from, main.to);
+      session.setQuerySelection(text);
+    });
+  }, [session]);
+
   const extensions = [
     EditorView.lineWrapping,
     sql(),
     editorChrome(isDark),
     ...(isDark ? [editorDarkSyntax] : []),
+    selectionUpdateExtension,
     // Structural only (height/padding) - color and font-family now come
     // entirely from editorChrome, shared with PineInput.tsx.
     EditorView.theme({
