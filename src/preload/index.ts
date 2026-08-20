@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('beamlynxDesktop', {
     return () => ipcRenderer.removeListener('update-status', listener);
   },
   restartToUpdate: () => ipcRenderer.send('restart-to-update'),
+  getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:get-version'),
   credentials: {
     status: (): Promise<CredentialsStatus> => ipcRenderer.invoke('credentials:status'),
     list: (): Promise<SavedConnectionMeta[]> => ipcRenderer.invoke('credentials:list'),
@@ -38,6 +39,8 @@ contextBridge.exposeInMainWorld('beamlynxDesktop', {
     delete: (id: string): Promise<void> => ipcRenderer.invoke('credentials:delete', id),
     setMcpEnabled: (id: string, enabled: boolean): Promise<SavedConnectionMeta | null> =>
       ipcRenderer.invoke('credentials:set-mcp-enabled', id, enabled),
+    rename: (id: string, label: string): Promise<SavedConnectionMeta | null> =>
+      ipcRenderer.invoke('credentials:rename', id, label),
   },
   // See src/main/mcp/render-bridge.ts -- main sends the request, this
   // process runs `handler` and reports the result back correlated by

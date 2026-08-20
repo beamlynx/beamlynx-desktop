@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- A saved connection can now be renamed (bundled beamlynx-ui, see its own changelog) -- a new `credentials.rename` call updates its stored label.
 
 ## [0.4.0] - 2026-08-17
 ### Added

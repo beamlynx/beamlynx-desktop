@@ -40,6 +40,11 @@ export type SaveConnectionInput = {
   dbName: string;
   dbUser: string;
   dbPassword: string;
+  // Optional; falls back to makeLabel's derived `user@host:port/db` when
+  // blank or omitted. Only used for a brand-new record -- an upsert onto an
+  // existing one (see saveConnection below) keeps that record's own label,
+  // since renaming is a separate, explicit action (see renameConnection).
+  label?: string;
 };
 
 export type SaveConnectionResult = { persisted: true; profile: SavedConnectionMeta } | { persisted: false };
@@ -159,7 +164,7 @@ export function saveConnection(input: SaveConnectionInput): SaveConnectionResult
   } else {
     record = {
       id: randomUUID(),
-      label: makeLabel(input),
+      label: input.label?.trim() || makeLabel(input),
       dbHost: input.dbHost,
       dbPort: input.dbPort,
       dbName: input.dbName,
@@ -212,6 +217,21 @@ export function setMcpEnabled(id: string, enabled: boolean): SavedConnectionMeta
   return toMeta(store.connections[index]);
 }
 
+// A blank/whitespace-only label is a no-op rather than an error -- there's no
+// good fallback to show for an empty name, so the existing label just stands.
+export function renameConnection(id: string, label: string): SavedConnectionMeta | null {
+  const store = readStore();
+  const index = store.connections.findIndex(c => c.id === id);
+  if (index < 0) return null;
+  const trimmed = label.trim();
+  if (trimmed) {
+    store.connections[index] = { ...store.connections[index], label: trimmed };
+    writeStore(store);
+  }
+  console.log(`[credentials] renameConnection: id=${id} label=${trimmed || '(blank, unchanged)'}`);
+  return toMeta(store.connections[index]);
+}
+
 // Used by the MCP control-plane server (see src/main/mcp/control-plane-server.ts)
 // to resolve which saved connections an MCP client is allowed to see at all -- a
 // connection absent from this list must be treated as if it doesn't exist,
@@ -234,4 +254,5 @@ export function registerCredentialIpc(): void {
     forgetConnection(id);
   });
   ipcMain.handle('credentials:set-mcp-enabled', (_event, id: string, enabled: boolean) => setMcpEnabled(id, enabled));
+  ipcMain.handle('credentials:rename', (_event, id: string, label: string) => renameConnection(id, label));
 }
