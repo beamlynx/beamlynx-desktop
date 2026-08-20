@@ -47,6 +47,9 @@ type ConnectionParams = {
   dbName: string;
   dbUser: string;
   dbPassword: string;
+  // Desktop-only (see credentials.save) -- pine-lang itself has no concept of
+  // a custom label, so this is ignored on the plain HTTP createConnection call.
+  label?: string;
 };
 
 export type SettingsSection = 'connections' | 'preferences' | 'mcp' | 'about';
@@ -752,6 +755,28 @@ export class GlobalStore {
   };
 
   /**
+   * Rename a saved connection profile. Desktop-only -- browser mode's
+   * connection list comes straight from pine-lang's live pools (see
+   * refreshConnections), which has nowhere to persist a custom name.
+   */
+  renameConnection = async (id: string, label: string): Promise<void> => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
+    try {
+      const profile = await window.beamlynxDesktop.credentials.rename(id, label);
+      if (!profile) return;
+      runInAction(() => {
+        this.connections = this.connections.map(c => (c.id === id ? { ...c, label: profile.label } : c));
+      });
+    } catch (e) {
+      const message = (e as Error)?.message ?? 'Unknown error';
+      runInAction(() => {
+        this.connectionError = `Failed to rename: ${message}`;
+      });
+      throw e;
+    }
+  };
+
+  /**
    * Delete a connection: best-effort, silently close any live pine session
    * for it, and (desktop only) forget the saved credential -- both are
    * independent and safe to attempt even if the other has nothing to do
@@ -811,6 +836,29 @@ export class GlobalStore {
       }
     });
     await this.refreshConnections();
+  };
+
+  /**
+   * Re-read a live connection's tables/columns from the database. The server
+   * indexes a connection's schema once on first connect and caches it for the
+   * life of the process, so a table or column added afterward stays invisible
+   * until this is called (or the server restarts).
+   */
+  reindexConnection = async (id: string): Promise<void> => {
+    const useDesktop = isDesktop();
+    const conn = this.connections.find(c => c.id === id);
+    // Same id resolution as deleteConnection: in desktop mode `id` is the
+    // saved profile's id, not pine's own (host:port) id.
+    const pineId = useDesktop && conn?.dbHost && conn?.dbPort ? `${conn.dbHost}:${conn.dbPort}` : id;
+    try {
+      await client.reindexConnection(pineId);
+    } catch (e) {
+      const message = (e as Error)?.message ?? 'Unknown error';
+      runInAction(() => {
+        this.connectionError = `Failed to reindex: ${message}`;
+      });
+      throw e;
+    }
   };
 
   /**
@@ -971,6 +1019,18 @@ export class GlobalStore {
           this.version = version ?? this.version;
         }
       });
+      // The very first build (fired the moment this session was
+      // constructed/restored, before this connection actually had a live
+      // pool) almost certainly failed -- session.ast stayed null, which
+      // canvas mode reads as "still connecting" forever (see
+      // CanvasStore.isConnecting), since nothing else re-triggers a build
+      // once the expression itself stops changing. Same fix as
+      // restoreSessions' analogous "pine wasn't reachable yet" case just
+      // above: request hints again now that the connection is real.
+      // requestHints's own guard (skip if the cursor hasn't moved since the
+      // last successful build) doesn't block this -- that build never
+      // succeeded, so lastHintsCursorPosition was never set.
+      session.requestHints();
     } catch (e) {
       const message = (e as Error)?.message ?? 'Unknown error';
       console.error(`[credentials] ensureSessionConnected(${sessionId}): failed ->`, e);

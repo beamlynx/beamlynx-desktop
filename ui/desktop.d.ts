@@ -49,6 +49,9 @@ type SaveConnectionInput = {
   dbName: string;
   dbUser: string;
   dbPassword: string;
+  // Optional; falls back to a derived `user@host:port/db` label when blank
+  // or omitted.
+  label?: string;
 };
 
 type SaveConnectionResult = { persisted: true; profile: SavedConnectionMeta } | { persisted: false };
@@ -61,6 +64,13 @@ type GetConnectionResult =
 interface BeamlynxDesktopApi {
   onUpdateStatus: (callback: (status: DesktopUpdateStatus) => void) => () => void;
   restartToUpdate: () => void;
+  // Backs the Settings About section's "App version" row -- reads the
+  // installed desktop app's own version, same value `beamlynx --app-version`
+  // prints from the CLI. Distinct from beamlynx-ui's own version (this
+  // build's package.json) and from the connected server's version
+  // (GlobalStore.version) -- three separate things that happen to often
+  // move together but aren't the same number.
+  getAppVersion: () => Promise<string>;
   credentials: {
     status: () => Promise<CredentialsStatus>;
     list: () => Promise<SavedConnectionMeta[]>;
@@ -68,6 +78,7 @@ interface BeamlynxDesktopApi {
     get: (id: string) => Promise<GetConnectionResult>;
     delete: (id: string) => Promise<void>;
     setMcpEnabled: (id: string, enabled: boolean) => Promise<SavedConnectionMeta | null>;
+    rename: (id: string, label: string) => Promise<SavedConnectionMeta | null>;
   };
   // Registers the renderer's single handler for MCP-driven query execution.
   // Call once, at app startup (see components/McpBridge.tsx) -- the handler

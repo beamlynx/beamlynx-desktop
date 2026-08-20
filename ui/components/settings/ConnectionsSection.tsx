@@ -1,5 +1,9 @@
+import CheckIcon from '@mui/icons-material/Check';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import EditIcon from '@mui/icons-material/Edit';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import SecurityIcon from '@mui/icons-material/Security';
+import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import {
@@ -9,7 +13,6 @@ import {
   IconButton,
   InputAdornment,
   MenuItem,
-  Switch,
   Tab,
   Tabs,
   TextField,
@@ -92,6 +95,10 @@ const AddConnectionForm = ({ onDone }: { onDone: () => void }) => {
   const [dbName, setDbName] = useState(reconnectHint?.dbName ?? '');
   const [dbUser, setDbUser] = useState(reconnectHint?.dbUser ?? '');
   const [dbPassword, setDbPassword] = useState('');
+  // Desktop-only: browser mode has nowhere to persist a custom name (see
+  // ConnectionsSection's rename affordance below), so there's nothing for
+  // this field to do there.
+  const [label, setLabel] = useState('');
   const [connectionString, setConnectionString] = useState('');
   const [connectionStringError, setConnectionStringError] = useState('');
   const [showConnectionString, setShowConnectionString] = useState(false);
@@ -146,6 +153,7 @@ const AddConnectionForm = ({ onDone }: { onDone: () => void }) => {
         dbName,
         dbUser,
         dbPassword,
+        label: label.trim() || undefined,
       });
       console.debug('Database connection created with ID:', connectionId);
       setError('');
@@ -219,6 +227,23 @@ const AddConnectionForm = ({ onDone }: { onDone: () => void }) => {
           >
             {error || connectionStringError}
           </Alert>
+        )}
+
+        {isDesktop() && (
+          <TextField
+            fullWidth
+            margin="dense"
+            label="Connection name"
+            id="db-label"
+            name="label"
+            autoComplete="off"
+            placeholder="e.g. Production orders"
+            helperText="Optional -- defaults to the username@host:port/database if left blank."
+            value={label}
+            onChange={e => setLabel(e.target.value)}
+            disabled={connected}
+            sx={{ ...fieldSx, mb: 1 }}
+          />
         )}
 
         <Tabs value={mode} onChange={(_e, v) => setMode(v)} sx={{ mb: 2, minHeight: 36 }}>
@@ -388,14 +413,62 @@ const ConnectionsSection = () => {
   const [confirmingRemoveId, setConfirmingRemoveId] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [switchingConnection, setSwitchingConnection] = useState(false);
+  const [reindexingId, setReindexingId] = useState<string | null>(null);
+  const [reindexedId, setReindexedId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameSaving, setRenameSaving] = useState(false);
   const confirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reindexedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => clearConfirmTimeout, []);
+  useEffect(() => {
+    return () => {
+      clearConfirmTimeout();
+      if (reindexedTimeoutRef.current) clearTimeout(reindexedTimeoutRef.current);
+    };
+  }, []);
 
   const clearConfirmTimeout = () => {
     if (confirmTimeoutRef.current) {
       clearTimeout(confirmTimeoutRef.current);
       confirmTimeoutRef.current = null;
+    }
+  };
+
+  const handleReindexClick = (e: MouseEvent<SVGSVGElement>, id: string) => {
+    e.stopPropagation();
+    if (reindexingId) return;
+    setReindexingId(id);
+    global
+      .reindexConnection(id)
+      .then(() => {
+        setReindexedId(id);
+        reindexedTimeoutRef.current = setTimeout(() => setReindexedId(null), 1500);
+      })
+      .catch(() => {
+        // Failure is already surfaced via the global connection-error snackbar.
+      })
+      .finally(() => setReindexingId(null));
+  };
+
+  const startRename = (e: MouseEvent<SVGSVGElement>, id: string, currentLabel: string) => {
+    e.stopPropagation();
+    setRenamingId(id);
+    setRenameValue(currentLabel);
+  };
+
+  const commitRename = async (id: string) => {
+    const trimmed = renameValue.trim();
+    setRenamingId(null);
+    const current = global.connections.find(c => c.id === id);
+    if (!trimmed || trimmed === current?.label) return;
+    setRenameSaving(true);
+    try {
+      await global.renameConnection(id, trimmed);
+    } catch {
+      // Failure is already surfaced via the global connection-error snackbar.
+    } finally {
+      setRenameSaving(false);
     }
   };
 
@@ -489,7 +562,7 @@ const ConnectionsSection = () => {
           return (
             <Box
               key={id}
-              onClick={() => !switchingConnection && !removingId && handleSwitchTo(id)}
+              onClick={() => !switchingConnection && !removingId && renamingId !== id && handleSwitchTo(id)}
               sx={{
                 display: 'flex',
                 alignItems: 'center',
@@ -516,27 +589,107 @@ const ConnectionsSection = () => {
                   border: isLive ? 'none' : `1.5px solid ${global.getConnectionColor(id) || 'var(--border-color)'}`,
                 }}
               />
-              <Typography
-                component="span"
-                variant="body2"
-                title={isActive ? 'Active connection' : undefined}
-                sx={{ flex: 1, fontFamily: 'var(--canvas-font)', overflow: 'hidden', textOverflow: 'ellipsis' }}
-              >
-                {label}
-              </Typography>
-              {isDesktop() && (
-                <Box
+              {renamingId === id ? (
+                <TextField
+                  autoFocus
+                  variant="standard"
+                  size="small"
+                  value={renameValue}
+                  disabled={renameSaving}
                   onClick={e => e.stopPropagation()}
-                  sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
-                  title={mcpEnabled ? 'Enabled for MCP access' : 'Enable for MCP access'}
+                  onChange={e => setRenameValue(e.target.value)}
+                  onBlur={() => commitRename(id)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      commitRename(id);
+                    } else if (e.key === 'Escape') {
+                      setRenamingId(null);
+                    }
+                  }}
+                  sx={{
+                    flex: 1,
+                    '& .MuiInput-input': {
+                      py: 0,
+                      fontFamily: 'var(--canvas-font)',
+                      fontSize: '0.875rem',
+                      color: 'var(--text-color)',
+                    },
+                    '& .MuiInput-underline:before': { borderBottomColor: 'var(--border-color)' },
+                  }}
+                />
+              ) : (
+                <Typography
+                  component="span"
+                  variant="body2"
+                  title={isActive ? 'Active connection' : undefined}
+                  sx={{ flex: 1, fontFamily: 'var(--canvas-font)', overflow: 'hidden', textOverflow: 'ellipsis' }}
                 >
-                  <Switch
-                    size="small"
-                    checked={!!mcpEnabled}
-                    onChange={(_e, checked) => global.setMcpEnabled(id, checked)}
-                  />
-                </Box>
+                  {label}
+                </Typography>
               )}
+              {isDesktop() && renamingId !== id && (
+                <EditIcon
+                  onClick={e => startRename(e, id, label)}
+                  titleAccess="Rename connection"
+                  sx={{
+                    fontSize: 16,
+                    cursor: 'pointer',
+                    opacity: 0.35,
+                    '&:hover': { opacity: 0.9 },
+                  }}
+                />
+              )}
+              {isDesktop() && (
+                // A hardware-style switch here reads as "this connection is
+                // on/off" rather than what it actually gates -- letting an AI
+                // agent query it over MCP. A bot glyph in the row's own
+                // icon-button vocabulary (same idle/hover/active states as
+                // the rename/refresh/delete icons beside it) says that
+                // directly instead: lit up when an agent can reach this
+                // connection, dim when it can't.
+                <SmartToyOutlinedIcon
+                  onClick={e => {
+                    e.stopPropagation();
+                    global.setMcpEnabled(id, !mcpEnabled);
+                  }}
+                  titleAccess={mcpEnabled ? 'MCP access is on -- click to turn off' : 'Turn on MCP access for this connection'}
+                  sx={{
+                    fontSize: 16,
+                    cursor: 'pointer',
+                    opacity: mcpEnabled ? 1 : 0.35,
+                    color: mcpEnabled ? 'var(--icon-color-highlight)' : 'inherit',
+                    '&:hover': { opacity: mcpEnabled ? 0.9 : 0.6 },
+                  }}
+                />
+              )}
+              {/* Fixed-width slot, always rendered (even for a not-yet-live
+                  connection, where it's simply empty) -- so the delete icon
+                  after it lands in the same column on every row instead of
+                  shifting over depending on whether this one has a refresh
+                  icon to show. */}
+              <Box sx={{ width: 16, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
+                {isLive &&
+                  (reindexedId === id ? (
+                    <CheckIcon sx={{ fontSize: 16, color: 'var(--icon-color-highlight)' }} />
+                  ) : (
+                    <RefreshIcon
+                      onClick={e => handleReindexClick(e, id)}
+                      titleAccess="Refresh schema — pick up tables or columns added since this connection last loaded them"
+                      sx={{
+                        fontSize: 16,
+                        cursor: reindexingId ? 'default' : 'pointer',
+                        opacity: reindexingId === id ? 0.7 : 0.35,
+                        '&:hover': { opacity: reindexingId ? undefined : 0.9 },
+                        '@keyframes pine-reindex-spin': {
+                          from: { transform: 'rotate(0deg)' },
+                          to: { transform: 'rotate(360deg)' },
+                        },
+                        animation: reindexingId === id ? 'pine-reindex-spin 0.8s linear infinite' : 'none',
+                      }}
+                    />
+                  ))}
+              </Box>
               {!isPlayground() && (
                 <DeleteOutlineIcon
                   onClick={e => handleRemoveClick(e, id)}

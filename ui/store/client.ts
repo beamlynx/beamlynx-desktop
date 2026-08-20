@@ -421,4 +421,14 @@ export class HttpClient {
       throw new Error(response.error);
     }
   }
+
+  public async reindexConnection(connectionId: string): Promise<void> {
+    const response = await this.post(`connections/${connectionId}/reindex`, {});
+    if (!response) {
+      throw new Error('No response when trying to reindex connection');
+    }
+    if (response.error) {
+      throw new Error(response.error);
+    }
+  }
 }
