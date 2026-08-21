@@ -92,13 +92,23 @@ const extractFromAlias = (text: string): string | null => {
   return m ? m[1] : null;
 };
 
+/** A `|= name` segment's own assigned name - null if the text doesn't actually match that shape. */
+const extractAssignName = (text: string): string | null => {
+  const m = text.match(/^=\s*(\S+)/);
+  return m ? m[1] : null;
+};
+
 /**
  * Walk segments left to right, assigning each one the alias of the table
  * it's "owned by": a table segment sets the current alias to its own (via
  * `as <alias>`, falling back to the corresponding entry in
  * `ast['selected-tables']` when the table has no explicit alias yet); a
- * `from: X` segment resets the current alias to X; every other segment
- * inherits whatever the current alias is.
+ * `from: X` segment resets the current alias to X; an `= name` segment
+ * (naming a checkpoint - see ensureExplicitCheckpointName) resets it to
+ * `name`, the same way `from:` does, so anything after it (a container's own
+ * select/where/order) is owned by the checkpoint rather than by whichever
+ * table happened to be current when the checkpoint was written; every other
+ * segment inherits whatever the current alias is.
  *
  * `selectedTables` is positional against *committed* table segments only -
  * the last table op is excluded from `ast['selected-tables']` while it's
@@ -117,6 +127,9 @@ const assignOwners = (segments: Segment[], selectedTables: Table[]): void => {
       seg.owner = alias;
     } else if (seg.kind === 'from') {
       currentAlias = extractFromAlias(seg.text) ?? currentAlias;
+      seg.owner = currentAlias;
+    } else if (seg.kind === 'assign') {
+      currentAlias = extractAssignName(seg.text) ?? currentAlias;
       seg.owner = currentAlias;
     } else {
       seg.owner = currentAlias;
@@ -177,7 +190,7 @@ const synthetic = (text: string, kind: SegmentKind, owner: string | null): Segme
  * segment owned by `ownerAlias` (so repeated upserts on the same node stack
  * in a stable order instead of drifting toward the end of the expression).
  *
- * Scans within the pre-checkpoint body only (see splitTrailingCheckpoints),
+ * Scans within the pre-checkpoint body only (see splitAtCheckpoint),
  * not the raw segment list - `assignOwners` gives a trailing group:/limit:
  * the *same* owner as whatever table alias was current when it was written
  * (it inherits, same as every non-table/from segment), so on the table that
@@ -195,7 +208,20 @@ export const upsertOwnedSegment = (
   kind: SegmentKind,
   text: string | null,
 ): Segment[] => {
-  const { body, checkpoints } = splitTrailingCheckpoints(segments);
+  // A gesture targeting the checkpoint itself (see currentCheckpointName) is
+  // the one case that must land AFTER the checkpoint's group:/limit:/assign
+  // run, not before it - it operates on the checkpoint's own sealed output,
+  // which only exists once the checkpoint has run. Every other owner keeps
+  // the usual "insert before the checkpoint" rule (see splitAtCheckpoint).
+  const targetsCheckpoint = ownerAlias === currentCheckpointName(segments);
+  // [...segments], not segments, for the checkpoint-targeting branch -
+  // splitAtCheckpoint's own `before` is always a fresh copy (see its
+  // `segments.slice(...)`), and body gets spliced in place below; reusing
+  // the caller's array here would mutate it as a side effect instead of
+  // returning a new one, unlike every other path through this function.
+  const split = splitAtCheckpoint(segments);
+  const body = targetsCheckpoint ? [...segments] : split.before;
+  const checkpoints = targetsCheckpoint ? ([] as Segment[]) : split.checkpointRun;
   const idx = body.findIndex(s => s.owner === ownerAlias && s.kind === kind);
   if (idx >= 0) {
     if (text === null) {
@@ -217,24 +243,110 @@ export const upsertOwnedSegment = (
   return [...body, ...checkpoints];
 };
 
-const CHECKPOINT_KINDS: SegmentKind[] = ['group', 'limit'];
+/**
+ * Splits the segment list at its checkpoint block - the last group:/limit:
+ * segment, wherever it currently sits, plus its own `= name` if pinned.
+ * `before` is everything a real table's own gesture must insert into (a
+ * table/join/select/where/order/group on a table always lands here - see
+ * upsertOwnedSegment/appendTableSegment); `checkpointRun` is the checkpoint
+ * itself plus everything already written after it, including any select/
+ * where/order the frame's own action bar has already added there (see
+ * CanvasStore.openCheckpointPicker).
+ *
+ * Deliberately NOT "the trailing run" (an earlier version of this function,
+ * splitTrailingCheckpoints, only looked at the literal last segment) -
+ * found live: the frame's first action works, but every action after that
+ * silently no-ops, because the checkpoint is no longer the last segment
+ * once anything has been written after it. Scanning from the end for the
+ * last group:/limit: - wherever it is - fixes this for good, since nothing
+ * ever gets inserted *between* a checkpoint and its own `= name` (see
+ * ensureExplicitCheckpointName), so the checkpoint's start is always a
+ * reliable anchor regardless of how much has been added after it.
+ */
+export const splitAtCheckpoint = (segments: Segment[]): { before: Segment[]; checkpointRun: Segment[] } => {
+  for (let i = segments.length - 1; i >= 0; i--) {
+    if (segments[i].kind === 'group' || segments[i].kind === 'limit') {
+      return { before: segments.slice(0, i), checkpointRun: segments.slice(i) };
+    }
+  }
+  return { before: [...segments], checkpointRun: [] };
+};
 
 /**
- * Split off a trailing run of group:/limit: segments - both are pine-lang
- * "checkpoint" operations that seal the pipeline's current output shape
- * (src/pine/ast/main.clj's `checkpoint-op-types`), so nothing can validly
- * follow one in the same block - not a new table/join, not a hint probe.
- * Both are always appended at the literal end (see setGroupColumns/
- * setLimit in pine-actions.ts), so popping a trailing run off the end is
- * enough; nothing earlier in the list needs checking.
+ * Does the pipeline currently have a checkpoint with nothing composed on top
+ * of it yet - purely a text-structure check, no AST lookup. This is
+ * deliberate: pine-lang only reports a checkpoint in
+ * `ast['pending-assignments']` once it has been given a name (confirmed
+ * live - see the plan doc's container-node follow-up pass), so waiting on
+ * that field would miss the exact "just grouped, nothing composed on top
+ * yet" case this exists to detect. Whether tenant/company are still
+ * individually selected-tables entries or have already been replaced by a
+ * sealed container is a separate question this doesn't answer.
  */
-export const splitTrailingCheckpoints = (segments: Segment[]): { body: Segment[]; checkpoints: Segment[] } => {
-  const body = [...segments];
-  const checkpoints: Segment[] = [];
-  while (body.length && CHECKPOINT_KINDS.includes(body[body.length - 1].kind)) {
-    checkpoints.unshift(body.pop()!);
+export const hasTrailingCheckpoint = (segments: Segment[]): boolean => {
+  const { checkpointRun } = splitAtCheckpoint(segments);
+  return checkpointRun.length > 0 && checkpointRun.every(s => s.kind === 'group' || s.kind === 'limit' || s.kind === 'assign');
+};
+
+/** The checkpoint's already-pinned name, if any exists anywhere in the pipeline - read-only, never mutates. */
+export const currentCheckpointName = (segments: Segment[]): string | null => {
+  const { checkpointRun } = splitAtCheckpoint(segments);
+  if (checkpointRun.length === 0) return null;
+  const assign = checkpointRun.find(s => s.kind === 'assign');
+  return assign ? extractAssignName(assign.text) : null;
+};
+
+export type CheckpointNameResult = { segments: Segment[]; changed: boolean; name: string | null };
+
+/**
+ * Pins an explicit `|= name` on the trailing checkpoint if it doesn't
+ * already have one - the checkpoint-identity equivalent of
+ * ensureExplicitAliases, and for the same reason: pine-lang's own
+ * auto-generated names (`__pine_0__`, or the SQL-generation-only `x_2`/`x_5`
+ * seen in raw query output) are index-derived, unstable across edits, and -
+ * confirmed live - not even valid to reference back in Pine text at all
+ * (`__pine_0__` is a hard parse error, since symbols must start with a
+ * letter). Without a real name, nothing can compose on top of the
+ * checkpoint's output - no select/where/order targeting it, no join onto it.
+ *
+ * Returns `name: null` when there's no checkpoint to name at all (mirrors
+ * ensureExplicitAliases' `changed: false` no-op contract).
+ */
+export const ensureExplicitCheckpointName = (segments: Segment[]): CheckpointNameResult => {
+  const { before, checkpointRun } = splitAtCheckpoint(segments);
+  if (checkpointRun.length === 0) {
+    return { segments, changed: false, name: null };
   }
-  return { body, checkpoints };
+  const existingAssign = checkpointRun.find(s => s.kind === 'assign');
+  if (existingAssign) {
+    return { segments, changed: false, name: extractAssignName(existingAssign.text) };
+  }
+
+  const used = new Set<string>();
+  for (const seg of segments) {
+    if (seg.kind === 'table') {
+      const alias = extractAsAlias(seg.text);
+      if (alias) used.add(alias);
+    } else if (seg.kind === 'assign') {
+      const name = extractAssignName(seg.text);
+      if (name) used.add(name);
+    }
+  }
+  let name = 'agg';
+  let i = 2;
+  while (used.has(name)) {
+    name = `agg${i}`;
+    i++;
+  }
+
+  // At the moment a checkpoint first gets named, nothing has been written
+  // after it yet (openCheckpointPicker always pins a name before opening
+  // any picker, so no select/where/order on it could exist without one) -
+  // checkpointRun is just the group:/limit: segment(s) themselves, so
+  // appending the assign at its end is always correct, not just "correct
+  // for now."
+  const next = [...before, ...checkpointRun, synthetic(`= ${name}`, 'assign', name)];
+  return { segments: next, changed: true, name };
 };
 
 /**
@@ -254,14 +366,30 @@ export const appendTableSegment = (
   hintPine: string,
   alias: string,
   fromAlias?: string,
+  // Joining ONTO the checkpoint's own sealed output (the frame's "join"
+  // action - see CanvasStore.openCheckpointPicker/pine-actions.ts's join)
+  // is the mirror image of the normal case: the new table must land AFTER
+  // the checkpoint, not before it - its output doesn't exist to join onto
+  // until the checkpoint has run. Confirmed live: `group: c.id |= agg |
+  // company_officer` (the new table directly after `|= agg`, nothing in
+  // between) resolves a real FK join against agg's exposed columns.
+  // Appending a join after something has ALREADY been added to target the
+  // checkpoint (a select/where/order from the frame) is untested - this
+  // still appends at the literal end in that case, consistent with every
+  // other "stack after whatever's already there" rule in this module, but
+  // hasn't been verified live.
+  targetsCheckpoint = false,
 ): Segment[] => {
   const additions: Segment[] = [];
   if (fromAlias) {
     additions.push(synthetic(`from: ${fromAlias}`, 'from', fromAlias));
   }
   additions.push(synthetic(`${hintPine} as ${alias}`, 'table', alias));
-  const { body, checkpoints } = splitTrailingCheckpoints(segments);
-  return [...body, ...additions, ...checkpoints];
+  if (targetsCheckpoint) {
+    return [...segments, ...additions];
+  }
+  const { before, checkpointRun } = splitAtCheckpoint(segments);
+  return [...before, ...additions, ...checkpointRun];
 };
 
 /**

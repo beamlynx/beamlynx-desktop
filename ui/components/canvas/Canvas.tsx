@@ -14,6 +14,7 @@ import { observer } from 'mobx-react-lite';
 import { useStores } from '../../store/store-container';
 import { CanvasStore } from '../../store/canvas/canvas.store';
 import {
+  CanvasFrameNodeData,
   CanvasNode,
   CanvasStartNodeData,
   CanvasTableNodeData,
@@ -22,13 +23,16 @@ import { appFont } from '../../styles/app-font';
 import { CanvasStoreContext } from './canvas-context';
 import TableNode from './nodes/TableNode';
 import StartNode from './nodes/StartNode';
+import FrameNode from './nodes/FrameNode';
 import TraceEdge from './edges/TraceEdge';
 import Picker from './Picker';
 import MultiSelectToolbar from './MultiSelectToolbar';
+import CanvasToolbar from './CanvasToolbar';
 
 const nodeTypes: NodeTypes = {
   'table-node': TableNode,
   'start-node': StartNode,
+  'frame-node': FrameNode,
 };
 
 const edgeTypes = { trace: TraceEdge };
@@ -94,9 +98,9 @@ const Flow: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasStore }) 
   // keeps that state in sync with the MobX-derived graph whenever *that*
   // actually changes, mirroring Graph.box.tsx's layoutedNodes -> setNodes
   // pattern exactly.
-  const [nodes, setNodes, onNodesChange] = useNodesState<CanvasTableNodeData | CanvasStartNodeData>(
-    [],
-  );
+  const [nodes, setNodes, onNodesChange] = useNodesState<
+    CanvasTableNodeData | CanvasStartNodeData | CanvasFrameNodeData
+  >([]);
 
   useEffect(() => {
     setNodes(derivedNodes);
@@ -110,7 +114,9 @@ const Flow: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasStore }) 
   }, [nodes.length, canvasGraph.edges.length]);
 
   const onNodeDragStop = (_e: React.MouseEvent, node: CanvasNode) => {
-    if (node.type === 'table-node') canvasStore.setNodePosition(node.id, node.position);
+    if (node.type === 'table-node') {
+      canvasStore.setNodePosition(node.id, node.position);
+    }
   };
 
   // Left click selects (and, held over empty canvas, rubber-band selects) -
@@ -253,6 +259,7 @@ const Flow: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasStore }) 
         </ReactFlow>
       </div>
       <Picker />
+      <CanvasToolbar canvasStore={canvasStore} />
       <MultiSelectToolbar canvasStore={canvasStore} />
     </div>
   );

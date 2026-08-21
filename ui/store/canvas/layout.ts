@@ -1,8 +1,9 @@
 import dagre from 'dagre';
 import { Position } from 'reactflow';
-import { Ast, GroupColumn, OrderColumn } from '../client';
+import { Ast, GroupColumn, JoinTuple, OrderColumn, VariableAst } from '../client';
 import {
   CanvasEdge,
+  CanvasFrameNode,
   CanvasGraph,
   CanvasHandle,
   CanvasNode,
@@ -13,11 +14,11 @@ import { inProgressTable } from './pine-text';
 
 // Deliberately not importing store/graph.util.ts or store/node-layout.ts -
 // this is a smaller, independent version covering only what canvas mode
-// needs (no suggested/candidate nodes, no variable/checkpoint containers).
-// Node height, like the pre-existing graph, is sized from handle rows only
-// - the select/where/order chip rows below the box grow the DOM element
-// without a matching dagre height, same trade-off the existing graph
-// accepts (see store/graph.util.ts's getNodeHeight).
+// needs (no suggested/candidate nodes). Node height, like the pre-existing
+// graph, is sized from handle rows only - the select/where/order chip rows
+// below the box grow the DOM element without a matching dagre height, same
+// trade-off the existing graph accepts (see store/graph.util.ts's
+// getNodeHeight).
 
 export const nodeWidth = 190;
 const handleRowHeight = 14;
@@ -30,23 +31,28 @@ const startNodeHeight = 64;
 // stacked sibling nodes (same rank, different dagre y) end up spaced by
 // less than what's actually on screen and their action bars visually
 // overlap the node above. A fixed estimate, not a measurement - same
-// trade-off as the chip rows below the box (see the file-level comment).
+// trade-off as the chip rows below the box (see the file header).
 const actionBarHeight = 28;
 
 const effectiveHandleCount = (handles: CanvasHandle[]): number =>
   handles.length > 1 || (handles.length === 1 && handles[0].column !== '') ? handles.length : 0;
 
-/** The identity box's own height - what TableNode.tsx sets as its minHeight. */
+/**
+ * The identity box's own height - what TableNode.tsx sets as its minHeight.
+ * `node.type` isn't a literal-discriminated field on reactflow's `Node<T>`,
+ * so TS can't narrow the union from it alone - an explicit cast, same as
+ * this function always needed.
+ */
 export const getNodeHeight = (node: CanvasNode): number => {
-  if (node.type === 'start-node') return startNodeHeight;
+  if (node.type !== 'table-node') return startNodeHeight;
   const data = node.data as CanvasTableNodeData;
   const rows = Math.max(effectiveHandleCount(data.leftHandles), effectiveHandleCount(data.rightHandles));
   return rows === 0 ? minNodeHeight : headerHeight + rows * handleRowHeight + 10;
 };
 
-/** Total on-screen footprint (action bar + box) - what dagre needs for spacing, see actionBarHeight above. */
+/** Total on-screen footprint - what dagre needs for spacing. Only table nodes reserve actionBarHeight. */
 const getNodeFootprintHeight = (node: CanvasNode): number =>
-  node.type === 'start-node' ? getNodeHeight(node) : getNodeHeight(node) + actionBarHeight;
+  node.type === 'table-node' ? getNodeHeight(node) + actionBarHeight : getNodeHeight(node);
 
 const byAlias = <T,>(items: T[], aliasOf: (item: T) => string): Record<string, T[]> => {
   const acc: Record<string, T[]> = {};
@@ -55,6 +61,11 @@ const byAlias = <T,>(items: T[], aliasOf: (item: T) => string): Record<string, T
     (acc[alias] ??= []).push(item);
   }
   return acc;
+};
+
+type HandleMaps = {
+  left: Record<string, Map<string, CanvasHandle>>;
+  right: Record<string, Map<string, CanvasHandle>>;
 };
 
 const addHandle = (
@@ -70,6 +81,40 @@ const addHandle = (
 
 const toHandles = (m: Map<string, CanvasHandle> | undefined): CanvasHandle[] =>
   m ? Array.from(m.values()).sort((a, b) => a.column.localeCompare(b.column)) : [];
+
+/**
+ * Walks one joins list (either ast.joins, or a sealed checkpoint's own
+ * inner joins - see the checkpoint branch in deriveGraph below) into
+ * edges/handles. Extracted so a checkpoint's inner joins (tenant<->company)
+ * get exactly the same treatment as the outer pipeline's - same handle
+ * naming, same uncertain/unresolved flagging - rather than a second,
+ * drifting copy of this logic.
+ */
+const addJoins = (joins: JoinTuple[], handles: HandleMaps, edges: CanvasEdge[]): void => {
+  for (const [fromAlias, toAlias, relation] of joins) {
+    if (!relation) {
+      // Unresolved join (see pipeline.md) - still shown, flagged, rather than silently dropped.
+      edges.push({ id: `${fromAlias}-${toAlias}`, source: fromAlias, target: toAlias, unresolved: true });
+      continue;
+    }
+    const parentIsFrom = relation[2] === 'has';
+    const fromNode = parentIsFrom ? fromAlias : toAlias;
+    const toNode = parentIsFrom ? toAlias : fromAlias;
+    const [, col1, , , col2, resolution] = relation;
+    const [parentCol, childCol] = parentIsFrom ? [col1, col2] : [col2, col1];
+    addHandle(handles.right, fromNode, parentCol, 'r', toNode);
+    addHandle(handles.left, toNode, childCol, 'l', fromNode);
+    const uncertain = resolution === 'heuristic' || resolution === 'synthetic';
+    edges.push({
+      id: `${fromNode}->${toNode}:${parentCol}=${childCol}`,
+      source: fromNode,
+      target: toNode,
+      sourceHandle: `r:${parentCol}`,
+      targetHandle: `l:${childCol}`,
+      ...(uncertain ? { uncertain: true } : {}),
+    });
+  }
+};
 
 /**
  * ast -> nodes/edges (no positions yet), mirroring generateGraph's join
@@ -93,7 +138,22 @@ const toHandles = (m: Map<string, CanvasHandle> | undefined): CanvasHandle[] =>
 // canvas-only shape instead.
 type CanvasTableRef = { schema: string | null; table: string; alias: string };
 
-const deriveGraph = (ast: Ast): { nodes: CanvasNode[]; edges: CanvasEdge[] } => {
+/**
+ * A selected-tables entry whose `.table` matches a key in `ast.variables`
+ * (assigned in an earlier expression) or `ast['pending-assignments']`
+ * (sealed within this one) is a checkpoint's CTE, not a real table -
+ * `seal-as-cte` (pine-lang's ast/main.clj) injects the checkpoint's own name
+ * as both `table` and `alias` when it replaces a table op, so this lookup by
+ * `.table` is exactly the same alias the rest of this expression (joins,
+ * select/where/order) already addresses it by.
+ */
+const checkpointFor = (ast: Ast, tableName: string): VariableAst | undefined =>
+  ast.variables?.[tableName] ?? ast['pending-assignments']?.[tableName];
+
+/** A checkpoint that has replaced a selected-tables slot - its inner tables render as their own nodes, wrapped in a frame (see makeFrameNode). */
+export type FrameSpec = { id: string; memberIds: string[]; leftHandles: CanvasHandle[]; rightHandles: CanvasHandle[] };
+
+const deriveGraph = (ast: Ast): { nodes: CanvasNode[]; edges: CanvasEdge[]; frames: FrameSpec[] } => {
   const selectedTables: CanvasTableRef[] = ast['selected-tables'] ?? [];
   const inProgress = inProgressTable(ast);
   const allTables: CanvasTableRef[] =
@@ -119,35 +179,88 @@ const deriveGraph = (ast: Ast): { nodes: CanvasNode[]; edges: CanvasEdge[] } => 
     groupedColumnNamesByAlias[alias] = new Set(cols.map(g => g.column));
   }
 
-  const leftHandlesByAlias: Record<string, Map<string, CanvasHandle>> = {};
-  const rightHandlesByAlias: Record<string, Map<string, CanvasHandle>> = {};
+  const handles: HandleMaps = { left: {}, right: {} };
   const edges: CanvasEdge[] = [];
+  addJoins(ast.joins ?? [], handles, edges);
 
-  for (const [fromAlias, toAlias, relation] of ast.joins ?? []) {
-    if (!relation) {
-      // Unresolved join (see pipeline.md) - still shown, flagged, rather than silently dropped.
-      edges.push({ id: `${fromAlias}-${toAlias}`, source: fromAlias, target: toAlias, unresolved: true });
+  const nodes: CanvasNode[] = [];
+  const frames: FrameSpec[] = [];
+
+  for (let i = 0; i < allTables.length; i++) {
+    const t = allTables[i];
+    const checkpoint = checkpointFor(ast, t.table);
+    if (checkpoint) {
+      // The inner tables render as their own normal, fully-interactive
+      // table nodes - never collapsed into a summary card (see the plan
+      // doc's container-node follow-up pass: a first version did exactly
+      // that, and it was explicitly rejected - the user wants tenant/
+      // company to stay visible and actionable even once something is
+      // composed on top of the seal). `tables` (the raw accumulation) is
+      // used over `selected-tables` for the same reason store/graph.util.
+      // ts's makeVariableNodes does: `selected-tables` strips the last
+      // table while it's still being typed, never what a *sealed*
+      // checkpoint's inner list should reflect. Excludes an inner table
+      // that is itself another checkpoint's CTE (a chained/nested
+      // checkpoint) - real, out of scope for now (see the plan doc).
+      const innerTables = (checkpoint.tables ?? checkpoint['selected-tables'] ?? []).filter(
+        it => !checkpointFor(ast, it.table),
+      );
+      addJoins(checkpoint.joins ?? [], handles, edges);
+      // checkpoint.columns tells us what each inner alias contributed to
+      // the sealed output - but VariableAst has no equivalent of ast.where/
+      // ast.order/ast.group, so where/order chips and the select-vs-group
+      // distinction are genuinely unrecoverable once sealed. Shown under
+      // "sel" only, not split - an honest simplification, not a bug to
+      // chase, given the AST just doesn't carry the rest.
+      const innerSelectByAlias = byAlias(
+        (checkpoint.columns ?? []).filter(c => !c.hidden && !!c.column),
+        c => c.alias,
+      );
+      const memberIds: string[] = [];
+      for (const it of innerTables) {
+        const data: CanvasTableNodeData = {
+          alias: it.alias,
+          table: it.table,
+          schema: it.schema,
+          // Same integer as the outer slot this checkpoint replaced, for
+          // every inner table - Array.prototype.sort is stable (ES2019+),
+          // so sequenceYByAlias still stacks them in `innerTables`' own
+          // order relative to each other even with tied values, while the
+          // badge itself doesn't show a confusing fractional number.
+          order: i + 1,
+          isCurrent: it.alias === ast.current,
+          // Deleting a table from inside a sealed checkpoint isn't
+          // supported yet - it could break the checkpoint's own join graph
+          // in ways a simple segment removal doesn't account for.
+          removable: false,
+          selectColumns: (innerSelectByAlias[it.alias] ?? []).map(c => c.column),
+          whereChips: [],
+          orderChips: [],
+          groupChips: [],
+          leftHandles: toHandles(handles.left[it.alias]),
+          rightHandles: toHandles(handles.right[it.alias]),
+        };
+        nodes.push({ id: it.alias, type: 'table-node', position: { x: 0, y: 0 }, data });
+        memberIds.push(it.alias);
+      }
+      // `t.table` - the checkpoint's own pinned name - not a synthetic
+      // frame-specific id: it's exactly the alias a join onto the sealed
+      // output addresses in ast.joins (confirmed live - `group: c.id |=
+      // agg | company_officer` produces a join tuple naming "agg"
+      // directly), so the frame can only act as that join's anchor if it
+      // shares that same id. Handles come from the very same handles.left/
+      // right maps addJoins already populated for every other alias - a
+      // join targeting "agg" needs no special-casing there at all.
+      if (memberIds.length) {
+        frames.push({
+          id: t.table,
+          memberIds,
+          leftHandles: toHandles(handles.left[t.table]),
+          rightHandles: toHandles(handles.right[t.table]),
+        });
+      }
       continue;
     }
-    const parentIsFrom = relation[2] === 'has';
-    const fromNode = parentIsFrom ? fromAlias : toAlias;
-    const toNode = parentIsFrom ? toAlias : fromAlias;
-    const [, col1, , , col2, resolution] = relation;
-    const [parentCol, childCol] = parentIsFrom ? [col1, col2] : [col2, col1];
-    addHandle(rightHandlesByAlias, fromNode, parentCol, 'r', toNode);
-    addHandle(leftHandlesByAlias, toNode, childCol, 'l', fromNode);
-    const uncertain = resolution === 'heuristic' || resolution === 'synthetic';
-    edges.push({
-      id: `${fromNode}->${toNode}:${parentCol}=${childCol}`,
-      source: fromNode,
-      target: toNode,
-      sourceHandle: `r:${parentCol}`,
-      targetHandle: `l:${childCol}`,
-      ...(uncertain ? { uncertain: true } : {}),
-    });
-  }
-
-  const nodes: CanvasNode[] = allTables.map((t, i) => {
     const whereChips = (whereByAlias[t.alias] ?? []).map(([, column, , operator, val]) => {
       const literal = val && 'value' in val ? `${val.value}` : '';
       return `${column} ${operator} ${literal}`.trim();
@@ -165,13 +278,13 @@ const deriveGraph = (ast: Ast): { nodes: CanvasNode[]; edges: CanvasEdge[] } => 
       whereChips,
       orderChips: (orderByAlias[t.alias] ?? []).map(o => `${o.column} ${o.direction}`),
       groupChips: (groupByAlias[t.alias] ?? []).map(g => g.column),
-      leftHandles: toHandles(leftHandlesByAlias[t.alias]),
-      rightHandles: toHandles(rightHandlesByAlias[t.alias]),
+      leftHandles: toHandles(handles.left[t.alias]),
+      rightHandles: toHandles(handles.right[t.alias]),
     };
-    return { id: t.alias, type: 'table-node', position: { x: 0, y: 0 }, data };
-  });
+    nodes.push({ id: t.alias, type: 'table-node', position: { x: 0, y: 0 }, data });
+  }
 
-  return { nodes, edges };
+  return { nodes, edges, frames };
 };
 
 const verticalGap = 24;
@@ -234,10 +347,88 @@ const layoutNodes = (
   });
 };
 
+const framePadding = 16;
+const frameHeaderHeight = 30;
+
+/**
+ * Background frame wrapping a specific set of already-laid-out nodes -
+ * sized to their bounding box, drawn behind them (zIndex -1). Used for two
+ * different situations that both end up needing "a border around some
+ * table nodes, with its own action bar": a pipeline whose trailing
+ * group:/limit: hasn't been composed on top of yet (CanvasStore.recompute's
+ * hasTrailingCheckpoint check - `memberIds` is every currently-rendered
+ * table node in that case), and a checkpoint that HAS been composed on top
+ * of, whose inner tables now render as their own nodes rather than a
+ * collapsed summary (deriveGraph's `frames` output - `memberIds` is just
+ * that checkpoint's own inner tables).
+ */
+const makeFrameNode = (
+  id: string,
+  laidOutNodes: CanvasNode[],
+  memberIds: string[],
+  leftHandles: CanvasHandle[] = [],
+  rightHandles: CanvasHandle[] = [],
+): CanvasFrameNode | null => {
+  const members = new Set(memberIds);
+  const boxes = laidOutNodes
+    .filter((n): n is CanvasTableNode => n.type === 'table-node' && members.has(n.id))
+    .map(n => ({ x: n.position.x, y: n.position.y, width: nodeWidth, height: getNodeFootprintHeight(n) }));
+  if (boxes.length === 0) return null;
+  const minX = Math.min(...boxes.map(b => b.x));
+  const minY = Math.min(...boxes.map(b => b.y));
+  const maxX = Math.max(...boxes.map(b => b.x + b.width));
+  const maxY = Math.max(...boxes.map(b => b.y + b.height));
+  return {
+    id,
+    type: 'frame-node',
+    position: { x: minX - framePadding, y: minY - framePadding - frameHeaderHeight },
+    draggable: false,
+    selectable: false,
+    // ReactFlow renders its own `.react-flow__node` wrapper AROUND
+    // whatever FrameNode.tsx returns - `pointerEvents: 'none'` set only on
+    // FrameNode's own root div doesn't make THAT wrapper transparent too,
+    // since a child's pointer-events:none doesn't propagate to its parent.
+    // The wrapper stays hit-testable (it has to - the action bar's clicks
+    // need to reach it) and, unless told otherwise, keeps whatever cursor
+    // ReactFlow's own default node styling applies - reported live as a
+    // stray pointer/grab cursor across the whole frame even off the
+    // buttons, which an inner-div-only fix couldn't reach. `style` is a
+    // real top-level Node field ReactFlow applies directly to that
+    // wrapper, so this reaches the one element the inner fix couldn't.
+    style: { pointerEvents: 'none' },
+    zIndex: -1,
+    data: {
+      width: maxX - minX + framePadding * 2,
+      height: maxY - minY + framePadding * 2 + frameHeaderHeight,
+      leftHandles,
+      rightHandles,
+    },
+  };
+};
+
 export const buildCanvasGraph = (
   ast: Ast,
   positions: Record<string, { x: number; y: number }>,
+  hasPendingCheckpoint: boolean,
 ): CanvasGraph => {
-  const { nodes, edges } = deriveGraph(ast);
-  return { nodes: layoutNodes(positions, nodes, edges), edges, parsing: true, singleBlock: true };
+  const { nodes, edges, frames } = deriveGraph(ast);
+  const laidOut = layoutNodes(positions, nodes, edges);
+
+  const consumedFrames = frames
+    .map(f => makeFrameNode(f.id, laidOut, f.memberIds, f.leftHandles, f.rightHandles))
+    .filter((f): f is CanvasFrameNode => f !== null);
+
+  // The pending frame wraps whatever's left once any already-consumed
+  // checkpoint's own members are excluded - without this, a pipeline with
+  // both an earlier, already-composed-on checkpoint and a later, still-
+  // pending one would double-wrap the earlier one's inner tables. Chained
+  // checkpoints are still an edge case this doesn't fully model (see the
+  // plan doc's still-out-of-scope list), but this avoids the most visible
+  // glitch cheaply.
+  const claimed = new Set(frames.flatMap(f => f.memberIds));
+  const pendingMemberIds = laidOut.filter(n => n.type === 'table-node' && !claimed.has(n.id)).map(n => n.id);
+  const pendingFrame = hasPendingCheckpoint ? makeFrameNode('__checkpoint_frame__', laidOut, pendingMemberIds) : null;
+
+  const allFrames = [...consumedFrames, ...(pendingFrame ? [pendingFrame] : [])];
+  return { nodes: [...allFrames, ...laidOut], edges, parsing: true, singleBlock: true };
 };

@@ -2,6 +2,7 @@ import { Ast, TableHint } from '../client';
 import {
   appendTableSegment,
   ensureExplicitAliases,
+  ensureExplicitCheckpointName,
   isRemovableNode,
   removeNode,
   Segment,
@@ -19,30 +20,63 @@ import { probeBuild } from './probe';
  * this map before using it - the node it refers to may have just been
  * renamed by ensureExplicitAliases as part of computing this very base. See
  * resolveAlias below and canvas.store.ts's commit* methods.
+ *
+ * `checkpointName` is the trailing checkpoint's pinned name (see
+ * ensureExplicitCheckpointName), or null if the pipeline doesn't currently
+ * end in one. Unlike aliasMap, there's no rename map for it - a checkpoint
+ * name, once pinned, is never renamed by a later gesture the way an
+ * auto-generated table alias is.
  */
-export type PinnedBase = { expression: string; ast: Ast; segments: Segment[]; aliasMap: Map<string, string> };
+export type PinnedBase = {
+  expression: string;
+  ast: Ast;
+  segments: Segment[];
+  aliasMap: Map<string, string>;
+  checkpointName: string | null;
+};
 
 /**
  * Every gesture starts from a pinned base: if the current expression has any
  * table lacking an explicit alias, pin it first (see pine-text.ts's
- * ensureExplicitAliases) and re-build so the working ast matches the pinned
- * text before computing the actual gesture. A no-op (one extra segmentation
- * pass, no network call) once everything is already pinned - which, after
- * the very first canvas gesture on a session, is always.
+ * ensureExplicitAliases), then do the same for a trailing checkpoint lacking
+ * an explicit `|= name` (ensureExplicitCheckpointName) - each pinning step
+ * that actually changes the text is followed by a re-build, so the working
+ * ast always matches the pinned text before computing the actual gesture. A
+ * no-op (extra segmentation passes only, no network calls) once everything
+ * is already pinned - which, after the first gesture that touches a given
+ * table or checkpoint, is always.
  */
 export const getPinnedBase = async (
   expression: string,
   ast: Ast,
   connectionId: string | undefined,
 ): Promise<PinnedBase | null> => {
-  const { expression: pinned, changed, aliasMap } = ensureExplicitAliases(expression, ast);
-  if (!changed) {
-    const segments = segmentsFromAst(expression, ast);
-    return segments ? { expression, ast, segments, aliasMap } : null;
+  const aliasPin = ensureExplicitAliases(expression, ast);
+  let curExpression = expression;
+  let curAst = ast;
+  if (aliasPin.changed) {
+    curExpression = aliasPin.expression;
+    curAst = await probeBuild(curExpression, connectionId);
   }
-  const pinnedAst = await probeBuild(pinned, connectionId);
-  const segments = segmentsFromAst(pinned, pinnedAst);
-  return segments ? { expression: pinned, ast: pinnedAst, segments, aliasMap } : null;
+
+  let segments = segmentsFromAst(curExpression, curAst);
+  if (!segments) return null;
+
+  const namePin = ensureExplicitCheckpointName(segments);
+  if (namePin.changed) {
+    curExpression = toText(namePin.segments);
+    curAst = await probeBuild(curExpression, connectionId);
+    segments = segmentsFromAst(curExpression, curAst);
+    if (!segments) return null;
+  }
+
+  return {
+    expression: curExpression,
+    ast: curAst,
+    segments,
+    aliasMap: aliasPin.aliasMap,
+    checkpointName: namePin.name,
+  };
 };
 
 /** Resolves an alias captured before `base` was computed through its rename map (see PinnedBase). */
@@ -50,8 +84,14 @@ export const resolveAlias = (base: PinnedBase, alias: string): string => base.al
 
 export const pickFirstTable = (hint: TableHint, alias: string): string => `${hint.pine} as ${alias}`;
 
-export const join = (base: PinnedBase, hint: TableHint, alias: string, fromAlias?: string): string =>
-  toText(appendTableSegment(base.segments, hint.pine, alias, fromAlias));
+export const join = (base: PinnedBase, hint: TableHint, alias: string, fromAlias?: string): string => {
+  // The join targets the checkpoint's own sealed output when the focus
+  // (an explicit fromAlias, or - when omitted, meaning "join off whatever's
+  // already current" - base.ast.current) is the checkpoint's pinned name.
+  // See appendTableSegment's targetsCheckpoint param for what that changes.
+  const targetsCheckpoint = base.checkpointName !== null && (fromAlias ?? base.ast.current) === base.checkpointName;
+  return toText(appendTableSegment(base.segments, hint.pine, alias, fromAlias, targetsCheckpoint));
+};
 
 // Select/order chips are always written by canvas as plain `alias.column` -
 // so toggling the desired set and regenerating the whole segment is safe.

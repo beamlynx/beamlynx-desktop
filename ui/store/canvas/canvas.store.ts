@@ -3,7 +3,14 @@ import { TableHint } from '../client';
 import { Session } from '../session';
 import { CanvasGraph, PickerAnchor, PickerItem, PickerRequest, PickerState } from './canvas.model';
 import { buildCanvasGraph } from './layout';
-import { makeAlias, segmentsFromAst, splitTrailingCheckpoints, toText } from './pine-text';
+import {
+  currentCheckpointName,
+  hasTrailingCheckpoint,
+  makeAlias,
+  segmentsFromAst,
+  splitAtCheckpoint,
+  toText,
+} from './pine-text';
 import * as actions from './pine-actions';
 import { probeBuild } from './probe';
 
@@ -34,6 +41,19 @@ export class CanvasStore {
   /** Aliases of the currently box/shift-selected table nodes - see Canvas.tsx's onSelectionChange. */
   selectedAliases: string[] = [];
   private pickerSeq = 0;
+  // Shares one in-flight checkpoint-naming commit across concurrent
+  // callers (recompute's own background auto-pin, and a picker open that
+  // lands before that resolves) - see ensureCheckpointPinnedShared.
+  private checkpointPinInFlight: Promise<string | null> | null = null;
+  // Undo/redo: plain expression-text snapshots, not a replayable action log -
+  // every gesture already reduces to a deterministic old-text -> new-text
+  // transition (applyExpression is the one place that happens), so there's
+  // nothing to replay or reconstruct. Hand-typed edits never go through
+  // applyExpression (they write session.expression directly from PineInput),
+  // so they're deliberately excluded from this history by construction, not
+  // by an extra check here - a decision made explicitly rather than assumed.
+  private undoStack: string[] = [];
+  private redoStack: string[] = [];
   // Serializes commit() calls (see commit/runCommit below) - without this,
   // two gestures fired in quick succession (e.g. two picks in the same
   // still-open multi-select picker) both compute their mutation against the
@@ -122,7 +142,28 @@ export class CanvasStore {
       this.canvasGraph = { ...this.canvasGraph, parsing: false, singleBlock: true };
       return;
     }
-    this.canvasGraph = buildCanvasGraph(ast, this.positions);
+    // Purely a text-structure check (see hasTrailingCheckpoint's own
+    // comment) - not derived from ast['pending-assignments'], which only
+    // populates once the checkpoint has a name, missing exactly the "just
+    // grouped, nothing composed on top yet" moment this needs to catch.
+    const segments = segmentsFromAst(expression, ast) ?? [];
+    const hasCheckpoint = hasTrailingCheckpoint(segments);
+    // Pin the checkpoint's name proactively, in the background, the moment
+    // it appears unnamed - not waiting for the user's first click on a
+    // frame action. Found live: without this, the *first* click on select/
+    // where/order paid for the full pin round trip with zero visual
+    // feedback while it was in flight (the picker only shows its own
+    // loading state once opened, which happens *after* pinning resolves),
+    // reading as "nothing happened" on click 1 and "now it works" on
+    // click 2. By the time a user actually clicks, this has usually
+    // already resolved, so openCheckpointPicker's fast path applies from
+    // the first click too. ensureCheckpointPinnedShared dedupes against a
+    // click landing before this resolves, so the two never race into two
+    // redundant commits.
+    if (hasCheckpoint && !currentCheckpointName(segments) && !this.checkpointPinInFlight) {
+      void this.ensureCheckpointPinnedShared();
+    }
+    this.canvasGraph = buildCanvasGraph(ast, this.positions, hasCheckpoint);
   }
 
   setNodePosition(id: string, position: { x: number; y: number }) {
@@ -134,7 +175,48 @@ export class CanvasStore {
   }
 
   private applyExpression(expression: string) {
+    // A no-op gesture (e.g. deleteNode/setLimit returning the same text)
+    // shouldn't push a snapshot that's identical to what undo would already
+    // land on - it would just be a wasted step, never a wrong one, but it's
+    // free to skip.
+    if (expression === this.session.expression) return;
+    this.undoStack.push(this.session.expression);
+    this.redoStack = [];
     this.session.expression = expression;
+  }
+
+  get canUndo(): boolean {
+    return this.undoStack.length > 0;
+  }
+
+  get canRedo(): boolean {
+    return this.redoStack.length > 0;
+  }
+
+  /**
+   * Restores the previous snapshot. Closes any open picker and clears the
+   * multi-select - both can hold onto a node alias (picker.request.alias,
+   * selectedAliases) that this undo may make stale (e.g. undoing past the
+   * gesture that pinned/created that alias), the same class of staleness
+   * `runCommit`'s aliasMap-rename handling exists for, just with no rename
+   * to follow this time since the alias may no longer exist at all.
+   */
+  undo() {
+    if (this.undoStack.length === 0) return;
+    const previous = this.undoStack.pop() as string;
+    this.redoStack.push(this.session.expression);
+    this.closePicker();
+    this.selectedAliases = [];
+    this.session.expression = previous;
+  }
+
+  redo() {
+    if (this.redoStack.length === 0) return;
+    const next = this.redoStack.pop() as string;
+    this.undoStack.push(this.session.expression);
+    this.closePicker();
+    this.selectedAliases = [];
+    this.session.expression = next;
   }
 
   private async pinnedBase(): Promise<actions.PinnedBase | null> {
@@ -214,20 +296,38 @@ export class CanvasStore {
 
   private buildProbeExpression(request: PickerRequest): string {
     if (request.kind === 'table') return '';
-    // Drop any trailing group:/limit: - both are pine-lang "checkpoint"
-    // operations that seal the pipeline into its aggregated/limited output,
-    // so a hint probe built *after* one reflects that output's shape (just
-    // the grouped columns, plus aggregate function names) rather than the
-    // actual table the gesture is about. Confirmed live: grouping on one
-    // node, then opening group on a *different* node, offered only the
-    // first node's already-grouped column and "count" - the post-checkpoint
-    // shape, not the second node's real columns. See splitTrailingCheckpoints
-    // (pine-text.ts) - the same helper also fixes appendTableSegment, which
-    // had the identical issue committing a join after a group/limit instead
-    // of before it.
     const segments = segmentsFromAst(this.session.expression, this.session.ast) ?? [];
-    const { body } = splitTrailingCheckpoints(segments);
-    const base = (body.length ? toText(body) : this.session.expression).replace(/\|\s*$/, '').trimEnd();
+    // Targeting the checkpoint itself (the frame's own select/where/order -
+    // see openCheckpointPicker) is the one case that needs the checkpoint
+    // KEPT in the probe base, not stripped - `from: <checkpointName>` only
+    // resolves to anything if the group:/limit:/= name run it names is
+    // still there (confirmed live). Every other gesture targets a table
+    // that exists *before* the checkpoint, so the checkpoint must be
+    // dropped instead - a hint probe built *after* one reflects the sealed
+    // output's shape (just the grouped columns, plus aggregate function
+    // names), not the actual table the gesture is about. Confirmed live:
+    // grouping on one node, then opening group on a *different* node,
+    // offered only the first node's already-grouped column and "count" -
+    // the post-checkpoint shape, not the second node's real columns. See
+    // splitAtCheckpoint (pine-text.ts) - the same helper also fixes
+    // appendTableSegment, which had the identical issue committing a join
+    // after a group/limit instead of before it.
+    const isCheckpointTarget = 'alias' in request && request.alias === currentCheckpointName(segments);
+    const { before } = splitAtCheckpoint(segments);
+    let relevant = isCheckpointTarget ? segments : before;
+    // Group reuses select's hint category, per the comment below - but
+    // hints.select deliberately excludes columns already in that alias's
+    // OWN select: (a sensible exclusion for select's own "what else could
+    // I add" question - wrong for group, where a column already selected
+    // is still completely valid to group by too). Confirmed live: with
+    // `select: c.name` already present, hints.select drops "name" from a
+    // 35-column list down to 34. Stripping that alias's own select:
+    // segment before probing (for the group case only) restores the full
+    // list, since the probe then looks exactly like nothing was selected.
+    if (request.kind === 'group') {
+      relevant = relevant.filter(s => !(s.owner === request.alias && s.kind === 'select'));
+    }
+    const base = (relevant.length ? toText(relevant) : this.session.expression).replace(/\|\s*$/, '').trimEnd();
     const current = this.session.ast?.current;
     const focusPrefix = request.alias !== current ? `${base} | from: ${request.alias}` : base;
     // pine-lang has no dedicated hint category for group-by candidates (see
@@ -462,5 +562,72 @@ export class CanvasStore {
   /** `limit:` applies to the whole pipeline, not a specific table - pass null to clear it. */
   async commitLimit(value: number | null) {
     await this.commit(base => actions.setLimit(base, value));
+  }
+
+  // --- checkpoint frame ------------------------------------------------
+
+  /**
+   * Pins an explicit `|= name` on the trailing checkpoint if it doesn't
+   * already have one (see pine-text.ts's ensureExplicitCheckpointName) and
+   * returns that name - null if there's no checkpoint at all right now.
+   * Goes through the normal commit() pipeline like any other gesture (same
+   * serialization, same undo-stack snapshot), even though the mutation
+   * itself doesn't change what the query returns - only its name. Called
+   * before opening any frame action's picker, since the picker needs a
+   * real, referenceable name to probe against.
+   */
+  async ensureCheckpointPinned(): Promise<string | null> {
+    let name: string | null = null;
+    await this.commit(base => {
+      name = base.checkpointName;
+      return base.expression;
+    });
+    return name;
+  }
+
+  /**
+   * Shares one in-flight pin commit across concurrent callers - recompute's
+   * own background auto-pin (see its comment) and any picker open that
+   * arrives before that resolves - so they never race into two redundant
+   * commit() round trips for the same pin.
+   */
+  private ensureCheckpointPinnedShared(): Promise<string | null> {
+    if (this.checkpointPinInFlight) return this.checkpointPinInFlight;
+    const pending = this.ensureCheckpointPinned().finally(() => {
+      if (this.checkpointPinInFlight === pending) this.checkpointPinInFlight = null;
+    });
+    this.checkpointPinInFlight = pending;
+    return pending;
+  }
+
+  /**
+   * Opens the frame's select/where/order/join picker - reuses
+   * openColumnPicker/openJoinPicker entirely, treating the checkpoint's
+   * pinned name exactly like a table alias (see buildProbeExpression's
+   * checkpoint-aware branch, pine-actions.ts's checkpoint-targeting branch
+   * in upsertOwnedSegment, and its targetsCheckpoint branch in
+   * appendTableSegment/join for the join case specifically).
+   *
+   * Fast path: once the checkpoint is already named (true after its first
+   * use), there's nothing to pin - skip ensureCheckpointPinned's full
+   * commit()/pinnedBase() round trip (a fresh probe plus a "prettify"
+   * probe, even for a guaranteed no-op) and read the name straight off the
+   * currently-rendered segments instead, which costs nothing (no network
+   * call). Found live: every click on a frame action was paying for 2-3
+   * sequential round trips before the picker could even open, which read
+   * as "nothing happened" on the first click and "now it works" on a
+   * second. Committing the actual pick still goes through the full
+   * pinning pipeline regardless (see toggleSelectColumn etc.) - this only
+   * skips the pre-emptive pin that used to happen just to open the picker.
+   */
+  async openCheckpointPicker(kind: 'select' | 'where' | 'order' | 'join', anchor: PickerAnchor) {
+    const segments = segmentsFromAst(this.session.expression, this.session.ast) ?? [];
+    const name = currentCheckpointName(segments) ?? (await this.ensureCheckpointPinnedShared());
+    if (!name) return;
+    if (kind === 'join') {
+      this.openJoinPicker(name, anchor);
+      return;
+    }
+    this.openColumnPicker(kind, name, anchor);
   }
 }

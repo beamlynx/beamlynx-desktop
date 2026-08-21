@@ -27,9 +27,32 @@ export type CanvasTableNodeData = {
 // eslint-disable-next-line @typescript-eslint/ban-types
 export type CanvasStartNodeData = {};
 
+/**
+ * Background decoration for a pipeline that currently ends in an unconsumed
+ * group:/limit: checkpoint, or for a checkpoint that HAS been composed on
+ * top of, whose inner tables render as their own normal table nodes rather
+ * than a collapsed summary (an earlier design that collapsed them was
+ * explicitly rejected - see the plan doc's container-node follow-up pass) -
+ * drawn behind whichever nodes it wraps (see layout.ts's makeFrameNode), not
+ * a replacement for them. `width`/`height` are precomputed from those
+ * nodes' laid-out positions, since a plain node has no way to size itself
+ * from its siblings. Border plus an action bar operating on the
+ * checkpoint's sealed output once pinned - see CanvasStore.
+ * ensureCheckpointPinned/openCheckpointPicker.
+ *
+ * `leftHandles`/`rightHandles` are only non-empty for a *named* checkpoint
+ * that something has actually joined onto or from - the frame's node id is
+ * the checkpoint's own pinned name in that case (see layout.ts's
+ * deriveGraph/makeFrameNode), which is exactly the alias `ast.joins`
+ * already addresses it by, so a join onto the sealed output attaches to
+ * the frame itself rather than dangling with nowhere to render.
+ */
+export type CanvasFrameNodeData = { width: number; height: number; leftHandles: CanvasHandle[]; rightHandles: CanvasHandle[] };
+
 export type CanvasTableNode = Node<CanvasTableNodeData>;
 export type CanvasStartNode = Node<CanvasStartNodeData>;
-export type CanvasNode = CanvasTableNode | CanvasStartNode;
+export type CanvasFrameNode = Node<CanvasFrameNodeData>;
+export type CanvasNode = CanvasTableNode | CanvasStartNode | CanvasFrameNode;
 export type CanvasEdge = Edge & { unresolved?: boolean; uncertain?: boolean };
 
 export type CanvasGraph = {

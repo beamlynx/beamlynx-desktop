@@ -22,7 +22,11 @@ const headerHeight = 48;
 // Square, not round - a join column is a "pin" on the component package, and
 // pins are square in this system (see the notch/badge below); a round dot
 // here would read as a different kind of thing from everything else.
-const RelationDots = ({
+// Exported so FrameNode.tsx can render join handles for a checkpoint the
+// same way - the checkpoint's own name is a real alias joins address it by
+// (see layout.ts's deriveGraph/makeFrameNode), so its handles should look
+// identical to any table's.
+export const RelationDots = ({
   handles,
   type,
   position,
@@ -85,7 +89,12 @@ const RelationDots = ({
 // different node's picker") isn't preempted by the outside-click handler
 // closing things first. Defined on the component so every call site gets
 // it - a per-call-site className is one more place to forget it.
-const ActionButton = ({
+// Exported so FrameNode.tsx can render the same action bar look for a
+// checkpoint's own select/where/order actions - both are ultimately "a set
+// of actions attached to something occupying a pipeline slot" (a table or a
+// sealed checkpoint), so they should look identical, not like two different
+// button systems.
+export const ActionButton = ({
   label,
   onClick,
   testId,
@@ -120,7 +129,7 @@ const ActionButton = ({
 // A visible separator between actions - color alone (no border/background)
 // read as one continuous run of words ("join select where order"), not as
 // four separate controls.
-const ActionDivider = () => (
+export const ActionDivider = () => (
   <span aria-hidden style={{ color: 'var(--canvas-node-border)', fontSize: '9px' }}>
     |
   </span>

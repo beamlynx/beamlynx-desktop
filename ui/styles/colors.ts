@@ -94,6 +94,14 @@ export const lightColors = {
   '--canvas-chip-border': '#b7d0e4',
   '--canvas-picker-bg': '#ffffff',
   '--canvas-picker-border': '#9fc0dc',
+  // A sealed group:/limit: checkpoint, rendered as its own container node -
+  // same purple family as the classic graph's --node-variable-* (same
+  // underlying concept, a computed/virtual grouping rather than a literal
+  // table) but under canvas's own token namespace, matching every other
+  // --canvas-* token's isolation from --node-* (see pass 7's comment above).
+  '--canvas-container-border': '#7c5cbf',
+  '--canvas-container-bg': 'rgba(124, 92, 191, 0.08)',
+  '--canvas-container-label': '#5b3f99',
 };
 
 export const darkColors = {
@@ -158,4 +166,7 @@ export const darkColors = {
   '--canvas-chip-border': '#28577c',
   '--canvas-picker-bg': '#0f2337',
   '--canvas-picker-border': '#2c5578',
+  '--canvas-container-border': '#9b7fd4',
+  '--canvas-container-bg': 'rgba(155, 127, 212, 0.12)',
+  '--canvas-container-label': '#c3aef0',
 };
