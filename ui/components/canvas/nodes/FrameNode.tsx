@@ -71,13 +71,13 @@ const FrameNode: React.FC<NodeProps<CanvasFrameNodeData>> = ({ id, data }) => {
           pointerEvents: 'auto',
         }}
       >
-        <ActionButton label="select" onClick={openAction('select')} />
+        <ActionButton label="select" testId={`frame-action-select-${id}`} onClick={openAction('select')} />
         <ActionDivider />
-        <ActionButton label="join" onClick={openAction('join')} />
+        <ActionButton label="join" testId={`frame-action-join-${id}`} onClick={openAction('join')} />
         <ActionDivider />
-        <ActionButton label="where" onClick={openAction('where')} />
+        <ActionButton label="where" testId={`frame-action-where-${id}`} onClick={openAction('where')} />
         <ActionDivider />
-        <ActionButton label="order" onClick={openAction('order')} />
+        <ActionButton label="order" testId={`frame-action-order-${id}`} onClick={openAction('order')} />
       </div>
       <div
         style={{
