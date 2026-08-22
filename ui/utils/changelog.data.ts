@@ -15,6 +15,50 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.50.0',
+    date: '2026-08-22',
+    breaking: [
+      {
+        description:
+          "Requires pine-lang 0.39.0 or later -- the new connection refresh icon (below) needs its POST /api/v1/connections/:id/reindex endpoint.",
+      },
+    ],
+    added: [
+      {
+        description:
+          'A refresh icon next to each live connection in Settings > Database Connections. Use it to pick up tables or columns added to the database after the connection was first opened, instead of restarting the server.',
+      },
+      {
+        description:
+          "A connection can now be renamed: an optional name field when adding it, and a pencil icon on its row in Settings > Database Connections afterward. Desktop app only, since that's the only place a connection's name is actually saved anywhere.",
+      },
+      {
+        description:
+          "Keyboard control for canvas mode. Move between nodes with the arrow keys or j/k, and use a single-letter shortcut for the highlighted node's operations: s select, w where, o order, g group, i join (or add the first table, from the start node), x delete, u/Shift+U undo/redo. The highlighted node is shown the same way as the query's current node, and its operations stay visible without needing to hover it. A checkpoint (a group:/limit: step) can now be navigated to and deleted the same way.",
+      },
+    ],
+    fixed: [
+      {
+        description:
+          "The delete icon on a Database Connections row used to sit in a different column depending on whether that row also showed the refresh icon (only shown for a live connection), so rows didn't line up. It now sits in the same place on every row.",
+      },
+      {
+        description:
+          'On the desktop app, the graph view could get stuck showing "Connecting…" forever even once the connection was live. The very first query build for a tab, sent before its connection actually had a live pool yet, failed silently and nothing ever retried it once the connection came up. The connection reconnect step now asks for a fresh build once it succeeds.',
+      },
+      {
+        description:
+          "The MCP switch on a Database Connections row (desktop app) looked like a general on/off toggle for the connection itself. Replaced with a small robot icon, lit when MCP access is on -- consistent with the row's other icon actions, and specific about what it actually controls.",
+      },
+    ],
+    changed: [
+      {
+        description:
+          'The Settings About section now labels its version row correctly ("Server version" -- it was always the connected pine-lang server\'s version, not this app\'s own). It also shows the UI\'s own version, and, in the desktop app, the installed app\'s own version.',
+      },
+    ],
+  },
+  {
     version: '0.49.0',
     date: '2026-08-16',
     added: [
@@ -1162,4 +1206,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.49.0';
+export const LATEST_VERSION = '0.50.0';

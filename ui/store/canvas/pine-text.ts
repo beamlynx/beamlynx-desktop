@@ -147,6 +147,23 @@ const assignOwners = (segments: Segment[], selectedTables: Table[]): void => {
  */
 export const segmentsFromAst = (expression: string, ast: Ast | null | undefined): Segment[] | null => {
   if (!ast?.ranges || !ast['selected-tables']) return null;
+  // `ast.ranges` (line/character positions) are only valid for the *exact*
+  // expression they were built from. `session.ast` can still describe the
+  // *previous* expression for a moment right after a commit applies new
+  // text - CanvasStore's own recompute reaction fires on `session.expression`
+  // changing alone, before the async rebuild that produces a matching ast
+  // has resolved (see that reaction's own comment). A shrinking edit (e.g.
+  // deleteCheckpoint dropping two lines) means a stale range's line index
+  // can point past the end of the new, shorter text - offsetFromPosition
+  // indexing `lines[i]` would then be `undefined`, throwing and crashing
+  // the whole app (confirmed live). Bail out to the same "keep the last
+  // good graph" degrade path a malformed ast already takes below, rather
+  // than let a stale-but-otherwise-well-formed ast crash on text it no
+  // longer describes - the next recompute, once the matching ast arrives,
+  // renders correctly.
+  const lineCount = expression.split('\n').length;
+  const isStale = ast.ranges.some(r => r.start.line >= lineCount || r.end.line >= lineCount);
+  if (isStale) return null;
   const segments: Segment[] = ast.ranges.map((r: PineRange) => {
     const start = offsetFromPosition(expression, r.start);
     const end = offsetFromPosition(expression, r.end);

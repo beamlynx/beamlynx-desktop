@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.50.0] - 2026-08-22
+### Breaking
+- Requires pine-lang 0.39.0 or later -- the new connection refresh icon (below) needs its `POST /api/v1/connections/:id/reindex` endpoint.
+
 ### Added
 - A refresh icon next to each live connection in Settings > Database Connections. Use it to pick up tables or columns added to the database after the connection was first opened, instead of restarting the server.
 - A connection can now be renamed: an optional name field when adding it, and a pencil icon on its row in Settings > Database Connections afterward. Desktop app only, since that's the only place a connection's name is actually saved anywhere.
