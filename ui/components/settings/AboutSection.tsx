@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
 import { Box, Link, Typography } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../../store/store-container';
+import { isDesktop } from '../../store/util';
 
 type InfoRowProps = {
   label: string;
@@ -31,6 +33,12 @@ const InfoRow = ({ label, children }: InfoRowProps) => (
 
 const AboutSection = () => {
   const { global } = useStores();
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
+    window.beamlynxDesktop.getAppVersion().then(setAppVersion);
+  }, []);
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -76,7 +84,11 @@ const AboutSection = () => {
           to discuss a commercial license.
         </InfoRow>
 
-        {global.version && <InfoRow label="Version">{global.version}</InfoRow>}
+        {isDesktop() && appVersion && <InfoRow label="App version">{appVersion}</InfoRow>}
+        {process.env.NEXT_PUBLIC_APP_VERSION && (
+          <InfoRow label="UI version">{process.env.NEXT_PUBLIC_APP_VERSION}</InfoRow>
+        )}
+        {global.version && <InfoRow label="Server version">{global.version}</InfoRow>}
       </Box>
     </Box>
   );
