@@ -4,6 +4,7 @@ import { format } from 'sql-formatter';
 import { TOTAL_BARS } from '../constants';
 import { DefaultPlugin } from '../plugin/default.plugin';
 import { RecursiveDeletePlugin } from '../plugin/recursive-delete.plugin';
+import { CanvasStore } from './canvas/canvas.store';
 import { Ast, Hints, HttpClient, Operation, Response } from './client';
 import { generateGraph, getCandidateIndex, Graph } from './graph.util';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
@@ -226,8 +227,25 @@ export class Session {
   /** Counter to trigger hint regeneration on demand */
   hintsRequestedCounter: number = 0;
 
+  /** Whether Canvas mode is the active graph editor right now (New Layout,
+   * or Legacy Layout with its canvas/legacy graph switcher on) - see
+   * GlobalStore.canvasActive. */
+  get canvasActive(): boolean {
+    return this.globalStore?.canvasActive ?? false;
+  }
+
   /** Evaluation plugins */
   plugins: { delete: RecursiveDeletePlugin; default: DefaultPlugin };
+
+  /**
+   * Lazily-created, cached CanvasStore for this session - see
+   * getCanvasStore(). Not initialized eagerly (unlike `plugins`) since most
+   * sessions never open Canvas mode.
+   */
+  private canvasStore: CanvasStore | null = null;
+
+  /** Debounced trigger for auto-run - see notifyCanvasCommit(). */
+  private autoRunTrigger: () => void;
 
   /** Global store reference for accessing theme */
   private globalStore: any = null;
@@ -244,6 +262,25 @@ export class Session {
       delete: new RecursiveDeletePlugin(this),
       default: new DefaultPlugin(this),
     };
+
+    // Debounced 500ms so rapid canvas gestures (e.g. repeated clicks in a
+    // still-open multi-select picker) collapse to one run, not one per click.
+    this.autoRunTrigger = debounce(() => {
+      if (!this.globalStore?.autoRunEnabled) return;
+      // Canvas can keep committing (via its own independent probeBuild)
+      // while the input is in SQL mode - but evaluate() would then run the
+      // stale session.query left over from before the switch, ignoring the
+      // gesture that just happened. Only auto-run while Pine is live.
+      if (this.inputMode !== 'pine') return;
+      if (this.loading) {
+        // An eval from the previous gesture is still in flight - re-arm
+        // rather than drop, so this gesture still gets its own run once
+        // the current one resolves.
+        this.autoRunTrigger();
+        return;
+      }
+      void this.evaluate();
+    }, 500);
 
     /**
      * Mark hints as loading the moment a build is queued, not once it starts
@@ -498,6 +535,29 @@ export class Session {
     runInAction(() => {
       this.expression = expression;
     });
+  }
+
+  /**
+   * Lazily creates (and caches) this session's CanvasStore, so it survives
+   * Canvas being unmounted/remounted as `session.mode` flips between
+   * 'graph' and 'result' (e.g. on every auto-run) - a fresh `new CanvasStore`
+   * per mount would silently reset its undo/redo stacks and node positions.
+   */
+  public getCanvasStore(): CanvasStore {
+    if (!this.canvasStore) {
+      this.canvasStore = new CanvasStore(this);
+    }
+    return this.canvasStore;
+  }
+
+  /**
+   * Called by CanvasStore after any gesture that commits a new,
+   * backend-confirmed-valid expression (applyExpression/undo/redo) -
+   * never wired to the raw `expression` write path, since hand-typed Pine
+   * text can be mid-typing/invalid.
+   */
+  public notifyCanvasCommit() {
+    this.autoRunTrigger();
   }
 
   public async evaluate() {

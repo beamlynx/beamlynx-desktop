@@ -41,7 +41,7 @@ const PineTabs = observer(() => {
   };
 
   return (
-    <Box sx={{ width: '100%', mt: 0, pt: 0 }}>
+    <Box sx={{ width: '100%', mt: 0, pt: 0, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <TabContext value={sessionId}>
         <Box
           sx={{
@@ -50,6 +50,7 @@ const PineTabs = observer(() => {
             display: 'flex',
             alignItems: 'center',
             mt: 0,
+            flexShrink: 0,
           }}
         >
           <TabList
@@ -142,7 +143,23 @@ const PineTabs = observer(() => {
         </Box>
 
         {tabs.map(tab => (
-          <TabPanel key={tab.sessionId} sx={{ padding: 0 }} value={tab.sessionId}>
+          <TabPanel
+            key={tab.sessionId}
+            // The flex/display overrides only apply to the ACTIVE tab's
+            // panel. MUI's TabPanel keeps one <div hidden> per inactive tab
+            // in the DOM too (only its children are unmounted) - giving
+            // every one of those `display: 'flex'` as well would override
+            // the native [hidden] attribute's display:none (an sx-generated
+            // class beats the UA stylesheet's attribute selector), making
+            // every inactive tab's empty panel participate in this flex row
+            // instead of being invisible and out of layout.
+            sx={
+              tab.sessionId === sessionId
+                ? { padding: 0, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }
+                : { padding: 0 }
+            }
+            value={tab.sessionId}
+          >
             <Session sessionId={tab.sessionId}></Session>
           </TabPanel>
         ))}

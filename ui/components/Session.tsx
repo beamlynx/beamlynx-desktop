@@ -1,11 +1,10 @@
-import { Box, Grid, useMediaQuery, useTheme } from '@mui/material';
+import { Box, Grid, Typography, useMediaQuery, useTheme } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
 import {
   DEFAULT_SIDEBAR_WIDTH,
   DEFAULT_SIDEBAR_SECOND_VIEW_HEIGHT,
   getSecondaryViewHeight,
-  getTabHeight,
   MIN_SIDEBAR_INPUT_HEIGHT,
   MIN_SIDEBAR_SECOND_VIEW_HEIGHT,
 } from '../constants';
@@ -19,6 +18,7 @@ import GraphBox from './Graph.box';
 import Canvas from './canvas/Canvas';
 import Input from './Input';
 import { Monitor } from './Monitor';
+import NewLayoutView from './NewLayoutView';
 import Query from './Query';
 import Result from './Result';
 import ErrorMessage from './ErrorMessage';
@@ -75,6 +75,20 @@ const Sidebar = ({
               borderRadius: 1,
               height: secondViewHeight,
               minHeight: MIN_SIDEBAR_SECOND_VIEW_HEIGHT,
+              // A persisted secondViewHeight (dragged large in a taller
+              // window, or before the sidebar's own available height
+              // shrank for any other reason) is otherwise applied as-is
+              // with flexShrink:0 - nothing previously stopped it from
+              // demanding more room than the Sidebar actually has, which
+              // overflowed this column and (via the outer Grid's default
+              // align-items:stretch) stretched the sibling graph/results
+              // column to match, showing up as "the graph has a scrollbar"
+              // even though the real overflow originates here. Capping it
+              // in CSS against the Sidebar's own 100% height - not a fixed
+              // pixel guess - keeps firstView's own MIN_SIDEBAR_INPUT_HEIGHT
+              // and the 10px divider always available regardless of
+              // viewport size.
+              maxHeight: `calc(100% - ${MIN_SIDEBAR_INPUT_HEIGHT}px - 10px)`,
               overflow: 'auto',
               flexShrink: 0,
             }}
@@ -99,6 +113,77 @@ const Sidebar = ({
   );
 };
 
+/**
+ * Legacy Layout's own graph-editor switcher, between Graph mode (the
+ * classic, non-editable node diagram - GraphBox.tsx) and Canvas mode (the
+ * point-and-click editor - Canvas.tsx). Lives inside the graph/canvas widget
+ * itself (MainView's graph-panel box, bottom-right - GraphBox's own
+ * fullscreen icon already claims top-right, Canvas's own toolbar claims
+ * top-left), not the app header, so it never appears alongside the
+ * header's layout switcher (AppView.tsx's LayoutSwitcher) and reads as
+ * "a setting of this widget" rather than a second, confusingly similar
+ * global toggle. Only rendered here, which is LegacySessionView-only -
+ * New Layout is Canvas-only and has no equivalent choice to offer.
+ */
+const InteractiveViewToggle = observer(({ global }: { global: GlobalStore }) => {
+  if (global.canvasModeEnabled) {
+    return (
+      <Typography
+        variant="caption"
+        color="gray"
+        onClick={() => global.toggleCanvasMode()}
+        sx={{
+          cursor: 'pointer',
+          whiteSpace: 'nowrap',
+          '&:hover': { color: 'var(--primary-color)', textDecoration: 'underline' },
+        }}
+      >
+        ← Switch to Graph mode
+      </Typography>
+    );
+  }
+  return (
+    <Box
+      onClick={() => global.toggleCanvasMode()}
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        padding: '3px 10px',
+        borderRadius: 1,
+        cursor: 'pointer',
+        whiteSpace: 'nowrap',
+        fontSize: 12,
+        border: '1px solid var(--node-candidate-border)',
+        background: 'var(--node-candidate-bg)',
+        color: 'var(--node-candidate-text-color)',
+        '&:hover': {
+          borderColor: 'var(--primary-color)',
+        },
+      }}
+    >
+      <Box
+        sx={{
+          width: 6,
+          height: 6,
+          borderRadius: '50%',
+          background: 'var(--primary-color)',
+          flexShrink: 0,
+          animation: 'pulse-dot 2s ease-in-out infinite',
+          '@keyframes pulse-dot': {
+            '0%, 100%': { opacity: 1 },
+            '50%': { opacity: 0.3 },
+          },
+          '@media (prefers-reduced-motion: reduce)': {
+            animation: 'none',
+          },
+        }}
+      />
+      Switch to Canvas mode
+    </Box>
+  );
+});
+
 // Reads global.canvasModeEnabled directly (rather than only receiving
 // pre-computed booleans as props) - must be its own observer, not just a
 // plain function called from Session's render. MobX only establishes a
@@ -120,8 +205,31 @@ const MainView = observer(
     height: string;
     global: GlobalStore;
   }) => {
+    // The graph/canvas switcher belongs to this widget regardless of
+    // whether it's showing a populated graph or the empty-state "Welcome"
+    // intro (mode 'documentation' with canvas off) - both are still "this
+    // is the graph/canvas widget", just with nothing drawn yet. Keeping the
+    // switcher outside the inner switch (rather than only inside the
+    // populated-graph branch) is what makes it reachable from a fresh,
+    // empty session too, not just after typing/building something.
+    const showGraphModeSwitcher = mode === 'graph' || mode === 'documentation';
+    // position:'relative' only while the switcher itself is shown (i.e.
+    // only for the graph/documentation case) - Result.tsx positions its own
+    // download/chart icons at top:-40 relative to whichever ancestor box
+    // is the nearest positioned one, and unconditionally making THIS box
+    // that ancestor for the 'result' case too (rather than leaving it
+    // static, as before) pushed those icons up into space this box doesn't
+    // have slack for, which showed up as an unwanted scrollbar in Legacy
+    // Layout.
     return (
-      <Box sx={{ flex: 1, minHeight: 0, height: '100%' }}>
+      <Box
+        sx={{
+          position: showGraphModeSwitcher ? 'relative' : undefined,
+          flex: 1,
+          minHeight: 0,
+          height: '100%',
+        }}
+      >
         {(() => {
           switch (mode) {
             case 'monitor':
@@ -160,12 +268,26 @@ const MainView = observer(
               return Documentation;
           }
         })()}
+        {showGraphModeSwitcher && (
+          <Box sx={{ position: 'absolute', bottom: 10, right: 10, zIndex: 10 }}>
+            <InteractiveViewToggle global={global} />
+          </Box>
+        )}
       </Box>
     );
   },
 );
 
 const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
+  const { global } = useStores();
+  return global.layoutMode === 'new' ? (
+    <NewLayoutView sessionId={sessionId} />
+  ) : (
+    <LegacySessionView sessionId={sessionId} />
+  );
+});
+
+const LegacySessionView: React.FC<SessionProps> = observer(({ sessionId }) => {
   const { global } = useStores();
   const session = global.getSession(sessionId);
   const theme = useTheme();
@@ -194,7 +316,8 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
       container
       sx={{
         mt: 1,
-        height: getTabHeight(),
+        flex: 1,
+        minHeight: 0,
       }}
     >
       {!compactMode && (
@@ -236,7 +359,7 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
                 sessionId={sessionId}
                 mode={session.mode}
                 input={session.textInputFocused}
-                height={getTabHeight()}
+                height="100%"
                 global={global}
               />
             }

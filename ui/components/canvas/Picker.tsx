@@ -300,7 +300,11 @@ const Picker: React.FC = observer(() => {
       setHighlighted(h => (h - 1 + flatItems.length) % flatItems.length);
       return;
     }
-    if (e.key === 'Enter') {
+    // ',' doubles as Enter - select/order/group stay open for repeat picks
+    // (see onSelect above), and Pine's own select/order syntax already
+    // separates columns with commas, so typing "id,name,email" picks all
+    // three without reaching for Enter between each one.
+    if (e.key === 'Enter' || e.key === ',') {
       e.preventDefault();
       const item = flatItems[highlighted] ?? flatItems[0];
       if (item) onSelect(item);

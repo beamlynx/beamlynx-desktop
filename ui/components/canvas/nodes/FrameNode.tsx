@@ -75,13 +75,25 @@ const FrameNode: React.FC<NodeProps<CanvasFrameNodeData>> = observer(({ id, data
   // reintroduce exactly that regression.
   const engaged = hovered || isFocusTarget || pickerAliasFor(canvasStore.picker) === resolvedAlias;
 
+  // Same "these keys are armed" hint as TableNode.tsx's own action bar (see
+  // ActionButton's emphasizeKey doc comment) - previously missing here
+  // entirely, so a focused container never showed which letters were live.
+  const showKeyHints = isFocusTarget && canvasStore.mode === 'normal';
+
   // Same decluttering as TableNode.tsx's own action bar: while a picker this
   // frame opened is already in flight, dim the other three rather than
   // removing them - see ActionButton's `suppressed` doc comment for why
   // (removing them shifts the survivor to a different on-screen position).
-  const operations: { kind: 'select' | 'join' | 'where' | 'order'; label: string }[] = [
+  const operations: {
+    kind: 'select' | 'join' | 'where' | 'order';
+    label: string;
+    emphasizeIndex?: number;
+  }[] = [
     { kind: 'select', label: 'select' },
-    { kind: 'join', label: 'join' },
+    // `i` (insert) opens this picker (useCanvasKeybindings.ts) - not join's
+    // first letter, its third ("j-o-I-n"), same as TableNode.tsx's own join
+    // button.
+    { kind: 'join', label: 'join', emphasizeIndex: 2 },
     { kind: 'where', label: 'where' },
     { kind: 'order', label: 'order' },
   ];
@@ -134,6 +146,8 @@ const FrameNode: React.FC<NodeProps<CanvasFrameNodeData>> = observer(({ id, data
               label={op.label}
               testId={`frame-action-${op.kind}-${id}`}
               onClick={openAction(op.kind)}
+              emphasizeKey={showKeyHints}
+              emphasizeIndex={op.emphasizeIndex}
               suppressed={activeOperation !== null && op.kind !== activeOperation}
             />
           </React.Fragment>

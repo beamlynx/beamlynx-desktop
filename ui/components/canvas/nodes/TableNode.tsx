@@ -133,6 +133,7 @@ export const ActionButton = ({
   onClick,
   testId,
   emphasizeKey,
+  emphasizeIndex = 0,
   suppressed,
 }: {
   label: string;
@@ -141,7 +142,7 @@ export const ActionButton = ({
   /**
    * True only while this node is the keyboard-focus cursor AND normal mode
    * is active - i.e. this exact letter is armed right now. Renders the
-   * label's leading letter (its keyboard shortcut - see
+   * letter at `emphasizeIndex` (its keyboard shortcut - see
    * useCanvasKeybindings.ts) bold and full-size, the rest dimmed and
    * smaller - weight/size carries the emphasis, not a new color, so this
    * stays in the same blue trace/current family the rest of the focus
@@ -152,6 +153,15 @@ export const ActionButton = ({
    * renders exactly as before - no letter split, no visual change.
    */
   emphasizeKey?: boolean;
+  /**
+   * Which character of `label` is the actual shortcut key - defaults to 0
+   * (the leading letter), true for select/where/order/group. `join`'s
+   * shortcut is `i` (see useCanvasKeybindings.ts - it opens the same picker
+   * as a table's first-insert), which isn't join's first letter but is its
+   * third ("j-o-I-n"), so that operation passes `emphasizeIndex={2}` instead
+   * of relying on this default.
+   */
+  emphasizeIndex?: number;
   /**
    * True for every operation except the one whose picker is currently open
    * (see TableNode's `activeOperation`/`operations` and FrameNode's mirror
@@ -176,7 +186,7 @@ export const ActionButton = ({
     }}
     style={{
       fontSize: '8px',
-      // Fixed regardless of emphasizeKey - the leading letter below only
+      // Fixed regardless of emphasizeKey - the emphasized letter below only
       // ever changes weight/color, never size, specifically so this row's
       // rendered height can't change when a node gains/loses keyboard focus.
       // A size bump here once did exactly that (a taller glyph stretched the
@@ -198,8 +208,9 @@ export const ActionButton = ({
   >
     {emphasizeKey ? (
       <>
-        <span style={{ fontWeight: 800 }}>{label[0]}</span>
-        <span style={{ color: 'var(--canvas-text-dim)' }}>{label.slice(1)}</span>
+        <span style={{ color: 'var(--canvas-text-dim)' }}>{label.slice(0, emphasizeIndex)}</span>
+        <span style={{ fontWeight: 800 }}>{label[emphasizeIndex]}</span>
+        <span style={{ color: 'var(--canvas-text-dim)' }}>{label.slice(emphasizeIndex + 1)}</span>
       </>
     ) : (
       label
@@ -391,6 +402,7 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
     label: string;
     onClick: (anchor: { x: number; y: number }) => void;
     emphasize?: boolean;
+    emphasizeIndex?: number;
   }[] = [
     {
       kind: 'select',
@@ -401,12 +413,14 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
     {
       kind: 'join',
       label: 'join',
-      // No `emphasize` - join has no letter of its own. `i` (insert) opens
-      // this same picker (see useCanvasKeybindings.ts) since a join is
-      // "insert a new node from here", the same action as inserting the
-      // very first table - the Start node's own "Insert" label carries
-      // that hint instead of this button.
+      // `i` (insert) opens this same picker (see useCanvasKeybindings.ts)
+      // since a join is "insert a new node from here", the same action as
+      // inserting the very first table - but `i` isn't join's first letter,
+      // it's its third ("j-o-I-n"), so this needs an explicit index rather
+      // than ActionButton's default.
       onClick: anchor => canvasStore.openJoinPicker(data.alias, anchor),
+      emphasize: showKeyHints,
+      emphasizeIndex: 2,
     },
     {
       kind: 'where',
@@ -488,6 +502,7 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
               testId={`action-${op.kind}-${data.alias}`}
               onClick={op.onClick}
               emphasizeKey={op.emphasize}
+              emphasizeIndex={op.emphasizeIndex}
               suppressed={activeOperation !== null && op.kind !== activeOperation}
             />
           </React.Fragment>

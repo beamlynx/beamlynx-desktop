@@ -14,7 +14,7 @@ interface InputProps {
   onRun?: () => void | Promise<void>;
 }
 
-const RunButton: React.FC<{ session: Session; onRun?: () => void | Promise<void> }> = observer(
+export const RunButton: React.FC<{ session: Session; onRun?: () => void | Promise<void> }> = observer(
   ({ session, onRun }) => {
     const { global } = useStores();
     const keybinding = getKeybindingDisplayForCommand('run-query');

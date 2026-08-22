@@ -14,6 +14,13 @@ export const DEFAULT_SIDEBAR_SECOND_VIEW_HEIGHT = 280;
 export const MIN_SIDEBAR_SECOND_VIEW_HEIGHT = 120;
 export const MAX_SIDEBAR_SECOND_VIEW_HEIGHT = 800;
 
+/* New Layout (Canvas + Results) pane sizing - unrelated to the sidebar's own
+ * constants above, since the two layouts' pane proportions have nothing to
+ * do with each other. */
+export const DEFAULT_NEW_LAYOUT_PANE_WIDTH = 640;
+export const DEFAULT_NEW_LAYOUT_PANE_HEIGHT = 420;
+export const MIN_NEW_LAYOUT_PANE_SIZE = 240;
+
 /* Pine Server */
 export const RequiredVersion = '0.39.0';
 

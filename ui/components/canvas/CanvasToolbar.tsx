@@ -53,49 +53,68 @@ const Divider = () => (
   </span>
 );
 
+/** An extra icon appended to the toolbar, past a divider, after undo/redo -
+ * e.g. New Layout's orientation toggle. Legacy Layout's canvas view (which
+ * has no such settings) simply doesn't pass one. */
+export interface CanvasToolbarExtraAction {
+  icon: React.ReactNode;
+  tooltip: string;
+  onClick: () => void;
+}
+
 /**
- * Always-visible undo/redo, pinned top-left - the corner MultiSelectToolbar
- * (top-center) and Banner (top-right) leave free. Undo/redo walk canvas
- * gestures only (see CanvasStore.applyExpression/undo/redo) - hand-typed
- * edits keep the Pine text editor's own native undo (CodeMirror), by design.
- * Also bound to `u`/`Shift+U` now via useCanvasKeybindings.ts - this stays
- * the click-driven path for mouse-only use, not superseded by it.
+ * Always-visible undo/redo (plus, optionally, one caller-supplied extra
+ * action), pinned top-left - the corner MultiSelectToolbar (top-center) and
+ * Banner (top-right) leave free. Undo/redo walk canvas gestures only (see
+ * CanvasStore.applyExpression/undo/redo) - hand-typed edits keep the Pine
+ * text editor's own native undo (CodeMirror), by design. Also bound to
+ * `u`/`Shift+U` now via useCanvasKeybindings.ts - this stays the
+ * click-driven path for mouse-only use, not superseded by it.
  */
-const CanvasToolbar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasStore }) => (
-  <div
-    className="nodrag"
-    style={{
-      position: 'absolute',
-      top: 8,
-      left: 8,
-      zIndex: 15,
-      display: 'flex',
-      alignItems: 'center',
-      gap: 6,
-      padding: '4px 8px',
-      borderRadius: 4,
-      background: 'var(--canvas-node-bg)',
-      border: '1px solid var(--canvas-node-border)',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
-    }}
-  >
-    <span
-      title="Undo last graph action"
-      style={canvasStore.canUndo ? iconButtonStyle : disabledIconButtonStyle}
-      onClick={() => canvasStore.canUndo && canvasStore.undo()}
+const CanvasToolbar: React.FC<{ canvasStore: CanvasStore; extraAction?: CanvasToolbarExtraAction }> =
+  observer(({ canvasStore, extraAction }) => (
+    <div
+      className="nodrag"
+      style={{
+        position: 'absolute',
+        top: 8,
+        left: 8,
+        zIndex: 15,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '4px 8px',
+        borderRadius: 4,
+        background: 'var(--canvas-node-bg)',
+        border: '1px solid var(--canvas-node-border)',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+      }}
     >
-      <CornerArrow />
-    </span>
-    <Divider />
-    <span
-      title="Redo"
-      style={canvasStore.canRedo ? iconButtonStyle : disabledIconButtonStyle}
-      onClick={() => canvasStore.canRedo && canvasStore.redo()}
-    >
-      <CornerArrow redo />
-    </span>
-  </div>
-));
+      <span
+        title="Undo last graph action"
+        style={canvasStore.canUndo ? iconButtonStyle : disabledIconButtonStyle}
+        onClick={() => canvasStore.canUndo && canvasStore.undo()}
+      >
+        <CornerArrow />
+      </span>
+      <Divider />
+      <span
+        title="Redo"
+        style={canvasStore.canRedo ? iconButtonStyle : disabledIconButtonStyle}
+        onClick={() => canvasStore.canRedo && canvasStore.redo()}
+      >
+        <CornerArrow redo />
+      </span>
+      {extraAction && (
+        <>
+          <Divider />
+          <span title={extraAction.tooltip} style={iconButtonStyle} onClick={extraAction.onClick}>
+            {extraAction.icon}
+          </span>
+        </>
+      )}
+    </div>
+  ));
 
 // The armed-key legend per focused-node kind. Not derived from TableNode's/
 // FrameNode's own action bars (which would mean this file reaching into a

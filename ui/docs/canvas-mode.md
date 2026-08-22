@@ -1,7 +1,10 @@
 # Canvas Mode
 
-An experimental, opt-in graph editor for building a Pine expression by directly
-manipulating table nodes instead of typing pipe syntax.
+A graph editor for building a Pine expression by directly manipulating table
+nodes instead of typing pipe syntax. It's the default graph editor in New
+Layout, and an opt-in alternative to the classic graph in Legacy Layout — see
+[terminology.md](./terminology.md) for how the two layouts and the two graph
+modes fit together.
 
 ## Why
 
@@ -22,12 +25,29 @@ never a synchronous local mutation.
 
 ## Enabling it
 
-A toggle in the app header (`components/AppView.tsx`'s `InteractiveViewToggle`)
-switches between the classic graph and canvas mode for the active tab, via
-`GlobalStore.canvasModeEnabled` / `toggleCanvasMode()`. The preference persists
-across reloads (`STORAGE_KEYS.CANVAS_MODE`) and applies globally, not per
-session. `components/Session.tsx`'s `MainView` reads it to decide whether the
-`'graph'`/`'documentation'` mode slot renders `<Canvas>` or `<GraphBox>`.
+In New Layout (the default), Canvas mode is always on — there's no toggle for
+it there (`components/NewLayoutView.tsx` renders `<Canvas>` unconditionally).
+
+In Legacy Layout, a toggle in the app header (`components/AppView.tsx`'s
+`InteractiveViewToggle`) switches between the classic graph and canvas mode
+for the active tab, via `GlobalStore.canvasModeEnabled` / `toggleCanvasMode()`.
+The preference persists across reloads (`STORAGE_KEYS.CANVAS_MODE`) and
+applies globally, not per session. `components/Session.tsx`'s `MainView`
+reads it to decide whether the `'graph'`/`'documentation'` mode slot renders
+`<Canvas>` or `<GraphBox>`.
+
+## Auto-run
+
+Whenever a canvas gesture commits a new expression (`CanvasStore.applyExpression`/
+`undo`/`redo`), the session automatically re-runs the query 500ms later
+(`Session.notifyCanvasCommit`/`autoRunTrigger`, `store/session.ts`) — this is
+safe specifically because every canvas commit is already backend-confirmed
+valid via `probeBuild` before it's applied (see "How it works" below), unlike
+hand-typed Pine text, which can be mid-typing/invalid. Toggle:
+`GlobalStore.autoRunEnabled` (`toggle-auto-run` command / Settings), default
+on. Gated on `session.inputMode === 'pine'` — auto-run stays off while a
+session is mid-hand-edit of raw SQL, so it never runs stale SQL left over
+from before a mode switch.
 
 ## Interaction model
 

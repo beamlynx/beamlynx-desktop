@@ -29,7 +29,7 @@ import FrameNode from './nodes/FrameNode';
 import TraceEdge from './edges/TraceEdge';
 import Picker from './Picker';
 import MultiSelectToolbar from './MultiSelectToolbar';
-import CanvasToolbar, { CanvasModeIndicator } from './CanvasToolbar';
+import CanvasToolbar, { CanvasModeIndicator, CanvasToolbarExtraAction } from './CanvasToolbar';
 
 const nodeTypes: NodeTypes = {
   'table-node': TableNode,
@@ -63,7 +63,11 @@ const Banner = ({ children, variant = 'warn' }: { children: React.ReactNode; var
   </div>
 );
 
-const Flow: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasStore }) => {
+const Flow: React.FC<{
+  canvasStore: CanvasStore;
+  toolbarExtraAction?: CanvasToolbarExtraAction;
+  recenterRequestCount?: number;
+}> = observer(({ canvasStore, toolbarExtraAction, recenterRequestCount }) => {
   const reactFlowInstance = useReactFlow();
   const { canvasGraph } = canvasStore;
 
@@ -111,7 +115,7 @@ const Flow: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasStore }) 
     const t = setTimeout(() => reactFlowInstance.fitView({ duration: 200 }), 50);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes.length, canvasGraph.edges.length]);
+  }, [nodes.length, canvasGraph.edges.length, recenterRequestCount]);
 
   const onNodeDragStop = (_e: React.MouseEvent, node: CanvasNode) => {
     if (node.type === 'table-node') {
@@ -273,7 +277,7 @@ const Flow: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasStore }) 
         </ReactFlow>
       </div>
       <Picker />
-      <CanvasToolbar canvasStore={canvasStore} />
+      <CanvasToolbar canvasStore={canvasStore} extraAction={toolbarExtraAction} />
       <CanvasModeIndicator canvasStore={canvasStore} />
       <MultiSelectToolbar canvasStore={canvasStore} />
     </div>
@@ -282,19 +286,37 @@ const Flow: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasStore }) 
 
 interface CanvasProps {
   sessionId: string;
+  /** An extra icon appended to the top-left toolbar, past undo/redo - e.g.
+   * New Layout's orientation toggle. Omitted by Legacy Layout's canvas view,
+   * which has no such setting to offer. */
+  toolbarExtraAction?: CanvasToolbarExtraAction;
+  /**
+   * Bump this (any change, not the value itself, is what matters - same
+   * convention as session.tabCycleRequestCount) to force a re-fit/re-center
+   * of the graph, e.g. after New Layout's orientation toggle resizes the
+   * canvas pane's container. ReactFlow doesn't re-center on its own when its
+   * container's size changes - only on node/edge count changes (see the
+   * effect below) - so a pane resize otherwise leaves the graph off-center
+   * or partly cut off until the next edit.
+   */
+  recenterRequestCount?: number;
 }
 
-const Canvas: React.FC<CanvasProps> = observer(({ sessionId }) => {
+const Canvas: React.FC<CanvasProps> = observer(({ sessionId, toolbarExtraAction, recenterRequestCount }) => {
   const { global } = useStores();
   const session = global.getSession(sessionId);
-  const canvasStore = useMemo(() => new CanvasStore(session), [session]);
+  const canvasStore = useMemo(() => session.getCanvasStore(), [session]);
   useEffect(() => canvasStore.start(), [canvasStore]);
   useCanvasKeybindings({ canvasStore, session, global });
 
   return (
     <CanvasStoreContext.Provider value={canvasStore}>
       <ReactFlowProvider>
-        <Flow canvasStore={canvasStore} />
+        <Flow
+          canvasStore={canvasStore}
+          toolbarExtraAction={toolbarExtraAction}
+          recenterRequestCount={recenterRequestCount}
+        />
       </ReactFlowProvider>
     </CanvasStoreContext.Provider>
   );

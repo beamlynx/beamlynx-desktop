@@ -10,6 +10,12 @@ export const STORAGE_KEYS = {
   CONNECTION_COLORS: 'pine-connection-colors',
   SESSIONS: 'pine-sessions',
   CANVAS_MODE: 'pine-canvas-mode',
+  AUTO_RUN_ENABLED: 'pine-auto-run-enabled',
+  LAYOUT_MODE: 'pine-layout-mode',
+  NEW_LAYOUT_ORIENTATION: 'pine-new-layout-orientation',
+  NEW_LAYOUT_PANE_WIDTH: 'pine-new-layout-pane-width',
+  NEW_LAYOUT_PANE_HEIGHT: 'pine-new-layout-pane-height',
+  NEW_LAYOUT_PANEL_VISIBLE: 'pine-new-layout-panel-visible',
 } as const;
 
 export const getUserPreference = (key: string, defaultValue: any) => {

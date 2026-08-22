@@ -78,10 +78,34 @@ const PreferencesSection = () => {
           onChange={() => global.togglePineTableColors()}
         />
         <ToggleRow
-          label="Interactive graph view (experimental)"
-          description="Build queries by clicking through tables in a graph instead of writing text."
+          label="Canvas mode"
+          description="Build queries by clicking through tables in a graph instead of writing text. Off uses the classic Graph mode."
           checked={global.canvasModeEnabled}
           onChange={() => global.toggleCanvasMode()}
+        />
+        <ToggleRow
+          label="Auto-run on canvas edit"
+          description="Automatically run the query each time a canvas gesture commits a valid change."
+          checked={global.autoRunEnabled}
+          onChange={() => global.toggleAutoRunEnabled()}
+        />
+        <ToggleRow
+          label="New layout"
+          description="Canvas-first two-pane layout (Canvas + Results) instead of the classic sidebar arrangement."
+          checked={global.layoutMode === 'new'}
+          onChange={() => global.toggleLayoutMode()}
+        />
+        <ToggleRow
+          label="Pine panel in New Layout"
+          description="Show an editable Pine text panel alongside the canvas, in addition to point-and-click editing."
+          checked={global.newLayoutPanelVisible && session.inputMode === 'pine'}
+          onChange={() => global.togglePinePanel(session)}
+        />
+        <ToggleRow
+          label="SQL panel in New Layout"
+          description="Show an editable SQL text panel alongside the canvas, in addition to point-and-click editing."
+          checked={global.newLayoutPanelVisible && session.inputMode === 'sql'}
+          onChange={() => global.toggleSqlPanel(session)}
         />
         <ToggleRow
           label="Vim keybindings"

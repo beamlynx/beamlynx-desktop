@@ -180,6 +180,61 @@ export class GlobalStore {
     setUserPreference(STORAGE_KEYS.CANVAS_MODE, value);
   }
 
+  // Auto-run - whenever a canvas gesture commits a new, backend-confirmed-
+  // valid expression, run it immediately instead of waiting for an explicit
+  // Run. Global (like canvasModeEnabled), not per-session.
+  _autoRunEnabled: boolean;
+
+  get autoRunEnabled(): boolean {
+    return this._autoRunEnabled;
+  }
+
+  set autoRunEnabled(value: boolean) {
+    this._autoRunEnabled = value;
+    setUserPreference(STORAGE_KEYS.AUTO_RUN_ENABLED, value);
+  }
+
+  // Which overall app layout wraps a session - the new Canvas-first two-pane
+  // arrangement (default for everyone) or the classic sidebar layout kept
+  // around for people who aren't ready to leave it. Orthogonal to
+  // canvasModeEnabled: layoutMode picks the *layout*, canvasModeEnabled
+  // (Legacy Layout only) picks which graph editor Legacy's own graph panel
+  // uses. New Layout is always Canvas, with no switcher of its own - see
+  // canvasActive below for the derived "a canvas is on screen right now"
+  // check other code should read instead of canvasModeEnabled directly.
+  _layoutMode: 'legacy' | 'new';
+
+  get layoutMode(): 'legacy' | 'new' {
+    return this._layoutMode;
+  }
+
+  set layoutMode(value: 'legacy' | 'new') {
+    this._layoutMode = value;
+    setUserPreference(STORAGE_KEYS.LAYOUT_MODE, value);
+  }
+
+  get canvasActive(): boolean {
+    return this.layoutMode === 'new' || this.canvasModeEnabled;
+  }
+
+  // Whether New Layout's canvas pane shows an editable text panel alongside
+  // it, in addition to point-and-click editing. One shared widget serves
+  // both the Pine and SQL editors (Input.tsx already switches between them
+  // on session.inputMode) - "Pine panel"/"SQL panel" are two different ways
+  // to open the SAME panel in a given mode, not two different panels. Global
+  // (like layoutMode itself), not per-session - it's how you like to work,
+  // not something that should vary tab to tab.
+  _newLayoutPanelVisible: boolean;
+
+  get newLayoutPanelVisible(): boolean {
+    return this._newLayoutPanelVisible;
+  }
+
+  set newLayoutPanelVisible(value: boolean) {
+    this._newLayoutPanelVisible = value;
+    setUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_VISIBLE, value);
+  }
+
   // User
   email = '';
   domain = '';
@@ -237,6 +292,12 @@ export class GlobalStore {
     this._forceCompactMode = getUserPreference(STORAGE_KEYS.FORCE_COMPACT_MODE, false);
     this._pineTableColorsEnabled = getUserPreference(STORAGE_KEYS.PINE_TABLE_COLORS, false);
     this._canvasModeEnabled = getUserPreference(STORAGE_KEYS.CANVAS_MODE, false);
+    this._autoRunEnabled = getUserPreference(STORAGE_KEYS.AUTO_RUN_ENABLED, true);
+    this._layoutMode = getUserPreference(STORAGE_KEYS.LAYOUT_MODE, 'new');
+    this._newLayoutPanelVisible = getUserPreference(
+      STORAGE_KEYS.NEW_LAYOUT_PANEL_VISIBLE,
+      false,
+    );
     this._commandHistory = getUserPreference(STORAGE_KEYS.COMMAND_HISTORY, []);
     this.connectionColors = getUserPreference(STORAGE_KEYS.CONNECTION_COLORS, {});
     makeAutoObservable(this);
@@ -605,6 +666,60 @@ export class GlobalStore {
 
   public toggleCanvasMode() {
     this.canvasModeEnabled = !this.canvasModeEnabled;
+  }
+
+  public toggleAutoRunEnabled() {
+    this.autoRunEnabled = !this.autoRunEnabled;
+  }
+
+  public toggleLayoutMode() {
+    this.layoutMode = this.layoutMode === 'legacy' ? 'new' : 'legacy';
+  }
+
+  /**
+   * "Toggle Pine Panel" and "Toggle SQL Panel" (below) are two different
+   * ways to open the SAME New Layout panel in a given mode - not two
+   * separate panels. Invoking one while the panel is already open in that
+   * exact mode closes it (a true toggle); invoking it while the panel is
+   * open in the OTHER mode just switches the mode, without closing.
+   */
+  public togglePinePanel(session: Session) {
+    if (this.newLayoutPanelVisible && session.inputMode === 'pine') {
+      this.hideNewLayoutPanel();
+    } else {
+      this.newLayoutPanelVisible = true;
+      session.setInputMode('pine');
+    }
+  }
+
+  public toggleSqlPanel(session: Session) {
+    if (this.newLayoutPanelVisible && session.inputMode === 'sql') {
+      this.hideNewLayoutPanel();
+    } else {
+      this.newLayoutPanelVisible = true;
+      session.setInputMode('sql');
+    }
+  }
+
+  private hideNewLayoutPanel() {
+    this.newLayoutPanelVisible = false;
+    // Every tab shares this one panel's visibility, but inputMode is
+    // per-session - hiding it while some OTHER tab was mid-hand-edit of raw
+    // SQL would otherwise leave that tab's inputMode stuck on 'sql' with no
+    // visible editor left to explain why, and per
+    // Session.notifyCanvasCommit(), auto-run silently stays off in that
+    // state. Revert every session, not just the active one.
+    //
+    // Also force textInputFocused back off: unmounting PineInput/SqlInput
+    // (this panel disappearing) isn't guaranteed to fire their onBlur
+    // reliably before teardown, so leaving that decision to the blur event
+    // can strand the flag on `true` - which blocks every canvas keybinding
+    // (see useCanvasKeybindings.ts's guard) with no visible input left on
+    // screen to explain why keyboard focus feels "stuck".
+    Object.values(this.sessions).forEach(session => {
+      session.setInputMode('pine');
+      session.blurTextInput();
+    });
   }
 
   public togglePineTableColors() {

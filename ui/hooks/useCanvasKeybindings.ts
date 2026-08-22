@@ -32,7 +32,7 @@ interface CanvasKeybindingsProps {
 export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKeybindingsProps) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!global.canvasModeEnabled) return;
+      if (!global.canvasActive) return;
 
       // The Pine/SQL editors are CodeMirror 6, which renders `contenteditable`
       // divs, not `<input>`/`<textarea>` - `session.textInputFocused` is the
@@ -84,7 +84,11 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
         // ArrowLeft/h, ArrowRight/l: reserved. There's no second navigation
         // axis today (data.order is a single, strictly sequential list) -
         // see the plan doc's "Explicitly out of scope".
+        // `|` is Pine's own pipe operator - a join is "pipe a new table onto
+        // this one", so it doubles as a second, mnemonic way to trigger the
+        // exact same action as `i` below (not a different one).
         case 'i':
+        case '|':
           e.preventDefault();
           if (isStart) {
             canvasStore.openTablePicker(anchorFor(alias));

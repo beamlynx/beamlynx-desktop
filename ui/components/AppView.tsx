@@ -24,73 +24,26 @@ import { getKeybindingDisplayForCommand } from '../utils/keybindings';
 import { GlobalStore } from '../store/global.store';
 
 /**
- * Previously a corner banner floating over the graph panel itself (see the
- * plan doc's canvas-mode follow-up passes) - moved into the header, next to
- * the [Development]/version markers, so it reads as a standing offer from
- * the app itself rather than something bolted onto one panel. Only the
- * "come try it" direction is dressed up: it borrows the classic graph's
- * "candidate" palette (--node-candidate-*), already this app's color for
- * "here's something you could add". The way back is deliberately plain -
- * once someone's already in the experiment, there's nothing left to sell.
+ * The header's only mention of layout - never graph mode/canvas mode (that
+ * switch lives inside the graph/canvas widget itself now, in Legacy Layout's
+ * own MainView - see Session.tsx's InteractiveViewToggle - so this and that
+ * never appear in the same place and can't be read as one confusing set of
+ * choices). Always rendered, names whichever layout you'd switch TO.
  */
-const InteractiveViewToggle = observer(({ global }: { global: GlobalStore }) => {
-  if (global.canvasModeEnabled) {
-    return (
-      <Typography
-        variant="caption"
-        color="gray"
-        onClick={() => global.toggleCanvasMode()}
-        sx={{
-          cursor: 'pointer',
-          whiteSpace: 'nowrap',
-          '&:hover': { color: 'var(--primary-color)', textDecoration: 'underline' },
-        }}
-      >
-        ← Back to legacy view
-      </Typography>
-    );
-  }
-  return (
-    <Box
-      onClick={() => global.toggleCanvasMode()}
-      sx={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '6px',
-        padding: '3px 10px',
-        borderRadius: 1,
-        cursor: 'pointer',
-        whiteSpace: 'nowrap',
-        fontSize: 12,
-        border: '1px solid var(--node-candidate-border)',
-        background: 'var(--node-candidate-bg)',
-        color: 'var(--node-candidate-text-color)',
-        '&:hover': {
-          borderColor: 'var(--primary-color)',
-        },
-      }}
-    >
-      <Box
-        sx={{
-          width: 6,
-          height: 6,
-          borderRadius: '50%',
-          background: 'var(--primary-color)',
-          flexShrink: 0,
-          animation: 'pulse-dot 2s ease-in-out infinite',
-          '@keyframes pulse-dot': {
-            '0%, 100%': { opacity: 1 },
-            '50%': { opacity: 0.3 },
-          },
-          '@media (prefers-reduced-motion: reduce)': {
-            animation: 'none',
-          },
-        }}
-      />
-      Switch to interactive view (experimental)
-    </Box>
-  );
-});
+const LayoutSwitcher = observer(({ global }: { global: GlobalStore }) => (
+  <Typography
+    variant="caption"
+    color="gray"
+    onClick={() => global.toggleLayoutMode()}
+    sx={{
+      cursor: 'pointer',
+      whiteSpace: 'nowrap',
+      '&:hover': { color: 'var(--primary-color)', textDecoration: 'underline' },
+    }}
+  >
+    {global.layoutMode === 'new' ? 'Switch to legacy layout' : 'Switch to new layout'}
+  </Typography>
+));
 
 const AppView = observer(() => {
   const { global } = useStores();
@@ -170,7 +123,7 @@ const AppView = observer(() => {
   // for how that state is surfaced instead -- inline, not a takeover). Was
   // previously a Docker-run-command onboarding page, which stopped being
   // the right default once the desktop app became the primary distribution.
-  if (!global.pineConnected && !global.canvasModeEnabled && isPlayground()) {
+  if (!global.pineConnected && !global.canvasActive && isPlayground()) {
     return (
       <Box
         sx={{
@@ -265,7 +218,7 @@ const AppView = observer(() => {
               rowGap: 0,
             }}
           >
-            <InteractiveViewToggle global={global} />
+            <LayoutSwitcher global={global} />
             {!isDesktop() && (
               <Typography variant="caption" color="gray" component="code">
                 [{global.version ?? 'obsolete'}]
@@ -282,8 +235,24 @@ const AppView = observer(() => {
       {/* mt: 1 (not 0) - the header row above and the tab row below both
           have their own solid background now (previously neither did, so
           zero margin was invisible); with no gap the search box's bottom
-          edge visually touched the tab row's top edge. */}
-      <Box sx={{ m: 1, mt: 1, mb: 0, display: 'flex', flexDirection: 'column' }}>
+          edge visually touched the tab row's top edge.
+
+          flex: 1, minHeight: 0 - this is what makes the tab content fill
+          exactly the rest of the viewport below the header, however tall
+          the header actually renders (font metrics, connection-name
+          wrapping, OS chrome, etc. all vary this in ways a hardcoded
+          `calc(100vh - Npx)` guess can't track - see constants.ts's
+          LAYOUT_HEIGHTS comment for the drift this used to cause).
+          Flexbox's own `flex: 1` already accounts for its own margin and
+          every sibling's natural size automatically - no pixel arithmetic
+          needed. Requires pages/index.tsx's Container to be the
+          `display:flex, flexDirection:column, height:100vh` ancestor this
+          box measures against (it is), and every box down the chain to
+          Session/NewLayoutView's own root to keep passing that sizing
+          through the same way (flex:1 for a flex child with siblings,
+          height:'100%' for a single/only child) rather than reintroducing
+          a calc(100vh - ...) guess at some new layer. */}
+      <Box sx={{ m: 1, mt: 1, mb: 0, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
         <PineTabs></PineTabs>
       </Box>
     </>

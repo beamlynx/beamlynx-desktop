@@ -99,7 +99,16 @@ export class DefaultPlugin implements PluginInterface {
 
       // session.message = pickSuccessMessage();
       session.loading = false;
-      session.focusTextInput();
+      // Only the classic text-first workflow wants focus pulled back to the
+      // Pine input after a run finishes. Canvas mode manages its own
+      // keyboard focus - and since the Pine input often isn't even mounted
+      // there (New Layout's SQL/Pine panel is opt-in), nothing would ever
+      // flip session.textInputFocused back to false afterwards, silently
+      // and permanently disabling every canvas keybinding (see
+      // useCanvasKeybindings.ts's textInputFocused guard).
+      if (!session.canvasActive) {
+        session.focusTextInput();
+      }
       session.mode = 'result';
     });
 

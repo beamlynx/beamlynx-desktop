@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- A Canvas-first two-pane layout (Canvas and Results, side by side or stacked), on by default for new sessions. Switch back to the classic sidebar layout any time from the header, Settings, or the command palette.
+- Auto-run: with canvas mode active, the query now runs automatically after each canvas edit instead of waiting for Run. Toggle it off from Settings or the command palette if you'd rather run explicitly.
+- An optional Pine or SQL text panel next to the canvas in the new layout, for hand-editing alongside point-and-click use (`Ctrl+Shift+E` for Pine, `Ctrl+Shift+S` for SQL).
+- `|` now also opens the join picker in canvas mode, alongside `i` -- a join is "pipe a new table onto this one".
+- In canvas mode's select/order/group/join pickers, `,` now behaves like `Enter`, so a comma-separated list of columns doesn't need a keypress between each one.
+
+### Fixed
+- Canvas mode's keyboard shortcuts (`s`/`w`/`o`/`g`/`i`/`x`/`u`) stopped responding after any query ran, and stayed unresponsive until the page was reloaded.
+- A sidebar height saved from an earlier resize could overflow its own panel and stretch the graph/results panel taller than the window, showing an unwanted scrollbar.
+- The join action's letter hint highlighted `j`, not `i` -- `i` is the actual shortcut for it.
+- The checkpoint/container node's action bar didn't show which letter shortcuts were active while it had keyboard focus, unlike a table node's.
+
+### Changed
+- The canvas/graph mode switch moved out of the header and into the graph panel itself, since it only applies there; the header now only ever refers to which overall layout is active.
 
 ## [0.50.0] - 2026-08-22
 ### Breaking

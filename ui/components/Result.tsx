@@ -94,7 +94,15 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
         )
       : {};
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('lg'));
-  const compactMode = isSmallScreen || global.forceCompactMode;
+  // Also true in New Layout: the two icon buttons below float 40px ABOVE
+  // this component's own box everywhere else (compactMode false), relying
+  // on Legacy Layout's sidebar arrangement to already have that much blank
+  // header space above the grid. New Layout's RightPane (NewLayoutView.tsx)
+  // never reserves that gap, so without this the icons bled upward into
+  // whatever sits above Results there - Canvas's own bottom-right corner in
+  // top/bottom orientation, confirmed live as "the Run button is hidden
+  // behind the download icon".
+  const compactMode = isSmallScreen || global.forceCompactMode || global.layoutMode === 'new';
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [updateData, setUpdateData] = useState<UpdateData | undefined>(undefined);

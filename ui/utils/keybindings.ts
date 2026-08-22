@@ -150,15 +150,6 @@ export const KEYBINDINGS: KeybindingConfig[] = [
     commandId: 'save-tab',
   },
 
-  // Command-triggering keybinding
-  {
-    name: 'escape',
-    description: 'Return focus to the Pine input field',
-    display: 'Esc',
-    matches: (e: KeyboardEvent) => e.key === 'Escape',
-    commandId: 'focus-input',
-  },
-
   // App-level keybindings
   {
     name: 'select-all',
@@ -172,6 +163,24 @@ export const KEYBINDINGS: KeybindingConfig[] = [
     description: 'Ensure browser reload always works',
     display: createKeybindingDisplay(['ctrl'], 'R'),
     matches: (e: KeyboardEvent) => (e.ctrlKey || e.metaKey) && e.key === 'r',
+  },
+
+  {
+    name: 'toggle-pine-panel',
+    description: 'Toggle Pine Panel (New Layout)',
+    display: createKeybindingDisplay(['ctrl', 'shift'], 'E'),
+    matches: (e: KeyboardEvent) =>
+      (e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'e',
+    commandId: 'toggle-pine-panel',
+  },
+
+  {
+    name: 'toggle-sql-panel',
+    description: 'Toggle SQL Panel (New Layout)',
+    display: createKeybindingDisplay(['ctrl', 'shift'], 'S'),
+    matches: (e: KeyboardEvent) =>
+      (e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 's',
+    commandId: 'toggle-sql-panel',
   },
 ];
 

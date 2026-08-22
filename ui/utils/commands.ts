@@ -193,21 +193,6 @@ const COMMANDS: Command[] = [
     isEnabled: ALWAYS_ENABLED,
   },
   {
-    id: 'focus-input',
-    label: 'Focus on the Input Field',
-    category: 'Preferences',
-    handler: (_global, session) => session.focusTextInput(),
-    hidden: true,
-    // Only reachable via the global Escape keybinding (see keybindings.ts) -
-    // hidden from the command palette, so this is the sole trigger path.
-    // Disabled in canvas mode: Escape there already has its own meaning
-    // (closing an open picker - Picker.tsx's own listener, unaffected by
-    // this) or is a no-op in normal mode (useCanvasKeybindings.ts) - jumping
-    // focus to the Pine text input on top of that reads as Escape
-    // "kicking you out of" canvas mode, which nothing asked for.
-    isEnabled: global => !global.canvasModeEnabled,
-  },
-  {
     id: 'toggle-table-colors',
     label: 'Toggle Table Colors',
     category: 'Preferences',
@@ -236,14 +221,42 @@ const COMMANDS: Command[] = [
   },
   {
     id: 'toggle-canvas',
-    label: 'Toggle Interactive View',
+    label: 'Toggle Canvas Mode',
     category: 'Experimental',
     // Global (like theme), not per-session - see global.store.ts's
     // canvasModeEnabled and Session.tsx's MainView, which is what actually
-    // decides whether the 'graph' view renders the interactive canvas or
-    // the classic view.
+    // decides whether the 'graph' view renders Canvas mode or the classic
+    // Graph mode.
     handler: global => global.toggleCanvasMode(),
     isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'toggle-auto-run',
+    label: 'Toggle Auto-Run on Canvas Edit',
+    category: 'Experimental',
+    handler: global => global.toggleAutoRunEnabled(),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'toggle-layout-mode',
+    label: 'Toggle Layout (New / Legacy)',
+    category: 'View',
+    handler: global => global.toggleLayoutMode(),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'toggle-pine-panel',
+    label: 'Toggle Pine Panel',
+    category: 'View',
+    handler: (global, session) => global.togglePinePanel(session),
+    isEnabled: global => global.layoutMode === 'new',
+  },
+  {
+    id: 'toggle-sql-panel',
+    label: 'Toggle SQL Panel',
+    category: 'View',
+    handler: (global, session) => global.toggleSqlPanel(session),
+    isEnabled: global => global.layoutMode === 'new',
   },
 
 

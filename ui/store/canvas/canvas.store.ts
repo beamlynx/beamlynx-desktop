@@ -300,6 +300,17 @@ export class CanvasStore {
     this.undoStack.push(this.session.expression);
     this.redoStack = [];
     this.session.expression = expression;
+    this.notifyAutoRun();
+  }
+
+  /**
+   * Every write site that lands a new, backend-confirmed-valid expression
+   * (applyExpression, undo, redo) funnels through here so auto-run sees
+   * canvas-originated changes exactly once, regardless of which gesture
+   * produced them.
+   */
+  private notifyAutoRun() {
+    this.session.notifyCanvasCommit();
   }
 
   get canUndo(): boolean {
@@ -332,6 +343,7 @@ export class CanvasStore {
     this.selectedAliases = [];
     this._focusedAlias = null;
     this.session.expression = previous;
+    this.notifyAutoRun();
   }
 
   redo() {
@@ -342,6 +354,7 @@ export class CanvasStore {
     this.selectedAliases = [];
     this._focusedAlias = null;
     this.session.expression = next;
+    this.notifyAutoRun();
   }
 
   private async pinnedBase(): Promise<actions.PinnedBase | null> {
