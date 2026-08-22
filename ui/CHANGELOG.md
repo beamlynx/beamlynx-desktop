@@ -28,6 +28,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - Auto-run waited a fixed 500ms after every canvas edit before running, made to feel far slower than the query itself (typically a few milliseconds) -- cut to 150ms, still enough to collapse a burst of rapid picks into one run.
 - A canvas gesture whose speculative build came back without a usable result (rather than failing outright) could crash the whole app instead of falling back gracefully.
 - A join that no longer had a real column to connect on (for example, after deleting the table in between two others) could render as a plain, confident-looking solid line instead of the dashed warning styling used for any other join the server can't resolve -- and the table on the other end showed no columns at all. Both are now treated the same as any other unresolved join.
+- Canvas edits silently did nothing while the new layout's SQL panel was open -- the graph and the SQL text both stayed frozen on whatever they showed before the edit. A session that reloaded with the SQL panel already open got stuck showing "Connecting…" forever for the same reason.
 
 ### Changed
 - The canvas/graph mode switch moved out of the header and into the graph panel itself, since it only applies there; the header now only ever refers to which overall layout is active.

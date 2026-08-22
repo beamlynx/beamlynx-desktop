@@ -82,6 +82,21 @@ back to `'pine'` (`GlobalStore.hideNewLayoutPanel`) — otherwise that session's
 auto-run would stay silently off (see Auto-run above) with no visible editor
 left on screen to explain why.
 
+**The canvas keeps working while the panel is in SQL mode.** `session.ts`'s
+build reaction (the one thing that populates `session.ast`, which canvas
+mode's whole graph is derived from — see "How it works" below) used to skip
+outright whenever `inputMode === 'sql'`, from before canvas mode existed: SQL
+mode meant "no Pine editor on screen, nothing to build for." Canvas mode
+breaks that assumption — it renders a graph regardless of which text panel is
+open next to it, and needs a fresh `ast` after every gesture just the same.
+The guard now also checks `GlobalStore.canvasActive`, so it only actually
+skips when there's no canvas to keep in sync (Legacy Layout's classic
+SQL-only mode). Without this, a canvas edit made while the SQL panel was open
+silently went nowhere — the graph and the SQL panel's own text both stayed on
+whatever they showed before the edit — and a session restored with
+`inputMode` already `'sql'` from a previous visit got stuck on the
+"Connecting…" banner forever, since nothing else was left to trigger a build.
+
 ## Interaction model
 
 - **Pick a first table** — an empty session shows a single dashed "+ pick a

@@ -321,8 +321,24 @@ export class Session {
         trigger: this.hintsRequestedCounter,
       }),
       debounce(async ({ expression }) => {
-        // Skip building if in SQL mode - no Pine expression to build
-        if (this.inputMode === 'sql') {
+        // Skip building if in SQL mode - UNLESS canvas mode is active. This
+        // guard predates canvas mode entirely (see git blame): it was
+        // written when SQL mode meant "the user opted out of Pine for this
+        // whole session," so there was never anything useful a build could
+        // produce - no Pine editor to autocomplete, no graph to refresh.
+        // Canvas mode breaks that assumption: it keeps rendering a graph and
+        // needs a fresh `ast` regardless of which text panel (if any) is
+        // open next to it (New Layout's Pine/SQL panel is a hand-editing
+        // convenience, not a replacement for the canvas). Skipping this
+        // build while canvas is active left `session.ast` stuck on
+        // whatever it was when SQL mode was entered - canvas gestures kept
+        // writing `session.expression`, but nothing ever re-derived the
+        // graph from it (confirmed live: a join clicked while the SQL panel
+        // was open never appeared, and the SQL panel's own text went stale
+        // instead of reflecting it), and a session restored with `inputMode`
+        // already 'sql' from a previous visit got stuck on the
+        // "Connecting…" banner forever (also confirmed live, via reload).
+        if (this.inputMode === 'sql' && !this.globalStore?.canvasActive) {
           runInAction(() => {
             this.hintsLoading = false;
           });
