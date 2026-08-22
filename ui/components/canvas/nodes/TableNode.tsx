@@ -5,11 +5,45 @@ import { CanvasHandle, CanvasTableNodeData, PickerState } from '../../../store/c
 import { getNodeHeight, nodeWidth } from '../../../store/canvas/layout';
 import { useCanvasStore } from '../canvas-context';
 
-/** The alias a currently-open picker is targeting, regardless of its mode - null if closed or table-picker. */
-const pickerAliasFor = (picker: PickerState): string | null => {
+/**
+ * The alias a currently-open picker is targeting, regardless of its mode -
+ * null if closed or table-picker. Exported for FrameNode.tsx's own
+ * `engaged` check - a checkpoint's picker (opened via openCheckpointPicker)
+ * still ends up as a normal `PickerState` keyed by the checkpoint's pinned
+ * name, exactly like any table's.
+ */
+export const pickerAliasFor = (picker: PickerState): string | null => {
   if (!picker.open) return null;
   if (picker.mode === 'where-value') return picker.alias;
   return 'alias' in picker.request ? picker.request.alias : null;
+};
+
+export type OperationKind = 'select' | 'join' | 'where' | 'order' | 'group';
+
+/**
+ * Which single operation this node's own action bar is mid-flight on, if
+ * any - null whenever nothing is open for this alias, or the open picker is
+ * the table picker (StartNode's, which never targets a real alias). While
+ * this is non-null, the action bar shows only that one operation instead of
+ * all five: once you're inside e.g. "select", seeing "join"/"where"/"order"/
+ * "group" alongside it is just noise you can't act on right now (a picker
+ * being open already means we're in insert mode - see CanvasStore.mode -
+ * where none of those other letters do anything). Exported for FrameNode.tsx
+ * to apply the same decluttering to a checkpoint's own action bar -
+ * `openCheckpointPicker` (canvas.store.ts) ultimately calls
+ * `openColumnPicker`/`openJoinPicker` with the checkpoint's pinned name,
+ * which is exactly the FrameNode's own `id` (see that file's own doc
+ * comment), so this same alias-keyed check works unchanged for it.
+ */
+export const activeOperationFor = (picker: PickerState, alias: string): OperationKind | null => {
+  if (!picker.open) return null;
+  if (picker.mode === 'where-value') return picker.alias === alias ? 'where' : null;
+  // Every `PickerRequest` variant except `{ kind: 'table' }` carries `alias`
+  // (see canvas.model.ts) - the `'alias' in` check below already narrows
+  // `picker.request.kind` to exclude `'table'`, so no separate check for it
+  // is needed (TS itself flags one as unreachable).
+  if (!('alias' in picker.request) || picker.request.alias !== alias) return null;
+  return picker.request.kind;
 };
 
 // A small, self-contained equivalent of RelationHandles.tsx - not imported
@@ -98,10 +132,40 @@ export const ActionButton = ({
   label,
   onClick,
   testId,
+  emphasizeKey,
+  suppressed,
 }: {
   label: string;
   onClick: (anchor: { x: number; y: number }) => void;
   testId?: string;
+  /**
+   * True only while this node is the keyboard-focus cursor AND normal mode
+   * is active - i.e. this exact letter is armed right now. Renders the
+   * label's leading letter (its keyboard shortcut - see
+   * useCanvasKeybindings.ts) bold and full-size, the rest dimmed and
+   * smaller - weight/size carries the emphasis, not a new color, so this
+   * stays in the same blue trace/current family the rest of the focus
+   * treatment uses rather than introducing a second accent hue. The
+   * schematic's own printed-annotation style, extended to double as a live
+   * "these keys are armed" indicator, rather than a separate keycap chip
+   * that would visually collide with the pin glyphs below. Omitted/false
+   * renders exactly as before - no letter split, no visual change.
+   */
+  emphasizeKey?: boolean;
+  /**
+   * True for every operation except the one whose picker is currently open
+   * (see TableNode's `activeOperation`/`operations` and FrameNode's mirror
+   * of the same). Dims via opacity only - the button stays in the DOM at
+   * its normal place in the row rather than being removed, which is the
+   * whole point: removing the other four and letting the row re-center
+   * around the one survivor was the first version of this, and it moved
+   * that label to a different on-screen position the instant a picker
+   * opened (confirmed live, reported as "why does the position change").
+   * Opacity-only keeps every button's position fixed regardless of which
+   * one (if any) is active, matching this file's existing opacity-only
+   * convention for the whole action bar (see the comment on `engaged`).
+   */
+  suppressed?: boolean;
 }) => (
   <div
     data-testid={testId}
@@ -112,6 +176,14 @@ export const ActionButton = ({
     }}
     style={{
       fontSize: '8px',
+      // Fixed regardless of emphasizeKey - the leading letter below only
+      // ever changes weight/color, never size, specifically so this row's
+      // rendered height can't change when a node gains/loses keyboard focus.
+      // A size bump here once did exactly that (a taller glyph stretched the
+      // whole flex row a couple px taller, shifting the card frame beneath
+      // it down by the same amount) - confirmed live as the cause of "the
+      // node moves when the focus border appears".
+      lineHeight: '8px',
       fontFamily: 'var(--canvas-font)',
       fontWeight: 600,
       textTransform: 'uppercase',
@@ -120,9 +192,18 @@ export const ActionButton = ({
       cursor: 'pointer',
       color: 'var(--canvas-trace)',
       whiteSpace: 'nowrap',
+      opacity: suppressed ? 0.25 : 1,
+      transition: 'opacity 0.1s ease-in-out',
     }}
   >
-    {label}
+    {emphasizeKey ? (
+      <>
+        <span style={{ fontWeight: 800 }}>{label[0]}</span>
+        <span style={{ color: 'var(--canvas-text-dim)' }}>{label.slice(1)}</span>
+      </>
+    ) : (
+      label
+    )}
   </div>
 );
 
@@ -137,14 +218,19 @@ export const ActionDivider = () => (
 
 // Node removal reads as a destructive, one-off action rather than another
 // "add a clause" action (and "delete" is easy to mistake for Pine/SQL
-// DELETE) - a small × close button, off to the side in its own warning
-// color (never reused for the unresolved-join color - those are different
-// kinds of "not quite right"), keeps it visually distinct from the
-// join/select/where/order row instead of sitting in line with them as just
-// another button. Circular, deliberately the one round element in an
-// otherwise square system - destructive is a different kind of thing from
-// the informational pins/badges, and the one shape break says so.
-const DeleteButton = ({ onClick, testId }: { onClick: () => void; testId?: string }) => (
+// DELETE) - a small × close button, off to the side, keeps it visually
+// distinct from the join/select/where/order row instead of sitting in line
+// with them as just another button. Plain glyph, no fill/circle/warning
+// color: this only ever appears already gated behind `engaged` (hover or
+// focus), so it doesn't need its own attention-grabbing treatment on top of
+// that - a quiet × reads as "close", not an alarm. Sits inside the card's
+// own top-right corner (not straddling the border) so it doesn't compete
+// with the notch/pin system that lives right at the edges. Exported so
+// FrameNode.tsx can offer the same "cancel this" affordance for a
+// checkpoint - removing a container is the same kind of one-off destructive
+// action as removing a table, so it should look identical, not like a
+// second delete-button system.
+export const DeleteButton = ({ onClick, testId }: { onClick: () => void; testId?: string }) => (
   <div
     data-testid={testId}
     onClick={e => {
@@ -154,20 +240,17 @@ const DeleteButton = ({ onClick, testId }: { onClick: () => void; testId?: strin
     title="Remove node"
     style={{
       position: 'absolute',
-      top: 0,
-      right: 0,
-      transform: 'translate(50%, -50%)',
-      width: '18px',
-      height: '18px',
+      top: 6,
+      right: 6,
+      width: '16px',
+      height: '16px',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      borderRadius: '50%',
       cursor: 'pointer',
-      fontSize: '12px',
+      fontSize: '13px',
       lineHeight: 1,
-      color: 'var(--canvas-accent-text)',
-      background: 'var(--canvas-warn)',
+      color: 'var(--canvas-text-dim)',
     }}
   >
     &times;
@@ -271,13 +354,86 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
 
   const height = getNodeHeight({ id, type: 'table-node', position: { x: 0, y: 0 }, data });
 
-  // Actions stay visible either on hover OR while a picker this node opened
-  // is still open - otherwise moving the mouse off the node to click an
-  // item in the select/where/order dropdown (which renders outside the
-  // node's own hover region) makes the action bar vanish mid-interaction,
-  // which reads as "the actions are gone" even though you're still using
-  // one of them.
-  const engaged = hovered || pickerAliasFor(canvasStore.picker) === data.alias;
+  // Keyboard focus (the modal keybinding layer's cursor, CanvasStore.
+  // focusedAlias) IS shown as "current" - the same thick border/bg treatment
+  // that used to be driven by `data.isCurrent` (the AST's own semantic
+  // cursor: where an unprefixed gesture attaches). They're deliberately
+  // rendered as one visual state, not two: navigating here is what makes an
+  // eventual action here attach without needing an explicit `from:` prefix
+  // (see CanvasStore.openColumnPicker's focusPrefix / commitJoin's
+  // fromAlias, both already keyed off `alias !== ast.current`) - so from the
+  // user's perspective, moving the cursor already IS moving "current". The
+  // mechanism stays lazy for real, though: navigating never itself touches
+  // `ast.current` or the network - only committing a real action while
+  // focus differs from the true AST current emits the `from:` prefix that
+  // makes it official. Doing that eagerly on every keypress would mean a
+  // build round-trip and an undo-stack entry per navigation step (`u` would
+  // undo your last look-around, not your last edit) - `data.isCurrent`
+  // itself is no longer read anywhere in this file (or elsewhere - see the
+  // canvas.model.ts comment on the field).
+  const isFocusTarget = canvasStore.focusedAlias === data.alias;
+  const showKeyHints = isFocusTarget && canvasStore.mode === 'normal';
+
+  // Actions stay visible either on hover, on keyboard focus, OR while a
+  // picker this node opened is still open - otherwise moving the mouse off
+  // the node to click an item in the select/where/order dropdown (which
+  // renders outside the node's own hover region) makes the action bar
+  // vanish mid-interaction, which reads as "the actions are gone" even
+  // though you're still using one of them.
+  const engaged = hovered || isFocusTarget || pickerAliasFor(canvasStore.picker) === data.alias;
+
+  // The five operations, in their fixed display order - a plain lookup
+  // (not derived from anywhere else) so both render paths below (all five,
+  // or just the one mid-flight) read off the same list instead of two
+  // hand-duplicated JSX blocks drifting apart.
+  const operations: {
+    kind: OperationKind;
+    label: string;
+    onClick: (anchor: { x: number; y: number }) => void;
+    emphasize?: boolean;
+  }[] = [
+    {
+      kind: 'select',
+      label: 'select',
+      onClick: anchor => canvasStore.openColumnPicker('select', data.alias, anchor),
+      emphasize: showKeyHints,
+    },
+    {
+      kind: 'join',
+      label: 'join',
+      // No `emphasize` - join has no letter of its own. `i` (insert) opens
+      // this same picker (see useCanvasKeybindings.ts) since a join is
+      // "insert a new node from here", the same action as inserting the
+      // very first table - the Start node's own "Insert" label carries
+      // that hint instead of this button.
+      onClick: anchor => canvasStore.openJoinPicker(data.alias, anchor),
+    },
+    {
+      kind: 'where',
+      label: 'where',
+      onClick: anchor => canvasStore.openColumnPicker('where', data.alias, anchor),
+      emphasize: showKeyHints,
+    },
+    {
+      kind: 'order',
+      label: 'order',
+      onClick: anchor => canvasStore.openColumnPicker('order', data.alias, anchor),
+      emphasize: showKeyHints,
+    },
+    {
+      kind: 'group',
+      label: 'group',
+      onClick: anchor => canvasStore.openColumnPicker('group', data.alias, anchor),
+      emphasize: showKeyHints,
+    },
+  ];
+  // While this node's own picker is open (insert mode, on this alias), the
+  // other four operations aren't doing anything right now - dim them rather
+  // than removing them (see ActionButton's `suppressed` doc comment for why
+  // removal was the first version of this and had to be reverted: with the
+  // row's `justifyContent: center`, dropping four of five buttons re-centers
+  // the row around the survivor, visibly moving its label).
+  const activeOperation = activeOperationFor(canvasStore.picker, data.alias);
 
   return (
     <div
@@ -324,35 +480,18 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
           transition: 'opacity 0.1s ease-in-out',
         }}
       >
-        <ActionButton
-          label="select"
-          testId={`action-select-${data.alias}`}
-          onClick={anchor => canvasStore.openColumnPicker('select', data.alias, anchor)}
-        />
-        <ActionDivider />
-        <ActionButton
-          label="join"
-          testId={`action-join-${data.alias}`}
-          onClick={anchor => canvasStore.openJoinPicker(data.alias, anchor)}
-        />
-        <ActionDivider />
-        <ActionButton
-          label="where"
-          testId={`action-where-${data.alias}`}
-          onClick={anchor => canvasStore.openColumnPicker('where', data.alias, anchor)}
-        />
-        <ActionDivider />
-        <ActionButton
-          label="order"
-          testId={`action-order-${data.alias}`}
-          onClick={anchor => canvasStore.openColumnPicker('order', data.alias, anchor)}
-        />
-        <ActionDivider />
-        <ActionButton
-          label="group"
-          testId={`action-group-${data.alias}`}
-          onClick={anchor => canvasStore.openColumnPicker('group', data.alias, anchor)}
-        />
+        {operations.map((op, i) => (
+          <React.Fragment key={op.kind}>
+            {i > 0 && <ActionDivider />}
+            <ActionButton
+              label={op.label}
+              testId={`action-${op.kind}-${data.alias}`}
+              onClick={op.onClick}
+              emphasizeKey={op.emphasize}
+              suppressed={activeOperation !== null && op.kind !== activeOperation}
+            />
+          </React.Fragment>
+        ))}
       </div>
 
       {/* Identity - the outer wrapper here is the positioning context for the
@@ -370,14 +509,13 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
             width: nodeWidth,
             minHeight: height,
             padding: '10px 10px 6px 10px',
-            border: data.isCurrent
+            border: isFocusTarget
               ? '3px solid var(--canvas-node-border-current)'
               : '1.5px solid var(--canvas-node-border)',
             // A background swap (not just a border/glow, which turned out too
-            // subtle to notice at a glance across a busy graph) for the
-            // current node - where the next unprefixed gesture (ast.current)
-            // lands.
-            background: data.isCurrent ? 'var(--canvas-node-bg-current)' : 'var(--canvas-node-bg)',
+            // subtle to notice at a glance across a busy graph) for whichever
+            // node has keyboard focus - see isFocusTarget above.
+            background: isFocusTarget ? 'var(--canvas-node-bg-current)' : 'var(--canvas-node-bg)',
             borderRadius: '3px',
             clipPath: cardClipPath,
             color: 'var(--canvas-text)',
@@ -430,34 +568,6 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
             position={Position.Right}
             style={{ opacity: 0, pointerEvents: 'none' }}
           />
-        </div>
-
-        {/* Sequence badge - the trace/accent color, same tier as the action
-            buttons above: it's informational (where this table sits in the
-            pipeline), not a warning. Square, matching the pin/notch system -
-            previously a circle, which was the only round shape not already
-            reserved for "destructive" (see DeleteButton). A sibling of the
-            clipped card (see the comment above), not a child of it. */}
-        <div
-          style={{
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            transform: 'translate(-50%, -50%)',
-            width: '20px',
-            height: '20px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: '4px',
-            background: 'var(--canvas-trace)',
-            color: 'var(--canvas-accent-text)',
-            fontSize: '11px',
-            fontWeight: 700,
-            fontFamily: 'var(--canvas-font)',
-          }}
-        >
-          {data.order}
         </div>
 
         {data.removable && (

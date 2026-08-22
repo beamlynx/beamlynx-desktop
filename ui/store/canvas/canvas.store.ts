@@ -1,7 +1,17 @@
 import { makeAutoObservable, reaction, runInAction } from 'mobx';
 import { TableHint } from '../client';
 import { Session } from '../session';
-import { CanvasGraph, PickerAnchor, PickerItem, PickerRequest, PickerState } from './canvas.model';
+import {
+  CanvasFrameNode,
+  CanvasGraph,
+  CanvasTableNode,
+  PENDING_CHECKPOINT_FRAME_ID,
+  PickerAnchor,
+  PickerItem,
+  PickerRequest,
+  PickerState,
+  START_NODE_ID,
+} from './canvas.model';
 import { buildCanvasGraph } from './layout';
 import {
   currentCheckpointName,
@@ -40,6 +50,22 @@ export class CanvasStore {
   canvasGraph: CanvasGraph = emptyGraph;
   /** Aliases of the currently box/shift-selected table nodes - see Canvas.tsx's onSelectionChange. */
   selectedAliases: string[] = [];
+  // Keyboard "cursor" for the modal (vim-style) navigation/shortcut layer -
+  // shown in the UI as "current" (TableNode.tsx/StartNode.tsx's thick
+  // border/bg), the same treatment the AST's own semantic cursor
+  // (`ast.current` - where an unprefixed gesture attaches, see
+  // buildProbeExpression's focusPrefix) used to drive by itself. They're
+  // deliberately unified visually, but this field never writes `ast.current`
+  // directly - navigating is free (no build round-trip, no undo-stack entry)
+  // and only becomes real if a later commit on a non-current alias emits a
+  // `from:` prefix (see commitJoin's fromAlias, keyed off exactly this same
+  // "alias !== ast.current" check). Independent of `selectedAliases` (mouse
+  // box-select, for MultiSelectToolbar's bulk actions) - this is pure UI
+  // state, read back only to supply the same `alias` parameter the mouse
+  // already passes to openColumnPicker/openJoinPicker. Never read directly -
+  // see the `focusedAlias` getter below, which is what stays valid across
+  // graph changes.
+  private _focusedAlias: string | null = null;
   private pickerSeq = 0;
   // Shares one in-flight checkpoint-naming commit across concurrent
   // callers (recompute's own background auto-pin, and a picker open that
@@ -77,6 +103,97 @@ export class CanvasStore {
    */
   get isConnecting(): boolean {
     return this.session.ast === null;
+  }
+
+  /**
+   * Derived, never stored: a separately-tracked mode flag would desync from
+   * reality the moment a picker closes some way other than a direct
+   * `closePicker()` call (e.g. Picker.tsx's own click-outside/Escape
+   * listeners) - a stuck "insert" flag would silently kill every normal-
+   * mode keybinding. `mode` always reflects the one thing that actually
+   * gates typing right now: whether a picker (list or where-value) is open.
+   */
+  get mode(): 'normal' | 'insert' {
+    return this.picker.open ? 'insert' : 'normal';
+  }
+
+  /**
+   * Every keyboard-navigable stop, in pipeline order - table nodes plus
+   * frame/checkpoint nodes, interleaved into one sequence. A frame has no
+   * `data.order` of its own (it's a decoration, not a pipeline slot - see
+   * layout.ts's makeFrameNode), so it sorts by `memberOrder + 0.5`: right
+   * after the last table it wraps, but still before whatever table comes
+   * next in the pipeline (which starts at the next whole integer). The
+   * empty-graph Start node is the sole target when nothing exists yet,
+   * matching Canvas.tsx's own `derivedNodes` swap.
+   */
+  private get orderedFocusTargets(): string[] {
+    const tableNodes = this.canvasGraph.nodes.filter(
+      (n): n is CanvasTableNode => n.type === 'table-node',
+    );
+    const frameNodes = this.canvasGraph.nodes.filter(
+      (n): n is CanvasFrameNode => n.type === 'frame-node',
+    );
+    if (tableNodes.length === 0 && frameNodes.length === 0) return [START_NODE_ID];
+    const stops = [
+      ...tableNodes.map(n => ({ id: n.id, sortKey: n.data.order })),
+      ...frameNodes.map(n => ({ id: n.id, sortKey: n.data.memberOrder + 0.5 })),
+    ];
+    return stops.sort((a, b) => a.sortKey - b.sortKey).map(s => s.id);
+  }
+
+  /**
+   * The effective keyboard focus - always a currently-valid target, never
+   * null. Falls back (without writing `_focusedAlias`, so this stays a pure
+   * computed read) to the AST's own current node, then to the first target,
+   * whenever the stored alias no longer exists (first mount, or a node that
+   * disappeared some way other than through focusNext/focusPrev/deleteNode's
+   * own bookkeeping below).
+   */
+  get focusedAlias(): string {
+    const targets = this.orderedFocusTargets;
+    if (this._focusedAlias && targets.includes(this._focusedAlias)) return this._focusedAlias;
+    const current = this.session.ast?.current;
+    if (current && targets.includes(current)) return current;
+    return targets[0];
+  }
+
+  focusNode(alias: string) {
+    this._focusedAlias = alias;
+  }
+
+  /** Next-higher `data.order` (ArrowDown/j) - clamps at the last node. */
+  focusNext() {
+    const targets = this.orderedFocusTargets;
+    const idx = targets.indexOf(this.focusedAlias);
+    this.focusNode(targets[Math.min(idx + 1, targets.length - 1)]);
+  }
+
+  /** Next-lower `data.order` (ArrowUp/k) - clamps at the Start node. */
+  focusPrev() {
+    const targets = this.orderedFocusTargets;
+    const idx = targets.indexOf(this.focusedAlias);
+    this.focusNode(targets[Math.max(idx - 1, 0)]);
+  }
+
+  /**
+   * The real, pinned alias `frameId` currently represents in the AST - a
+   * no-op for anything except `PENDING_CHECKPOINT_FRAME_ID` (a consumed
+   * checkpoint's frame id already IS its real alias - see canvas.model.ts).
+   * FrameNode.tsx needs this wherever it compares itself against
+   * `this.picker`'s own alias (openCheckpointPicker always opens the picker
+   * keyed by the checkpoint's real name, never by the pending frame's
+   * placeholder id) - comparing the placeholder id directly against
+   * `picker.request.alias` silently never matches, which is exactly why the
+   * frame's insert-mode decluttering never engaged (confirmed live).
+   * Doesn't itself pin anything - returns the placeholder id unchanged if
+   * no name exists yet, same as `openCheckpointPicker` falling back to
+   * `ensureCheckpointPinnedShared` only when it actually needs one.
+   */
+  resolveFrameAlias(frameId: string): string {
+    if (frameId !== PENDING_CHECKPOINT_FRAME_ID) return frameId;
+    const segments = segmentsFromAst(this.session.expression, this.session.ast) ?? [];
+    return currentCheckpointName(segments) ?? frameId;
   }
 
   constructor(session: Session) {
@@ -195,11 +312,17 @@ export class CanvasStore {
 
   /**
    * Restores the previous snapshot. Closes any open picker and clears the
-   * multi-select - both can hold onto a node alias (picker.request.alias,
-   * selectedAliases) that this undo may make stale (e.g. undoing past the
-   * gesture that pinned/created that alias), the same class of staleness
-   * `runCommit`'s aliasMap-rename handling exists for, just with no rename
-   * to follow this time since the alias may no longer exist at all.
+   * multi-select and keyboard focus - all three can hold onto a node alias
+   * (picker.request.alias, selectedAliases, _focusedAlias) that this undo
+   * may make stale (e.g. undoing past the gesture that pinned/created that
+   * alias), the same class of staleness `runCommit`'s aliasMap-rename
+   * handling exists for, just with no rename to follow this time since the
+   * alias may no longer exist at all. Clearing `_focusedAlias` rather than
+   * leaving it dangling matters here specifically: the `focusedAlias`
+   * getter's fallback only fires when the stored alias is *absent* from the
+   * new graph - if undo happens to land on a graph that coincidentally
+   * still has an alias of that same name (a different table entirely), the
+   * stale value would silently look valid.
    */
   undo() {
     if (this.undoStack.length === 0) return;
@@ -207,6 +330,7 @@ export class CanvasStore {
     this.redoStack.push(this.session.expression);
     this.closePicker();
     this.selectedAliases = [];
+    this._focusedAlias = null;
     this.session.expression = previous;
   }
 
@@ -216,6 +340,7 @@ export class CanvasStore {
     this.undoStack.push(this.session.expression);
     this.closePicker();
     this.selectedAliases = [];
+    this._focusedAlias = null;
     this.session.expression = next;
   }
 
@@ -444,9 +569,17 @@ export class CanvasStore {
     const alias = makeAlias(hint.table, new Set());
     this.applyExpression(actions.pickFirstTable(hint, alias));
     this.closePicker();
+    // Cursor lands on what was just inserted - the vim convention this
+    // keyboard layer follows throughout (see commitJoin below).
+    this.focusNode(alias);
   }
 
   async commitJoin(hint: TableHint, focusAlias: string) {
+    // Captured inside the commit callback (the alias isn't known until
+    // `used` - the current segment set - is computed against the pinned
+    // base) and read back once the commit resolves, so keyboard focus can
+    // land on the node this call actually created.
+    let createdAlias: string | undefined;
     await this.commit(base => {
       // Not `base.ast['selected-tables']` - the table currently being typed
       // is excluded from it (see the comment on currentInProgressTable in
@@ -458,6 +591,7 @@ export class CanvasStore {
         base.segments.filter(s => s.kind === 'table' && s.owner).map(s => s.owner as string),
       );
       const alias = makeAlias(hint.table, used);
+      createdAlias = alias;
       // focusAlias was read off the node before this base was computed -
       // if it was the in-progress table, pinning may have just renamed it
       // (see PinnedBase's aliasMap comment).
@@ -466,6 +600,7 @@ export class CanvasStore {
       return actions.join(base, hint, alias, fromAlias);
     });
     this.closePicker();
+    if (createdAlias) this.focusNode(createdAlias);
   }
 
   async commitSelectColumns(alias: string, columns: string[]) {
@@ -555,8 +690,43 @@ export class CanvasStore {
     });
   }
 
+  /**
+   * Only ever called on the pipeline's tail (layout.ts's `deriveGraph` sets
+   * `removable: true` on the last table only, and TableNode.tsx's delete
+   * button/the `x` keybinding both gate on `data.removable`) - so "the
+   * former upstream neighbor" is always simply the previous entry in
+   * `orderedFocusTargets`, captured before the commit removes this alias
+   * from the graph. Refocuses only if the deleted node was actually the
+   * focused one; deleting via the mouse while a *different* node has
+   * keyboard focus leaves that focus untouched.
+   */
   async deleteNode(alias: string) {
+    const wasFocused = this.focusedAlias === alias;
+    const targets = this.orderedFocusTargets;
+    const idx = targets.indexOf(alias);
+    const neighbor = idx > 0 ? targets[idx - 1] : START_NODE_ID;
     await this.commit(base => actions.deleteNode(base, actions.resolveAlias(base, alias)));
+    if (wasFocused) this.focusNode(neighbor);
+  }
+
+  /**
+   * Removes the trailing checkpoint (frame) entirely - `x` on a focused
+   * frame, and FrameNode.tsx's own delete button. `frameId` is whichever id
+   * that frame is currently focused/rendered under - a pending checkpoint's
+   * placeholder or a consumed one's real name, either way irrelevant here
+   * since actions.deleteCheckpoint just chops off the trailing
+   * group:/limit:/assign run regardless of its name. Refocus mirrors
+   * deleteNode's own: land on the former upstream neighbor (the last table
+   * the checkpoint wrapped, now a plain node again), only if the frame
+   * itself was the focused one.
+   */
+  async deleteCheckpoint(frameId: string) {
+    const wasFocused = this.focusedAlias === frameId;
+    const targets = this.orderedFocusTargets;
+    const idx = targets.indexOf(frameId);
+    const neighbor = idx > 0 ? targets[idx - 1] : START_NODE_ID;
+    await this.commit(base => actions.deleteCheckpoint(base));
+    if (wasFocused) this.focusNode(neighbor);
   }
 
   /** `limit:` applies to the whole pipeline, not a specific table - pass null to clear it. */

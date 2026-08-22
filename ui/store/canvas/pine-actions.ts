@@ -7,6 +7,7 @@ import {
   removeNode,
   Segment,
   segmentsFromAst,
+  splitAtCheckpoint,
   toText,
   upsertOwnedSegment,
 } from './pine-text';
@@ -216,11 +217,42 @@ export const removeOrderColumnAt = (base: PinnedBase, alias: string, index: numb
 export const deleteNode = (base: PinnedBase, alias: string): string | null =>
   isRemovableNode(base.segments, alias) ? toText(removeNode(base.segments, alias)) : null;
 
-/** `limit:` is unowned (applies to the whole pipeline, not one table) - at most one such segment, always at the end. */
+/**
+ * Removes the trailing checkpoint entirely - every group:/limit: segment
+ * plus its own `|= name` assign (splitAtCheckpoint's `checkpointRun`) - and
+ * nothing else, so the tables it wrapped remain in the pipeline as plain,
+ * ungrouped/unlimited nodes. The "cancel the container" counterpart to
+ * deleteNode above: that removes a table, this removes the wrapper around
+ * one or more tables. Returns the same text unchanged (a no-op, not an
+ * error) if there's no trailing checkpoint to remove.
+ */
+export const deleteCheckpoint = (base: PinnedBase): string => {
+  const { before } = splitAtCheckpoint(base.segments);
+  return toText(before);
+};
+
+/**
+ * `limit:` is unowned (applies to the whole pipeline, not one table) - at
+ * most one such segment. Replaces an existing one IN PLACE rather than
+ * stripping and re-appending at the very end: once a checkpoint is pinned,
+ * its `|= name` assign sits immediately after `limit:` (ensureExplicit
+ * CheckpointName) - appending past the end would push the (regenerated)
+ * `limit:` past that assign, which orphans it outside splitAtCheckpoint's
+ * view of the checkpoint run. currentCheckpointName then reports "unnamed"
+ * again, and the next recompute pins a second, duplicate `|= name` - the
+ * exact live bug this fixes (confirmed: changing the limit value on an
+ * already-named checkpoint kept adding another `|= <same name>`). Appending
+ * at the end remains correct only for the very first `limit:` a pipeline
+ * gets, when nothing (a name or otherwise) exists after it yet.
+ */
 export const setLimit = (base: PinnedBase, value: number | null): string => {
-  const withoutLimit = base.segments.filter(s => s.kind !== 'limit');
-  if (value === null) return toText(withoutLimit);
-  return toText([...withoutLimit, { text: `limit: ${value}`, start: -1, end: -1, kind: 'limit', owner: null }]);
+  const existingIndex = base.segments.findIndex(s => s.kind === 'limit');
+  if (value === null) return toText(base.segments.filter(s => s.kind !== 'limit'));
+  const newSegment: Segment = { text: `limit: ${value}`, start: -1, end: -1, kind: 'limit', owner: null };
+  if (existingIndex < 0) return toText([...base.segments, newSegment]);
+  const next = [...base.segments];
+  next[existingIndex] = newSegment;
+  return toText(next);
 };
 
 /**
@@ -242,19 +274,25 @@ export const getGroupColumns = (base: PinnedBase, alias: string): string[] => {
     .map(part => part.slice(alias.length + 1));
 };
 
-// Always appended at the very end, same as setLimit - for now, group: only
-// ever needs to be the pipeline's true last operation, since canvas mode has
-// nothing that runs after it yet (no sealing a checkpoint into its own
-// variable/CTE mid-pipeline - that's future work). Once it does, this will
-// need to target "the end of the current segment, before whatever comes
-// next" instead of the literal end of the whole expression.
+// Replaces an existing group: segment IN PLACE rather than stripping and
+// re-appending at the very end - see setLimit's own comment just above for
+// why: once a checkpoint is pinned, its `|= name` assign sits immediately
+// after group:, and appending past the end would orphan that assign outside
+// splitAtCheckpoint's view of the checkpoint run, causing a duplicate name
+// to be pinned on every subsequent group-column change (confirmed live).
+// Appending at the end remains correct only for the very first group:
+// segment a pipeline gets, when nothing runs after it yet.
 export const setGroupColumns = (base: PinnedBase, alias: string, columns: string[]): string => {
-  const existing = base.segments.find(s => s.kind === 'group');
+  const existingIndex = base.segments.findIndex(s => s.kind === 'group');
+  const existing = existingIndex >= 0 ? base.segments[existingIndex] : undefined;
   const priorAll = existing ? splitTopLevel(existing.text.replace(/^(group:|g:)\s*/i, '')) : [];
   const others = priorAll.filter(part => !part.startsWith(`${alias}.`));
   const mine = columns.map(c => `${alias}.${c}`);
   const nextAll = [...others, ...mine];
-  const withoutGroup = base.segments.filter(s => s.kind !== 'group');
-  if (nextAll.length === 0) return toText(withoutGroup);
-  return toText([...withoutGroup, { text: `group: ${nextAll.join(', ')}`, start: -1, end: -1, kind: 'group', owner: null }]);
+  if (nextAll.length === 0) return toText(base.segments.filter(s => s.kind !== 'group'));
+  const newSegment: Segment = { text: `group: ${nextAll.join(', ')}`, start: -1, end: -1, kind: 'group', owner: null };
+  if (existingIndex < 0) return toText([...base.segments, newSegment]);
+  const next = [...base.segments];
+  next[existingIndex] = newSegment;
+  return toText(next);
 };
