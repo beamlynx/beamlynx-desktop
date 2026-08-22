@@ -9,6 +9,7 @@ import {
   CanvasNode,
   CanvasTableNode,
   CanvasTableNodeData,
+  PENDING_CHECKPOINT_FRAME_ID,
 } from './canvas.model';
 import { inProgressTable } from './pine-text';
 
@@ -232,10 +233,10 @@ const deriveGraph = (
           // Same integer as the outer slot this checkpoint replaced, for
           // every inner table - Array.prototype.sort is stable (ES2019+),
           // so sequenceYByAlias still stacks them in `innerTables`' own
-          // order relative to each other even with tied values, while the
-          // badge itself doesn't show a confusing fractional number.
+          // order relative to each other even with tied values. Purely
+          // structural now (vertical position + CanvasStore's keyboard-nav
+          // ordering) - no longer separately rendered as a visible badge.
           order: i + 1,
-          isCurrent: it.alias === ast.current,
           // Deleting a table from inside a sealed checkpoint isn't
           // supported yet - it could break the checkpoint's own join graph
           // in ways a simple segment removal doesn't account for.
@@ -297,7 +298,6 @@ const deriveGraph = (
       table: t.table,
       schema: t.schema,
       order: i + 1,
-      isCurrent: t.alias === ast.current,
       removable: i === allTables.length - 1,
       selectColumns: (selectByAlias[t.alias] ?? [])
         .map(c => c.column)
@@ -406,10 +406,17 @@ const makeFrameNode = (
   rightHandles: CanvasHandle[] = [],
 ): CanvasFrameNode | null => {
   const members = new Set(memberIds);
-  const boxes = laidOutNodes
-    .filter((n): n is CanvasTableNode => n.type === 'table-node' && members.has(n.id))
-    .map(n => ({ x: n.position.x, y: n.position.y, width: nodeWidth, height: getNodeFootprintHeight(n) }));
-  if (boxes.length === 0) return null;
+  const memberNodes = laidOutNodes.filter(
+    (n): n is CanvasTableNode => n.type === 'table-node' && members.has(n.id),
+  );
+  if (memberNodes.length === 0) return null;
+  const boxes = memberNodes.map(n => ({
+    x: n.position.x,
+    y: n.position.y,
+    width: nodeWidth,
+    height: getNodeFootprintHeight(n),
+  }));
+  const memberOrder = Math.max(...memberNodes.map(n => n.data.order));
   const minX = Math.min(...boxes.map(b => b.x));
   const minY = Math.min(...boxes.map(b => b.y));
   const maxX = Math.max(...boxes.map(b => b.x + b.width));
@@ -438,6 +445,7 @@ const makeFrameNode = (
       height: maxY - minY + framePadding * 2 + frameHeaderHeight,
       leftHandles,
       rightHandles,
+      memberOrder,
     },
   };
 };
@@ -463,7 +471,9 @@ export const buildCanvasGraph = (
   // glitch cheaply.
   const claimed = new Set(frames.flatMap(f => f.memberIds));
   const pendingMemberIds = laidOut.filter(n => n.type === 'table-node' && !claimed.has(n.id)).map(n => n.id);
-  const pendingFrame = hasPendingCheckpoint ? makeFrameNode('__checkpoint_frame__', laidOut, pendingMemberIds) : null;
+  const pendingFrame = hasPendingCheckpoint
+    ? makeFrameNode(PENDING_CHECKPOINT_FRAME_ID, laidOut, pendingMemberIds)
+    : null;
 
   const allFrames = [...consumedFrames, ...(pendingFrame ? [pendingFrame] : [])];
   return { nodes: [...allFrames, ...laidOut], edges, parsing: true, singleBlock: true };

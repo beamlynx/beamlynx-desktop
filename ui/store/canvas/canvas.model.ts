@@ -6,6 +6,32 @@ import { Edge, Node } from 'reactflow';
 // here: this mode replaces "suggested nodes" with pickers opened from a
 // node's action bar.
 
+/**
+ * Stable id for the empty-graph "+ pick a table" node - shared between
+ * Canvas.tsx (which renders it in place of `canvasGraph.nodes` when that's
+ * empty) and CanvasStore's keyboard-focus tracking (which needs the same id
+ * to treat it as a focus target). Lives here rather than in Canvas.tsx so
+ * the store doesn't have to import a component file.
+ */
+export const START_NODE_ID = '__canvas_start__';
+
+/**
+ * Render id for the trailing group:/limit: checkpoint's frame while it's
+ * still the pipeline's tail (layout.ts's makeFrameNode/buildCanvasGraph) -
+ * distinct from a *consumed* checkpoint's frame, whose id is its own real
+ * pinned name. This placeholder can outlive pinning itself: eager
+ * background pinning (CanvasStore.ensureCheckpointPinnedShared) often gives
+ * the checkpoint a real name well before anything is built on top of it, so
+ * "pending" here means "still the tail", not "still unnamed". Any code
+ * comparing this id against something keyed by the checkpoint's real
+ * alias - CanvasStore.picker's `request.alias` in particular - must resolve
+ * through CanvasStore.resolveFrameAlias first, or the comparison silently
+ * never matches (confirmed live: the frame's insert-mode decluttering never
+ * engaged, because its own placeholder id never equals the real pinned name
+ * `openCheckpointPicker` opens the picker under).
+ */
+export const PENDING_CHECKPOINT_FRAME_ID = '__checkpoint_frame__';
+
 export type CanvasHandle = { id: string; column: string; connectedNodeId: string };
 
 export type CanvasTableNodeData = {
@@ -14,7 +40,6 @@ export type CanvasTableNodeData = {
   schema: string | null;
   color?: string | null;
   order: number;
-  isCurrent: boolean;
   removable: boolean;
   selectColumns: string[];
   whereChips: string[]; // display text, e.g. "id = 1"
@@ -47,7 +72,19 @@ export type CanvasStartNodeData = {};
  * already addresses it by, so a join onto the sealed output attaches to
  * the frame itself rather than dangling with nowhere to render.
  */
-export type CanvasFrameNodeData = { width: number; height: number; leftHandles: CanvasHandle[]; rightHandles: CanvasHandle[] };
+export type CanvasFrameNodeData = {
+  width: number;
+  height: number;
+  leftHandles: CanvasHandle[];
+  rightHandles: CanvasHandle[];
+  /**
+   * The highest `data.order` among this frame's own member tables - lets
+   * CanvasStore.orderedFocusTargets slot the frame into the same single
+   * keyboard-navigable sequence as table nodes, immediately after the last
+   * table it wraps (see that getter's `memberOrder + 0.5` sort key).
+   */
+  memberOrder: number;
+};
 
 export type CanvasTableNode = Node<CanvasTableNodeData>;
 export type CanvasStartNode = Node<CanvasStartNodeData>;

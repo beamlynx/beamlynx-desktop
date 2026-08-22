@@ -18,8 +18,10 @@ import {
   CanvasNode,
   CanvasStartNodeData,
   CanvasTableNodeData,
+  START_NODE_ID,
 } from '../../store/canvas/canvas.model';
 import { appFont } from '../../styles/app-font';
+import { useCanvasKeybindings } from '../../hooks/useCanvasKeybindings';
 import { CanvasStoreContext } from './canvas-context';
 import TableNode from './nodes/TableNode';
 import StartNode from './nodes/StartNode';
@@ -27,7 +29,7 @@ import FrameNode from './nodes/FrameNode';
 import TraceEdge from './edges/TraceEdge';
 import Picker from './Picker';
 import MultiSelectToolbar from './MultiSelectToolbar';
-import CanvasToolbar from './CanvasToolbar';
+import CanvasToolbar, { CanvasModeIndicator } from './CanvasToolbar';
 
 const nodeTypes: NodeTypes = {
   'table-node': TableNode,
@@ -36,8 +38,6 @@ const nodeTypes: NodeTypes = {
 };
 
 const edgeTypes = { trace: TraceEdge };
-
-const START_NODE_ID = '__canvas_start__';
 
 // 'info' (connecting/loading - nothing wrong, just not ready yet) reuses the
 // same neutral accent the rest of canvas mode already uses for "in
@@ -215,6 +215,20 @@ const Flow: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasStore }) 
           nodesConnectable={false}
           elementsSelectable={true}
           deleteKeyCode={null}
+          // The new keyboard-focus/navigation layer (useCanvasKeybindings)
+          // replaces reactflow's own native keyboard handling rather than
+          // living alongside it - the same call this app already made for
+          // the classic graph view (see session.ts's tabCycleRequestCount
+          // comment: "React Flow makes every node/edge natively tabbable,
+          // which is what this replaces"). Confirmed in reactflow's own
+          // source (@reactflow/core's arrowKeyDiffs handling): with
+          // `nodesFocusable` at its true default, an arrow key fired at a
+          // node that's both draggable and (box-)selected nudges its x/y -
+          // a real collision with j/k/arrow-driven focus navigation, not a
+          // hypothetical one. `disableKeyboardA11y` turns off the matching
+          // pane-level arrow-key handling for the same reason.
+          nodesFocusable={false}
+          disableKeyboardA11y
           minZoom={0.5}
           maxZoom={1.2}
           // Miro-style split: right button drags the canvas; left button is
@@ -260,6 +274,7 @@ const Flow: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasStore }) 
       </div>
       <Picker />
       <CanvasToolbar canvasStore={canvasStore} />
+      <CanvasModeIndicator canvasStore={canvasStore} />
       <MultiSelectToolbar canvasStore={canvasStore} />
     </div>
   );
@@ -274,6 +289,7 @@ const Canvas: React.FC<CanvasProps> = observer(({ sessionId }) => {
   const session = global.getSession(sessionId);
   const canvasStore = useMemo(() => new CanvasStore(session), [session]);
   useEffect(() => canvasStore.start(), [canvasStore]);
+  useCanvasKeybindings({ canvasStore, session, global });
 
   return (
     <CanvasStoreContext.Provider value={canvasStore}>

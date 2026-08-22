@@ -198,7 +198,14 @@ const COMMANDS: Command[] = [
     category: 'Preferences',
     handler: (_global, session) => session.focusTextInput(),
     hidden: true,
-    isEnabled: ALWAYS_ENABLED,
+    // Only reachable via the global Escape keybinding (see keybindings.ts) -
+    // hidden from the command palette, so this is the sole trigger path.
+    // Disabled in canvas mode: Escape there already has its own meaning
+    // (closing an open picker - Picker.tsx's own listener, unaffected by
+    // this) or is a no-op in normal mode (useCanvasKeybindings.ts) - jumping
+    // focus to the Pine text input on top of that reads as Escape
+    // "kicking you out of" canvas mode, which nothing asked for.
+    isEnabled: global => !global.canvasModeEnabled,
   },
   {
     id: 'toggle-table-colors',
