@@ -153,7 +153,12 @@ const checkpointFor = (ast: Ast, tableName: string): VariableAst | undefined =>
 /** A checkpoint that has replaced a selected-tables slot - its inner tables render as their own nodes, wrapped in a frame (see makeFrameNode). */
 export type FrameSpec = { id: string; memberIds: string[]; leftHandles: CanvasHandle[]; rightHandles: CanvasHandle[] };
 
-const deriveGraph = (ast: Ast): { nodes: CanvasNode[]; edges: CanvasEdge[]; frames: FrameSpec[] } => {
+/** A dagre-only edge, never rendered - see deriveGraph's rankEdges for why these exist. */
+type RankEdge = { source: string; target: string };
+
+const deriveGraph = (
+  ast: Ast,
+): { nodes: CanvasNode[]; edges: CanvasEdge[]; frames: FrameSpec[]; rankAnchors: string[]; rankEdges: RankEdge[] } => {
   const selectedTables: CanvasTableRef[] = ast['selected-tables'] ?? [];
   const inProgress = inProgressTable(ast);
   const allTables: CanvasTableRef[] =
@@ -185,6 +190,8 @@ const deriveGraph = (ast: Ast): { nodes: CanvasNode[]; edges: CanvasEdge[]; fram
 
   const nodes: CanvasNode[] = [];
   const frames: FrameSpec[] = [];
+  const rankAnchors: string[] = [];
+  const rankEdges: RankEdge[] = [];
 
   for (let i = 0; i < allTables.length; i++) {
     const t = allTables[i];
@@ -258,6 +265,26 @@ const deriveGraph = (ast: Ast): { nodes: CanvasNode[]; edges: CanvasEdge[]; fram
           leftHandles: toHandles(handles.left[t.table]),
           rightHandles: toHandles(handles.right[t.table]),
         });
+        // The checkpoint's own identity (t.table, e.g. "agg") is never
+        // rendered as a node - the frame is a decoration sized from its
+        // inner tables' own laid-out positions - but ast.joins can still
+        // name it directly as a source (a table joined onto the sealed
+        // output). Without a real anchor here, dagre has no edge
+        // connecting "agg" to the inner cluster at all (checkpoint.joins,
+        // added above via addJoins, only wires the inner tables to EACH
+        // OTHER, never to the checkpoint's own name) - dagre.setEdge then
+        // implicitly creates "agg" as an unconnected phantom node ranked
+        // from 0 on its own, same as the inner cluster's own rank-0 start.
+        // Found live: a table joined onto the checkpoint rendered
+        // directly in the same column as one of the inner tables, purely
+        // because their ranks coincided by chance. `rankAnchors`/
+        // `rankEdges` are dagre-ranking-only (see layoutNodes) - they
+        // never appear in the returned `nodes`/`edges`, so nothing new
+        // renders because of them.
+        rankAnchors.push(t.table);
+        for (const memberId of memberIds) {
+          rankEdges.push({ source: memberId, target: t.table });
+        }
       }
       continue;
     }
@@ -284,7 +311,7 @@ const deriveGraph = (ast: Ast): { nodes: CanvasNode[]; edges: CanvasEdge[]; fram
     nodes.push({ id: t.alias, type: 'table-node', position: { x: 0, y: 0 }, data });
   }
 
-  return { nodes, edges, frames };
+  return { nodes, edges, frames, rankAnchors, rankEdges };
 };
 
 const verticalGap = 24;
@@ -316,12 +343,21 @@ const layoutNodes = (
   positions: Record<string, { x: number; y: number }>,
   nodes: CanvasNode[],
   edges: CanvasEdge[],
+  rankAnchors: string[] = [],
+  rankEdges: RankEdge[] = [],
 ): CanvasNode[] => {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({ rankdir: 'LR', nodesep: 24 });
   nodes.forEach(n => g.setNode(n.id, { width: nodeWidth, height: getNodeFootprintHeight(n) }));
+  // Dagre-ranking-only anchors for a checkpoint's own identity (see
+  // deriveGraph's rankAnchors/rankEdges comment) - never part of `nodes`,
+  // so `nodes.map(...)` below can never return one of these; they exist
+  // purely so a table joined onto the checkpoint ranks after the whole
+  // inner cluster instead of as an unconnected phantom dagre node.
+  rankAnchors.forEach(id => g.setNode(id, { width: nodeWidth, height: minNodeHeight }));
   edges.forEach(e => g.setEdge(e.source, e.target));
+  rankEdges.forEach(e => g.setEdge(e.source, e.target));
   dagre.layout(g);
 
   const sequenceY = sequenceYByAlias(nodes);
@@ -411,8 +447,8 @@ export const buildCanvasGraph = (
   positions: Record<string, { x: number; y: number }>,
   hasPendingCheckpoint: boolean,
 ): CanvasGraph => {
-  const { nodes, edges, frames } = deriveGraph(ast);
-  const laidOut = layoutNodes(positions, nodes, edges);
+  const { nodes, edges, frames, rankAnchors, rankEdges } = deriveGraph(ast);
+  const laidOut = layoutNodes(positions, nodes, edges, rankAnchors, rankEdges);
 
   const consumedFrames = frames
     .map(f => makeFrameNode(f.id, laidOut, f.memberIds, f.leftHandles, f.rightHandles))
