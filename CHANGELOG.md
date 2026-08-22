@@ -4,12 +4,20 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.5.0] - 2026-08-22
 ### Added
-- A saved connection can now be renamed (bundled beamlynx-ui, see its own changelog) -- a new `credentials.rename` call updates its stored label.
+- A saved connection can now be renamed (bundled beamlynx-ui 0.50.0) -- a new `credentials.rename` call updates its stored label.
+- A refresh icon next to each live connection in Settings > Database Connections, to pick up tables or columns added to the database after the connection was first opened -- no restart needed (bundled beamlynx-ui 0.50.0 / pine-lang 0.39.0's new reindex endpoint).
+- Keyboard control for canvas mode: navigate between tables with the arrow keys or `j`/`k`, and trigger a highlighted table's operations with a single letter, without touching the mouse (bundled beamlynx-ui 0.50.0).
+
+### Fixed
+- The graph view could get stuck showing "Connecting…" forever even once the connection was live -- the very first query build for a tab, sent before its connection pool actually existed yet, failed silently and nothing ever retried it (bundled beamlynx-ui 0.50.0).
+- A heuristic join between columns of different database types (e.g. text vs uuid) generated SQL Postgres rejected outright; both sides are now cast to a common type instead (bundled pine-lang 0.39.0).
 
 ### Changed
 - Removed the native menu bar (File/Edit/View/Window) on Windows/Linux -- it only duplicated beamlynx-ui's own header. Kept a minimal one on macOS (app name + Edit), since Cmd+C/V/X and undo/redo rely on the Edit menu to work at all in text fields.
-- Exposes this app's own version to the Settings About section's new "App version" row (bundled beamlynx-ui, see its own changelog).
+- Exposes this app's own version to the Settings About section's new "App version" row (bundled beamlynx-ui 0.50.0).
 
 ## [0.4.0] - 2026-08-17
 ### Added

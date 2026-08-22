@@ -1,5 +1,5 @@
 {
-  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. Pinned to commit SHAs, not a branch name, as of 0.1.9 -- a branch pin silently picks up whatever that branch's HEAD is at tag-push time, which twice produced a release missing work that had already been committed to the branch but not accounted for when the tag was cut. A SHA pin makes exactly what's bundled explicit and reviewable in this file's own diff. pine-lang bumped to master's merge commit for 0.38.2 (pine-lang doesn't tag releases, so this is a SHA, not a tag) -- a security fix: the server now binds to loopback by default instead of every network interface, since it has no authentication. beamlynx-ui bumped to its tagged 0.49.0, which bundles the new Settings page, MCP support, and the database type field.",
-  "pineLangRef": "40564c290b7a02261e5bb0683ecb14b003d816bb",
-  "beamlynxUiRef": "0.49.0"
+  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang bumped to master's merge commit for 0.39.0 (pine-lang doesn't tag releases, so this is a SHA, not a tag) -- heuristic-join type casting, join-less table hints, and on-demand schema reindex (used by the new connection refresh icon). beamlynx-ui bumped to its tagged 0.50.0, which bundles canvas mode's keyboard control, the connection refresh/rename features, and the About section's version rows.",
+  "pineLangRef": "5b39a1836a7c7173ee269df17e0cba752b47763d",
+  "beamlynxUiRef": "0.50.0"
 }
