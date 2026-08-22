@@ -14,6 +14,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - On the desktop app, the graph view could get stuck showing "Connecting…" forever even once the connection was live. The very first query build for a tab, sent before its connection actually had a live pool yet, failed silently and nothing ever retried it once the connection came up. The connection reconnect step now asks for a fresh build once it succeeds.
 - The MCP switch on a Database Connections row (desktop app) looked like a general on/off toggle for the connection itself. Replaced with a small robot icon, lit when MCP access is on -- consistent with the row's other icon actions, and specific about what it actually controls.
 
+### Changed
+- The Settings About section now labels its version row correctly ("Server version" -- it was always the connected pine-lang server's version, not this app's own). It also shows the UI's own version, and, in the desktop app, the installed app's own version.
+
 ## [0.49.0] - 2026-08-16
 ### Added
 - A Settings page, opened from the gear icon next to the notification bell. It brings database connections, app preferences, and MCP setup into one place instead of scattered menus.
