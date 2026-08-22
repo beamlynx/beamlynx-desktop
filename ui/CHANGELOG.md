@@ -13,9 +13,6 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - The delete icon on a Database Connections row used to sit in a different column depending on whether that row also showed the refresh icon (only shown for a live connection), so rows didn't line up. It now sits in the same place on every row.
 - On the desktop app, the graph view could get stuck showing "Connecting…" forever even once the connection was live. The very first query build for a tab, sent before its connection actually had a live pool yet, failed silently and nothing ever retried it once the connection came up. The connection reconnect step now asks for a fresh build once it succeeds.
 - The MCP switch on a Database Connections row (desktop app) looked like a general on/off toggle for the connection itself. Replaced with a small robot icon, lit when MCP access is on -- consistent with the row's other icon actions, and specific about what it actually controls.
-- Pressing Escape while in canvas mode used to jump focus to the Pine text input, even when nothing was open. It now only closes an open picker, matching what canvas mode's own Escape is for.
-- A checkpoint's action bar (select/where/order/join) was always visible instead of appearing on hover or selection like every other node, and it didn't hide once one of those actions was already open.
-- Adding a column to an already-named checkpoint's `group:` (or changing its `limit:`) pinned a second, duplicate name onto the query every time, instead of reusing the existing one.
 
 ## [0.49.0] - 2026-08-16
 ### Added
