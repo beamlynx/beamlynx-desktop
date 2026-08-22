@@ -104,71 +104,57 @@ function configureLinuxPasswordStore(): void {
   app.commandLine.appendSwitch('password-store', isKde ? 'kwallet6' : 'gnome-libsecret');
 }
 
-// Electron's built-in default menu (used automatically whenever no menu is
-// set) binds Cmd/Ctrl+W to role: 'close', which would intercept the
-// keystroke natively and close the whole window before the renderer's own
-// Ctrl+W "close tab" keybinding (see beamlynx-ui's utils/keybindings.ts)
-// ever sees it. This template keeps the other standard roles (clipboard
-// shortcuts on macOS in particular rely on the Edit menu existing) but
-// deliberately omits a 'close' item so Ctrl/Cmd+W reaches the page.
-function buildMenu(): Menu {
-  const isMac = process.platform === 'darwin';
+// Windows/Linux: no menu bar at all. It only ever duplicated beamlynx-ui's
+// own header (search, connection picker, settings) with a generic
+// File/Edit/View/Window strip, and Ctrl+C/V/X/Z work fine in Chromium text
+// fields on these platforms without a Menu -- Menu.setApplicationMenu(null)
+// is Electron's own documented way to remove it (has no effect on macOS,
+// handled separately below). This still needs to be an explicit null, not
+// just skipping the setApplicationMenu call below entirely -- an app that
+// never calls it at all falls back to Electron's own built-in default menu,
+// which binds Ctrl+W to role: 'close' and would intercept it before the
+// renderer's own "close tab" keybinding ever saw it (see
+// beamlynx-ui's utils/keybindings.ts). Passing null removes the menu bar
+// with no accelerators of its own, so there's nothing left to intercept it.
+//
+// macOS is different: Cmd+C/V/X and undo/redo in text fields are wired
+// through the Edit menu's roles as native accelerators, so an app with no
+// Menu at all silently loses them -- a well-documented Electron gotcha, not
+// specific to this app. Kept minimal for that reason alone: the app-name
+// menu (About/Hide/Quit, expected on every Mac app regardless) plus a bare
+// Edit menu. View/Window (reload/zoom/devtools/fullscreen/minimize) are
+// dropped -- they're not needed for clipboard/undo to work, and
+// beamlynx-ui's own UI doesn't expose equivalents either.
+function buildMenu(): Menu | null {
+  if (process.platform !== 'darwin') {
+    return null;
+  }
 
   const template: Electron.MenuItemConstructorOptions[] = [
-    ...(isMac
-      ? [
-          {
-            label: app.name,
-            submenu: [
-              { role: 'about' as const },
-              { type: 'separator' as const },
-              { role: 'services' as const },
-              { type: 'separator' as const },
-              { role: 'hide' as const },
-              { role: 'hideOthers' as const },
-              { role: 'unhide' as const },
-              { type: 'separator' as const },
-              { role: 'quit' as const },
-            ],
-          },
-        ]
-      : [
-          {
-            label: 'File',
-            submenu: [{ role: 'quit' as const }],
-          },
-        ]),
+    {
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    },
     {
       label: 'Edit',
       submenu: [
-        { role: 'undo' as const },
-        { role: 'redo' as const },
-        { type: 'separator' as const },
-        { role: 'cut' as const },
-        { role: 'copy' as const },
-        { role: 'paste' as const },
-        { role: 'selectAll' as const },
-      ],
-    },
-    {
-      label: 'View',
-      submenu: [
-        { role: 'reload' as const },
-        { role: 'forceReload' as const },
-        { role: 'toggleDevTools' as const },
-        { type: 'separator' as const },
-        { role: 'resetZoom' as const },
-        { role: 'zoomIn' as const },
-        { role: 'zoomOut' as const },
-        { type: 'separator' as const },
-        { role: 'togglefullscreen' as const },
-      ],
-    },
-    {
-      label: 'Window',
-      submenu: [
-        { role: 'minimize' as const },
-        ...(isMac ? [{ role: 'zoom' as const }, { type: 'separator' as const }, { role: 'front' as const }] : []),
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
       ],
     },
   ];
@@ -407,6 +393,11 @@ function runDesktopApp(): void {
     }
     return { command: process.execPath, args: [app.getAppPath(), '--mcp'] };
   });
+
+  // Backs the Settings About section's "App version" row -- app.getVersion()
+  // reads package.json's own version field, same value `beamlynx --app-version`
+  // prints from the CLI.
+  ipcMain.handle('app:get-version', () => app.getVersion());
 
   // Triggered by the renderer's "Restart to install" button (see
   // beamlynx-ui's DesktopUpdateBanner). Stops the server and marks

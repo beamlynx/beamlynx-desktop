@@ -7,6 +7,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Added
 - A saved connection can now be renamed (bundled beamlynx-ui, see its own changelog) -- a new `credentials.rename` call updates its stored label.
 
+### Changed
+- Removed the native menu bar (File/Edit/View/Window) on Windows/Linux -- it only duplicated beamlynx-ui's own header. Kept a minimal one on macOS (app name + Edit), since Cmd+C/V/X and undo/redo rely on the Edit menu to work at all in text fields.
+- Exposes this app's own version to the Settings About section's new "App version" row (bundled beamlynx-ui, see its own changelog).
+
 ## [0.4.0] - 2026-08-17
 ### Added
 - MCP support. An AI agent like Claude Code can run queries directly against your saved connections. Turn it on per connection, and copy the setup command, from the new Settings page (bundled beamlynx-ui 0.49.0).
