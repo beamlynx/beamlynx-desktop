@@ -7,6 +7,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Added
 - A refresh icon next to each live connection in Settings > Database Connections. Use it to pick up tables or columns added to the database after the connection was first opened, instead of restarting the server.
 - A connection can now be renamed: an optional name field when adding it, and a pencil icon on its row in Settings > Database Connections afterward. Desktop app only, since that's the only place a connection's name is actually saved anywhere.
+- Keyboard control for canvas mode. Move between nodes with the arrow keys or `j`/`k`, and use a single-letter shortcut for the highlighted node's operations: `s` select, `w` where, `o` order, `g` group, `i` join (or add the first table, from the start node), `x` delete, `u`/`Shift+U` undo/redo. The highlighted node is shown the same way as the query's current node, and its operations stay visible without needing to hover it. A checkpoint (a `group:`/`limit:` step) can now be navigated to and deleted the same way.
 
 ### Fixed
 - The delete icon on a Database Connections row used to sit in a different column depending on whether that row also showed the refresh icon (only shown for a live connection), so rows didn't line up. It now sits in the same place on every row.
