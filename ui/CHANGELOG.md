@@ -7,11 +7,15 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Added
 - A refresh icon next to each live connection in Settings > Database Connections. Use it to pick up tables or columns added to the database after the connection was first opened, instead of restarting the server.
 - A connection can now be renamed: an optional name field when adding it, and a pencil icon on its row in Settings > Database Connections afterward. Desktop app only, since that's the only place a connection's name is actually saved anywhere.
+- Keyboard control for canvas mode. Move between nodes with the arrow keys or `j`/`k`, and use a single-letter shortcut for the highlighted node's operations: `s` select, `w` where, `o` order, `g` group, `i` join (or add the first table, from the start node), `x` delete, `u`/`Shift+U` undo/redo. The highlighted node is shown the same way as the query's current node, and its operations stay visible without needing to hover it. A checkpoint (a `group:`/`limit:` step) can now be navigated to and deleted the same way.
 
 ### Fixed
 - The delete icon on a Database Connections row used to sit in a different column depending on whether that row also showed the refresh icon (only shown for a live connection), so rows didn't line up. It now sits in the same place on every row.
 - On the desktop app, the graph view could get stuck showing "Connecting…" forever even once the connection was live. The very first query build for a tab, sent before its connection actually had a live pool yet, failed silently and nothing ever retried it once the connection came up. The connection reconnect step now asks for a fresh build once it succeeds.
 - The MCP switch on a Database Connections row (desktop app) looked like a general on/off toggle for the connection itself. Replaced with a small robot icon, lit when MCP access is on -- consistent with the row's other icon actions, and specific about what it actually controls.
+- Pressing Escape while in canvas mode used to jump focus to the Pine text input, even when nothing was open. It now only closes an open picker, matching what canvas mode's own Escape is for.
+- A checkpoint's action bar (select/where/order/join) was always visible instead of appearing on hover or selection like every other node, and it didn't hide once one of those actions was already open.
+- Adding a column to an already-named checkpoint's `group:` (or changing its `limit:`) pinned a second, duplicate name onto the query every time, instead of reusing the existing one.
 
 ## [0.49.0] - 2026-08-16
 ### Added
