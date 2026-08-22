@@ -3,7 +3,6 @@ export const STORAGE_KEYS = {
   SIDEBAR_SECOND_VIEW_HEIGHT: 'pine-sidebar-second-view-height',
   THEME: 'pine-theme',
   VIM_MODE: 'pine-vim-mode',
-  FORCE_COMPACT_MODE: 'pine-force-compact-mode',
   PINE_TABLE_COLORS: 'pine-table-colors',
   LAST_READ_VERSION: 'pine-last-read-version',
   COMMAND_HISTORY: 'pine-command-history',
@@ -16,6 +15,8 @@ export const STORAGE_KEYS = {
   NEW_LAYOUT_PANE_WIDTH: 'pine-new-layout-pane-width',
   NEW_LAYOUT_PANE_HEIGHT: 'pine-new-layout-pane-height',
   NEW_LAYOUT_PANEL_VISIBLE: 'pine-new-layout-panel-visible',
+  NEW_LAYOUT_PANEL_WIDTH: 'pine-new-layout-panel-width',
+  NEW_LAYOUT_PANEL_HEIGHT: 'pine-new-layout-panel-height',
 } as const;
 
 export const getUserPreference = (key: string, defaultValue: any) => {

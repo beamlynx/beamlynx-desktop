@@ -50,6 +50,28 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
       // exclusive control of the keyboard while it's up.
       if (canvasStore.mode !== 'normal') return;
 
+      // Conventional undo/redo (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y),
+      // alongside vim's own u/Shift+U below - same actions, just the
+      // shortcut most people already know. Checked ahead of the plain-key
+      // switch since these need a modifier check the switch below doesn't
+      // do. Safe to claim here: the guards above already bail out whenever
+      // a real text input has focus, so Ctrl+Z still reaches CodeMirror's
+      // own undo there instead of being intercepted.
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          if (canvasStore.canRedo) canvasStore.redo();
+        } else if (canvasStore.canUndo) {
+          canvasStore.undo();
+        }
+        return;
+      }
+      if (e.ctrlKey && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        if (canvasStore.canRedo) canvasStore.redo();
+        return;
+      }
+
       const alias = canvasStore.focusedAlias;
       const isStart = alias === START_NODE_ID;
       // A frame/checkpoint node is a valid focus target (CanvasStore.

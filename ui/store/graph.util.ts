@@ -477,7 +477,11 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
     // parentCol is always the column `from` (the parent) owns, childCol is
     // always the column `to` (the child) owns.
     const [, col1, , , col2] = relation;
-    const [parentCol, childCol] = parentIsFrom ? [col1, col2] : [col2, col1];
+    // Null only on a hint-less relation (see JoinRelation's comment in
+    // client.ts) - this legacy graph has no confidence styling for committed
+    // joins to begin with, so that case renders the same plain edge as
+    // before this type was widened to admit it.
+    const [parentCol, childCol] = parentIsFrom ? [col1!, col2!] : [col2!, col1!];
     const sourceHandle =
       from && canHaveHandles(from)
         ? addHandle(rightHandlesByNode, from.id, parentCol, 'r', to?.id ?? toAliasOf)

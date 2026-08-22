@@ -28,8 +28,10 @@ never a synchronous local mutation.
 In New Layout (the default), Canvas mode is always on — there's no toggle for
 it there (`components/NewLayoutView.tsx` renders `<Canvas>` unconditionally).
 
-In Legacy Layout, a toggle in the app header (`components/AppView.tsx`'s
-`InteractiveViewToggle`) switches between the classic graph and canvas mode
+In Legacy Layout, a toggle inside the graph panel itself
+(`components/Session.tsx`'s `InteractiveViewToggle`, bottom-right of the
+graph/canvas widget - not the app header, which only ever refers to layout,
+see `docs/terminology.md`) switches between the classic graph and canvas mode
 for the active tab, via `GlobalStore.canvasModeEnabled` / `toggleCanvasMode()`.
 The preference persists across reloads (`STORAGE_KEYS.CANVAS_MODE`) and
 applies globally, not per session. `components/Session.tsx`'s `MainView`
@@ -39,15 +41,46 @@ reads it to decide whether the `'graph'`/`'documentation'` mode slot renders
 ## Auto-run
 
 Whenever a canvas gesture commits a new expression (`CanvasStore.applyExpression`/
-`undo`/`redo`), the session automatically re-runs the query 500ms later
+`undo`/`redo`), the session automatically re-runs the query 150ms later
 (`Session.notifyCanvasCommit`/`autoRunTrigger`, `store/session.ts`) — this is
 safe specifically because every canvas commit is already backend-confirmed
 valid via `probeBuild` before it's applied (see "How it works" below), unlike
-hand-typed Pine text, which can be mid-typing/invalid. Toggle:
-`GlobalStore.autoRunEnabled` (`toggle-auto-run` command / Settings), default
-on. Gated on `session.inputMode === 'pine'` — auto-run stays off while a
-session is mid-hand-edit of raw SQL, so it never runs stale SQL left over
-from before a mode switch.
+hand-typed Pine text, which can be mid-typing/invalid. The 150ms debounce
+exists only to collapse a burst of rapid picks (e.g. a still-open
+multi-select picker) into one run — the query itself typically runs in a
+handful of milliseconds once fired, confirmed live by profiling the network
+calls around a single canvas commit. Toggle: `GlobalStore.autoRunEnabled`
+(`toggle-auto-run` command / Settings / the bolt icon in the canvas
+toolbar — `CanvasToolbar.tsx`, lit when on), default on. Gated on
+`session.inputMode === 'pine'` — auto-run stays off while a session is
+mid-hand-edit of raw SQL, so it never runs stale SQL left over from before a
+mode switch.
+
+## The Pine/SQL panel
+
+New Layout can show an editable Pine or SQL text panel alongside the canvas —
+reuses `Input.tsx` unmodified (same PINE/SQL toggle and editors it's always
+had), so hand-editing and point-and-click editing stay in sync automatically
+through the same `session.expression`/`session.ast`.
+
+There is exactly one panel, not two — "Pine panel" and "SQL panel" are two
+different *modes* of opening it (`GlobalStore.togglePinePanel`/
+`toggleSqlPanel`, `store/global.store.ts`), so only one can ever be visible at
+a time by construction, not by an extra mutual-exclusion check. Toggling the
+mode that's already open closes the panel; toggling the other mode while the
+panel is open just switches modes without closing it. Reachable from the
+canvas toolbar's PINE/SQL buttons (`CanvasToolbar.tsx`, lit when that mode is
+the one currently open) or `Ctrl`/`Cmd`+`Shift`+`E` (Pine) / `Ctrl`/`Cmd`+`Shift`+`S`
+(SQL). The panel and its divider (drag to resize, persisted per
+`STORAGE_KEYS.NEW_LAYOUT_PANEL_WIDTH`/`NEW_LAYOUT_PANEL_HEIGHT`) live in
+`components/NewLayoutView.tsx`'s `LeftPane`, not under `components/canvas/` —
+canvas mode itself has no notion of this panel; it only reads/writes
+`session.expression` the same as any other gesture.
+
+Hiding the panel while a session's `inputMode` is `'sql'` force-switches it
+back to `'pine'` (`GlobalStore.hideNewLayoutPanel`) — otherwise that session's
+auto-run would stay silently off (see Auto-run above) with no visible editor
+left on screen to explain why.
 
 ## Interaction model
 
@@ -66,8 +99,8 @@ from before a mode switch.
   into a second step (column → operator/value) before committing; `group`
   toggles this table's contribution to the pipeline's one shared `group:`
   segment.
-- **Delete** — an "×" badge on a node, shown only on the last table in the
-  pipeline (see Constraints).
+- **Delete** — an "×" badge on a node. Any table can be removed, not just the
+  last one (see Constraints for what happens to joins that depended on it).
 - **Multi-select** — box/shift-selecting 2+ nodes shows a floating toolbar
   (`MultiSelectToolbar.tsx`) above the canvas. Only `limit` (a pipeline-wide
   `limit: N`, unrelated to which nodes are selected) is wired; `assign` is
@@ -78,6 +111,94 @@ from before a mode switch.
   session — e.g. right after a restore, before the backend responds), or "Not
   parsing - showing last valid graph" (a genuine syntax error; the last good
   graph stays on screen, dimmed).
+
+## Keybindings
+
+Canvas mode is built around a vim-style modal keyboard layer
+(`hooks/useCanvasKeybindings.ts`) so a whole query can be built without
+touching the mouse — click once to focus a node, then everything after that
+is a bare letter. It's a single `keydown` listener, separate from the app's
+shared modifier-combo registry (`utils/keybindings.ts`'s `KEYBINDINGS`, used
+for things like `Ctrl`+`K`/`Ctrl`+`Shift`+`E`): these are single, bare letters
+(`s`, `w`, `i`, …), which only make sense to interpret while canvas mode is
+the active view and nothing else on the page wants keystrokes — folding that
+into the shared registry would mean threading canvas-only state through a
+registry every other consumer has nothing to do with.
+
+**Two modes**, exactly like vim's:
+- **Normal mode** — the default. Letters are commands (open a picker, delete
+  a node, undo). This is the only mode any of the shortcuts below fire in.
+- **Insert mode** — a picker is open. Every keystroke goes to *it*
+  (`Picker.tsx`'s own listeners), not the canvas — see "Inside a picker"
+  below. `canvasStore.mode` is derived straight from `picker.open`, so there's
+  no separate flag to fall out of sync.
+
+The current mode is always visible bottom-left of the canvas
+(`CanvasModeIndicator`, in `CanvasToolbar.tsx`) — "normal" or "insert", plus,
+in normal mode, the exact letters armed for whichever node is currently
+focused (e.g. `s w o g i x` for a table with something to delete, `s w o i x`
+for a checkpoint, `i` alone for the empty-canvas start node). This legend is
+what makes the shortcuts discoverable without memorizing them up front.
+
+**Moving focus** (normal mode only):
+
+| Key | Action |
+| --- | --- |
+| `j` / `↓` | Focus the next node in pipeline order |
+| `k` / `↑` | Focus the previous node |
+
+Focus order is the pipeline's own left-to-right sequence
+(`CanvasStore.orderedFocusTargets`), with a checkpoint frame interleaved right
+after the last table it wraps — there's no second navigation axis (no
+left/right), since the pipeline is a single strict sequence, not a 2D graph
+to roam.
+
+**Acting on the focused node** (normal mode only):
+
+| Key | Action |
+| --- | --- |
+| `i` or `\|` | Join a new table onto the focused one (`\|` doubles as `i` since a join is "pipe a new table on" — Pine's own mental model). On the empty-canvas start node, opens the first-table picker instead. |
+| `s` | Open the select-columns picker |
+| `w` | Open the where-condition picker |
+| `o` | Open the order-by picker |
+| `g` | Open the group-by picker (not offered on a checkpoint node — grouping an already-grouped result is a different question, not implemented) |
+| `x` | Delete the focused node — a table if `removable`, or a checkpoint's whole `group:`/`limit:` run if focused on a frame (its member tables become plain nodes again, not deleted themselves) |
+| `u` | Undo the last canvas gesture |
+| `Shift`+`U` | Redo |
+| `Ctrl`/`Cmd`+`Z` | Undo (same action as `u` — the combo most people already reach for) |
+| `Ctrl`/`Cmd`+`Shift`+`Z`, `Ctrl`+`Y` | Redo (same action as `Shift`+`U`) |
+
+A checkpoint (frame) node routes `s`/`w`/`o`/`i`/`x` through
+`openCheckpointPicker` instead of the per-table picker methods, but the same
+letters apply — the legend at the bottom of the screen always reflects which
+set is active for whatever's focused. `x` is unavailable on a table with
+`removable: false` (only the tables still sealed *inside* an unconsumed
+checkpoint — see Constraints) and simply does nothing if pressed.
+
+For a keyboard-opened picker, there's no click position to anchor its dropdown
+to — `useCanvasKeybindings.ts`'s `anchorFor` reads the focused node's own
+rendered `getBoundingClientRect()` instead, so the picker still opens right
+next to the node whether it was triggered by mouse or keyboard.
+
+**Inside a picker** (insert mode) — `Picker.tsx` takes over completely:
+
+| Key | Action |
+| --- | --- |
+| `↓` or `Tab` | Next item in the (filtered, grouped) list |
+| `↑` or `Shift`+`Tab` | Previous item |
+| `Enter` or `,` | Select the highlighted item — `,` lets a comma-separated list of columns (select/order/group) go in without a keypress between each one |
+| `Escape` | Close the picker, discarding anything not yet committed, and return to normal mode |
+| any other character | Filters the list as you type |
+
+**Why keystrokes don't leak.** Every keydown first checks
+`session.textInputFocused` (a flag the Pine/SQL CodeMirror editors and the
+picker's own filter input maintain on focus/blur) and whether the event
+target is inside an `input`/`textarea`/`contenteditable` element — so typing
+a column name into a filter box, or hand-editing Pine/SQL in the panel, never
+triggers a single-letter canvas action by accident. The whole layer is also a
+no-op unless `global.canvasActive` is true (New Layout, or Legacy Layout with
+canvas mode on) and `canvasStore.mode === 'normal'` — a picker being open is
+enough on its own to suspend every letter shortcut above until it closes.
 
 ## How it works
 
@@ -173,11 +294,16 @@ Constraints).
 
 - **Single block only.** An expression with more than one blank-line-separated
   block isn't modeled — the canvas shows a banner and nothing else.
-- **Only the last node is removable.** Removing an interior node isn't a pure
-  text splice: later joins that reach off "whatever's current" rather than an
-  explicit `from:` would silently retarget. Handling that means re-deriving
-  explicit `from:` resets for every downstream join — not implemented, so the
-  UI only offers delete on the pipeline's last table.
+- **Removing an interior node can leave a dangling join.** Deleting a table
+  that a later table's join implicitly depended on (no explicit `from:`, just
+  "whatever's current") re-splices the expression and lets whatever's left
+  become the new implicit target — pine-lang itself decides whether that's
+  meaningful. If it isn't (the join no longer has a real column to connect
+  on), pine-lang returns a "hint-less" relation (non-null, but with no
+  columns and no resolution — see `join-helper`'s own comment in pine-lang's
+  `src/pine/ast/table.clj`) rather than failing outright, and `layout.ts`'s
+  `addJoins` renders that the same as any other unresolved join (dashed,
+  warning-colored, no column labels) rather than a plain solid line.
 - **No checkpoint/variable nodes.** There's no way to join onto, or select
   from, a `group:`/`limit:` checkpoint's own sealed/aggregated output as a
   node in its own right (the classic graph's variable/checkpoint container is
@@ -273,9 +399,15 @@ overridden on the y-axis by `sequenceYByAlias`).
 - `nodes/StartNode.tsx` — the empty-graph "+ pick a table" node.
 - `Picker.tsx` — the dropdown for both list-mode (table/join/select/where/
   order/group) and the where-value two-step flow; keyboard nav, click-outside
-  close, filter-as-you-type.
+  close, filter-as-you-type. `,` doubles as `Enter` on the list.
 - `MultiSelectToolbar.tsx` — the floating toolbar shown for 2+ selected
   nodes; only `limit` is wired.
+- `CanvasToolbar.tsx` — the **canvas toolbar** (informally "the icon bar"),
+  pinned top-left: undo, redo, auto-run (a bolt icon; lit when on), a PINE/SQL
+  panel toggle (New Layout only — see "The Pine/SQL panel" below), plus one
+  optional caller-supplied extra action (New Layout's orientation toggle).
+  Same file also exports `CanvasModeIndicator`, the bottom-left
+  normal/insert status line with the focused node's armed-key legend.
 
 ### Integration points
 

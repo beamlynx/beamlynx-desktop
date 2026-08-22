@@ -309,7 +309,7 @@ const LegacySessionView: React.FC<SessionProps> = observer(({ sessionId }) => {
     setSecondViewHeight(storedHeight);
   }, []);
 
-  const compactMode = isSmallScreen || global.forceCompactMode;
+  const compactMode = isSmallScreen;
 
   return (
     <Grid

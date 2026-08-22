@@ -84,7 +84,14 @@ export type WhereCondition = [string, string, null, string, { type: string; valu
  * workaround (re-deriving it from the picker hint that produced it) to know
  * whether it's backed by a real FK.
  */
-export type JoinRelation = [string, string, 'has' | 'of', string, string, TableHint['resolution']];
+// col/f-col/resolution can all come back null - a "hint-less" join pine-lang
+// returns (rather than nulling the whole relation) when an explicit
+// join-column doesn't match any real reference for the resolved pair - see
+// join-helper's comment in pine-lang's src/pine/ast/table.clj. Callers must
+// treat that the same as a null relation (see layout.ts's addJoins), not as
+// a resolved-but-uncertain join. Trailing element is needs-cast? (unused
+// here - only eval.clj's SQL generation reads it).
+export type JoinRelation = [string, string | null, 'has' | 'of', string, string | null, TableHint['resolution'] | null, boolean];
 /** `[from-alias, to-alias, relation, join-type]` — join-type is `'LEFT'`/`'RIGHT'`/null (inner). */
 export type JoinTuple = [string, string, JoinRelation | null, string | null];
 

@@ -87,7 +87,10 @@ export class CanvasStore {
   // first's.
   private commitChain: Promise<void> = Promise.resolve();
 
-  private readonly session: Session;
+  // Public (not private, unlike the other fields above) - CanvasToolbar.tsx
+  // needs it to call global.togglePinePanel/toggleSqlPanel(session), which
+  // take a Session rather than a CanvasStore.
+  readonly session: Session;
 
   /**
    * True until this session has ever produced a build response - `ast` only
@@ -291,7 +294,7 @@ export class CanvasStore {
     this.selectedAliases = aliases;
   }
 
-  private applyExpression(expression: string) {
+  private applyExpression(expression: string, options?: { skipAutoRun?: boolean }) {
     // A no-op gesture (e.g. deleteNode/setLimit returning the same text)
     // shouldn't push a snapshot that's identical to what undo would already
     // land on - it would just be a wasted step, never a wrong one, but it's
@@ -300,14 +303,15 @@ export class CanvasStore {
     this.undoStack.push(this.session.expression);
     this.redoStack = [];
     this.session.expression = expression;
-    this.notifyAutoRun();
+    if (!options?.skipAutoRun) this.notifyAutoRun();
   }
 
   /**
-   * Every write site that lands a new, backend-confirmed-valid expression
-   * (applyExpression, undo, redo) funnels through here so auto-run sees
-   * canvas-originated changes exactly once, regardless of which gesture
-   * produced them.
+   * Every write site that lands a new expression confirmed valid at the
+   * time it was probed (applyExpression, undo, redo) funnels through here
+   * so auto-run sees canvas-originated changes exactly once, regardless of
+   * which gesture produced them. `applyExpression`'s `skipAutoRun` option
+   * is the one deliberate exception - see runCommit's own comment.
    */
   private notifyAutoRun() {
     this.session.notifyCanvasCommit();
@@ -394,12 +398,35 @@ export class CanvasStore {
       // would keep piling onto one single-line expression. One extra probe
       // on top of pinnedBase's, since `next` doesn't have a matching ast
       // until something builds it.
+      //
+      // `ast` itself (not just `.prettified`) can come back undefined here -
+      // confirmed live: a `next` referencing an alias that no longer exists
+      // (deleteNode's deliberately-dangling `from:` - see pine-text.ts's
+      // removeNode) gets a build response with no ast at all, not just a
+      // degraded one, and this crashed the whole app on `ast.prettified`
+      // before the `?.` was added. Falling back to the unprettified `next`
+      // here is exactly right either way: the point of this splice was to
+      // fail visibly (an unresolved edge, or "Not parsing"), not to succeed
+      // with nicer formatting.
+      let probedOk = true;
       const prettified = await probeBuild(next, this.session.connectionId).then(
-        ast => ast.prettified || next,
-        () => next,
+        ast => {
+          if (!ast) probedOk = false;
+          return ast?.prettified || next;
+        },
+        () => {
+          probedOk = false;
+          return next;
+        },
       );
       runInAction(() => {
-        this.applyExpression(prettified);
+        // Skip auto-run for this specific commit when the probe just
+        // confirmed it doesn't actually build (deleteNode's deliberately
+        // dangling from: - see pine-text.ts's removeNode) - auto-run
+        // exists to run known-valid canvas commits immediately, and firing
+        // it anyway here would send a guaranteed-to-fail /eval for
+        // something the canvas itself is about to show as "Not parsing".
+        this.applyExpression(prettified, { skipAutoRun: !probedOk });
         // The select/where/order pickers stay open across multiple picks
         // (see toggleSelectColumn) with `request.alias` frozen from when
         // they were opened. If *this* commit is the one that pinned that
@@ -531,6 +558,7 @@ export class CanvasStore {
     const request: PickerRequest = { kind: 'table' };
     void this.openListPicker(request, anchor, async () => {
       const ast = await probeBuild('', this.session.connectionId);
+      if (!ast) throw new Error('Failed to build table suggestions');
       const items: PickerItem[] = ast.hints.table.map(h => ({
         id: h.pine,
         label: h.table,
@@ -546,6 +574,7 @@ export class CanvasStore {
     void this.openListPicker(request, anchor, async () => {
       const expr = this.buildProbeExpression(request);
       const ast = await probeBuild(expr, this.session.connectionId);
+      if (!ast) throw new Error('Failed to build join suggestions');
       const has = ast.hints.table.filter(h => !h.parent);
       const belongsTo = ast.hints.table.filter(h => h.parent);
       const toItems = (hints: TableHint[]): PickerItem[] =>
@@ -568,6 +597,7 @@ export class CanvasStore {
     void this.openListPicker(request, anchor, async () => {
       const expr = this.buildProbeExpression(request);
       const ast = await probeBuild(expr, this.session.connectionId);
+      if (!ast) throw new Error('Failed to build column suggestions');
       // No dedicated hint category for group - see buildProbeExpression's
       // matching comment; reuses select's.
       const hints = kind === 'where' ? ast.hints.where : kind === 'order' ? ast.hints.order : ast.hints.select;
@@ -704,13 +734,16 @@ export class CanvasStore {
   }
 
   /**
-   * Only ever called on the pipeline's tail (layout.ts's `deriveGraph` sets
-   * `removable: true` on the last table only, and TableNode.tsx's delete
-   * button/the `x` keybinding both gate on `data.removable`) - so "the
-   * former upstream neighbor" is always simply the previous entry in
-   * `orderedFocusTargets`, captured before the commit removes this alias
-   * from the graph. Refocuses only if the deleted node was actually the
-   * focused one; deleting via the mouse while a *different* node has
+   * Callable on any top-level table now, not just the pipeline's tail - see
+   * pine-text.ts's removeNode for what happens to a downstream table that
+   * implicitly depended on the removed one (nothing special: the server's
+   * own join resolution, and the canvas's existing unresolved/uncertain
+   * edge styling, already handle whatever that turns out to mean). "The
+   * former upstream neighbor" - the previous entry in `orderedFocusTargets`,
+   * captured before the commit removes this alias from the graph - is still
+   * a reasonable place to land focus regardless of where in the pipeline
+   * the deleted node was. Refocuses only if the deleted node was actually
+   * the focused one; deleting via the mouse while a *different* node has
    * keyboard focus leaves that focus untouched.
    */
   async deleteNode(alias: string) {

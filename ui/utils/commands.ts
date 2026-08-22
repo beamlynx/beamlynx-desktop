@@ -62,13 +62,6 @@ const COMMANDS: Command[] = [
     handler: (_global, session) => session.toggleVimMode(),
     isEnabled: ALWAYS_ENABLED,
   },
-  {
-    id: 'toggle-compact-mode',
-    label: 'Toggle Compact Mode',
-    category: 'Preferences',
-    handler: global => global.toggleCompactMode(),
-    isEnabled: ALWAYS_ENABLED,
-  },
 
   // View Category
   {
@@ -83,6 +76,20 @@ const COMMANDS: Command[] = [
     label: 'Close Tab',
     category: 'View',
     handler: (global, session) => global.closeTab(session.id),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'next-tab',
+    label: 'Next Tab',
+    category: 'View',
+    handler: global => global.activateAdjacentTab(1),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'previous-tab',
+    label: 'Previous Tab',
+    category: 'View',
+    handler: global => global.activateAdjacentTab(-1),
     isEnabled: ALWAYS_ENABLED,
   },
   {

@@ -131,6 +131,55 @@ export const KEYBINDINGS: KeybindingConfig[] = [
   },
 
   {
+    // Desktop-only, same reasoning as new-tab/close-tab above -- a real
+    // browser (including on Mac) already owns Ctrl+Tab for cycling its own
+    // tabs before our JS ever sees it. Literal `ctrlKey`, not `ctrlKey ||
+    // metaKey` like most other combos here: real browsers keep this one as
+    // Ctrl+Tab even on Mac (Cmd+Tab is the OS's own app-switcher, which
+    // isn't ours to intercept), so matching only Ctrl is what makes this
+    // "just like a browser" rather than a made-up combo. `display` is built
+    // by hand rather than via createKeybindingDisplay, which always renders
+    // 'ctrl' as ⌘ on Mac -- that would show the Command symbol for a
+    // shortcut that only ever fires on the physical Control key.
+    name: 'next-tab',
+    description: 'Next Tab',
+    display: isDesktop() ? (isMac ? '⌃⇥' : 'Ctrl+Tab') : '',
+    matches: (e: KeyboardEvent) => isDesktop() && e.ctrlKey && !e.shiftKey && e.key === 'Tab',
+    commandId: 'next-tab',
+  },
+
+  {
+    name: 'previous-tab',
+    description: 'Previous Tab',
+    display: isDesktop() ? (isMac ? '⌃⇧⇥' : 'Ctrl+Shift+Tab') : '',
+    matches: (e: KeyboardEvent) => isDesktop() && e.ctrlKey && e.shiftKey && e.key === 'Tab',
+    commandId: 'previous-tab',
+  },
+
+  {
+    // A second binding for the same command as next-tab above - real
+    // browsers (Chrome and Firefox, Mac included) also accept Ctrl+PageDown
+    // for the next tab, alongside Ctrl+Tab. No separate `display`: the
+    // command palette shows whichever binding for a command it finds first
+    // (getKeybindingDisplayForCommand), and next-tab's Ctrl+Tab entry above
+    // already covers that - this one only needs to fire, not be advertised
+    // twice.
+    name: 'next-tab-pagedown',
+    description: 'Next Tab (Ctrl+PageDown)',
+    display: '',
+    matches: (e: KeyboardEvent) => isDesktop() && e.ctrlKey && e.key === 'PageDown',
+    commandId: 'next-tab',
+  },
+
+  {
+    name: 'previous-tab-pageup',
+    description: 'Previous Tab (Ctrl+PageUp)',
+    display: '',
+    matches: (e: KeyboardEvent) => isDesktop() && e.ctrlKey && e.key === 'PageUp',
+    commandId: 'previous-tab',
+  },
+
+  {
     name: 'run-query',
     description: 'Run Query',
     display: createKeybindingDisplay(['ctrl'], 'Enter'),

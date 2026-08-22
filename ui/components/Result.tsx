@@ -102,7 +102,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   // whatever sits above Results there - Canvas's own bottom-right corner in
   // top/bottom orientation, confirmed live as "the Run button is hidden
   // behind the download icon".
-  const compactMode = isSmallScreen || global.forceCompactMode || global.layoutMode === 'new';
+  const compactMode = isSmallScreen || global.layoutMode === 'new';
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [updateData, setUpdateData] = useState<UpdateData | undefined>(undefined);

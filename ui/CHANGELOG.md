@@ -10,12 +10,24 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - An optional Pine or SQL text panel next to the canvas in the new layout, for hand-editing alongside point-and-click use (`Ctrl+Shift+E` for Pine, `Ctrl+Shift+S` for SQL).
 - `|` now also opens the join picker in canvas mode, alongside `i` -- a join is "pipe a new table onto this one".
 - In canvas mode's select/order/group/join pickers, `,` now behaves like `Enter`, so a comma-separated list of columns doesn't need a keypress between each one.
+- Conventional `Ctrl`/`Cmd`+`Z` and `Ctrl`/`Cmd`+`Shift`+`Z` (and `Ctrl`+`Y`) now undo/redo in canvas mode too, alongside `u`/`Shift+U`.
+- Any table can now be removed from the canvas, not just the last one added. If another table's join was relying on the removed one implicitly, it now resolves against whatever's left instead -- if that connection isn't real, it already shows the existing dashed/warning-colored styling used for any other join the server can't resolve cleanly.
+- The new layout's Pine/SQL panel can now be resized by dragging the divider between it and the canvas, instead of a fixed size.
+- `Ctrl`/`Cmd`+`Tab` and `Ctrl`/`Cmd`+`Shift`+`Tab` move between tabs, matching a browser's own tab switching (`Ctrl`+`PageDown`/`PageUp` also work). Desktop app only -- a real browser already owns these for its own tabs.
+- A PINE/SQL toggle in the canvas toolbar (new layout) opens the same panel `Ctrl`/`Cmd`+`Shift`+`E`/`S` already did, so it's reachable without a keyboard shortcut.
+
+### Removed
+- The "Compact mode" preference and its command-palette entry. It only ever affected the classic sidebar layout, and no longer had any effect once the new Canvas-first layout became the default -- the new layout already switches to a stacked arrangement on small screens on its own.
 
 ### Fixed
 - Canvas mode's keyboard shortcuts (`s`/`w`/`o`/`g`/`i`/`x`/`u`) stopped responding after any query ran, and stayed unresponsive until the page was reloaded.
 - A sidebar height saved from an earlier resize could overflow its own panel and stretch the graph/results panel taller than the window, showing an unwanted scrollbar.
 - The join action's letter hint highlighted `j`, not `i` -- `i` is the actual shortcut for it.
 - The checkpoint/container node's action bar didn't show which letter shortcuts were active while it had keyboard focus, unlike a table node's.
+- Opening the new layout's Pine/SQL panel auto-focused its text editor, silently blocking every canvas keybinding until you clicked away from it once.
+- Auto-run waited a fixed 500ms after every canvas edit before running, made to feel far slower than the query itself (typically a few milliseconds) -- cut to 150ms, still enough to collapse a burst of rapid picks into one run.
+- A canvas gesture whose speculative build came back without a usable result (rather than failing outright) could crash the whole app instead of falling back gracefully.
+- A join that no longer had a real column to connect on (for example, after deleting the table in between two others) could render as a plain, confident-looking solid line instead of the dashed warning styling used for any other join the server can't resolve -- and the table on the other end showed no columns at all. Both are now treated the same as any other unresolved join.
 
 ### Changed
 - The canvas/graph mode switch moved out of the header and into the graph panel itself, since it only applies there; the header now only ever refers to which overall layout is active.

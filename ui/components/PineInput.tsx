@@ -20,9 +20,16 @@ import { tableColorDecoration } from './table-colors';
 
 interface PineInputProps {
   session: Session;
+  /** Legacy Layout wants this focused the moment it mounts (it's the
+   * primary, only-once-mounted entry point) - New Layout's optional panel
+   * remounts this every time it's opened, and autofocusing there would
+   * steal keyboard focus away from the canvas on every open, blocking every
+   * canvas keybinding until the user clicked back into it. Defaults to true
+   * to preserve Legacy's behavior; NewLayoutView passes false. */
+  autoFocus?: boolean;
 }
 
-const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
+const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = true }) => {
   const { global } = useStores();
   const inputRef = useRef<ReactCodeMirrorRef | null>(null);
   const lastValueRef = useRef<string>(session.expression);
@@ -391,7 +398,7 @@ const PineInput: React.FC<PineInputProps> = observer(({ session }) => {
       style={{
         outline: 'none',
       }}
-      autoFocus={true}
+      autoFocus={autoFocus}
       placeholder=""
     />
   );

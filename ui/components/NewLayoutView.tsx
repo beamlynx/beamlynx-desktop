@@ -2,23 +2,25 @@ import { Box, useMediaQuery, useTheme } from '@mui/material';
 import { ViewColumnOutlined, ViewStreamOutlined } from '@mui/icons-material';
 import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
-import { DEFAULT_NEW_LAYOUT_PANE_HEIGHT, DEFAULT_NEW_LAYOUT_PANE_WIDTH } from '../constants';
+import {
+  DEFAULT_NEW_LAYOUT_PANE_HEIGHT,
+  DEFAULT_NEW_LAYOUT_PANE_WIDTH,
+  DEFAULT_NEW_LAYOUT_PANEL_HEIGHT,
+  DEFAULT_NEW_LAYOUT_PANEL_WIDTH,
+} from '../constants';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from '../store/preferences';
 import { useStores } from '../store/store-container';
 import Canvas from './canvas/Canvas';
 import ErrorMessage from './ErrorMessage';
 import Input, { RunButton } from './Input';
 import { Monitor } from './Monitor';
-import { NewLayoutHorizontalPaneDivider, NewLayoutPaneDivider } from './ResizableDividers';
+import {
+  NewLayoutHorizontalPanelDivider,
+  NewLayoutHorizontalPaneDivider,
+  NewLayoutPaneDivider,
+  NewLayoutPanelDivider,
+} from './ResizableDividers';
 import Result from './Result';
-
-/** Fixed size of the Pine/SQL text panel - no resizable divider for it at
- * this stage, unlike the Canvas|Results split above. Two different fixed
- * sizes depending on how it's arranged next to Canvas (see LeftPane): a
- * height when stacked below Canvas (side-by-side overall orientation), a
- * width when placed beside Canvas (top/bottom overall orientation). */
-const PANEL_HEIGHT = 220;
-const PANEL_WIDTH = 340;
 
 type Orientation = 'horizontal' | 'vertical'; // horizontal = side-by-side, vertical = top-bottom
 
@@ -90,6 +92,13 @@ const LeftPane = observer(
     // Only when the outer split is top/bottom - see the doc comment above.
     const panelBesideCanvas = panelVisible && !isHorizontal;
 
+    const [panelWidth, setPanelWidth] = useState(DEFAULT_NEW_LAYOUT_PANEL_WIDTH);
+    const [panelHeight, setPanelHeight] = useState(DEFAULT_NEW_LAYOUT_PANEL_HEIGHT);
+    useEffect(() => {
+      setPanelWidth(getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_WIDTH, DEFAULT_NEW_LAYOUT_PANEL_WIDTH));
+      setPanelHeight(getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_HEIGHT, DEFAULT_NEW_LAYOUT_PANEL_HEIGHT));
+    }, []);
+
     return (
       <Box
         sx={{
@@ -135,15 +144,17 @@ const LeftPane = observer(
             </Box>
           )}
         </Box>
+        {panelVisible &&
+          (panelBesideCanvas ? (
+            <NewLayoutPanelDivider panelWidth={panelWidth} setPanelWidth={setPanelWidth} />
+          ) : (
+            <NewLayoutHorizontalPanelDivider panelHeight={panelHeight} setPanelHeight={setPanelHeight} />
+          ))}
         {panelVisible && (
           <Box
-            sx={
-              panelBesideCanvas
-                ? { width: PANEL_WIDTH, flexShrink: 0, ml: 1 }
-                : { height: PANEL_HEIGHT, flexShrink: 0, mt: 1 }
-            }
+            sx={panelBesideCanvas ? { width: panelWidth, flexShrink: 0 } : { height: panelHeight, flexShrink: 0 }}
           >
-            <Input session={session} />
+            <Input session={session} autoFocus={false} />
           </Box>
         )}
       </Box>

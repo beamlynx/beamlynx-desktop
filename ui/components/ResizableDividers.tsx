@@ -2,6 +2,7 @@ import { Box, Divider } from '@mui/material';
 import {
   MAX_SIDEBAR_SECOND_VIEW_HEIGHT,
   MIN_NEW_LAYOUT_PANE_SIZE,
+  MIN_NEW_LAYOUT_PANEL_SIZE,
   MIN_SIDEBAR_SECOND_VIEW_HEIGHT,
   MIN_SIDEBAR_WIDTH,
 } from '../constants';
@@ -181,6 +182,107 @@ export const NewLayoutHorizontalPaneDivider = ({
     min: MIN_NEW_LAYOUT_PANE_SIZE,
     max: () => window.innerHeight * 0.75,
     storageKey: STORAGE_KEYS.NEW_LAYOUT_PANE_HEIGHT,
+    axis: 'y',
+  });
+
+  return (
+    <Divider
+      orientation="horizontal"
+      sx={{
+        height: '10px',
+        flexShrink: 0,
+        cursor: 'row-resize',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: 0,
+        '&:hover': {
+          backgroundColor: 'action.hover',
+          transition: 'background-color 0.2s',
+          opacity: 1,
+        },
+      }}
+      onMouseDown={onMouseDown}
+    >
+      <Box
+        sx={{
+          width: '24px',
+          height: '4px',
+          backgroundColor: 'var(--divider-color)',
+          borderRadius: '2px',
+        }}
+      />
+    </Divider>
+  );
+};
+
+/**
+ * The Pine/SQL panel's own resize dividers - separate from the two pane
+ * dividers above, which govern the Canvas|Results split. Same duplication
+ * trade-off as that pair (own storage key, own bounds) rather than threading
+ * conditional props through one shared component.
+ */
+export const NewLayoutPanelDivider = ({
+  panelWidth,
+  setPanelWidth,
+}: {
+  panelWidth: number;
+  setPanelWidth: (width: number) => void;
+}) => {
+  const onMouseDown = useResizeDrag({
+    value: panelWidth,
+    setValue: setPanelWidth,
+    min: MIN_NEW_LAYOUT_PANEL_SIZE,
+    max: () => window.innerWidth * 0.6,
+    storageKey: STORAGE_KEYS.NEW_LAYOUT_PANEL_WIDTH,
+    axis: 'x',
+  });
+
+  return (
+    <Divider
+      orientation="vertical"
+      flexItem
+      sx={{
+        width: '10px',
+        flexShrink: 0,
+        cursor: 'col-resize',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: 0,
+        '&:hover': {
+          backgroundColor: 'action.hover',
+          transition: 'background-color 0.2s',
+          opacity: 1,
+        },
+      }}
+      onMouseDown={onMouseDown}
+    >
+      <Box
+        sx={{
+          width: '4px',
+          height: '24px',
+          backgroundColor: 'var(--divider-color)',
+          borderRadius: '2px',
+        }}
+      />
+    </Divider>
+  );
+};
+
+export const NewLayoutHorizontalPanelDivider = ({
+  panelHeight,
+  setPanelHeight,
+}: {
+  panelHeight: number;
+  setPanelHeight: (height: number) => void;
+}) => {
+  const onMouseDown = useResizeDrag({
+    value: panelHeight,
+    setValue: setPanelHeight,
+    min: MIN_NEW_LAYOUT_PANEL_SIZE,
+    max: () => window.innerHeight * 0.6,
+    storageKey: STORAGE_KEYS.NEW_LAYOUT_PANEL_HEIGHT,
     axis: 'y',
   });
 

@@ -21,6 +21,13 @@ export const DEFAULT_NEW_LAYOUT_PANE_WIDTH = 640;
 export const DEFAULT_NEW_LAYOUT_PANE_HEIGHT = 420;
 export const MIN_NEW_LAYOUT_PANE_SIZE = 240;
 
+/* New Layout's Pine/SQL panel sizing - separate from the pane sizing above,
+ * which governs the Canvas|Results split; this one governs the panel next
+ * to (or below) Canvas, a smaller, secondary widget. */
+export const DEFAULT_NEW_LAYOUT_PANEL_WIDTH = 340;
+export const DEFAULT_NEW_LAYOUT_PANEL_HEIGHT = 220;
+export const MIN_NEW_LAYOUT_PANEL_SIZE = 160;
+
 /* Pine Server */
 export const RequiredVersion = '0.39.0';
 

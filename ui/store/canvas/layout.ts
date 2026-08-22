@@ -93,7 +93,15 @@ const toHandles = (m: Map<string, CanvasHandle> | undefined): CanvasHandle[] =>
  */
 const addJoins = (joins: JoinTuple[], handles: HandleMaps, edges: CanvasEdge[]): void => {
   for (const [fromAlias, toAlias, relation] of joins) {
-    if (!relation) {
+    // pine-lang can return a "hint-less" relation - not null, but with
+    // col/f-col/resolution all nil - when an explicit join-column no longer
+    // matches any real reference (e.g. a canvas edit retargeted this join
+    // onto a different upstream table after the one in between was deleted;
+    // see join-helper's comment in pine-lang's src/pine/ast/table.clj). That's
+    // exactly as unresolved as `relation` being null outright - treating it
+    // as a confident, solid join rendered a structurally broken one as if it
+    // were certain, and fed null column names into the handles below.
+    if (!relation || !relation[5]) {
       // Unresolved join (see pipeline.md) - still shown, flagged, rather than silently dropped.
       edges.push({ id: `${fromAlias}-${toAlias}`, source: fromAlias, target: toAlias, unresolved: true });
       continue;
@@ -102,7 +110,11 @@ const addJoins = (joins: JoinTuple[], handles: HandleMaps, edges: CanvasEdge[]):
     const fromNode = parentIsFrom ? fromAlias : toAlias;
     const toNode = parentIsFrom ? toAlias : fromAlias;
     const [, col1, , , col2, resolution] = relation;
-    const [parentCol, childCol] = parentIsFrom ? [col1, col2] : [col2, col1];
+    // col1/col2 are only null on the hint-less relation already filtered out
+    // above (pine-lang's join-helper never returns a truthy resolution
+    // alongside a null column - see the type's comment in client.ts) - safe
+    // to assert non-null here.
+    const [parentCol, childCol] = parentIsFrom ? [col1!, col2!] : [col2!, col1!];
     addHandle(handles.right, fromNode, parentCol, 'r', toNode);
     addHandle(handles.left, toNode, childCol, 'l', fromNode);
     const uncertain = resolution === 'heuristic' || resolution === 'synthetic';
@@ -298,7 +310,12 @@ const deriveGraph = (
       table: t.table,
       schema: t.schema,
       order: i + 1,
-      removable: i === allTables.length - 1,
+      // Any top-level table can be removed, not just the last one -
+      // pine-text.ts's removeNode pins a dangling from: where needed so a
+      // downstream implicit join fails visibly instead of silently
+      // re-targeting. Checkpoint-inner tables are the one exception, still
+      // gated `false` above - a separate, harder problem.
+      removable: true,
       selectColumns: (selectByAlias[t.alias] ?? [])
         .map(c => c.column)
         .filter(column => !groupedColumnNamesByAlias[t.alias]?.has(column)),

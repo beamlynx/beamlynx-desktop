@@ -410,21 +410,33 @@ export const appendTableSegment = (
 };
 
 /**
- * A node is safely removable in phase 1 only when it's the *last* table in
- * the pipeline. Removing an interior node is not a pure text splice: later
- * table segments that join implicitly off "whatever's current" (rather than
- * via an explicit `from:`) would silently retarget to a different parent.
- * Handling that correctly means re-deriving explicit `from:` resets for
- * every downstream join, which is real work deferred out of this pass - the
- * UI should simply not offer delete on a non-last node.
+ * Any top-level table is removable - not just the last one. A checkpoint's
+ * own inner tables are the one exception (layout.ts sets `removable: false`
+ * there, not this check): removing one of those could break the
+ * checkpoint's own join graph and shared `group:` segment in ways this
+ * function doesn't account for, a separate, harder problem left for later.
  */
-export const isRemovableNode = (segments: Segment[], alias: string): boolean => {
-  const tableSegments = segments.filter(s => s.kind === 'table');
-  const last = tableSegments[tableSegments.length - 1];
-  return last?.owner === alias;
-};
+export const isRemovableNode = (segments: Segment[], alias: string): boolean =>
+  segments.some(s => s.kind === 'table' && s.owner === alias);
 
-/** Removes `alias`'s table segment, every segment it owns, and any `from:` pointing at it. */
+/**
+ * Removes `alias`'s table segment, every segment it owns, and any `from:`
+ * pointing at it. Removing an interior node can leave a downstream table
+ * segment implicitly re-targeted onto a different table than it originally
+ * joined from (it inherits whatever's now "current" - see assignOwners) -
+ * deliberately not specially handled here. Whatever the server's own join
+ * resolution makes of that (a real relation, a heuristic one, or none at
+ * all) is exactly what the canvas already renders correctly today: an
+ * unresolved or uncertain join gets its established dashed/warning styling
+ * (Canvas.tsx), same as it would for any other join the server can't
+ * cleanly resolve. An earlier version of this function tried to force a
+ * visible break by inserting a synthetic `from:` naming the removed alias -
+ * confirmed live that pine-lang's `/build` throws an unhandled exception on
+ * a `from:` naming an alias that doesn't exist, which is worse than the
+ * problem it was trying to solve. Left as a plain splice instead, trusting
+ * the server's own (already correct) resolution rather than second-guessing
+ * it client-side.
+ */
 export const removeNode = (segments: Segment[], alias: string): Segment[] =>
   segments.filter(s => {
     if (s.kind === 'from') return extractFromAlias(s.text) !== alias;

@@ -2,6 +2,7 @@ import React from 'react';
 import { observer } from 'mobx-react-lite';
 import { CanvasStore } from '../../store/canvas/canvas.store';
 import { CanvasTableNodeData, START_NODE_ID } from '../../store/canvas/canvas.model';
+import { useStores } from '../../store/store-container';
 
 /**
  * A shaft that bends once, at a hard 90° corner, into a squared arrowhead -
@@ -29,6 +30,43 @@ const CornerArrow = ({ redo }: { redo?: boolean }) => (
     />
   </svg>
 );
+
+/**
+ * A filled zigzag, straight segments only - same "no curves" rule as
+ * CornerArrow above, just filled rather than stroked (a thin-stroke outline
+ * reads poorly as "lightning/instant" at this size; a solid silhouette
+ * doesn't). Represents auto-run - the query re-running on its own the
+ * instant a canvas gesture commits, the same "instant" association a bolt
+ * carries anywhere else.
+ */
+const Bolt = () => (
+  <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden>
+    <path d="M9 1 L3 9 H6.5 L5.5 15 L13 6 H9.5 Z" fill="currentColor" />
+  </svg>
+);
+
+/**
+ * Small text glyphs, not icons - "PINE"/"SQL" match Input.tsx's own
+ * ToggleButton labels for the same two editor modes verbatim, so the
+ * connection between "this toolbar button" and "that panel" is immediate
+ * rather than requiring a new icon vocabulary just for two letters' worth of
+ * distinction. Auto-width (unlike the square 22x22 SVG icon buttons above),
+ * since fitting "PINE"/"SQL" into a fixed square would force a font size too
+ * small to read.
+ */
+const panelToggleStyle = (active: boolean): React.CSSProperties => ({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  height: 22,
+  padding: '0 5px',
+  cursor: 'pointer',
+  fontSize: '9px',
+  fontFamily: 'var(--canvas-font)',
+  fontWeight: 700,
+  letterSpacing: '0.4px',
+  color: active ? 'var(--canvas-trace)' : 'var(--canvas-text-dim)',
+});
 
 const iconButtonStyle: React.CSSProperties = {
   display: 'flex',
@@ -63,58 +101,109 @@ export interface CanvasToolbarExtraAction {
 }
 
 /**
- * Always-visible undo/redo (plus, optionally, one caller-supplied extra
- * action), pinned top-left - the corner MultiSelectToolbar (top-center) and
- * Banner (top-right) leave free. Undo/redo walk canvas gestures only (see
- * CanvasStore.applyExpression/undo/redo) - hand-typed edits keep the Pine
- * text editor's own native undo (CodeMirror), by design. Also bound to
- * `u`/`Shift+U` now via useCanvasKeybindings.ts - this stays the
- * click-driven path for mouse-only use, not superseded by it.
+ * Always-visible undo/redo/auto-run (plus, optionally, one caller-supplied
+ * extra action), pinned top-left - the corner MultiSelectToolbar
+ * (top-center) and Banner (top-right) leave free. Undo/redo walk canvas
+ * gestures only (see CanvasStore.applyExpression/undo/redo) - hand-typed
+ * edits keep the Pine text editor's own native undo (CodeMirror), by
+ * design. Also bound to `u`/`Shift+U` now via useCanvasKeybindings.ts - this
+ * stays the click-driven path for mouse-only use, not superseded by it.
+ *
+ * Auto-run lives here (not on a Run button) so its state is visible in the
+ * same place regardless of layout - Legacy Layout's Run button lives in the
+ * Pine/SQL input area, unrelated to the canvas, and New Layout's floating
+ * Run button only exists there. This toolbar is the one thing both layouts'
+ * canvas view already puts in the same corner.
  */
 const CanvasToolbar: React.FC<{ canvasStore: CanvasStore; extraAction?: CanvasToolbarExtraAction }> =
-  observer(({ canvasStore, extraAction }) => (
-    <div
-      className="nodrag"
-      style={{
-        position: 'absolute',
-        top: 8,
-        left: 8,
-        zIndex: 15,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        padding: '4px 8px',
-        borderRadius: 4,
-        background: 'var(--canvas-node-bg)',
-        border: '1px solid var(--canvas-node-border)',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
-      }}
-    >
-      <span
-        title="Undo last graph action"
-        style={canvasStore.canUndo ? iconButtonStyle : disabledIconButtonStyle}
-        onClick={() => canvasStore.canUndo && canvasStore.undo()}
+  observer(({ canvasStore, extraAction }) => {
+    const { global } = useStores();
+    return (
+      <div
+        className="nodrag"
+        style={{
+          position: 'absolute',
+          top: 8,
+          left: 8,
+          zIndex: 15,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '4px 8px',
+          borderRadius: 4,
+          background: 'var(--canvas-node-bg)',
+          border: '1px solid var(--canvas-node-border)',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+        }}
       >
-        <CornerArrow />
-      </span>
-      <Divider />
-      <span
-        title="Redo"
-        style={canvasStore.canRedo ? iconButtonStyle : disabledIconButtonStyle}
-        onClick={() => canvasStore.canRedo && canvasStore.redo()}
-      >
-        <CornerArrow redo />
-      </span>
-      {extraAction && (
-        <>
-          <Divider />
-          <span title={extraAction.tooltip} style={iconButtonStyle} onClick={extraAction.onClick}>
-            {extraAction.icon}
-          </span>
-        </>
-      )}
-    </div>
-  ));
+        <span
+          title="Undo last graph action"
+          style={canvasStore.canUndo ? iconButtonStyle : disabledIconButtonStyle}
+          onClick={() => canvasStore.canUndo && canvasStore.undo()}
+        >
+          <CornerArrow />
+        </span>
+        <Divider />
+        <span
+          title="Redo"
+          style={canvasStore.canRedo ? iconButtonStyle : disabledIconButtonStyle}
+          onClick={() => canvasStore.canRedo && canvasStore.redo()}
+        >
+          <CornerArrow redo />
+        </span>
+        <Divider />
+        <span
+          title={
+            global.autoRunEnabled
+              ? 'Auto-run is on - click to run manually instead'
+              : 'Auto-run is off - click to run automatically on every canvas edit'
+          }
+          style={{
+            ...iconButtonStyle,
+            color: global.autoRunEnabled ? 'var(--canvas-trace)' : 'var(--canvas-text-dim)',
+          }}
+          onClick={() => global.toggleAutoRunEnabled()}
+        >
+          <Bolt />
+        </span>
+        {global.layoutMode === 'new' && (
+          <>
+            <Divider />
+            <span
+              title={
+                global.newLayoutPanelVisible && canvasStore.session.inputMode === 'pine'
+                  ? 'Hide the Pine panel'
+                  : 'Show the Pine panel'
+              }
+              style={panelToggleStyle(global.newLayoutPanelVisible && canvasStore.session.inputMode === 'pine')}
+              onClick={() => global.togglePinePanel(canvasStore.session)}
+            >
+              PINE
+            </span>
+            <span
+              title={
+                global.newLayoutPanelVisible && canvasStore.session.inputMode === 'sql'
+                  ? 'Hide the SQL panel'
+                  : 'Show the SQL panel'
+              }
+              style={panelToggleStyle(global.newLayoutPanelVisible && canvasStore.session.inputMode === 'sql')}
+              onClick={() => global.toggleSqlPanel(canvasStore.session)}
+            >
+              SQL
+            </span>
+          </>
+        )}
+        {extraAction && (
+          <>
+            <Divider />
+            <span title={extraAction.tooltip} style={iconButtonStyle} onClick={extraAction.onClick}>
+              {extraAction.icon}
+            </span>
+          </>
+        )}
+      </div>
+    );
+  });
 
 // The armed-key legend per focused-node kind. Not derived from TableNode's/
 // FrameNode's own action bars (which would mean this file reaching into a

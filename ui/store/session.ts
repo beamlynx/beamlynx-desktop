@@ -263,8 +263,14 @@ export class Session {
       default: new DefaultPlugin(this),
     };
 
-    // Debounced 500ms so rapid canvas gestures (e.g. repeated clicks in a
-    // still-open multi-select picker) collapse to one run, not one per click.
+    // Debounced so rapid canvas gestures (e.g. repeated clicks in a
+    // still-open multi-select picker) collapse to one run, not one per
+    // click - but kept short (150ms, not the 500ms this started at). The
+    // actual query execution is fast (confirmed live: ~5ms once the /eval
+    // request fires); a real human can't click distinct picker items faster
+    // than ~150ms apart anyway, so this still collapses a genuine rapid
+    // burst while no longer being the dominant, very perceptible source of
+    // "auto-run feels slow" that 500ms was.
     this.autoRunTrigger = debounce(() => {
       if (!this.globalStore?.autoRunEnabled) return;
       // Canvas can keep committing (via its own independent probeBuild)
@@ -280,7 +286,7 @@ export class Session {
         return;
       }
       void this.evaluate();
-    }, 500);
+    }, 150);
 
     /**
      * Mark hints as loading the moment a build is queued, not once it starts

@@ -12,6 +12,9 @@ import { useStores } from '../store/store-container';
 interface InputProps {
   session: Session;
   onRun?: () => void | Promise<void>;
+  /** See PineInput/SqlInput's own doc comment - forwarded to whichever
+   * editor is currently shown. Defaults true (Legacy Layout's behavior). */
+  autoFocus?: boolean;
 }
 
 export const RunButton: React.FC<{ session: Session; onRun?: () => void | Promise<void> }> = observer(
@@ -56,7 +59,7 @@ export const RunButton: React.FC<{ session: Session; onRun?: () => void | Promis
   },
 );
 
-const Input: React.FC<InputProps> = observer(({ session, onRun }) => {
+const Input: React.FC<InputProps> = observer(({ session, onRun, autoFocus = true }) => {
   const handleInputModeChange = (
     event: React.MouseEvent<HTMLElement>,
     newMode: 'pine' | 'sql' | null,
@@ -178,9 +181,9 @@ const Input: React.FC<InputProps> = observer(({ session, onRun }) => {
           }}
         >
           {session.inputMode === 'pine' ? (
-            <PineInput session={session} />
+            <PineInput session={session} autoFocus={autoFocus} />
           ) : (
-            <SqlInput session={session} />
+            <SqlInput session={session} autoFocus={autoFocus} />
           )}
         </Box>
 

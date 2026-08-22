@@ -13,9 +13,13 @@ import { editorChrome, editorDarkSyntax } from './editor-theme';
 
 interface SqlInputProps {
   session: Session;
+  /** See PineInput's own doc comment on this same prop - New Layout's
+   * optional panel passes false so opening it doesn't steal keyboard focus
+   * away from the canvas. */
+  autoFocus?: boolean;
 }
 
-const SqlInput: React.FC<SqlInputProps> = observer(({ session }) => {
+const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true }) => {
   const { global } = useStores();
   const inputRef = useRef<ReactCodeMirrorRef | null>(null);
   const lastValueRef = useRef<string>(session.query);
@@ -152,7 +156,7 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session }) => {
       style={{
         outline: 'none',
       }}
-      autoFocus={true}
+      autoFocus={autoFocus}
       placeholder="Enter your SQL query here..."
     />
   );

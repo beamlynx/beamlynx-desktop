@@ -66,12 +66,6 @@ const PreferencesSection = () => {
           onChange={() => global.toggleTheme()}
         />
         <ToggleRow
-          label="Compact mode"
-          description="Tighter spacing throughout the app."
-          checked={global.forceCompactMode}
-          onChange={() => global.toggleCompactMode()}
-        />
-        <ToggleRow
           label="Table colors"
           description="Color-code result table segments and columns by their source table."
           checked={global.pineTableColorsEnabled}

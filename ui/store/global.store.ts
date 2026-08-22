@@ -142,18 +142,6 @@ export class GlobalStore {
     setUserPreference(STORAGE_KEYS.THEME, newTheme);
   }
 
-  // Force Compact Mode
-  _forceCompactMode: boolean;
-
-  get forceCompactMode(): boolean {
-    return this._forceCompactMode;
-  }
-
-  set forceCompactMode(value: boolean) {
-    this._forceCompactMode = value;
-    setUserPreference(STORAGE_KEYS.FORCE_COMPACT_MODE, value);
-  }
-
   // Pine / result table coloring (segment and column tints)
   _pineTableColorsEnabled: boolean;
 
@@ -289,7 +277,6 @@ export class GlobalStore {
 
   constructor() {
     this._theme = getUserPreference(STORAGE_KEYS.THEME, 'dark');
-    this._forceCompactMode = getUserPreference(STORAGE_KEYS.FORCE_COMPACT_MODE, false);
     this._pineTableColorsEnabled = getUserPreference(STORAGE_KEYS.PINE_TABLE_COLORS, false);
     this._canvasModeEnabled = getUserPreference(STORAGE_KEYS.CANVAS_MODE, false);
     this._autoRunEnabled = getUserPreference(STORAGE_KEYS.AUTO_RUN_ENABLED, true);
@@ -658,10 +645,6 @@ export class GlobalStore {
 
   public toggleTheme() {
     this.theme = this.theme === 'light' ? 'dark' : 'light';
-  }
-
-  public toggleCompactMode() {
-    this.forceCompactMode = !this.forceCompactMode;
   }
 
   public toggleCanvasMode() {
@@ -1221,6 +1204,20 @@ export class GlobalStore {
         this.activeSessionId = remainingSessions[0];
       }
     }
+  };
+
+  /**
+   * Next/previous tab, wrapping at either end - the same cycling behavior
+   * Ctrl+Tab/Ctrl+Shift+Tab has over a real browser's own tab strip (see
+   * utils/keybindings.ts). Order matches PineTabs.tsx's own tab strip
+   * (`Object.keys(this.sessions)`), so this always moves to the visually
+   * adjacent tab.
+   */
+  activateAdjacentTab = (direction: 1 | -1) => {
+    const sessionIds = Object.keys(this.sessions);
+    const currentIndex = sessionIds.indexOf(this.activeSessionId);
+    const nextIndex = (currentIndex + direction + sessionIds.length) % sessionIds.length;
+    this.activeSessionId = sessionIds[nextIndex];
   };
 
   getSession = (id: string): Session => {

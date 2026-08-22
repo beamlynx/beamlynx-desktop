@@ -49,7 +49,7 @@ export type PinnedBase = {
  */
 export const getPinnedBase = async (
   expression: string,
-  ast: Ast,
+  ast: Ast | null | undefined,
   connectionId: string | undefined,
 ): Promise<PinnedBase | null> => {
   const aliasPin = ensureExplicitAliases(expression, ast);
@@ -73,7 +73,12 @@ export const getPinnedBase = async (
 
   return {
     expression: curExpression,
-    ast: curAst,
+    // Not undefined here: segmentsFromAst (both calls above) already
+    // returned null - bailing out before this point - whenever curAst
+    // itself was null/undefined/unparseable, so reaching this line proves
+    // curAst was a real Ast. TS can't correlate that with `segments`
+    // being a different, already-narrowed variable, hence the assertion.
+    ast: curAst!,
     segments,
     aliasMap: aliasPin.aliasMap,
     checkpointName: namePin.name,
