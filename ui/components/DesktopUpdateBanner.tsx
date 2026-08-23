@@ -60,10 +60,19 @@ const DesktopUpdateBanner = () => {
           severity="success"
           onClose={() => setDismissed(true)}
           action={
+            // variant="outlined", not the default text button (bare label,
+            // no fill/border) - confirmed live that a plain MUI text button
+            // sitting next to the Alert's own text read as more copy, not a
+            // pressable action. The outline gives it a visible boundary
+            // without needing separate light/dark colors of its own -
+            // color="inherit" already resolves to the Alert's own
+            // (per-theme) text color for both the border and the label.
             <Button
+              variant="outlined"
               color="inherit"
               size="small"
               onClick={() => window.beamlynxDesktop?.restartToUpdate()}
+              sx={{ fontWeight: 600 }}
             >
               Restart Now
             </Button>
@@ -87,7 +96,9 @@ const DesktopUpdateBanner = () => {
             },
           }}
         >
-          Update ready ({status.version}) -- restart to install
+          {/* "Restart" only said once - the button itself is the
+              instruction to act, the text here just says what's ready. */}
+          Update ready ({status.version})
         </Alert>
       </Snackbar>
     );

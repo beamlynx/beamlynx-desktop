@@ -23,6 +23,24 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.51.2',
+    date: '2026-08-23',
+    changed: [
+      {
+        title: 'Consistent spacing around Canvas/Results',
+        description:
+          'One consistent 8px gap on all sides and between the two panes, instead of a slightly different, unexplained width for the pane divider (10px) versus the surrounding margins (8px), and no gap at all at the bottom.',
+      },
+    ],
+    fixed: [
+      {
+        title: "Desktop update notification said \"restart\" twice",
+        description:
+          'The message and the button both said it, and the "Restart Now" button had no visible border or fill, reading as plain text rather than something to click.',
+      },
+    ],
+  },
+  {
     version: '0.51.1',
     date: '2026-08-23',
     changed: [
@@ -1415,4 +1433,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.51.1';
+export const LATEST_VERSION = '0.51.2';
