@@ -5,6 +5,17 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-08-23
+### Changed
+- A connection's color is now set from Settings > Database Connections (click its status dot), alongside renaming and MCP access, instead of from the top-left connection picker (bundled beamlynx-ui 0.51.1).
+- The Updates modal shows a short title for each change first, with its fuller explanation underneath -- easier to skim than a flat bullet list (bundled beamlynx-ui 0.51.1).
+- The Pine/SQL panel's keybindings changed to Ctrl/Cmd+. for Pine and Ctrl/Cmd+, for SQL, replacing Ctrl/Cmd+Shift+E/S (bundled beamlynx-ui 0.51.1).
+- A canvas filter now composes as its own `where:` step instead of joining a comma-separated list on one shared `where:` clause -- multiple filters on the same table still combine with AND (bundled beamlynx-ui 0.51.1).
+
+### Fixed
+- Table colors disappeared the instant the SQL panel was opened, even though the results on screen hadn't gone stale (bundled beamlynx-ui 0.51.1).
+- Auto-run silently stopped firing on canvas edits whenever the SQL panel was the visible one (bundled beamlynx-ui 0.51.1).
+
 ## [0.6.0] - 2026-08-23
 ### Added
 - Canvas mode is now the default way to build a query, in a new two-pane layout (canvas and results, side by side or stacked) with results running automatically as you edit -- the classic sidebar layout is still one click away (bundled beamlynx-ui 0.51.0).
