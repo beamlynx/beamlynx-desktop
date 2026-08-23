@@ -89,6 +89,8 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ open, onClose }) => {
         return 'Added';
       case 'changed':
         return 'Changed';
+      case 'removed':
+        return 'Removed';
       case 'fixed':
         return 'Fixed';
       case 'security':
@@ -106,6 +108,8 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ open, onClose }) => {
         return '#4caf50'; // Green - universal "addition" meaning, left alone
       case 'changed':
         return 'var(--canvas-trace)';
+      case 'removed':
+        return 'var(--canvas-text-dim)';
       case 'fixed':
         return 'var(--canvas-trace-unresolved)';
       case 'security':
@@ -145,7 +149,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ open, onClose }) => {
   );
 
   const renderVersion = (version: ChangelogVersion, index: number) => {
-    const sections = ['added', 'changed', 'fixed', 'security', 'breaking'] as const;
+    const sections = ['added', 'changed', 'removed', 'fixed', 'security', 'breaking'] as const;
     
     return (
       <Box key={version.version}>

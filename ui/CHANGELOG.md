@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.51.0] - 2026-08-23
 ### Added
 - A Canvas-first two-pane layout (Canvas and Results, side by side or stacked), on by default for new sessions. Switch back to the classic sidebar layout any time from the header, Settings, or the command palette.
 - Auto-run: with canvas mode active, the query now runs automatically after each canvas edit instead of waiting for Run. Toggle it off from Settings or the command palette if you'd rather run explicitly.
