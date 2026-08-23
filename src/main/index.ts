@@ -192,6 +192,33 @@ function createWindow(): void {
     shell.openExternal(url);
     return { action: 'deny' };
   });
+  // No menu bar on any platform (see buildMenu's own doc comment), so there's
+  // no "Toggle Developer Tools" accelerator to fall back on either - without
+  // this, DevTools is completely unreachable, dev build or not. Dev-only:
+  // shipping this in a packaged build would let any end user pop it open,
+  // which isn't the point (this is for us to see what a bug report actually
+  // looked like server-side, not a feature for users).
+  if (!app.isPackaged) {
+    const toggleDevToolsOnShortcut = (_event: unknown, input: { key: string; control: boolean; meta: boolean; shift: boolean }) => {
+      const isF12 = input.key === 'F12';
+      const isToggleCombo =
+        (input.control || input.meta) && input.shift && input.key.toLowerCase() === 'i';
+      if (isF12 || isToggleCombo) {
+        mainWindow?.webContents.toggleDevTools();
+      }
+    };
+    mainWindow.webContents.on('before-input-event', toggleDevToolsOnShortcut);
+    // Once DevTools is open, keyboard focus is usually inside its own panel -
+    // a separate WebContents from the page's - so the listener above never
+    // sees the second press and the shortcut only ever opens it, never
+    // closes it (confirmed live). Attaching the same handler to the
+    // DevTools panel's own WebContents is what makes the shortcut toggle
+    // both ways regardless of which side currently has focus.
+    mainWindow.webContents.on('devtools-opened', () => {
+      mainWindow?.webContents.devToolsWebContents?.on('before-input-event', toggleDevToolsOnShortcut);
+    });
+  }
+
   mainWindow.webContents.on('will-navigate', (event, url) => {
     // file:// covers the packaged static export (loading.html -> index.html,
     // and index.html's own loads); same-origin covers the dev-mode
