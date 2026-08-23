@@ -1,14 +1,14 @@
 import CheckIcon from '@mui/icons-material/Check';
-import { Box, ClickAwayListener, Divider, Menu, MenuItem, Typography } from '@mui/material';
+import { Box, Divider, Menu, MenuItem, Typography } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useState, type MouseEvent } from 'react';
 import { useStores } from '../store/store-container';
-import { CONNECTION_COLOR_PALETTE, isDesktop } from '../store/util';
+import { isDesktop } from '../store/util';
 import { DecryptionFailedError } from '../store/global.store';
 
 /**
  * A quick connection switcher -- click the label, pick a connection, done.
- * Connection *management* (add/delete/MCP access) lives in the Settings
+ * Connection *management* (add/delete/MCP access/color) lives in the Settings
  * modal's Connections section (see components/settings/ConnectionsSection.tsx)
  * now, not here; this dropdown used to also carry that plus an "MCP setup
  * instructions…" entry, which read as out of place in a menu whose header
@@ -17,7 +17,6 @@ import { DecryptionFailedError } from '../store/global.store';
  */
 const ActiveConnection = () => {
   const { global } = useStores();
-  const [showColorPicker, setShowColorPicker] = useState(false);
   const [connectionMenuAnchor, setConnectionMenuAnchor] = useState<null | HTMLElement>(null);
   const [switchingConnection, setSwitchingConnection] = useState(false);
 
@@ -86,70 +85,23 @@ const ActiveConnection = () => {
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
       {connectionId && (
-        <ClickAwayListener onClickAway={() => setShowColorPicker(false)}>
-          <Box sx={{ position: 'relative' }}>
-            <Box
-              onClick={() => setShowColorPicker(v => !v)}
-              sx={{
-                width: 10,
-                height: 10,
-                borderRadius: '50%',
-                // Solid once the connection actually has a live pool;
-                // outline-only while it's just this tab's assigned
-                // connection but not connected yet (or currently
-                // reconnecting) -- same color either way, so it's still
-                // obvious which connection this is.
-                backgroundColor: isConnectionLive ? connectionColor : 'transparent',
-                border: isConnectionLive ? 'none' : `1.5px solid ${connectionColor || 'var(--border-color)'}`,
-                boxSizing: 'border-box',
-                flexShrink: 0,
-                cursor: 'pointer',
-                transition: 'opacity 0.15s',
-                '&:hover': { opacity: 0.75 },
-              }}
-            />
-            {showColorPicker && (
-              <Box
-                sx={{
-                  position: 'absolute',
-                  top: 14,
-                  left: 0,
-                  zIndex: 1000,
-                  backgroundColor: 'var(--background-color)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: 1,
-                  p: 0.75,
-                  display: 'flex',
-                  gap: 0.75,
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                }}
-              >
-                {CONNECTION_COLOR_PALETTE.map(color => (
-                  <Box
-                    key={color}
-                    onClick={() => {
-                      global.setConnectionColor(connectionId, color);
-                      setShowColorPicker(false);
-                    }}
-                    sx={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: '50%',
-                      backgroundColor: color,
-                      cursor: 'pointer',
-                      border:
-                        color === connectionColor
-                          ? '2px solid var(--text-color)'
-                          : '2px solid transparent',
-                      transition: 'transform 0.1s',
-                      '&:hover': { transform: 'scale(1.25)' },
-                    }}
-                  />
-                ))}
-              </Box>
-            )}
-          </Box>
-        </ClickAwayListener>
+        <Box
+          title="Change this connection's color in Settings"
+          sx={{
+            width: 10,
+            height: 10,
+            borderRadius: '50%',
+            // Solid once the connection actually has a live pool;
+            // outline-only while it's just this tab's assigned
+            // connection but not connected yet (or currently
+            // reconnecting) -- same color either way, so it's still
+            // obvious which connection this is.
+            backgroundColor: isConnectionLive ? connectionColor : 'transparent',
+            border: isConnectionLive ? 'none' : `1.5px solid ${connectionColor || 'var(--border-color)'}`,
+            boxSizing: 'border-box',
+            flexShrink: 0,
+          }}
+        />
       )}
       <Typography
         variant="caption"
@@ -157,7 +109,6 @@ const ActiveConnection = () => {
         sx={{ color: 'var(--canvas-text-dim)', fontFamily: 'var(--canvas-font)' }}
         {...(global.pineConnected && {
           onClick: (e: MouseEvent<HTMLElement>) => {
-            setShowColorPicker(false);
             setConnectionMenuAnchor(e.currentTarget);
           },
           style: { cursor: 'pointer' },

@@ -13,6 +13,7 @@ import {
   IconButton,
   InputAdornment,
   MenuItem,
+  Popover,
   Tab,
   Tabs,
   TextField,
@@ -21,7 +22,7 @@ import {
 import { observer } from 'mobx-react-lite';
 import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react';
 import { useStores } from '../../store/store-container';
-import { isDesktop, isPlayground } from '../../store/util';
+import { CONNECTION_COLOR_PALETTE, isDesktop, isPlayground } from '../../store/util';
 import { DecryptionFailedError } from '../../store/global.store';
 import { parseConnectionString } from '../../utils/connectionString';
 
@@ -402,10 +403,11 @@ const AddConnectionForm = ({ onDone }: { onDone: () => void }) => {
 
 /**
  * The Connections settings section: a list of saved connections (switch
- * active, toggle MCP access, delete) plus an "add connection" sub-view.
- * Absorbs what used to be pages/settings.tsx (the add form) and the
- * connection-management half of ActiveConnection.tsx's dropdown menu --
- * that dropdown is now just a quick switcher, see ActiveConnection.tsx.
+ * active, rename, recolor, toggle MCP access, delete) plus an "add
+ * connection" sub-view. Absorbs what used to be pages/settings.tsx (the add
+ * form) and the connection-management half of ActiveConnection.tsx's
+ * dropdown menu -- that dropdown is now just a quick switcher, see
+ * ActiveConnection.tsx.
  */
 const ConnectionsSection = () => {
   const { global } = useStores();
@@ -418,6 +420,7 @@ const ConnectionsSection = () => {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [renameSaving, setRenameSaving] = useState(false);
+  const [colorPickerFor, setColorPickerFor] = useState<{ id: string; anchor: HTMLElement } | null>(null);
   const confirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reindexedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -578,17 +581,70 @@ const ConnectionsSection = () => {
               }}
             >
               <Box
-                title={isLive ? undefined : 'Not connected yet'}
+                title={isLive ? 'Click to change color' : 'Not connected yet -- click to change color'}
+                onClick={e => {
+                  e.stopPropagation();
+                  setColorPickerFor({ id, anchor: e.currentTarget });
+                }}
                 sx={{
                   width: 8,
                   height: 8,
                   borderRadius: '50%',
                   flexShrink: 0,
                   boxSizing: 'border-box',
+                  cursor: 'pointer',
                   backgroundColor: isLive ? global.getConnectionColor(id) || 'var(--border-color)' : 'transparent',
                   border: isLive ? 'none' : `1.5px solid ${global.getConnectionColor(id) || 'var(--border-color)'}`,
+                  transition: 'opacity 0.15s',
+                  '&:hover': { opacity: 0.7 },
                 }}
               />
+              {colorPickerFor?.id === id && (
+                <Popover
+                  open
+                  anchorEl={colorPickerFor.anchor}
+                  onClose={() => setColorPickerFor(null)}
+                  anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+                  transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+                  slotProps={{
+                    paper: {
+                      onClick: (e: MouseEvent) => e.stopPropagation(),
+                      sx: {
+                        backgroundColor: 'var(--background-color)',
+                        backgroundImage: 'none',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: 1,
+                        p: 0.75,
+                        display: 'flex',
+                        gap: 0.75,
+                      },
+                    },
+                  }}
+                >
+                  {CONNECTION_COLOR_PALETTE.map(color => (
+                    <Box
+                      key={color}
+                      onClick={() => {
+                        global.setConnectionColor(id, color);
+                        setColorPickerFor(null);
+                      }}
+                      sx={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: '50%',
+                        backgroundColor: color,
+                        cursor: 'pointer',
+                        border:
+                          color === global.getConnectionColor(id)
+                            ? '2px solid var(--text-color)'
+                            : '2px solid transparent',
+                        transition: 'transform 0.1s',
+                        '&:hover': { transform: 'scale(1.25)' },
+                      }}
+                    />
+                  ))}
+                </Popover>
+              )}
               {renamingId === id ? (
                 <TextField
                   autoFocus

@@ -221,7 +221,7 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
   }, [session]);
 
   // Only color segments when we should show table colors (pref + rows + in-sync)
-  const showColors = shouldShowTableColors(global.pineTableColorsEnabled, session);
+  const showColors = shouldShowTableColors(global.pineTableColorsEnabled, session, global.canvasActive);
   const colorAst = showColors ? session.ast : null;
   const isDark = global.theme === 'dark';
 

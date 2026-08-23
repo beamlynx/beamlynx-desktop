@@ -8,7 +8,7 @@ import {
   Tabs,
   Tab,
 } from '@mui/material';
-import { CHANGELOG, ChangelogVersion, LATEST_VERSION } from '../utils/changelog.data';
+import { CHANGELOG, ChangelogItem, ChangelogVersion, LATEST_VERSION } from '../utils/changelog.data';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from '../store/preferences';
 import { compare } from 'semver';
 
@@ -96,7 +96,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ open, onClose }) => {
       case 'security':
         return 'Security';
       case 'breaking':
-        return 'Breaking Changes';
+        return 'Breaking';
       default:
         return section;
     }
@@ -121,30 +121,56 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ open, onClose }) => {
     }
   };
 
-  const renderChangelogItem = (item: any, index: number) => (
-    <Box key={index} sx={{ mb: 1.5, ml: 2 }}>
-      <Typography variant="body2" sx={{ color: 'var(--text-color)', lineHeight: 1.6 }}>
-        • {item.description}
-      </Typography>
-      {item.example && (
-        <Paper
-          elevation={0}
-          sx={{
-            p: 1.5,
-            mt: 1,
-            backgroundColor: 'var(--background-color)',
-            border: '1px solid var(--border-color)',
-            fontFamily: 'var(--canvas-font)',
-            fontSize: '0.8rem',
-            whiteSpace: 'pre-wrap',
-            overflow: 'auto',
-            color: 'var(--text-color)',
-            borderRadius: 1,
-          }}
-        >
-          {item.example}
-        </Paper>
-      )}
+  // A title is the thing a skimming eye is meant to catch; the description
+  // (when there is one) is deliberately quieter -- smaller, dimmer, and
+  // indented under the title rather than run into the same line -- so
+  // scanning down the list reads as a list of headings first, with detail
+  // only a glance away. The dot uses the section's own color, the same
+  // "a colored dot names what kind of thing this is" language as the
+  // connection picker/canvas node dots elsewhere in the app.
+  const renderChangelogItem = (item: ChangelogItem, sectionColor: string, index: number) => (
+    <Box key={index} sx={{ display: 'flex', gap: 1.25, mb: 1.75 }}>
+      <Box
+        sx={{
+          width: 6,
+          height: 6,
+          mt: '7px',
+          borderRadius: '50%',
+          backgroundColor: sectionColor,
+          flexShrink: 0,
+        }}
+      />
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Typography sx={{ color: 'var(--text-color)', fontWeight: 600, fontSize: '0.85rem', lineHeight: 1.45 }}>
+          {item.title}
+        </Typography>
+        {item.description && (
+          <Typography
+            sx={{ color: 'var(--text-color)', opacity: 0.62, fontSize: '0.78rem', lineHeight: 1.55, mt: 0.4 }}
+          >
+            {item.description}
+          </Typography>
+        )}
+        {item.example && (
+          <Paper
+            elevation={0}
+            sx={{
+              p: 1.5,
+              mt: 1,
+              backgroundColor: 'var(--background-color)',
+              border: '1px solid var(--border-color)',
+              fontFamily: 'var(--canvas-font)',
+              fontSize: '0.8rem',
+              whiteSpace: 'pre-wrap',
+              overflow: 'auto',
+              color: 'var(--text-color)',
+              borderRadius: 1,
+            }}
+          >
+            {item.example}
+          </Paper>
+        )}
+      </Box>
     </Box>
   );
 
@@ -189,22 +215,30 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ open, onClose }) => {
           {sections.map((section) => {
             const items = version[section];
             if (!items || items.length === 0) return null;
-            
+            const color = getSectionColor(section);
+
             return (
               <Box key={section} sx={{ mb: 2.5 }}>
-                <Typography 
-                  variant="subtitle2" 
-                  sx={{ 
-                    mb: 1.5,
-                    color: getSectionColor(section),
-                    fontWeight: 600,
-                    fontSize: '0.85rem',
-                    opacity: 0.9
+                <Typography
+                  component="span"
+                  sx={{
+                    display: 'inline-block',
+                    mb: 1.25,
+                    px: 1,
+                    py: 0.2,
+                    borderRadius: 999,
+                    color,
+                    backgroundColor: `color-mix(in srgb, ${color} 16%, transparent)`,
+                    fontFamily: 'var(--canvas-font)',
+                    fontWeight: 700,
+                    fontSize: '0.65rem',
+                    letterSpacing: '0.07em',
+                    textTransform: 'uppercase',
                   }}
                 >
                   {getSectionTitle(section)}
                 </Typography>
-                {items.map((item, idx) => renderChangelogItem(item, idx))}
+                {items.map((item, idx) => renderChangelogItem(item, color, idx))}
               </Box>
             );
           })}

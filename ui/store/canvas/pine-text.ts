@@ -219,26 +219,54 @@ const synthetic = (text: string, kind: SegmentKind, owner: string | null): Segme
  * gesture targets, since a checkpoint's inherited owner is real ownership as
  * far as this scan is concerned.
  */
+// Shared by upsertOwnedSegment/appendOwnedSegment: splits off a trailing
+// checkpoint run (see splitAtCheckpoint) so a gesture's insertion point can't
+// mistake an inherited-owner checkpoint for real ownership - unless the
+// gesture targets the checkpoint itself (see currentCheckpointName), the one
+// case that must land AFTER the checkpoint's group:/limit:/assign run, since
+// it operates on the checkpoint's own sealed output, which only exists once
+// the checkpoint has run.
+const ownedSegmentContext = (
+  segments: Segment[],
+  ownerAlias: string,
+): { body: Segment[]; checkpoints: Segment[] } => {
+  const targetsCheckpoint = ownerAlias === currentCheckpointName(segments);
+  // [...segments], not segments, for the checkpoint-targeting branch -
+  // splitAtCheckpoint's own `before` is always a fresh copy (see its
+  // `segments.slice(...)`), and body gets spliced in place by callers below;
+  // reusing the caller's array here would mutate it as a side effect instead
+  // of returning a new one.
+  const split = splitAtCheckpoint(segments);
+  return {
+    body: targetsCheckpoint ? [...segments] : split.before,
+    checkpoints: targetsCheckpoint ? [] : split.checkpointRun,
+  };
+};
+
+// Splices `segment` into `body` right after the last existing segment owned
+// by `ownerAlias` (so repeated inserts on the same node stack in a stable
+// order instead of drifting toward the end of the expression), or at the end
+// if `ownerAlias` owns nothing yet. Mutates `body` in place, same contract as
+// its one caller's own `body.splice` used to have.
+const insertAfterLastOwned = (body: Segment[], ownerAlias: string, segment: Segment): Segment[] => {
+  let insertAt = body.length;
+  for (let i = body.length - 1; i >= 0; i--) {
+    if (body[i].owner === ownerAlias) {
+      insertAt = i + 1;
+      break;
+    }
+  }
+  body.splice(insertAt, 0, segment);
+  return body;
+};
+
 export const upsertOwnedSegment = (
   segments: Segment[],
   ownerAlias: string,
   kind: SegmentKind,
   text: string | null,
 ): Segment[] => {
-  // A gesture targeting the checkpoint itself (see currentCheckpointName) is
-  // the one case that must land AFTER the checkpoint's group:/limit:/assign
-  // run, not before it - it operates on the checkpoint's own sealed output,
-  // which only exists once the checkpoint has run. Every other owner keeps
-  // the usual "insert before the checkpoint" rule (see splitAtCheckpoint).
-  const targetsCheckpoint = ownerAlias === currentCheckpointName(segments);
-  // [...segments], not segments, for the checkpoint-targeting branch -
-  // splitAtCheckpoint's own `before` is always a fresh copy (see its
-  // `segments.slice(...)`), and body gets spliced in place below; reusing
-  // the caller's array here would mutate it as a side effect instead of
-  // returning a new one, unlike every other path through this function.
-  const split = splitAtCheckpoint(segments);
-  const body = targetsCheckpoint ? [...segments] : split.before;
-  const checkpoints = targetsCheckpoint ? ([] as Segment[]) : split.checkpointRun;
+  const { body, checkpoints } = ownedSegmentContext(segments, ownerAlias);
   const idx = body.findIndex(s => s.owner === ownerAlias && s.kind === kind);
   if (idx >= 0) {
     if (text === null) {
@@ -249,15 +277,22 @@ export const upsertOwnedSegment = (
     return [...body, ...checkpoints];
   }
   if (text === null) return [...body, ...checkpoints]; // nothing to remove
-  let insertAt = body.length;
-  for (let i = body.length - 1; i >= 0; i--) {
-    if (body[i].owner === ownerAlias) {
-      insertAt = i + 1;
-      break;
-    }
-  }
-  body.splice(insertAt, 0, synthetic(text, kind, ownerAlias));
-  return [...body, ...checkpoints];
+  return [...insertAfterLastOwned(body, ownerAlias, synthetic(text, kind, ownerAlias)), ...checkpoints];
+};
+
+/**
+ * Inserts a NEW segment of `kind` owned by `ownerAlias`, without touching any
+ * existing segment of that same kind - the multi-segment counterpart to
+ * upsertOwnedSegment's single-segment upsert. Used for `where:`: each
+ * condition is its own `where:` step (pine-lang ANDs every `where:` step
+ * together, same as it always has for two different tables - see
+ * pine-lang's `pine.eval/build-bare-select`), rather than one segment whose
+ * text grows a comma-separated list - so removing one condition is a plain
+ * segment removal, not a string-splice into another condition's neighbor.
+ */
+export const appendOwnedSegment = (segments: Segment[], ownerAlias: string, kind: SegmentKind, text: string): Segment[] => {
+  const { body, checkpoints } = ownedSegmentContext(segments, ownerAlias);
+  return [...insertAfterLastOwned(body, ownerAlias, synthetic(text, kind, ownerAlias)), ...checkpoints];
 };
 
 /**

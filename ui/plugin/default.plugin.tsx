@@ -1,7 +1,7 @@
 import { runInAction } from 'mobx';
 import { Column, HttpClient } from '../store/client';
 import { ColumnMetadata, Row, Session } from '../store/session';
-import { PluginInterface } from './plugin.interface';
+import { EvaluateOptions, PluginInterface } from './plugin.interface';
 import { GridColDef } from '@mui/x-data-grid';
 
 export class DefaultPlugin implements PluginInterface {
@@ -10,7 +10,7 @@ export class DefaultPlugin implements PluginInterface {
     this.client = new HttpClient();
   }
 
-  public async evaluate(): Promise<Row[]> {
+  public async evaluate(opts?: EvaluateOptions): Promise<Row[]> {
     const session = this.session;
     runInAction(() => {
       // session.message = '⏳ Fetching rows ...';
@@ -20,12 +20,12 @@ export class DefaultPlugin implements PluginInterface {
 
     // In SQL mode, running with text selected runs only the selection.
     const sqlQuery = session.querySelection.trim() || session.query;
+    const runsSql = session.inputMode === 'sql' && !opts?.forcePine;
 
     // Use SQL endpoint if in SQL mode, otherwise use Pine eval endpoint
-    const response =
-      session.inputMode === 'sql'
-        ? await this.client.sql(sqlQuery, session.connectionId)
-        : await this.client.eval(session.expressions, session.connectionId);
+    const response = runsSql
+      ? await this.client.sql(sqlQuery, session.connectionId)
+      : await this.client.eval(session.expressions, session.connectionId);
 
     if (!response) {
       runInAction(() => {
@@ -95,7 +95,7 @@ export class DefaultPlugin implements PluginInterface {
       session.rows = rows.slice(1).map((row, index) => {
         return { ...row, _id: index };
       });
-      session.expressionAtLastEval = session.inputMode === 'sql' ? sqlQuery : session.expression;
+      session.expressionAtLastEval = runsSql ? sqlQuery : session.expression;
 
       // session.message = pickSuccessMessage();
       session.loading = false;
