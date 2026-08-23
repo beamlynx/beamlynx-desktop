@@ -5,6 +5,13 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-08-23
+### Changed
+- New Layout's Canvas/Results split now uses one consistent 8px gap on all sides and between the two panes, instead of a slightly different, unexplained width for the pane divider (10px) versus the surrounding margins (8px), and no gap at all at the bottom (bundled beamlynx-ui 0.51.2).
+
+### Fixed
+- The "update ready" notification said "restart" twice (in the message and the button), and its "Restart Now" button had no visible border or fill, reading as plain text rather than something to click (bundled beamlynx-ui 0.51.2).
+
 ## [0.6.1] - 2026-08-23
 ### Changed
 - A connection's color is now set from Settings > Database Connections (click its status dot), alongside renaming and MCP access, instead of from the top-left connection picker (bundled beamlynx-ui 0.51.1).

@@ -1,6 +1,6 @@
 {
   "name": "beamlynx-desktop",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "private": true,
   "description": "Desktop app bundling the pine-lang server and beamlynx-ui UI, no Docker required",
   "author": {
