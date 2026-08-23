@@ -21,6 +21,17 @@ export const DEFAULT_NEW_LAYOUT_PANE_WIDTH = 640;
 export const DEFAULT_NEW_LAYOUT_PANE_HEIGHT = 420;
 export const MIN_NEW_LAYOUT_PANE_SIZE = 240;
 
+/* New Layout's one shared spacing unit: the gap above/below the pane row
+ * (NewLayoutView.tsx) and the width/height of the resizable divider between
+ * the two panes (ResizableDividers.tsx) all use this same value, so the
+ * "space between the panes" and the "space around them" read as one
+ * consistent gap instead of independently-guessed numbers that happen to be
+ * close (previously 10px for the divider vs. 8px - MUI's theme.spacing(1) -
+ * for the surrounding margin). Matches AppView.tsx's own `m: 1` left/right
+ * inset around the tab region, so all four sides plus the pane divider end
+ * up the same. */
+export const NEW_LAYOUT_GUTTER = 8;
+
 /* New Layout's Pine/SQL panel sizing - separate from the pane sizing above,
  * which governs the Canvas|Results split; this one governs the panel next
  * to (or below) Canvas, a smaller, secondary widget. */

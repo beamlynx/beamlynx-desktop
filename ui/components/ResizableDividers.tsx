@@ -5,6 +5,7 @@ import {
   MIN_NEW_LAYOUT_PANEL_SIZE,
   MIN_SIDEBAR_SECOND_VIEW_HEIGHT,
   MIN_SIDEBAR_WIDTH,
+  NEW_LAYOUT_GUTTER,
 } from '../constants';
 import { useResizeDrag } from '../hooks/useResizeDrag';
 import { STORAGE_KEYS } from '../store/preferences';
@@ -142,7 +143,7 @@ export const NewLayoutPaneDivider = ({
       orientation="vertical"
       flexItem
       sx={{
-        width: '10px',
+        width: `${NEW_LAYOUT_GUTTER}px`,
         flexShrink: 0,
         cursor: 'col-resize',
         display: 'flex',
@@ -189,7 +190,7 @@ export const NewLayoutHorizontalPaneDivider = ({
     <Divider
       orientation="horizontal"
       sx={{
-        height: '10px',
+        height: `${NEW_LAYOUT_GUTTER}px`,
         flexShrink: 0,
         cursor: 'row-resize',
         display: 'flex',

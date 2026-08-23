@@ -7,6 +7,7 @@ import {
   DEFAULT_NEW_LAYOUT_PANE_WIDTH,
   DEFAULT_NEW_LAYOUT_PANEL_HEIGHT,
   DEFAULT_NEW_LAYOUT_PANEL_WIDTH,
+  NEW_LAYOUT_GUTTER,
 } from '../constants';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from '../store/preferences';
 import { useStores } from '../store/store-container';
@@ -208,7 +209,7 @@ const NewLayoutView: React.FC<NewLayoutViewProps> = observer(({ sessionId }) => 
   }, [effectiveOrientation]);
 
   return (
-    <Box sx={{ mt: 1, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+    <Box sx={{ my: `${NEW_LAYOUT_GUTTER}px`, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <Box
         sx={{
           flex: 1,
