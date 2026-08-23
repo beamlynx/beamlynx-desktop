@@ -5,6 +5,16 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-23
+### Added
+- Canvas mode is now the default way to build a query, in a new two-pane layout (canvas and results, side by side or stacked) with results running automatically as you edit -- the classic sidebar layout is still one click away (bundled beamlynx-ui 0.51.0).
+- Ctrl/Cmd+Tab and Ctrl/Cmd+Shift+Tab switch between tabs, matching a browser's own tab switching (bundled beamlynx-ui 0.51.0).
+- F12 (or Ctrl/Cmd+Shift+I) now opens Chrome DevTools when running unpackaged (`npm start`) -- there's no menu bar to reach it from otherwise. Not available in packaged builds.
+
+### Fixed
+- Canvas mode could freeze up while its optional Pine/SQL text panel was open -- edits went nowhere, and a session reloaded with the panel already open could get stuck showing "Connecting…" forever (bundled beamlynx-ui 0.51.0).
+- A join that no longer had a real column to connect on (for example, after deleting a table in between two others) could render as a plain, confident-looking line instead of the dashed warning styling used for any other unresolved join (bundled beamlynx-ui 0.51.0).
+
 ## [0.5.0] - 2026-08-22
 ### Added
 - A saved connection can now be renamed (bundled beamlynx-ui 0.50.0) -- a new `credentials.rename` call updates its stored label.

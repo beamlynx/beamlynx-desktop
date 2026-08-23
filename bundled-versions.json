@@ -1,5 +1,5 @@
 {
-  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang bumped to master's merge commit for 0.39.0 (pine-lang doesn't tag releases, so this is a SHA, not a tag) -- heuristic-join type casting, join-less table hints, and on-demand schema reindex (used by the new connection refresh icon). beamlynx-ui bumped to its tagged 0.50.0, which bundles canvas mode's keyboard control, the connection refresh/rename features, and the About section's version rows.",
+  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang unchanged since 0.5.0 (still master's merge commit for 0.39.0 -- pine-lang doesn't tag releases, so this is a SHA, not a tag) -- no pine-lang changes since then. beamlynx-ui bumped to its tagged 0.51.0, which bundles the Canvas-first default layout, auto-run, the resizable Pine/SQL panel, browser-style tab switching, and a fix for canvas mode freezing up while that panel was open.",
   "pineLangRef": "5b39a1836a7c7173ee269df17e0cba752b47763d",
-  "beamlynxUiRef": "0.50.0"
+  "beamlynxUiRef": "0.51.0"
 }
