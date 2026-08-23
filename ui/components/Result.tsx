@@ -61,7 +61,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const isDark = theme.palette.mode === 'dark';
   const colIndexToAlias = session.columnMetadata.colIndexToAliasLookup;
 
-  const showResultColors = shouldShowTableColors(global.pineTableColorsEnabled, session);
+  const showResultColors = shouldShowTableColors(global.pineTableColorsEnabled, session, global.canvasActive);
 
   // Add custom edit component and column color classes by table alias
   const columns = baseColumns.map(column => {

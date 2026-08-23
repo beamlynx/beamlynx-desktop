@@ -215,20 +215,28 @@ export const KEYBINDINGS: KeybindingConfig[] = [
   },
 
   {
+    // Ctrl/Cmd+. rather than Ctrl/Cmd+Shift+E: not reserved by any browser
+    // chrome or (on macOS) any accelerator in beamlynx-desktop's own Electron
+    // menu (see beamlynx-desktop/src/main/index.ts's buildMenu -- it only
+    // defines About/Hide/Quit and a bare Edit menu, nothing on `.`/`,`), so
+    // this reaches the page the same way on every platform -- no
+    // isDesktop()/fallback split needed, unlike new-tab/close-tab above.
     name: 'toggle-pine-panel',
     description: 'Toggle Pine Panel (New Layout)',
-    display: createKeybindingDisplay(['ctrl', 'shift'], 'E'),
-    matches: (e: KeyboardEvent) =>
-      (e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'e',
+    display: createKeybindingDisplay(['ctrl'], '.'),
+    matches: (e: KeyboardEvent) => (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === '.',
     commandId: 'toggle-pine-panel',
   },
 
   {
+    // Cmd+, is macOS's own "Preferences" convention, but only ever intercepted
+    // when some app menu item actually binds that accelerator (typically
+    // `role: 'preferences'`) -- beamlynx-desktop's menu has no such item (see
+    // toggle-pine-panel's comment above), so it isn't reserved here.
     name: 'toggle-sql-panel',
     description: 'Toggle SQL Panel (New Layout)',
-    display: createKeybindingDisplay(['ctrl', 'shift'], 'S'),
-    matches: (e: KeyboardEvent) =>
-      (e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 's',
+    display: createKeybindingDisplay(['ctrl'], ','),
+    matches: (e: KeyboardEvent) => (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === ',',
     commandId: 'toggle-sql-panel',
   },
 ];

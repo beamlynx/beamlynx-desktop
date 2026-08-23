@@ -260,11 +260,22 @@ reason: probing with a trailing checkpoint attached reflects the *sealed*
 output's shape (just the grouped columns) rather than the real table the
 gesture is about.
 
-**`group:` is a single shared segment.** Unlike `select:`/`where:`/`order:`
-(one segment per owning table), grouping on two different nodes doesn't
-produce two `group:` segments — it's one segment that each contributing
-table's columns are merged into (`getGroupColumns`/`setGroupColumns` in
-`pine-actions.ts`), always kept at the pipeline's literal end.
+**`group:` is a single shared segment.** Unlike `select:`/`order:` (one
+segment per owning table) or `where:` (one segment per *condition* - see
+below), grouping on two different nodes doesn't produce two `group:`
+segments — it's one segment that each contributing table's columns are
+merged into (`getGroupColumns`/`setGroupColumns` in `pine-actions.ts`),
+always kept at the pipeline's literal end.
+
+**`where:` is one segment per condition, not a shared comma list.** A second
+filter on the same table appends a new `where:` step (`appendOwnedSegment` in
+`pine-text.ts`) rather than growing one segment's comma-separated body -
+pine-lang ANDs every `where:` step together regardless of which table it's
+on, so this needs nothing more than appending. `removeWhereConditionAt`
+(`pine-actions.ts`) removes the target segment outright; its `index` is this
+alias's conditions in pipeline order, matching the order `ast.where` reports
+them (see layout.ts's `whereChips`), since a new condition always lands right
+after this alias's existing segments.
 
 **Alias pinning.** Before computing any gesture, `pine-actions.ts`'s
 `getPinnedBase` ensures every table in the expression has an explicit `as
@@ -350,10 +361,13 @@ Constraints).
   `assignOwners` to attribute each one to a table alias by a left-to-right
   walk. Returns `null` when the expression doesn't currently parse.
 - `upsertOwnedSegment` — insert/replace/remove the one segment of a given
-  `kind` owned by a given alias; used for `select:`/`where:`/`order:`. Splits
-  off trailing checkpoints first (see `splitTrailingCheckpoints`) so the scan
-  for "last segment owned by this alias" can't mistake an inherited-owner
-  checkpoint for real ownership.
+  `kind` owned by a given alias; used for `select:`/`order:`. Splits off
+  trailing checkpoints first (see `splitAtCheckpoint`) so the scan for "last
+  segment owned by this alias" can't mistake an inherited-owner checkpoint for
+  real ownership.
+- `appendOwnedSegment` — the multi-segment counterpart: inserts a NEW segment
+  of a given `kind` without touching any existing one of that kind. Used for
+  `where:`, where each condition is its own step (see above).
 - `appendTableSegment` — appends a new table (optionally preceded by a
   `from:` reset) before any trailing checkpoint run.
 - `splitTrailingCheckpoints` — pops a trailing run of `group`/`limit`

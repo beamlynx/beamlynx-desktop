@@ -1,7 +1,7 @@
 import { runInAction } from 'mobx';
 import { format } from 'sql-formatter';
 import { Row, Session } from '../store/session';
-import { PluginInterface } from './plugin.interface';
+import { EvaluateOptions, PluginInterface } from './plugin.interface';
 import { Ast, HttpClient } from '../store/client';
 
 export class RecursiveDeletePlugin implements PluginInterface {
@@ -15,7 +15,9 @@ export class RecursiveDeletePlugin implements PluginInterface {
       });
     });
   }
-  public async evaluate(): Promise<Row[]> {
+  // forcePine is a no-op here - a delete's expression is always Pine text,
+  // there's no SQL-mode branch to force past (see plugin.interface.ts).
+  public async evaluate(_opts?: EvaluateOptions): Promise<Row[]> {
     const startTime = Date.now();
     try {
       const expression = this.session.expression.split('|').slice(0, -1).join('|');

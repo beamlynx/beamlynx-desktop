@@ -3,6 +3,7 @@ import { makeAutoObservable, reaction, runInAction } from 'mobx';
 import { format } from 'sql-formatter';
 import { TOTAL_BARS } from '../constants';
 import { DefaultPlugin } from '../plugin/default.plugin';
+import { EvaluateOptions } from '../plugin/plugin.interface';
 import { RecursiveDeletePlugin } from '../plugin/recursive-delete.plugin';
 import { CanvasStore } from './canvas/canvas.store';
 import { Ast, Hints, HttpClient, Operation, Response } from './client';
@@ -273,11 +274,6 @@ export class Session {
     // "auto-run feels slow" that 500ms was.
     this.autoRunTrigger = debounce(() => {
       if (!this.globalStore?.autoRunEnabled) return;
-      // Canvas can keep committing (via its own independent probeBuild)
-      // while the input is in SQL mode - but evaluate() would then run the
-      // stale session.query left over from before the switch, ignoring the
-      // gesture that just happened. Only auto-run while Pine is live.
-      if (this.inputMode !== 'pine') return;
       if (this.loading) {
         // An eval from the previous gesture is still in flight - re-arm
         // rather than drop, so this gesture still gets its own run once
@@ -285,7 +281,12 @@ export class Session {
         this.autoRunTrigger();
         return;
       }
-      void this.evaluate();
+      // A canvas commit's source of truth is always session.expression
+      // (Pine), never the SQL panel's text - forcePine runs that regardless
+      // of session.inputMode, instead of silently no-oping (or, worse,
+      // running stale/unrelated SQL text) whenever the SQL panel happens to
+      // be the one showing. See EvaluateOptions.forcePine.
+      void this.evaluate({ forcePine: true });
     }, 150);
 
     /**
@@ -582,15 +583,15 @@ export class Session {
     this.autoRunTrigger();
   }
 
-  public async evaluate() {
+  public async evaluate(opts?: EvaluateOptions) {
     const { type } = this.operation;
     switch (type) {
       case 'delete':
-        return await this.plugins.delete.evaluate();
+        return await this.plugins.delete.evaluate(opts);
       case 'table':
       // intentional fall through
       default:
-        return await this.plugins.default.evaluate();
+        return await this.plugins.default.evaluate(opts);
     }
   }
 

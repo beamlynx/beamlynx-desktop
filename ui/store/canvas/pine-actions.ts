@@ -1,5 +1,6 @@
 import { Ast, TableHint } from '../client';
 import {
+  appendOwnedSegment,
   appendTableSegment,
   ensureExplicitAliases,
   ensureExplicitCheckpointName,
@@ -159,6 +160,12 @@ export const splitTopLevel = (text: string): string[] => {
   return parts;
 };
 
+// Each filter is its own `where:` step rather than one growing comma list -
+// pine-lang ANDs every `where:` step together (same as it already does for
+// two different tables), so this needs nothing more than appending a new
+// segment. See appendOwnedSegment's own comment for why: a comma inside a
+// single `where:` clause is a separate, pine-lang-side parsing pitfall this
+// sidesteps entirely rather than relying on.
 export const addWhereCondition = (
   base: PinnedBase,
   alias: string,
@@ -166,21 +173,19 @@ export const addWhereCondition = (
   operator: string,
   value: string,
 ): string => {
-  const existing = base.segments.find(s => s.owner === alias && s.kind === 'where');
-  const priorConditions = existing ? splitTopLevel(existing.text.replace(/^(where:|w:)\s*/i, '')) : [];
-  const newCondition = `${alias}.${column} ${operator} ${buildWhereLiteral(value)}`;
-  const text = [...priorConditions, newCondition].join(', ');
-  return toText(upsertOwnedSegment(base.segments, alias, 'where', `where: ${text}`));
+  const condition = `${alias}.${column} ${operator} ${buildWhereLiteral(value)}`;
+  return toText(appendOwnedSegment(base.segments, alias, 'where', `where: ${condition}`));
 };
 
+// `index` is this alias's where-conditions in pipeline order - the same
+// order `ast.where` reports them in (see layout.ts's whereChips), since a new
+// condition always lands right after this alias's existing segments (see
+// appendOwnedSegment/insertAfterLastOwned) and so preserves that order too.
 export const removeWhereConditionAt = (base: PinnedBase, alias: string, index: number): string => {
-  const existing = base.segments.find(s => s.owner === alias && s.kind === 'where');
-  if (!existing) return toText(base.segments);
-  const conditions = splitTopLevel(existing.text.replace(/^(where:|w:)\s*/i, ''));
-  conditions.splice(index, 1);
-  return toText(
-    upsertOwnedSegment(base.segments, alias, 'where', conditions.length ? `where: ${conditions.join(', ')}` : null),
-  );
+  const whereSegments = base.segments.filter(s => s.owner === alias && s.kind === 'where');
+  const target = whereSegments[index];
+  if (!target) return toText(base.segments);
+  return toText(base.segments.filter(s => s !== target));
 };
 
 export const addOrderColumn = (

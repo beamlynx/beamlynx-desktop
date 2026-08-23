@@ -5,6 +5,17 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.51.1] - 2026-08-23
+### Changed
+- A connection's color is now set from Settings > Database Connections (click its status dot), alongside renaming and MCP access, instead of from the top-left connection picker. The picker's dot is now just a status indicator.
+- The Updates modal shows a short title for each change first, with its fuller explanation (when there is one) underneath -- easier to skim than a flat bullet list.
+- The new layout's Pine/SQL panel shortcuts are now `Ctrl`/`Cmd`+`.` for Pine and `Ctrl`/`Cmd`+`,` for SQL, replacing `Ctrl`/`Cmd`+`Shift`+`E`/`S`.
+- A canvas filter now composes as its own `where:` step instead of joining a comma-separated list on one shared `where:` clause. Multiple filters on the same table still combine with AND, same as before.
+
+### Fixed
+- Table colors (Preferences > Table colors) disappeared the instant the SQL panel was opened, even though the results on screen hadn't gone stale -- opening the panel compared the newly-shown SQL text against the last-run Pine expression and always found a mismatch.
+- Auto-run silently stopped firing on canvas edits whenever the SQL panel was the visible one, since a canvas gesture's own auto-run was gated on the Pine panel specifically being shown rather than on canvas mode being active.
+
 ## [0.51.0] - 2026-08-23
 ### Added
 - A Canvas-first two-pane layout (Canvas and Results, side by side or stacked), on by default for new sessions. Switch back to the classic sidebar layout any time from the header, Settings, or the command palette.
