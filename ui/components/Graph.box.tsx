@@ -2,6 +2,7 @@ import { useEffect, useRef, useMemo } from 'react';
 import ReactFlow, {
   ConnectionLineType,
   NodeTypes,
+  PanOnScrollMode,
   ReactFlowProvider,
   useEdgesState,
   useNodesState,
@@ -164,6 +165,10 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId, containerRef }) => {
     }
   }, [nodes, candidateNode, reactFlowInstance, containerRef]);
 
+  // Right-click is a pan gesture now, not a context-menu trigger - suppress
+  // the browser's native menu so it doesn't pop up mid-drag/on release.
+  const suppressContextMenu = (e: React.MouseEvent) => e.preventDefault();
+
   // Add handler for node movement
   const onNodeDragStop = (event: React.MouseEvent, node: PineNode) => {
     if (node.data.type === 'selected') {
@@ -210,8 +215,21 @@ const Flow: React.FC<FlowProps> = observer(({ sessionId, containerRef }) => {
       minZoom={0.5}
       maxZoom={1.2}
       proOptions={{ hideAttribution: true }}
-      zoomOnScroll={true}
+      // Two-finger trackpad scroll pans (Miro/Figma convention) instead of
+      // zooming - see the matching comment in canvas/Canvas.tsx. `zoomOnPinch`
+      // (default `true`) still zooms on an actual pinch gesture.
+      panOnScroll
+      panOnScrollMode={PanOnScrollMode.Free}
+      zoomOnScroll={false}
       nodeDragThreshold={1}
+      // Miro-style split, matching canvas/Canvas.tsx: right button drags the
+      // canvas; left button is free for clicking/dragging a node or
+      // rubber-band-selecting over empty space, with no modifier needed for
+      // either.
+      panOnDrag={[2]}
+      selectionOnDrag
+      onPaneContextMenu={suppressContextMenu}
+      onNodeContextMenu={suppressContextMenu}
     >
       <Box
         sx={{

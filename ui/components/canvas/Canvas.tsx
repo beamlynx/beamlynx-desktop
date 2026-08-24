@@ -5,6 +5,7 @@ import ReactFlow, {
   ConnectionLineType,
   Node,
   NodeTypes,
+  PanOnScrollMode,
   ReactFlowProvider,
   useNodesState,
   useReactFlow,
@@ -235,6 +236,15 @@ const Flow: React.FC<{
           disableKeyboardA11y
           minZoom={0.5}
           maxZoom={1.2}
+          // Two-finger trackpad scroll pans (Miro/Figma convention) instead
+          // of zooming - without `panOnScroll`, ReactFlow's raw wheel handler
+          // treats every wheel event, trackpad scroll included, as a zoom.
+          // `zoomOnPinch` (left at its default `true`) still zooms on an
+          // actual pinch gesture, which the OS reports as a wheel event with
+          // `ctrlKey: true`, distinct from plain scroll.
+          panOnScroll
+          panOnScrollMode={PanOnScrollMode.Free}
+          zoomOnScroll={false}
           // Miro-style split: right button drags the canvas; left button is
           // free for clicking/dragging a node, or rubber-band-selecting
           // several by dragging over empty space - no modifier needed for
