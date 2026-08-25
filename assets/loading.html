@@ -4,16 +4,63 @@
     <meta charset="UTF-8" />
     <title>beamlynx</title>
     <style>
-      /* Colors matched to beamlynx-ui's dark theme (styles/colors.ts
-         darkColors) so this doesn't visually flash-swap once the real UI
-         loads - updated to match its "schematic/blueprint" identity
-         (--canvas-bg/--canvas-text/--canvas-node-border/--canvas-trace). */
+      /* Colors matched to beamlynx-ui's theme system (styles/palette/
+         themes.ts) so this doesn't visually flash-swap once the real UI
+         loads. Three themes exist there (light/dark/sepia); this splash
+         only ever picks between light and dark, via `prefers-color-scheme`
+         -- the OS-level signal, not the app's own saved preference. The two
+         live in different storage partitions (this file's `file://` origin
+         differs from the packaged UI's `ui/index.html`), so there's no
+         reliable way to read the real choice before the real UI itself
+         loads. The inline script below makes one best-effort attempt to
+         read it anyway (harmless no-op if the partitions turn out not to be
+         shared) and can additionally land on sepia, which prefers-color-
+         scheme has no equivalent for.
+         Default (no preference detected) is dark, matching GlobalStore's
+         own fallback (store/global.store.ts). */
+      :root {
+        --bg: #1a1b26;
+        --text: #c0caf5;
+        --text-dim: #787c99;
+        --border: #363b58;
+        --accent: #7aa2f7;
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #fffcf0;
+          --text: #100f0f;
+          --text-dim: #6f6e69;
+          --border: #ddd9ca;
+          --accent: #205ea6;
+        }
+      }
+      :root[data-theme='light'] {
+        --bg: #fffcf0;
+        --text: #100f0f;
+        --text-dim: #6f6e69;
+        --border: #ddd9ca;
+        --accent: #205ea6;
+      }
+      :root[data-theme='dark'] {
+        --bg: #1a1b26;
+        --text: #c0caf5;
+        --text-dim: #787c99;
+        --border: #363b58;
+        --accent: #7aa2f7;
+      }
+      :root[data-theme='sepia'] {
+        --bg: #f4ecd8;
+        --text: #4a3b2a;
+        --text-dim: #8a7a63;
+        --border: #e3d5b0;
+        --accent: #bf6e4e;
+      }
       html,
       body {
         margin: 0;
         height: 100%;
-        background: #0a1826;
-        color: #dbeeff;
+        background: var(--bg);
+        color: var(--text);
         font-family:
           -apple-system,
           BlinkMacSystemFont,
@@ -32,8 +79,8 @@
         width: 28px;
         height: 28px;
         border-radius: 50%;
-        border: 3px solid #2c5578;
-        border-top-color: #4fd1ff;
+        border: 3px solid var(--border);
+        border-top-color: var(--accent);
         animation: spin 0.8s linear infinite;
       }
       @keyframes spin {
@@ -44,12 +91,44 @@
       p {
         margin: 0;
         font-size: 14px;
-        color: #7ba3c2;
+        color: var(--text-dim);
+        min-height: 1.2em;
       }
     </style>
   </head>
   <body>
     <div class="spinner"></div>
-    <p>Starting beamlynx server&hellip;</p>
+    <p id="status">Starting beamlynx&hellip;</p>
+    <script>
+      // Best-effort real theme (see the CSS comment above for why this
+      // isn't guaranteed to see the same storage the real UI wrote to).
+      try {
+        var saved = JSON.parse(localStorage.getItem('pine-theme'));
+        if (saved === 'light' || saved === 'dark' || saved === 'sepia') {
+          document.documentElement.setAttribute('data-theme', saved);
+        }
+      } catch (e) {
+        // No matching/parseable value - the prefers-color-scheme CSS above
+        // already covers this as a sensible default.
+      }
+
+      // A pine/query-themed rotation instead of one static line - this is
+      // the several-second JVM boot the server-side needs, not an error
+      // state, so it's a fine place for a little personality.
+      var messages = [
+        'Starting beamlynx…',
+        'Growing the query engine…',
+        'Rooting through your schemas…',
+        'Branching out to your tables…',
+        'Warming up the JVM…',
+        'Sharpening the pipes…',
+      ];
+      var el = document.getElementById('status');
+      var i = 0;
+      setInterval(function () {
+        i = (i + 1) % messages.length;
+        el.textContent = messages[i];
+      }, 1800);
+    </script>
   </body>
 </html>

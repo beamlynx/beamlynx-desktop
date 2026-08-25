@@ -174,7 +174,7 @@ function createWindow(): void {
     // instant it appears, and show only once that first frame is actually
     // ready to display.
     show: false,
-    backgroundColor: '#21252b',
+    backgroundColor: '#1a1b26',
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'index.js'),
     },
@@ -298,7 +298,7 @@ async function main(): Promise<void> {
   registerCredentialIpc();
 
   // Started here rather than after the server/UI are up -- it only starts
-  // accepting real work once a run_query/explain_query request actually
+  // accepting real work once a run_query/complete_query request actually
   // arrives and finds mainWindow set (see control-plane-server.ts), so
   // there's no ordering requirement with startServer()/loadRealUi() below.
   controlPlaneServer = startControlPlaneServer({ getMainWindow: () => mainWindow });
