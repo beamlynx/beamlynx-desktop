@@ -35,9 +35,10 @@ test('stdio-relay.ts registers exactly the expected tool set', () => {
   const registered = [...STDIO_RELAY_SOURCE.matchAll(/registerTool\(\s*['"]([\w-]+)['"]/g)].map(m => m[1]);
   assert.deepEqual(
     registered.sort(),
-    ['explain_query', 'get_pine_doc', 'list_connections', 'list_pine_docs', 'open_in_desktop', 'run_query'].sort(),
+    ['complete_query', 'find_tables', 'get_pine_doc', 'list_connections', 'open_in_desktop', 'run_query'].sort(),
     'Registered tool set changed -- if this was intentional, update this test; if not, something was added ' +
-      '(or removed) unexpectedly.',
+      '(or removed) unexpectedly. Keep this an exact-set assertion: the point is that a raw-SQL tool cannot be ' +
+      'added back without a test failing, and a substring check would not catch that.',
   );
 });
 
@@ -54,5 +55,29 @@ test('get_pine_doc guards against path traversal in its topic argument', () => {
     /resolved\.startsWith\(docsDir/.test(STDIO_RELAY_SOURCE),
     'get_pine_doc\'s getDoc() must confirm the resolved path stays inside docsDir before reading -- topic is ' +
       'untrusted input from the MCP client.',
+  );
+});
+
+// format.ts is where every agent-visible string is built, and it must never
+// emit SQL either (see __tests__/format.test.js). This guards the other half
+// of that: the relay must not go around it by rendering pine-lang's response
+// itself. `query` is the compiled SQL on a build response -- the one field
+// most likely to get added back as a "helpful" confirmation of what an
+// expression means.
+test('stdio-relay.ts never renders pine-lang\'s compiled SQL back to the client', () => {
+  assert.ok(
+    !/\bresult\.query\b|\bast\.query\b|\.query\b\s*\)/.test(STDIO_RELAY_SOURCE),
+    'src/main/mcp/stdio-relay.ts must never read the compiled `query` field off a pine-lang response -- Pine is ' +
+      'the only language an MCP client may see, in either direction.',
+  );
+});
+
+test('stdio-relay.ts renders tool output through format.ts rather than JSON-dumping responses', () => {
+  const jsonDumps = [...STDIO_RELAY_SOURCE.matchAll(/textResult\(JSON\.stringify\(([\w.]+)/g)].map(m => m[1]);
+  assert.deepEqual(
+    jsonDumps,
+    [],
+    'Tool output must go through format.ts, not JSON.stringify of a raw API response -- serialising pine-lang\'s ' +
+      'response wholesale is exactly the bloat format.ts exists to remove.',
   );
 });

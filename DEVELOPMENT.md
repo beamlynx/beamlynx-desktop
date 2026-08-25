@@ -40,7 +40,7 @@ pieces:
 ```sh
 ./scripts/stage-server.sh              # copies pine-lang's jpackage output into resources/server/
 ./scripts/build-ui-export.sh           # builds beamlynx-ui's static export into resources/ui/
-./scripts/stage-docs.sh                # copies src/main/mcp/pine-reference/*.md (hand-maintained, see its README.md) into resources/docs/, for the MCP server's list_pine_docs/get_pine_doc tools
+./scripts/stage-docs.sh                # copies src/main/mcp/pine-reference/*.md (hand-maintained, see its README.md) into resources/docs/, for the MCP server's get_pine_doc tool and the docs it pushes inline on a parse error
 ```
 
 Then:

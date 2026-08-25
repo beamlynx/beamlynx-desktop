@@ -60,7 +60,10 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
         return sendJson(res, 200, { connections: listMcpEnabledConnections() });
       }
 
-      if ((req.method === 'POST' && req.url === '/query') || req.url === '/explain') {
+      // Grouping matters: without the inner parentheses the '/explain'
+      // arm matches any method, so a bodyless GET /explain would fall into
+      // this handler and hang in readJsonBody.
+      if (req.method === 'POST' && (req.url === '/query' || req.url === '/explain')) {
         const body = await readJsonBody(req);
         const { profileId, expression } = body ?? {};
         if (!profileId || typeof expression !== 'string') {

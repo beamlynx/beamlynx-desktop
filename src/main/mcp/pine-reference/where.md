@@ -1,103 +1,59 @@
 # Where
 
-Filters the results based on conditions.
+Keeps only the rows matching a condition.
 
 **Operation(s):** `where:`, `w:`
 
 ## Examples
 
-### Condition
+### Match a value
 
 ```
 customers | where: first_name = 'John'
 ```
-translates to:
-```sql
-SELECT * FROM customers WHERE first_name = 'John'
-```
 
-Filter records where a column equals a specific value
+String values are single-quoted. Numbers and booleans are not.
 
-### Multiple conditions
+### Several conditions
 
 ```
 customers | where: first_name like 'John%' | where: last_name = 'Doe'
 ```
-translates to:
-```sql
-SELECT * FROM customers WHERE first_name LIKE 'John%' AND last_name = 'Doe'
-```
 
-Apply multiple filter conditions with comma separation
+Each `where:` narrows the result further, so chaining them combines with AND.
 
-### NULL
+### Is null / is not null
 
 ```
 customers | where: created_at is null
-```
-translates to:
-```sql
-SELECT * FROM customers WHERE created_at IS NULL
-```
-
-Filter for records with NULL values in a column
-
-### NOT NULL
-
-```
 customers | where: created_at is not null
 ```
-translates to:
-```sql
-SELECT * FROM customers WHERE created_at IS NOT NULL
-```
 
-Filter for records with NOT NULL values in a column
-
-### IN clause
+### One of several values
 
 ```
 categories | where: name in ('Electronics', 'Computers')
 ```
-translates to:
-```sql
-SELECT * FROM categories WHERE name IN ('Electronics', 'Computers')
-```
 
-Filter for records where column value matches any in a list
-
-### Column comparison
+### Compare two columns
 
 ```
 customers | where: created_at < updated_at
 ```
-translates to:
-```sql
-SELECT * FROM customers WHERE created_at < updated_at
-```
 
-Compare values between different columns
+An unquoted name on the right is read as a column, not a string.
 
-### LIKE
+### Pattern matching
 
 ```
 customers | where: first_name like 'Jo%'
-```
-translates to:
-```sql
-SELECT * FROM customers WHERE first_name LIKE 'Jo%'
-```
-
-Filter for records using the LIKE operator
-
-### ILIKE
-
-```
 customers | where: first_name ilike 'jo%'
 ```
-translates to:
-```sql
-SELECT * FROM customers WHERE first_name ILIKE 'jo%'
-```
 
-Filter for records using the ILIKE operator
+`%` matches any run of characters. `like` is case-sensitive, `ilike` is not.
+
+### Negation
+
+```
+customers | where: not status = 'archived'
+```

@@ -1,43 +1,35 @@
 # Select
 
-Select columns to return in the query result.
+Choose which columns to return.
 
 **Operation(s):** `select:`, `s:`
 
 ## Examples
 
-### Select specific columns
+### Pick specific columns
 
 ```
 customers | select: id, email
 ```
-translates to:
-```sql
-SELECT id, email FROM customers
-```
 
-Choose only the columns you need in the result
+Without `select:`, every column of the current table comes back.
 
-### Select with alias
+### Rename a column in the output
 
 ```
 customers | s: id as customer_id
 ```
-translates to:
-```sql
-SELECT id as customer_id FROM customers
-```
 
-Rename columns in the output using aliases
-
-### Select with table qualification
+### Qualify columns when tables are joined
 
 ```
 customers as c | orders as o | s: c.email, o.total_amount
 ```
-translates to:
-```sql
-SELECT c.id, o.total FROM customers as c JOIN orders as o ON c.id = o.customer_id
-```
 
-Specify which table each column comes from in joins
+With more than one table in the pipeline, an unqualified `id` is ambiguous — prefix it with the
+table's alias to say which one you mean.
+
+### List what is available
+
+Ending an expression at `| select: ` and asking for completions returns the current table's
+columns. This is the way to discover column names rather than guessing at them.

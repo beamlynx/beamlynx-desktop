@@ -1,43 +1,37 @@
 # Order
 
-Sort the results by one or more columns.
+Sorts the rows.
 
 **Operation(s):** `order:`, `o:`
 
 ## Examples
 
-### Basic ordering
+### Sort by a column
 
 ```
 customers | order: email
 ```
-translates to:
-```sql
-SELECT * FROM customers ORDER BY email
-```
 
-Sort results by a single column in ascending order
+Ascending unless stated otherwise.
 
-### Descending order
+### Sort descending
 
 ```
 customers | order: email desc
 ```
-translates to:
-```sql
-SELECT * FROM customers ORDER BY email DESC
-```
 
-Sort results in descending order using the desc keyword
-
-### Multiple columns
+### Sort by several columns
 
 ```
 customers | order: first_name asc, last_name desc
 ```
-translates to:
-```sql
-SELECT * FROM customers ORDER BY first_name ASC, last_name DESC
+
+Earlier columns take priority; later ones break ties.
+
+### With a limit
+
+```
+customers | order: created_at desc | limit: 10
 ```
 
-Sort by multiple columns with different sort directions
+The ten most recent. Sorting before limiting is what makes the cap meaningful.

@@ -160,8 +160,35 @@ export async function startServer(): Promise<ServerHandle> {
   let stderrTail = '';
   let unexpectedExitCb: ((info: UnexpectedExitInfo) => void) | undefined;
 
+  // BOTH pipes must be drained, always. A piped stdio stream nothing reads
+  // fills its OS buffer (~64KB) and then every write from the child blocks
+  // FOREVER -- and pine-lang writes to stdout from inside `run-query`, so a
+  // full stdout buffer deadlocks its entire database layer while leaving
+  // endpoints that don't touch the database (notably /api/v1/build, which
+  // answers from an in-memory index) working normally.
+  //
+  // That is not hypothetical: it happened, and the failure is deeply
+  // misleading. A thread dump showed 17 pine-lang threads parked in
+  // StreamEncoder.write inside pine.db.postgres/run-query, /api/v1/build
+  // still answering in 2ms, and the UI showing *build* requests as
+  // "pending" -- because the renderer's hung /connection/stats polls had
+  // consumed all 6 of Chromium's per-host sockets, so new requests queued
+  // in the browser and never reached the server at all.
+  //
+  // pine-lang's per-query prints were removed on its side too, but the
+  // drain is the load-bearing fix: it makes any future print from the
+  // server harmless instead of fatal.
+  const keepTail = (tail: string, chunk: unknown) => (tail + String(chunk)).slice(-4000);
+
   child.stderr?.on('data', chunk => {
-    stderrTail = (stderrTail + chunk.toString()).slice(-4000);
+    stderrTail = keepTail(stderrTail, chunk);
+  });
+
+  // Folded into the same tail as stderr rather than kept separately: this
+  // exists to keep the pipe empty and to give an unexpected-exit report
+  // something to show, and pine-lang's startup diagnostics go to stdout.
+  child.stdout?.on('data', chunk => {
+    stderrTail = keepTail(stderrTail, chunk);
   });
 
   child.on('exit', (code, signal) => {
