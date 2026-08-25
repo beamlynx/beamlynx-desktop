@@ -5,6 +5,17 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-25
+### Added
+- A new Appearance section in Settings: three built-in themes (Light, Dark, Sepia), each with its own coordinated colors rather than a shared palette with a swappable accent (bundled beamlynx-ui 0.52.0).
+- Independent Interface font (System, Inter, IBM Plex Sans) and Code font (IBM Plex Mono, JetBrains Mono, Fira Code, System Monospace) choices, replacing one shared monospace-only font setting (bundled beamlynx-ui 0.52.0).
+- A Text size setting (Small/Medium/Large) that scales the app's text and spacing without resizing panels or the canvas (bundled beamlynx-ui 0.52.0).
+- The loading screen now matches your chosen theme (or the OS's light/dark preference) instead of always showing a fixed dark palette, and rotates through a few status messages while the server starts instead of showing one static line.
+
+### Fixed
+- Trackpad two-finger scroll zoomed the graph instead of panning it, in both graph views -- it now pans, matching the Miro/Figma convention (bundled beamlynx-ui 0.52.0).
+- Canvas keyboard navigation between tables now wraps from the last table back to the first instead of stopping there (bundled beamlynx-ui 0.52.0).
+
 ## [0.6.2] - 2026-08-23
 ### Changed
 - New Layout's Canvas/Results split now uses one consistent 8px gap on all sides and between the two panes, instead of a slightly different, unexplained width for the pane divider (10px) versus the surrounding margins (8px), and no gap at all at the bottom (bundled beamlynx-ui 0.51.2).
