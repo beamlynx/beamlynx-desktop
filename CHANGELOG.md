@@ -17,6 +17,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - `run_query`'s description no longer tells an agent to look up column types by querying the database's own catalog tables. Column *names* now come from `complete_query`, but nothing in the MCP surface reports a column's **type** any more. Exposing types properly is planned as a Pine language feature rather than a lookup the MCP server does behind the agent's back.
 
 ### Fixed
+- The bundled pine-server's standard output was piped but never read, so once its buffer filled, the server deadlocked: every request that touched the database hung forever, while requests that did not — including the one that parses expressions — kept answering normally. The app looked responsive while queries silently stopped completing, and the browser then queued further requests behind the stuck ones, so even parse requests appeared to hang. Both output streams are now drained.
 - The MCP control plane's `/explain` route accepted any HTTP method rather than only POST, so a bodyless GET would enter the handler and stall waiting for a request body.
 
 ## [0.6.2] - 2026-08-23
