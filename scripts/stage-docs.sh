@@ -2,8 +2,9 @@
 set -e
 
 # Copies src/main/mcp/pine-reference/*.md into resources/docs/, so the MCP
-# server's list_pine_docs/get_pine_doc tools (src/main/mcp/stdio-relay.ts)
-# have something to teach Claude Pine syntax with. Mirrors stage-server.sh's
+# server has something to teach Claude Pine syntax with -- pushed inline by
+# src/main/mcp/format.ts when an expression fails to parse, and pulled by
+# the get_pine_doc tool (src/main/mcp/stdio-relay.ts). Mirrors stage-server.sh's
 # pattern -- a plain copy, so the Electron main process reads from the same
 # place whether running from source (dev) or packaged by electron-builder
 # (see src/main/resources.ts's getResourcesRoot()).
@@ -24,7 +25,7 @@ rm -rf "$DEST"
 mkdir -p "$DEST"
 # Excludes README.md deliberately -- it documents this directory for human
 # contributors, not a Pine topic; copying it would surface a spurious
-# "readme" entry to list_pine_docs.
+# "readme" entry in get_pine_doc's topic list.
 find "$SRC" -maxdepth 1 -name '*.md' ! -name 'README.md' -exec cp {} "$DEST/" \;
 
 echo "Staged $(ls "$DEST" | wc -l | tr -d ' ') pine doc(s) into $DEST"

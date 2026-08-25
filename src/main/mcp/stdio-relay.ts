@@ -7,9 +7,16 @@
 // whatever checks lived here instead). All it does is make sure the real,
 // visible GUI is up, then proxy MCP tool calls to its control-plane server.
 //
+// Thin as a *transport*, but not as an *interface*: what the agent reads is
+// rendered by format.ts, never pine-lang's API response verbatim. Those
+// responses are shaped for beamlynx-ui, which needs the whole AST to draw
+// the relationship graph; an agent needs a ranked list of what it can type
+// next. See format.ts for the measurements behind that.
+//
 // No `run_sql` tool exists here, on purpose, with no flag to add it back --
 // see beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md and
-// beamlynx-ui's store/mcp-query.ts for the reasoning.
+// beamlynx-ui's store/mcp-query.ts for the reasoning. The same rule runs
+// the other way too: no tool output may contain SQL either (format.ts).
 import { app } from 'electron';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
@@ -21,6 +28,9 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CONTROL_PLANE_PORT } from './control-plane-server';
 import { getResourcesRoot } from '../resources';
+import { SERVER_INSTRUCTIONS } from './instructions';
+import { formatCompletion, formatConnections, formatRows, formatTableMatches } from './format';
+import type { BuildResponse } from './format';
 
 const GUI_LAUNCH_TIMEOUT_MS = 30000;
 const GUI_POLL_INTERVAL_MS = 300;
@@ -115,18 +125,22 @@ function buildDeepLink(profileId: string, expression: string): string {
 }
 
 // Pine is a small, custom pipe-based DSL, not SQL -- there's nothing in an
-// LLM's general training that teaches it this syntax, so without some
-// reference it has no way to write a valid `expression` for run_query/
-// explain_query at all. These docs are generated at build time (see
-// scripts/generate-pine-docs.js) from beamlynx.com's documentation
-// components -- user-facing syntax + examples, not pine-lang/docs (aimed at
-// pine-lang contributors, and mixes syntax explanation with internal
-// Clojure implementation notes under its own "## Implementation" section).
+// LLM's general training that teaches it this syntax. Three things cover
+// that gap, in order of how little they cost: the always-on primer in
+// instructions.ts, the position-specific hints complete_query returns, and
+// these docs, pushed inline by format.ts the moment an expression fails to
+// parse. get_pine_doc is the manual fallback for when an agent wants a
+// topic none of those surfaced.
+//
+// These are staged into the packaged app by scripts/stage-docs.sh from
+// src/main/mcp/pine-reference/ -- hand-maintained, and deliberately
+// carrying no SQL translations, unlike beamlynx.com's human-facing
+// documentation. See that directory's README.md.
 function getDocsDir(): string {
   return path.join(getResourcesRoot(), 'docs');
 }
 
-function listDocs(): { topic: string; title: string; description: string }[] {
+function listDocs(): { topic: string; title: string }[] {
   const docsDir = getDocsDir();
   if (!fs.existsSync(docsDir)) return [];
   return fs
@@ -137,7 +151,6 @@ function listDocs(): { topic: string; title: string; description: string }[] {
       return {
         topic: filename.replace(/\.md$/, ''),
         title: (lines[0] ?? '').replace(/^#\s*/, '').trim(),
-        description: (lines[2] ?? '').trim(),
       };
     });
 }
@@ -152,6 +165,17 @@ function getDoc(topic: string): string | null {
   return fs.readFileSync(resolved, 'utf-8');
 }
 
+// Both complete_query and find_tables are the same pine-lang build call --
+// parse the expression, return the hints for wherever it ends. They differ
+// only in what gets rendered, since a bare table fragment produces
+// "start a pipeline here" hints and a trailing `| ` produces join hints.
+// Builds never touch the user's visible tab; only run_query does.
+async function build(profileId: string, expression: string): Promise<BuildResponse> {
+  await ensureGuiRunning();
+  const { result } = await controlPlaneRequest('POST', '/explain', { profileId, expression });
+  return result ?? {};
+}
+
 async function registerTools(server: McpServer): Promise<void> {
   server.registerTool(
     'list_connections',
@@ -163,13 +187,7 @@ async function registerTools(server: McpServer): Promise<void> {
     async () => {
       try {
         const { connections } = await controlPlaneRequest('GET', '/connections');
-        if (!connections?.length) {
-          return textResult(
-            'No connections are enabled for MCP access yet. Ask the user to toggle "Enable for MCP access" on a ' +
-              'connection in beamlynx Settings.',
-          );
-        }
-        return textResult(JSON.stringify(connections, null, 2));
+        return textResult(formatConnections(connections ?? []));
       } catch (e) {
         return errorResult(e instanceof Error ? e.message : String(e));
       }
@@ -177,35 +195,54 @@ async function registerTools(server: McpServer): Promise<void> {
   );
 
   server.registerTool(
-    'list_pine_docs',
+    'find_tables',
     {
       description:
-        'List Pine syntax documentation topics. Pine is a small pipe-based query language, NOT SQL -- call this ' +
-        '(then get_pine_doc) before writing a Pine expression for the first time, or when unsure of its syntax.',
+        'Find tables in a database by name. Matching is fuzzy, so a fragment is enough -- "ten" finds "tenant", ' +
+        '"tenant_role" and "user_tenant_role". Use this instead of guessing at a table name (a singular/plural ' +
+        'mismatch like "tenant" vs "tenants" is the usual way that goes wrong). Returns qualified names ready to ' +
+        'start a Pine expression with; pass one to complete_query to continue it.',
+      inputSchema: {
+        connection_id: z.string().describe('A connection id from list_connections'),
+        query: z.string().min(1).describe('A fragment of the table name to look for, e.g. "invoice"'),
+      },
     },
-    async () => {
-      const docs = listDocs();
-      if (!docs.length) {
-        return errorResult('No Pine documentation is bundled with this install.');
+    async ({ connection_id, query }: { connection_id: string; query: string }) => {
+      try {
+        // A blank query matches every table -- 249 on a mid-size schema,
+        // thousands on a large one. min(1) on the schema plus this covers
+        // whitespace-only input the schema would let through.
+        if (!query.trim()) {
+          return errorResult('find_tables needs a name fragment to search for. Pass at least one character.');
+        }
+        return textResult(formatTableMatches(query, await build(connection_id, query.trim())));
+      } catch (e) {
+        return errorResult(e instanceof Error ? e.message : String(e));
       }
-      return textResult(JSON.stringify(docs, null, 2));
     },
   );
 
   server.registerTool(
-    'get_pine_doc',
+    'complete_query',
     {
-      description: 'Fetch the full content (syntax explanation + examples) of one topic returned by list_pine_docs.',
+      description:
+        'Ask what can be appended to a Pine expression at its current end -- the main tool for building a query ' +
+        'step by step without guessing. End the expression with `| ` to get the tables it can join to (ranked, ' +
+        'with foreign-key-backed joins first), or with `| select: ` to list the current table\'s columns. Also ' +
+        'reports how the expression parsed, and explains the syntax if it did not. Does not execute anything.',
       inputSchema: {
-        topic: z.string().describe('A topic id from list_pine_docs, e.g. "join" or "where"'),
+        connection_id: z.string().describe('A connection id from list_connections'),
+        expression: z
+          .string()
+          .describe('A Pine expression, usually a partial one ending in `| ` or `| select: `, e.g. "public.user | "'),
       },
     },
-    async ({ topic }: { topic: string }) => {
-      const content = getDoc(topic);
-      if (content == null) {
-        return errorResult(`No doc found for topic "${topic}". Call list_pine_docs to see available topics.`);
+    async ({ connection_id, expression }: { connection_id: string; expression: string }) => {
+      try {
+        return textResult(formatCompletion(expression, await build(connection_id, expression), getDoc));
+      } catch (e) {
+        return errorResult(e instanceof Error ? e.message : String(e));
       }
-      return textResult(content);
     },
   );
 
@@ -214,12 +251,9 @@ async function registerTools(server: McpServer): Promise<void> {
     {
       description:
         'Run a Pine expression against a connection (must be one returned by list_connections) and return the ' +
-        'result. Opens/updates a visible tab in the beamlynx app so the user can see what ran. Pine is not SQL -- ' +
-        'if unfamiliar with its syntax, call list_pine_docs/get_pine_doc first. If unsure of the exact table or ' +
-        'column names in this database, query them the same way you would any other table -- e.g. ' +
-        '`information_schema.tables | where: table_schema = \'public\' | select: table_name` to list tables, or ' +
-        '`information_schema.columns | where: table_name = \'the_table\' | select: column_name, data_type` for a ' +
-        "table's columns -- rather than guessing (e.g. a singular/plural mismatch like \"tenant\" vs \"tenants\").",
+        'rows. Opens or updates a visible tab in the beamlynx app so the user can see what ran. Pine is not SQL ' +
+        'and SQL is not accepted here. Build the expression with find_tables and complete_query rather than ' +
+        'guessing at table or column names. Results are capped by the server at 250 rows.',
       inputSchema: {
         connection_id: z.string().describe('A connection id from list_connections'),
         expression: z.string().describe('The Pine expression to run'),
@@ -229,32 +263,41 @@ async function registerTools(server: McpServer): Promise<void> {
       try {
         await ensureGuiRunning();
         const { result } = await controlPlaneRequest('POST', '/query', { profileId: connection_id, expression });
-        return textResult(JSON.stringify(result, null, 2));
+        return textResult(formatRows(result ?? {}));
       } catch (e) {
         return errorResult(e instanceof Error ? e.message : String(e));
       }
     },
   );
 
+  // Listing the topics in the description itself, rather than behind a
+  // separate list_pine_docs tool, removes a round trip: an agent that needs
+  // `where:` can fetch it directly instead of calling one tool to learn the
+  // name of the topic it already guessed. The whole doc set is ~13KB, so
+  // there was never enough here to be worth paginating over two calls.
+  const docTopics = listDocs()
+    .map(d => d.topic)
+    .sort();
   server.registerTool(
-    'explain_query',
+    'get_pine_doc',
     {
       description:
-        'Parse and validate a Pine expression against a connection without executing it -- use this to sanity-check ' +
-        'syntax before spending a real run_query call. If unfamiliar with Pine, call list_pine_docs/get_pine_doc first.',
+        'Fetch the Pine syntax reference for one topic, with examples. Most of the time complete_query already ' +
+        'tells you what you need, and a failed expression returns the relevant topic automatically -- reach for ' +
+        'this when you want a topic neither surfaced. ' +
+        (docTopics.length ? `Topics: ${docTopics.join(', ')}.` : 'No topics are bundled with this install.'),
       inputSchema: {
-        connection_id: z.string().describe('A connection id from list_connections'),
-        expression: z.string().describe('The Pine expression to validate'),
+        topic: z.string().describe('One of the topics listed in this tool\'s description, e.g. "join" or "where"'),
       },
     },
-    async ({ connection_id, expression }: { connection_id: string; expression: string }) => {
-      try {
-        await ensureGuiRunning();
-        const { result } = await controlPlaneRequest('POST', '/explain', { profileId: connection_id, expression });
-        return textResult(JSON.stringify(result, null, 2));
-      } catch (e) {
-        return errorResult(e instanceof Error ? e.message : String(e));
+    async ({ topic }: { topic: string }) => {
+      const content = getDoc(topic);
+      if (content == null) {
+        return errorResult(
+          `No doc found for topic "${topic}". Available topics: ${docTopics.join(', ') || '(none bundled)'}.`,
+        );
       }
+      return textResult(content);
     },
   );
 
@@ -287,7 +330,13 @@ export async function startMcpRelay(): Promise<void> {
 
   await app.whenReady();
 
-  const server = new McpServer({ name: 'beamlynx', version: app.getVersion() });
+  // `instructions` reaches the client in the initialize response, before
+  // any tool call -- the only chance to teach Pine at zero cost. See
+  // instructions.ts.
+  const server = new McpServer(
+    { name: 'beamlynx', version: app.getVersion() },
+    { instructions: SERVER_INSTRUCTIONS },
+  );
   await registerTools(server);
 
   const transport = new StdioServerTransport();

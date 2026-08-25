@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- The MCP server teaches an AI agent Pine up front, instead of leaving it to guess. A short primer now arrives when an agent connects, before it makes a single tool call. When an expression fails to parse, the reference page for whatever operation it got wrong comes back with the error, rather than the agent needing two more calls to find it.
+- A new `find_tables` MCP tool searches for a table by name fragment -- "ten" finds "tenant", "tenant_role" and "user_tenant_role". An agent no longer has to guess a table name (a singular/plural mismatch was the usual way that went wrong).
+- Pine reference pages for `count:`, `delete!`, `from:` and `limit:` now have worked examples. All four previously shipped with empty example blocks.
+
+### Changed
+- MCP tool results are now written for an agent to act on, not dumped as raw API JSON. Asking what can be added to `user | ` went from 5,930 bytes of JSON to about 1,250 bytes of ranked suggestions, and query results dropped by roughly two thirds. Joins backed by a real foreign key are now listed separately from ones guessed from column naming, so an agent knows which it can trust; long lists say how many entries they left out instead of truncating silently.
+- `explain_query` is now `complete_query`, and answers "what can I add here?" rather than dumping a parse tree. Its old description promised validation it never performed -- a query against a table that does not exist still parses cleanly, and only fails when run.
+- The MCP server no longer shows SQL to an AI agent anywhere, in either direction. It could not run SQL before; now it does not return or teach it either. The bundled Pine reference explains what each example does in words, where it previously showed the SQL each expression translates to. Pine is the layer where query restrictions can be enforced, so an agent that reasons in SQL undermines the point of it.
+- `list_pine_docs` is gone. Its topic list is now part of `get_pine_doc`'s own description, so fetching a topic takes one call instead of two.
+- `run_query`'s description no longer tells an agent to look up column types by querying the database's own catalog tables. Column *names* now come from `complete_query`, but nothing in the MCP surface reports a column's **type** any more. Exposing types properly is planned as a Pine language feature rather than a lookup the MCP server does behind the agent's back.
+
+### Fixed
+- The MCP control plane's `/explain` route accepted any HTTP method rather than only POST, so a bodyless GET would enter the handler and stall waiting for a request body.
 
 ## [0.6.2] - 2026-08-23
 ### Changed

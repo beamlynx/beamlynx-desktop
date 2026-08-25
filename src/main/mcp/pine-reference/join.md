@@ -1,82 +1,76 @@
 # Join
 
-Join tables without having to think of the foreign key relationships. Simply pipe tables together to create joins. However, if you want to specify the join column or other aspects of the join, you can pass the relevant arguments. See examples below:
+Join tables by piping them together. You do not name the join columns — Pine resolves the
+relationship between the two tables itself.
 
 Supported modifiers:
-- `:left` - Performs a left outer join, keeping all records from the left table
-- `:right` - Performs a right outer join, keeping all records from the right table
-- `:parent` - Joins on the parent table (the one being referenced) instead of the child table (the one with the foreign key)
+- `:left` — keeps rows from the left table even where the right has no match
+- `:right` — keeps rows from the right table even where the left has no match
+- `:parent` — joins toward the referenced table instead of the one holding the foreign key
 
 ## Examples
 
-### Join
+### Join two tables
 
 ```
 customers | orders
 ```
-translates to:
-```sql
-SELECT * FROM customers JOIN orders ON customers.id = orders.customer_id
-```
 
-Two tables based using the foreign key.
+The foreign key between them is found automatically. The result carries the last table's
+columns — here, orders.
 
-### Multi-table join
+### Join several
 
 ```
 customers | orders | order_items
 ```
-translates to:
-```sql
-SELECT * FROM customers JOIN orders ON customers.id = orders.customer_id JOIN order_items ON orders.id = order_items.order_id
-```
 
-Pipe multiple tables together for joining multiple tables
+Each table joins to the one before it.
 
-### Schema qualified join
+### Across schemas
 
 ```
 customers | audit.order_status_changes
 ```
-translates to:
-```sql
-SELECT * FROM customers JOIN audit.order_status_changes ON customers.id = audit.order_status_changes.customer_id
+
+### Say which column to join on
+
+```
+customers | orders .customer_id
 ```
 
-Use schema qualification when joining across different schemas
+Needed when two tables are related through more than one column — for example an `orders` table
+with both `customer_id` and `shipping_customer_id`. Ambiguity is the usual reason a join comes
+back wrong.
 
-### Left join
+### Keep unmatched rows
 
 ```
 customers | orders :left
 ```
-translates to:
-```sql
-SELECT * FROM customers LEFT JOIN orders ON customers.id = orders.customer_id
-```
 
-Use the :left modifier to specify a left join
+Customers with no orders are kept, with the order columns empty.
 
-### Self join
+### Join a table to itself
 
 ```
 categories as p | categories as c
 ```
-translates to:
-```sql
-SELECT c.* FROM categories as p JOIN categories as c ON p.id = c.parent_id
-```
 
-Join a table with itself
+Aliases are required here, so each side of the relationship can be referred to separately.
 
-### Self join with direction / Parent-child relationship
+### Choose the direction
 
 ```
 categories as p | categories as c :parent
 ```
-translates to:
-```sql
-SELECT p.* FROM categories as c JOIN categories as p ON c.parent_id = p.id
-```
 
-By default, the child table is picked for the join i.e. the one that holds the foreing key. If you want to join on the parent table i.e. the one being referenced, then use the :parent modifier. Aliases are used for demonstration purposes.
+By default Pine joins toward the table holding the foreign key (the child). `:parent` reverses
+that, joining toward the table being referenced.
+
+### Finding the join you want
+
+Ending an expression at `| ` and asking for completions lists every table the current one can
+join to, best first. Joins backed by a real foreign key are marked separately from ones guessed
+from column naming — a guessed join has no foreign key behind it and can simply be wrong, so
+confirm it returns sensible rows before relying on it.

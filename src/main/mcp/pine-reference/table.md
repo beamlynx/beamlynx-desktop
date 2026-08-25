@@ -1,35 +1,27 @@
 # Table
 
-This is as simple as it gets! You want to get data from a table? Just write the table name.
+This is as simple as it gets. To get data from a table, write the table name.
 
 ## Examples
 
-### Select all
+### Every column of a table
 
 ```
 customers
 ```
-translates to:
-```sql
-SELECT * FROM customers
-```
 
-### Table in a schema
+### Qualify with a schema
 
 ```
 public.customers
 ```
-translates to:
-```sql
-SELECT * FROM public.customers
-```
 
-### Table with alias
+Use this when the same table name exists in more than one schema.
+
+### Give the table an alias
 
 ```
 customers as c
 ```
-translates to:
-```sql
-SELECT * FROM customers as c
-```
+
+The alias becomes the name you use to qualify columns later, e.g. `c.email`.

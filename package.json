@@ -12,7 +12,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "npm run build && electron .",
-    "test": "node --test __tests__"
+    "test": "npm run build && node --test __tests__"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
