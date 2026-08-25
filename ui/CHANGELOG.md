@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- A new Appearance section in Settings: three built-in themes (Light, Dark, Sepia), each with its own coordinated colors rather than a shared palette with a swappable accent. Picking one also determines light/dark behavior for the editor and canvas.
+- Independent Interface font (System, Inter, IBM Plex Sans) and Code font (IBM Plex Mono, JetBrains Mono, Fira Code, System Monospace) choices, replacing one shared monospace-only font setting. Fira Code's ligatures now actually render.
+- A Text size setting (Small/Medium/Large) that scales the app's text and spacing without resizing panels or the canvas.
+
+### Changed
+- "Toggle Theme" (command palette) now cycles through all three themes instead of switching between two.
+- Canvas keyboard navigation between tables (arrow keys, or `j`/`k`) now wraps from the last table back to the first instead of stopping there.
 
 ## [0.51.2] - 2026-08-23
 ### Changed
