@@ -23,6 +23,43 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.52.0',
+    date: '2026-08-25',
+    added: [
+      {
+        title: 'Appearance settings',
+        description:
+          'Three built-in themes (Light, Dark, Sepia), each with its own coordinated colors rather than a shared palette with a swappable accent. Picking one also determines light/dark behavior for the editor and canvas.',
+      },
+      {
+        title: 'Separate Interface and Code fonts',
+        description:
+          'Interface font (System, Inter, IBM Plex Sans) and Code font (IBM Plex Mono, JetBrains Mono, Fira Code, System Monospace) are now independent choices, replacing one shared monospace-only font setting. Fira Code\'s ligatures now actually render.',
+      },
+      {
+        title: 'Text size',
+        description: 'Small/Medium/Large - scales the app\'s text and spacing without resizing panels or the canvas.',
+      },
+    ],
+    changed: [
+      {
+        title: '"Toggle Theme" cycles through all three themes',
+        description: 'Previously switched between two.',
+      },
+      {
+        title: 'Canvas keyboard navigation between tables now wraps around',
+        description: "Arrow keys (or j/k) now wrap from the last table back to the first instead of stopping there.",
+      },
+    ],
+    fixed: [
+      {
+        title: 'Trackpad two-finger scroll now pans instead of zooms',
+        description:
+          'In both the classic graph and canvas mode, matching the Miro/Figma convention. The classic graph\'s mouse controls also now match canvas mode\'s: right-click drags the canvas, left-click drags a node or rubber-band-selects.',
+      },
+    ],
+  },
+  {
     version: '0.51.2',
     date: '2026-08-23',
     changed: [
@@ -1433,4 +1470,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.51.2';
+export const LATEST_VERSION = '0.52.0';

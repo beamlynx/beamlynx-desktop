@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.52.0] - 2026-08-25
 ### Added
 - A new Appearance section in Settings: three built-in themes (Light, Dark, Sepia), each with its own coordinated colors rather than a shared palette with a swappable accent. Picking one also determines light/dark behavior for the editor and canvas.
 - Independent Interface font (System, Inter, IBM Plex Sans) and Code font (IBM Plex Mono, JetBrains Mono, Fira Code, System Monospace) choices, replacing one shared monospace-only font setting. Fira Code's ligatures now actually render.
@@ -12,6 +14,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Changed
 - "Toggle Theme" (command palette) now cycles through all three themes instead of switching between two.
 - Canvas keyboard navigation between tables (arrow keys, or `j`/`k`) now wraps from the last table back to the first instead of stopping there.
+
+### Fixed
+- Two-finger trackpad scroll zoomed the graph instead of panning it, in both the classic graph and canvas mode -- it now pans, matching the Miro/Figma convention. The classic graph's mouse controls also now match canvas mode's: right-click drags the canvas, left-click drags a node or rubber-band-selects, with no modifier key needed for either.
 
 ## [0.51.2] - 2026-08-23
 ### Changed
