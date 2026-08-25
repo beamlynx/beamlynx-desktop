@@ -251,7 +251,7 @@ export const CanvasModeIndicator: React.FC<{ canvasStore: CanvasStore }> = obser
         display: 'flex',
         alignItems: 'center',
         gap: 6,
-        fontSize: '10px',
+        fontSize: 'calc(10px * var(--text-scale, 1))',
         fontFamily: 'var(--canvas-font)',
         fontWeight: 700,
         textTransform: 'uppercase',

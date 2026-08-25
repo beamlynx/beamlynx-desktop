@@ -3,6 +3,9 @@ import { lt } from 'semver';
 import { HttpClient, ConnectionInfo } from './client';
 import type { CredentialsStatus } from '../desktop';
 import { Session, Theme, InputMode } from './session';
+import { THEME_MODE, ThemeId } from '../styles/palette/tokens';
+import { UiFontId, CodeFontId } from '../styles/fonts';
+import { TextSize } from '../styles/text-size';
 import { RequiredVersion } from '../constants';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
 import { DevState } from './dev-state';
@@ -52,7 +55,7 @@ type ConnectionParams = {
   label?: string;
 };
 
-export type SettingsSection = 'connections' | 'preferences' | 'mcp' | 'about';
+export type SettingsSection = 'connections' | 'theme' | 'preferences' | 'mcp' | 'about';
 
 export class GlobalStore {
   connecting = false;
@@ -130,16 +133,70 @@ export class GlobalStore {
   sessions: Record<string, Session> = {};
   virtualSession: Session | null = null;
 
-  // Theme - moved from individual sessions to global
-  _theme: Theme;
+  // Which of the three complete themes is active - see
+  // styles/palette/themes.ts. Not a light/dark toggle crossed with a
+  // swappable accent/surface anymore (that made every theme look like a
+  // variation on the same shell - direct user feedback).
+  _themeId: ThemeId;
 
-  get theme(): Theme {
-    return this._theme;
+  get themeId(): ThemeId {
+    return this._themeId;
   }
 
-  set theme(newTheme: Theme) {
-    this._theme = newTheme;
-    setUserPreference(STORAGE_KEYS.THEME, newTheme);
+  set themeId(newThemeId: ThemeId) {
+    this._themeId = newThemeId;
+    setUserPreference(STORAGE_KEYS.THEME, newThemeId);
+  }
+
+  // Derived, not independently settable - CodeMirror's syntax theme, graph
+  // schema colors, and a few other pre-existing call sites only ever
+  // supported a plain light/dark bucket, so this maps each named theme to
+  // the bucket it behaves like (see styles/palette/tokens.ts's THEME_MODE).
+  get theme(): Theme {
+    return THEME_MODE[this._themeId];
+  }
+
+  // Interface font (--canvas-font - buttons, labels, headers, canvas node
+  // text) and code font (--code-font - the query editor and results grid,
+  // where monospace alignment actually matters) are independent choices.
+  // See styles/fonts.ts / styles/app-font.ts.
+  _uiFontFamily: UiFontId;
+
+  get uiFontFamily(): UiFontId {
+    return this._uiFontFamily;
+  }
+
+  set uiFontFamily(newFontFamily: UiFontId) {
+    this._uiFontFamily = newFontFamily;
+    setUserPreference(STORAGE_KEYS.UI_FONT_FAMILY, newFontFamily);
+  }
+
+  _codeFontFamily: CodeFontId;
+
+  get codeFontFamily(): CodeFontId {
+    return this._codeFontFamily;
+  }
+
+  set codeFontFamily(newFontFamily: CodeFontId) {
+    this._codeFontFamily = newFontFamily;
+    setUserPreference(STORAGE_KEYS.CODE_FONT_FAMILY, newFontFamily);
+  }
+
+  // Text/spacing scale across the app's own chrome (MUI theme.typography +
+  // theme.spacing - see styles/theme.ts), plus the query editor and results
+  // grid via --text-scale. Deliberately NOT CSS zoom (see styles/text-
+  // size.ts) - resizable panel widths and the canvas are stored as literal
+  // pixels, untouched by either mechanism, so this can't disturb panel
+  // balance or introduce a page scrollbar the way zoom did.
+  _textSize: TextSize;
+
+  get textSize(): TextSize {
+    return this._textSize;
+  }
+
+  set textSize(newTextSize: TextSize) {
+    this._textSize = newTextSize;
+    setUserPreference(STORAGE_KEYS.TEXT_SIZE, newTextSize);
   }
 
   // Pine / result table coloring (segment and column tints)
@@ -276,7 +333,10 @@ export class GlobalStore {
   }
 
   constructor() {
-    this._theme = getUserPreference(STORAGE_KEYS.THEME, 'dark');
+    this._themeId = getUserPreference(STORAGE_KEYS.THEME, 'dark');
+    this._uiFontFamily = getUserPreference(STORAGE_KEYS.UI_FONT_FAMILY, 'system');
+    this._codeFontFamily = getUserPreference(STORAGE_KEYS.CODE_FONT_FAMILY, 'plex-mono');
+    this._textSize = getUserPreference(STORAGE_KEYS.TEXT_SIZE, 'medium');
     this._pineTableColorsEnabled = getUserPreference(STORAGE_KEYS.PINE_TABLE_COLORS, false);
     this._canvasModeEnabled = getUserPreference(STORAGE_KEYS.CANVAS_MODE, false);
     this._autoRunEnabled = getUserPreference(STORAGE_KEYS.AUTO_RUN_ENABLED, true);
@@ -643,8 +703,12 @@ export class GlobalStore {
     }
   }
 
+  // Cycles through the three named themes (used by the command palette's
+  // "Toggle Theme" entry) - a plain binary toggle stopped making sense once
+  // there were three, not two, to choose from.
   public toggleTheme() {
-    this.theme = this.theme === 'light' ? 'dark' : 'light';
+    const order: ThemeId[] = ['light', 'dark', 'sepia'];
+    this.themeId = order[(order.indexOf(this.themeId) + 1) % order.length];
   }
 
   public toggleCanvasMode() {
@@ -833,7 +897,7 @@ export class GlobalStore {
    */
   runMcpQuery = (args: { profileId: string; expression: string }) => runMcpQueryImpl(this.mcpQueryDeps(), args);
 
-  /** Backing call for the `explain_query` MCP tool -- parse/build only, no execution. */
+  /** Backing call for the `complete_query` MCP tool -- parse/build only, no execution. */
   explainMcpQuery = (args: { profileId: string; expression: string }) =>
     explainMcpQueryImpl(this.mcpQueryDeps(), args);
 

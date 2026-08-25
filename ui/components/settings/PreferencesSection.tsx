@@ -1,42 +1,14 @@
-import { Box, Switch, Typography } from '@mui/material';
+import { Box, Typography } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../../store/store-container';
-
-type ToggleRowProps = {
-  label: string;
-  description: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-};
-
-const ToggleRow = ({ label, description, checked, onChange }: ToggleRowProps) => (
-  <Box
-    sx={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: 2,
-      py: 1.25,
-      borderBottom: '1px solid var(--border-color)',
-    }}
-  >
-    <Box>
-      <Typography variant="body2" sx={{ color: 'var(--text-color)', fontFamily: 'var(--canvas-font)' }}>
-        {label}
-      </Typography>
-      <Typography variant="caption" color="text.secondary">
-        {description}
-      </Typography>
-    </Box>
-    <Switch checked={checked} onChange={(_e, value) => onChange(value)} />
-  </Box>
-);
+import ToggleRow from './ToggleRow';
 
 /**
- * Previously these five toggles only existed as command-palette entries
+ * Previously these toggles only existed as command-palette entries
  * (utils/commands.ts) -- no visible switch anywhere, so a user who didn't
  * know Cmd/Ctrl+K existed had no way to find them at all. This is that
- * discoverability fix, not just a relocation.
+ * discoverability fix, not just a relocation. Dark theme has since moved to
+ * ThemeSection.tsx alongside the rest of the visual/appearance settings.
  */
 const PreferencesSection = () => {
   const { global } = useStores();
@@ -59,12 +31,6 @@ const PreferencesSection = () => {
       </Typography>
 
       <Box className="styled-scrollbar" sx={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-        <ToggleRow
-          label="Dark theme"
-          description="Switch between light and dark appearance."
-          checked={global.theme === 'dark'}
-          onChange={() => global.toggleTheme()}
-        />
         <ToggleRow
           label="Table colors"
           description="Color-code result table segments and columns by their source table."

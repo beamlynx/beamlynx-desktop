@@ -29,12 +29,17 @@ export const editorChrome = (isDark: boolean): Extension =>
       '&': {
         color: 'var(--canvas-text)',
         backgroundColor: 'var(--canvas-node-bg)',
-        fontFamily: 'var(--canvas-font)',
-        fontSize: '13px',
+        fontFamily: 'var(--code-font)',
+        fontSize: 'calc(13px * var(--text-scale, 1))',
       },
       '.cm-content': {
         caretColor: 'var(--canvas-trace)',
-        fontFamily: 'var(--canvas-font)',
+        fontFamily: 'var(--code-font)',
+        // Harmless for every other code font (they simply have no matching
+        // glyphs to substitute) - only Fira Code actually implements
+        // ligatures (=>, !=, etc merging into one glyph), which is exactly
+        // the kind of visible difference a code font picker should surface.
+        fontVariantLigatures: 'contextual',
       },
       '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--canvas-trace)' },
       // Selection now decides what actually runs (selecting text in SQL mode runs only
@@ -77,7 +82,7 @@ export const editorChrome = (isDark: boolean): Extension =>
         backgroundColor: 'var(--canvas-picker-bg)',
         border: '1px solid var(--canvas-picker-border)',
         color: 'var(--canvas-text)',
-        fontFamily: 'var(--canvas-font)',
+        fontFamily: 'var(--code-font)',
       },
       '.cm-tooltip-autocomplete ul li[aria-selected]': {
         backgroundColor: 'var(--canvas-chip-bg)',

@@ -1,7 +1,16 @@
 export const STORAGE_KEYS = {
   SIDEBAR_WIDTH: 'pine-sidebar-width',
   SIDEBAR_SECOND_VIEW_HEIGHT: 'pine-sidebar-second-view-height',
+  // Holds a ThemeId ('light'|'dark'|'sepia') - the key predates the switch
+  // from a plain light/dark toggle to three named themes, kept as-is since
+  // 'light'/'dark' are still valid ThemeId values (an existing user's saved
+  // preference just carries over as-is).
   THEME: 'pine-theme',
+  // Interface (UI chrome) and code (editor/results grid) fonts are
+  // independent choices - see styles/fonts.ts.
+  UI_FONT_FAMILY: 'pine-ui-font-family',
+  CODE_FONT_FAMILY: 'pine-code-font-family',
+  TEXT_SIZE: 'pine-text-size',
   VIM_MODE: 'pine-vim-mode',
   PINE_TABLE_COLORS: 'pine-table-colors',
   LAST_READ_VERSION: 'pine-last-read-version',

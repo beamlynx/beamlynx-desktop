@@ -1,57 +1,53 @@
-import { createTheme } from '@mui/material/styles';
-import { lightColors, darkColors } from './colors';
+import { createTheme, Theme } from '@mui/material/styles';
+import { buildColorTokens } from './palette/build';
+import { ColorTokens, THEME_MODE, ThemeId } from './palette/tokens';
 
-const generateCssVariables = (colors: Record<string, string>) => {
+const generateCssVariables = (colors: ColorTokens) => {
   return Object.entries(colors)
     .map(([key, value]) => `${key}: ${value};`)
     .join('');
 };
 
-const lightVars = generateCssVariables(lightColors);
-const darkVars = generateCssVariables(darkColors);
+// MUI's own default base (theme.typography.fontSize) is 14 - every default
+// Typography variant (h1..h6, body1/2, button, caption...) is generated as
+// a rem multiple of it, and MUI's internal components (buttons, chips,
+// tabs...) inherit from those variants. Scaling this one number, plus
+// theme.spacing's base unit (default 8px/factor), is what makes "Text
+// size" reach broadly across the app's own chrome through ordinary React
+// rendering - not CSS zoom, so it never touches the pixel dimensions of
+// resizable panels/the canvas (see styles/text-size.ts for why that
+// distinction is the whole point).
+const MUI_BASE_FONT_SIZE = 14;
+const MUI_BASE_SPACING = 8;
 
-const theme = createTheme({
-  palette: {
-    mode: 'light',
-    primary: {
-      main: lightColors['--primary-color'],
-    },
-    background: {
-      default: lightColors['--background-color'],
-      paper: lightColors['--node-column-bg'],
-    },
-    text: {
-      primary: lightColors['--text-color'],
-      secondary: lightColors['--node-secondary-text-color'],
-    },
-  },
-  components: {
-    MuiCssBaseline: {
-      styleOverrides: `:root{${lightVars}}`,
-    },
-  },
-});
+export const createAppTheme = (themeId: ThemeId, textScale: number): Theme => {
+  const colors = buildColorTokens(themeId);
+  const vars = generateCssVariables(colors);
+  const mode = THEME_MODE[themeId];
 
-export const darkTheme = createTheme({
-  palette: {
-    mode: 'dark',
-    primary: {
-      main: darkColors['--primary-color'],
+  return createTheme({
+    palette: {
+      mode,
+      primary: {
+        main: colors['--primary-color'],
+      },
+      background: {
+        default: colors['--background-color'],
+        paper: colors['--node-column-bg'],
+      },
+      text: {
+        primary: colors['--text-color'],
+        secondary: colors['--node-secondary-text-color'],
+      },
     },
-    background: {
-      default: darkColors['--background-color'],
-      paper: darkColors['--node-column-bg'],
+    typography: {
+      fontSize: MUI_BASE_FONT_SIZE * textScale,
     },
-    text: {
-      primary: darkColors['--text-color'],
-      secondary: darkColors['--node-secondary-text-color'],
+    spacing: (factor: number) => `${MUI_BASE_SPACING * textScale * factor}px`,
+    components: {
+      MuiCssBaseline: {
+        styleOverrides: `:root{${vars}}`,
+      },
     },
-  },
-  components: {
-    MuiCssBaseline: {
-      styleOverrides: `[data-theme='dark']{${darkVars}}`,
-    },
-  },
-});
-
-export default theme;
+  });
+};

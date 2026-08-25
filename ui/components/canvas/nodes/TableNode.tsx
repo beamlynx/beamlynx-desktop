@@ -4,6 +4,8 @@ import { Handle, NodeProps, Position, useUpdateNodeInternals } from 'reactflow';
 import { CanvasHandle, CanvasTableNodeData, PickerState } from '../../../store/canvas/canvas.model';
 import { getNodeHeight, nodeWidth } from '../../../store/canvas/layout';
 import { useCanvasStore } from '../canvas-context';
+import { useStores } from '../../../store/store-container';
+import { NOTCHED_NODE_THEMES } from '../../../styles/palette/themes';
 
 /**
  * The alias a currently-open picker is targeting, regardless of its mode -
@@ -350,11 +352,22 @@ const ChipRow = ({
 // because the top corners are already claimed (sequence badge top-left,
 // delete × top-right) - cutting either of those would collide with a real
 // control.
+//
+// Only drawn for themes in NOTCHED_NODE_THEMES (styles/palette/themes.ts) -
+// it's a technical/schematic detail that suited the app when there was one
+// blueprint-inspired identity for everything; now that a theme can be warm
+// and paper-like (Sepia) or clean and airy (Light), carrying the same PCB
+// notch into those read as leftover blueprint DNA rather than a deliberate
+// choice (direct feedback: "if you change the theme, these nodes should
+// also change"). Falls back to the plain rounded card (borderRadius alone)
+// everywhere else.
 const notchSize = 10;
 const cardClipPath = `polygon(0 0, 100% 0, 100% 100%, ${notchSize}px 100%, 0 calc(100% - ${notchSize}px))`;
 
 const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data }) => {
   const canvasStore = useCanvasStore();
+  const { global } = useStores();
+  const hasNotch = NOTCHED_NODE_THEMES.includes(global.themeId);
   const updateNodeInternals = useUpdateNodeInternals();
   const handleKey = [...data.leftHandles, ...data.rightHandles].map(h => h.id).join(',');
   const [hovered, setHovered] = useState(false);
@@ -531,8 +544,8 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
             // subtle to notice at a glance across a busy graph) for whichever
             // node has keyboard focus - see isFocusTarget above.
             background: isFocusTarget ? 'var(--canvas-node-bg-current)' : 'var(--canvas-node-bg)',
-            borderRadius: '3px',
-            clipPath: cardClipPath,
+            borderRadius: hasNotch ? '3px' : '8px',
+            clipPath: hasNotch ? cardClipPath : undefined,
             color: 'var(--canvas-text)',
             fontFamily: 'var(--canvas-font)',
           }}

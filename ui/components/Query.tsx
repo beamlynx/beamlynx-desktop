@@ -45,7 +45,7 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
       // click-to-edit.
       EditorView.theme({
         '&': {
-          fontSize: '12px',
+          fontSize: 'calc(12px * var(--text-scale, 1))',
           height: '100%',
         },
         '.cm-editor': {
@@ -97,7 +97,7 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
     return (<div
       style={{
         padding: '8px 12px',
-        fontSize: '12px',
+        fontSize: 'calc(12px * var(--text-scale, 1))',
         fontFamily: 'var(--canvas-font)',
         color: 'var(--canvas-text-dim)',
       }}
@@ -119,7 +119,7 @@ const Query: React.FC<QueryProps> = observer(({ sessionId }) => {
     <div
       style={{
         padding: '8px 12px',
-        fontSize: '12px',
+        fontSize: 'calc(12px * var(--text-scale, 1))',
         fontFamily: 'var(--canvas-font)',
         color: 'var(--canvas-text-dim)',
       }}

@@ -102,6 +102,13 @@ const COMMANDS: Command[] = [
     isEnabled: ALWAYS_ENABLED,
   },
   {
+    id: 'open-appearance',
+    label: 'Open Appearance Settings',
+    category: 'View',
+    handler: global => global.setShowSettings(true, 'theme'),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
     id: 'list-connections',
     label: 'List Database Connections',
     category: 'View',

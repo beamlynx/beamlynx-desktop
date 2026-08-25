@@ -165,18 +165,18 @@ export class CanvasStore {
     this._focusedAlias = alias;
   }
 
-  /** Next-higher `data.order` (ArrowDown/j) - clamps at the last node. */
+  /** Next-higher `data.order` (ArrowDown/j) - wraps from the last node back to the first. */
   focusNext() {
     const targets = this.orderedFocusTargets;
     const idx = targets.indexOf(this.focusedAlias);
-    this.focusNode(targets[Math.min(idx + 1, targets.length - 1)]);
+    this.focusNode(targets[(idx + 1) % targets.length]);
   }
 
-  /** Next-lower `data.order` (ArrowUp/k) - clamps at the Start node. */
+  /** Next-lower `data.order` (ArrowUp/k) - wraps from the first node back to the last. */
   focusPrev() {
     const targets = this.orderedFocusTargets;
     const idx = targets.indexOf(this.focusedAlias);
-    this.focusNode(targets[Math.max(idx - 1, 0)]);
+    this.focusNode(targets[(idx - 1 + targets.length) % targets.length]);
   }
 
   /**

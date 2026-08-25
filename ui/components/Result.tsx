@@ -452,7 +452,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
             borderRadius: '3px',
             color: 'var(--canvas-text-dim)',
             fontFamily: 'var(--canvas-font)',
-            fontSize: '12px',
+            fontSize: 'calc(12px * var(--text-scale, 1))',
             fontWeight: 600,
             textTransform: 'uppercase',
             letterSpacing: '0.4px',
@@ -579,7 +579,18 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
                 '--DataGrid-containerBackground': 'var(--canvas-node-bg)',
                 '--DataGrid-rowBorderColor': 'var(--canvas-node-border)',
                 color: 'var(--canvas-text)',
-                fontFamily: 'var(--canvas-font)',
+                // Tabular data benefits from the same monospace alignment
+                // code does - --code-font, not --canvas-font (the UI font),
+                // unlike the surrounding chrome (empty-state text, icon
+                // buttons, context menu) in this same file.
+                fontFamily: 'var(--code-font)',
+                // rem, not calc(...* var(--text-scale)) like the other code-
+                // surface font sizes in this file/Query.tsx/editor-theme.ts -
+                // those are px literals unaffected by the root font-size
+                // change pages/_app.tsx now also makes, but this one IS rem,
+                // so it already scales via inheritance; multiplying by
+                // --text-scale too would double-apply the scale.
+                fontSize: '0.875rem',
                 border: '1px solid var(--canvas-node-border)',
                 borderRadius: '3px',
                 overflow: 'hidden',

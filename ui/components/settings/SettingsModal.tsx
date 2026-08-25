@@ -5,6 +5,7 @@ import { useStores } from '../../store/store-container';
 import { isDesktop } from '../../store/util';
 import { SettingsSection } from '../../store/global.store';
 import ConnectionsSection from './ConnectionsSection';
+import ThemeSection from './ThemeSection';
 import PreferencesSection from './PreferencesSection';
 import McpSection from './McpSection';
 import AboutSection from './AboutSection';
@@ -14,6 +15,7 @@ const RAIL_ITEMS: { id: SettingsSection; label: string }[] = [
   // server itself" concept will also use the word "connection", so this
   // stays unambiguous about which kind it means from the rail alone.
   { id: 'connections', label: 'Database Connections' },
+  { id: 'theme', label: 'Appearance' },
   { id: 'preferences', label: 'Preferences' },
   { id: 'mcp', label: 'MCP' },
   { id: 'about', label: 'About' },
@@ -155,6 +157,7 @@ const SettingsModal = () => {
             such quirk. */}
         <Box sx={{ flex: 1, minHeight: 0, p: 3, display: 'flex', flexDirection: 'column' }}>
           {activeSection === 'connections' && <ConnectionsSection />}
+          {activeSection === 'theme' && <ThemeSection />}
           {activeSection === 'preferences' && <PreferencesSection />}
           {activeSection === 'mcp' && <McpSection />}
           {activeSection === 'about' && <AboutSection />}
