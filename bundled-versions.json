@@ -1,5 +1,5 @@
 {
-  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang unchanged since 0.5.0 (still master's merge commit for 0.39.0 -- pine-lang doesn't tag releases, so this is a SHA, not a tag) -- no pine-lang changes since then. beamlynx-ui bumped to its tagged 0.52.0, which bundles the new Appearance settings (three themes, separate Interface/Code fonts, a Text size control) plus the trackpad two-finger-scroll pan fix and canvas keyboard navigation wraparound.",
-  "pineLangRef": "5b39a1836a7c7173ee269df17e0cba752b47763d",
+  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang bumped to 0.40.0's merge commit (still a SHA, not a tag -- pine-lang doesn't tag releases), which stops per-query logging deadlocking the server and stops connection pools leaking a database connection on every reconnect. beamlynx-ui unchanged at its tagged 0.52.0.",
+  "pineLangRef": "a1d15959fa3dbe2e446123534553a1ae6229dbbb",
   "beamlynxUiRef": "0.52.0"
 }
