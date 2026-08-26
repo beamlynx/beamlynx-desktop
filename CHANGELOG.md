@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Fixed
+- Auto-update never actually worked on macOS -- `electron-updater`'s `MacUpdater` requires a `.zip` release asset to apply an update and throws `ERR_UPDATER_ZIP_FILE_NOT_FOUND` when only the `.dmg` is published, but that error was swallowed silently (no UI, only a console log), so it looked like nothing was happening. Mac releases now also publish a `.zip`. This particularly affected the Homebrew cask, which sets `auto_updates true` and has no fallback update path of its own.
 
 ## [0.8.0] - 2026-08-26
 ### Added

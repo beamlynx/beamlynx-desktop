@@ -82,7 +82,16 @@ appImage:
 
 mac:
   target:
+    # electron-updater's MacUpdater hard-requires a .zip artifact to apply
+    # updates -- it throws ERR_UPDATER_ZIP_FILE_NOT_FOUND if only a .dmg is
+    # published (dmg is fine for the initial install, e.g. via the Homebrew
+    # cask, but MacUpdater never accepts it as the update payload itself).
+    # Without this, checkForUpdates() still reports update-available, but
+    # the download step fails immediately and silently (DesktopUpdateBanner
+    # renders nothing for the error state) -- so auto-update looked like it
+    # was doing nothing at all.
     - dmg
+    - zip
   category: public.app-category.developer-tools
 
 win:
