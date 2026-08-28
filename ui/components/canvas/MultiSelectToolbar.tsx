@@ -3,7 +3,7 @@ import { observer } from 'mobx-react-lite';
 import { CanvasStore } from '../../store/canvas/canvas.store';
 
 const toolbarButtonStyle: React.CSSProperties = {
-  fontSize: '11px',
+  fontSize: 'calc(13px * var(--text-scale, 1))',
   fontFamily: 'var(--canvas-font)',
   fontWeight: 600,
   textTransform: 'uppercase',
@@ -77,7 +77,13 @@ const MultiSelectToolbar: React.FC<{ canvasStore: CanvasStore }> = observer(({ c
         boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
       }}
     >
-      <span style={{ fontSize: '11px', fontFamily: 'var(--canvas-font)', color: 'var(--canvas-text-dim)' }}>
+      <span
+        style={{
+          fontSize: 'calc(13px * var(--text-scale, 1))',
+          fontFamily: 'var(--canvas-font)',
+          color: 'var(--canvas-text-dim)',
+        }}
+      >
         {count} selected
       </span>
       <span title="Not implemented yet" style={disabledButtonStyle}>

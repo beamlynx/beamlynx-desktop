@@ -54,7 +54,7 @@ const Banner = ({ children, variant = 'warn' }: { children: React.ReactNode; var
       zIndex: 15,
       padding: '4px 10px',
       borderRadius: 3,
-      fontSize: 11,
+      fontSize: 'calc(13px * var(--text-scale, 1))',
       fontFamily: 'var(--canvas-font)',
       background: variant === 'warn' ? 'var(--canvas-warn)' : 'var(--canvas-trace)',
       color: 'var(--canvas-accent-text)',

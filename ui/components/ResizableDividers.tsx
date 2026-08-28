@@ -3,6 +3,7 @@ import {
   MAX_SIDEBAR_SECOND_VIEW_HEIGHT,
   MIN_NEW_LAYOUT_PANE_SIZE,
   MIN_NEW_LAYOUT_PANEL_SIZE,
+  MIN_SETTINGS_PANEL_WIDTH,
   MIN_SIDEBAR_SECOND_VIEW_HEIGHT,
   MIN_SIDEBAR_WIDTH,
   NEW_LAYOUT_GUTTER,
@@ -245,6 +246,62 @@ export const NewLayoutPanelDivider = ({
       flexItem
       sx={{
         width: '10px',
+        flexShrink: 0,
+        cursor: 'col-resize',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: 0,
+        '&:hover': {
+          backgroundColor: 'action.hover',
+          transition: 'background-color 0.2s',
+          opacity: 1,
+        },
+      }}
+      onMouseDown={onMouseDown}
+    >
+      <Box
+        sx={{
+          width: '4px',
+          height: '24px',
+          backgroundColor: 'var(--divider-color)',
+          borderRadius: '2px',
+        }}
+      />
+    </Divider>
+  );
+};
+
+/**
+ * The docked Settings panel's own divider - a third sibling alongside the
+ * Canvas|Results split above, not part of it, so it gets its own storage key
+ * and bounds rather than reusing NewLayoutPaneDivider's. Always vertical:
+ * unlike Canvas|Results, the Settings dock doesn't have a top/bottom
+ * orientation to toggle between (see NewLayoutView.tsx's own comment on why
+ * it always sits on the right regardless of the Canvas|Results orientation).
+ */
+export const NewLayoutSettingsPanelDivider = ({
+  settingsPanelWidth,
+  setSettingsPanelWidth,
+}: {
+  settingsPanelWidth: number;
+  setSettingsPanelWidth: (width: number) => void;
+}) => {
+  const onMouseDown = useResizeDrag({
+    value: settingsPanelWidth,
+    setValue: setSettingsPanelWidth,
+    min: MIN_SETTINGS_PANEL_WIDTH,
+    max: () => window.innerWidth * 0.6,
+    storageKey: STORAGE_KEYS.SETTINGS_PANEL_WIDTH,
+    axis: 'x',
+  });
+
+  return (
+    <Divider
+      orientation="vertical"
+      flexItem
+      sx={{
+        width: `${NEW_LAYOUT_GUTTER}px`,
         flexShrink: 0,
         cursor: 'col-resize',
         display: 'flex',

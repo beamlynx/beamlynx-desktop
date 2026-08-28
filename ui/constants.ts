@@ -39,6 +39,13 @@ export const DEFAULT_NEW_LAYOUT_PANEL_WIDTH = 340;
 export const DEFAULT_NEW_LAYOUT_PANEL_HEIGHT = 220;
 export const MIN_NEW_LAYOUT_PANEL_SIZE = 160;
 
+/* New Layout's docked Settings panel - a third sibling alongside the
+ * Canvas|Results split (NewLayoutView.tsx), not part of it, so it gets its
+ * own sizing rather than reusing the pane/panel constants above. Wide enough
+ * by default for the 210px rail plus a readable content column. */
+export const DEFAULT_SETTINGS_PANEL_WIDTH = 640;
+export const MIN_SETTINGS_PANEL_WIDTH = 420;
+
 /* Pine Server */
 export const RequiredVersion = '0.39.0';
 

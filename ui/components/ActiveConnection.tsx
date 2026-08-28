@@ -45,6 +45,24 @@ const ActiveConnection = () => {
 
   const displayText = global.pineConnected ? displayName : '🔌 No connection to Pine server!';
 
+  // Reconnect is only meaningful once the DB actually comes back up -- an
+  // assigned connection whose pool died (or never got established because
+  // the DB wasn't running yet at app boot). Before this, there was no way
+  // to retry short of switching tabs (which re-fires the reaction that
+  // calls ensureSessionConnected as a side effect) or reloading the whole
+  // app; reported live as "I run the DB, go back to the app, but there's
+  // no way to reconnect." ensureSessionConnected itself already no-ops if
+  // Pine server isn't reachable (`!this.pineConnected`) or nothing's
+  // actually assigned, so gating the button on the same two conditions
+  // just avoids showing a control that would silently do nothing.
+  const showReconnect =
+    global.pineConnected && !!connectionId && !isConnectionLive && !activeSession?.connecting;
+
+  const handleReconnect = (e: MouseEvent<HTMLElement>) => {
+    e.stopPropagation();
+    void global.ensureSessionConnected(global.activeSessionId);
+  };
+
   const handleSwitchTo = async (id: string) => {
     if (isDesktop()) {
       if (id === global.activeProfileId) {
@@ -97,7 +115,9 @@ const ActiveConnection = () => {
             // reconnecting) -- same color either way, so it's still
             // obvious which connection this is.
             backgroundColor: isConnectionLive ? connectionColor : 'transparent',
-            border: isConnectionLive ? 'none' : `1.5px solid ${connectionColor || 'var(--border-color)'}`,
+            border: isConnectionLive
+              ? 'none'
+              : `1.5px solid ${connectionColor || 'var(--border-color)'}`,
             boxSizing: 'border-box',
             flexShrink: 0,
           }}
@@ -116,6 +136,21 @@ const ActiveConnection = () => {
       >
         {displayText}
       </Typography>
+      {showReconnect && (
+        <Typography
+          variant="caption"
+          component="code"
+          onClick={handleReconnect}
+          sx={{
+            color: 'var(--primary-color)',
+            fontFamily: 'var(--canvas-font)',
+            cursor: 'pointer',
+            '&:hover': { textDecoration: 'underline' },
+          }}
+        >
+          ↻ Reconnect
+        </Typography>
+      )}
       <Menu
         anchorEl={connectionMenuAnchor}
         open={Boolean(connectionMenuAnchor)}
@@ -144,7 +179,9 @@ const ActiveConnection = () => {
         {global.connections.map(({ id, label }) => (
           <MenuItem
             key={id}
-            selected={isDesktop() ? id === global.activeProfileId : id === activeSession?.connectionId}
+            selected={
+              isDesktop() ? id === global.activeProfileId : id === activeSession?.connectionId
+            }
             disabled={switchingConnection}
             onClick={() => handleSwitchTo(id)}
             sx={{

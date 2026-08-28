@@ -93,7 +93,15 @@ export const RelationDots = ({
                   top,
                   transform: 'translateY(-50%)',
                   maxWidth: nodeWidth - 24,
-                  fontSize: '7px',
+                  fontSize: 'calc(9px * var(--text-scale, 1))',
+                  // Kept tight to the glyph (not the browser default ~1.2)
+                  // so a larger Text Size setting doesn't push this single
+                  // line's line-box into the row above/below it - these
+                  // labels sit every handleRowHeight (14px) apart via
+                  // absolute position + translateY(-50%), not normal flow,
+                  // so nothing here reserves extra vertical space for a
+                  // taller line-height the way flowed text would.
+                  lineHeight: 1,
                   fontFamily: 'var(--canvas-font)',
                   color: 'var(--canvas-text-dim)',
                   whiteSpace: 'nowrap',
@@ -187,15 +195,19 @@ export const ActionButton = ({
       onClick({ x: e.clientX, y: e.clientY });
     }}
     style={{
-      fontSize: '8px',
+      fontSize: 'calc(10px * var(--text-scale, 1))',
       // Fixed regardless of emphasizeKey - the emphasized letter below only
       // ever changes weight/color, never size, specifically so this row's
       // rendered height can't change when a node gains/loses keyboard focus.
       // A size bump here once did exactly that (a taller glyph stretched the
       // whole flex row a couple px taller, shifting the card frame beneath
       // it down by the same amount) - confirmed live as the cause of "the
-      // node moves when the focus border appears".
-      lineHeight: '8px',
+      // node moves when the focus border appears". Scaling with the Text
+      // Size setting is unaffected by that bug - the setting is constant
+      // across focus states, so it can't itself cause the row to resize on
+      // focus change; lineHeight is kept identical to fontSize (not a fixed
+      // px) so it still tracks the scale instead of clipping a larger glyph.
+      lineHeight: 'calc(10px * var(--text-scale, 1))',
       fontFamily: 'var(--canvas-font)',
       fontWeight: 600,
       textTransform: 'uppercase',
@@ -224,7 +236,10 @@ export const ActionButton = ({
 // read as one continuous run of words ("join select where order"), not as
 // four separate controls.
 export const ActionDivider = () => (
-  <span aria-hidden style={{ color: 'var(--canvas-node-border)', fontSize: '9px' }}>
+  <span
+    aria-hidden
+    style={{ color: 'var(--canvas-node-border)', fontSize: 'calc(11px * var(--text-scale, 1))' }}
+  >
     |
   </span>
 );
@@ -261,7 +276,10 @@ export const DeleteButton = ({ onClick, testId }: { onClick: () => void; testId?
       alignItems: 'center',
       justifyContent: 'center',
       cursor: 'pointer',
-      fontSize: '13px',
+      // Base kept a bit under the box's fixed 16px (rather than the old
+      // fixed 13px) so it still comfortably fits at Text Size "large"
+      // (calc(11px * 1.25) = 13.75px) without growing the box itself.
+      fontSize: 'calc(11px * var(--text-scale, 1))',
       lineHeight: 1,
       color: 'var(--canvas-text-dim)',
     }}
@@ -300,7 +318,7 @@ const ChipRow = ({
     >
       <span
         style={{
-          fontSize: '7px',
+          fontSize: 'calc(9px * var(--text-scale, 1))',
           fontFamily: 'var(--canvas-font)',
           textTransform: 'uppercase',
           fontWeight: 700,
@@ -314,7 +332,7 @@ const ChipRow = ({
         <div
           key={`${chip}-${i}`}
           style={{
-            fontSize: '8px',
+            fontSize: 'calc(10px * var(--text-scale, 1))',
             fontFamily: 'var(--canvas-font)',
             background: 'var(--canvas-chip-bg)',
             padding: '2px 6px',
@@ -565,7 +583,7 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
             <span
               style={{
                 flexShrink: 0,
-                fontSize: '9px',
+                fontSize: 'calc(11px * var(--text-scale, 1))',
                 fontFamily: 'var(--canvas-font)',
                 color: 'var(--canvas-text-dim)',
               }}

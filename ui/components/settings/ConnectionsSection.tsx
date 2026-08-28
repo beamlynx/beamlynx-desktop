@@ -668,7 +668,9 @@ const ConnectionsSection = () => {
                     '& .MuiInput-input': {
                       py: 0,
                       fontFamily: 'var(--canvas-font)',
-                      fontSize: '0.875rem',
+                      // Fixed px, not rem -- see SettingsModal.tsx's
+                      // settingsTheme comment.
+                      fontSize: '14px',
                       color: 'var(--text-color)',
                     },
                     '& .MuiInput-underline:before': { borderBottomColor: 'var(--border-color)' },

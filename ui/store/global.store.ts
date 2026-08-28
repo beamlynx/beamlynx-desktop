@@ -11,7 +11,10 @@ import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preference
 import { DevState } from './dev-state';
 import { getCommandById } from '../utils/commands';
 import { CONNECTION_COLOR_PALETTE, isDesktop, isPlayground } from './util';
-import { runMcpQuery as runMcpQueryImpl, explainMcpQuery as explainMcpQueryImpl } from './mcp-query';
+import {
+  runMcpQuery as runMcpQueryImpl,
+  explainMcpQuery as explainMcpQueryImpl,
+} from './mcp-query';
 
 /**
  * The subset of a Session that's worth restoring on reload: the pine/sql
@@ -280,6 +283,30 @@ export class GlobalStore {
     setUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_VISIBLE, value);
   }
 
+  // A graph-only, distraction-free view: New Layout's header, tab strip, and
+  // Results pane all hide, leaving just Canvas (see AppView.tsx/PineTabs.tsx/
+  // NewLayoutView.tsx's isZenModeActive checks). Transient, not persisted -
+  // unlike layoutMode/canvasModeEnabled above, this is a momentary focus
+  // toggle for the current sitting, not a lasting preference, so it always
+  // starts off on reload. Read isZenModeActive below, not this field
+  // directly, in every one of those render checks.
+  zenMode = false;
+
+  // What autoRunEnabled was the instant before toggleZenMode last turned Zen
+  // mode on - null whenever Zen mode is off. Not persisted, same reasoning
+  // as zenMode itself; auto-run doesn't make sense while heads-down on the
+  // graph (see toggleZenMode), and this is what lets turning it back off
+  // hand auto-run back exactly as you left it instead of guessing a default.
+  _autoRunBeforeZenMode: boolean | null = null;
+
+  // The check every render site (AppView/PineTabs/NewLayoutView) actually
+  // wants - `zenMode` alone would hide Legacy Layout's header too if it were
+  // ever left `true` while switching layouts, even though Legacy never has
+  // the Canvas/Results crowding problem Zen mode exists to solve.
+  get isZenModeActive(): boolean {
+    return this.zenMode && this.layoutMode === 'new';
+  }
+
   // User
   email = '';
   domain = '';
@@ -341,10 +368,7 @@ export class GlobalStore {
     this._canvasModeEnabled = getUserPreference(STORAGE_KEYS.CANVAS_MODE, false);
     this._autoRunEnabled = getUserPreference(STORAGE_KEYS.AUTO_RUN_ENABLED, true);
     this._layoutMode = getUserPreference(STORAGE_KEYS.LAYOUT_MODE, 'new');
-    this._newLayoutPanelVisible = getUserPreference(
-      STORAGE_KEYS.NEW_LAYOUT_PANEL_VISIBLE,
-      false,
-    );
+    this._newLayoutPanelVisible = getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_VISIBLE, false);
     this._commandHistory = getUserPreference(STORAGE_KEYS.COMMAND_HISTORY, []);
     this.connectionColors = getUserPreference(STORAGE_KEYS.CONNECTION_COLORS, {});
     makeAutoObservable(this);
@@ -421,7 +445,10 @@ export class GlobalStore {
    * knows whether it still needs to create the usual blank default session.
    */
   private restoreSessions = (): boolean => {
-    const persisted = getUserPreference(STORAGE_KEYS.SESSIONS, null) as PersistedSessionsState | null;
+    const persisted = getUserPreference(
+      STORAGE_KEYS.SESSIONS,
+      null,
+    ) as PersistedSessionsState | null;
     if (!persisted || !Array.isArray(persisted.sessions) || persisted.sessions.length === 0) {
       return false;
     }
@@ -488,7 +515,9 @@ export class GlobalStore {
   private resolveConnectionEntry = (connectionId: string): ConnectionInfo | undefined => {
     if (!connectionId) return undefined;
     return this.connections.find(
-      c => c.id === connectionId || (c.dbHost && c.dbPort && `${c.dbHost}:${c.dbPort}` === connectionId),
+      c =>
+        c.id === connectionId ||
+        (c.dbHost && c.dbPort && `${c.dbHost}:${c.dbPort}` === connectionId),
     );
   };
 
@@ -552,7 +581,9 @@ export class GlobalStore {
         // keyed differently from the saved-profile list (see connect() below)
         // -- otherwise this prune would delete it the instant it's assigned,
         // since it's never "in" this desktop-mode list of profile ids.
-        this.pruneConnectionColors([...this.connections.map(c => c.id), this.connection].filter(Boolean));
+        this.pruneConnectionColors(
+          [...this.connections.map(c => c.id), this.connection].filter(Boolean),
+        );
         this.connectionsLoaded = true;
       });
       return this.connections;
@@ -723,6 +754,20 @@ export class GlobalStore {
     this.layoutMode = this.layoutMode === 'legacy' ? 'new' : 'legacy';
   }
 
+  public toggleZenMode() {
+    if (this.zenMode) {
+      this.zenMode = false;
+      if (this._autoRunBeforeZenMode !== null) {
+        this.autoRunEnabled = this._autoRunBeforeZenMode;
+        this._autoRunBeforeZenMode = null;
+      }
+    } else {
+      this._autoRunBeforeZenMode = this.autoRunEnabled;
+      this.autoRunEnabled = false;
+      this.zenMode = true;
+    }
+  }
+
   /**
    * "Toggle Pine Panel" and "Toggle SQL Panel" (below) are two different
    * ways to open the SAME New Layout panel in a given mode - not two
@@ -884,7 +929,10 @@ export class GlobalStore {
     getMcpConnectionId: (profileId: string) => this.mcpConnectionsByProfile[profileId],
     setMcpConnectionId: (profileId: string, connectionId: string) => {
       runInAction(() => {
-        this.mcpConnectionsByProfile = { ...this.mcpConnectionsByProfile, [profileId]: connectionId };
+        this.mcpConnectionsByProfile = {
+          ...this.mcpConnectionsByProfile,
+          [profileId]: connectionId,
+        };
       });
     },
   });
@@ -895,7 +943,8 @@ export class GlobalStore {
    * human's active tab. See store/mcp-query.ts for the safety rules this
    * enforces (no raw SQL, no delete!, connection-id always explicit).
    */
-  runMcpQuery = (args: { profileId: string; expression: string }) => runMcpQueryImpl(this.mcpQueryDeps(), args);
+  runMcpQuery = (args: { profileId: string; expression: string }) =>
+    runMcpQueryImpl(this.mcpQueryDeps(), args);
 
   /** Backing call for the `complete_query` MCP tool -- parse/build only, no execution. */
   explainMcpQuery = (args: { profileId: string; expression: string }) =>
@@ -912,7 +961,9 @@ export class GlobalStore {
     if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
     await window.beamlynxDesktop.credentials.setMcpEnabled(id, enabled);
     runInAction(() => {
-      this.connections = this.connections.map(c => (c.id === id ? { ...c, mcpEnabled: enabled } : c));
+      this.connections = this.connections.map(c =>
+        c.id === id ? { ...c, mcpEnabled: enabled } : c,
+      );
     });
   };
 
@@ -927,7 +978,9 @@ export class GlobalStore {
       const profile = await window.beamlynxDesktop.credentials.rename(id, label);
       if (!profile) return;
       runInAction(() => {
-        this.connections = this.connections.map(c => (c.id === id ? { ...c, label: profile.label } : c));
+        this.connections = this.connections.map(c =>
+          c.id === id ? { ...c, label: profile.label } : c,
+        );
       });
     } catch (e) {
       const message = (e as Error)?.message ?? 'Unknown error';
@@ -959,8 +1012,11 @@ export class GlobalStore {
     // pine's own id (host:port) the same way pine derives it itself
     // (pine.db.connections/make-connection-id) so the close attempt targets
     // the right pool.
-    const pineId = useDesktop && conn?.dbHost && conn?.dbPort ? `${conn.dbHost}:${conn.dbPort}` : id;
-    console.log(`[credentials] deleteConnection: id=${id} useDesktop=${useDesktop} pineId=${pineId}`);
+    const pineId =
+      useDesktop && conn?.dbHost && conn?.dbPort ? `${conn.dbHost}:${conn.dbPort}` : id;
+    console.log(
+      `[credentials] deleteConnection: id=${id} useDesktop=${useDesktop} pineId=${pineId}`,
+    );
 
     try {
       await client.deleteConnection(pineId);
@@ -1011,7 +1067,8 @@ export class GlobalStore {
     const conn = this.connections.find(c => c.id === id);
     // Same id resolution as deleteConnection: in desktop mode `id` is the
     // saved profile's id, not pine's own (host:port) id.
-    const pineId = useDesktop && conn?.dbHost && conn?.dbPort ? `${conn.dbHost}:${conn.dbPort}` : id;
+    const pineId =
+      useDesktop && conn?.dbHost && conn?.dbPort ? `${conn.dbHost}:${conn.dbPort}` : id;
     try {
       await client.reindexConnection(pineId);
     } catch (e) {
@@ -1029,7 +1086,9 @@ export class GlobalStore {
    * and ensureSessionConnected's silent background reconnect, which must
    * not fork tabs or touch activeSessionId the way `connect` does.
    */
-  private establishConnection = async (params: ConnectionParams): Promise<{ id: string; version: string }> => {
+  private establishConnection = async (
+    params: ConnectionParams,
+  ): Promise<{ id: string; version: string }> => {
     const connectionId = await client.createConnection(params);
     if (!connectionId) {
       throw new Error("Connection wasn't created");
@@ -1126,7 +1185,9 @@ export class GlobalStore {
       return;
     }
     if (this.isConnectionLive(session.connectionId)) {
-      console.log(`[credentials] ensureSessionConnected(${sessionId}): already live (${session.connectionId}), no-op`);
+      console.log(
+        `[credentials] ensureSessionConnected(${sessionId}): already live (${session.connectionId}), no-op`,
+      );
       return;
     }
 
@@ -1335,7 +1396,9 @@ export class GlobalStore {
         // liveConnectionIds alone rather than wiping the indicator out.
         if (liveConnections) {
           this.liveConnectionIds = Array.from(
-            new Set([...liveConnections.connections.map(c => c.id), this.connection].filter(Boolean)),
+            new Set(
+              [...liveConnections.connections.map(c => c.id), this.connection].filter(Boolean),
+            ),
           );
         }
 
@@ -1398,7 +1461,9 @@ export class GlobalStore {
     const expression = y || x;
 
     const name =
-      length > maxLength ? expression.substring(0, maxLength).replaceAll('|', '') + '...' : expression || '...';
+      length > maxLength
+        ? expression.substring(0, maxLength).replaceAll('|', '') + '...'
+        : expression || '...';
 
     // Visibly distinguish the tab MCP-driven queries run in from the
     // human's own tabs -- see mcpSessionId/runMcpQuery above.
