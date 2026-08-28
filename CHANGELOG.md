@@ -5,6 +5,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-08-28
+### Fixed
+- macOS auto-update still didn't work in 0.9.0, despite that release's own fix -- the release workflow's artifact-upload step never actually included the `.zip` file `electron-builder` produces (only its `.blockmap`, matched by a broader pattern, which is what made the miss easy to overlook). `MacUpdater` requires the real `.zip` to apply an update, not just its blockmap.
+
 ## [0.9.0] - 2026-08-28
 ### Added
 - Zen mode: a graph-only, distraction-free view that hides the header, tab strip, and Results, and turns auto-run off for as long as it's on, restored once you exit. Reachable from the command palette for now (bundled beamlynx-ui 0.53.0).
