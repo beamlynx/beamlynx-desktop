@@ -26,6 +26,7 @@ export const STORAGE_KEYS = {
   NEW_LAYOUT_PANEL_VISIBLE: 'pine-new-layout-panel-visible',
   NEW_LAYOUT_PANEL_WIDTH: 'pine-new-layout-panel-width',
   NEW_LAYOUT_PANEL_HEIGHT: 'pine-new-layout-panel-height',
+  SETTINGS_PANEL_WIDTH: 'pine-settings-panel-width',
 } as const;
 
 export const getUserPreference = (key: string, defaultValue: any) => {

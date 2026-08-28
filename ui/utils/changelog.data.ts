@@ -23,6 +23,50 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.53.0',
+    date: '2026-08-28',
+    added: [
+      {
+        title: 'Zen mode',
+        description:
+          "A graph-only, distraction-free view (New Layout) that hides the header, tab strip, and Results, and turns auto-run off for as long as it's on (restored to whatever it was set to once you exit). Command palette only for now, no dedicated key.",
+      },
+      {
+        title: 'Settings keyboard shortcut',
+        description: 'Ctrl/Cmd+Shift+, toggles Settings open and closed, matching the gear icon.',
+      },
+      {
+        title: 'A "Reconnect" action for a dead database connection',
+        description:
+          "Shown next to the connection label in the header whenever a tab's assigned database connection isn't live (e.g. the database wasn't running yet when the app started). Previously the only way to retry was switching tabs or reloading the whole app.",
+      },
+    ],
+    changed: [
+      {
+        title: 'Ctrl/Cmd+, now toggles Settings',
+        description:
+          "Matching Slack's and most native Mac apps' Preferences convention, instead of the SQL panel. Ctrl/Cmd+. still toggles the Pine panel; Ctrl/Cmd+Shift+. now toggles the SQL panel.",
+      },
+      {
+        title: 'Settings in New Layout is now a docked panel on the left',
+        description:
+          'Spans the full height (tab strip included) and stays open across tab switches, instead of living inside whichever tab was active when it was opened. No longer closes on Escape.',
+      },
+    ],
+    fixed: [
+      {
+        title: "Canvas text didn't scale with the Text Size setting",
+        description:
+          'Node labels, chips, and toolbars now scale with Text Size (previously only the rest of the app did) and are larger at every size to begin with. The keybinding legend at the bottom-left of the canvas is now bigger and shows each shortcut key in bold accent color.',
+      },
+      {
+        title: 'Settings floated on top of the canvas',
+        description:
+          "It no longer opens as a floating modal on top of the canvas in New Layout, so it never covers the canvas or results while you tune a change against them. Changing Text Size while the Appearance panel is open no longer reflows the panel itself. Its border and edges now match Canvas's own pane.",
+      },
+    ],
+  },
+  {
     version: '0.52.0',
     date: '2026-08-25',
     added: [
@@ -34,11 +78,12 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: 'Separate Interface and Code fonts',
         description:
-          'Interface font (System, Inter, IBM Plex Sans) and Code font (IBM Plex Mono, JetBrains Mono, Fira Code, System Monospace) are now independent choices, replacing one shared monospace-only font setting. Fira Code\'s ligatures now actually render.',
+          "Interface font (System, Inter, IBM Plex Sans) and Code font (IBM Plex Mono, JetBrains Mono, Fira Code, System Monospace) are now independent choices, replacing one shared monospace-only font setting. Fira Code's ligatures now actually render.",
       },
       {
         title: 'Text size',
-        description: 'Small/Medium/Large - scales the app\'s text and spacing without resizing panels or the canvas.',
+        description:
+          "Small/Medium/Large - scales the app's text and spacing without resizing panels or the canvas.",
       },
     ],
     changed: [
@@ -48,14 +93,15 @@ export const CHANGELOG: ChangelogVersion[] = [
       },
       {
         title: 'Canvas keyboard navigation between tables now wraps around',
-        description: "Arrow keys (or j/k) now wrap from the last table back to the first instead of stopping there.",
+        description:
+          'Arrow keys (or j/k) now wrap from the last table back to the first instead of stopping there.',
       },
     ],
     fixed: [
       {
         title: 'Trackpad two-finger scroll now pans instead of zooms',
         description:
-          'In both the classic graph and canvas mode, matching the Miro/Figma convention. The classic graph\'s mouse controls also now match canvas mode\'s: right-click drags the canvas, left-click drags a node or rubber-band-selects.',
+          "In both the classic graph and canvas mode, matching the Miro/Figma convention. The classic graph's mouse controls also now match canvas mode's: right-click drags the canvas, left-click drags a node or rubber-band-selects.",
       },
     ],
   },
@@ -71,7 +117,7 @@ export const CHANGELOG: ChangelogVersion[] = [
     ],
     fixed: [
       {
-        title: "Desktop update notification said \"restart\" twice",
+        title: 'Desktop update notification said "restart" twice',
         description:
           'The message and the button both said it, and the "Restart Now" button had no visible border or fill, reading as plain text rather than something to click.',
       },
@@ -82,22 +128,23 @@ export const CHANGELOG: ChangelogVersion[] = [
     date: '2026-08-23',
     changed: [
       {
-        title: "Connection color moved to Settings",
+        title: 'Connection color moved to Settings',
         description:
-          "Set from Settings > Database Connections (click its status dot), alongside renaming and MCP access, instead of from the top-left connection picker -- that dot is now just a status indicator.",
+          'Set from Settings > Database Connections (click its status dot), alongside renaming and MCP access, instead of from the top-left connection picker -- that dot is now just a status indicator.',
       },
       {
         title: 'Updates modal shows a title for each change',
-        description: 'A short title first, with its fuller explanation (when there is one) underneath -- easier to skim than a flat bullet list.',
+        description:
+          'A short title first, with its fuller explanation (when there is one) underneath -- easier to skim than a flat bullet list.',
       },
       {
         title: 'New keybindings for the Pine/SQL panel',
-        description: "Ctrl/Cmd+. for Pine and Ctrl/Cmd+, for SQL, replacing Ctrl/Cmd+Shift+E/S.",
+        description: 'Ctrl/Cmd+. for Pine and Ctrl/Cmd+, for SQL, replacing Ctrl/Cmd+Shift+E/S.',
       },
       {
         title: 'Canvas filters compose as separate where: steps',
         description:
-          "Each filter is now its own where: step instead of joining a comma-separated list on one shared where: clause. Multiple filters on the same table still combine with AND, same as before.",
+          'Each filter is now its own where: step instead of joining a comma-separated list on one shared where: clause. Multiple filters on the same table still combine with AND, same as before.',
       },
     ],
     fixed: [
@@ -154,7 +201,8 @@ export const CHANGELOG: ChangelogVersion[] = [
       },
       {
         title: 'Resizable Pine/SQL panel',
-        description: "Drag the divider between it and the canvas, instead of living with a fixed size.",
+        description:
+          'Drag the divider between it and the canvas, instead of living with a fixed size.',
       },
       {
         title: 'Browser-style tab switching',
@@ -171,23 +219,23 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: 'Compact mode preference',
         description:
-          "It only ever affected the classic sidebar layout, and no longer had any effect once the new Canvas-first layout became the default -- the new layout already switches to a stacked arrangement on small screens on its own.",
+          'It only ever affected the classic sidebar layout, and no longer had any effect once the new Canvas-first layout became the default -- the new layout already switches to a stacked arrangement on small screens on its own.',
       },
     ],
     fixed: [
       {
         title: 'Canvas keyboard shortcuts freezing after a query ran',
         description:
-          "s/w/o/g/i/x/u stopped responding after any query ran, and stayed unresponsive until the page was reloaded.",
+          's/w/o/g/i/x/u stopped responding after any query ran, and stayed unresponsive until the page was reloaded.',
       },
       {
         title: 'Sidebar height overflowing its panel',
         description:
-          "A height saved from an earlier resize could stretch the graph/results panel taller than the window, showing an unwanted scrollbar.",
+          'A height saved from an earlier resize could stretch the graph/results panel taller than the window, showing an unwanted scrollbar.',
       },
       {
         title: 'Wrong letter hint on the join action',
-        description: "It highlighted j, not i -- i is the actual shortcut for it.",
+        description: 'It highlighted j, not i -- i is the actual shortcut for it.',
       },
       {
         title: 'Checkpoint node missing active-shortcut hints',
@@ -197,22 +245,22 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: 'Pine/SQL panel silently blocking canvas keybindings',
         description:
-          "Opening it auto-focused its text editor, silently blocking every canvas keybinding until you clicked away from it once.",
+          'Opening it auto-focused its text editor, silently blocking every canvas keybinding until you clicked away from it once.',
       },
       {
         title: 'Auto-run delay cut from 500ms to 150ms',
         description:
-          "The fixed wait after every canvas edit made it feel far slower than the query itself (typically a few milliseconds) -- 150ms is still enough to collapse a burst of rapid picks into one run.",
+          'The fixed wait after every canvas edit made it feel far slower than the query itself (typically a few milliseconds) -- 150ms is still enough to collapse a burst of rapid picks into one run.',
       },
       {
         title: 'Canvas crash on an inconclusive speculative build',
         description:
-          "A gesture whose speculative build came back without a usable result (rather than failing outright) could crash the whole app instead of falling back gracefully.",
+          'A gesture whose speculative build came back without a usable result (rather than failing outright) could crash the whole app instead of falling back gracefully.',
       },
       {
         title: 'Broken join rendered as if it were fine',
         description:
-          "A join that no longer had a real column to connect on (for example, after deleting the table in between two others) rendered as a plain, confident-looking solid line instead of the dashed warning styling used for any other unresolved join -- and the table on the other end showed no columns at all. Both are now treated the same as any other unresolved join.",
+          'A join that no longer had a real column to connect on (for example, after deleting the table in between two others) rendered as a plain, confident-looking solid line instead of the dashed warning styling used for any other unresolved join -- and the table on the other end showed no columns at all. Both are now treated the same as any other unresolved join.',
       },
       {
         title: 'Canvas edits doing nothing while the SQL panel was open',
@@ -224,7 +272,7 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: 'Canvas/graph mode switch moved into the graph panel',
         description:
-          "It only ever applied there anyway; the header now only refers to which overall layout is active.",
+          'It only ever applied there anyway; the header now only refers to which overall layout is active.',
       },
     ],
   },
@@ -235,7 +283,7 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: 'Requires pine-lang 0.39.0 or later',
         description:
-          "The new connection refresh icon (below) needs its POST /api/v1/connections/:id/reindex endpoint.",
+          'The new connection refresh icon (below) needs its POST /api/v1/connections/:id/reindex endpoint.',
       },
     ],
     added: [
@@ -366,7 +414,7 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: '(Desktop) Restored tab with no saved-profile id',
         description:
-          "It had nothing to reconnect from, so it silently never auto-connected -- it now falls back to resolving one from its connection id.",
+          'It had nothing to reconnect from, so it silently never auto-connected -- it now falls back to resolving one from its connection id.',
       },
       {
         title: '(Desktop) Stale "active connection" checkmark',
@@ -428,7 +476,7 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: "Playground's shared connection was deletable",
         description:
-          "Deleting it from the connection picker broke the playground for everyone else using it; the delete action is now hidden (and refused as a backstop) in playground mode.",
+          'Deleting it from the connection picker broke the playground for everyone else using it; the delete action is now hidden (and refused as a backstop) in playground mode.',
       },
       {
         title: 'Changelog showing "-1 days ago"',
@@ -641,7 +689,8 @@ export const CHANGELOG: ChangelogVersion[] = [
       },
       {
         title: '`update!` ignored table aliases on qualified columns',
-        description: 'It now correctly uses the table alias when a column is qualified (e.g. `c.name`).',
+        description:
+          'It now correctly uses the table alias when a column is qualified (e.g. `c.name`).',
       },
     ],
   },
@@ -710,7 +759,7 @@ export const CHANGELOG: ChangelogVersion[] = [
     added: [
       {
         title: 'Command palette',
-        description: 'Find and run commands, similar to VS Code\'s command palette.',
+        description: "Find and run commands, similar to VS Code's command palette.",
       },
     ],
   },
@@ -986,7 +1035,8 @@ export const CHANGELOG: ChangelogVersion[] = [
       },
       {
         title: 'Autocomplete failed to show if opened too fast',
-        description: "Added a fallback \"Nothing found\" completion so autocomplete always shows something.",
+        description:
+          'Added a fallback "Nothing found" completion so autocomplete always shows something.',
       },
     ],
   },
@@ -1105,7 +1155,8 @@ export const CHANGELOG: ChangelogVersion[] = [
     fixed: [
       {
         title: "Escape key didn't return focus to the input",
-        description: 'This broke specifically after clicking another part of the UI with the mouse.',
+        description:
+          'This broke specifically after clicking another part of the UI with the mouse.',
       },
     ],
   },
@@ -1118,11 +1169,13 @@ export const CHANGELOG: ChangelogVersion[] = [
       },
       {
         title: 'Clickable id column in results',
-        description: "Clicking a row's id adds a where condition and limits the results to that row.",
+        description:
+          "Clicking a row's id adds a where condition and limits the results to that row.",
       },
       {
         title: 'Responsive layout for smaller screens',
-        description: 'Below 1200px wide, the SQL query view is hidden so the main view has more room.',
+        description:
+          'Below 1200px wide, the SQL query view is hidden so the main view has more room.',
       },
     ],
     fixed: [
@@ -1169,7 +1222,8 @@ export const CHANGELOG: ChangelogVersion[] = [
     added: [
       {
         title: 'Clickable suggested columns',
-        description: 'Clicking a suggested select or order column in the selected node updates the expression.',
+        description:
+          'Clicking a suggested select or order column in the selected node updates the expression.',
       },
     ],
     changed: [
@@ -1318,7 +1372,7 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: 'A pipe always reformatted the whole expression',
         description:
-          "Adding a `|` anywhere prettified the entire expression, so there was no way to add a pipe in the middle of one.",
+          'Adding a `|` anywhere prettified the entire expression, so there was no way to add a pipe in the middle of one.',
       },
       {
         title: 'Non-printable keys leaked into the expression',
@@ -1470,4 +1524,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.52.0';
+export const LATEST_VERSION = '0.53.0';

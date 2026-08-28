@@ -61,7 +61,7 @@ const panelToggleStyle = (active: boolean): React.CSSProperties => ({
   height: 22,
   padding: '0 5px',
   cursor: 'pointer',
-  fontSize: '9px',
+  fontSize: 'calc(10px * var(--text-scale, 1))',
   fontFamily: 'var(--canvas-font)',
   fontWeight: 700,
   letterSpacing: '0.4px',
@@ -86,7 +86,10 @@ const disabledIconButtonStyle: React.CSSProperties = {
 };
 
 const Divider = () => (
-  <span aria-hidden style={{ color: 'var(--canvas-node-border)', fontSize: '9px' }}>
+  <span
+    aria-hidden
+    style={{ color: 'var(--canvas-node-border)', fontSize: 'calc(9px * var(--text-scale, 1))' }}
+  >
     |
   </span>
 );
@@ -209,13 +212,16 @@ const CanvasToolbar: React.FC<{ canvasStore: CanvasStore; extraAction?: CanvasTo
 // FrameNode's own action bars (which would mean this file reaching into a
 // rendered node's DOM/props) - a plain lookup kept in sync by hand, same as
 // those files' own action lists; all three are short and change together.
-const legendFor = (isStart: boolean, isFrame: boolean, removable: boolean): string => {
-  if (isStart) return 'i';
+// Returns individual keys (not a joined string) so the indicator below can
+// render each one bold/accented with only the separators dimmed, rather than
+// the whole legend at one flat, easy-to-miss opacity.
+const legendKeysFor = (isStart: boolean, isFrame: boolean, removable: boolean): string[] => {
+  if (isStart) return ['i'];
   // No 'g' - group isn't offered for a checkpoint's own sealed output (see
   // FrameNode.tsx's doc comment). 'x' here cancels the container itself
   // (CanvasStore.deleteCheckpoint), not a per-table removal.
-  if (isFrame) return 's w o i x';
-  return ['s', 'w', 'o', 'g', 'i', ...(removable ? ['x'] : [])].join(' ');
+  if (isFrame) return ['s', 'w', 'o', 'i', 'x'];
+  return ['s', 'w', 'o', 'g', 'i', ...(removable ? ['x'] : [])];
 };
 
 /**
@@ -251,7 +257,7 @@ export const CanvasModeIndicator: React.FC<{ canvasStore: CanvasStore }> = obser
         display: 'flex',
         alignItems: 'center',
         gap: 6,
-        fontSize: 'calc(10px * var(--text-scale, 1))',
+        fontSize: 'calc(12px * var(--text-scale, 1))',
         fontFamily: 'var(--canvas-font)',
         fontWeight: 700,
         textTransform: 'uppercase',
@@ -262,13 +268,33 @@ export const CanvasModeIndicator: React.FC<{ canvasStore: CanvasStore }> = obser
       <span
         aria-hidden
         style={{
-          width: 6,
-          height: 6,
+          width: 7,
+          height: 7,
           background: insert ? 'var(--canvas-trace)' : 'var(--canvas-text-dim)',
         }}
       />
       <span>{insert ? 'insert' : 'normal'}</span>
-      {!insert && <span style={{ opacity: 0.7 }}>· {legendFor(isStart, isFrame, removable)}</span>}
+      {!insert && (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <span aria-hidden style={{ opacity: 0.5 }}>
+            ·
+          </span>
+          {legendKeysFor(isStart, isFrame, removable).map((key, i) => (
+            <React.Fragment key={key}>
+              {i > 0 && (
+                <span aria-hidden style={{ opacity: 0.35 }}>
+                  ·
+                </span>
+              )}
+              {/* Full opacity + the trace accent, not the dimmed status text
+                  around it - these are live keyboard shortcuts, not part of
+                  the mode readout, so they're the one thing here that should
+                  actually catch the eye at rest. */}
+              <span style={{ color: 'var(--canvas-trace)' }}>{key}</span>
+            </React.Fragment>
+          ))}
+        </span>
+      )}
     </div>
   );
 });

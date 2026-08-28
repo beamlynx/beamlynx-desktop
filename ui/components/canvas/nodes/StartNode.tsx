@@ -36,7 +36,7 @@ const StartNode: React.FC<NodeProps<CanvasStartNodeData>> = observer(() => {
         borderRadius: '3px',
         background: isFocusTarget ? 'var(--canvas-node-bg-current)' : 'transparent',
         color: 'var(--canvas-text-dim)',
-        fontSize: '11px',
+        fontSize: 'calc(13px * var(--text-scale, 1))',
         fontFamily: 'var(--canvas-font)',
         fontWeight: 600,
         textTransform: 'uppercase',

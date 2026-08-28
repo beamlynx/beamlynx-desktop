@@ -5,6 +5,20 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.53.0] - 2026-08-28
+### Added
+- Zen mode (New Layout, command palette only for now -- no dedicated key): a graph-only, distraction-free view that hides the header, tab strip, and Results, and turns auto-run off for as long as it's on (restored to whatever it was set to once you exit).
+- `Ctrl`/`Cmd`+`Shift`+`,` toggles Settings open and closed, matching the gear icon.
+- A "↻ Reconnect" action next to the connection label in the header, shown whenever a tab's assigned database connection isn't live (e.g. the database wasn't running yet when the app started) -- previously the only way to retry was switching tabs or reloading the whole app.
+
+### Changed
+- `Ctrl`/`Cmd`+`,` now toggles Settings (matching Slack's and most native Mac apps' Preferences convention) instead of the SQL panel. `Ctrl`/`Cmd`+`.` still toggles the Pine panel; `Ctrl`/`Cmd`+`Shift`+`.` now toggles the SQL panel.
+- Settings in New Layout is now a docked panel on the left, spanning the full height (tab strip included) and staying open across tab switches, instead of living inside whichever tab was active when it was opened. No longer closes on Escape (that was a Modal convention; a docked panel isn't in anyone's way, and Escape is needed elsewhere, e.g. closing a picker).
+
+### Fixed
+- Canvas mode's node labels, chips, and toolbars now scale with the Text Size setting (previously only the rest of the app did) and are larger at every size to begin with. The keybinding legend at the bottom-left of the canvas is now bigger and shows each shortcut key in bold accent color instead of one uniformly dimmed string.
+- Settings no longer opens as a floating modal on top of the canvas in New Layout (see "Changed" above) -- so it never covers the canvas or results while you tune a change against them. Changing Text Size while the Appearance panel is open no longer reflows the panel itself, which previously scrolled the Text Size control out from under you. Its border, and its top/bottom edges, now match Canvas's own pane instead of being the only misaligned, unbordered panel in New Layout.
+
 ## [0.52.0] - 2026-08-25
 ### Added
 - A new Appearance section in Settings: three built-in themes (Light, Dark, Sepia), each with its own coordinated colors rather than a shared palette with a swappable accent. Picking one also determines light/dark behavior for the editor and canvas.

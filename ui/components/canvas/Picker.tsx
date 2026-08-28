@@ -29,7 +29,7 @@ const basePickerStyle: React.CSSProperties = {
   boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
   color: 'var(--canvas-text)',
   fontFamily: 'var(--canvas-font)',
-  fontSize: '11px',
+  fontSize: 'calc(13px * var(--text-scale, 1))',
 };
 
 // The filter input used to live inside the same scrolling container as the
@@ -364,7 +364,7 @@ const Picker: React.FC = observer(() => {
                       borderLeft: `3px solid ${groupAccent(group.label)}`,
                       paddingLeft: 6,
                       paddingTop: 2,
-                      fontSize: '9px',
+                      fontSize: 'calc(11px * var(--text-scale, 1))',
                       fontWeight: 700,
                       textTransform: 'uppercase',
                       letterSpacing: '0.5px',

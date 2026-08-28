@@ -96,8 +96,12 @@ const LeftPane = observer(
     const [panelWidth, setPanelWidth] = useState(DEFAULT_NEW_LAYOUT_PANEL_WIDTH);
     const [panelHeight, setPanelHeight] = useState(DEFAULT_NEW_LAYOUT_PANEL_HEIGHT);
     useEffect(() => {
-      setPanelWidth(getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_WIDTH, DEFAULT_NEW_LAYOUT_PANEL_WIDTH));
-      setPanelHeight(getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_HEIGHT, DEFAULT_NEW_LAYOUT_PANEL_HEIGHT));
+      setPanelWidth(
+        getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_WIDTH, DEFAULT_NEW_LAYOUT_PANEL_WIDTH),
+      );
+      setPanelHeight(
+        getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_HEIGHT, DEFAULT_NEW_LAYOUT_PANEL_HEIGHT),
+      );
     }, []);
 
     return (
@@ -149,11 +153,18 @@ const LeftPane = observer(
           (panelBesideCanvas ? (
             <NewLayoutPanelDivider panelWidth={panelWidth} setPanelWidth={setPanelWidth} />
           ) : (
-            <NewLayoutHorizontalPanelDivider panelHeight={panelHeight} setPanelHeight={setPanelHeight} />
+            <NewLayoutHorizontalPanelDivider
+              panelHeight={panelHeight}
+              setPanelHeight={setPanelHeight}
+            />
           ))}
         {panelVisible && (
           <Box
-            sx={panelBesideCanvas ? { width: panelWidth, flexShrink: 0 } : { height: panelHeight, flexShrink: 0 }}
+            sx={
+              panelBesideCanvas
+                ? { width: panelWidth, flexShrink: 0 }
+                : { height: panelHeight, flexShrink: 0 }
+            }
           >
             <Input session={session} autoFocus={false} />
           </Box>
@@ -172,6 +183,7 @@ const LeftPane = observer(
  * Session.getCanvasStore() for the other half of that fix).
  */
 const NewLayoutView: React.FC<NewLayoutViewProps> = observer(({ sessionId }) => {
+  const { global } = useStores();
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('lg'));
 
@@ -181,8 +193,12 @@ const NewLayoutView: React.FC<NewLayoutViewProps> = observer(({ sessionId }) => 
 
   useEffect(() => {
     setOrientation(getUserPreference(STORAGE_KEYS.NEW_LAYOUT_ORIENTATION, 'horizontal'));
-    setPaneWidth(getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANE_WIDTH, DEFAULT_NEW_LAYOUT_PANE_WIDTH));
-    setPaneHeight(getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANE_HEIGHT, DEFAULT_NEW_LAYOUT_PANE_HEIGHT));
+    setPaneWidth(
+      getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANE_WIDTH, DEFAULT_NEW_LAYOUT_PANE_WIDTH),
+    );
+    setPaneHeight(
+      getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANE_HEIGHT, DEFAULT_NEW_LAYOUT_PANE_HEIGHT),
+    );
   }, []);
 
   // Small screens always stack top-bottom, regardless of the persisted
@@ -202,28 +218,33 @@ const NewLayoutView: React.FC<NewLayoutViewProps> = observer(({ sessionId }) => 
   // the graph wherever the old pan/zoom put it, off-center or partly cut
   // off, until the next edit happens to trigger a fitView. Bumping this on
   // every orientation change (manual toggle or the small-screen override
-  // above) forces that re-fit regardless of which caused it.
+  // above), or on entering/exiting Zen mode (which resizes Canvas's
+  // container just as drastically), forces that re-fit regardless of which
+  // caused it.
   const [recenterRequestCount, setRecenterRequestCount] = useState(0);
   useEffect(() => {
     setRecenterRequestCount(c => c + 1);
-  }, [effectiveOrientation]);
+  }, [effectiveOrientation, global.isZenModeActive]);
 
   return (
-    <Box sx={{ my: `${NEW_LAYOUT_GUTTER}px`, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      <Box
-        sx={{
-          flex: 1,
-          minHeight: 0,
-          display: 'flex',
-          flexDirection: isHorizontal ? 'row' : 'column',
-        }}
-      >
-        <Box
-          sx={{
-            ...(isHorizontal ? { width: paneWidth, flexShrink: 0 } : { flex: 1, minHeight: 0 }),
-            height: isHorizontal ? '100%' : undefined,
-          }}
-        >
+    <Box
+      sx={{
+        my: `${NEW_LAYOUT_GUTTER}px`,
+        flex: 1,
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      {/* Settings used to dock as a sibling here, but that meant it only
+          showed for whichever tab happened to be active (this component
+          renders per-session, once per open tab) and vanished switching
+          tabs - it's now hoisted to AppView.tsx, a sibling of PineTabs
+          itself, so it spans every tab instead of living inside one. */}
+      {global.isZenModeActive ? (
+        // Zen mode: Results (and its divider) aren't just narrowed, they're
+        // gone entirely - Canvas takes the whole row.
+        <Box sx={{ flex: 1, minWidth: 0, height: '100%' }}>
           <LeftPane
             sessionId={sessionId}
             isHorizontal={isHorizontal}
@@ -231,23 +252,46 @@ const NewLayoutView: React.FC<NewLayoutViewProps> = observer(({ sessionId }) => 
             recenterRequestCount={recenterRequestCount}
           />
         </Box>
-
-        {isHorizontal ? (
-          <NewLayoutPaneDivider paneWidth={paneWidth} setPaneWidth={setPaneWidth} />
-        ) : (
-          <NewLayoutHorizontalPaneDivider paneHeight={paneHeight} setPaneHeight={setPaneHeight} />
-        )}
-
+      ) : (
         <Box
           sx={{
-            ...(isHorizontal
-              ? { flex: 1, minWidth: 0, height: '100%' }
-              : { height: paneHeight, flexShrink: 0 }),
+            flex: 1,
+            minHeight: 0,
+            display: 'flex',
+            flexDirection: isHorizontal ? 'row' : 'column',
           }}
         >
-          <RightPane sessionId={sessionId} />
+          <Box
+            sx={{
+              ...(isHorizontal ? { width: paneWidth, flexShrink: 0 } : { flex: 1, minHeight: 0 }),
+              height: isHorizontal ? '100%' : undefined,
+            }}
+          >
+            <LeftPane
+              sessionId={sessionId}
+              isHorizontal={isHorizontal}
+              onToggleOrientation={toggleOrientation}
+              recenterRequestCount={recenterRequestCount}
+            />
+          </Box>
+
+          {isHorizontal ? (
+            <NewLayoutPaneDivider paneWidth={paneWidth} setPaneWidth={setPaneWidth} />
+          ) : (
+            <NewLayoutHorizontalPaneDivider paneHeight={paneHeight} setPaneHeight={setPaneHeight} />
+          )}
+
+          <Box
+            sx={{
+              ...(isHorizontal
+                ? { flex: 1, minWidth: 0, height: '100%' }
+                : { height: paneHeight, flexShrink: 0 }),
+            }}
+          >
+            <RightPane sessionId={sessionId} />
+          </Box>
         </Box>
-      </Box>
+      )}
     </Box>
   );
 });
