@@ -4,8 +4,19 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.9.0] - 2026-08-28
+### Added
+- Zen mode: a graph-only, distraction-free view that hides the header, tab strip, and Results, and turns auto-run off for as long as it's on, restored once you exit. Reachable from the command palette for now (bundled beamlynx-ui 0.53.0).
+- A "Reconnect" action next to the connection label in the header, shown whenever a tab's assigned database connection isn't live -- particularly relevant here, since the bundled server can still be starting up when the window first opens (bundled beamlynx-ui 0.53.0).
+
+### Changed
+- `Ctrl`/`Cmd`+`,` now opens Settings (matching most native Mac apps' Preferences convention) instead of the SQL panel; `Ctrl`/`Cmd`+`.` still opens the Pine panel, and `Ctrl`/`Cmd`+`Shift`+`.` now opens the SQL panel (bundled beamlynx-ui 0.53.0).
+- Settings now docks on the left in New Layout instead of floating on top of the canvas, so it never covers the graph or results while you tune a change against them. It also stays open across tab switches now, and no longer closes on Escape (bundled beamlynx-ui 0.53.0).
+
 ### Fixed
 - Auto-update never actually worked on macOS -- `electron-updater`'s `MacUpdater` requires a `.zip` release asset to apply an update and throws `ERR_UPDATER_ZIP_FILE_NOT_FOUND` when only the `.dmg` is published, but that error was swallowed silently (no UI, only a console log), so it looked like nothing was happening. Mac releases now also publish a `.zip`. This particularly affected the Homebrew cask, which sets `auto_updates true` and has no fallback update path of its own.
+- Canvas node labels, chips, and toolbars didn't scale with the Text Size setting, and were quite small even so -- they now scale, and are bigger at every size to begin with (bundled beamlynx-ui 0.53.0).
 
 ## [0.8.0] - 2026-08-26
 ### Added
