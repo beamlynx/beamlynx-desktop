@@ -235,6 +235,14 @@ jobs:
             beamlynx-desktop/release/*.deb
             beamlynx-desktop/release/*.dmg
             beamlynx-desktop/release/*.exe
+            # electron-builder.yml's mac target list includes zip (see its
+            # own comment) so MacUpdater has a payload it'll actually accept
+            # -- without this line, 0.9.0 built and blockmap'd a .zip that
+            # electron-builder never actually got asked to upload here, so
+            # it silently never reached the release at all. *.blockmap
+            # below matched the zip's own blockmap file, which is why that
+            # one part of it did show up, masking the miss.
+            beamlynx-desktop/release/*.zip
             beamlynx-desktop/release/*.blockmap
             beamlynx-desktop/release/latest*.yml
           if-no-files-found: error
