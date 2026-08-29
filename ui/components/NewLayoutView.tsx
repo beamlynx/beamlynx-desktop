@@ -114,6 +114,21 @@ const LeftPane = observer(
         }}
       >
         <Box
+          data-keyboard-panel="graph"
+          // -1, not a real Tab stop -- see SettingsDockedPanel.tsx's
+          // identical comment; reachable only by clicking.
+          tabIndex={-1}
+          onMouseDownCapture={e => {
+            // See SettingsDockedPanel.tsx's identical handler for why this
+            // check exists -- ReactFlow's own nodes/controls manage their own
+            // focus, and this must not fight that.
+            const target = e.target as HTMLElement;
+            if (
+              !target.closest('input, textarea, button, [tabindex], [contenteditable="true"]')
+            ) {
+              e.currentTarget.focus();
+            }
+          }}
           sx={{
             position: 'relative',
             flex: 1,
@@ -123,6 +138,7 @@ const LeftPane = observer(
             borderRadius: 1,
             overflow: 'hidden',
             backgroundColor: 'var(--graph-background)',
+            outline: 'none',
           }}
         >
           <Canvas
@@ -160,11 +176,27 @@ const LeftPane = observer(
           ))}
         {panelVisible && (
           <Box
-            sx={
-              panelBesideCanvas
+            data-keyboard-panel="input"
+            // -1, not a real Tab stop -- see SettingsDockedPanel.tsx's
+            // identical comment; reachable only by clicking.
+            tabIndex={-1}
+            onMouseDownCapture={e => {
+              // See SettingsDockedPanel.tsx's identical handler -- Input's
+              // CodeMirror editor manages its own focus, and this must not
+              // fight that.
+              const target = e.target as HTMLElement;
+              if (
+                !target.closest('input, textarea, button, [tabindex], [contenteditable="true"]')
+              ) {
+                e.currentTarget.focus();
+              }
+            }}
+            sx={{
+              outline: 'none',
+              ...(panelBesideCanvas
                 ? { width: panelWidth, flexShrink: 0 }
-                : { height: panelHeight, flexShrink: 0 }
-            }
+                : { height: panelHeight, flexShrink: 0 }),
+            }}
           >
             <Input session={session} autoFocus={false} />
           </Box>

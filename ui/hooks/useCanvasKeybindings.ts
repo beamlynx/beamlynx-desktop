@@ -32,7 +32,12 @@ interface CanvasKeybindingsProps {
 export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKeybindingsProps) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!global.canvasActive) return;
+      // canvasActive: Canvas is the mounted graph editor (layout/mode check).
+      // activeKeyboardPanel: who currently owns bare-key input (DOM-focus
+      // check) -- see GlobalStore.activeKeyboardPanel's own comment. Both
+      // must hold: without the second check, j/k fired here even while
+      // Settings' rail (or the Pine/SQL Input panel) had real focus.
+      if (!global.canvasActive || global.activeKeyboardPanel !== 'graph') return;
 
       // The Pine/SQL editors are CodeMirror 6, which renders `contenteditable`
       // divs, not `<input>`/`<textarea>` - `session.textInputFocused` is the
@@ -92,13 +97,36 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
         return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
       };
 
+      // Arrow-key navigation always works, vim mode or not - it's plain
+      // directional navigation, not a vim convention, so there's no reason
+      // to gate it on session.vimMode the way the letter shortcuts below are.
       switch (e.key) {
         case 'ArrowDown':
-        case 'j':
           e.preventDefault();
           canvasStore.focusNext();
           return;
         case 'ArrowUp':
+          e.preventDefault();
+          canvasStore.focusPrev();
+          return;
+      }
+
+      // Below this point: the vim-style letter layer (hjkl-as-letters, plus
+      // single-letter operation shortcuts s/w/o/g/x/u/U/i). This mirrors
+      // PineInput.tsx/SqlInput.tsx's own session.vimMode check for
+      // CodeMirror's vim keybindings - one app-wide "Vim Mode" preference
+      // (Settings > Preferences) now governs both, rather than these firing
+      // unconditionally regardless of whether the person even wants vim
+      // bindings. Node action bars (FrameNode.tsx/TableNode.tsx) remain the
+      // mouse-driven equivalent for select/where/order/group when this is
+      // off.
+      if (!session.vimMode) return;
+
+      switch (e.key) {
+        case 'j':
+          e.preventDefault();
+          canvasStore.focusNext();
+          return;
         case 'k':
           e.preventDefault();
           canvasStore.focusPrev();

@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Changed
+- "Vim keybindings" (Preferences) now also gates the canvas's `j`/`k`-as-letters and single-letter shortcuts (`s`/`w`/`o`/`g`/`x`/`u`/`U`/`i`), not just the query editor -- previously those fired unconditionally regardless of the setting. Arrow-key navigation and Ctrl+Z/Ctrl+Y undo/redo are unaffected (they aren't vim-specific).
+
+### Fixed
+- Canvas's `j`/`k`/single-letter shortcuts (New Layout) no longer fire while you're navigating the docked Settings panel or typing in the Pine/SQL panel -- keyboard input now routes to whichever panel actually has focus, falling back to the canvas when nothing else does. Settings' rail (Database Connections/Appearance/Preferences/MCP/About) also gained its own `j`/`k`/Arrow Up/Down navigation once it holds focus.
 
 ## [0.53.0] - 2026-08-28
 ### Added

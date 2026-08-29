@@ -69,7 +69,7 @@ const PreferencesSection = () => {
         />
         <ToggleRow
           label="Vim keybindings"
-          description="Use vim-style navigation and editing in the query editor."
+          description="Use vim-style navigation and editing in the query editor and single-letter shortcuts (j/k, s/w/o/g, u/U, ...) on the canvas."
           checked={session?.vimMode ?? false}
           onChange={() => session?.toggleVimMode()}
         />

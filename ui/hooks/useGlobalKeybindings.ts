@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Session } from '../store/session';
 import { GlobalStore } from '../store/global.store';
-import { KEYBINDINGS } from '../utils/keybindings';
+import { KEYBINDINGS, keybindingMatches } from '../utils/keybindings';
 import { getCommandById } from '../utils/commands';
 
 interface GlobalKeybindingsProps {
@@ -24,7 +24,7 @@ export const useGlobalKeybindings = ({ session, global }: GlobalKeybindingsProps
     const handleKeyDown = (e: KeyboardEvent) => {
       // Check all keybindings from the registry
       KEYBINDINGS.forEach(config => {
-        if (!config.matches(e)) return;
+        if (!keybindingMatches(config, e)) return;
 
         // If this keybinding has a command ID, execute the command
         if (config.commandId) {
