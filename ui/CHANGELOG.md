@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Changed
+- "Vim keybindings" no longer gates the canvas's `s`/`w`/`o`/`g`/`x`/`u`/`U`/`i` shortcuts (0.54.0 had started doing this) -- those are this app's own mnemonic scheme for canvas operations, not vim conventions, and are always available regardless of the setting. Only `j`/`k` (vim's actual movement keys, on the canvas and in Settings' own rail) are gated by it, alongside the query editor's vim mode.
+- The "Vim keybindings" preference moved from `Session` to `GlobalStore` -- it's one app-wide setting (a single Preferences toggle, not per-tab), but toggling it previously only updated whichever tab was active; another already-open tab kept its own stale copy until reloaded. Now every tab, the query editor, the canvas, and Settings' rail all read the exact same value.
+
 ### Fixed
 - Tab order (New Layout): a stray `tabIndex={1}` on the notification bell and Settings gear icon was pulling Tab toward those two icons from anywhere in the document; removed. Connections in the docked Settings panel are now real Tab stops (Enter/Space switches to one, same as clicking it) -- previously Tab skipped straight from the panel's close button to the "+ Add" button, with no way to reach an existing connection by keyboard. That close button, and the Pine/SQL panel's PINE/SQL mode toggle, no longer take a Tab stop themselves (both stay mouse-clickable) -- Tab now reaches the connections list, and the Pine/SQL text editor, directly instead of stopping on a button first.
 - While Settings is open, Tabbing past its own content (toward the header icons, say) no longer silently hands canvas's `j`/`k` the keyboard the instant focus lands somewhere neither Settings nor Canvas nor the Pine/SQL panel actually claims -- Settings keeps its shortcuts for as long as it's open, the same as before Tab reached any of its content at all. Clicking directly into Canvas or the Pine/SQL panel still switches to it immediately, same as always.

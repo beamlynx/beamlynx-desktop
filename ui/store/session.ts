@@ -104,8 +104,6 @@ export class Session {
   /**
    * App states
    */
-  /** Vim mode */
-  vimMode: boolean = false;
 
   /** Pine expression to be evaluated */
   expression: string = ''; // observable
@@ -253,7 +251,6 @@ export class Session {
 
   constructor(id: string, globalStore?: any) {
     this.id = `session-${id}`;
-    this.vimMode = getUserPreference(STORAGE_KEYS.VIM_MODE, false);
     this.globalStore = globalStore;
 
     makeAutoObservable(this);
@@ -477,11 +474,6 @@ export class Session {
         });
       },
     );
-  }
-
-  public toggleVimMode() {
-    this.vimMode = !this.vimMode;
-    setUserPreference(STORAGE_KEYS.VIM_MODE, this.vimMode);
   }
 
   public selectNextCandidate(offset: number) {

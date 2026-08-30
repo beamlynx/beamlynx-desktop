@@ -59,7 +59,7 @@ const COMMANDS: Command[] = [
     id: 'toggle-vim-mode',
     label: 'Toggle Vim Mode',
     category: 'Preferences',
-    handler: (_global, session) => session.toggleVimMode(),
+    handler: global => global.toggleVimMode(),
     isEnabled: ALWAYS_ENABLED,
   },
 

@@ -11,9 +11,11 @@ interface CanvasKeybindingsProps {
 }
 
 /**
- * The modal (vim-style) keyboard layer for canvas mode: normal-mode
- * navigation (hjkl/arrows) and single-letter operation shortcuts on
- * whichever node currently has keyboard focus (CanvasStore.focusedAlias).
+ * The bare-key keyboard layer for canvas mode: node-to-node navigation
+ * (arrows always, j/k only with Vim Mode on) and this app's own mnemonic
+ * single-letter operation shortcuts (s/w/o/g/x/u/U/i, always available --
+ * these aren't vim conventions and don't depend on Vim Mode) on whichever
+ * node currently has keyboard focus (CanvasStore.focusedAlias).
  *
  * Mirrors useGlobalKeybindings.ts's structure (a single document-level
  * `keydown` listener) but is deliberately its own hook rather than an
@@ -99,7 +101,7 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
 
       // Arrow-key navigation always works, vim mode or not - it's plain
       // directional navigation, not a vim convention, so there's no reason
-      // to gate it on session.vimMode the way the letter shortcuts below are.
+      // to gate it on global.vimMode the way j/k below are.
       switch (e.key) {
         case 'ArrowDown':
           e.preventDefault();
@@ -111,26 +113,28 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
           return;
       }
 
-      // Below this point: the vim-style letter layer (hjkl-as-letters, plus
-      // single-letter operation shortcuts s/w/o/g/x/u/U/i). This mirrors
-      // PineInput.tsx/SqlInput.tsx's own session.vimMode check for
-      // CodeMirror's vim keybindings - one app-wide "Vim Mode" preference
-      // (Settings > Preferences) now governs both, rather than these firing
-      // unconditionally regardless of whether the person even wants vim
-      // bindings. Node action bars (FrameNode.tsx/TableNode.tsx) remain the
-      // mouse-driven equivalent for select/where/order/group when this is
-      // off.
-      if (!session.vimMode) return;
+      // j/k are vim's own hjkl movement keys, gated on global.vimMode the
+      // same way PineInput.tsx/SqlInput.tsx gate CodeMirror's vim mode --
+      // one app-wide "Vim Mode" preference governs both. This does NOT
+      // extend to the single-letter operation shortcuts below (s/w/o/g/x/
+      // u/U/i) -- those are this app's own mnemonic scheme for canvas
+      // operations, not vim conventions, and stay independent of this
+      // setting (confirmed live: gating them on Vim Mode too was wrong,
+      // since they have nothing to do with vim in the first place).
+      if (global.vimMode) {
+        switch (e.key) {
+          case 'j':
+            e.preventDefault();
+            canvasStore.focusNext();
+            return;
+          case 'k':
+            e.preventDefault();
+            canvasStore.focusPrev();
+            return;
+        }
+      }
 
       switch (e.key) {
-        case 'j':
-          e.preventDefault();
-          canvasStore.focusNext();
-          return;
-        case 'k':
-          e.preventDefault();
-          canvasStore.focusPrev();
-          return;
         // ArrowLeft/h, ArrowRight/l: reserved. There's no second navigation
         // axis today (data.order is a single, strictly sequential list) -
         // see the plan doc's "Explicitly out of scope".

@@ -46,12 +46,13 @@ function isTypingTarget(target: Element | null): boolean {
 }
 
 /**
- * Vim-style j/k (and Arrow Up/Down) navigation over the Settings rail --
- * mirrors useCanvasKeybindings.ts's structure (single document-level keydown
- * listener, gated on which panel currently owns bare-key input) but is its
- * own hook rather than an addition to that one, same reasoning as that file's
- * own doc comment: these are single bare letters, which only make sense to
- * interpret while GlobalStore.activeKeyboardPanel === 'settings'.
+ * Arrow Up/Down (always) and vim-style j/k (only with Vim keybindings on)
+ * navigation over the Settings rail -- mirrors useCanvasKeybindings.ts's
+ * structure (single document-level keydown listener, gated on which panel
+ * currently owns bare-key input) but is its own hook rather than an addition
+ * to that one, same reasoning as that file's own doc comment: these are
+ * single bare letters, which only make sense to interpret while
+ * GlobalStore.activeKeyboardPanel === 'settings'.
  *
  * No Escape-to-close here -- SettingsPanelContent.tsx already documents that
  * as a deliberate omission (a docked panel isn't in anyone's way, and Escape
@@ -72,22 +73,34 @@ export const useSettingsKeybindings = ({ global }: SettingsKeybindingsProps) => 
 
       const navigableItems = RAIL_ITEMS.filter(item => item.id !== 'mcp' || isDesktop());
       const currentIndex = navigableItems.findIndex(item => item.id === global.settingsSection);
+      const moveTo = (item: (typeof navigableItems)[number] | undefined) => {
+        e.preventDefault();
+        if (item) global.setSettingsSection(item.id);
+      };
 
+      // Arrow keys always work -- plain directional navigation, not a vim
+      // convention, same reasoning as useCanvasKeybindings.ts's identical
+      // split (and the same bug this mirrors: confirmed live that j/k
+      // moved the rail with Vim keybindings off, which the canvas side of
+      // this exact feature already got right).
       switch (e.key) {
         case 'ArrowDown':
-        case 'j': {
-          e.preventDefault();
-          const next = navigableItems[Math.min(currentIndex + 1, navigableItems.length - 1)];
-          if (next) global.setSettingsSection(next.id);
+          moveTo(navigableItems[Math.min(currentIndex + 1, navigableItems.length - 1)]);
           return;
-        }
         case 'ArrowUp':
-        case 'k': {
-          e.preventDefault();
-          const prev = navigableItems[Math.max(currentIndex - 1, 0)];
-          if (prev) global.setSettingsSection(prev.id);
+          moveTo(navigableItems[Math.max(currentIndex - 1, 0)]);
           return;
-        }
+      }
+
+      if (!global.vimMode) return;
+
+      switch (e.key) {
+        case 'j':
+          moveTo(navigableItems[Math.min(currentIndex + 1, navigableItems.length - 1)]);
+          return;
+        case 'k':
+          moveTo(navigableItems[Math.max(currentIndex - 1, 0)]);
+          return;
         default:
           return;
       }

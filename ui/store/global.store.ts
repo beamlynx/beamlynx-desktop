@@ -202,6 +202,31 @@ export class GlobalStore {
     setUserPreference(STORAGE_KEYS.TEXT_SIZE, newTextSize);
   }
 
+  // Vim-style navigation/editing -- global (like canvasModeEnabled below),
+  // not per-session: one Preferences toggle governs it, not a per-tab
+  // choice, so it belongs here rather than on Session. It used to live on
+  // Session (each instance seeding its own copy from the same underlying
+  // localStorage key at construction) -- harmless for a single tab, but
+  // toggling it in one already-open tab never touched any OTHER already-open
+  // tab's own copy, leaving it stale until reload. Read by PineInput.tsx/
+  // SqlInput.tsx (the query editor's own vim keybindings) and
+  // useCanvasKeybindings.ts/useSettingsKeybindings.ts (the canvas's and
+  // Settings rail's vim-style letter shortcuts).
+  _vimModeEnabled: boolean;
+
+  get vimMode(): boolean {
+    return this._vimModeEnabled;
+  }
+
+  set vimMode(value: boolean) {
+    this._vimModeEnabled = value;
+    setUserPreference(STORAGE_KEYS.VIM_MODE, value);
+  }
+
+  toggleVimMode = () => {
+    this.vimMode = !this.vimMode;
+  };
+
   // Pine / result table coloring (segment and column tints)
   _pineTableColorsEnabled: boolean;
 
@@ -405,6 +430,7 @@ export class GlobalStore {
     this._uiFontFamily = getUserPreference(STORAGE_KEYS.UI_FONT_FAMILY, 'system');
     this._codeFontFamily = getUserPreference(STORAGE_KEYS.CODE_FONT_FAMILY, 'plex-mono');
     this._textSize = getUserPreference(STORAGE_KEYS.TEXT_SIZE, 'medium');
+    this._vimModeEnabled = getUserPreference(STORAGE_KEYS.VIM_MODE, false);
     this._pineTableColorsEnabled = getUserPreference(STORAGE_KEYS.PINE_TABLE_COLORS, false);
     this._canvasModeEnabled = getUserPreference(STORAGE_KEYS.CANVAS_MODE, false);
     this._autoRunEnabled = getUserPreference(STORAGE_KEYS.AUTO_RUN_ENABLED, true);
