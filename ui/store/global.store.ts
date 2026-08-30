@@ -316,9 +316,10 @@ export class GlobalStore {
   // focused, e.g. the header). Transient, not persisted -- same reasoning as
   // zenMode above. Written by useFocusedPanelTracking.ts's document-level
   // focusin/focusout listener; read through activeKeyboardPanel below, never
-  // directly, since a panel can still be nominally "focused" after it's been
-  // hidden (Settings closed via the gear icon while a row inside it still
-  // had focus) -- the getter is what falls that back to 'graph'.
+  // directly -- 'settings' here doesn't necessarily mean Settings still owns
+  // the keyboard (it may have since closed, or focus may have wandered
+  // somewhere neither Canvas nor Input claim), and the getter is what
+  // resolves that ambiguity rather than every caller re-deriving it.
   focusedPanelId: 'graph' | 'settings' | 'input' | null = null;
 
   setFocusedPanelId = (id: 'graph' | 'settings' | 'input' | null) => {
@@ -326,18 +327,28 @@ export class GlobalStore {
   };
 
   // The single source of truth every panel-scoped keybinding hook
-  // (useCanvasKeybindings, useSettingsKeybindings) gates on. DOM focus, not
-  // visibility, decides who owns bare-key input -- Settings is a *docked*
-  // panel in New Layout (see SettingsDockedPanel.tsx's own comment) meant to
-  // stay open while you keep working the canvas, so "Settings is open" can't
-  // mean "Settings owns every keystroke until closed" the way it would for a
-  // modal. Falls back to 'graph' whenever the nominally-focused panel isn't
-  // actually eligible right now (hidden, or focus never landed anywhere in
-  // particular) -- that fallback is what preserves today's canvas-keys-work-
-  // by-default behavior.
+  // (useCanvasKeybindings, useSettingsKeybindings) gates on. DOM focus
+  // decides who owns bare-key input, but ONLY when it's explicitly ON
+  // Canvas or the Input panel -- clicking either is a deliberate "give this
+  // one the keyboard" action, and wins outright. Anything else (Tab landing
+  // on a header icon that isn't part of any managed panel, focus lost to
+  // nothing in particular, a stray click on inert chrome) is NOT such a
+  // signal, and must not be read as "give it to Canvas" -- confirmed live
+  // that reading it that way felt exactly backwards: Tabbing through
+  // Settings' own content (past its last real control, toward the header)
+  // silently armed canvas's j/k the instant focus happened to land on the
+  // Settings gear icon, with nothing on screen suggesting canvas now owned
+  // the keyboard. Settings is a *docked* panel (see SettingsDockedPanel.tsx's
+  // own comment) meant to stay open while you keep working the canvas, so
+  // "Settings is open" can't mean "owns every keystroke until closed" either
+  // -- but short of an explicit click into Canvas/Input, it's the one
+  // default that's actually predictable while it's open. Falls back to
+  // 'graph' only once Settings itself is closed too, which is the original,
+  // pre-panel-routing default this whole mechanism is layered on top of.
   get activeKeyboardPanel(): 'graph' | 'settings' | 'input' {
-    if (this.focusedPanelId === 'settings' && this.showSettings) return 'settings';
     if (this.focusedPanelId === 'input' && this.newLayoutPanelVisible) return 'input';
+    if (this.focusedPanelId === 'graph') return 'graph';
+    if (this.showSettings) return 'settings';
     return 'graph';
   }
 
