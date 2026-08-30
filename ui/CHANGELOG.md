@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.54.0] - 2026-08-30
 ### Added
 - The join picker (canvas mode) now shows which foreign-key column a candidate uses (Pine's own disambiguation syntax, e.g. `.created_by`) whenever two candidates in the same group would otherwise name the same table and be indistinguishable -- a single unambiguous candidate for a table still renders with no extra text, same as before.
 
