@@ -64,10 +64,17 @@ const SettingsPanelContent = () => {
         {/* Modal's backdrop-click/Escape close isn't discoverable on its own
             -- SavePineModal.tsx already established this exact affordance
             (top-right IconButton + Close icon) for the app's other modals,
-            so this matches rather than invents a new convention. */}
+            so this matches rather than invents a new convention. tabIndex={-1}
+            (mouse-only, like Input.tsx's PINE/SQL toggle) -- it's the first
+            element in this component's own DOM order, so without this Tab
+            landed here before ever reaching anything in the section below
+            (e.g. the connections list) -- confirmed live. Closing already
+            has its own keyboard path (the gear icon's own Ctrl/Cmd+,), so
+            losing this from the Tab sequence doesn't remove a capability. */}
         <IconButton
           onClick={handleClose}
           size="small"
+          tabIndex={-1}
           sx={{
             position: 'absolute',
             top: 8,

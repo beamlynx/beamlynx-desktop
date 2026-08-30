@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Fixed
+- Tab order (New Layout): a stray `tabIndex={1}` on the notification bell and Settings gear icon was pulling Tab toward those two icons from anywhere in the document; removed. Connections in the docked Settings panel are now real Tab stops (Enter/Space switches to one, same as clicking it) -- previously Tab skipped straight from the panel's close button to the "+ Add" button, with no way to reach an existing connection by keyboard. That close button, and the Pine/SQL panel's PINE/SQL mode toggle, no longer take a Tab stop themselves (both stay mouse-clickable) -- Tab now reaches the connections list, and the Pine/SQL text editor, directly instead of stopping on a button first.
 
 ## [0.54.0] - 2026-08-30
 ### Added

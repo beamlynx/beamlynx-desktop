@@ -110,7 +110,16 @@ const Input: React.FC<InputProps> = observer(({ session, onRun, autoFocus = true
             gap: 0.5,
           }}
         >
-          {/* Input mode toggle */}
+          {/* Input mode toggle. Tab skips both buttons (see each
+              ToggleButton's own tabIndex={-1} below) and lands straight in
+              the editor instead -- confirmed live that Tab used to stop on
+              PINE then SQL before ever reaching the text you actually want
+              to type into, which is the one thing you'd want first when the
+              panel's already open. Both stay mouse-clickable, and switching
+              mode by keyboard alone is still possible via the
+              toggle-pine-panel/toggle-sql-panel commands (Ctrl/Cmd+./+Shift+.,
+              or the command palette) -- this only removes them from the Tab
+              sequence, not from the keyboard entirely. */}
           <ToggleButtonGroup
             value={session.inputMode}
             exclusive
@@ -163,8 +172,8 @@ const Input: React.FC<InputProps> = observer(({ session, onRun, autoFocus = true
               },
             }}
           >
-            <ToggleButton value="pine">PINE</ToggleButton>
-            <ToggleButton value="sql">SQL</ToggleButton>
+            <ToggleButton value="pine" tabIndex={-1}>PINE</ToggleButton>
+            <ToggleButton value="sql" tabIndex={-1}>SQL</ToggleButton>
           </ToggleButtonGroup>
         </Box>
 

@@ -20,7 +20,10 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
         justifyContent: 'center',
       }}
     >
-      <IconButton onClick={onClick} color="inherit" tabIndex={1}>
+      {/* No explicit tabIndex -- see SettingsButton.tsx's identical comment
+          for why a positive value here (this used to be 1) was hijacking
+          Tab order document-wide. */}
+      <IconButton onClick={onClick} color="inherit">
         <Notifications
           sx={{
             color: hasUnreadUpdates ? 'var(--notification-color)' : 'inherit',

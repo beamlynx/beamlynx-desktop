@@ -562,10 +562,29 @@ const ConnectionsSection = () => {
         {global.connections.map(({ id, label, mcpEnabled }) => {
           const isActive = isDesktop() ? id === global.activeProfileId : id === activeSession?.connectionId;
           const isLive = global.isConnectionLive(id);
+          const activateRow = () =>
+            !switchingConnection && !removingId && renamingId !== id && handleSwitchTo(id);
           return (
             <Box
               key={id}
-              onClick={() => !switchingConnection && !removingId && renamingId !== id && handleSwitchTo(id)}
+              onClick={activateRow}
+              // A real Tab stop for the row's own primary action (switch to
+              // this connection, same as a click) -- confirmed live that
+              // connections were reachable only by mouse before this, with
+              // Tab skipping straight from the panel's close button to the
+              // "+ Add" button at the bottom. The finer per-row actions
+              // (rename/MCP toggle/refresh/delete -- the icons below) stay
+              // mouse-only for now; making each of those its own Tab stop
+              // too is a bigger change than this pass covers.
+              tabIndex={switchingConnection || removingId ? -1 : 0}
+              role="button"
+              aria-label={`Switch to connection ${label}`}
+              onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  activateRow();
+                }
+              }}
               sx={{
                 display: 'flex',
                 alignItems: 'center',
@@ -577,6 +596,11 @@ const ConnectionsSection = () => {
                 backgroundColor: isActive ? 'var(--node-column-bg)' : 'transparent',
                 cursor: switchingConnection || removingId ? 'default' : 'pointer',
                 opacity: switchingConnection || removingId ? 0.6 : 1,
+                outline: 'none',
+                '&:focus-visible': {
+                  outline: '2px solid var(--primary-color)',
+                  outlineOffset: '-2px',
+                },
                 '&:hover': { backgroundColor: 'var(--node-column-bg)' },
               }}
             >
