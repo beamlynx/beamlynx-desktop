@@ -7,6 +7,44 @@ interface SettingsKeybindingsProps {
   global: GlobalStore;
 }
 
+// Input types a keystroke never types into or steps through -- a letter does
+// nothing on any of these, and Arrow Up/Down don't step a value the way they
+// do on e.g. a number/date input. Everything else (an absent `type`
+// defaults to 'text', plus 'search'/'email'/'password'/'tel'/'url'/'number'/
+// date-and-time types) is a real typing/stepping target and must keep
+// winning over rail navigation.
+const NON_TYPING_INPUT_TYPES = new Set([
+  'checkbox',
+  'radio',
+  'button',
+  'submit',
+  'reset',
+  'range',
+  'color',
+  'file',
+  'image',
+  'hidden',
+]);
+
+/**
+ * Whether a keystroke landing on `target` would be consumed by the element
+ * itself (typed into a text field, or stepped by a number/date input's own
+ * arrows) rather than being free for rail navigation to interpret. Narrower
+ * than a blanket `input, textarea, [contenteditable]` check -- that matched
+ * MUI Switch's own underlying `<input type="checkbox">` too, which is why
+ * j/k (and even Arrow Up/Down) stopped moving the rail the instant a toggle
+ * in Preferences had focus (confirmed live) even though a checkbox consumes
+ * neither.
+ */
+function isTypingTarget(target: Element | null): boolean {
+  if (!target) return false;
+  if (target.closest('textarea, [contenteditable="true"]')) return true;
+  const input = target.closest('input');
+  if (!input) return false;
+  const type = (input.getAttribute('type') || 'text').toLowerCase();
+  return !NON_TYPING_INPUT_TYPES.has(type);
+}
+
 /**
  * Vim-style j/k (and Arrow Up/Down) navigation over the Settings rail --
  * mirrors useCanvasKeybindings.ts's structure (single document-level keydown
@@ -30,7 +68,7 @@ export const useSettingsKeybindings = ({ global }: SettingsKeybindingsProps) => 
       // CodeMirror, so there's no textInputFocused-style flag to lean on
       // here the way the canvas hook does; the DOM check alone is enough.
       const target = e.target instanceof Element ? e.target : null;
-      if (target?.closest('input, textarea, [contenteditable="true"]')) return;
+      if (isTypingTarget(target)) return;
 
       const navigableItems = RAIL_ITEMS.filter(item => item.id !== 'mcp' || isDesktop());
       const currentIndex = navigableItems.findIndex(item => item.id === global.settingsSection);
