@@ -394,23 +394,42 @@ const Picker: React.FC = observer(() => {
                       style={{
                         padding: '3px 4px',
                         cursor: 'pointer',
-                        display: 'flex',
-                        justifyContent: 'space-between',
                         borderRadius: 3,
                         background: isHighlighted ? 'var(--canvas-chip-bg)' : 'transparent',
                       }}
                       onMouseEnter={() => setHighlighted(flatIdx)}
                     >
-                      <span>
-                        {(picker.request.kind === 'select' ||
-                          picker.request.kind === 'order' ||
-                          picker.request.kind === 'group') &&
-                        selectedColumns.includes(item.value)
-                          ? '☑ '
-                          : ''}
-                        {item.label}
-                      </span>
-                      {item.detail && <span style={{ opacity: 0.5 }}>{item.detail}</span>}
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>
+                          {(picker.request.kind === 'select' ||
+                            picker.request.kind === 'order' ||
+                            picker.request.kind === 'group') &&
+                          selectedColumns.includes(item.value)
+                            ? '☑ '
+                            : ''}
+                          {item.label}
+                        </span>
+                        {item.detail && <span style={{ opacity: 0.5 }}>{item.detail}</span>}
+                      </div>
+                      {/* Only rendered for a join candidate that shares its
+                          table with another candidate in the same group -
+                          see openJoinPicker's toItems. An unambiguous row
+                          never grows this second line. `.column` is Pine's
+                          own disambiguation-hint syntax (docs/joins.md in
+                          pine-lang, e.g. `employee | document .created_by`),
+                          not UI-invented wording - this is exactly what
+                          picking this row is equivalent to typing by hand. */}
+                      {item.columnHint && (
+                        <div
+                          style={{
+                            fontSize: 'calc(11px * var(--text-scale, 1))',
+                            color: 'var(--canvas-text-dim)',
+                            fontFamily: 'var(--code-font)',
+                          }}
+                        >
+                          .{item.columnHint}
+                        </div>
+                      )}
                     </div>
                   );
                 })}

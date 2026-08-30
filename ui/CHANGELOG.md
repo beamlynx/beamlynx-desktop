@@ -5,6 +5,16 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.54.0] - 2026-08-30
+### Added
+- The join picker (canvas mode) now shows which foreign-key column a candidate uses (Pine's own disambiguation syntax, e.g. `.created_by`) whenever two candidates in the same group would otherwise name the same table and be indistinguishable -- a single unambiguous candidate for a table still renders with no extra text, same as before.
+
+### Changed
+- "Vim keybindings" (Preferences) now also gates the canvas's `j`/`k`-as-letters and single-letter shortcuts (`s`/`w`/`o`/`g`/`x`/`u`/`U`/`i`), not just the query editor -- previously those fired unconditionally regardless of the setting. Arrow-key navigation and Ctrl+Z/Ctrl+Y undo/redo are unaffected (they aren't vim-specific).
+
+### Fixed
+- Canvas's `j`/`k`/single-letter shortcuts (New Layout) no longer fire once the docked Settings panel is open, or while typing in the Pine/SQL panel -- keyboard input now routes to whichever panel actually has focus, falling back to the canvas when nothing else does. Opening Settings (however it's triggered -- the gear icon, `Ctrl`/`Cmd`+`,`, the command palette) hands it focus immediately, rather than only once something inside it is clicked. Settings' rail (Database Connections/Appearance/Preferences/MCP/About) also gained its own `j`/`k`/Arrow Up/Down navigation once it holds focus.
+
 ## [0.53.0] - 2026-08-28
 ### Added
 - Zen mode (New Layout, command palette only for now -- no dedicated key): a graph-only, distraction-free view that hides the header, tab strip, and Results, and turns auto-run off for as long as it's on (restored to whatever it was set to once you exit).

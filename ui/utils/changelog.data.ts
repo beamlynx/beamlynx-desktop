@@ -23,6 +23,31 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.54.0',
+    date: '2026-08-30',
+    added: [
+      {
+        title: 'The join picker shows the disambiguating column when needed',
+        description:
+          "When two join candidates in the same group would otherwise name the same table (reached via two different foreign keys), the picker now shows Pine's own disambiguation syntax (e.g. `.created_by`) next to each one. A table with only one candidate path still renders with no extra text.",
+      },
+    ],
+    changed: [
+      {
+        title: '"Vim keybindings" now also covers the canvas',
+        description:
+          "Previously only the query editor. The canvas's j/k-as-letters and single-letter shortcuts (s/w/o/g/x/u/U/i) now fire only when this preference is on, matching the editor. Arrow-key navigation and Ctrl/Cmd+Z/Ctrl+Y undo/redo are unaffected -- they aren't vim-specific.",
+      },
+    ],
+    fixed: [
+      {
+        title: "Canvas shortcuts fired while Settings or the Pine/SQL panel had focus",
+        description:
+          "j/k and the other single-letter canvas shortcuts (New Layout) no longer fire once the docked Settings panel is open, or while typing in the Pine/SQL panel -- keyboard input now routes to whichever panel actually has focus, falling back to the canvas when nothing else does. Opening Settings (however it's triggered) hands it focus immediately, rather than only once something inside it is clicked. Settings' rail (Database Connections/Appearance/Preferences/MCP/About) also gained its own j/k/Arrow Up/Down navigation.",
+      },
+    ],
+  },
+  {
     version: '0.53.0',
     date: '2026-08-28',
     added: [
@@ -1524,4 +1549,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.53.0';
+export const LATEST_VERSION = '0.54.0';

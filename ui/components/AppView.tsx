@@ -21,6 +21,8 @@ import SettingsModal from './settings/SettingsModal';
 import SettingsDockedPanel from './settings/SettingsDockedPanel';
 import { NewLayoutSettingsPanelDivider } from './ResizableDividers';
 import { useGlobalKeybindings } from '../hooks/useGlobalKeybindings';
+import { useFocusedPanelTracking } from '../hooks/useFocusedPanelTracking';
+import { useSettingsKeybindings } from '../hooks/useSettingsKeybindings';
 import { LATEST_VERSION } from '../utils/changelog.data';
 import { compare } from 'semver';
 import { getKeybindingDisplayForCommand } from '../utils/keybindings';
@@ -77,6 +79,10 @@ const AppView = observer(() => {
     session,
     global,
   });
+  // Which panel (Canvas/Settings/Input) currently owns bare-key input --
+  // see GlobalStore.activeKeyboardPanel's own comment.
+  useFocusedPanelTracking({ global });
+  useSettingsKeybindings({ global });
 
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('lg'));

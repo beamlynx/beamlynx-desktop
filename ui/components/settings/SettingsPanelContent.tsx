@@ -13,7 +13,9 @@ import PreferencesSection from './PreferencesSection';
 import McpSection from './McpSection';
 import AboutSection from './AboutSection';
 
-const RAIL_ITEMS: { id: SettingsSection; label: string }[] = [
+// Exported so useSettingsKeybindings.ts can drive j/k rail navigation off
+// the exact same order shown here, rather than a second, hand-kept list.
+export const RAIL_ITEMS: { id: SettingsSection; label: string }[] = [
   // "Database" is deliberate, not filler -- a future "connection to the pine
   // server itself" concept will also use the word "connection", so this
   // stays unambiguous about which kind it means from the rail alone.

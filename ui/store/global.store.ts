@@ -311,6 +311,36 @@ export class GlobalStore {
   email = '';
   domain = '';
 
+  // Which panel (New Layout only) most recently held real DOM focus --
+  // 'graph' | 'settings' | 'input' | null (null = nothing panel-specific
+  // focused, e.g. the header). Transient, not persisted -- same reasoning as
+  // zenMode above. Written by useFocusedPanelTracking.ts's document-level
+  // focusin/focusout listener; read through activeKeyboardPanel below, never
+  // directly, since a panel can still be nominally "focused" after it's been
+  // hidden (Settings closed via the gear icon while a row inside it still
+  // had focus) -- the getter is what falls that back to 'graph'.
+  focusedPanelId: 'graph' | 'settings' | 'input' | null = null;
+
+  setFocusedPanelId = (id: 'graph' | 'settings' | 'input' | null) => {
+    this.focusedPanelId = id;
+  };
+
+  // The single source of truth every panel-scoped keybinding hook
+  // (useCanvasKeybindings, useSettingsKeybindings) gates on. DOM focus, not
+  // visibility, decides who owns bare-key input -- Settings is a *docked*
+  // panel in New Layout (see SettingsDockedPanel.tsx's own comment) meant to
+  // stay open while you keep working the canvas, so "Settings is open" can't
+  // mean "Settings owns every keystroke until closed" the way it would for a
+  // modal. Falls back to 'graph' whenever the nominally-focused panel isn't
+  // actually eligible right now (hidden, or focus never landed anywhere in
+  // particular) -- that fallback is what preserves today's canvas-keys-work-
+  // by-default behavior.
+  get activeKeyboardPanel(): 'graph' | 'settings' | 'input' {
+    if (this.focusedPanelId === 'settings' && this.showSettings) return 'settings';
+    if (this.focusedPanelId === 'input' && this.newLayoutPanelVisible) return 'input';
+    return 'graph';
+  }
+
   // Settings
   showSettings = false;
   // Which section the settings modal opens to -- defaults to Connections
