@@ -13,7 +13,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - "Vim keybindings" (Preferences) now also gates the canvas's `j`/`k`-as-letters and single-letter shortcuts (`s`/`w`/`o`/`g`/`x`/`u`/`U`/`i`), not just the query editor -- previously those fired unconditionally regardless of the setting. Arrow-key navigation and Ctrl+Z/Ctrl+Y undo/redo are unaffected (they aren't vim-specific).
 
 ### Fixed
-- Canvas's `j`/`k`/single-letter shortcuts (New Layout) no longer fire while you're navigating the docked Settings panel or typing in the Pine/SQL panel -- keyboard input now routes to whichever panel actually has focus, falling back to the canvas when nothing else does. Settings' rail (Database Connections/Appearance/Preferences/MCP/About) also gained its own `j`/`k`/Arrow Up/Down navigation once it holds focus.
+- Canvas's `j`/`k`/single-letter shortcuts (New Layout) no longer fire once the docked Settings panel is open, or while typing in the Pine/SQL panel -- keyboard input now routes to whichever panel actually has focus, falling back to the canvas when nothing else does. Opening Settings (however it's triggered -- the gear icon, `Ctrl`/`Cmd`+`,`, the command palette) hands it focus immediately, rather than only once something inside it is clicked. Settings' rail (Database Connections/Appearance/Preferences/MCP/About) also gained its own `j`/`k`/Arrow Up/Down navigation once it holds focus.
 
 ## [0.53.0] - 2026-08-28
 ### Added

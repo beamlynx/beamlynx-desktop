@@ -1,4 +1,5 @@
 import { Box } from '@mui/material';
+import { useEffect, useRef } from 'react';
 import SettingsPanelContent from './SettingsPanelContent';
 
 /**
@@ -20,8 +21,29 @@ import SettingsPanelContent from './SettingsPanelContent';
  * Closed only by its own IconButton (SettingsPanelContent) or the gear icon.
  */
 const SettingsDockedPanel = () => {
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // Opening Settings (the gear icon, Ctrl/Cmd+,, the command palette, a
+  // reconnect banner's deep link -- whatever triggers it) leaves DOM focus
+  // wherever the trigger itself was, e.g. the gear IconButton, which isn't
+  // under this component's [data-keyboard-panel] root at all. Without
+  // this, GlobalStore.activeKeyboardPanel fell back to 'graph' the instant
+  // Settings appeared, and canvas shortcuts (j/k, vim-style single letters)
+  // kept firing until the user happened to click something inside the
+  // panel (confirmed live: opening Settings and immediately pressing a
+  // canvas shortcut still hit the canvas). This component only mounts
+  // while global.showSettings is true (see AppView.tsx's conditional
+  // render), so a mount-time focus grabs it exactly once per open -- it
+  // doesn't fight the click-to-focus handler below, which only matters for
+  // moving focus back here *after* it's left (e.g. clicking the canvas,
+  // then clicking back into Settings without a remount).
+  useEffect(() => {
+    rootRef.current?.focus();
+  }, []);
+
   return (
     <Box
+      ref={rootRef}
       data-keyboard-panel="settings"
       // -1, not a real Tab stop: closing Settings (its own IconButton, or
       // the gear icon) is the way back to the Canvas panel -- Tab was tried

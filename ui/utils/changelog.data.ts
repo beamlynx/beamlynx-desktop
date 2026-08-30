@@ -43,7 +43,7 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: "Canvas shortcuts fired while Settings or the Pine/SQL panel had focus",
         description:
-          "j/k and the other single-letter canvas shortcuts (New Layout) no longer fire while you're navigating the docked Settings panel or typing in the Pine/SQL panel -- keyboard input now routes to whichever panel actually has focus, falling back to the canvas when nothing else does. Settings' rail (Database Connections/Appearance/Preferences/MCP/About) also gained its own j/k/Arrow Up/Down navigation.",
+          "j/k and the other single-letter canvas shortcuts (New Layout) no longer fire once the docked Settings panel is open, or while typing in the Pine/SQL panel -- keyboard input now routes to whichever panel actually has focus, falling back to the canvas when nothing else does. Opening Settings (however it's triggered) hands it focus immediately, rather than only once something inside it is clicked. Settings' rail (Database Connections/Appearance/Preferences/MCP/About) also gained its own j/k/Arrow Up/Down navigation.",
       },
     ],
   },
