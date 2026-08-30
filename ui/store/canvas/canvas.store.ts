@@ -577,8 +577,29 @@ export class CanvasStore {
       if (!ast) throw new Error('Failed to build join suggestions');
       const has = ast.hints.table.filter(h => !h.parent);
       const belongsTo = ast.hints.table.filter(h => h.parent);
-      const toItems = (hints: TableHint[]): PickerItem[] =>
-        hints.map(h => ({ id: h.pine, label: h.table, detail: h.schema ?? undefined, value: h.pine }));
+      // Two hints in the same group can legitimately name the same table
+      // reached via two different FK columns (e.g. `cases` has separate
+      // `created_by`/`approved_by` columns both pointing at `users`) -- with
+      // nothing but the table name shown, those rows would be visually
+      // identical and the user couldn't tell which one they were picking.
+      // Only THOSE rows earn a column hint; a table with a single candidate
+      // path stays exactly as clean as before. Counted on the same set
+      // openListPicker's own dedup (by `pine` text) would leave behind, so a
+      // pair that collapses into one row downstream never spuriously earns a
+      // hint neither survivor needs.
+      const toItems = (hints: TableHint[]): PickerItem[] => {
+        const tableKey = (h: TableHint) => `${h.schema ?? ''}.${h.table}`;
+        const dedupedByPine = Array.from(new Map(hints.map(h => [h.pine, h])).values());
+        const counts = new Map<string, number>();
+        dedupedByPine.forEach(h => counts.set(tableKey(h), (counts.get(tableKey(h)) ?? 0) + 1));
+        return hints.map(h => ({
+          id: h.pine,
+          label: h.table,
+          detail: h.schema ?? undefined,
+          value: h.pine,
+          columnHint: (counts.get(tableKey(h)) ?? 0) > 1 ? h.column : undefined,
+        }));
+      };
       return {
         groups: [
           { label: 'has', items: toItems(has) },

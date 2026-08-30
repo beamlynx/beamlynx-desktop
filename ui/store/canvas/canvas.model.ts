@@ -110,6 +110,14 @@ export type PickerItem = {
   group?: string;
   /** hint.pine for table/join items; bare column name for select/where/order/group items. */
   value: string;
+  /**
+   * Set only when this join candidate's table is otherwise indistinguishable
+   * from another candidate in the same group (same schema+table, reached via
+   * a different FK column) -- see openJoinPicker's toItems. Unset for every
+   * ordinary, unambiguous candidate, so the common case renders exactly as
+   * before this field existed.
+   */
+  columnHint?: string;
 };
 
 export type PickerRequest =
