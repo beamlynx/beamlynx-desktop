@@ -23,6 +23,65 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.55.0',
+    date: '2026-08-31',
+    breaking: [
+      {
+        title: 'Requires pine-lang 0.41.0 or later',
+        description: "Was 0.39.0 -- needed by the access policy feature's new access-policy param.",
+      },
+    ],
+    added: [
+      {
+        title: 'Named access policies (Settings -> Access Policy)',
+        description:
+          'Create, rename, and delete named policies, each a toggleable set of rules deciding which columns show real values instead of xxxxx (Postgres types, foreign keys, _id-suffixed columns).',
+      },
+      {
+        title: 'Pick which policy applies to each connection',
+        description:
+          "MCP can only be turned on once a connection's policy is active, and the policy can't be cleared or swapped for an inactive one while MCP is on.",
+      },
+      {
+        title: '"Only apply to MCP server" toggle',
+        description:
+          'See real data on your own queries against a connection without changing what the agent sees. Off by default.',
+      },
+    ],
+    changed: [
+      {
+        title: '"Vim keybindings" no longer gates the canvas',
+        description: "Reverts 0.54.0's change -- only j/k and the query editor's vim mode are gated by it.",
+      },
+      {
+        title: '"Vim keybindings" is now app-wide',
+        description: 'Was per-tab; every open tab now reflects the same value immediately.',
+      },
+    ],
+    fixed: [
+      {
+        title: 'MCP queries could run against a stale access policy',
+        description: 'They now always re-read the current policy before running.',
+      },
+      {
+        title: 'Occasional "X is not a function" during dev',
+        description: 'A duplicate MCP query listener left behind by Fast Refresh could answer a query with stale code.',
+      },
+      {
+        title: 'Canvas shortcuts got stuck after using the picker with Settings open',
+      },
+      {
+        title: "A canvas checkpoint's aggregate name could reappear after being removed",
+        description: 'The first click after (re)naming a checkpoint could also show stale results.',
+      },
+      {
+        title: 'Tab order and focus fixes in the docked Settings panel',
+        description:
+          'Connections are now reachable by Tab; Settings no longer loses its shortcuts to the canvas, or its rail to arrow keys/j/k, at the wrong moment.',
+      },
+    ],
+  },
+  {
     version: '0.54.0',
     date: '2026-08-30',
     added: [
@@ -1549,4 +1608,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.54.0';
+export const LATEST_VERSION = '0.55.0';
