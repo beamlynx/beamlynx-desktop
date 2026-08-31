@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { GlobalStore } from '../store/global.store';
 import { isDesktop } from '../store/util';
-import { RAIL_ITEMS } from '../components/settings/SettingsPanelContent';
+import { RAIL_ITEMS, DESKTOP_ONLY_SECTIONS } from '../components/settings/SettingsPanelContent';
 
 interface SettingsKeybindingsProps {
   global: GlobalStore;
@@ -71,7 +71,7 @@ export const useSettingsKeybindings = ({ global }: SettingsKeybindingsProps) => 
       const target = e.target instanceof Element ? e.target : null;
       if (isTypingTarget(target)) return;
 
-      const navigableItems = RAIL_ITEMS.filter(item => item.id !== 'mcp' || isDesktop());
+      const navigableItems = RAIL_ITEMS.filter(item => !DESKTOP_ONLY_SECTIONS.includes(item.id) || isDesktop());
       const currentIndex = navigableItems.findIndex(item => item.id === global.settingsSection);
       const moveTo = (item: (typeof navigableItems)[number] | undefined) => {
         e.preventDefault();

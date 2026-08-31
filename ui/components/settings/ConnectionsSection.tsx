@@ -3,6 +3,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import EditIcon from '@mui/icons-material/Edit';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SecurityIcon from '@mui/icons-material/Security';
+import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
@@ -421,6 +422,7 @@ const ConnectionsSection = () => {
   const [renameValue, setRenameValue] = useState('');
   const [renameSaving, setRenameSaving] = useState(false);
   const [colorPickerFor, setColorPickerFor] = useState<{ id: string; anchor: HTMLElement } | null>(null);
+  const [policyPickerFor, setPolicyPickerFor] = useState<{ id: string; anchor: Element } | null>(null);
   const confirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reindexedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -559,7 +561,7 @@ const ConnectionsSection = () => {
             No saved connections yet.
           </Typography>
         )}
-        {global.connections.map(({ id, label, mcpEnabled }) => {
+        {global.connections.map(({ id, label, mcpEnabled, policyId, bypassPolicyForOwnQueries }) => {
           const isActive = isDesktop() ? id === global.activeProfileId : id === activeSession?.connectionId;
           const isLive = global.isConnectionLive(id);
           const activateRow = () =>
@@ -722,29 +724,171 @@ const ConnectionsSection = () => {
                   }}
                 />
               )}
-              {isDesktop() && (
-                // A hardware-style switch here reads as "this connection is
-                // on/off" rather than what it actually gates -- letting an AI
-                // agent query it over MCP. A bot glyph in the row's own
-                // icon-button vocabulary (same idle/hover/active states as
-                // the rename/refresh/delete icons beside it) says that
-                // directly instead: lit up when an agent can reach this
-                // connection, dim when it can't.
-                <SmartToyOutlinedIcon
-                  onClick={e => {
-                    e.stopPropagation();
-                    global.setMcpEnabled(id, !mcpEnabled);
-                  }}
-                  titleAccess={mcpEnabled ? 'MCP access is on -- click to turn off' : 'Turn on MCP access for this connection'}
-                  sx={{
-                    fontSize: 16,
-                    cursor: 'pointer',
-                    opacity: mcpEnabled ? 1 : 0.35,
-                    color: mcpEnabled ? 'var(--icon-color-highlight)' : 'inherit',
-                    '&:hover': { opacity: mcpEnabled ? 0.9 : 0.6 },
-                  }}
-                />
-              )}
+              {isDesktop() && (() => {
+                const selectedPolicy = global.accessPolicies.find(p => p.id === policyId);
+                // MCP always uses this connection's own assigned policy the
+                // moment it's enabled -- there is no "on but unprotected"
+                // state (GlobalStore.setMcpEnabled refuses turning it on
+                // otherwise), so the gate for the bot icon and the shield
+                // icon is the same fact about the same policy.
+                const isConnPolicyActive = !!selectedPolicy?.rules.some(m => m.enabled);
+                // Whether the policy is currently in effect for the human's
+                // own tabs on this connection -- the agent's own side of
+                // this is `mcpEnabled` alone, always, regardless of this.
+                const appliesToOwnQueries = !!policyId && !bypassPolicyForOwnQueries;
+
+                // Only refuse *turning on* -- switching an already-enabled
+                // connection off must never be blocked by its policy going
+                // inactive later; that's a separate, always-available
+                // action (see GlobalStore.setMcpEnabled, which only ever
+                // refuses an `enabled: true` call).
+                const mcpClickDisabled = !mcpEnabled && !isConnPolicyActive;
+                const mcpTitle = mcpClickDisabled
+                  ? 'Select an access policy with an active rule first'
+                  : mcpEnabled
+                    ? 'MCP access is on -- click to turn off'
+                    : 'Turn on MCP access for this connection';
+
+                const shieldTitle = !selectedPolicy
+                  ? 'No access policy selected -- click to select one'
+                  : !isConnPolicyActive
+                    ? `"${selectedPolicy.name}" has no active rules -- click to change`
+                    : mcpEnabled && appliesToOwnQueries
+                      ? `Policy: ${selectedPolicy.name} -- applies to the agent and your own queries`
+                      : mcpEnabled
+                        ? `Policy: ${selectedPolicy.name} -- applies to the agent only, not your own queries`
+                        : appliesToOwnQueries
+                          ? `Policy: ${selectedPolicy.name} -- applies to your own queries`
+                          : `Policy: ${selectedPolicy.name} -- not applied right now`;
+                const shieldOn = mcpEnabled || appliesToOwnQueries;
+
+                return (
+                  <>
+                    {/* A hardware-style switch here reads as "this connection
+                        is on/off" rather than what it actually gates --
+                        letting an AI agent query it over MCP. A bot glyph in
+                        the row's own icon-button vocabulary (same idle/
+                        hover/active states as the rename/refresh/delete
+                        icons beside it) says that directly instead: lit up
+                        when an agent can reach this connection, dim when it
+                        can't. */}
+                    <SmartToyOutlinedIcon
+                      onClick={e => {
+                        e.stopPropagation();
+                        if (mcpClickDisabled) return;
+                        global.setMcpEnabled(id, !mcpEnabled);
+                      }}
+                      titleAccess={mcpTitle}
+                      sx={{
+                        fontSize: 16,
+                        cursor: mcpClickDisabled ? 'default' : 'pointer',
+                        opacity: mcpClickDisabled ? 0.2 : mcpEnabled ? 1 : 0.35,
+                        color: mcpEnabled ? 'var(--icon-color-highlight)' : 'inherit',
+                        '&:hover': { opacity: mcpClickDisabled ? 0.2 : mcpEnabled ? 0.9 : 0.6 },
+                      }}
+                    />
+                    <ShieldOutlinedIcon
+                      onClick={e => {
+                        e.stopPropagation();
+                        setPolicyPickerFor({ id, anchor: e.currentTarget });
+                      }}
+                      titleAccess={shieldTitle}
+                      sx={{
+                        fontSize: 16,
+                        cursor: 'pointer',
+                        opacity: shieldOn ? 1 : 0.35,
+                        color: shieldOn ? 'var(--icon-color-highlight)' : 'inherit',
+                        '&:hover': { opacity: shieldOn ? 0.9 : 0.6 },
+                      }}
+                    />
+                    {policyPickerFor?.id === id && (
+                      <Popover
+                        open
+                        anchorEl={policyPickerFor.anchor}
+                        onClose={() => setPolicyPickerFor(null)}
+                        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+                        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+                        slotProps={{
+                          paper: {
+                            onClick: (e: MouseEvent) => e.stopPropagation(),
+                            sx: {
+                              backgroundColor: 'var(--background-color)',
+                              backgroundImage: 'none',
+                              border: '1px solid var(--border-color)',
+                              borderRadius: 1,
+                              py: 0.5,
+                              minWidth: 200,
+                            },
+                          },
+                        }}
+                      >
+                        {[{ id: null as string | null, name: 'None' }, ...global.accessPolicies].map(option => {
+                          // "None" would leave MCP pointing at nothing --
+                          // GlobalStore.setConnectionPolicy refuses it while
+                          // mcpEnabled, so this heads that refusal off
+                          // proactively instead of showing an error after
+                          // the click.
+                          const disabled = option.id === null && mcpEnabled;
+                          return (
+                            <Box
+                              key={option.id ?? '__none__'}
+                              onClick={() => {
+                                if (disabled) return;
+                                global.setConnectionPolicy(id, option.id);
+                                setPolicyPickerFor(null);
+                              }}
+                              title={disabled ? 'Turn off MCP access first' : undefined}
+                              sx={{
+                                px: 1.5,
+                                py: 0.75,
+                                cursor: disabled ? 'default' : 'pointer',
+                                fontFamily: 'var(--canvas-font)',
+                                fontSize: '13px',
+                                opacity: disabled ? 0.4 : 1,
+                                color: option.id === policyId ? 'var(--text-color)' : 'var(--canvas-text-dim)',
+                                backgroundColor: option.id === policyId ? 'var(--node-column-bg)' : 'transparent',
+                                '&:hover': { backgroundColor: disabled ? 'transparent' : 'var(--hover-color)' },
+                              }}
+                            >
+                              {option.name}
+                            </Box>
+                          );
+                        })}
+                        <Box sx={{ borderTop: '1px solid var(--border-color)', my: 0.5 }} />
+                        <Box
+                          onClick={() => {
+                            if (!policyId) return;
+                            global.setBypassPolicyForOwnQueries(id, !bypassPolicyForOwnQueries);
+                          }}
+                          title="When on, this policy protects the agent only -- your own queries on this connection show real data instead."
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 1,
+                            px: 1.5,
+                            py: 0.75,
+                            cursor: policyId ? 'pointer' : 'default',
+                            opacity: policyId ? 1 : 0.4,
+                            fontFamily: 'var(--canvas-font)',
+                            fontSize: '13px',
+                            color: 'var(--canvas-text-dim)',
+                            '&:hover': { backgroundColor: policyId ? 'var(--hover-color)' : 'transparent' },
+                          }}
+                        >
+                          <CheckIcon
+                            sx={{
+                              fontSize: 14,
+                              visibility: bypassPolicyForOwnQueries ? 'visible' : 'hidden',
+                              color: 'var(--icon-color-highlight)',
+                            }}
+                          />
+                          Only apply to MCP server
+                        </Box>
+                      </Popover>
+                    )}
+                  </>
+                );
+              })()}
               {/* Fixed-width slot, always rendered (even for a not-yet-live
                   connection, where it's simply empty) -- so the delete icon
                   after it lands in the same column on every row instead of

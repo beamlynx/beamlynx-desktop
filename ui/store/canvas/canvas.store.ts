@@ -67,9 +67,11 @@ export class CanvasStore {
   // graph changes.
   private _focusedAlias: string | null = null;
   private pickerSeq = 0;
-  // Shares one in-flight checkpoint-naming commit across concurrent
-  // callers (recompute's own background auto-pin, and a picker open that
-  // lands before that resolves) - see ensureCheckpointPinnedShared.
+  // Shares one in-flight checkpoint-naming commit across concurrent picker
+  // opens that land before an earlier one resolves - see
+  // ensureCheckpointPinnedShared. Also exposed (read-only) as
+  // `checkpointPinning`, for FrameNode.tsx's loading state on the frame
+  // action that triggered the pin.
   private checkpointPinInFlight: Promise<string | null> | null = null;
   // Undo/redo: plain expression-text snapshots, not a replayable action log -
   // every gesture already reduces to a deterministic old-text -> new-text
@@ -268,21 +270,16 @@ export class CanvasStore {
     // grouped, nothing composed on top yet" moment this needs to catch.
     const segments = segmentsFromAst(expression, ast) ?? [];
     const hasCheckpoint = hasTrailingCheckpoint(segments);
-    // Pin the checkpoint's name proactively, in the background, the moment
-    // it appears unnamed - not waiting for the user's first click on a
-    // frame action. Found live: without this, the *first* click on select/
-    // where/order paid for the full pin round trip with zero visual
-    // feedback while it was in flight (the picker only shows its own
-    // loading state once opened, which happens *after* pinning resolves),
-    // reading as "nothing happened" on click 1 and "now it works" on
-    // click 2. By the time a user actually clicks, this has usually
-    // already resolved, so openCheckpointPicker's fast path applies from
-    // the first click too. ensureCheckpointPinnedShared dedupes against a
-    // click landing before this resolves, so the two never race into two
-    // redundant commits.
-    if (hasCheckpoint && !currentCheckpointName(segments) && !this.checkpointPinInFlight) {
-      void this.ensureCheckpointPinnedShared();
-    }
+    // Deliberately does NOT proactively pin a `|= name` here just because a
+    // checkpoint is unnamed - this used to run in the background on every
+    // recompute (i.e. on every edit to session.expression), which can't
+    // distinguish "just grouped, never named yet" from "user deliberately
+    // removed the name via a raw-text edit" - both look identical
+    // structurally. That made a manually-removed name reappear on its own
+    // the moment any other edit landed (confirmed live). Naming now only
+    // happens on demand - see openCheckpointPicker/ensureCheckpointPinned -
+    // with FrameNode.tsx showing its own loading state for that on-demand
+    // pin instead.
     this.canvasGraph = buildCanvasGraph(ast, this.positions, hasCheckpoint);
   }
 
@@ -819,14 +816,51 @@ export class CanvasStore {
       name = base.checkpointName;
       return base.expression;
     });
+    if (name) await this.syncAstToExpression();
     return name;
   }
 
   /**
-   * Shares one in-flight pin commit across concurrent callers - recompute's
-   * own background auto-pin (see its comment) and any picker open that
-   * arrives before that resolves - so they never race into two redundant
-   * commit() round trips for the same pin.
+   * Re-probes `session.expression` and, if it still matches what was just
+   * probed, assigns the result straight to `session.ast` - closing the gap
+   * before Session's own separately-debounced build (200ms, plus a network
+   * round trip - see pinnedBase's comment) catches up on its own.
+   *
+   * Needed specifically after a commit that changes `session.expression` to
+   * `next`'s *prettified* rendering (see runCommit): the ast a commit's own
+   * probe already has in hand describes `next`'s (unprettified) text, not
+   * the differently-formatted string that just got assigned to
+   * `session.expression` - `ast.ranges` are flat character offsets, so
+   * pairing them with a same-content-but-different-length string slices the
+   * wrong substrings (pinnedBase's own "cas as cr" landmine) rather than
+   * simply being stale. Only a fresh probe of the exact string in
+   * `session.expression` has matching ranges.
+   *
+   * Confirmed live as openCheckpointPicker's first select/where/order/join
+   * click, right after pinning a name, building a probe expression from
+   * corrupted segments - it silently dropped the checkpoint from the probe
+   * entirely and asked the backend to resolve a `from: <name>` no earlier
+   * step had actually defined, coming back with zero column hints. A second
+   * click worked because Session's debounced build had caught up for real
+   * by then. Not folded into runCommit itself - every other gesture already
+   * has this same gap, but nothing else reads `session.ast` synchronously
+   * immediately afterward, so paying an extra probe there would be pure
+   * waste; this one specific caller does, so it pays for its own fix.
+   */
+  private async syncAstToExpression(): Promise<void> {
+    const expression = this.session.expression;
+    const ast = await probeBuild(expression, this.session.connectionId);
+    if (ast && this.session.expression === expression) {
+      runInAction(() => {
+        this.session.ast = ast;
+      });
+    }
+  }
+
+  /**
+   * Shares one in-flight pin commit across concurrent frame-action clicks
+   * that land before an earlier one resolves, so they never race into two
+   * redundant commit() round trips for the same pin.
    */
   private ensureCheckpointPinnedShared(): Promise<string | null> {
     if (this.checkpointPinInFlight) return this.checkpointPinInFlight;
@@ -835,6 +869,16 @@ export class CanvasStore {
     });
     this.checkpointPinInFlight = pending;
     return pending;
+  }
+
+  /**
+   * True while a frame action's first click is waiting on
+   * ensureCheckpointPinned to resolve - naming now only happens on demand
+   * (see recompute's comment), so this is the one signal FrameNode.tsx has
+   * to show that the click landed instead of appearing to do nothing.
+   */
+  get checkpointPinning(): boolean {
+    return this.checkpointPinInFlight !== null;
   }
 
   /**
@@ -850,12 +894,11 @@ export class CanvasStore {
    * commit()/pinnedBase() round trip (a fresh probe plus a "prettify"
    * probe, even for a guaranteed no-op) and read the name straight off the
    * currently-rendered segments instead, which costs nothing (no network
-   * call). Found live: every click on a frame action was paying for 2-3
-   * sequential round trips before the picker could even open, which read
-   * as "nothing happened" on the first click and "now it works" on a
-   * second. Committing the actual pick still goes through the full
-   * pinning pipeline regardless (see toggleSelectColumn etc.) - this only
-   * skips the pre-emptive pin that used to happen just to open the picker.
+   * call). The first click on a still-unnamed checkpoint does pay that
+   * round trip - `checkpointPinning` is what lets FrameNode.tsx show a
+   * loading state for it rather than looking unresponsive. Committing the
+   * actual pick still goes through the full pinning pipeline regardless
+   * (see toggleSelectColumn etc.) - this only covers opening the picker.
    */
   async openCheckpointPicker(kind: 'select' | 'where' | 'order' | 'join', anchor: PickerAnchor) {
     const segments = segmentsFromAst(this.session.expression, this.session.ast) ?? [];

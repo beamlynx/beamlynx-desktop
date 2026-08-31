@@ -10,6 +10,7 @@ import { TEXT_SIZE_SCALE } from '../../styles/text-size';
 import ConnectionsSection from './ConnectionsSection';
 import ThemeSection from './ThemeSection';
 import PreferencesSection from './PreferencesSection';
+import AccessPolicySection from './AccessPolicySection';
 import McpSection from './McpSection';
 import AboutSection from './AboutSection';
 
@@ -22,9 +23,19 @@ export const RAIL_ITEMS: { id: SettingsSection; label: string }[] = [
   { id: 'connections', label: 'Database Connections' },
   { id: 'theme', label: 'Appearance' },
   { id: 'preferences', label: 'Preferences' },
+  // Just before 'mcp' -- it's a prerequisite for MCP access (see
+  // AccessPolicySection.tsx), not an unrelated setting placed nearby.
+  { id: 'access-policy', label: 'Access Policy' },
   { id: 'mcp', label: 'MCP' },
   { id: 'about', label: 'About' },
 ];
+
+// 'access-policy' is desktop-only for the same reason 'mcp' is: it exists
+// entirely to govern MCP access, which doesn't exist in browser mode.
+// Exported for the same reason RAIL_ITEMS is -- useSettingsKeybindings.ts's
+// j/k rail navigation skips these in browser mode too, off this exact list,
+// not a second hand-kept one.
+export const DESKTOP_ONLY_SECTIONS: SettingsSection[] = ['access-policy', 'mcp'];
 
 /**
  * Rail nav + section content, shared by both Settings shells: the floating
@@ -110,7 +121,7 @@ const SettingsPanelContent = () => {
             SETTINGS
           </Typography>
           {RAIL_ITEMS.map(item => {
-            const disabled = item.id === 'mcp' && !isDesktop();
+            const disabled = DESKTOP_ONLY_SECTIONS.includes(item.id) && !isDesktop();
             const active = item.id === activeSection;
             return (
               <Box
@@ -159,6 +170,7 @@ const SettingsPanelContent = () => {
           {activeSection === 'connections' && <ConnectionsSection />}
           {activeSection === 'theme' && <ThemeSection />}
           {activeSection === 'preferences' && <PreferencesSection />}
+          {activeSection === 'access-policy' && <AccessPolicySection />}
           {activeSection === 'mcp' && <McpSection />}
           {activeSection === 'about' && <AboutSection />}
         </Box>

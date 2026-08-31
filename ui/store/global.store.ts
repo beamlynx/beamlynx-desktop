@@ -1,6 +1,6 @@
 import { makeAutoObservable, reaction, runInAction } from 'mobx';
 import { lt } from 'semver';
-import { HttpClient, ConnectionInfo } from './client';
+import { AccessPolicy, AccessPolicyRule, HttpClient, ConnectionInfo, effectiveAccessPolicyRules } from './client';
 import type { CredentialsStatus } from '../desktop';
 import { Session, Theme, InputMode } from './session';
 import { THEME_MODE, ThemeId } from '../styles/palette/tokens';
@@ -58,7 +58,7 @@ type ConnectionParams = {
   label?: string;
 };
 
-export type SettingsSection = 'connections' | 'theme' | 'preferences' | 'mcp' | 'about';
+export type SettingsSection = 'connections' | 'theme' | 'preferences' | 'access-policy' | 'mcp' | 'about';
 
 export class GlobalStore {
   connecting = false;
@@ -74,6 +74,14 @@ export class GlobalStore {
   // profile" apart from "haven't checked yet" and would flash the raw
   // connection id (e.g. "localhost:5432") as if it were the name.
   connectionsLoaded = false;
+  // Every named access policy (Settings -> Access Policy, credential-store.ts)
+  // -- each connection independently selects one by id (ConnectionInfo.policyId),
+  // or none. Loaded alongside connections at boot (refreshAccessPolicies)
+  // and re-read fresh before every MCP query (mcpQueryDeps'
+  // resolveAccessPolicyRules); every session's own accessPolicyRules
+  // getter reads this same shared array, so an edit here is visible to
+  // every open tab on its next read.
+  accessPolicies: AccessPolicy[] = [];
   credentialsStatus: CredentialsStatus | null = null;
 
   // Desktop-only: the one dedicated tab MCP-driven queries run in (see
@@ -642,6 +650,7 @@ export class GlobalStore {
           dbHost: p.dbHost,
           dbPort: p.dbPort,
           mcpEnabled: p.mcpEnabled,
+          policyId: p.policyId,
         }));
         this.connections.forEach(c => this.assignConnectionColor(c.id));
         // Keep the active pine connection's own color alive even though it's
@@ -671,6 +680,65 @@ export class GlobalStore {
       this.connectionsLoaded = true;
     });
     return this.connections;
+  };
+
+  // Desktop-only, same as accessPolicies itself -- browser mode has no MCP
+  // and no policy concept, so this is a no-op there. Called at boot
+  // alongside refreshConnections, and again before every MCP query
+  // (mcpQueryDeps' resolveAccessPolicyRules) so an edit made from Settings
+  // -> Access Policy takes effect on the very next query, not just the
+  // next reconnect.
+  refreshAccessPolicies = async (): Promise<AccessPolicy[]> => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) return this.accessPolicies;
+    const policies = await window.beamlynxDesktop.accessPolicy.list();
+    runInAction(() => {
+      this.accessPolicies = policies;
+    });
+    return this.accessPolicies;
+  };
+
+  createAccessPolicy = async (name: string): Promise<AccessPolicy | undefined> => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) return undefined;
+    const policy = await window.beamlynxDesktop.accessPolicy.create(name);
+    runInAction(() => {
+      this.accessPolicies = [...this.accessPolicies, policy];
+    });
+    return policy;
+  };
+
+  renameAccessPolicy = async (id: string, name: string): Promise<void> => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
+    const updated = await window.beamlynxDesktop.accessPolicy.rename(id, name);
+    if (!updated) return;
+    runInAction(() => {
+      this.accessPolicies = this.accessPolicies.map(p => (p.id === id ? updated : p));
+    });
+  };
+
+  // Any connection that had this policy selected falls back to "None"
+  // server-side (credential-store.ts's deleteAccessPolicy) -- refresh
+  // connections too, so a connection row showing this policy's name
+  // doesn't keep showing it after it no longer exists.
+  deleteAccessPolicy = async (id: string): Promise<void> => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
+    await window.beamlynxDesktop.accessPolicy.delete(id);
+    runInAction(() => {
+      this.accessPolicies = this.accessPolicies.filter(p => p.id !== id);
+    });
+    await this.refreshConnections();
+  };
+
+  setAccessPolicyModuleEnabled = async (
+    policyId: string,
+    type: AccessPolicyRule['type'],
+    enabled: boolean,
+  ): Promise<void> => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
+    const updated = await window.beamlynxDesktop.accessPolicy.setModuleEnabled(policyId, type, enabled);
+    if (!updated) return;
+    runInAction(() => {
+      this.accessPolicies = this.accessPolicies.map(p => (p.id === policyId ? updated : p));
+    });
   };
 
   consumeReconnectHint = () => {
@@ -1002,6 +1070,17 @@ export class GlobalStore {
         };
       });
     },
+    // Always re-reads both the connection list and every access policy
+    // first (see mcp-query.ts's top comment for why a cached snapshot isn't
+    // safe here) -- this replaces `this.connections`/`this.accessPolicies`
+    // wholesale, so it also brings Session.accessPolicyRules (which reads
+    // those same two) up to date for whichever session runMcpQuery is
+    // about to evaluate against.
+    resolveAccessPolicyRules: async (profileId: string) => {
+      const [connections, policies] = await Promise.all([this.refreshConnections(), this.refreshAccessPolicies()]);
+      // forMcp: true -- this is only ever called from runMcpQuery/explainMcpQuery.
+      return effectiveAccessPolicyRules(connections.find(c => c.id === profileId), policies, true);
+    },
   });
 
   /**
@@ -1022,14 +1101,78 @@ export class GlobalStore {
    * access-control lever for the MCP server. Off by default; the
    * control-plane server (beamlynx-desktop) refuses any MCP tool call
    * against a connection that isn't in this list, regardless of what's live
-   * in pine-lang's own pool.
+   * in pine-lang's own pool. Also refused (not silently ignored) unless
+   * *this connection's own* assigned policy has an active module -- there
+   * is no "MCP on, unprotected" state -- see credential-store.ts's
+   * setMcpEnabled. The ConnectionsSection UI is expected to disable this
+   * control before that refusal can even be attempted (see its own
+   * tooltip/disabled state), but this still surfaces connectionError on the
+   * refusal path as a belt-and-suspenders in case a caller reaches it some
+   * other way.
    */
   setMcpEnabled = async (id: string, enabled: boolean): Promise<void> => {
     if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
-    await window.beamlynxDesktop.credentials.setMcpEnabled(id, enabled);
+    const result = await window.beamlynxDesktop.credentials.setMcpEnabled(id, enabled);
+    if (!result.ok) {
+      runInAction(() => {
+        this.connectionError =
+          result.reason === 'no-active-policy'
+            ? 'Select an access policy with an active rule for this connection first.'
+            : 'That connection no longer exists.';
+      });
+      return;
+    }
     runInAction(() => {
       this.connections = this.connections.map(c =>
-        c.id === id ? { ...c, mcpEnabled: enabled } : c,
+        c.id === id ? { ...c, mcpEnabled: result.profile.mcpEnabled, policyId: result.profile.policyId } : c,
+      );
+    });
+  };
+
+  /**
+   * Selects which access policy (if any) applies to this connection's
+   * queries. Refused (not silently ignored) if it would clear/blank the
+   * policy -- to null, or to one with no active rule -- while mcpEnabled is
+   * already true: MCP must never end up pointing at nothing. The
+   * ConnectionsSection UI is expected to disable "None" and any inactive
+   * policy in that state (see its own picker), but this still surfaces
+   * connectionError on the refusal path the same way setMcpEnabled does.
+   * See credential-store.ts's setConnectionPolicy.
+   */
+  setConnectionPolicy = async (id: string, policyId: string | null): Promise<void> => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
+    const result = await window.beamlynxDesktop.credentials.setConnectionPolicy(id, policyId);
+    if (!result.ok) {
+      runInAction(() => {
+        this.connectionError =
+          result.reason === 'mcp-requires-policy'
+            ? 'MCP access is on for this connection -- pick a policy with an active rule, or turn MCP off first.'
+            : 'That connection no longer exists.';
+      });
+      return;
+    }
+    runInAction(() => {
+      this.connections = this.connections.map(c =>
+        c.id === id ? { ...c, mcpEnabled: result.profile.mcpEnabled, policyId: result.profile.policyId } : c,
+      );
+    });
+  };
+
+  /**
+   * Whether the connection owner has switched the assigned policy OFF for
+   * their own tab queries on it -- MCP always uses the assigned policy and
+   * never reads this. Never refused: unlike setMcpEnabled/setConnectionPolicy
+   * there's no "pointing at nothing" state this could create, since it
+   * doesn't touch mcpEnabled or policyId. See credential-store.ts's
+   * setBypassPolicyForOwnQueries.
+   */
+  setBypassPolicyForOwnQueries = async (id: string, bypass: boolean): Promise<void> => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
+    const updated = await window.beamlynxDesktop.credentials.setBypassPolicyForOwnQueries(id, bypass);
+    if (!updated) return;
+    runInAction(() => {
+      this.connections = this.connections.map(c =>
+        c.id === id ? { ...c, bypassPolicyForOwnQueries: updated.bypassPolicyForOwnQueries } : c,
       );
     });
   };
@@ -1486,6 +1629,7 @@ export class GlobalStore {
       });
 
       await this.refreshConnections();
+      await this.refreshAccessPolicies();
     } catch (e) {
       console.error('Failed to load connection metadata', e);
       runInAction(() => {
