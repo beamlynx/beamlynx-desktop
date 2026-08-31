@@ -8,6 +8,82 @@ import { app, ipcMain, safeStorage } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 
+// Mirrors pine-lang's pine.access-policy rule shape 1:1 -- these travel
+// verbatim (minus `enabled`, stripped in effectiveAccessPolicyRules -- see
+// beamlynx-ui's client.ts) as the `access-policy` param on pine-lang's
+// /api/v1/build and /api/v1/eval. pine-lang carries no policy content of
+// its own; this is the only place it lives. Deliberately a closed set of
+// `type`s for now, but the shape is exactly what the Access Policy settings
+// section reads and writes -- adding a rule type later is a new union
+// member, a new row in that section, and a new pine.access-policy `case`
+// branch, not a reshape.
+export type AccessPolicyRule =
+  | { type: 'column-type'; allow: string[] } // real Postgres type is in `allow`
+  | { type: 'foreign-key' } // column is a source column of a detected FK/heuristic relation
+  | { type: 'column-name'; suffix: string }; // column name ends with `suffix` -- weaker, opt-in
+
+// One module of a named policy: a rule plus whether it's currently on. The
+// array actually sent to pine-lang is `policy.rules.filter(m => m.enabled)`
+// with `enabled` stripped (see beamlynx-ui's client.ts
+// effectiveAccessPolicyRules) -- pine-lang never sees this flag, it only
+// sees rules that are already active.
+export type AccessPolicyModule = AccessPolicyRule & { enabled: boolean };
+
+// A named, user-creatable set of rule modules -- there can be several (see
+// AccessPolicySection.tsx), and each connection independently selects which
+// one applies to it (SavedConnectionMeta.policyId below), or none at all.
+export type AccessPolicy = {
+  id: string;
+  name: string;
+  rules: AccessPolicyModule[];
+};
+
+// The starting rule set for both the one policy seeded on first run
+// ("Default") and any policy created afterward (createAccessPolicy) -- the
+// same values pine-lang's access-policy POC originally hardcoded, now
+// living here as data instead. Not a global default in any other sense:
+// once seeded/created, a policy's rules are independently editable and
+// this constant is never consulted again for it.
+export const DEFAULT_ACCESS_POLICY: AccessPolicyModule[] = [
+  {
+    type: 'column-type',
+    enabled: true,
+    allow: [
+      'uuid',
+      'boolean',
+      'bool',
+      'smallint',
+      'integer',
+      'bigint',
+      'int2',
+      'int4',
+      'int8',
+      'numeric',
+      'decimal',
+      'real',
+      'double precision',
+      'float4',
+      'float8',
+      'money',
+      'date',
+      'time',
+      'time without time zone',
+      'time with time zone',
+      'timestamp',
+      'timestamp without time zone',
+      'timestamp with time zone',
+      'timestamptz',
+      'USER-DEFINED',
+    ],
+  },
+  { type: 'foreign-key', enabled: true },
+  { type: 'column-name', suffix: '_id', enabled: true },
+];
+
+function makeDefaultPolicy(rules: AccessPolicyModule[] = DEFAULT_ACCESS_POLICY): AccessPolicy {
+  return { id: randomUUID(), name: 'Default', rules };
+}
+
 export type SavedConnectionMeta = {
   id: string;
   label: string;
@@ -22,12 +98,35 @@ export type SavedConnectionMeta = {
   // The control-plane server checks this before letting an MCP client touch a
   // connection at all; a connection a user has never explicitly opted in
   // stays invisible to MCP clients regardless of what pine-lang itself allows.
+  // Can only be true while `policyId` resolves to a policy with an active
+  // rule -- see setMcpEnabled and isConnectionPolicyActive. MCP always has a
+  // real policy applied; there's no "reachable but unprotected" state.
   mcpEnabled: boolean;
+  // Which access policy applies to THIS connection's queries -- required
+  // (and required to have an active rule) whenever mcpEnabled is true;
+  // setConnectionPolicy refuses clearing or blanking it while MCP is on for
+  // this connection, and deleteAccessPolicy turns MCP off for any
+  // connection whose policy it removes, rather than leave mcpEnabled: true
+  // pointing at nothing. Can still be null while MCP is off, e.g. a
+  // freshly-created connection before its owner assigns one, or one whose
+  // owner deliberately doesn't want any policy applied to their own
+  // queries either (see bypassPolicyForOwnQueries below) while MCP stays
+  // off too.
+  policyId: string | null;
+  // Whether the connection owner has switched OFF the assigned policy for
+  // their own queries, from any of their own (non-MCP) tabs -- independent
+  // of MCP, which always applies the policy unconditionally and never reads
+  // this. Defaults to false (protected by default, same posture as
+  // mcpEnabled/policyId): the policy applies to the owner's own queries too
+  // unless they explicitly bypass it -- e.g. to see real data while
+  // debugging -- which never weakens what an MCP agent sees on the same
+  // connection. Moot when policyId is null (nothing to bypass either way).
+  bypassPolicyForOwnQueries: boolean;
 };
 
 type StoredConnectionRecord = SavedConnectionMeta & { dbPasswordEncrypted: string };
 
-type StoreFile = { version: 1; connections: StoredConnectionRecord[] };
+type StoreFile = { version: 1; connections: StoredConnectionRecord[]; accessPolicies: AccessPolicy[] };
 
 export type CredentialsStatus = {
   persistenceAvailable: boolean;
@@ -57,22 +156,66 @@ export type GetConnectionResult =
   // work with (e.g. to prompt "re-enter just the password").
   | { ok: false; error: 'decryption-failed'; profile: SavedConnectionMeta };
 
+// `null` (the old return type) already meant "connection id not found" --
+// once refusing to enable MCP without an active policy became a second
+// failure mode, that ambiguity had to go: a caller needs to tell "this
+// connection doesn't exist" apart from "it exists, but I won't do that."
+export type SetMcpEnabledResult =
+  | { ok: true; profile: SavedConnectionMeta }
+  | { ok: false; reason: 'not-found' }
+  | { ok: false; reason: 'no-active-policy' };
+
+// Same shape/reasoning as SetMcpEnabledResult -- clearing or blanking a
+// connection's policy while MCP is on for it is a second way to reach the
+// disallowed "MCP on, no active policy" state, so it needs the same
+// explicit refusal rather than silently violating the invariant.
+export type SetConnectionPolicyResult =
+  | { ok: true; profile: SavedConnectionMeta }
+  | { ok: false; reason: 'not-found' }
+  | { ok: false; reason: 'mcp-requires-policy' };
+
 function getStorePath(): string {
   return path.join(app.getPath('userData'), 'connections.json');
 }
 
 function emptyStore(): StoreFile {
-  return { version: 1, connections: [] };
+  return { version: 1, connections: [], accessPolicies: [makeDefaultPolicy()] };
 }
 
 // A corrupt or missing file must never block app boot -- default to empty
-// rather than throwing.
+// rather than throwing. Also migrates (once, persisted immediately -- not
+// just a type-level fallback re-applied on every read) a store written
+// before named policies existed:
+//  - a store with the earlier single-global-policy shape (`accessPolicy:
+//    AccessPolicyModule[]`) has its rules wrapped into one named "Default"
+//    policy instead of discarding whatever was already configured through
+//    that (now-replaced) global toggle UI;
+//  - each connection's old boolean `policyEnabled` becomes `policyId`:
+//    true -> the newly-created Default policy's id (unchanged effective
+//    behavior), false/absent -> null.
+// Persisting the migration matters here specifically: a read-only fallback
+// that never actually lands on disk is exactly the bug that made an
+// earlier version of this feature so hard to trust -- inspecting
+// connections.json directly showed a different value than what the app was
+// actually using. This store has to stay honest with itself.
 function readStore(): StoreFile {
   try {
     const raw = fs.readFileSync(getStorePath(), 'utf-8');
     const parsed = JSON.parse(raw);
     if (!parsed || !Array.isArray(parsed.connections)) {
       return emptyStore();
+    }
+    if (!Array.isArray(parsed.accessPolicies)) {
+      const migratedRules = Array.isArray(parsed.accessPolicy) ? parsed.accessPolicy : DEFAULT_ACCESS_POLICY;
+      const defaultPolicy = makeDefaultPolicy(migratedRules);
+      parsed.accessPolicies = [defaultPolicy];
+      delete parsed.accessPolicy;
+      parsed.connections = parsed.connections.map((c: Record<string, unknown>) => {
+        if (c.policyId !== undefined) return c;
+        const { policyEnabled, ...rest } = c;
+        return { ...rest, policyId: policyEnabled ? defaultPolicy.id : null };
+      });
+      writeStore(parsed as StoreFile);
     }
     return parsed as StoreFile;
   } catch {
@@ -91,10 +234,14 @@ function writeStore(store: StoreFile): void {
 
 function toMeta(record: StoredConnectionRecord): SavedConnectionMeta {
   const { dbPasswordEncrypted: _dbPasswordEncrypted, ...meta } = record;
-  // Records written before this field existed have no mcpEnabled key --
-  // default them to false (opt-in, not opt-out) rather than leaving it
-  // undefined.
-  return { ...meta, mcpEnabled: meta.mcpEnabled ?? false };
+  // Records written before these fields existed have neither key -- default
+  // each to its protective value (opt-in for mcpEnabled, no policy assigned
+  // for policyId, not bypassed for bypassPolicyForOwnQueries) rather than
+  // leaving it undefined.
+  const mcpEnabled = meta.mcpEnabled ?? false;
+  const policyId = meta.policyId ?? null;
+  const bypassPolicyForOwnQueries = meta.bypassPolicyForOwnQueries ?? false;
+  return { ...meta, mcpEnabled, policyId, bypassPolicyForOwnQueries };
 }
 
 function makeLabel(input: Pick<SaveConnectionInput, 'dbUser' | 'dbHost' | 'dbPort' | 'dbName'>): string {
@@ -173,6 +320,12 @@ export function saveConnection(input: SaveConnectionInput): SaveConnectionResult
       lastUsedAt: now,
       dbPasswordEncrypted,
       mcpEnabled: false,
+      // Protected by default from creation, independent of mcpEnabled --
+      // whichever policy exists first, so by the time MCP is ever turned on
+      // for this connection, a policy is already applying. Falls back to
+      // null only if every policy has been deleted.
+      policyId: store.accessPolicies[0]?.id ?? null,
+      bypassPolicyForOwnQueries: false,
     };
     store.connections.push(record);
   }
@@ -207,14 +360,158 @@ export function forgetConnection(id: string): void {
   }
 }
 
-export function setMcpEnabled(id: string, enabled: boolean): SavedConnectionMeta | null {
+function policyIsActive(policy: AccessPolicy | undefined): boolean {
+  return !!policy && policy.rules.some(m => m.enabled);
+}
+
+// True iff THIS connection's own assigned policy has an active rule. The
+// real security boundary (see listMcpEnabledConnections/getMcpAccessStatus
+// below), not just a precondition setMcpEnabled/setConnectionPolicy check
+// -- MCP always has a real, active policy applied once enabled; there is no
+// "reachable but unprotected" state. Per-connection, not global: each
+// connection is checked against the specific policy it points at, not
+// against "does any policy anywhere have a rule on."
+function isConnectionPolicyActive(store: StoreFile, connection: { policyId: string | null }): boolean {
+  if (!connection.policyId) return false;
+  return policyIsActive(store.accessPolicies.find(p => p.id === connection.policyId));
+}
+
+// Refuses (does not flip the flag) turning MCP on for a connection whose
+// own assigned policy has no active rule -- the UX-level guard against a
+// toggle that would be silently inert. Turning MCP off is never refused.
+// Never touches policyId itself -- setConnectionPolicy is the other half
+// of the invariant this maintains (see its own comment).
+export function setMcpEnabled(id: string, enabled: boolean): SetMcpEnabledResult {
   const store = readStore();
   const index = store.connections.findIndex(c => c.id === id);
-  if (index < 0) return null;
+  if (index < 0) return { ok: false, reason: 'not-found' };
+  if (enabled && !isConnectionPolicyActive(store, store.connections[index])) {
+    return { ok: false, reason: 'no-active-policy' };
+  }
   store.connections[index] = { ...store.connections[index], mcpEnabled: enabled };
   writeStore(store);
   console.log(`[credentials] setMcpEnabled: id=${id} enabled=${enabled}`);
+  return { ok: true, profile: toMeta(store.connections[index]) };
+}
+
+// The per-connection counterpart to the access policy: which one applies to
+// this connection's queries. Freely settable to any existing policy id --
+// EXCEPT refuses setting it to null, or to a policy with no active rule,
+// while mcpEnabled is true for this connection: that would leave MCP
+// pointing at nothing, the same disallowed state setMcpEnabled itself
+// guards against from the other direction. Turn MCP off first to clear or
+// blank the policy. Does not otherwise validate that `policyId` exists --
+// a caller passing a stale id when MCP is off gets the same effect as
+// null (no rules resolve, see beamlynx-ui's effectiveAccessPolicyRules),
+// not an error.
+export function setConnectionPolicy(id: string, policyId: string | null): SetConnectionPolicyResult {
+  const store = readStore();
+  const index = store.connections.findIndex(c => c.id === id);
+  if (index < 0) return { ok: false, reason: 'not-found' };
+  const current = store.connections[index];
+  if (current.mcpEnabled && !isConnectionPolicyActive(store, { policyId })) {
+    return { ok: false, reason: 'mcp-requires-policy' };
+  }
+  store.connections[index] = { ...current, policyId };
+  writeStore(store);
+  console.log(`[credentials] setConnectionPolicy: id=${id} policyId=${policyId ?? '(none)'}`);
+  return { ok: true, profile: toMeta(store.connections[index]) };
+}
+
+// Whether THIS connection's owner has switched the assigned policy off for
+// their own queries -- see SavedConnectionMeta.bypassPolicyForOwnQueries.
+// No precondition of its own, unlike setConnectionPolicy/setMcpEnabled: it
+// never affects what MCP sees, only the human's own tabs, so there's
+// nothing to guard against.
+export function setBypassPolicyForOwnQueries(id: string, bypass: boolean): SavedConnectionMeta | null {
+  const store = readStore();
+  const index = store.connections.findIndex(c => c.id === id);
+  if (index < 0) return null;
+  store.connections[index] = { ...store.connections[index], bypassPolicyForOwnQueries: bypass };
+  writeStore(store);
+  console.log(`[credentials] setBypassPolicyForOwnQueries: id=${id} bypass=${bypass}`);
   return toMeta(store.connections[index]);
+}
+
+export function listAccessPolicies(): AccessPolicy[] {
+  return readStore().accessPolicies;
+}
+
+export function createAccessPolicy(name: string): AccessPolicy {
+  const store = readStore();
+  const policy: AccessPolicy = {
+    id: randomUUID(),
+    name: name.trim() || 'Untitled policy',
+    // A fresh copy of the same starting rules the seeded Default policy
+    // gets -- independently editable from that point on, not a live
+    // reference to any shared default.
+    rules: DEFAULT_ACCESS_POLICY.map(m => ({ ...m })),
+  };
+  store.accessPolicies.push(policy);
+  writeStore(store);
+  console.log(`[credentials] createAccessPolicy: id=${policy.id} name=${policy.name}`);
+  return policy;
+}
+
+// A blank/whitespace-only name is a no-op rather than an error -- same
+// convention as renameConnection below.
+export function renameAccessPolicy(id: string, name: string): AccessPolicy | null {
+  const store = readStore();
+  const index = store.accessPolicies.findIndex(p => p.id === id);
+  if (index < 0) return null;
+  const trimmed = name.trim();
+  if (trimmed) {
+    store.accessPolicies[index] = { ...store.accessPolicies[index], name: trimmed };
+    writeStore(store);
+  }
+  console.log(`[credentials] renameAccessPolicy: id=${id} name=${trimmed || '(blank, unchanged)'}`);
+  return store.accessPolicies[index];
+}
+
+// Any connection pointing at this policy falls back to policyId: null --
+// never left referencing a policy that no longer exists. Also turns
+// mcpEnabled off for any such connection that had it on: leaving
+// mcpEnabled: true with policyId: null would violate the same invariant
+// setMcpEnabled/setConnectionPolicy already enforce from the other two
+// directions -- deleting a connection's only policy is a third way to
+// reach that state, so it needs the same guard, just applied as a cascade
+// (there's no toggle here to simply refuse) rather than a refusal.
+export function deleteAccessPolicy(id: string): void {
+  const store = readStore();
+  const accessPolicies = store.accessPolicies.filter(p => p.id !== id);
+  if (accessPolicies.length === store.accessPolicies.length) return;
+  const connections = store.connections.map(c =>
+    c.policyId === id ? { ...c, policyId: null, mcpEnabled: false } : c,
+  );
+  writeStore({ ...store, accessPolicies, connections });
+  console.log(`[credentials] deleteAccessPolicy: id=${id}`);
+}
+
+// `type` identifies which module within the policy -- column-name is the
+// only rule with a second discriminating field (suffix), and there's
+// exactly one of each type per policy, so `type` alone is a stable enough
+// key for this small, fixed module set.
+//
+// Deliberately does NOT check whether disabling the last active rule here
+// would strand an mcpEnabled connection pointing at this policy -- coupling
+// a rule toggle to every connection that happens to use its policy would be
+// a confusing, easy-to-forget dependency in the other direction. That gap
+// is real (a policy can go inactive out from under an already-enabled
+// connection this way) but is caught at actual MCP call time instead -- see
+// getMcpAccessStatus, used by control-plane-server.ts's assertWhitelisted.
+export function setAccessPolicyModuleEnabled(
+  policyId: string,
+  type: AccessPolicyRule['type'],
+  enabled: boolean,
+): AccessPolicy | null {
+  const store = readStore();
+  const index = store.accessPolicies.findIndex(p => p.id === policyId);
+  if (index < 0) return null;
+  const rules = store.accessPolicies[index].rules.map(m => (m.type === type ? { ...m, enabled } : m));
+  store.accessPolicies[index] = { ...store.accessPolicies[index], rules };
+  writeStore(store);
+  console.log(`[credentials] setAccessPolicyModuleEnabled: policyId=${policyId} type=${type} enabled=${enabled}`);
+  return store.accessPolicies[index];
 }
 
 // A blank/whitespace-only label is a no-op rather than an error -- there's no
@@ -236,8 +533,36 @@ export function renameConnection(id: string, label: string): SavedConnectionMeta
 // to resolve which saved connections an MCP client is allowed to see at all -- a
 // connection absent from this list must be treated as if it doesn't exist,
 // not merely "not returned by list_connections".
+// The real enforcement point: also backs GET /connections in
+// control-plane-server.ts, so both inherit this for free. A connection is
+// included only when it's mcpEnabled AND its own assigned policy currently
+// has an active rule (isConnectionPolicyActive) -- this is what makes the
+// invariant hold against a policy that went inactive after the connection
+// was set up, not just against setMcpEnabled/setConnectionPolicy's
+// toggle-time checks. Per-connection, not a single global gate: one
+// connection's policy going inactive doesn't affect any other connection's
+// own, independently-assigned policy.
 export function listMcpEnabledConnections(): SavedConnectionMeta[] {
-  return listConnections().filter(c => c.mcpEnabled);
+  const store = readStore();
+  return store.connections.map(toMeta).filter(c => c.mcpEnabled && isConnectionPolicyActive(store, c));
+}
+
+export type McpAccessStatus = 'ok' | 'not-found' | 'not-enabled' | 'no-active-policy';
+
+// Used by control-plane-server.ts's assertWhitelisted to refuse an MCP
+// tool call with a precise, distinct reason, rather than folding every
+// failure into one generic "not enabled for MCP access" message -- a
+// connection that WAS properly set up for MCP but whose policy later lost
+// its last active rule (see setAccessPolicyModuleEnabled's own comment on
+// why that isn't prevented at the rule-toggle level) needs a different,
+// clearer error than one that was simply never opted in to MCP at all.
+export function getMcpAccessStatus(id: string): McpAccessStatus {
+  const store = readStore();
+  const connection = store.connections.find(c => c.id === id);
+  if (!connection) return 'not-found';
+  if (!connection.mcpEnabled) return 'not-enabled';
+  if (!isConnectionPolicyActive(store, connection)) return 'no-active-policy';
+  return 'ok';
 }
 
 export function registerCredentialIpc(): void {
@@ -254,5 +579,20 @@ export function registerCredentialIpc(): void {
     forgetConnection(id);
   });
   ipcMain.handle('credentials:set-mcp-enabled', (_event, id: string, enabled: boolean) => setMcpEnabled(id, enabled));
+  ipcMain.handle('credentials:set-connection-policy', (_event, id: string, policyId: string | null) =>
+    setConnectionPolicy(id, policyId),
+  );
+  ipcMain.handle('credentials:set-bypass-policy-for-own-queries', (_event, id: string, bypass: boolean) =>
+    setBypassPolicyForOwnQueries(id, bypass),
+  );
   ipcMain.handle('credentials:rename', (_event, id: string, label: string) => renameConnection(id, label));
+  ipcMain.handle('access-policy:list', () => listAccessPolicies());
+  ipcMain.handle('access-policy:create', (_event, name: string) => createAccessPolicy(name));
+  ipcMain.handle('access-policy:rename', (_event, id: string, name: string) => renameAccessPolicy(id, name));
+  ipcMain.handle('access-policy:delete', (_event, id: string) => deleteAccessPolicy(id));
+  ipcMain.handle(
+    'access-policy:set-module-enabled',
+    (_event, policyId: string, type: AccessPolicyRule['type'], enabled: boolean) =>
+      setAccessPolicyModuleEnabled(policyId, type, enabled),
+  );
 }

@@ -9,7 +9,7 @@
 // beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md.
 import { BrowserWindow } from 'electron';
 import * as http from 'http';
-import { listMcpEnabledConnections } from '../credential-store';
+import { getMcpAccessStatus, listMcpEnabledConnections } from '../credential-store';
 import { runInRenderer } from './render-bridge';
 
 export const CONTROL_PLANE_PORT = 33334;
@@ -44,9 +44,27 @@ function sendJson(res: http.ServerResponse, status: number, body: unknown): void
 // process boundary a hand-rolled client can't cross to bypass it (anyone on
 // the machine could spawn `beamlynx --mcp` themselves and skip whatever
 // checks lived there instead).
+//
+// Distinguishes *why* a connection isn't reachable rather than folding
+// every case into one generic message: 'not-found'/'not-enabled' means it
+// was never opted in to MCP at all, but 'no-active-policy' means it WAS
+// properly set up -- mcpEnabled with a real policy assigned -- and that
+// policy's last active rule was disabled afterward (see
+// credential-store.ts's setAccessPolicyModuleEnabled, which deliberately
+// doesn't guard against this at the rule-toggle level). MCP never runs a
+// query with no active policy behind it; this is the explicit runtime
+// check that throws instead, matching the enable-time guard
+// (setMcpEnabled/setConnectionPolicy) rather than silently succeeding with
+// unredacted results or silently returning nothing.
 function assertWhitelisted(profileId: string): void {
-  const allowed = listMcpEnabledConnections();
-  if (!allowed.some(c => c.id === profileId)) {
+  const status = getMcpAccessStatus(profileId);
+  if (status === 'no-active-policy') {
+    throw new Error(
+      `Connection "${profileId}" has no active access policy. Assign one under Database Connections, or turn ` +
+        'on a rule for its policy under Access Policy.',
+    );
+  }
+  if (status !== 'ok') {
     throw new Error(
       `Connection "${profileId}" is not enabled for MCP access. Enable it in Settings -> Connections first.`,
     );
