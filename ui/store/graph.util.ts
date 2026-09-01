@@ -8,7 +8,7 @@ import {
   PineVariableNode,
   VariableInnerTable,
 } from '../model';
-import { NodeType } from '../components/Graph.box';
+import { NodeType } from './graph-node-type';
 import { Ast, Column, ColumnHint, Table, TableHint, VariableAst, WhereCondition } from './client';
 import {
   effectiveHandleCount,

@@ -14,6 +14,7 @@ import { observer } from 'mobx-react-lite';
 import { runInAction } from 'mobx';
 import 'reactflow/dist/style.css';
 import { PineNode, PineSuggestedNode } from '../model';
+import { NodeType } from '../store/graph-node-type';
 import {
   getLayoutedElements,
   getNodeHeight,
@@ -28,11 +29,6 @@ import SuggestedNodeComponent from './SuggestedNodeComponent';
 import VariableNodeComponent from './VariableNodeComponent';
 import { CloseFullscreen, OpenInFull } from '@mui/icons-material';
 
-export const NodeType = {
-  Selected: 'selected-node',
-  Suggested: 'suggested-node',
-  Variable: 'variable-node',
-};
 const nodeTypes: NodeTypes = {
   [NodeType.Suggested]: SuggestedNodeComponent,
   [NodeType.Selected]: SelectedNodeComponent,
