@@ -238,6 +238,11 @@ export const NewLayoutPanelDivider = ({
     max: () => window.innerWidth * 0.6,
     storageKey: STORAGE_KEYS.NEW_LAYOUT_PANEL_WIDTH,
     axis: 'x',
+    // Unlike the other x-axis dividers, the panel this one resizes sits to
+    // the right of the divider (Canvas | divider | Panel in top/bottom
+    // orientation - see NewLayoutView.tsx's LeftPane), not the left, so the
+    // natural drag direction is reversed.
+    invert: true,
   });
 
   return (
