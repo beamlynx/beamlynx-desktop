@@ -316,6 +316,21 @@ export class GlobalStore {
     setUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_VISIBLE, value);
   }
 
+  // New Layout's Canvas|Results split: side-by-side or stacked top/bottom.
+  // Global (like layoutMode), not per-session -- see NewLayoutView.tsx,
+  // which also overrides this to 'vertical' on small screens regardless of
+  // what's stored here.
+  _newLayoutOrientation: 'horizontal' | 'vertical';
+
+  get newLayoutOrientation(): 'horizontal' | 'vertical' {
+    return this._newLayoutOrientation;
+  }
+
+  set newLayoutOrientation(value: 'horizontal' | 'vertical') {
+    this._newLayoutOrientation = value;
+    setUserPreference(STORAGE_KEYS.NEW_LAYOUT_ORIENTATION, value);
+  }
+
   // A graph-only, distraction-free view: New Layout's header, tab strip, and
   // Results pane all hide, leaving just Canvas (see AppView.tsx/PineTabs.tsx/
   // NewLayoutView.tsx's isZenModeActive checks). Transient, not persisted -
@@ -444,6 +459,10 @@ export class GlobalStore {
     this._autoRunEnabled = getUserPreference(STORAGE_KEYS.AUTO_RUN_ENABLED, true);
     this._layoutMode = getUserPreference(STORAGE_KEYS.LAYOUT_MODE, 'new');
     this._newLayoutPanelVisible = getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_VISIBLE, false);
+    this._newLayoutOrientation = getUserPreference(
+      STORAGE_KEYS.NEW_LAYOUT_ORIENTATION,
+      'horizontal',
+    );
     this._commandHistory = getUserPreference(STORAGE_KEYS.COMMAND_HISTORY, []);
     this.connectionColors = getUserPreference(STORAGE_KEYS.CONNECTION_COLORS, {});
     makeAutoObservable(this);
@@ -887,6 +906,11 @@ export class GlobalStore {
 
   public toggleLayoutMode() {
     this.layoutMode = this.layoutMode === 'legacy' ? 'new' : 'legacy';
+  }
+
+  public toggleNewLayoutOrientation() {
+    this.newLayoutOrientation =
+      this.newLayoutOrientation === 'horizontal' ? 'vertical' : 'horizontal';
   }
 
   public toggleZenMode() {

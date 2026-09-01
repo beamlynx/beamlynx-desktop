@@ -282,6 +282,13 @@ const COMMANDS: Command[] = [
     handler: (global, session) => global.toggleSqlPanel(session),
     isEnabled: global => global.layoutMode === 'new',
   },
+  {
+    id: 'toggle-orientation',
+    label: 'Toggle Layout Orientation (Side by Side / Top and Bottom)',
+    category: 'View',
+    handler: global => global.toggleNewLayoutOrientation(),
+    isEnabled: global => global.layoutMode === 'new',
+  },
 
   // Help Category
   {

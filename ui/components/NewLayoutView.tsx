@@ -9,7 +9,7 @@ import {
   DEFAULT_NEW_LAYOUT_PANEL_WIDTH,
   NEW_LAYOUT_GUTTER,
 } from '../constants';
-import { getUserPreference, setUserPreference, STORAGE_KEYS } from '../store/preferences';
+import { getUserPreference, STORAGE_KEYS } from '../store/preferences';
 import { useStores } from '../store/store-container';
 import Canvas from './canvas/Canvas';
 import ErrorMessage from './ErrorMessage';
@@ -219,12 +219,10 @@ const NewLayoutView: React.FC<NewLayoutViewProps> = observer(({ sessionId }) => 
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('lg'));
 
-  const [orientation, setOrientation] = useState<Orientation>('horizontal');
   const [paneWidth, setPaneWidth] = useState(DEFAULT_NEW_LAYOUT_PANE_WIDTH);
   const [paneHeight, setPaneHeight] = useState(DEFAULT_NEW_LAYOUT_PANE_HEIGHT);
 
   useEffect(() => {
-    setOrientation(getUserPreference(STORAGE_KEYS.NEW_LAYOUT_ORIENTATION, 'horizontal'));
     setPaneWidth(
       getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANE_WIDTH, DEFAULT_NEW_LAYOUT_PANE_WIDTH),
     );
@@ -235,14 +233,14 @@ const NewLayoutView: React.FC<NewLayoutViewProps> = observer(({ sessionId }) => 
 
   // Small screens always stack top-bottom, regardless of the persisted
   // preference - the same override `compactMode` applies in Legacy Layout.
-  const effectiveOrientation: Orientation = isSmallScreen ? 'vertical' : orientation;
+  const effectiveOrientation: Orientation = isSmallScreen
+    ? 'vertical'
+    : global.newLayoutOrientation;
   const isHorizontal = effectiveOrientation === 'horizontal';
 
-  const toggleOrientation = () => {
-    const next: Orientation = isHorizontal ? 'vertical' : 'horizontal';
-    setOrientation(next);
-    setUserPreference(STORAGE_KEYS.NEW_LAYOUT_ORIENTATION, next);
-  };
+  // Lives on the global store (see toggle-orientation in commands.ts) so it's
+  // also reachable from the command palette, not just this toolbar toggle.
+  const toggleOrientation = () => global.toggleNewLayoutOrientation();
 
   // ReactFlow doesn't re-center the graph on its own when its container's
   // size changes (ReactFlow's own doc comment in Canvas.tsx explains why) -
