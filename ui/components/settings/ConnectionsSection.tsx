@@ -1,10 +1,8 @@
 import CheckIcon from '@mui/icons-material/Check';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import EditIcon from '@mui/icons-material/Edit';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SecurityIcon from '@mui/icons-material/Security';
-import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
-import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import {
@@ -26,6 +24,7 @@ import { useStores } from '../../store/store-container';
 import { CONNECTION_COLOR_PALETTE, isDesktop, isPlayground } from '../../store/util';
 import { DecryptionFailedError } from '../../store/global.store';
 import { parseConnectionString } from '../../utils/connectionString';
+import ToggleRow from './ToggleRow';
 
 const REMOVE_CONFIRM_TIMEOUT_MS = 3000;
 
@@ -106,7 +105,9 @@ const AddConnectionForm = ({ onDone }: { onDone: () => void }) => {
   const [showConnectionString, setShowConnectionString] = useState(false);
   const [mode, setMode] = useState<'fields' | 'string'>('fields');
   const [error, setError] = useState(
-    reconnectHint ? "Couldn't unlock the saved password for this connection — please re-enter it." : '',
+    reconnectHint
+      ? "Couldn't unlock the saved password for this connection — please re-enter it."
+      : '',
   );
   const [connecting, setConnecting] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -354,13 +355,19 @@ const AddConnectionForm = ({ onDone }: { onDone: () => void }) => {
                 endAdornment: (
                   <InputAdornment position="end">
                     <IconButton
-                      aria-label={showConnectionString ? 'Hide connection string' : 'Show connection string'}
+                      aria-label={
+                        showConnectionString ? 'Hide connection string' : 'Show connection string'
+                      }
                       onClick={() => setShowConnectionString(show => !show)}
                       edge="end"
                       size="small"
                       sx={{ color: 'var(--icon-color)' }}
                     >
-                      {showConnectionString ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+                      {showConnectionString ? (
+                        <VisibilityOff fontSize="small" />
+                      ) : (
+                        <Visibility fontSize="small" />
+                      )}
                     </IconButton>
                   </InputAdornment>
                 ),
@@ -371,7 +378,16 @@ const AddConnectionForm = ({ onDone }: { onDone: () => void }) => {
         )}
       </Box>
 
-      <Box sx={{ flexShrink: 0, mt: 2, display: 'flex', flexWrap: 'wrap', gap: 2, justifyContent: 'space-between' }}>
+      <Box
+        sx={{
+          flexShrink: 0,
+          mt: 2,
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 2,
+          justifyContent: 'space-between',
+        }}
+      >
         <Button
           type="button"
           variant="outlined"
@@ -379,7 +395,10 @@ const AddConnectionForm = ({ onDone }: { onDone: () => void }) => {
           sx={{
             borderColor: 'var(--border-color)',
             color: 'var(--text-color)',
-            '&:hover': { borderColor: 'var(--primary-color)', backgroundColor: 'var(--node-column-bg)' },
+            '&:hover': {
+              borderColor: 'var(--primary-color)',
+              backgroundColor: 'var(--node-column-bg)',
+            },
           }}
         >
           {connected ? 'Done' : 'Cancel'}
@@ -392,7 +411,11 @@ const AddConnectionForm = ({ onDone }: { onDone: () => void }) => {
             backgroundColor: 'var(--primary-color)',
             color: 'var(--primary-text-color)',
             '&:hover': { backgroundColor: 'var(--primary-color-hover)' },
-            '&:disabled': { backgroundColor: 'var(--icon-color)', color: 'var(--text-color)', opacity: 0.6 },
+            '&:disabled': {
+              backgroundColor: 'var(--icon-color)',
+              color: 'var(--text-color)',
+              opacity: 0.6,
+            },
           }}
         >
           {connected ? 'Connected' : connecting ? 'Connecting...' : 'Connect'}
@@ -401,6 +424,512 @@ const AddConnectionForm = ({ onDone }: { onDone: () => void }) => {
     </Box>
   );
 };
+
+/**
+ * One saved connection: a collapsed row (switch active, recolor, a quick
+ * "MCP" badge when it's on) plus, for desktop only, an expandable panel
+ * holding everything else -- rename, access policy, MCP access, the
+ * apply-to-own-queries exception, refresh, and delete. Those five used to
+ * all live as icons/popovers on the collapsed row at once, which made the
+ * relationship between "MCP access" and "access policy" (MCP can only be on
+ * once a policy with an active rule is assigned) hard to read at a glance.
+ * Laid out top-to-bottom here in that same dependency order instead: pick a
+ * policy, then turn MCP on.
+ *
+ * Browser/playground mode never had this problem -- no MCP or policy
+ * concept there at all -- so it keeps the old flat row (color, name,
+ * refresh, delete) unchanged rather than gaining an expand affordance with
+ * nothing worth hiding behind it.
+ */
+const ConnectionRow = observer(
+  ({
+    id,
+    label,
+    mcpEnabled,
+    policyId,
+    bypassPolicyForOwnQueries,
+    isActive,
+    isLive,
+    switchDisabled,
+    onSwitch,
+  }: {
+    id: string;
+    label: string;
+    mcpEnabled?: boolean;
+    policyId?: string | null;
+    bypassPolicyForOwnQueries?: boolean;
+    isActive: boolean;
+    isLive: boolean;
+    switchDisabled: boolean;
+    onSwitch: () => void;
+  }) => {
+    const { global } = useStores();
+    const desktop = isDesktop();
+    const [expanded, setExpanded] = useState(false);
+    const [confirmingRemove, setConfirmingRemove] = useState(false);
+    const [removing, setRemoving] = useState(false);
+    const [reindexing, setReindexing] = useState(false);
+    const [reindexed, setReindexed] = useState(false);
+    const [renameValue, setRenameValue] = useState(label);
+    const [renameSaving, setRenameSaving] = useState(false);
+    const [colorPickerAnchor, setColorPickerAnchor] = useState<HTMLElement | null>(null);
+    const confirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const reindexedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Keeps the draft in sync with a rename committed elsewhere (there's no
+    // other UI that renames a connection today, but this is what a future
+    // one would need to not be silently overwritten on this row's next edit).
+    useEffect(() => setRenameValue(label), [label]);
+
+    useEffect(() => {
+      return () => {
+        if (confirmTimeoutRef.current) clearTimeout(confirmTimeoutRef.current);
+        if (reindexedTimeoutRef.current) clearTimeout(reindexedTimeoutRef.current);
+      };
+    }, []);
+
+    const commitRename = async () => {
+      const trimmed = renameValue.trim();
+      if (!trimmed) {
+        setRenameValue(label);
+        return;
+      }
+      if (trimmed === label) return;
+      setRenameSaving(true);
+      try {
+        await global.renameConnection(id, trimmed);
+      } catch {
+        // Failure is already surfaced via the global connection-error snackbar.
+      } finally {
+        setRenameSaving(false);
+      }
+    };
+
+    const handleReindexClick = () => {
+      if (reindexing) return;
+      setReindexing(true);
+      global
+        .reindexConnection(id)
+        .then(() => {
+          setReindexed(true);
+          reindexedTimeoutRef.current = setTimeout(() => setReindexed(false), 1500);
+        })
+        .catch(() => {
+          // Failure is already surfaced via the global connection-error snackbar.
+        })
+        .finally(() => setReindexing(false));
+    };
+
+    const handleRemoveClick = () => {
+      if (confirmTimeoutRef.current) {
+        clearTimeout(confirmTimeoutRef.current);
+        confirmTimeoutRef.current = null;
+      }
+      if (confirmingRemove) {
+        setConfirmingRemove(false);
+        setRemoving(true);
+        global.deleteConnection(id).finally(() => setRemoving(false));
+        return;
+      }
+      setConfirmingRemove(true);
+      confirmTimeoutRef.current = setTimeout(
+        () => setConfirmingRemove(false),
+        REMOVE_CONFIRM_TIMEOUT_MS,
+      );
+    };
+
+    const selectedPolicy = global.accessPolicies.find(p => p.id === policyId);
+    // MCP always uses this connection's own assigned policy the moment it's
+    // enabled -- there is no "on but unprotected" state (setMcpEnabled
+    // refuses turning it on otherwise).
+    const isConnPolicyActive = !!selectedPolicy?.rules.some(m => m.enabled);
+    // Only refuse *turning on* -- switching an already-enabled connection
+    // off must never be blocked by its policy going inactive later; that's
+    // a separate, always-available action (see GlobalStore.setMcpEnabled,
+    // which only ever refuses an `enabled: true` call).
+    const mcpToggleDisabled = !mcpEnabled && !isConnPolicyActive;
+    const disabledWhileBusy = switchDisabled || removing;
+
+    return (
+      <Box
+        sx={{
+          minWidth: 0,
+          borderBottom: '1px solid var(--border-color)',
+          opacity: disabledWhileBusy ? 0.6 : 1,
+        }}
+      >
+        <Box
+          onClick={() => !disabledWhileBusy && onSwitch()}
+          // A real Tab stop for the row's own primary action (switch to
+          // this connection, same as a click).
+          tabIndex={disabledWhileBusy ? -1 : 0}
+          role="button"
+          aria-label={`Switch to connection ${label}`}
+          onKeyDown={e => {
+            if ((e.key === 'Enter' || e.key === ' ') && !disabledWhileBusy) {
+              e.preventDefault();
+              onSwitch();
+            }
+          }}
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            minWidth: 0,
+            px: 1.5,
+            py: 1,
+            borderLeft: isActive ? '2px solid var(--primary-color)' : '2px solid transparent',
+            backgroundColor: isActive ? 'var(--node-column-bg)' : 'transparent',
+            cursor: disabledWhileBusy ? 'default' : 'pointer',
+            outline: 'none',
+            '&:focus-visible': {
+              outline: '2px solid var(--primary-color)',
+              outlineOffset: '-2px',
+            },
+            '&:hover': { backgroundColor: 'var(--node-column-bg)' },
+          }}
+        >
+          <Box
+            title={isLive ? 'Click to change color' : 'Not connected yet -- click to change color'}
+            onClick={e => {
+              e.stopPropagation();
+              setColorPickerAnchor(e.currentTarget);
+            }}
+            sx={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              flexShrink: 0,
+              boxSizing: 'border-box',
+              cursor: 'pointer',
+              backgroundColor: isLive
+                ? global.getConnectionColor(id) || 'var(--border-color)'
+                : 'transparent',
+              border: isLive
+                ? 'none'
+                : `1.5px solid ${global.getConnectionColor(id) || 'var(--border-color)'}`,
+              transition: 'opacity 0.15s',
+              '&:hover': { opacity: 0.7 },
+            }}
+          />
+          {colorPickerAnchor && (
+            <Popover
+              open
+              anchorEl={colorPickerAnchor}
+              onClose={() => setColorPickerAnchor(null)}
+              anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+              transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+              slotProps={{
+                paper: {
+                  onClick: (e: MouseEvent) => e.stopPropagation(),
+                  sx: {
+                    backgroundColor: 'var(--background-color)',
+                    backgroundImage: 'none',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 1,
+                    p: 0.75,
+                    display: 'flex',
+                    gap: 0.75,
+                  },
+                },
+              }}
+            >
+              {CONNECTION_COLOR_PALETTE.map(color => (
+                <Box
+                  key={color}
+                  onClick={() => {
+                    global.setConnectionColor(id, color);
+                    setColorPickerAnchor(null);
+                  }}
+                  sx={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: '50%',
+                    backgroundColor: color,
+                    cursor: 'pointer',
+                    border:
+                      color === global.getConnectionColor(id)
+                        ? '2px solid var(--text-color)'
+                        : '2px solid transparent',
+                    transition: 'transform 0.1s',
+                    '&:hover': { transform: 'scale(1.25)' },
+                  }}
+                />
+              ))}
+            </Popover>
+          )}
+          {desktop && expanded ? (
+            <TextField
+              autoFocus
+              variant="standard"
+              size="small"
+              value={renameValue}
+              disabled={renameSaving}
+              onClick={e => e.stopPropagation()}
+              onFocus={e => e.target.select()}
+              onChange={e => setRenameValue(e.target.value)}
+              onBlur={commitRename}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  (e.target as HTMLInputElement).blur();
+                } else if (e.key === 'Escape') {
+                  setRenameValue(label);
+                }
+              }}
+              sx={{
+                flex: 1,
+                minWidth: 0,
+                // A long saved hostname (e.g. a full connection string) must
+                // not push this field wider than the row -- MUI nests a
+                // couple of flex layers between the TextField root and the
+                // actual <input>, and each one needs its own min-width: 0
+                // or the outermost one alone doesn't let the real overflow
+                // culprit (the input's own intrinsic content width) shrink.
+                '& .MuiInputBase-root': { minWidth: 0 },
+                '& .MuiInput-input': {
+                  minWidth: 0,
+                  py: 0,
+                  fontFamily: 'var(--canvas-font)',
+                  // Fixed px, not rem -- see SettingsModal.tsx's
+                  // settingsTheme comment.
+                  fontSize: '14px',
+                  color: 'var(--text-color)',
+                },
+                '& .MuiInput-underline:before': { borderBottomColor: 'var(--border-color)' },
+              }}
+            />
+          ) : (
+            <Typography
+              component="span"
+              variant="body2"
+              title={isActive ? 'Active connection' : undefined}
+              sx={{
+                flex: 1,
+                minWidth: 0,
+                fontFamily: 'var(--canvas-font)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {label}
+            </Typography>
+          )}
+          {desktop && mcpEnabled && !expanded && (
+            <Box
+              title="MCP access is on -- an AI agent can query this connection"
+              sx={{
+                fontSize: 10,
+                fontFamily: 'var(--canvas-font)',
+                letterSpacing: '0.02em',
+                color: 'var(--icon-color-highlight)',
+                border: '1px solid var(--icon-color-highlight)',
+                borderRadius: '3px',
+                px: 0.5,
+                py: '1px',
+                flexShrink: 0,
+              }}
+            >
+              MCP
+            </Box>
+          )}
+          {desktop ? (
+            <IconButton
+              size="small"
+              onClick={e => {
+                e.stopPropagation();
+                setExpanded(v => !v);
+              }}
+              aria-label={expanded ? 'Hide connection settings' : 'Show connection settings'}
+              aria-expanded={expanded}
+              sx={{
+                p: 0.25,
+                color: 'var(--icon-color)',
+                transform: expanded ? 'rotate(180deg)' : 'none',
+                transition: 'transform 0.15s',
+              }}
+            >
+              <ExpandMoreIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          ) : (
+            <>
+              {/* Fixed-width slot, always rendered (even for a not-yet-live
+                  connection, where it's simply empty) -- so the delete icon
+                  after it lands in the same column on every row instead of
+                  shifting over depending on whether this one has a refresh
+                  icon to show. */}
+              <Box sx={{ width: 16, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
+                {isLive &&
+                  (reindexed ? (
+                    <CheckIcon sx={{ fontSize: 16, color: 'var(--icon-color-highlight)' }} />
+                  ) : (
+                    <RefreshIcon
+                      onClick={e => {
+                        e.stopPropagation();
+                        handleReindexClick();
+                      }}
+                      titleAccess="Refresh schema — pick up tables or columns added since this connection last loaded them"
+                      sx={{
+                        fontSize: 16,
+                        cursor: reindexing ? 'default' : 'pointer',
+                        opacity: reindexing ? 0.7 : 0.35,
+                        '&:hover': { opacity: reindexing ? undefined : 0.9 },
+                        '@keyframes pine-reindex-spin': {
+                          from: { transform: 'rotate(0deg)' },
+                          to: { transform: 'rotate(360deg)' },
+                        },
+                        animation: reindexing ? 'pine-reindex-spin 0.8s linear infinite' : 'none',
+                      }}
+                    />
+                  ))}
+              </Box>
+              {!isPlayground() && (
+                <DeleteOutlineIcon
+                  onClick={e => {
+                    e.stopPropagation();
+                    handleRemoveClick();
+                  }}
+                  titleAccess={confirmingRemove ? 'Click again to remove' : 'Remove connection'}
+                  sx={{
+                    fontSize: 16,
+                    cursor: 'pointer',
+                    opacity: confirmingRemove ? 1 : 0.35,
+                    color: confirmingRemove ? 'var(--text-warning-color)' : 'inherit',
+                    '&:hover': { opacity: 0.9 },
+                  }}
+                />
+              )}
+            </>
+          )}
+        </Box>
+
+        {desktop && expanded && (
+          <Box
+            sx={{
+              minWidth: 0,
+              boxSizing: 'border-box',
+              width: '100%',
+              px: 1.5,
+              pt: 2.5,
+              pb: 2,
+              pl: 3.5,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 1.5,
+            }}
+          >
+            <TextField
+              select
+              fullWidth
+              size="small"
+              label="Access policy"
+              value={policyId ?? '__none__'}
+              onChange={e => {
+                const value = e.target.value === '__none__' ? null : e.target.value;
+                global.setConnectionPolicy(id, value);
+              }}
+              helperText={
+                selectedPolicy && !isConnPolicyActive
+                  ? `"${selectedPolicy.name}" has no active rules -- add one in Settings -> Access Policy, or MCP can't turn on.`
+                  : 'Redacts columns per the selected policy. MCP access below requires one with an active rule.'
+              }
+              sx={{ ...fieldSx, minWidth: 0 }}
+            >
+              <MenuItem
+                value="__none__"
+                disabled={mcpEnabled}
+                title={mcpEnabled ? 'Turn off MCP access first' : undefined}
+              >
+                None
+              </MenuItem>
+              {global.accessPolicies.map(p => (
+                <MenuItem key={p.id} value={p.id}>
+                  {p.name}
+                  {!p.rules.some(m => m.enabled) ? ' (no active rules)' : ''}
+                </MenuItem>
+              ))}
+            </TextField>
+
+            <ToggleRow
+              label="MCP access"
+              description="Let an AI agent query this connection over MCP."
+              checked={!!mcpEnabled}
+              onChange={value => global.setMcpEnabled(id, value)}
+              disabled={mcpToggleDisabled}
+            />
+
+            <ToggleRow
+              label="Only apply to MCP server"
+              description="When on, this policy protects the agent only -- your own queries on this connection show real data instead."
+              checked={!!bypassPolicyForOwnQueries}
+              onChange={value => global.setBypassPolicyForOwnQueries(id, value)}
+              disabled={!policyId}
+            />
+
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 0.5 }}>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={
+                  reindexed ? (
+                    <CheckIcon sx={{ fontSize: 16, color: 'var(--icon-color-highlight)' }} />
+                  ) : (
+                    <RefreshIcon
+                      sx={{
+                        fontSize: 16,
+                        '@keyframes pine-reindex-spin': {
+                          from: { transform: 'rotate(0deg)' },
+                          to: { transform: 'rotate(360deg)' },
+                        },
+                        animation: reindexing ? 'pine-reindex-spin 0.8s linear infinite' : 'none',
+                      }}
+                    />
+                  )
+                }
+                disabled={!isLive || reindexing}
+                onClick={handleReindexClick}
+                title="Pick up tables or columns added since this connection last loaded them"
+                sx={{
+                  whiteSpace: 'nowrap',
+                  borderColor: 'var(--border-color)',
+                  color: 'var(--text-color)',
+                  '&:hover': {
+                    borderColor: 'var(--primary-color)',
+                    backgroundColor: 'var(--node-column-bg)',
+                  },
+                }}
+              >
+                Refresh schema
+              </Button>
+              {!isPlayground() && (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<DeleteOutlineIcon sx={{ fontSize: 16 }} />}
+                  onClick={handleRemoveClick}
+                  sx={{
+                    whiteSpace: 'nowrap',
+                    borderColor: confirmingRemove
+                      ? 'var(--text-warning-color)'
+                      : 'var(--border-color)',
+                    color: confirmingRemove ? 'var(--text-warning-color)' : 'var(--text-color)',
+                    '&:hover': {
+                      borderColor: 'var(--text-warning-color)',
+                      backgroundColor: 'var(--node-column-bg)',
+                    },
+                  }}
+                >
+                  {confirmingRemove ? 'Click again to delete' : 'Delete connection'}
+                </Button>
+              )}
+            </Box>
+          </Box>
+        )}
+      </Box>
+    );
+  },
+);
 
 /**
  * The Connections settings section: a list of saved connections (switch
@@ -412,85 +941,12 @@ const AddConnectionForm = ({ onDone }: { onDone: () => void }) => {
  */
 const ConnectionsSection = () => {
   const { global } = useStores();
-  const [adding, setAdding] = useState(() => !!global.reconnectHint || global.consumeSettingsConnectionsAdding());
-  const [confirmingRemoveId, setConfirmingRemoveId] = useState<string | null>(null);
-  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(
+    () => !!global.reconnectHint || global.consumeSettingsConnectionsAdding(),
+  );
   const [switchingConnection, setSwitchingConnection] = useState(false);
-  const [reindexingId, setReindexingId] = useState<string | null>(null);
-  const [reindexedId, setReindexedId] = useState<string | null>(null);
-  const [renamingId, setRenamingId] = useState<string | null>(null);
-  const [renameValue, setRenameValue] = useState('');
-  const [renameSaving, setRenameSaving] = useState(false);
-  const [colorPickerFor, setColorPickerFor] = useState<{ id: string; anchor: HTMLElement } | null>(null);
-  const [policyPickerFor, setPolicyPickerFor] = useState<{ id: string; anchor: Element } | null>(null);
-  const confirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const reindexedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      clearConfirmTimeout();
-      if (reindexedTimeoutRef.current) clearTimeout(reindexedTimeoutRef.current);
-    };
-  }, []);
-
-  const clearConfirmTimeout = () => {
-    if (confirmTimeoutRef.current) {
-      clearTimeout(confirmTimeoutRef.current);
-      confirmTimeoutRef.current = null;
-    }
-  };
-
-  const handleReindexClick = (e: MouseEvent<SVGSVGElement>, id: string) => {
-    e.stopPropagation();
-    if (reindexingId) return;
-    setReindexingId(id);
-    global
-      .reindexConnection(id)
-      .then(() => {
-        setReindexedId(id);
-        reindexedTimeoutRef.current = setTimeout(() => setReindexedId(null), 1500);
-      })
-      .catch(() => {
-        // Failure is already surfaced via the global connection-error snackbar.
-      })
-      .finally(() => setReindexingId(null));
-  };
-
-  const startRename = (e: MouseEvent<SVGSVGElement>, id: string, currentLabel: string) => {
-    e.stopPropagation();
-    setRenamingId(id);
-    setRenameValue(currentLabel);
-  };
-
-  const commitRename = async (id: string) => {
-    const trimmed = renameValue.trim();
-    setRenamingId(null);
-    const current = global.connections.find(c => c.id === id);
-    if (!trimmed || trimmed === current?.label) return;
-    setRenameSaving(true);
-    try {
-      await global.renameConnection(id, trimmed);
-    } catch {
-      // Failure is already surfaced via the global connection-error snackbar.
-    } finally {
-      setRenameSaving(false);
-    }
-  };
 
   const activeSession = global.sessions[global.activeSessionId];
-
-  const handleRemoveClick = (e: MouseEvent<SVGSVGElement>, id: string) => {
-    e.stopPropagation();
-    clearConfirmTimeout();
-    if (confirmingRemoveId === id) {
-      setConfirmingRemoveId(null);
-      setRemovingId(id);
-      global.deleteConnection(id).finally(() => setRemovingId(null));
-      return;
-    }
-    setConfirmingRemoveId(id);
-    confirmTimeoutRef.current = setTimeout(() => setConfirmingRemoveId(null), REMOVE_CONFIRM_TIMEOUT_MS);
-  };
 
   const handleSwitchTo = async (id: string) => {
     if (isDesktop()) {
@@ -542,7 +998,7 @@ const ConnectionsSection = () => {
   }
 
   return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }}>
       <Typography variant="h6" component="h2" sx={headerSx}>
         Database Connections
       </Typography>
@@ -551,387 +1007,37 @@ const ConnectionsSection = () => {
           rows (same convention as PreferencesSection's ToggleRow) instead
           of each one boxed like a card. The active connection is marked by
           tinting the whole row, the same left-accent-plus-background
-          treatment the settings rail itself uses for its active section --
-          not a standalone checkmark icon competing for attention against
-          the MCP switch and delete icon already in the row. Only this row
-          list scrolls -- the title above and "+ Add" button below stay put. */}
-      <Box className="styled-scrollbar" sx={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+          treatment the settings rail itself uses for its active section.
+          Only this row list scrolls -- the title above and "+ Add" button
+          below stay put. */}
+      <Box className="styled-scrollbar" sx={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: 'auto' }}>
         {global.connections.length === 0 && (
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             No saved connections yet.
           </Typography>
         )}
-        {global.connections.map(({ id, label, mcpEnabled, policyId, bypassPolicyForOwnQueries }) => {
-          const isActive = isDesktop() ? id === global.activeProfileId : id === activeSession?.connectionId;
-          const isLive = global.isConnectionLive(id);
-          const activateRow = () =>
-            !switchingConnection && !removingId && renamingId !== id && handleSwitchTo(id);
-          return (
-            <Box
-              key={id}
-              onClick={activateRow}
-              // A real Tab stop for the row's own primary action (switch to
-              // this connection, same as a click) -- confirmed live that
-              // connections were reachable only by mouse before this, with
-              // Tab skipping straight from the panel's close button to the
-              // "+ Add" button at the bottom. The finer per-row actions
-              // (rename/MCP toggle/refresh/delete -- the icons below) stay
-              // mouse-only for now; making each of those its own Tab stop
-              // too is a bigger change than this pass covers.
-              tabIndex={switchingConnection || removingId ? -1 : 0}
-              role="button"
-              aria-label={`Switch to connection ${label}`}
-              onKeyDown={e => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  activateRow();
-                }
-              }}
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-                px: 1.5,
-                py: 1,
-                borderLeft: isActive ? '2px solid var(--primary-color)' : '2px solid transparent',
-                borderBottom: '1px solid var(--border-color)',
-                backgroundColor: isActive ? 'var(--node-column-bg)' : 'transparent',
-                cursor: switchingConnection || removingId ? 'default' : 'pointer',
-                opacity: switchingConnection || removingId ? 0.6 : 1,
-                outline: 'none',
-                '&:focus-visible': {
-                  outline: '2px solid var(--primary-color)',
-                  outlineOffset: '-2px',
-                },
-                '&:hover': { backgroundColor: 'var(--node-column-bg)' },
-              }}
-            >
-              <Box
-                title={isLive ? 'Click to change color' : 'Not connected yet -- click to change color'}
-                onClick={e => {
-                  e.stopPropagation();
-                  setColorPickerFor({ id, anchor: e.currentTarget });
-                }}
-                sx={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: '50%',
-                  flexShrink: 0,
-                  boxSizing: 'border-box',
-                  cursor: 'pointer',
-                  backgroundColor: isLive ? global.getConnectionColor(id) || 'var(--border-color)' : 'transparent',
-                  border: isLive ? 'none' : `1.5px solid ${global.getConnectionColor(id) || 'var(--border-color)'}`,
-                  transition: 'opacity 0.15s',
-                  '&:hover': { opacity: 0.7 },
-                }}
+        {global.connections.map(
+          ({ id, label, mcpEnabled, policyId, bypassPolicyForOwnQueries }) => {
+            const isActive = isDesktop()
+              ? id === global.activeProfileId
+              : id === activeSession?.connectionId;
+            const isLive = global.isConnectionLive(id);
+            return (
+              <ConnectionRow
+                key={id}
+                id={id}
+                label={label}
+                mcpEnabled={mcpEnabled}
+                policyId={policyId}
+                bypassPolicyForOwnQueries={bypassPolicyForOwnQueries}
+                isActive={isActive}
+                isLive={isLive}
+                switchDisabled={switchingConnection}
+                onSwitch={() => handleSwitchTo(id)}
               />
-              {colorPickerFor?.id === id && (
-                <Popover
-                  open
-                  anchorEl={colorPickerFor.anchor}
-                  onClose={() => setColorPickerFor(null)}
-                  anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-                  transformOrigin={{ vertical: 'top', horizontal: 'left' }}
-                  slotProps={{
-                    paper: {
-                      onClick: (e: MouseEvent) => e.stopPropagation(),
-                      sx: {
-                        backgroundColor: 'var(--background-color)',
-                        backgroundImage: 'none',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: 1,
-                        p: 0.75,
-                        display: 'flex',
-                        gap: 0.75,
-                      },
-                    },
-                  }}
-                >
-                  {CONNECTION_COLOR_PALETTE.map(color => (
-                    <Box
-                      key={color}
-                      onClick={() => {
-                        global.setConnectionColor(id, color);
-                        setColorPickerFor(null);
-                      }}
-                      sx={{
-                        width: 18,
-                        height: 18,
-                        borderRadius: '50%',
-                        backgroundColor: color,
-                        cursor: 'pointer',
-                        border:
-                          color === global.getConnectionColor(id)
-                            ? '2px solid var(--text-color)'
-                            : '2px solid transparent',
-                        transition: 'transform 0.1s',
-                        '&:hover': { transform: 'scale(1.25)' },
-                      }}
-                    />
-                  ))}
-                </Popover>
-              )}
-              {renamingId === id ? (
-                <TextField
-                  autoFocus
-                  variant="standard"
-                  size="small"
-                  value={renameValue}
-                  disabled={renameSaving}
-                  onClick={e => e.stopPropagation()}
-                  onChange={e => setRenameValue(e.target.value)}
-                  onBlur={() => commitRename(id)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      commitRename(id);
-                    } else if (e.key === 'Escape') {
-                      setRenamingId(null);
-                    }
-                  }}
-                  sx={{
-                    flex: 1,
-                    '& .MuiInput-input': {
-                      py: 0,
-                      fontFamily: 'var(--canvas-font)',
-                      // Fixed px, not rem -- see SettingsModal.tsx's
-                      // settingsTheme comment.
-                      fontSize: '14px',
-                      color: 'var(--text-color)',
-                    },
-                    '& .MuiInput-underline:before': { borderBottomColor: 'var(--border-color)' },
-                  }}
-                />
-              ) : (
-                <Typography
-                  component="span"
-                  variant="body2"
-                  title={isActive ? 'Active connection' : undefined}
-                  sx={{ flex: 1, fontFamily: 'var(--canvas-font)', overflow: 'hidden', textOverflow: 'ellipsis' }}
-                >
-                  {label}
-                </Typography>
-              )}
-              {isDesktop() && renamingId !== id && (
-                <EditIcon
-                  onClick={e => startRename(e, id, label)}
-                  titleAccess="Rename connection"
-                  sx={{
-                    fontSize: 16,
-                    cursor: 'pointer',
-                    opacity: 0.35,
-                    '&:hover': { opacity: 0.9 },
-                  }}
-                />
-              )}
-              {isDesktop() && (() => {
-                const selectedPolicy = global.accessPolicies.find(p => p.id === policyId);
-                // MCP always uses this connection's own assigned policy the
-                // moment it's enabled -- there is no "on but unprotected"
-                // state (GlobalStore.setMcpEnabled refuses turning it on
-                // otherwise), so the gate for the bot icon and the shield
-                // icon is the same fact about the same policy.
-                const isConnPolicyActive = !!selectedPolicy?.rules.some(m => m.enabled);
-                // Whether the policy is currently in effect for the human's
-                // own tabs on this connection -- the agent's own side of
-                // this is `mcpEnabled` alone, always, regardless of this.
-                const appliesToOwnQueries = !!policyId && !bypassPolicyForOwnQueries;
-
-                // Only refuse *turning on* -- switching an already-enabled
-                // connection off must never be blocked by its policy going
-                // inactive later; that's a separate, always-available
-                // action (see GlobalStore.setMcpEnabled, which only ever
-                // refuses an `enabled: true` call).
-                const mcpClickDisabled = !mcpEnabled && !isConnPolicyActive;
-                const mcpTitle = mcpClickDisabled
-                  ? 'Select an access policy with an active rule first'
-                  : mcpEnabled
-                    ? 'MCP access is on -- click to turn off'
-                    : 'Turn on MCP access for this connection';
-
-                const shieldTitle = !selectedPolicy
-                  ? 'No access policy selected -- click to select one'
-                  : !isConnPolicyActive
-                    ? `"${selectedPolicy.name}" has no active rules -- click to change`
-                    : mcpEnabled && appliesToOwnQueries
-                      ? `Policy: ${selectedPolicy.name} -- applies to the agent and your own queries`
-                      : mcpEnabled
-                        ? `Policy: ${selectedPolicy.name} -- applies to the agent only, not your own queries`
-                        : appliesToOwnQueries
-                          ? `Policy: ${selectedPolicy.name} -- applies to your own queries`
-                          : `Policy: ${selectedPolicy.name} -- not applied right now`;
-                const shieldOn = mcpEnabled || appliesToOwnQueries;
-
-                return (
-                  <>
-                    {/* A hardware-style switch here reads as "this connection
-                        is on/off" rather than what it actually gates --
-                        letting an AI agent query it over MCP. A bot glyph in
-                        the row's own icon-button vocabulary (same idle/
-                        hover/active states as the rename/refresh/delete
-                        icons beside it) says that directly instead: lit up
-                        when an agent can reach this connection, dim when it
-                        can't. */}
-                    <SmartToyOutlinedIcon
-                      onClick={e => {
-                        e.stopPropagation();
-                        if (mcpClickDisabled) return;
-                        global.setMcpEnabled(id, !mcpEnabled);
-                      }}
-                      titleAccess={mcpTitle}
-                      sx={{
-                        fontSize: 16,
-                        cursor: mcpClickDisabled ? 'default' : 'pointer',
-                        opacity: mcpClickDisabled ? 0.2 : mcpEnabled ? 1 : 0.35,
-                        color: mcpEnabled ? 'var(--icon-color-highlight)' : 'inherit',
-                        '&:hover': { opacity: mcpClickDisabled ? 0.2 : mcpEnabled ? 0.9 : 0.6 },
-                      }}
-                    />
-                    <ShieldOutlinedIcon
-                      onClick={e => {
-                        e.stopPropagation();
-                        setPolicyPickerFor({ id, anchor: e.currentTarget });
-                      }}
-                      titleAccess={shieldTitle}
-                      sx={{
-                        fontSize: 16,
-                        cursor: 'pointer',
-                        opacity: shieldOn ? 1 : 0.35,
-                        color: shieldOn ? 'var(--icon-color-highlight)' : 'inherit',
-                        '&:hover': { opacity: shieldOn ? 0.9 : 0.6 },
-                      }}
-                    />
-                    {policyPickerFor?.id === id && (
-                      <Popover
-                        open
-                        anchorEl={policyPickerFor.anchor}
-                        onClose={() => setPolicyPickerFor(null)}
-                        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-                        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
-                        slotProps={{
-                          paper: {
-                            onClick: (e: MouseEvent) => e.stopPropagation(),
-                            sx: {
-                              backgroundColor: 'var(--background-color)',
-                              backgroundImage: 'none',
-                              border: '1px solid var(--border-color)',
-                              borderRadius: 1,
-                              py: 0.5,
-                              minWidth: 200,
-                            },
-                          },
-                        }}
-                      >
-                        {[{ id: null as string | null, name: 'None' }, ...global.accessPolicies].map(option => {
-                          // "None" would leave MCP pointing at nothing --
-                          // GlobalStore.setConnectionPolicy refuses it while
-                          // mcpEnabled, so this heads that refusal off
-                          // proactively instead of showing an error after
-                          // the click.
-                          const disabled = option.id === null && mcpEnabled;
-                          return (
-                            <Box
-                              key={option.id ?? '__none__'}
-                              onClick={() => {
-                                if (disabled) return;
-                                global.setConnectionPolicy(id, option.id);
-                                setPolicyPickerFor(null);
-                              }}
-                              title={disabled ? 'Turn off MCP access first' : undefined}
-                              sx={{
-                                px: 1.5,
-                                py: 0.75,
-                                cursor: disabled ? 'default' : 'pointer',
-                                fontFamily: 'var(--canvas-font)',
-                                fontSize: '13px',
-                                opacity: disabled ? 0.4 : 1,
-                                color: option.id === policyId ? 'var(--text-color)' : 'var(--canvas-text-dim)',
-                                backgroundColor: option.id === policyId ? 'var(--node-column-bg)' : 'transparent',
-                                '&:hover': { backgroundColor: disabled ? 'transparent' : 'var(--hover-color)' },
-                              }}
-                            >
-                              {option.name}
-                            </Box>
-                          );
-                        })}
-                        <Box sx={{ borderTop: '1px solid var(--border-color)', my: 0.5 }} />
-                        <Box
-                          onClick={() => {
-                            if (!policyId) return;
-                            global.setBypassPolicyForOwnQueries(id, !bypassPolicyForOwnQueries);
-                          }}
-                          title="When on, this policy protects the agent only -- your own queries on this connection show real data instead."
-                          sx={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 1,
-                            px: 1.5,
-                            py: 0.75,
-                            cursor: policyId ? 'pointer' : 'default',
-                            opacity: policyId ? 1 : 0.4,
-                            fontFamily: 'var(--canvas-font)',
-                            fontSize: '13px',
-                            color: 'var(--canvas-text-dim)',
-                            '&:hover': { backgroundColor: policyId ? 'var(--hover-color)' : 'transparent' },
-                          }}
-                        >
-                          <CheckIcon
-                            sx={{
-                              fontSize: 14,
-                              visibility: bypassPolicyForOwnQueries ? 'visible' : 'hidden',
-                              color: 'var(--icon-color-highlight)',
-                            }}
-                          />
-                          Only apply to MCP server
-                        </Box>
-                      </Popover>
-                    )}
-                  </>
-                );
-              })()}
-              {/* Fixed-width slot, always rendered (even for a not-yet-live
-                  connection, where it's simply empty) -- so the delete icon
-                  after it lands in the same column on every row instead of
-                  shifting over depending on whether this one has a refresh
-                  icon to show. */}
-              <Box sx={{ width: 16, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
-                {isLive &&
-                  (reindexedId === id ? (
-                    <CheckIcon sx={{ fontSize: 16, color: 'var(--icon-color-highlight)' }} />
-                  ) : (
-                    <RefreshIcon
-                      onClick={e => handleReindexClick(e, id)}
-                      titleAccess="Refresh schema — pick up tables or columns added since this connection last loaded them"
-                      sx={{
-                        fontSize: 16,
-                        cursor: reindexingId ? 'default' : 'pointer',
-                        opacity: reindexingId === id ? 0.7 : 0.35,
-                        '&:hover': { opacity: reindexingId ? undefined : 0.9 },
-                        '@keyframes pine-reindex-spin': {
-                          from: { transform: 'rotate(0deg)' },
-                          to: { transform: 'rotate(360deg)' },
-                        },
-                        animation: reindexingId === id ? 'pine-reindex-spin 0.8s linear infinite' : 'none',
-                      }}
-                    />
-                  ))}
-              </Box>
-              {!isPlayground() && (
-                <DeleteOutlineIcon
-                  onClick={e => handleRemoveClick(e, id)}
-                  titleAccess={confirmingRemoveId === id ? 'Click again to remove' : 'Remove connection'}
-                  sx={{
-                    fontSize: 16,
-                    cursor: 'pointer',
-                    opacity: confirmingRemoveId === id ? 1 : 0.35,
-                    color: confirmingRemoveId === id ? 'var(--text-warning-color)' : 'inherit',
-                    '&:hover': { opacity: 0.9 },
-                  }}
-                />
-              )}
-            </Box>
-          );
-        })}
+            );
+          },
+        )}
       </Box>
 
       <Button
@@ -942,7 +1048,10 @@ const ConnectionsSection = () => {
           mt: 2,
           borderColor: 'var(--border-color)',
           color: 'var(--text-color)',
-          '&:hover': { borderColor: 'var(--primary-color)', backgroundColor: 'var(--node-column-bg)' },
+          '&:hover': {
+            borderColor: 'var(--primary-color)',
+            backgroundColor: 'var(--node-column-bg)',
+          },
         }}
       >
         + Add database connection

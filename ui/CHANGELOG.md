@@ -7,6 +7,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Added
 - New "Toggle Layout Orientation" command (command palette): switch New Layout between side-by-side and top/bottom without using the canvas toolbar icon.
 
+### Changed
+- Database Connections list (desktop): a connection's rename field, access policy, MCP access toggle, "only apply to MCP server" toggle, refresh, and delete are now behind an expand arrow instead of five icons crammed onto one row. The expanded panel orders them the way you'd actually use them -- pick a policy, then turn MCP on -- instead of leaving that dependency to a tooltip.
+
 ### Fixed
 - New Layout: dragging the Pine/SQL panel's resize divider in top/bottom view no longer moves it in the opposite direction.
 - MCP-run queries now show up nicely formatted in the Pine panel instead of the raw, unformatted expression the agent sent. Needs a pine-lang server new enough to return the formatting in its eval response; older servers keep working exactly as before, just without it.
