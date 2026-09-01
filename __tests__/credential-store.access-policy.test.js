@@ -6,145 +6,187 @@
 // beamlynx-ui/store/mcp-query.ts's own
 // __tests__/mcp-query.no-raw-sql.test.js for the renderer-side half of this.
 //
-// Plain source-text assertions (this repo has no ts-node/tsx runtime wired
-// up for `node --test` on .ts files yet, and credential-store.ts reads
-// `app.getPath('userData')` -- real Electron APIs a plain node run can't
-// exercise without mocking the whole module). A static check is the more
-// robust guard for an invariant like this anyway: it catches a regression
-// even in a code path a runtime test's fixtures happen not to exercise.
+// Runs against dist/, not src/ (this repo's Node is v20, which has no
+// TypeScript stripping -- `npm test` builds first). Calls the real exported
+// functions with a real, temp connections.json per test -- not source-text
+// regex -- so a logic bug (e.g. swapping && for ||) actually fails a test
+// instead of sailing through because the right identifier tokens are still
+// present in the file.
+//
+// credential-store.ts imports `electron` for `app.getPath`/`ipcMain.handle`/
+// `safeStorage.*`, none of which exist when required from plain Node
+// (`require('electron')` there resolves to a string -- the binary path --
+// not the API). Rather than mocking the whole module, this stubs just
+// enough of it via require.cache injection: Node resolves `require('electron')`
+// to the same absolute path every time, so pre-seeding require.cache at that
+// path with a fake `exports` object is picked up instead of the real
+// package, and every other function in credential-store.ts (all real
+// business logic, all pure fs/JSON) runs completely unmodified.
 //
 // Run with: node --test __tests__
-const { test } = require('node:test');
+const { test, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
-function stripComments(source) {
-  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+const DIST = path.join(__dirname, '..', 'dist', 'main', 'credential-store.js');
+assert.ok(fs.existsSync(DIST), 'dist/main/credential-store.js is missing -- run `npm run build` first (npm test does).');
+
+let userDataDir;
+const electronPath = require.resolve('electron');
+require.cache[electronPath] = {
+  id: electronPath,
+  filename: electronPath,
+  loaded: true,
+  exports: {
+    app: { getPath: () => userDataDir },
+    ipcMain: { handle: () => {} },
+    safeStorage: {
+      isEncryptionAvailable: () => true,
+      // Anything other than 'basic_text' reads as persistenceAvailable: true
+      // on Linux -- see getCredentialsStatus.
+      getSelectedStorageBackend: () => 'gnome_libsecret',
+      encryptString: str => Buffer.from(str, 'utf-8'),
+      decryptString: buf => buf.toString('utf-8'),
+    },
+  },
+};
+
+const {
+  saveConnection,
+  setMcpEnabled,
+  setConnectionPolicy,
+  setBypassPolicyForOwnQueries,
+  createAccessPolicy,
+  setAccessPolicyModuleEnabled,
+  deleteAccessPolicy,
+  listMcpEnabledConnections,
+  getMcpAccessStatus,
+} = require(DIST);
+
+beforeEach(() => {
+  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'beamlynx-credstore-test-'));
+});
+
+function addConnection(overrides = {}) {
+  const n = Math.random().toString(36).slice(2);
+  const result = saveConnection({
+    dbHost: overrides.dbHost ?? `host-${n}`,
+    dbPort: '5432',
+    dbName: 'db',
+    dbUser: 'user',
+    dbPassword: 'pw',
+    label: overrides.label,
+  });
+  assert.ok(result.persisted, 'saveConnection must persist under the stubbed, encryption-available electron');
+  return result.profile;
 }
 
-const CREDENTIAL_STORE_SOURCE = stripComments(
-  fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'credential-store.ts'), 'utf-8'),
-);
-
-function functionBody(source, exportedName) {
-  const start = source.indexOf(`function ${exportedName}(`);
-  assert.ok(start !== -1, `Could not find function ${exportedName} in credential-store.ts`);
-  // Find the function body's own opening brace by first skipping past the
-  // parameter list (balancing parens) -- a parameter with an inline object
-  // type (e.g. `connection: { policyId: string | null }`) has its own
-  // `{...}` INSIDE the parameter list, before the body even starts; naively
-  // taking the first `{` after `start` matches that one instead and
-  // truncates the captured body at its closing `}`, silently returning
-  // only the parameter type annotation.
-  const parenStart = source.indexOf('(', start);
-  let parenDepth = 0;
-  let afterParams = parenStart;
-  for (; afterParams < source.length; afterParams++) {
-    if (source[afterParams] === '(') parenDepth++;
-    if (source[afterParams] === ')') {
-      parenDepth--;
-      if (parenDepth === 0) {
-        afterParams++;
-        break;
-      }
-    }
+function disableAllRules(policyId) {
+  for (const type of ['column-type', 'foreign-key', 'column-name']) {
+    setAccessPolicyModuleEnabled(policyId, type, false);
   }
-  // Good enough for this file's actual functions, which are all short and
-  // single-level -- find the matching closing brace by depth-counting from
-  // the function's own opening brace.
-  const openBrace = source.indexOf('{', afterParams);
-  let depth = 0;
-  for (let i = openBrace; i < source.length; i++) {
-    if (source[i] === '{') depth++;
-    if (source[i] === '}') {
-      depth--;
-      if (depth === 0) return source.slice(start, i + 1);
-    }
-  }
-  throw new Error(`Unbalanced braces scanning ${exportedName}`);
 }
 
-test('isConnectionPolicyActive resolves a connection\'s OWN policyId, not any policy anywhere', () => {
-  const body = functionBody(CREDENTIAL_STORE_SOURCE, 'isConnectionPolicyActive');
-  assert.ok(
-    /connection\.policyId/.test(body) && /accessPolicies\.find/.test(body),
-    'isConnectionPolicyActive must resolve the specific policy a connection points at (connection.policyId, ' +
-      'looked up in store.accessPolicies) and check THAT policy\'s own rules -- not whether any policy anywhere ' +
-      'has an active rule. Each connection is checked against its own assigned policy, independent of every ' +
-      'other connection\'s.',
-  );
+test('setMcpEnabled(id, true) succeeds once the connection points at a policy with an active rule', () => {
+  const conn = addConnection();
+  // saveConnection defaults policyId to the seeded "Default" policy, which
+  // starts with all three rules enabled -- so this should just work.
+  const result = setMcpEnabled(conn.id, true);
+  assert.deepEqual(result, { ok: true, profile: { ...conn, mcpEnabled: true } });
+});
+
+test('setMcpEnabled(id, true) refuses turning MCP on when the connection\'s own policy has no active rule', () => {
+  const policy = createAccessPolicy('Empty');
+  disableAllRules(policy.id);
+  const conn = addConnection();
+  assert.deepEqual(setConnectionPolicy(conn.id, policy.id), {
+    ok: true,
+    profile: { ...conn, policyId: policy.id },
+  });
+  assert.deepEqual(setMcpEnabled(conn.id, true), { ok: false, reason: 'no-active-policy' });
+});
+
+test('setMcpEnabled(id, false) always succeeds, even if the connection\'s policy went inactive after MCP was turned on', () => {
+  const conn = addConnection();
+  assert.equal(setMcpEnabled(conn.id, true).ok, true);
+  // Disabling a policy's rules doesn't touch any connection using it --
+  // deliberately, see setAccessPolicyModuleEnabled's own comment -- so this
+  // reaches the exact "mcpEnabled: true, but no rule active" edge state.
+  disableAllRules(conn.policyId);
+  const result = setMcpEnabled(conn.id, false);
+  assert.deepEqual(result, { ok: true, profile: { ...conn, mcpEnabled: false } });
+});
+
+test('setConnectionPolicy refuses null (or an inactive policy) while mcpEnabled is true, but allows it once MCP is off', () => {
+  const conn = addConnection();
+  assert.equal(setMcpEnabled(conn.id, true).ok, true);
+  assert.deepEqual(setConnectionPolicy(conn.id, null), { ok: false, reason: 'mcp-requires-policy' });
+
+  const emptyPolicy = createAccessPolicy('Empty');
+  disableAllRules(emptyPolicy.id);
+  assert.deepEqual(setConnectionPolicy(conn.id, emptyPolicy.id), { ok: false, reason: 'mcp-requires-policy' });
+
+  assert.equal(setMcpEnabled(conn.id, false).ok, true);
+  assert.deepEqual(setConnectionPolicy(conn.id, null), {
+    ok: true,
+    profile: { ...conn, mcpEnabled: false, policyId: null },
+  });
+});
+
+test('setConnectionPolicy never itself changes mcpEnabled', () => {
+  const conn = addConnection();
+  assert.equal(setMcpEnabled(conn.id, true).ok, true);
+  const otherPolicy = createAccessPolicy('Other');
+  const result = setConnectionPolicy(conn.id, otherPolicy.id);
+  assert.deepEqual(result, { ok: true, profile: { ...conn, mcpEnabled: true, policyId: otherPolicy.id } });
+});
+
+test('setBypassPolicyForOwnQueries never reads or writes mcpEnabled or policyId', () => {
+  const conn = addConnection();
+  assert.equal(setMcpEnabled(conn.id, true).ok, true);
+  const updated = setBypassPolicyForOwnQueries(conn.id, true);
+  assert.deepEqual(updated, { ...conn, mcpEnabled: true, bypassPolicyForOwnQueries: true });
+});
+
+test('deleteAccessPolicy sets both policyId: null and mcpEnabled: false on every connection that pointed at it', () => {
+  const conn = addConnection();
+  assert.equal(setMcpEnabled(conn.id, true).ok, true);
+  deleteAccessPolicy(conn.policyId);
+  assert.deepEqual(getMcpAccessStatus(conn.id), 'not-enabled');
+  assert.deepEqual(listMcpEnabledConnections(), []);
+});
+
+test('getMcpAccessStatus distinguishes not-found, not-enabled, no-active-policy, and ok', () => {
+  const conn = addConnection();
+  assert.equal(getMcpAccessStatus('does-not-exist'), 'not-found');
+  assert.equal(getMcpAccessStatus(conn.id), 'not-enabled');
+  assert.equal(setMcpEnabled(conn.id, true).ok, true);
+  assert.equal(getMcpAccessStatus(conn.id), 'ok');
+  disableAllRules(conn.policyId);
+  assert.equal(getMcpAccessStatus(conn.id), 'no-active-policy');
 });
 
 test('listMcpEnabledConnections requires each connection\'s OWN policy to be active, not just mcpEnabled', () => {
-  const body = functionBody(CREDENTIAL_STORE_SOURCE, 'listMcpEnabledConnections');
-  assert.ok(
-    /isConnectionPolicyActive\(/.test(body) && /\.mcpEnabled/.test(body),
-    'listMcpEnabledConnections must filter on both c.mcpEnabled AND isConnectionPolicyActive(store, c) -- this ' +
-      'is the real enforcement boundary (it backs both GET /connections and assertWhitelisted in ' +
-      'control-plane-server.ts). A connection already mcpEnabled: true whose policy later went inactive (or was ' +
-      'deleted) must not stay MCP-reachable just because nothing re-checks it.',
-  );
-});
+  const active = addConnection();
+  assert.equal(setMcpEnabled(active.id, true).ok, true);
 
-test('setMcpEnabled refuses turning MCP on unless the connection\'s OWN policy is active, but never refuses turning it off', () => {
-  const body = functionBody(CREDENTIAL_STORE_SOURCE, 'setMcpEnabled');
-  assert.ok(
-    /isConnectionPolicyActive\(/.test(body) && /no-active-policy/.test(body),
-    'setMcpEnabled must refuse an `enabled: true` call with reason "no-active-policy" when ' +
-      'isConnectionPolicyActive(store, connection) is false -- the UX-level guard against a toggle that would ' +
-      'be silently inert.',
-  );
-  assert.ok(
-    /if\s*\(\s*enabled\s*&&\s*!isConnectionPolicyActive/.test(body),
-    'The isConnectionPolicyActive() check must be gated on `enabled` (only checked when turning MCP ON) -- ' +
-      "turning MCP off must never be refused, regardless of the connection's policy state.",
-  );
-});
+  // Its own separate policy -- addConnection defaults every new connection
+  // to the same first-created policy, so reusing that one here would also
+  // deactivate `active`'s policy once disableAllRules runs.
+  const ownPolicy = createAccessPolicy('WentInactive');
+  const wentInactive = addConnection();
+  assert.equal(setConnectionPolicy(wentInactive.id, ownPolicy.id).ok, true);
+  assert.equal(setMcpEnabled(wentInactive.id, true).ok, true);
+  disableAllRules(ownPolicy.id);
 
-test('setConnectionPolicy refuses clearing/blanking the policy while mcpEnabled is true, but never writes mcpEnabled itself', () => {
-  const body = functionBody(CREDENTIAL_STORE_SOURCE, 'setConnectionPolicy');
-  assert.ok(
-    /current\.mcpEnabled/.test(body) && /mcp-requires-policy/.test(body),
-    'setConnectionPolicy must refuse (reason "mcp-requires-policy") setting policyId to null, or to a policy ' +
-      'with no active rule, while the connection\'s mcpEnabled is true -- that would leave MCP pointing at ' +
-      'nothing, the same disallowed state setMcpEnabled itself guards against from the other direction.',
-  );
-  assert.ok(
-    !/mcpEnabled\s*:/.test(body),
-    'setConnectionPolicy must never WRITE mcpEnabled (it may read current.mcpEnabled to decide whether to ' +
-      'refuse) -- turning MCP on/off is setMcpEnabled\'s job alone.',
-  );
-});
+  const neverEnabled = addConnection();
 
-test('setBypassPolicyForOwnQueries never reads or writes mcpEnabled or policyId -- it only ever affects the human\'s own queries', () => {
-  const body = functionBody(CREDENTIAL_STORE_SOURCE, 'setBypassPolicyForOwnQueries');
-  assert.ok(
-    !/mcpEnabled/.test(body) && !/policyId/.test(body),
-    'setBypassPolicyForOwnQueries must be a plain, unconditional setter with no reference to mcpEnabled or ' +
-      "policyId -- it must never affect what MCP sees, only whether the connection's owner has switched the " +
-      'policy off for their own tabs. Coupling it to either would defeat the point of it being independent.',
+  const result = listMcpEnabledConnections();
+  assert.deepEqual(
+    result.map(c => c.id).sort(),
+    [active.id].sort(),
   );
-});
-
-test('deleteAccessPolicy turns mcpEnabled off (not just policyId: null) for any connection that pointed at the deleted policy', () => {
-  const body = functionBody(CREDENTIAL_STORE_SOURCE, 'deleteAccessPolicy');
-  assert.ok(
-    /policyId\s*===\s*id/.test(body) && /policyId:\s*null/.test(body) && /mcpEnabled:\s*false/.test(body),
-    'deleteAccessPolicy must set BOTH policyId: null AND mcpEnabled: false on every connection whose policyId ' +
-      'matched the deleted policy. Clearing only policyId would leave mcpEnabled: true pointing at nothing -- ' +
-      'the same disallowed state setMcpEnabled/setConnectionPolicy already guard against from the other two ' +
-      'directions, reached here a third way.',
-  );
-});
-
-test('getMcpAccessStatus exists and distinguishes "never enabled" from "policy went inactive"', () => {
-  const body = functionBody(CREDENTIAL_STORE_SOURCE, 'getMcpAccessStatus');
-  assert.ok(
-    /not-enabled/.test(body) && /no-active-policy/.test(body) && /isConnectionPolicyActive\(/.test(body),
-    'getMcpAccessStatus must return distinct statuses for "connection never opted in to MCP" (not-enabled) vs ' +
-      '"connection is mcpEnabled but its policy currently has no active rule" (no-active-policy) -- ' +
-      'control-plane-server.ts\'s assertWhitelisted relies on telling these apart to give a precise error at ' +
-      'actual MCP call time, not just at toggle time.',
-  );
+  assert.ok(!result.some(c => c.id === wentInactive.id || c.id === neverEnabled.id));
 });
