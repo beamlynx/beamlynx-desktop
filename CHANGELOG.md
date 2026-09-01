@@ -4,15 +4,16 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.10.0] - 2026-09-01
 ### Added
-- Named, user-creatable access policies, editable from beamlynx-ui's new Settings -> Access Policy section: create/rename/delete a policy, and toggle its rule modules (real Postgres types, identifier/reference columns, `_id`-suffixed columns) deciding which columns come back as their real value rather than a redacted placeholder, instead of the fixed list pine-lang used to hardcode. `credential-store.ts` stores them (`accessPolicies: AccessPolicy[]`, one new top-level field on `connections.json`, seeded with a single "Default" policy on first run) and exposes full CRUD over IPC (`window.beamlynxDesktop.accessPolicy`).
-- Each saved connection independently selects which policy applies to it, alongside its existing "Enable for MCP access" toggle -- a new `policyId: string | null` field. **MCP always has a real, active policy behind it: there is no "reachable but unprotected" state.** `setMcpEnabled(id, true)` refuses turning MCP on unless the connection's own `policyId` already resolves to a policy with an active rule (`SetMcpEnabledResult`); `setConnectionPolicy` refuses the reverse -- clearing or blanking the policy while MCP is already on for that connection (`SetConnectionPolicyResult`). Deleting a policy turns MCP off (not just `policyId: null`) for every connection that referenced it, for the same reason.
-- A new, independent per-connection toggle -- "Only apply to MCP server" -- lets the connection's owner turn the assigned policy off for their own (non-MCP) queries, e.g. to see real data while debugging, without ever weakening what the MCP agent sees on the same connection. Backed by `bypassPolicyForOwnQueries: boolean` (`credentials.setBypassPolicyForOwnQueries`), defaulted to `false` (protected by default) and never read by anything on the MCP path.
-- The control-plane server (`control-plane-server.ts`) now checks the connection's access status at the moment an MCP tool call actually runs, not just when MCP was last toggled on -- `getMcpAccessStatus` distinguishes "never enabled" from "was enabled, but its policy's last active rule was since turned off," and `assertWhitelisted` throws a distinct, specific error for each rather than either case silently running unprotected or failing with a generic message.
-- Migrates a store from the earlier single-global-policy version of this feature (`accessPolicy: AccessPolicyModule[]`) automatically, once, on next read: its rules become one named "Default" policy, and each connection's old boolean `policyEnabled` becomes `policyId` (pointing at that Default policy, or `null`) -- so upgrading doesn't silently reset what was already configured.
+- Named, user-creatable access policies (Settings -> Access Policy in beamlynx-ui): create/rename/delete a policy, toggle its rules. Each saved connection picks which one applies to it.
+- MCP can only be enabled for a connection once its assigned policy has an active rule, and the policy can't be cleared or swapped for an inactive one while MCP is on -- there's no "reachable but unprotected" state.
+- New per-connection toggle, "Only apply to MCP server": lets the owner see real data on their own queries without weakening what the agent sees.
+- The control-plane server now double-checks a connection's access status at the moment an MCP call actually runs (not just when MCP was last toggled on), so a policy that went inactive afterward fails loud instead of running unprotected.
 
 ### Fixed
-- `mcp.onQueryRequest` (the preload bridge an MCP tool call is delivered through) now returns an unsubscribe function and is actually used as one (`components/McpBridge.tsx`, beamlynx-ui). It didn't before -- every time that component's effect re-ran (Fast Refresh in dev, React Strict Mode's double-invoke), it registered another `ipcRenderer` listener on top of the last one instead of replacing it. Every listener still fires for every request, so a single MCP query could occasionally get answered by a stale listener closing over old code, surfacing as an intermittent, unexplained "X is not a function" for a method that was added after that listener was registered.
+- Fixed an intermittent "X is not a function" from a duplicate MCP query listener left behind by dev-mode Fast Refresh.
 
 ## [0.9.1] - 2026-08-28
 ### Fixed

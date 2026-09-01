@@ -1,5 +1,5 @@
 {
-  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang unchanged at 0.40.0's merge commit (still a SHA, not a tag -- pine-lang doesn't tag releases). beamlynx-ui bumped to its tagged 0.53.0, which adds Zen mode, a docked Settings panel, canvas text that scales with Text Size, and a Reconnect action for a dead database connection.",
-  "pineLangRef": "a1d15959fa3dbe2e446123534553a1ae6229dbbb",
-  "beamlynxUiRef": "0.53.0"
+  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang bumped to 0.41.0's merge commit (still a SHA, not a tag -- pine-lang doesn't tag releases): adds a data-driven access policy for restricted evaluation. beamlynx-ui bumped to its tagged 0.55.0, which adds named access policies with a hard MCP-always-protected invariant and the 'Only apply to MCP server' toggle.",
+  "pineLangRef": "3639992fcb68341fab10b86311c40f28779df72f",
+  "beamlynxUiRef": "0.55.0"
 }
