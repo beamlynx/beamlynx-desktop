@@ -35,6 +35,15 @@ export class DefaultPlugin implements PluginInterface {
       return [];
     }
 
+    // Applies regardless of response.error below - a query that parses fine
+    // but fails at the DB still deserves to show the agent's expression
+    // cleanly formatted, not whatever raw string it sent.
+    if (opts?.applyServerPrettified && response.prettified) {
+      runInAction(() => {
+        session.expression = response.prettified;
+      });
+    }
+
     if (response.error) {
       runInAction(() => {
         session.message = '';

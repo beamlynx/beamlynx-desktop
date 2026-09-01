@@ -10,6 +10,13 @@ export type EvaluateOptions = {
   // silently running whatever (possibly stale) SQL text the panel happens to
   // be showing.
   forcePine?: boolean;
+
+  // Overwrite session.expression with the server's own prettified rendering
+  // once the eval response comes back (see client.ts's Response.prettified).
+  // Opt-in and only ever set by the MCP path (store/mcp-query.ts) - a
+  // human's own Run must never rewrite text they're actively editing in the
+  // Pine panel.
+  applyServerPrettified?: boolean;
 };
 
 export interface PluginInterface {
