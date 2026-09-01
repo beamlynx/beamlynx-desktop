@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Changed
+- The app now re-checks for a new release every 15 minutes it stays open, not just at launch, so a session left running for hours or days still picks up a release that ships in the meantime.
 
 ## [0.10.0] - 2026-09-01
 ### Added
