@@ -46,6 +46,14 @@ export const MIN_NEW_LAYOUT_PANEL_SIZE = 160;
 export const DEFAULT_SETTINGS_PANEL_WIDTH = 640;
 export const MIN_SETTINGS_PANEL_WIDTH = 420;
 
+/* Vertical tab rail (PineTabs.tsx, Appearance -> Tabs = Vertical). Fixed,
+ * not resizable: the rail only ever holds session names, so there's no
+ * content whose size would justify a drag handle -- and every other
+ * resizable boundary in the app separates two panes that both compete for
+ * the same space, which this doesn't. Wide enough for a typical session
+ * name plus its connection dot and close button; longer names ellipsize. */
+export const VERTICAL_TAB_RAIL_WIDTH = 190;
+
 /* Pine Server */
 export const RequiredVersion = '0.41.0';
 

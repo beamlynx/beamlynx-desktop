@@ -6,6 +6,11 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ## [Unreleased]
 ### Added
 - New "Toggle Layout Orientation" command (command palette): switch New Layout between side-by-side and top/bottom without using the canvas toolbar icon.
+- Tabs can be reordered by dragging them, in both the horizontal strip and the vertical rail. Dragging to either end of a long rail scrolls it. The new order also drives Ctrl+Tab cycling and survives a reload.
+- New Settings -> Appearance -> Tabs setting: show the session tabs as a vertical rail down the left side instead of the horizontal strip across the top, with a new-tab button at the top of the rail. Applies to both layouts, and is also available as a "Toggle Tab Orientation" command.
+
+### Changed
+- Tab close buttons now appear on hover of that tab, instead of on every tab at once. Hovering a tab also tints it and brightens its label.
 
 ### Fixed
 - New Layout: dragging the Pine/SQL panel's resize divider in top/bottom view no longer moves it in the opposite direction.

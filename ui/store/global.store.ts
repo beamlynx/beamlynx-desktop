@@ -60,6 +60,14 @@ type ConnectionParams = {
 
 export type SettingsSection = 'connections' | 'theme' | 'preferences' | 'access-policy' | 'mcp' | 'about';
 
+// Which edge the session tab strip runs along -- see tabOrientation below.
+// Deliberately its own type rather than reusing the inline
+// 'horizontal' | 'vertical' of newLayoutOrientation: the two describe
+// unrelated axes (a tab strip's edge vs. the Canvas|Results split), and
+// naming them apart keeps a future change to one from silently widening
+// the other.
+export type TabOrientation = 'horizontal' | 'vertical';
+
 export class GlobalStore {
   connecting = false;
   connection = '';
@@ -331,6 +339,24 @@ export class GlobalStore {
     setUserPreference(STORAGE_KEYS.NEW_LAYOUT_ORIENTATION, value);
   }
 
+  // Which edge the session tab strip runs along: 'horizontal' (the classic
+  // strip across the top) or 'vertical' (a rail down the left, which trades
+  // width for room to show more tabs and longer names without the strip
+  // scrolling). Unlike newLayoutOrientation above this isn't New-Layout-
+  // specific -- PineTabs.tsx is the same component in both layouts, so the
+  // preference applies to both. Global, not per-session, for the same
+  // reason the rest of these are: it's how you like to work.
+  _tabOrientation: TabOrientation;
+
+  get tabOrientation(): TabOrientation {
+    return this._tabOrientation;
+  }
+
+  set tabOrientation(value: TabOrientation) {
+    this._tabOrientation = value;
+    setUserPreference(STORAGE_KEYS.TAB_ORIENTATION, value);
+  }
+
   // A graph-only, distraction-free view: New Layout's header, tab strip, and
   // Results pane all hide, leaving just Canvas (see AppView.tsx/PineTabs.tsx/
   // NewLayoutView.tsx's isZenModeActive checks). Transient, not persisted -
@@ -463,6 +489,7 @@ export class GlobalStore {
       STORAGE_KEYS.NEW_LAYOUT_ORIENTATION,
       'horizontal',
     );
+    this._tabOrientation = getUserPreference(STORAGE_KEYS.TAB_ORIENTATION, 'horizontal');
     this._commandHistory = getUserPreference(STORAGE_KEYS.COMMAND_HISTORY, []);
     this.connectionColors = getUserPreference(STORAGE_KEYS.CONNECTION_COLORS, {});
     makeAutoObservable(this);
@@ -911,6 +938,10 @@ export class GlobalStore {
   public toggleNewLayoutOrientation() {
     this.newLayoutOrientation =
       this.newLayoutOrientation === 'horizontal' ? 'vertical' : 'horizontal';
+  }
+
+  public toggleTabOrientation() {
+    this.tabOrientation = this.tabOrientation === 'horizontal' ? 'vertical' : 'horizontal';
   }
 
   public toggleZenMode() {
@@ -1563,6 +1594,38 @@ export class GlobalStore {
         this.activeSessionId = remainingSessions[0];
       }
     }
+  };
+
+  /**
+   * Reorder the tab strip, by dragging a tab (PineTabs.tsx). `fromIndex` and
+   * `toIndex` are positions in the current strip order.
+   *
+   * Tab order isn't stored anywhere of its own -- it's the key order of
+   * `sessions` itself -- so this rebuilds that record in the new order. That
+   * works only because session ids are `session-N` STRINGS: JS objects keep
+   * string keys in insertion order, but integer-like keys ('0', '1') would be
+   * sorted numerically no matter what order they were inserted in, and this
+   * would silently do nothing.
+   *
+   * Rebuilding rather than keeping a parallel order array is what makes one
+   * change carry everywhere, since every reader of tab order reads that same
+   * key order: the strip itself, Ctrl+Tab cycling (activateAdjacentTab just
+   * below), and the persisted snapshot (snapshotSessions), which stores tabs
+   * as an ordered array -- so a reordered strip survives a reload. The
+   * Session instances move by reference, so no tab's query, results, or
+   * connection is disturbed by being dragged.
+   */
+  moveTab = (fromIndex: number, toIndex: number) => {
+    const ids = Object.keys(this.sessions);
+    const valid = (i: number) => Number.isInteger(i) && i >= 0 && i < ids.length;
+    if (fromIndex === toIndex || !valid(fromIndex) || !valid(toIndex)) return;
+
+    const [moved] = ids.splice(fromIndex, 1);
+    ids.splice(toIndex, 0, moved);
+
+    const reordered: Record<string, Session> = {};
+    ids.forEach(id => (reordered[id] = this.sessions[id]));
+    this.sessions = reordered;
   };
 
   /**
