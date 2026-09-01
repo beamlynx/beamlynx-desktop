@@ -6,7 +6,16 @@ import { DefaultPlugin } from '../plugin/default.plugin';
 import { EvaluateOptions } from '../plugin/plugin.interface';
 import { RecursiveDeletePlugin } from '../plugin/recursive-delete.plugin';
 import { CanvasStore } from './canvas/canvas.store';
-import { Ast, Hints, HttpClient, Operation, Response } from './client';
+import {
+  AccessPolicyRule,
+  Ast,
+  ConnectionInfo,
+  effectiveAccessPolicyRules,
+  Hints,
+  HttpClient,
+  Operation,
+  Response,
+} from './client';
 import { generateGraph, getCandidateIndex, Graph } from './graph.util';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
 import { debounce } from './util';
@@ -104,8 +113,6 @@ export class Session {
   /**
    * App states
    */
-  /** Vim mode */
-  vimMode: boolean = false;
 
   /** Pine expression to be evaluated */
   expression: string = ''; // observable
@@ -235,6 +242,28 @@ export class Session {
     return this.globalStore?.canvasActive ?? false;
   }
 
+  /**
+   * The rules that actually apply to this session's connected profile right
+   * now: whichever named policy that connection has selected
+   * (GlobalStore.accessPolicies, Settings -> Access Policy and Database
+   * Connections' own picker) -- see effectiveAccessPolicyRules (client.ts)
+   * for the exact gate. This session counts as the MCP caller iff it *is*
+   * GlobalStore's dedicated MCP session (globalStore.mcpSessionId) -- the
+   * one tab MCP-driven queries actually run in (see
+   * GlobalStore.getOrCreateMcpSession) -- which always gets the assigned
+   * policy while mcpEnabled is on; any other (human) tab instead follows
+   * the connection's own bypassPolicyForOwnQueries toggle, independent of mcpEnabled.
+   * eval/build forward this verbatim to pine-lang, which redacts any column
+   * no rule in it allows (see pine.access-policy). Always empty in browser
+   * mode (no profileId, no policy concept there).
+   */
+  get accessPolicyRules(): AccessPolicyRule[] {
+    const connections = this.globalStore?.connections as ConnectionInfo[] | undefined;
+    const policies = this.globalStore?.accessPolicies ?? [];
+    const forMcp = this.id === this.globalStore?.mcpSessionId;
+    return effectiveAccessPolicyRules(connections?.find(c => c.id === this.profileId), policies, forMcp);
+  }
+
   /** Evaluation plugins */
   plugins: { delete: RecursiveDeletePlugin; default: DefaultPlugin };
 
@@ -253,7 +282,6 @@ export class Session {
 
   constructor(id: string, globalStore?: any) {
     this.id = `session-${id}`;
-    this.vimMode = getUserPreference(STORAGE_KEYS.VIM_MODE, false);
     this.globalStore = globalStore;
 
     makeAutoObservable(this);
@@ -368,7 +396,12 @@ export class Session {
           const adjustedCursor = cursor && blocks[activeIdx]
             ? { line: cursor.line - blocks[activeIdx].startLine, character: cursor.character }
             : cursor;
-          const response = await client.build(activeExpressions, adjustedCursor, this.connectionId);
+          const response = await client.build(
+            activeExpressions,
+            adjustedCursor,
+            this.connectionId,
+            this.accessPolicyRules,
+          );
           runInAction(() => {
             this.response = response;
             this.lastHintsCursorPosition = cursor;
@@ -477,11 +510,6 @@ export class Session {
         });
       },
     );
-  }
-
-  public toggleVimMode() {
-    this.vimMode = !this.vimMode;
-    setUserPreference(STORAGE_KEYS.VIM_MODE, this.vimMode);
   }
 
   public selectNextCandidate(offset: number) {
@@ -603,7 +631,12 @@ export class Session {
    * Similar to evaluate() but only builds without executing.
    */
   public async build(expression: string): Promise<Ast> {
-    const response = await client.build([expression], this.cursorPosition, this.connectionId);
+    const response = await client.build(
+      [expression],
+      this.cursorPosition,
+      this.connectionId,
+      this.accessPolicyRules,
+    );
     return response.ast;
   }
 

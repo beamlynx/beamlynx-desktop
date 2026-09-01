@@ -1,6 +1,6 @@
 import { makeAutoObservable, reaction, runInAction } from 'mobx';
 import { lt } from 'semver';
-import { HttpClient, ConnectionInfo } from './client';
+import { AccessPolicy, AccessPolicyRule, HttpClient, ConnectionInfo, effectiveAccessPolicyRules } from './client';
 import type { CredentialsStatus } from '../desktop';
 import { Session, Theme, InputMode } from './session';
 import { THEME_MODE, ThemeId } from '../styles/palette/tokens';
@@ -58,7 +58,7 @@ type ConnectionParams = {
   label?: string;
 };
 
-export type SettingsSection = 'connections' | 'theme' | 'preferences' | 'mcp' | 'about';
+export type SettingsSection = 'connections' | 'theme' | 'preferences' | 'access-policy' | 'mcp' | 'about';
 
 export class GlobalStore {
   connecting = false;
@@ -74,6 +74,14 @@ export class GlobalStore {
   // profile" apart from "haven't checked yet" and would flash the raw
   // connection id (e.g. "localhost:5432") as if it were the name.
   connectionsLoaded = false;
+  // Every named access policy (Settings -> Access Policy, credential-store.ts)
+  // -- each connection independently selects one by id (ConnectionInfo.policyId),
+  // or none. Loaded alongside connections at boot (refreshAccessPolicies)
+  // and re-read fresh before every MCP query (mcpQueryDeps'
+  // resolveAccessPolicyRules); every session's own accessPolicyRules
+  // getter reads this same shared array, so an edit here is visible to
+  // every open tab on its next read.
+  accessPolicies: AccessPolicy[] = [];
   credentialsStatus: CredentialsStatus | null = null;
 
   // Desktop-only: the one dedicated tab MCP-driven queries run in (see
@@ -202,6 +210,31 @@ export class GlobalStore {
     setUserPreference(STORAGE_KEYS.TEXT_SIZE, newTextSize);
   }
 
+  // Vim-style navigation/editing -- global (like canvasModeEnabled below),
+  // not per-session: one Preferences toggle governs it, not a per-tab
+  // choice, so it belongs here rather than on Session. It used to live on
+  // Session (each instance seeding its own copy from the same underlying
+  // localStorage key at construction) -- harmless for a single tab, but
+  // toggling it in one already-open tab never touched any OTHER already-open
+  // tab's own copy, leaving it stale until reload. Read by PineInput.tsx/
+  // SqlInput.tsx (the query editor's own vim keybindings) and
+  // useCanvasKeybindings.ts/useSettingsKeybindings.ts (the canvas's and
+  // Settings rail's vim-style letter shortcuts).
+  _vimModeEnabled: boolean;
+
+  get vimMode(): boolean {
+    return this._vimModeEnabled;
+  }
+
+  set vimMode(value: boolean) {
+    this._vimModeEnabled = value;
+    setUserPreference(STORAGE_KEYS.VIM_MODE, value);
+  }
+
+  toggleVimMode = () => {
+    this.vimMode = !this.vimMode;
+  };
+
   // Pine / result table coloring (segment and column tints)
   _pineTableColorsEnabled: boolean;
 
@@ -316,9 +349,10 @@ export class GlobalStore {
   // focused, e.g. the header). Transient, not persisted -- same reasoning as
   // zenMode above. Written by useFocusedPanelTracking.ts's document-level
   // focusin/focusout listener; read through activeKeyboardPanel below, never
-  // directly, since a panel can still be nominally "focused" after it's been
-  // hidden (Settings closed via the gear icon while a row inside it still
-  // had focus) -- the getter is what falls that back to 'graph'.
+  // directly -- 'settings' here doesn't necessarily mean Settings still owns
+  // the keyboard (it may have since closed, or focus may have wandered
+  // somewhere neither Canvas nor Input claim), and the getter is what
+  // resolves that ambiguity rather than every caller re-deriving it.
   focusedPanelId: 'graph' | 'settings' | 'input' | null = null;
 
   setFocusedPanelId = (id: 'graph' | 'settings' | 'input' | null) => {
@@ -326,18 +360,28 @@ export class GlobalStore {
   };
 
   // The single source of truth every panel-scoped keybinding hook
-  // (useCanvasKeybindings, useSettingsKeybindings) gates on. DOM focus, not
-  // visibility, decides who owns bare-key input -- Settings is a *docked*
-  // panel in New Layout (see SettingsDockedPanel.tsx's own comment) meant to
-  // stay open while you keep working the canvas, so "Settings is open" can't
-  // mean "Settings owns every keystroke until closed" the way it would for a
-  // modal. Falls back to 'graph' whenever the nominally-focused panel isn't
-  // actually eligible right now (hidden, or focus never landed anywhere in
-  // particular) -- that fallback is what preserves today's canvas-keys-work-
-  // by-default behavior.
+  // (useCanvasKeybindings, useSettingsKeybindings) gates on. DOM focus
+  // decides who owns bare-key input, but ONLY when it's explicitly ON
+  // Canvas or the Input panel -- clicking either is a deliberate "give this
+  // one the keyboard" action, and wins outright. Anything else (Tab landing
+  // on a header icon that isn't part of any managed panel, focus lost to
+  // nothing in particular, a stray click on inert chrome) is NOT such a
+  // signal, and must not be read as "give it to Canvas" -- confirmed live
+  // that reading it that way felt exactly backwards: Tabbing through
+  // Settings' own content (past its last real control, toward the header)
+  // silently armed canvas's j/k the instant focus happened to land on the
+  // Settings gear icon, with nothing on screen suggesting canvas now owned
+  // the keyboard. Settings is a *docked* panel (see SettingsDockedPanel.tsx's
+  // own comment) meant to stay open while you keep working the canvas, so
+  // "Settings is open" can't mean "owns every keystroke until closed" either
+  // -- but short of an explicit click into Canvas/Input, it's the one
+  // default that's actually predictable while it's open. Falls back to
+  // 'graph' only once Settings itself is closed too, which is the original,
+  // pre-panel-routing default this whole mechanism is layered on top of.
   get activeKeyboardPanel(): 'graph' | 'settings' | 'input' {
-    if (this.focusedPanelId === 'settings' && this.showSettings) return 'settings';
     if (this.focusedPanelId === 'input' && this.newLayoutPanelVisible) return 'input';
+    if (this.focusedPanelId === 'graph') return 'graph';
+    if (this.showSettings) return 'settings';
     return 'graph';
   }
 
@@ -394,6 +438,7 @@ export class GlobalStore {
     this._uiFontFamily = getUserPreference(STORAGE_KEYS.UI_FONT_FAMILY, 'system');
     this._codeFontFamily = getUserPreference(STORAGE_KEYS.CODE_FONT_FAMILY, 'plex-mono');
     this._textSize = getUserPreference(STORAGE_KEYS.TEXT_SIZE, 'medium');
+    this._vimModeEnabled = getUserPreference(STORAGE_KEYS.VIM_MODE, false);
     this._pineTableColorsEnabled = getUserPreference(STORAGE_KEYS.PINE_TABLE_COLORS, false);
     this._canvasModeEnabled = getUserPreference(STORAGE_KEYS.CANVAS_MODE, false);
     this._autoRunEnabled = getUserPreference(STORAGE_KEYS.AUTO_RUN_ENABLED, true);
@@ -605,6 +650,7 @@ export class GlobalStore {
           dbHost: p.dbHost,
           dbPort: p.dbPort,
           mcpEnabled: p.mcpEnabled,
+          policyId: p.policyId,
         }));
         this.connections.forEach(c => this.assignConnectionColor(c.id));
         // Keep the active pine connection's own color alive even though it's
@@ -634,6 +680,65 @@ export class GlobalStore {
       this.connectionsLoaded = true;
     });
     return this.connections;
+  };
+
+  // Desktop-only, same as accessPolicies itself -- browser mode has no MCP
+  // and no policy concept, so this is a no-op there. Called at boot
+  // alongside refreshConnections, and again before every MCP query
+  // (mcpQueryDeps' resolveAccessPolicyRules) so an edit made from Settings
+  // -> Access Policy takes effect on the very next query, not just the
+  // next reconnect.
+  refreshAccessPolicies = async (): Promise<AccessPolicy[]> => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) return this.accessPolicies;
+    const policies = await window.beamlynxDesktop.accessPolicy.list();
+    runInAction(() => {
+      this.accessPolicies = policies;
+    });
+    return this.accessPolicies;
+  };
+
+  createAccessPolicy = async (name: string): Promise<AccessPolicy | undefined> => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) return undefined;
+    const policy = await window.beamlynxDesktop.accessPolicy.create(name);
+    runInAction(() => {
+      this.accessPolicies = [...this.accessPolicies, policy];
+    });
+    return policy;
+  };
+
+  renameAccessPolicy = async (id: string, name: string): Promise<void> => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
+    const updated = await window.beamlynxDesktop.accessPolicy.rename(id, name);
+    if (!updated) return;
+    runInAction(() => {
+      this.accessPolicies = this.accessPolicies.map(p => (p.id === id ? updated : p));
+    });
+  };
+
+  // Any connection that had this policy selected falls back to "None"
+  // server-side (credential-store.ts's deleteAccessPolicy) -- refresh
+  // connections too, so a connection row showing this policy's name
+  // doesn't keep showing it after it no longer exists.
+  deleteAccessPolicy = async (id: string): Promise<void> => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
+    await window.beamlynxDesktop.accessPolicy.delete(id);
+    runInAction(() => {
+      this.accessPolicies = this.accessPolicies.filter(p => p.id !== id);
+    });
+    await this.refreshConnections();
+  };
+
+  setAccessPolicyModuleEnabled = async (
+    policyId: string,
+    type: AccessPolicyRule['type'],
+    enabled: boolean,
+  ): Promise<void> => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
+    const updated = await window.beamlynxDesktop.accessPolicy.setModuleEnabled(policyId, type, enabled);
+    if (!updated) return;
+    runInAction(() => {
+      this.accessPolicies = this.accessPolicies.map(p => (p.id === policyId ? updated : p));
+    });
   };
 
   consumeReconnectHint = () => {
@@ -965,6 +1070,17 @@ export class GlobalStore {
         };
       });
     },
+    // Always re-reads both the connection list and every access policy
+    // first (see mcp-query.ts's top comment for why a cached snapshot isn't
+    // safe here) -- this replaces `this.connections`/`this.accessPolicies`
+    // wholesale, so it also brings Session.accessPolicyRules (which reads
+    // those same two) up to date for whichever session runMcpQuery is
+    // about to evaluate against.
+    resolveAccessPolicyRules: async (profileId: string) => {
+      const [connections, policies] = await Promise.all([this.refreshConnections(), this.refreshAccessPolicies()]);
+      // forMcp: true -- this is only ever called from runMcpQuery/explainMcpQuery.
+      return effectiveAccessPolicyRules(connections.find(c => c.id === profileId), policies, true);
+    },
   });
 
   /**
@@ -985,14 +1101,78 @@ export class GlobalStore {
    * access-control lever for the MCP server. Off by default; the
    * control-plane server (beamlynx-desktop) refuses any MCP tool call
    * against a connection that isn't in this list, regardless of what's live
-   * in pine-lang's own pool.
+   * in pine-lang's own pool. Also refused (not silently ignored) unless
+   * *this connection's own* assigned policy has an active module -- there
+   * is no "MCP on, unprotected" state -- see credential-store.ts's
+   * setMcpEnabled. The ConnectionsSection UI is expected to disable this
+   * control before that refusal can even be attempted (see its own
+   * tooltip/disabled state), but this still surfaces connectionError on the
+   * refusal path as a belt-and-suspenders in case a caller reaches it some
+   * other way.
    */
   setMcpEnabled = async (id: string, enabled: boolean): Promise<void> => {
     if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
-    await window.beamlynxDesktop.credentials.setMcpEnabled(id, enabled);
+    const result = await window.beamlynxDesktop.credentials.setMcpEnabled(id, enabled);
+    if (!result.ok) {
+      runInAction(() => {
+        this.connectionError =
+          result.reason === 'no-active-policy'
+            ? 'Select an access policy with an active rule for this connection first.'
+            : 'That connection no longer exists.';
+      });
+      return;
+    }
     runInAction(() => {
       this.connections = this.connections.map(c =>
-        c.id === id ? { ...c, mcpEnabled: enabled } : c,
+        c.id === id ? { ...c, mcpEnabled: result.profile.mcpEnabled, policyId: result.profile.policyId } : c,
+      );
+    });
+  };
+
+  /**
+   * Selects which access policy (if any) applies to this connection's
+   * queries. Refused (not silently ignored) if it would clear/blank the
+   * policy -- to null, or to one with no active rule -- while mcpEnabled is
+   * already true: MCP must never end up pointing at nothing. The
+   * ConnectionsSection UI is expected to disable "None" and any inactive
+   * policy in that state (see its own picker), but this still surfaces
+   * connectionError on the refusal path the same way setMcpEnabled does.
+   * See credential-store.ts's setConnectionPolicy.
+   */
+  setConnectionPolicy = async (id: string, policyId: string | null): Promise<void> => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
+    const result = await window.beamlynxDesktop.credentials.setConnectionPolicy(id, policyId);
+    if (!result.ok) {
+      runInAction(() => {
+        this.connectionError =
+          result.reason === 'mcp-requires-policy'
+            ? 'MCP access is on for this connection -- pick a policy with an active rule, or turn MCP off first.'
+            : 'That connection no longer exists.';
+      });
+      return;
+    }
+    runInAction(() => {
+      this.connections = this.connections.map(c =>
+        c.id === id ? { ...c, mcpEnabled: result.profile.mcpEnabled, policyId: result.profile.policyId } : c,
+      );
+    });
+  };
+
+  /**
+   * Whether the connection owner has switched the assigned policy OFF for
+   * their own tab queries on it -- MCP always uses the assigned policy and
+   * never reads this. Never refused: unlike setMcpEnabled/setConnectionPolicy
+   * there's no "pointing at nothing" state this could create, since it
+   * doesn't touch mcpEnabled or policyId. See credential-store.ts's
+   * setBypassPolicyForOwnQueries.
+   */
+  setBypassPolicyForOwnQueries = async (id: string, bypass: boolean): Promise<void> => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
+    const updated = await window.beamlynxDesktop.credentials.setBypassPolicyForOwnQueries(id, bypass);
+    if (!updated) return;
+    runInAction(() => {
+      this.connections = this.connections.map(c =>
+        c.id === id ? { ...c, bypassPolicyForOwnQueries: updated.bypassPolicyForOwnQueries } : c,
       );
     });
   };
@@ -1449,6 +1629,7 @@ export class GlobalStore {
       });
 
       await this.refreshConnections();
+      await this.refreshAccessPolicies();
     } catch (e) {
       console.error('Failed to load connection metadata', e);
       runInAction(() => {

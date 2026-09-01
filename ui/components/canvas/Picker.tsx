@@ -165,6 +165,39 @@ const Picker: React.FC = observer(() => {
     setHighlighted(0);
   }, [picker.open, flatKey]);
 
+  // The picker's filter/value input is `autoFocus`ed while open. Closing it
+  // (however that happens - a single-pick commit like commitFirstTable,
+  // Escape, or the click-outside handler below) removes that input from
+  // the DOM while it still holds focus. The resulting native `focusout`
+  // has `relatedTarget: null` (nothing else was told to receive focus),
+  // which useFocusedPanelTracking.ts correctly reads as "focus left every
+  // panel" and clears GlobalStore.focusedPanelId - but with no
+  // compensating focus target, GlobalStore.activeKeyboardPanel's fallback
+  // then resolves to 'settings' if Settings happens to be open (its own
+  // comment admits this is a deliberate, imperfect default), silently
+  // killing every canvas keybinding (s/w/o/g/x/u/U/i - see
+  // useCanvasKeybindings.ts's guard) until the user clicks the canvas
+  // again. Confirmed live: open Settings, run any single-pick gesture
+  // (pick a table/join, or submit a where-value), then press a canvas key.
+  //
+  // Same "component unmounts while focused, the browser's own blur isn't
+  // enough" class of bug GlobalStore.hideNewLayoutPanel already had to work
+  // around for PineInput/SqlInput (see that function's own comment) - same
+  // fix shape: don't rely on the browser doing something useful with focus
+  // when the element holding it disappears, proactively move it back to
+  // the graph panel root the instant the picker closes. `useEffect`, not
+  // `useLayoutEffect` - this is a keyboard-focus correction, not a paint
+  // concern, and by the time this runs the input is already gone and
+  // focus already fell through to nothing, so there's no earlier point
+  // that would do any better.
+  const wasOpenRef = useRef(false);
+  useEffect(() => {
+    if (wasOpenRef.current && !picker.open) {
+      document.querySelector<HTMLElement>('[data-keyboard-panel="graph"]')?.focus();
+    }
+    wasOpenRef.current = picker.open;
+  }, [picker.open]);
+
   // Escape closes the picker regardless of what has focus - a per-input
   // onKeyDown only catches it while that specific input is focused, which
   // isn't reliable (e.g. focus lost to the ReactFlow canvas). A window-level

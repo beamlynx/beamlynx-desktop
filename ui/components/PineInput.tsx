@@ -334,13 +334,13 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
       ),
     ];
 
-    if (session.vimMode) {
+    if (global.vimMode) {
       // Add vim mode with high precedence, but lower than browser shortcuts
       exts.push(Prec.high(vim()));
     }
 
     return exts;
-    // session.vimMode is listed deliberately, not redundantly: session itself is a stable
+    // global.vimMode is listed deliberately, not redundantly: session itself is a stable
     // reference for this component's lifetime (each tab is keyed by sessionId), so depending
     // on session alone would never re-run this memo when vim mode is toggled.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -350,7 +350,7 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
     cursorUpdateExtension,
     tableColorExtension,
     session,
-    session.vimMode,
+    global.vimMode,
     debouncedPrettifyOnPipe,
     cycleCompletion,
   ]);

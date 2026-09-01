@@ -5,6 +5,29 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.55.0] - 2026-08-31
+### Breaking
+- Requires pine-lang 0.41.0 or later (was 0.39.0) -- the access policy feature below needs its new `access-policy` param.
+
+### Added
+- New Settings -> Access Policy section: create, rename, and delete named policies, each a toggleable set of rules deciding which columns show real values instead of `xxxxx` (Postgres types, foreign keys, `_id`-suffixed columns).
+- Database Connections: pick which policy applies to each connection. MCP can only be turned on once its connection has an active policy, and the policy can't be cleared or swapped for an inactive one while MCP is on.
+- New per-connection toggle, "Only apply to MCP server": see real data on your own queries without changing what the agent sees. Off by default.
+- Redacted columns return `xxxxx` straight from the database query -- the real value never leaves it. Applies to every tab, not just MCP's.
+
+### Changed
+- "Vim keybindings" no longer gates the canvas's own `s`/`w`/`o`/`g`/`x`/`u`/`U`/`i` shortcuts -- only `j`/`k` and the query editor's vim mode are.
+- The "Vim keybindings" preference is now app-wide (was per-tab) -- every open tab reflects the same value immediately.
+
+### Fixed
+- MCP queries now always re-read the current access policy before running, instead of a stale copy from app boot.
+- Fixed an intermittent "X is not a function" from a duplicate MCP query listener left behind by dev-mode Fast Refresh.
+- Fixed canvas keyboard shortcuts (e.g. `x`) getting stuck after picking a value in the canvas picker with Settings open.
+- Fixed a canvas checkpoint's `|= agg` name reappearing after being deliberately removed, and the first click after (re)naming a checkpoint using stale query results.
+- Tab order (New Layout): the notification bell and Settings gear no longer steal early Tab stops; connections in the docked Settings panel are now reachable by Tab (Enter/Space to switch).
+- Settings no longer loses its own keyboard shortcuts to the canvas the moment focus lands somewhere neither claims.
+- Arrow keys/`j`/`k` no longer scroll Settings' rail while a toggle switch has focus.
+
 ## [0.54.0] - 2026-08-30
 ### Added
 - The join picker (canvas mode) now shows which foreign-key column a candidate uses (Pine's own disambiguation syntax, e.g. `.created_by`) whenever two candidates in the same group would otherwise name the same table and be indistinguishable -- a single unambiguous candidate for a table still renders with no extra text, same as before.

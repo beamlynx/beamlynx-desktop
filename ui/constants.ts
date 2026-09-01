@@ -47,7 +47,7 @@ export const DEFAULT_SETTINGS_PANEL_WIDTH = 640;
 export const MIN_SETTINGS_PANEL_WIDTH = 420;
 
 /* Pine Server */
-export const RequiredVersion = '0.39.0';
+export const RequiredVersion = '0.41.0';
 
 /* Layout Constants */
 // Height calculations for main content areas

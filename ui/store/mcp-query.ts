@@ -6,10 +6,32 @@
 // /api/v1/sql) and Pine's own `delete!` write operator must never be
 // reachable from here. See
 // beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md for why:
-// Pine expressions compile through pine-lang's AST layer, which is a real
-// place to enforce future column-level restrictions; raw SQL has no such
-// choke point, so it's excluded structurally rather than by a runtime flag.
-import { HttpClient } from './client';
+// Pine expressions compile through pine-lang's AST layer, a real choke
+// point for column-level restrictions; raw SQL has no such choke point, so
+// it's excluded structurally rather than by a runtime flag. That choke
+// point is now used for real, as a connection-level decision rather than a
+// caller-level one: each connection independently selects which named
+// access policy (if any) applies to it (Database Connections' own picker;
+// the policies themselves live in Settings -> Access Policy -- see
+// credential-store.ts), so a human's own tab on that connection is
+// redacted exactly like the MCP tab is.
+//
+// resolveAccessPolicyRules always re-reads connections.json fresh (via
+// GlobalStore.refreshConnections/refreshAccessPolicies) before resolving
+// the policy, rather than trusting the in-memory snapshot -- that snapshot
+// is only ever loaded on specific triggers (connect/disconnect/app boot,
+// or this session's own edit), so without this an access-policy edit made
+// from a different running instance would silently keep using stale rules
+// until something else happened to refresh the list, with no visible
+// error. A live query surface enforcing a security control cannot afford
+// that kind of "works after you happen to restart" gap. The extra IPC
+// round trip (local, sub-millisecond) is a trivial cost per MCP query for
+// that guarantee. runMcpQuery calls it to refresh GlobalStore state as a
+// side effect, before session.evaluate() reads Session.accessPolicyRules
+// internally; explainMcpQuery uses its return value directly, since it
+// calls client.build() with no Session involved. See pine-lang's
+// pine.access-policy for what the rules actually do server-side.
+import { AccessPolicyRule, HttpClient } from './client';
 import type { Session } from './session';
 
 export type ConnectionParams = {
@@ -26,6 +48,7 @@ export type McpQueryDeps = {
   getOrCreateMcpSession: () => Session;
   getMcpConnectionId: (profileId: string) => string | undefined;
   setMcpConnectionId: (profileId: string, connectionId: string) => void;
+  resolveAccessPolicyRules: (profileId: string) => Promise<AccessPolicyRule[]>;
 };
 
 // Pine's `delete!` pipe operator issues a real DELETE against the database
@@ -86,6 +109,11 @@ export async function runMcpQuery(
 ): Promise<{ tabId: string; columns: unknown; rows: unknown; error: string }> {
   assertNoDestructiveOperator(expression);
   const connectionId = await ensureConnection(deps, profileId);
+  // Refreshes GlobalStore.connections as a side effect (see this file's top
+  // comment) -- session.evaluate() below reads Session.accessPolicyRules,
+  // which is derived from that same connection list, so it must be current
+  // by the time evaluate() runs, not whatever it happened to be at app boot.
+  await deps.resolveAccessPolicyRules(profileId);
   const session = deps.getOrCreateMcpSession();
   session.connectionId = connectionId;
   session.profileId = profileId;
@@ -115,6 +143,9 @@ export async function explainMcpQuery(
 ): Promise<{ query?: string; ast?: unknown; error?: string }> {
   assertNoDestructiveOperator(expression);
   const connectionId = await ensureConnection(deps, profileId);
-  const response = await deps.client.build([expression], undefined, connectionId);
+  // Must match runMcpQuery's session (Session.accessPolicyRules), so a
+  // build preview never shows a real value the matching eval would redact.
+  const accessPolicyRules = await deps.resolveAccessPolicyRules(profileId);
+  const response = await deps.client.build([expression], undefined, connectionId, accessPolicyRules);
   return response;
 }

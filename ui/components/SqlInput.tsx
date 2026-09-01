@@ -125,7 +125,7 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true 
     ),
   ];
 
-  if (session.vimMode) {
+  if (global.vimMode) {
     extensions.push(Prec.high(vim()));
   }
 

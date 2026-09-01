@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { NodeProps, Position, useUpdateNodeInternals } from 'reactflow';
-import { CanvasFrameNodeData } from '../../../store/canvas/canvas.model';
+import { CanvasFrameNodeData, PENDING_CHECKPOINT_FRAME_ID } from '../../../store/canvas/canvas.model';
 import { useCanvasStore } from '../canvas-context';
 import { ActionButton, ActionDivider, DeleteButton, RelationDots, activeOperationFor, pickerAliasFor } from './TableNode';
 
@@ -57,14 +57,22 @@ const FrameNode: React.FC<NodeProps<CanvasFrameNodeData>> = observer(({ id, data
   const isFocusTarget = canvasStore.focusedAlias === id;
   // `id` is only ever the checkpoint's real alias for a *consumed* frame -
   // a still-pending checkpoint (the pipeline's tail) renders under the
-  // fixed placeholder PENDING_CHECKPOINT_FRAME_ID instead, even once it has
-  // a real pinned name underneath (eager background pinning can name it
-  // well before anything is built on top - see that constant's own doc
-  // comment). `canvasStore.picker` is always keyed by the real name
+  // fixed placeholder PENDING_CHECKPOINT_FRAME_ID instead, even once a
+  // frame action's first click has pinned a real name underneath (naming
+  // only happens on demand now - see CanvasStore.recompute's own comment).
+  // `canvasStore.picker` is always keyed by the real name
   // (openCheckpointPicker resolves it before opening), so anything here
   // comparing against the picker must go through the resolved alias, not
   // `id` directly, or the comparison silently never matches.
   const resolvedAlias = canvasStore.resolveFrameAlias(id);
+
+  // True for exactly this frame while its first select/where/order/join
+  // click is paying for CanvasStore.ensureCheckpointPinned - see
+  // `checkpointPinning`'s own comment. Gated on PENDING_CHECKPOINT_FRAME_ID
+  // (not just the flag) so a *different*, already-named frame elsewhere on
+  // the canvas never borrows this one's loading state - there's at most one
+  // unnamed checkpoint at a time, and this is it.
+  const pinning = id === PENDING_CHECKPOINT_FRAME_ID && canvasStore.checkpointPinning;
 
   // Mouse hover can only be tracked on the action-bar strip itself - it's
   // the one area of this node that's actually hit-testable (`pointerEvents:
@@ -139,19 +147,29 @@ const FrameNode: React.FC<NodeProps<CanvasFrameNodeData>> = observer(({ id, data
           transition: 'opacity 0.1s ease-in-out',
         }}
       >
-        {operations.map((op, i) => (
-          <React.Fragment key={op.kind}>
-            {i > 0 && <ActionDivider />}
-            <ActionButton
-              label={op.label}
-              testId={`frame-action-${op.kind}-${id}`}
-              onClick={openAction(op.kind)}
-              emphasizeKey={showKeyHints}
-              emphasizeIndex={op.emphasizeIndex}
-              suppressed={activeOperation !== null && op.kind !== activeOperation}
-            />
-          </React.Fragment>
-        ))}
+        {pinning ? (
+          // Same "loading..." convention Picker.tsx uses once a picker is
+          // open - this covers the gap *before* that, while the click that
+          // triggered the pin hasn't opened anything yet to show its own
+          // loading state.
+          <div data-testid={`frame-pinning-${id}`} style={{ opacity: 0.7 }}>
+            loading...
+          </div>
+        ) : (
+          operations.map((op, i) => (
+            <React.Fragment key={op.kind}>
+              {i > 0 && <ActionDivider />}
+              <ActionButton
+                label={op.label}
+                testId={`frame-action-${op.kind}-${id}`}
+                onClick={openAction(op.kind)}
+                emphasizeKey={showKeyHints}
+                emphasizeIndex={op.emphasizeIndex}
+                suppressed={activeOperation !== null && op.kind !== activeOperation}
+              />
+            </React.Fragment>
+          ))
+        )}
       </div>
       <div
         style={{

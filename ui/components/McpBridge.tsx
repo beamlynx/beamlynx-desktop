@@ -17,7 +17,13 @@ const McpBridge = () => {
   useEffect(() => {
     if (!isDesktop() || typeof window === 'undefined' || !window.beamlynxDesktop) return;
 
-    window.beamlynxDesktop.mcp.onQueryRequest(async (request: McpQueryRequest) => {
+    // Unsubscribe on every re-run (effect deps change) or unmount --
+    // without this, each re-run left the previous listener live too, so a
+    // single incoming request could be handled by several stale handlers
+    // at once, each closing over whatever `global` looked like when it was
+    // registered. See preload/index.ts's onQueryRequest for what that
+    // caused in practice.
+    return window.beamlynxDesktop.mcp.onQueryRequest(async (request: McpQueryRequest) => {
       const { kind, profileId, expression } = request;
       if (kind === 'build') {
         return global.explainMcpQuery({ profileId, expression });

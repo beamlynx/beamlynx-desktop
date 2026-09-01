@@ -157,6 +157,32 @@ export type ConnectionStatsResponse = {
   time: Date;
 };
 
+// Mirrors pine-lang's pine.access-policy rule shape and beamlynx-desktop's
+// credential-store.ts AccessPolicyRule 1:1 -- sent verbatim (minus
+// `enabled`, see AccessPolicyModule below) as the `access-policy` param
+// below. See access_policy.clj's docstring for why pine-lang itself
+// carries no default of this.
+export type AccessPolicyRule =
+  | { type: 'column-type'; allow: string[] }
+  | { type: 'foreign-key' }
+  | { type: 'column-name'; suffix: string };
+
+// One module of a named policy -- see AccessPolicy below. A module is a
+// rule plus whether it's currently on; effectiveAccessPolicyRules strips
+// `enabled` before this ever reaches pine-lang, which only ever sees rules
+// that are already active.
+export type AccessPolicyModule = AccessPolicyRule & { enabled: boolean };
+
+// A named, user-creatable set of rule modules (Settings -> Access Policy) --
+// there can be several; each connection independently selects which one
+// applies to it (ConnectionInfo.policyId below), or none. See
+// GlobalStore.accessPolicies.
+export type AccessPolicy = {
+  id: string;
+  name: string;
+  rules: AccessPolicyModule[];
+};
+
 export type ConnectionInfo = {
   id: string;
   label: string;
@@ -170,7 +196,49 @@ export type ConnectionInfo = {
   // access. See GlobalStore.setMcpEnabled and
   // beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md.
   mcpEnabled?: boolean;
+  // Desktop-only: which access policy (if any) applies to this connection,
+  // defaulted at connection creation (credential-store.ts's saveConnection)
+  // to whichever policy exists first. Applies from any tab, not just
+  // MCP-driven ones -- see Session.accessPolicyRules. null when no policy
+  // is selected, or when the one it used to point at was deleted. MCP can
+  // only be enabled while this resolves to an active policy -- see
+  // effectiveAccessPolicyRules below.
+  policyId?: string | null;
+  // Desktop-only: whether the connection owner has switched the assigned
+  // policy OFF for their own (non-MCP) queries on this connection -- MCP
+  // always uses the assigned policy regardless of this. Defaults to false
+  // (protected by default); undefined (older saved connections) means
+  // false. See effectiveAccessPolicyRules below.
+  bypassPolicyForOwnQueries?: boolean;
 };
+
+// The single place that decides which rules actually apply for a
+// connection right now -- shared by Session.accessPolicyRules (session.ts,
+// human tabs and the dedicated MCP tab alike) and GlobalStore's
+// mcpQueryDeps (explainMcpQuery, which has no Session to read this from).
+//
+// `forMcp` is the one thing that can differ between the two callers:
+// - MCP (forMcp: true) always uses the connection's assigned policy the
+//   moment mcpEnabled is true -- credential-store.ts's setMcpEnabled
+//   refuses turning mcpEnabled on unless policyId already resolves to a
+//   policy with an active rule, so there is no "MCP on, no policy" state to
+//   handle here. bypassPolicyForOwnQueries is never consulted for this
+//   caller: it governs the human's own tabs only, never what the agent sees.
+// - A human's own tab (forMcp: false) applies the assigned policy unless
+//   bypassPolicyForOwnQueries is explicitly true -- independent of
+//   mcpEnabled, so turning MCP off (or never turning it on) doesn't also
+//   unprotect the human's own browsing on that connection.
+export function effectiveAccessPolicyRules(
+  connection: ConnectionInfo | undefined,
+  policies: AccessPolicy[],
+  forMcp: boolean,
+): AccessPolicyRule[] {
+  if (!connection?.policyId) return [];
+  if (forMcp ? !connection.mcpEnabled : connection.bypassPolicyForOwnQueries === true) return [];
+  const policy = policies.find(p => p.id === connection.policyId);
+  if (!policy) return [];
+  return policy.rules.filter(m => m.enabled).map(({ enabled: _enabled, ...rule }) => rule);
+}
 
 export type ConnectionsListResult = {
   version: string;
@@ -282,8 +350,16 @@ export class HttpClient {
     return response.ast.prettified;
   }
 
-  public async eval(expressions: string[], connectionId?: string): Promise<Response> {
-    const response = await this.post('eval', this.withConnectionId({ expressions }, connectionId));
+  public async eval(
+    expressions: string[],
+    connectionId?: string,
+    accessPolicyRules?: AccessPolicyRule[],
+  ): Promise<Response> {
+    const body: { expressions: string[]; 'access-policy'?: AccessPolicyRule[] } = { expressions };
+    if (accessPolicyRules?.length) {
+      body['access-policy'] = accessPolicyRules;
+    }
+    const response = await this.post('eval', this.withConnectionId(body, connectionId));
     if (!response) {
       throw new Error('No response when trying to eval');
     }
@@ -305,10 +381,16 @@ export class HttpClient {
     expressions: string[],
     cursor?: CursorPosition,
     connectionId?: string,
+    accessPolicyRules?: AccessPolicyRule[],
   ): Promise<Response> {
-    const body: { expressions: string[]; cursor?: CursorPosition } = { expressions };
+    const body: { expressions: string[]; cursor?: CursorPosition; 'access-policy'?: AccessPolicyRule[] } = {
+      expressions,
+    };
     if (cursor) {
       body.cursor = cursor;
+    }
+    if (accessPolicyRules?.length) {
+      body['access-policy'] = accessPolicyRules;
     }
     const response = await this.post('build', this.withConnectionId(body, connectionId));
     if (!response) {
