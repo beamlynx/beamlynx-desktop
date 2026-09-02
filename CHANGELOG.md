@@ -4,8 +4,22 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.11.0] - 2026-09-02
+### Added
+- Tabs can be reordered by dragging them, in both the horizontal strip and a new vertical rail layout (Settings -> Appearance -> Tabs). Dragging to either end of a long rail scrolls it. The new order also drives Ctrl+Tab cycling and survives a reload (bundled beamlynx-ui 0.57.0).
+- New "Toggle Layout Orientation" command (command palette): switch New Layout between side-by-side and top/bottom without using the canvas toolbar icon (bundled beamlynx-ui 0.56.0).
+
 ### Changed
 - The app now re-checks for a new release every 15 minutes it stays open, not just at launch, so a session left running for hours or days still picks up a release that ships in the meantime.
+- Tab close buttons now appear on hover of that tab, instead of on every tab at once. Hovering a tab also tints it and brightens its label (bundled beamlynx-ui 0.57.0).
+- Database Connections list: a connection's rename field, access policy, MCP access toggle, "only apply to MCP server" toggle, refresh, and delete are now behind an expand arrow instead of five icons crammed onto one row (bundled beamlynx-ui 0.56.0).
+
+### Fixed
+- "Only apply to MCP server" kept flipping back off after almost any connection action, even though it was saved correctly to disk -- your own queries were silently protected by the policy again until the app restarted (bundled beamlynx-ui 0.57.0).
+- New Layout: dragging the Pine/SQL panel's resize divider in top/bottom view no longer moves it in the opposite direction (bundled beamlynx-ui 0.56.0).
+- MCP-run queries now show up nicely formatted in the Pine panel instead of the raw, unformatted expression the agent sent (bundled beamlynx-ui 0.56.0, pine-lang 0.42.0).
+- Canvas's where picker: a long column name no longer gets hard-clipped mid-character, the operator and value fields have visible spacing between them, and opening the picker now focuses the operator dropdown first instead of the value field (bundled beamlynx-ui 0.56.0).
 
 ## [0.10.0] - 2026-09-01
 ### Added
