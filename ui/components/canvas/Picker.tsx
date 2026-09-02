@@ -251,14 +251,26 @@ const Picker: React.FC = observer(() => {
         style={{ ...anchoredStyle(picker.anchor), padding: 8 }}
         data-testid="canvas-picker"
       >
-        <div style={{ marginBottom: 6 }}>
+        <div
+          title={`${node?.data.table ?? picker.alias}.${picker.column}`}
+          style={{
+            marginBottom: 6,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
           {node?.data.table ?? picker.alias}.{picker.column}
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {/* Autofocused, not the value input below -- picking the
+              comparison (=, !=, ...) is the first decision here, and it's
+              a <select> a keyboard user can immediately arrow through. */}
           <select
+            autoFocus
             value={picker.operator}
             onChange={e => store.setWhereOperator(e.target.value)}
-            style={inputStyle}
+            style={{ ...inputStyle, paddingRight: 4 }}
           >
             {WHERE_OPERATORS.map(op => (
               <option key={op} value={op}>
@@ -267,13 +279,12 @@ const Picker: React.FC = observer(() => {
             ))}
           </select>
           <input
-            autoFocus
             value={picker.value}
             onChange={e => store.setWhereValue(e.target.value)}
             onKeyDown={e => {
               if (e.key === 'Enter') void store.submitWhereValue();
             }}
-            style={{ ...inputStyle, flex: 1 }}
+            style={{ ...inputStyle, flex: 1, minWidth: 0 }}
           />
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 6 }}>

@@ -119,7 +119,12 @@ export async function runMcpQuery(
   session.profileId = profileId;
   session.expression = expression;
   assertPineInputMode(session);
-  const rows = await session.evaluate();
+  // applyServerPrettified: true -- shows the agent's expression nicely
+  // formatted in the Pine panel using pine-lang's own prettified rendering
+  // of it (already computed as part of this same eval call, see
+  // client.ts's Response.prettified), instead of the raw string the agent
+  // sent verbatim.
+  const rows = await session.evaluate({ applyServerPrettified: true });
   // Snapshot to plain JSON synchronously, in the same tick evaluate()
   // resolves in -- not after returning up through McpBridge/preload.
   // Confirmed the hard way: PineTabs renders every session's own <Session>

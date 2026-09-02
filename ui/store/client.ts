@@ -150,6 +150,11 @@ export type Response = {
   // eval
   result: (string | number)[][];
   columns: Column[];
+  // Nicely formatted rendering of the expression that ran - pine-lang
+  // computes it on every build or eval alike (see client.prettify()'s own
+  // use of ast.prettified for build), so it comes back here for free
+  // instead of needing a second /api/v1/build round trip.
+  prettified: string;
 };
 
 export type ConnectionStatsResponse = {

@@ -23,6 +23,46 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.56.0',
+    date: '2026-09-02',
+    breaking: [
+      {
+        title: 'Requires pine-lang 0.42.0 or later',
+        description: 'Was 0.41.0 -- lets MCP-run queries show up prettified below.',
+      },
+    ],
+    added: [
+      {
+        title: 'New "Toggle Layout Orientation" command',
+        description:
+          'Command palette: switch New Layout between side-by-side and top/bottom without using the canvas toolbar icon.',
+      },
+    ],
+    changed: [
+      {
+        title: 'Database Connections list redesign (desktop)',
+        description:
+          'A connection\'s rename field, access policy, MCP access toggle, "only apply to MCP server" toggle, refresh, and delete are now behind an expand arrow instead of five icons crammed onto one row. The expanded panel orders them the way you\'d actually use them -- pick a policy, then turn MCP on.',
+      },
+    ],
+    fixed: [
+      {
+        title: 'Pine/SQL panel divider (New Layout, top/bottom view)',
+        description: 'Dragging it no longer moves the panel in the opposite direction.',
+      },
+      {
+        title: 'MCP-run queries now show up prettified',
+        description:
+          'The Pine panel now shows the agent-run expression nicely formatted instead of the raw, unformatted text it sent.',
+      },
+      {
+        title: "Canvas's where picker",
+        description:
+          'A long column name no longer gets hard-clipped mid-character (truncates with an ellipsis, full name on hover); the operator and value fields now have visible spacing between them; opening the picker focuses the operator dropdown first instead of the value field.',
+      },
+    ],
+  },
+  {
     version: '0.55.0',
     date: '2026-08-31',
     breaking: [
@@ -51,7 +91,8 @@ export const CHANGELOG: ChangelogVersion[] = [
     changed: [
       {
         title: '"Vim keybindings" no longer gates the canvas',
-        description: "Reverts 0.54.0's change -- only j/k and the query editor's vim mode are gated by it.",
+        description:
+          "Reverts 0.54.0's change -- only j/k and the query editor's vim mode are gated by it.",
       },
       {
         title: '"Vim keybindings" is now app-wide',
@@ -65,7 +106,8 @@ export const CHANGELOG: ChangelogVersion[] = [
       },
       {
         title: 'Occasional "X is not a function" during dev',
-        description: 'A duplicate MCP query listener left behind by Fast Refresh could answer a query with stale code.',
+        description:
+          'A duplicate MCP query listener left behind by Fast Refresh could answer a query with stale code.',
       },
       {
         title: 'Canvas shortcuts got stuck after using the picker with Settings open',
@@ -100,7 +142,7 @@ export const CHANGELOG: ChangelogVersion[] = [
     ],
     fixed: [
       {
-        title: "Canvas shortcuts fired while Settings or the Pine/SQL panel had focus",
+        title: 'Canvas shortcuts fired while Settings or the Pine/SQL panel had focus',
         description:
           "j/k and the other single-letter canvas shortcuts (New Layout) no longer fire once the docked Settings panel is open, or while typing in the Pine/SQL panel -- keyboard input now routes to whichever panel actually has focus, falling back to the canvas when nothing else does. Opening Settings (however it's triggered) hands it focus immediately, rather than only once something inside it is clicked. Settings' rail (Database Connections/Appearance/Preferences/MCP/About) also gained its own j/k/Arrow Up/Down navigation.",
       },
@@ -1608,4 +1650,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.55.0';
+export const LATEST_VERSION = '0.56.0';
