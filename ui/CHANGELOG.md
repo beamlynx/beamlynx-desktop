@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- Tabs can be reordered by dragging them, in both the horizontal strip and the vertical rail. Dragging to either end of a long rail scrolls it. The new order also drives Ctrl+Tab cycling and survives a reload.
+- New Settings -> Appearance -> Tabs setting: show the session tabs as a vertical rail down the left side instead of the horizontal strip across the top, with a new-tab button at the top of the rail. Applies to both layouts, and is also available as a "Toggle Tab Orientation" command.
+
+### Changed
+- Tab close buttons now appear on hover of that tab, instead of on every tab at once. Hovering a tab also tints it and brightens its label.
 
 ## [0.56.0] - 2026-09-02
 ### Breaking
@@ -11,11 +17,6 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ### Added
 - New "Toggle Layout Orientation" command (command palette): switch New Layout between side-by-side and top/bottom without using the canvas toolbar icon.
-- Tabs can be reordered by dragging them, in both the horizontal strip and the vertical rail. Dragging to either end of a long rail scrolls it. The new order also drives Ctrl+Tab cycling and survives a reload.
-- New Settings -> Appearance -> Tabs setting: show the session tabs as a vertical rail down the left side instead of the horizontal strip across the top, with a new-tab button at the top of the rail. Applies to both layouts, and is also available as a "Toggle Tab Orientation" command.
-
-### Changed
-- Tab close buttons now appear on hover of that tab, instead of on every tab at once. Hovering a tab also tints it and brightens its label.
 
 ### Changed
 - Database Connections list (desktop): a connection's rename field, access policy, MCP access toggle, "only apply to MCP server" toggle, refresh, and delete are now behind an expand arrow instead of five icons crammed onto one row. The expanded panel orders them the way you'd actually use them -- pick a policy, then turn MCP on -- instead of leaving that dependency to a tooltip.
