@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.56.0] - 2026-09-02
+### Breaking
+- Requires pine-lang 0.42.0 or later (was 0.41.0) -- lets MCP-run queries below show up prettified (see Fixed).
+
 ### Added
 - New "Toggle Layout Orientation" command (command palette): switch New Layout between side-by-side and top/bottom without using the canvas toolbar icon.
 
@@ -12,7 +17,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ### Fixed
 - New Layout: dragging the Pine/SQL panel's resize divider in top/bottom view no longer moves it in the opposite direction.
-- MCP-run queries now show up nicely formatted in the Pine panel instead of the raw, unformatted expression the agent sent. Needs a pine-lang server new enough to return the formatting in its eval response; older servers keep working exactly as before, just without it.
+- MCP-run queries now show up nicely formatted in the Pine panel instead of the raw, unformatted expression the agent sent.
 - Canvas's `where` picker: a long column name no longer gets hard-clipped mid-character (now truncates with `…` and shows the full name on hover), the operator and value fields have visible spacing between them instead of sitting flush together, and opening the picker now focuses the operator dropdown first instead of the value field.
 
 ## [0.55.0] - 2026-08-31
