@@ -697,6 +697,7 @@ export class GlobalStore {
           dbPort: p.dbPort,
           mcpEnabled: p.mcpEnabled,
           policyId: p.policyId,
+          bypassPolicyForOwnQueries: p.bypassPolicyForOwnQueries,
         }));
         this.connections.forEach(c => this.assignConnectionColor(c.id));
         // Keep the active pine connection's own color alive even though it's
