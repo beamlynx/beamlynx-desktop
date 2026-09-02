@@ -27,6 +27,10 @@ export const STORAGE_KEYS = {
   NEW_LAYOUT_PANEL_WIDTH: 'pine-new-layout-panel-width',
   NEW_LAYOUT_PANEL_HEIGHT: 'pine-new-layout-panel-height',
   SETTINGS_PANEL_WIDTH: 'pine-settings-panel-width',
+  // Which edge the session tab strip runs along (PineTabs.tsx). Named
+  // without a NEW_LAYOUT_ prefix on purpose -- unlike the keys above it,
+  // the tab strip is shared by both layouts, so this preference is too.
+  TAB_ORIENTATION: 'pine-tab-orientation',
 } as const;
 
 export const getUserPreference = (key: string, defaultValue: any) => {

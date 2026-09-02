@@ -289,6 +289,15 @@ const COMMANDS: Command[] = [
     handler: global => global.toggleNewLayoutOrientation(),
     isEnabled: global => global.layoutMode === 'new',
   },
+  {
+    // No layoutMode guard, unlike 'toggle-orientation' above -- the tab
+    // strip exists in both layouts, so this is always applicable.
+    id: 'toggle-tab-orientation',
+    label: 'Toggle Tab Orientation (Horizontal / Vertical)',
+    category: 'View',
+    handler: global => global.toggleTabOrientation(),
+    isEnabled: ALWAYS_ENABLED,
+  },
 
   // Help Category
   {

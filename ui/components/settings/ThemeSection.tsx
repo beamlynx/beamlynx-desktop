@@ -7,8 +7,16 @@ import { ColorTokens, ThemeId } from '../../styles/palette/tokens';
 import { UI_FONT_FAMILIES, CODE_FONT_FAMILIES } from '../../styles/app-font';
 import { UI_FONTS, CODE_FONTS } from '../../styles/fonts';
 import { TEXT_SIZE_LABELS, TextSize } from '../../styles/text-size';
+import { TabOrientation } from '../../store/global.store';
 
 const TEXT_SIZES: TextSize[] = ['small', 'medium', 'large'];
+
+const TAB_ORIENTATIONS: TabOrientation[] = ['horizontal', 'vertical'];
+
+const TAB_ORIENTATION_LABELS: Record<TabOrientation, string> = {
+  horizontal: 'Horizontal',
+  vertical: 'Vertical',
+};
 
 const SectionLabel = ({ children }: { children: string }) => (
   <Typography
@@ -151,6 +159,19 @@ const ThemeSection = () => {
           Resizable panels and the canvas keep their own size.
         </Typography>
         <SegmentedControl options={TEXT_SIZES} labels={TEXT_SIZE_LABELS} value={global.textSize} onChange={v => (global.textSize = v)} />
+
+        <SectionLabel>Tabs</SectionLabel>
+        <Typography variant="caption" sx={{ display: 'block', mb: 1, color: 'var(--canvas-text-dim)' }}>
+          Where the tab strip sits. Horizontal runs across the top; Vertical is a rail down the left
+          side, which fits more tabs and shows longer names before they truncate. Applies to both
+          layouts.
+        </Typography>
+        <SegmentedControl
+          options={TAB_ORIENTATIONS}
+          labels={TAB_ORIENTATION_LABELS}
+          value={global.tabOrientation}
+          onChange={v => (global.tabOrientation = v)}
+        />
       </Box>
     </Box>
   );
