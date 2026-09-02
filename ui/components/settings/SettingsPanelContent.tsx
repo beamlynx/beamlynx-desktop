@@ -166,7 +166,7 @@ const SettingsPanelContent = () => {
             overflow: hidden, Chromium would occasionally paint a "stuck"
             section title outside the Paper's clip region while scrolling.
             Plain flex layout has no such quirk. */}
-        <Box sx={{ flex: 1, minHeight: 0, p: 3, display: 'flex', flexDirection: 'column' }}>
+        <Box sx={{ flex: 1, minHeight: 0, minWidth: 0, p: 3, display: 'flex', flexDirection: 'column' }}>
           {activeSection === 'connections' && <ConnectionsSection />}
           {activeSection === 'theme' && <ThemeSection />}
           {activeSection === 'preferences' && <PreferencesSection />}

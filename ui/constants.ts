@@ -55,7 +55,7 @@ export const MIN_SETTINGS_PANEL_WIDTH = 420;
 export const VERTICAL_TAB_RAIL_WIDTH = 190;
 
 /* Pine Server */
-export const RequiredVersion = '0.41.0';
+export const RequiredVersion = '0.42.0';
 
 /* Layout Constants */
 // Height calculations for main content areas
