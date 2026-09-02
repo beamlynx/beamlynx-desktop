@@ -23,6 +23,35 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.57.0',
+    date: '2026-09-02',
+    added: [
+      {
+        title: 'Drag to reorder tabs',
+        description:
+          'Works in both the horizontal strip and the vertical rail. Dragging to either end of a long rail scrolls it. The new order also drives Ctrl+Tab cycling and survives a reload.',
+      },
+      {
+        title: 'Vertical tab rail (Settings -> Appearance -> Tabs)',
+        description:
+          'Show the session tabs as a rail down the left side instead of the horizontal strip across the top, with a new-tab button at the top. Applies to both layouts, and is also available as a "Toggle Tab Orientation" command.',
+      },
+    ],
+    changed: [
+      {
+        title: 'Tab close buttons now appear on hover',
+        description: 'Instead of on every tab at once. Hovering a tab also tints it and brightens its label.',
+      },
+    ],
+    fixed: [
+      {
+        title: '"Only apply to MCP server" (desktop) kept flipping back off',
+        description:
+          'It was saved correctly to disk, but reloading the connections list -- which happens after almost any connection action -- rebuilt the in-memory list without this field, so the toggle (and the behavior behind it) reverted to off until the next app restart.',
+      },
+    ],
+  },
+  {
     version: '0.56.0',
     date: '2026-09-02',
     breaking: [
@@ -1650,4 +1679,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.56.0';
+export const LATEST_VERSION = '0.57.0';
