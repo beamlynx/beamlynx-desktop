@@ -1,6 +1,8 @@
 // Regression tests for the security-critical parts of the access policy
-// (src/main/credential-store.ts): MCP always has a real, active policy
-// applied once enabled -- there is no "reachable but unprotected" state,
+// (src/main/credential-store.ts): MCP always reflects a deliberate policy
+// decision once enabled -- either the explicit "None" choice (policyId:
+// null, unrestricted access -- e.g. a local/sandbox DB) or a real, named
+// policy with an active rule -- there is no "reachable but undecided" state,
 // and that has to hold against state that predates or outlives any single
 // toggle click, not just at the moment one is clicked. See
 // beamlynx-ui/store/mcp-query.ts's own
@@ -119,20 +121,32 @@ test('setMcpEnabled(id, false) always succeeds, even if the connection\'s policy
   assert.deepEqual(result, { ok: true, profile: { ...conn, mcpEnabled: false } });
 });
 
-test('setConnectionPolicy refuses null (or an inactive policy) while mcpEnabled is true, but allows it once MCP is off', () => {
+test('setConnectionPolicy refuses an inactive named policy while mcpEnabled is true, but allows null ("None")', () => {
   const conn = addConnection();
   assert.equal(setMcpEnabled(conn.id, true).ok, true);
-  assert.deepEqual(setConnectionPolicy(conn.id, null), { ok: false, reason: 'mcp-requires-policy' });
 
   const emptyPolicy = createAccessPolicy('Empty');
   disableAllRules(emptyPolicy.id);
   assert.deepEqual(setConnectionPolicy(conn.id, emptyPolicy.id), { ok: false, reason: 'mcp-requires-policy' });
 
-  assert.equal(setMcpEnabled(conn.id, false).ok, true);
+  // null is the deliberate "None" choice, not an undecided/blank state --
+  // valid even while MCP is already on.
   assert.deepEqual(setConnectionPolicy(conn.id, null), {
     ok: true,
-    profile: { ...conn, mcpEnabled: false, policyId: null },
+    profile: { ...conn, mcpEnabled: true, policyId: null },
   });
+});
+
+test('setMcpEnabled(id, true) succeeds when the connection\'s policy is null ("None" -- deliberate, unrestricted access)', () => {
+  const conn = addConnection();
+  assert.equal(setConnectionPolicy(conn.id, null).ok, true);
+  const result = setMcpEnabled(conn.id, true);
+  assert.deepEqual(result, { ok: true, profile: { ...conn, policyId: null, mcpEnabled: true } });
+  assert.equal(getMcpAccessStatus(conn.id), 'ok');
+  assert.deepEqual(
+    listMcpEnabledConnections().map(c => c.id),
+    [conn.id],
+  );
 });
 
 test('setConnectionPolicy never itself changes mcpEnabled', () => {

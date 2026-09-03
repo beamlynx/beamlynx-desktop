@@ -98,20 +98,25 @@ export type SavedConnectionMeta = {
   // The control-plane server checks this before letting an MCP client touch a
   // connection at all; a connection a user has never explicitly opted in
   // stays invisible to MCP clients regardless of what pine-lang itself allows.
-  // Can only be true while `policyId` resolves to a policy with an active
-  // rule -- see setMcpEnabled and isConnectionPolicyActive. MCP always has a
-  // real policy applied; there's no "reachable but unprotected" state.
+  // Can only be true while `policyId` is a deliberate decision -- either null
+  // ("None", picked explicitly in the policy dropdown -- unrestricted access,
+  // e.g. a local/sandbox DB the owner doesn't need redacted) or an id that
+  // resolves to a policy with an active rule -- see setMcpEnabled and
+  // isConnectionPolicyActive. There's no "reachable but undecided" state.
   mcpEnabled: boolean;
   // Which access policy applies to THIS connection's queries -- required
-  // (and required to have an active rule) whenever mcpEnabled is true;
-  // setConnectionPolicy refuses clearing or blanking it while MCP is on for
-  // this connection, and deleteAccessPolicy turns MCP off for any
-  // connection whose policy it removes, rather than leave mcpEnabled: true
-  // pointing at nothing. Can still be null while MCP is off, e.g. a
-  // freshly-created connection before its owner assigns one, or one whose
-  // owner deliberately doesn't want any policy applied to their own
-  // queries either (see bypassPolicyForOwnQueries below) while MCP stays
-  // off too.
+  // (and, if non-null, required to have an active rule) whenever mcpEnabled
+  // is true; setConnectionPolicy refuses blanking it to a policy with no
+  // active rule while MCP is on for this connection, and deleteAccessPolicy
+  // turns MCP off for any connection whose policy it removes, rather than
+  // leave mcpEnabled: true pointing at a stale id. null itself is a valid,
+  // deliberate value even with MCP on -- see isConnectionPolicyActive --
+  // meaning "None": no redaction, full access. It's also the value a
+  // freshly-created connection starts with before its owner has picked
+  // anything, so null does double duty as both "undecided" (MCP off) and
+  // "explicitly unrestricted" (MCP on) depending on mcpEnabled -- there is
+  // no separate state for the former because a connection can't reach
+  // mcpEnabled: true without someone having looked at the policy picker.
   policyId: string | null;
   // Whether the connection owner has switched OFF the assigned policy for
   // their own queries, from any of their own (non-MCP) tabs -- independent
@@ -364,23 +369,26 @@ function policyIsActive(policy: AccessPolicy | undefined): boolean {
   return !!policy && policy.rules.some(m => m.enabled);
 }
 
-// True iff THIS connection's own assigned policy has an active rule. The
-// real security boundary (see listMcpEnabledConnections/getMcpAccessStatus
-// below), not just a precondition setMcpEnabled/setConnectionPolicy check
-// -- MCP always has a real, active policy applied once enabled; there is no
-// "reachable but unprotected" state. Per-connection, not global: each
-// connection is checked against the specific policy it points at, not
-// against "does any policy anywhere have a rule on."
+// True iff THIS connection's policy decision is one MCP may run behind:
+// either policyId is null (the deliberate "None" choice -- unrestricted
+// access) or it resolves to a policy with an active rule. The real security
+// boundary (see listMcpEnabledConnections/getMcpAccessStatus below), not
+// just a precondition setMcpEnabled/setConnectionPolicy check -- MCP always
+// reflects a decision someone made, never a stale/undecided id. Per
+// connection, not global: each connection is checked against the specific
+// policy it points at, not against "does any policy anywhere have a rule on."
 function isConnectionPolicyActive(store: StoreFile, connection: { policyId: string | null }): boolean {
-  if (!connection.policyId) return false;
+  if (connection.policyId === null) return true;
   return policyIsActive(store.accessPolicies.find(p => p.id === connection.policyId));
 }
 
 // Refuses (does not flip the flag) turning MCP on for a connection whose
-// own assigned policy has no active rule -- the UX-level guard against a
-// toggle that would be silently inert. Turning MCP off is never refused.
-// Never touches policyId itself -- setConnectionPolicy is the other half
-// of the invariant this maintains (see its own comment).
+// own assigned policy is a real, named policy with no active rule -- the
+// UX-level guard against a toggle that would be silently inert. Does NOT
+// refuse when policyId is null: that's the deliberate "None" choice, not an
+// oversight -- see isConnectionPolicyActive. Turning MCP off is never
+// refused. Never touches policyId itself -- setConnectionPolicy is the
+// other half of the invariant this maintains (see its own comment).
 export function setMcpEnabled(id: string, enabled: boolean): SetMcpEnabledResult {
   const store = readStore();
   const index = store.connections.findIndex(c => c.id === id);
@@ -395,15 +403,15 @@ export function setMcpEnabled(id: string, enabled: boolean): SetMcpEnabledResult
 }
 
 // The per-connection counterpart to the access policy: which one applies to
-// this connection's queries. Freely settable to any existing policy id --
-// EXCEPT refuses setting it to null, or to a policy with no active rule,
+// this connection's queries. Freely settable to any existing policy id, or
+// to null ("None" -- unrestricted access), even while mcpEnabled is true --
+// EXCEPT refuses setting it to a real, named policy with no active rule
 // while mcpEnabled is true for this connection: that would leave MCP
-// pointing at nothing, the same disallowed state setMcpEnabled itself
-// guards against from the other direction. Turn MCP off first to clear or
-// blank the policy. Does not otherwise validate that `policyId` exists --
-// a caller passing a stale id when MCP is off gets the same effect as
-// null (no rules resolve, see beamlynx-ui's effectiveAccessPolicyRules),
-// not an error.
+// pointing at a policy that decides nothing, the same disallowed state
+// setMcpEnabled itself guards against from the other direction. Does not
+// otherwise validate that `policyId` exists -- a caller passing a stale id
+// when MCP is off gets the same effect as null (no rules resolve, see
+// beamlynx-ui's effectiveAccessPolicyRules), not an error.
 export function setConnectionPolicy(id: string, policyId: string | null): SetConnectionPolicyResult {
   const store = readStore();
   const index = store.connections.findIndex(c => c.id === id);
@@ -535,13 +543,14 @@ export function renameConnection(id: string, label: string): SavedConnectionMeta
 // not merely "not returned by list_connections".
 // The real enforcement point: also backs GET /connections in
 // control-plane-server.ts, so both inherit this for free. A connection is
-// included only when it's mcpEnabled AND its own assigned policy currently
-// has an active rule (isConnectionPolicyActive) -- this is what makes the
-// invariant hold against a policy that went inactive after the connection
-// was set up, not just against setMcpEnabled/setConnectionPolicy's
-// toggle-time checks. Per-connection, not a single global gate: one
-// connection's policy going inactive doesn't affect any other connection's
-// own, independently-assigned policy.
+// included only when it's mcpEnabled AND its policy decision still holds
+// (isConnectionPolicyActive: null/"None", or a named policy currently
+// carrying an active rule) -- this is what makes the invariant hold against
+// a policy that went inactive after the connection was set up, not just
+// against setMcpEnabled/setConnectionPolicy's toggle-time checks.
+// Per-connection, not a single global gate: one connection's policy going
+// inactive doesn't affect any other connection's own, independently-assigned
+// policy.
 export function listMcpEnabledConnections(): SavedConnectionMeta[] {
   const store = readStore();
   return store.connections.map(toMeta).filter(c => c.mcpEnabled && isConnectionPolicyActive(store, c));

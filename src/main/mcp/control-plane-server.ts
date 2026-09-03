@@ -48,14 +48,16 @@ function sendJson(res: http.ServerResponse, status: number, body: unknown): void
 // Distinguishes *why* a connection isn't reachable rather than folding
 // every case into one generic message: 'not-found'/'not-enabled' means it
 // was never opted in to MCP at all, but 'no-active-policy' means it WAS
-// properly set up -- mcpEnabled with a real policy assigned -- and that
-// policy's last active rule was disabled afterward (see
+// properly set up -- mcpEnabled with a real, *named* policy assigned -- and
+// that policy's last active rule was disabled afterward (see
 // credential-store.ts's setAccessPolicyModuleEnabled, which deliberately
-// doesn't guard against this at the rule-toggle level). MCP never runs a
-// query with no active policy behind it; this is the explicit runtime
-// check that throws instead, matching the enable-time guard
-// (setMcpEnabled/setConnectionPolicy) rather than silently succeeding with
-// unredacted results or silently returning nothing.
+// doesn't guard against this at the rule-toggle level). This status never
+// fires for a connection whose policyId is null -- that's the deliberate
+// "None" choice (unrestricted access, e.g. a local/sandbox DB), not a drift
+// case to catch. MCP never runs a query behind a policy decision that's
+// gone stale; this is the explicit runtime check that throws instead,
+// matching the enable-time guard (setMcpEnabled/setConnectionPolicy) rather
+// than silently succeeding against a policy that quietly went inactive.
 function assertWhitelisted(profileId: string): void {
   const status = getMcpAccessStatus(profileId);
   if (status === 'no-active-policy') {

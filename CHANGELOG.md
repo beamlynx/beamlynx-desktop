@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Changed
+- A connection's access policy can now be explicitly set to "None" (unrestricted access) even while MCP is on for it, instead of being refused -- useful for a local or sandbox database the owner doesn't need redacted. MCP still refuses to turn on, or keep running, against a named policy that has no active rule.
 
 ## [0.11.0] - 2026-09-02
 ### Added
