@@ -316,6 +316,8 @@ const ChipRow = ({
   chips,
   onRemove,
   onSelect,
+  onHover,
+  onHoverEnd,
   highlightIndex,
 }: {
   label: string;
@@ -323,6 +325,10 @@ const ChipRow = ({
   onRemove?: (index: number) => void;
   /** Reopens this chip's own config panel with its current value prefilled - see CanvasStore.openWhereEditor. Only offered for "where" today; select/order/group chips are already fully edited by toggling. */
   onSelect?: (index: number, anchor: { x: number; y: number }) => void;
+  /** Sets CanvasStore's config-item cursor to this exact chip - the mouse's equivalent of Left/Right landing on it, so hovering a chip shows the same ring keyboard nav would, instead of the whole node's own border staying lit alongside it. */
+  onHover?: (index: number) => void;
+  /** Falls back to the node's own plain "current" border once the mouse actually leaves the chip - without this the ring would stay on whichever chip was hovered last, even after the mouse moved elsewhere in the node. */
+  onHoverEnd?: () => void;
   /** The chip at this index is CanvasStore.focusedConfigItem's current target - drawn with the same "current" ring TableNode's own border uses for keyboard focus. */
   highlightIndex?: number;
 }) => {
@@ -361,6 +367,8 @@ const ChipRow = ({
                 }
               : undefined
           }
+          onMouseEnter={onHover ? () => onHover(i) : undefined}
+          onMouseLeave={onHoverEnd}
           style={{
             fontSize: 'calc(10px * var(--text-scale, 1))',
             fontFamily: 'var(--canvas-font)',
@@ -715,6 +723,8 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
         chips={data.selectColumns}
         onRemove={i => void canvasStore.toggleSelectColumn(data.alias, data.selectColumns[i])}
         onSelect={(i, anchor) => canvasStore.openColumnPicker('select', data.alias, anchor, data.selectColumns[i])}
+        onHover={i => canvasStore.focusConfigItem(data.alias, { kind: 'select', column: data.selectColumns[i] })}
+        onHoverEnd={() => canvasStore.focusNode(data.alias)}
         highlightIndex={cursorItem?.kind === 'select' ? data.selectColumns.indexOf(cursorItem.column) : undefined}
       />
       <ChipRow
@@ -722,6 +732,8 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
         chips={data.whereChips}
         onRemove={i => void canvasStore.removeWhereAt(data.alias, i)}
         onSelect={(i, anchor) => canvasStore.openWhereEditor(data.alias, i, anchor)}
+        onHover={i => canvasStore.focusConfigItem(data.alias, { kind: 'where', index: i })}
+        onHoverEnd={() => canvasStore.focusNode(data.alias)}
         highlightIndex={cursorItem?.kind === 'where' ? cursorItem.index : undefined}
       />
       <ChipRow
@@ -731,6 +743,13 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
         onSelect={(i, anchor) =>
           canvasStore.openColumnPicker('order', data.alias, anchor, data.orderChips[i]?.replace(/\s+(asc|desc)$/i, ''))
         }
+        onHover={i =>
+          canvasStore.focusConfigItem(data.alias, {
+            kind: 'order',
+            column: data.orderChips[i].replace(/\s+(asc|desc)$/i, ''),
+          })
+        }
+        onHoverEnd={() => canvasStore.focusNode(data.alias)}
         highlightIndex={
           cursorItem?.kind === 'order'
             ? data.orderChips.findIndex(chip => chip.replace(/\s+(asc|desc)$/i, '') === cursorItem.column)
@@ -742,6 +761,8 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
         chips={data.groupChips}
         onRemove={i => void canvasStore.toggleGroupColumn(data.alias, data.groupChips[i])}
         onSelect={(i, anchor) => canvasStore.openColumnPicker('group', data.alias, anchor, data.groupChips[i])}
+        onHover={i => canvasStore.focusConfigItem(data.alias, { kind: 'group', column: data.groupChips[i] })}
+        onHoverEnd={() => canvasStore.focusNode(data.alias)}
         highlightIndex={cursorItem?.kind === 'group' ? data.groupChips.indexOf(cursorItem.column) : undefined}
       />
     </div>

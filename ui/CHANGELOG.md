@@ -16,7 +16,8 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ### Fixed
 - Canvas mode: adding an operation (`select`, `where`, `join`, ...) while the expression already ended in a stray `|` (typed by hand in the Pine panel, or left over from an earlier edit) left that dangling pipe in place after the new operation, instead of dropping it.
-- Canvas mode: hovering a node revealed its action bar but didn't move keyboard focus there - the node last focused via the keyboard kept its "current" border even while a different node was being hovered. Hovering now moves focus, the same as it already does when navigating with the keyboard.
+- Canvas mode: hovering a node revealed its action bar but didn't move keyboard focus there - the node last focused via the keyboard kept its "current" border even while a different node was being hovered. Hovering now moves focus, the same as it already does when navigating with the keyboard - including onto a specific chip or a join's own icon, which now show their own highlight on hover, exactly like Left/Right already does, instead of the whole node's border staying lit alongside it.
+- Canvas mode: clicking an action button (`+`, `select`, `where`, ...) without the mouse having freshly crossed into the node first (it was already resting there from an earlier action) opened the picker but left the *previously* focused node's border showing, instead of moving focus to the node actually being acted on.
 
 ## [0.57.0] - 2026-09-02
 ### Added

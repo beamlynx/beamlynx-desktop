@@ -105,8 +105,24 @@ const TraceEdge: React.FC<EdgeProps<TraceEdgeData>> = observer(
                 e.stopPropagation();
                 store.openJoinTypePicker(joinTargetAlias, joinType, { x: e.clientX, y: e.clientY });
               }}
-              onMouseEnter={() => setHovered(true)}
-              onMouseLeave={() => setHovered(false)}
+              onMouseEnter={() => {
+                setHovered(true);
+                // Same config-item cursor Shift+J/K would land this on -
+                // not focusNode, or the target's whole-node border would
+                // show alongside this icon's own halo, two things claiming
+                // to be "the selection" at once (see focusConfigItem's own
+                // comment). This icon lives in ReactFlow's separate edge-
+                // label layer, not nested inside the target node's own DOM,
+                // so it never gets the target's onMouseEnter for free.
+                if (joinTargetAlias) store.focusConfigItem(joinTargetAlias, { kind: 'join-type' });
+              }}
+              onMouseLeave={() => {
+                setHovered(false);
+                // Falls back to the target's own plain "current" border,
+                // rather than leaving the cursor stuck on an icon the mouse
+                // has actually left.
+                if (joinTargetAlias) store.focusNode(joinTargetAlias);
+              }}
               style={{
                 position: 'absolute',
                 transform: `translate(-50%, -50%) translate(${iconX}px, ${iconY}px)`,

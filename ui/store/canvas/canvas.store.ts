@@ -195,6 +195,22 @@ export class CanvasStore {
     this._cursor = { kind: 'node', alias };
   }
 
+  /**
+   * Lands the cursor directly on one specific config item (a chip, or an
+   * incoming join's own icon) - the mouse's equivalent of what Left/Right
+   * (configNext/configPrev) does one stop at a time. Every picker that
+   * reopens an EXISTING item (a chip's own click/hover, a join icon's own
+   * click/hover) goes through this rather than focusNode, so hovering or
+   * clicking that exact item shows the same "this one thing is selected"
+   * ring keyboard nav already gives it, instead of the whole node's
+   * thicker border ALSO lighting up alongside it (see TableNode.tsx's own
+   * `hasConfigCursor` comment for why the two are drawn as mutually
+   * exclusive, never both at once).
+   */
+  focusConfigItem(alias: string, item: ConfigItem) {
+    this._cursor = { kind: 'config', alias, item };
+  }
+
   /** Whether `alias` has an incoming join whose type is configurable - see CanvasEdge.joinTargetAlias. Its own thing, not one of `configItemsForAlias`' items - see `flatStops`' own comment for why. */
   private hasIncomingJoin(alias: string): boolean {
     return this.canvasGraph.edges.some(e => e.joinTargetAlias === alias);
@@ -820,6 +836,7 @@ export class CanvasStore {
   }
 
   openJoinPicker(alias: string, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
+    this.focusNode(alias);
     const request: PickerRequest = { kind: 'join', alias };
     void this.openListPicker(request, anchor, async () => {
       const expr = this.buildProbeExpression(request);
@@ -869,6 +886,7 @@ export class CanvasStore {
    * openPathRoutePicker for the chosen table instead.
    */
   openPathPicker(alias: string, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
+    this.focusNode(alias);
     const request: PickerRequest = { kind: 'path', alias };
     void this.openListPicker(request, anchor, async () => {
       const expr = this.buildProbeExpression(request);
@@ -948,6 +966,7 @@ export class CanvasStore {
       this.closePicker();
       return;
     }
+    this.focusNode(alias);
     this.picker = { open: true, mode: 'more', alias, offer, isFrame, anchor };
   }
 
@@ -980,6 +999,15 @@ export class CanvasStore {
     /** Pre-highlight this column once the list loads - see PickerState's own `focusValue` doc. */
     focusValue?: string,
   ) {
+    // A specific existing chip being reopened gets its own config-item
+    // cursor (matching what Left/Right would land on); adding a new one
+    // from the action bar just focuses the node itself - see
+    // focusConfigItem's own comment for why these are kept distinct.
+    if (focusValue !== undefined && (kind === 'select' || kind === 'order' || kind === 'group')) {
+      this.focusConfigItem(alias, { kind, column: focusValue });
+    } else {
+      this.focusNode(alias);
+    }
     const request: PickerRequest = { kind, alias };
     void this.openListPicker(
       request,
@@ -1080,6 +1108,7 @@ export class CanvasStore {
       this.closePicker();
       return;
     }
+    this.focusConfigItem(alias, { kind: 'join-type' });
     this.picker = { open: true, mode: 'join-type', alias, current, anchor };
   }
 
@@ -1131,6 +1160,7 @@ export class CanvasStore {
     if (!condition) return;
     const [, column, , operator, val] = condition;
     const value = val && 'value' in val ? String(val.value) : '';
+    this.focusConfigItem(alias, { kind: 'where', index });
     this.picker = { open: true, mode: 'where-value', alias, column, operator, value, anchor, editIndex: index };
   }
 
