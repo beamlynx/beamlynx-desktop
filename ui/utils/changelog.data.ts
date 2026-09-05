@@ -23,6 +23,73 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.58.0',
+    date: '2026-09-06',
+    breaking: [
+      {
+        title: 'Requires pine-lang 0.43.0 or later',
+        description:
+          'Was 0.42.0 -- the version that introduces `? table`, which canvas mode\'s new "path" action and the Pine editor\'s autocomplete both depend on.',
+      },
+    ],
+    added: [
+      {
+        title: 'Canvas mode: "path" action finds multi-hop join routes',
+        description:
+          'The node action bar is now select | where | join | +, with order, group, and the new "path" action tucked behind the +. Path finds every way to reach a table that isn\'t directly joinable -- not just the next hop, but multi-hop routes through the schema too -- and lets you pick one to add all the way to the destination in one go.',
+      },
+      {
+        title: 'Pine editor autocomplete completes `? table` path searches',
+        description:
+          'Shows the discovered routes once the target names a real table, and accepting one replaces the whole `? target` fragment, not just the typed table name.',
+      },
+      {
+        title: 'Canvas mode: click a join icon to pick Inner, Left, or Right',
+        description:
+          'The same two-circle diagram most SQL join references use -- inner shades just the overlap, left/right shades one whole side plus the overlap -- so the type reads at a glance with no text label needed.',
+      },
+      {
+        title: 'Canvas mode: click an existing chip to edit it',
+        description:
+          'A where condition, selected column, order column, or group column reopens for editing instead of being removed and re-added.',
+      },
+      {
+        title: 'Canvas mode: Shift+J / Shift+K step through the whole pipeline',
+        description:
+          'Each node, then everything configured on it (its incoming join, selected columns, where conditions, order columns, group columns), then the next node\'s. Enter or Space opens whichever is highlighted; Delete, Backspace, or x removes it.',
+      },
+    ],
+    changed: [
+      {
+        title: "A resolved join's line is now neutral, not accented",
+        description:
+          "The accent now lives on the join-type icon itself, marking the one clickable thing on the edge rather than the whole line. Broken and heuristic-only joins keep their own distinct colors, unchanged.",
+      },
+    ],
+    fixed: [
+      {
+        title: 'A stray trailing pipe no longer survives a canvas commit',
+        description:
+          'Adding an operation while the expression already ended in a stray `|` (typed by hand, or left over from an earlier edit) left that dangling pipe in place afterward instead of dropping it.',
+      },
+      {
+        title: 'Hovering a canvas node now moves keyboard focus there too',
+        description:
+          'Previously only revealed its action bar -- the "current" border stayed on whichever node the keyboard had last focused. Hovering a specific chip or a join icon now shows its own highlight, matching keyboard navigation exactly.',
+      },
+      {
+        title: 'Clicking a canvas action button now reliably focuses that node',
+        description:
+          'If the mouse was already resting on the button from an earlier action (no fresh hover to trigger a focus change), the click opened its picker but left the previously focused node highlighted.',
+      },
+      {
+        title: '"None" access policy no longer treated as inactive',
+        description:
+          'A connection set to "None" (unrestricted access) was still blocked from turning on MCP and had "None" disabled outright once MCP was on. "None" is a deliberate choice, not a missing one, matching how the desktop app already enforces it.',
+      },
+    ],
+  },
+  {
     version: '0.57.0',
     date: '2026-09-02',
     added: [
@@ -1679,4 +1746,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.57.0';
+export const LATEST_VERSION = '0.58.0';

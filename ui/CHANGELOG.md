@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.58.0] - 2026-09-06
+### Breaking
+- Minimum required pine-lang server version is now 0.43.0 (up from 0.42.0) - the version that introduces `? table`, which canvas mode's new "path" action and the Pine editor's autocomplete both depend on.
+
 ### Added
 - The Pine text editor's autocomplete (Ctrl+Space) now completes `? table` path searches too - shows the discovered routes once the target names a real table (reachability-filtered destination names before that), and accepting one replaces the whole `? target` fragment, not just the typed table name.
 - Canvas mode: a node's action bar is now `select | where | join | +`, with order, group, and the new "path" action tucked behind the `+` (their own keyboard shortcuts - `o`, `g`, `p`, and now `+` itself to open the overflow directly - still work regardless of whether `+` is ever clicked). "Path" finds every way to reach a table that isn't directly joinable - not just the next hop, but multi-hop routes through the schema too - and lets you pick one to add all the way to the destination in one go.
