@@ -50,6 +50,40 @@ const LayoutSwitcher = observer(({ global }: { global: GlobalStore }) => (
   </Typography>
 ));
 
+// The hosted playground's backend has been intentionally shut down (not a
+// bug) -- send visitors to the download page instead. The redirect is a
+// plain client-side navigation (not a Next.js route) since the destination
+// is the beamlynx.com marketing site, a different origin; the visible
+// message + link are the fallback for the moment before that runs, or if
+// it's blocked.
+const PLAYGROUND_DOWNLOAD_URL = 'https://beamlynx.com/download?playground=disabled&source=direct';
+
+const PlaygroundDisabled = () => {
+  useEffect(() => {
+    window.location.href = PLAYGROUND_DOWNLOAD_URL;
+  }, []);
+
+  return (
+    <Box
+      sx={{
+        p: 2,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 2,
+        justifyContent: 'center',
+        alignItems: 'center',
+      }}
+    >
+      <Typography className="text-primary">
+        The playground is disabled. Redirecting you to download the app...
+      </Typography>
+      <Link href={PLAYGROUND_DOWNLOAD_URL} underline="hover">
+        Click here if you're not redirected
+      </Link>
+    </Box>
+  );
+};
+
 const AppView = observer(() => {
   const { global } = useStores();
   const session = global.getSession(global.activeSessionId);
@@ -137,40 +171,15 @@ const AppView = observer(() => {
       </Box>
     );
 
-  // Playground's own connection failing is a distinct, genuine error case
-  // (not "you haven't set anything up yet") -- still worth its own screen.
   // Every other not-connected case (including a fresh install with nothing
   // configured) falls through to the normal app shell below; there's no
-  // longer a full-page "get started" wall (see ActiveConnection.tsx's own
-  // "Not connected to database"/"🔌 No connection to Pine server!" label
-  // for how that state is surfaced instead -- inline, not a takeover). Was
-  // previously a Docker-run-command onboarding page, which stopped being
-  // the right default once the desktop app became the primary distribution.
+  // full-page "get started" wall (see ActiveConnection.tsx's own "Not
+  // connected to database"/"🔌 No connection to Pine server!" label for how
+  // that state is surfaced instead -- inline, not a takeover). Was previously
+  // a Docker-run-command onboarding page, which stopped being the right
+  // default once the desktop app became the primary distribution.
   if (!global.pineConnected && !global.canvasActive && isPlayground()) {
-    return (
-      <Box
-        sx={{
-          p: 2,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 2,
-          justifyContent: 'center',
-          alignItems: 'center',
-        }}
-      >
-        <Typography className="text-primary">
-          Something went wrong with the playground connection
-        </Typography>
-        <Link
-          href="https://github.com/beamlynx/pine-app/issues/new"
-          target="_blank"
-          underline="hover"
-          sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
-        >
-          Please create an issue on GitHub
-        </Link>
-      </Box>
-    );
+    return <PlaygroundDisabled />;
   }
 
   if (global.getRequiresUpgrade()) {
