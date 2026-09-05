@@ -540,9 +540,11 @@ const ConnectionRow = observer(
 
     const selectedPolicy = global.accessPolicies.find(p => p.id === policyId);
     // MCP always uses this connection's own assigned policy the moment it's
-    // enabled -- there is no "on but unprotected" state (setMcpEnabled
-    // refuses turning it on otherwise).
-    const isConnPolicyActive = !!selectedPolicy?.rules.some(m => m.enabled);
+    // enabled -- there is no "on but undecided" state (setMcpEnabled
+    // refuses turning it on otherwise). policyId === null is "None", a
+    // deliberate choice of unrestricted access (e.g. a local/sandbox DB),
+    // not a missing policy -- it counts as decided same as an active one.
+    const isConnPolicyActive = policyId == null ? true : !!selectedPolicy?.rules.some(m => m.enabled);
     // Only refuse *turning on* -- switching an already-enabled connection
     // off must never be blocked by its policy going inactive later; that's
     // a separate, always-available action (see GlobalStore.setMcpEnabled,
@@ -832,17 +834,13 @@ const ConnectionRow = observer(
               helperText={
                 selectedPolicy && !isConnPolicyActive
                   ? `"${selectedPolicy.name}" has no active rules -- add one in Settings -> Access Policy, or MCP can't turn on.`
-                  : 'Redacts columns per the selected policy. MCP access below requires one with an active rule.'
+                  : policyId == null
+                    ? 'No redaction -- MCP and your own queries see full, unrestricted data on this connection.'
+                    : 'Redacts columns per the selected policy. MCP access below requires one with an active rule.'
               }
               sx={{ ...fieldSx, minWidth: 0 }}
             >
-              <MenuItem
-                value="__none__"
-                disabled={mcpEnabled}
-                title={mcpEnabled ? 'Turn off MCP access first' : undefined}
-              >
-                None
-              </MenuItem>
+              <MenuItem value="__none__">None</MenuItem>
               {global.accessPolicies.map(p => (
                 <MenuItem key={p.id} value={p.id}>
                   {p.name}

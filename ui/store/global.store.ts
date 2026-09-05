@@ -1157,14 +1157,16 @@ export class GlobalStore {
    * access-control lever for the MCP server. Off by default; the
    * control-plane server (beamlynx-desktop) refuses any MCP tool call
    * against a connection that isn't in this list, regardless of what's live
-   * in pine-lang's own pool. Also refused (not silently ignored) unless
-   * *this connection's own* assigned policy has an active module -- there
-   * is no "MCP on, unprotected" state -- see credential-store.ts's
-   * setMcpEnabled. The ConnectionsSection UI is expected to disable this
-   * control before that refusal can even be attempted (see its own
-   * tooltip/disabled state), but this still surfaces connectionError on the
-   * refusal path as a belt-and-suspenders in case a caller reaches it some
-   * other way.
+   * in pine-lang's own pool. Also refused (not silently ignored) if *this
+   * connection's own* assigned policy is a real, named policy with no
+   * active module -- there is no "MCP on, undecided" state -- see
+   * credential-store.ts's setMcpEnabled. Not refused when the connection's
+   * policy is null ("None"): that's a deliberate choice of unrestricted
+   * access, not an oversight to guard against. The ConnectionsSection UI is
+   * expected to disable this control before the refusal case can even be
+   * attempted (see its own tooltip/disabled state), but this still surfaces
+   * connectionError on the refusal path as a belt-and-suspenders in case a
+   * caller reaches it some other way.
    */
   setMcpEnabled = async (id: string, enabled: boolean): Promise<void> => {
     if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
@@ -1173,7 +1175,7 @@ export class GlobalStore {
       runInAction(() => {
         this.connectionError =
           result.reason === 'no-active-policy'
-            ? 'Select an access policy with an active rule for this connection first.'
+            ? 'Select "None" for unrestricted access, or an access policy with an active rule, for this connection first.'
             : 'That connection no longer exists.';
       });
       return;
@@ -1187,13 +1189,14 @@ export class GlobalStore {
 
   /**
    * Selects which access policy (if any) applies to this connection's
-   * queries. Refused (not silently ignored) if it would clear/blank the
-   * policy -- to null, or to one with no active rule -- while mcpEnabled is
-   * already true: MCP must never end up pointing at nothing. The
-   * ConnectionsSection UI is expected to disable "None" and any inactive
-   * policy in that state (see its own picker), but this still surfaces
-   * connectionError on the refusal path the same way setMcpEnabled does.
-   * See credential-store.ts's setConnectionPolicy.
+   * queries -- null means "None" (unrestricted access), which is a valid
+   * choice even while mcpEnabled is already true. Refused (not silently
+   * ignored) only if it would set a real, named policy with no active rule
+   * while mcpEnabled is already true: MCP must never end up pointing at a
+   * policy that decides nothing. The ConnectionsSection UI is expected to
+   * disable any such inactive policy in that state (see its own picker),
+   * but this still surfaces connectionError on the refusal path the same
+   * way setMcpEnabled does. See credential-store.ts's setConnectionPolicy.
    */
   setConnectionPolicy = async (id: string, policyId: string | null): Promise<void> => {
     if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
@@ -1202,7 +1205,7 @@ export class GlobalStore {
       runInAction(() => {
         this.connectionError =
           result.reason === 'mcp-requires-policy'
-            ? 'MCP access is on for this connection -- pick a policy with an active rule, or turn MCP off first.'
+            ? 'MCP access is on for this connection -- pick "None" or a policy with an active rule, or turn MCP off first.'
             : 'That connection no longer exists.';
       });
       return;
