@@ -129,7 +129,14 @@ const FrameNode: React.FC<NodeProps<CanvasFrameNodeData>> = observer(({ id, data
           that file's comment on ActionButton for why. */}
       <div
         className="nodrag picker-trigger"
-        onMouseEnter={() => setHovered(true)}
+        onMouseEnter={() => {
+          setHovered(true);
+          // Same "mouse takes over current" as TableNode.tsx's own
+          // onMouseEnter - resolvedAlias, not `id`, since `id` is only the
+          // checkpoint's real alias once it's actually been consumed (see
+          // this file's own top comment).
+          canvasStore.focusNode(resolvedAlias);
+        }}
         onMouseLeave={() => setHovered(false)}
         style={{
           position: 'absolute',

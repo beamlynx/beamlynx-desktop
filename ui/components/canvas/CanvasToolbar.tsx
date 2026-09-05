@@ -220,8 +220,8 @@ const legendKeysFor = (isStart: boolean, isFrame: boolean, removable: boolean): 
   // No 'g' - group isn't offered for a checkpoint's own sealed output (see
   // FrameNode.tsx's doc comment). 'x' here cancels the container itself
   // (CanvasStore.deleteCheckpoint), not a per-table removal.
-  if (isFrame) return ['s', 'w', 'o', 'p', 'i', 'x'];
-  return ['s', 'w', 'o', 'g', 'p', 'i', ...(removable ? ['x'] : [])];
+  if (isFrame) return ['s', 'w', 'o', 'p', '+', 'i', 'x'];
+  return ['s', 'w', 'o', 'g', 'p', '+', 'i', ...(removable ? ['x'] : [])];
 };
 
 /**

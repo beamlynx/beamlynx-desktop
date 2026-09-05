@@ -151,7 +151,13 @@ const Flow: React.FC<{
   // are different kinds of "not quite right" (one is broken, one is just a
   // guess worth double-checking, matching how the classic graph's
   // store/graph.util.ts uncertainEdgeStyle draws the same distinction) and
-  // sharing a color would blur that.
+  // sharing a color would blur that. A plain, fully-resolved join is
+  // deliberately NOT drawn in the accent color, unlike those two - the
+  // accent is reserved for TraceEdge.tsx's own join-type icon now (see its
+  // comment), so an ordinary working join reads as quiet structure (same
+  // neutral tone as a node's own border) and only something worth a
+  // second look (broken, or a guess) or something clickable (the icon)
+  // draws the eye.
   const edges = canvasGraph.edges.map(e => {
     // Edges are a derived, read-only rendering of the joins in ast.joins -
     // there's no gesture that does anything with a ReactFlow-*selected*
@@ -166,7 +172,7 @@ const Flow: React.FC<{
       selectable: false,
       focusable: false,
       type: 'trace',
-      style: { stroke: 'var(--canvas-trace)', strokeWidth: 1.5 },
+      style: { stroke: 'var(--canvas-node-border)', strokeWidth: 1.5 },
       // ReactFlow only forwards an edge's own recognized fields (id/source/
       // target/style/markerEnd/...) to its custom edge component - the rest
       // of `...e` above (joinType, joinTargetAlias, unresolved, uncertain)

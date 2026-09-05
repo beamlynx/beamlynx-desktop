@@ -164,12 +164,25 @@ export const segmentsFromAst = (expression: string, ast: Ast | null | undefined)
   const lineCount = expression.split('\n').length;
   const isStale = ast.ranges.some(r => r.start.line >= lineCount || r.end.line >= lineCount);
   if (isStale) return null;
-  const segments: Segment[] = ast.ranges.map((r: PineRange) => {
-    const start = offsetFromPosition(expression, r.start);
-    const end = offsetFromPosition(expression, r.end);
-    const text = expression.slice(start, end).trim();
-    return { text, start, end, kind: classifyKind(text), owner: null };
-  });
+  const segments: Segment[] = ast.ranges
+    .map((r: PineRange) => {
+      const start = offsetFromPosition(expression, r.start);
+      const end = offsetFromPosition(expression, r.end);
+      const text = expression.slice(start, end).trim();
+      return { text, start, end, kind: classifyKind(text), owner: null };
+    })
+    // A trailing `|` with nothing after it (the user left the text mid-edit,
+    // or a previous commit's own insertion point happened to land before
+    // it) still gets a range from the server - empty once trimmed, since
+    // there's no operation there to have any text. Left in, this segment
+    // rides along through every later commit (a real one always gets
+    // spliced in *before* it, per upsertOwnedSegment/appendTableSegment's
+    // "insert after this alias's own last segment" rule - never at the
+    // literal end), so it silently reappears in the committed text as a
+    // dangling `| ` after whatever operation the user actually asked for.
+    // Filtering it out here is the one place that fixes every caller at
+    // once, rather than every commit path defending against it separately.
+    .filter(s => s.text !== '');
   assignOwners(segments, ast['selected-tables']);
   return segments;
 };

@@ -537,7 +537,16 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
   return (
     <div
       style={{ width: nodeWidth }}
-      onMouseEnter={() => setHovered(true)}
+      onMouseEnter={() => {
+        setHovered(true);
+        // The mouse taking over "current" from wherever the keyboard cursor
+        // last left it - without this, hovering a different node only
+        // revealed ITS action bar (via `engaged` above) while the border/
+        // background "current" treatment stayed on the keyboard's last
+        // stop, which read as two different nodes both claiming to be
+        // focused at once.
+        canvasStore.focusNode(data.alias);
+      }}
       onMouseLeave={() => setHovered(false)}
     >
       {/* Action bar - progressive disclosure: hidden until the node is

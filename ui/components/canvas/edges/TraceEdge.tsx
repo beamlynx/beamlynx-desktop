@@ -126,14 +126,15 @@ const TraceEdge: React.FC<EdgeProps<TraceEdgeData>> = observer(
                 boxShadow: isCursorTarget ? '0 0 0 1px var(--canvas-node-border-current)' : undefined,
                 pointerEvents: 'all',
                 cursor: 'pointer',
-                // Quiet by default (dim, same family as the join-handle pin
-                // dots) so a graph full of ordinary inner joins doesn't look
-                // busy; brightens on hover so it still reads as clickable
-                // rather than pure decoration, same idea the old dot's hover
-                // state had, just applied to the icon instead of an opacity
-                // fade (the shape must stay fully legible at rest - that's
-                // the whole point of moving off a fading dot).
-                color: hovered || isCursorTarget ? 'var(--canvas-text)' : 'var(--canvas-pin)',
+                // The accent lives here now, not on the edge line itself
+                // (Canvas.tsx's own comment on `edges` - a plain resolved
+                // join is deliberately neutral) - a small glyph carrying the
+                // accent reads as a deliberate touch rather than the "busy"
+                // a whole accent-colored line across the canvas would; full
+                // contrast on hover/cursor-target still marks "actively
+                // interacting with this," the same distinction the old
+                // dim/bright pair made, just with a different rest color.
+                color: hovered || isCursorTarget ? 'var(--canvas-text)' : 'var(--canvas-trace)',
                 transition: 'color 0.1s ease-in-out',
               }}
             >
