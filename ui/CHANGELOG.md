@@ -5,6 +5,8 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 ### Added
+- The Pine text editor's autocomplete (Ctrl+Space) now completes `? table` path searches too - shows the discovered routes once the target names a real table (reachability-filtered destination names before that), and accepting one replaces the whole `? target` fragment, not just the typed table name.
+- Canvas mode: a node's action bar is now `select | where | join | +`, with order, group, and the new "path" action tucked behind the `+` (their own keyboard shortcuts - `o`, `g`, `p` - still work directly, whether or not `+` is ever opened). "Path" finds every way to reach a table that isn't directly joinable - not just the next hop, but multi-hop routes through the schema too - and lets you pick one to add all the way to the destination in one go.
 - Canvas mode: click a join's icon to pick Inner, Left, or Right. It's the same two-circle diagram most SQL join references use - inner shades just the overlap, left/right shades one whole side plus the overlap - so the type reads at a glance with no text label needed.
 - Canvas mode: click an existing `where` condition, selected column, order column, or group column to reopen it for editing, instead of removing it and adding a new one.
 - Canvas mode: Shift+J and Shift+K step through the whole pipeline as one list - each node, then everything configured on it (its incoming join, selected columns, where conditions, order columns, group columns), then the next node's. Enter or Space opens whichever one is highlighted; Delete, Backspace, or `x` removes it.

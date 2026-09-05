@@ -46,12 +46,31 @@ export type CursorPosition = {
   character: number; // 0-indexed character offset within line
 };
 
+/**
+ * One discovered join chain from wherever a `? table` expression's pipe left
+ * off to the named table - pine-lang's `? table` operation (docs/paths.md),
+ * not just the direct next hop. Each entry in `hops` has exactly the shape a
+ * `TableHint` does (a path is a subset of that, not a new shape) - `pine` is
+ * just those hops' own `pine` fields joined the same way typing them by hand
+ * would: piped, in order. `length` is `hops.length`, given separately so the
+ * UI can show/sort on it without re-deriving it.
+ */
+export type PathHint = {
+  pine: string;
+  length: number;
+  hops: TableHint[];
+};
+
 export type Hints = {
   table: TableHint[];
   select: ColumnHint[];
   order: ColumnHint[];
   where: ColumnHint[];
   update: ColumnHint[];
+  // Populated only once a `? table` operation's target names a real table -
+  // see pine-lang's generate-path-hints. Empty (not absent) otherwise, same
+  // convention as every other hint bucket.
+  paths: PathHint[];
   context: string;
 };
 // There are more operations. I'll add them as we need to handle them here
@@ -65,7 +84,8 @@ export type OperationType =
   | 'where'
   | 'where-partial'
   | 'update-action'
-  | 'update-partial';
+  | 'update-partial'
+  | 'paths';
 export type Operation = {
   type: OperationType;
   // Shape varies by operation type (e.g. `{schema, table, alias?}` for
@@ -204,9 +224,12 @@ export type ConnectionInfo = {
   // Desktop-only: which access policy (if any) applies to this connection,
   // defaulted at connection creation (credential-store.ts's saveConnection)
   // to whichever policy exists first. Applies from any tab, not just
-  // MCP-driven ones -- see Session.accessPolicyRules. null when no policy
-  // is selected, or when the one it used to point at was deleted. MCP can
-  // only be enabled while this resolves to an active policy -- see
+  // MCP-driven ones -- see Session.accessPolicyRules. null means "None" --
+  // no policy selected, whether that's a fresh connection nobody has
+  // decided on yet, or a deliberate choice of unrestricted access (e.g. a
+  // local/sandbox DB) -- or the policy it used to point at was deleted. MCP
+  // can be enabled while this is null (unrestricted, on purpose) or while
+  // it resolves to a policy with an active rule -- see
   // effectiveAccessPolicyRules below.
   policyId?: string | null;
   // Desktop-only: whether the connection owner has switched the assigned
@@ -225,10 +248,13 @@ export type ConnectionInfo = {
 // `forMcp` is the one thing that can differ between the two callers:
 // - MCP (forMcp: true) always uses the connection's assigned policy the
 //   moment mcpEnabled is true -- credential-store.ts's setMcpEnabled
-//   refuses turning mcpEnabled on unless policyId already resolves to a
-//   policy with an active rule, so there is no "MCP on, no policy" state to
-//   handle here. bypassPolicyForOwnQueries is never consulted for this
-//   caller: it governs the human's own tabs only, never what the agent sees.
+//   refuses turning mcpEnabled on unless policyId is null ("None",
+//   deliberately unrestricted) or already resolves to a policy with an
+//   active rule, so there is no undecided "MCP on, no policy" state to
+//   handle here, only the deliberate one (which the `!connection?.policyId`
+//   check below already returns [] for). bypassPolicyForOwnQueries is never
+//   consulted for this caller: it governs the human's own tabs only, never
+//   what the agent sees.
 // - A human's own tab (forMcp: false) applies the assigned policy unless
 //   bypassPolicyForOwnQueries is explicitly true -- independent of
 //   mcpEnabled, so turning MCP off (or never turning it on) doesn't also

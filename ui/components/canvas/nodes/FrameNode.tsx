@@ -47,7 +47,7 @@ const FrameNode: React.FC<NodeProps<CanvasFrameNodeData>> = observer(({ id, data
     updateNodeInternals(id);
   }, [id, handleKey, updateNodeInternals]);
 
-  const openAction = (kind: 'select' | 'where' | 'order' | 'join') => (anchor: { x: number; y: number }) =>
+  const openAction = (kind: 'select' | 'where' | 'order' | 'join' | 'path') => (anchor: { x: number; y: number }) =>
     void canvasStore.openCheckpointPicker(kind, anchor);
 
   // Same "shown as current" treatment TableNode.tsx/StartNode.tsx use for
@@ -89,21 +89,22 @@ const FrameNode: React.FC<NodeProps<CanvasFrameNodeData>> = observer(({ id, data
   const showKeyHints = isFocusTarget && canvasStore.mode === 'normal';
 
   // Same decluttering as TableNode.tsx's own action bar: while a picker this
-  // frame opened is already in flight, dim the other three rather than
-  // removing them - see ActionButton's `suppressed` doc comment for why
-  // (removing them shifts the survivor to a different on-screen position).
+  // frame opened is already in flight, dim the others rather than removing
+  // them - see ActionButton's `suppressed` doc comment for why (removing
+  // them shifts the survivor to a different on-screen position). order/path
+  // move behind the same "+" trigger TableNode.tsx uses (group is still
+  // never offered here - see this file's own top comment).
   const operations: {
-    kind: 'select' | 'join' | 'where' | 'order';
+    kind: 'select' | 'join' | 'where';
     label: string;
     emphasizeIndex?: number;
   }[] = [
     { kind: 'select', label: 'select' },
+    { kind: 'where', label: 'where' },
     // `i` (insert) opens this picker (useCanvasKeybindings.ts) - not join's
     // first letter, its third ("j-o-I-n"), same as TableNode.tsx's own join
     // button.
     { kind: 'join', label: 'join', emphasizeIndex: 2 },
-    { kind: 'where', label: 'where' },
-    { kind: 'order', label: 'order' },
   ];
   const activeOperation = activeOperationFor(canvasStore.picker, resolvedAlias);
 
@@ -156,19 +157,28 @@ const FrameNode: React.FC<NodeProps<CanvasFrameNodeData>> = observer(({ id, data
             loading...
           </div>
         ) : (
-          operations.map((op, i) => (
-            <React.Fragment key={op.kind}>
-              {i > 0 && <ActionDivider />}
-              <ActionButton
-                label={op.label}
-                testId={`frame-action-${op.kind}-${id}`}
-                onClick={openAction(op.kind)}
-                emphasizeKey={showKeyHints}
-                emphasizeIndex={op.emphasizeIndex}
-                suppressed={activeOperation !== null && op.kind !== activeOperation}
-              />
-            </React.Fragment>
-          ))
+          <>
+            {operations.map((op, i) => (
+              <React.Fragment key={op.kind}>
+                {i > 0 && <ActionDivider />}
+                <ActionButton
+                  label={op.label}
+                  testId={`frame-action-${op.kind}-${id}`}
+                  onClick={openAction(op.kind)}
+                  emphasizeKey={showKeyHints}
+                  emphasizeIndex={op.emphasizeIndex}
+                  suppressed={activeOperation !== null && op.kind !== activeOperation}
+                />
+              </React.Fragment>
+            ))}
+            <ActionDivider />
+            <ActionButton
+              label="+"
+              testId={`frame-action-more-${id}`}
+              onClick={anchor => canvasStore.openMorePicker(resolvedAlias, ['order', 'path'], true, anchor)}
+              suppressed={activeOperation !== null && activeOperation !== 'more'}
+            />
+          </>
         )}
       </div>
       <div

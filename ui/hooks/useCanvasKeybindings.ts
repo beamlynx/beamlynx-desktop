@@ -15,7 +15,7 @@ interface CanvasKeybindingsProps {
  * (arrows always, j/k only with Vim Mode on), Shift+J/Shift+K's finer-
  * grained walk through every node's own configured items (always available,
  * regardless of Vim Mode), and this app's own mnemonic single-letter
- * operation shortcuts (s/w/o/g/x/u/U/i, always available -- these aren't
+ * operation shortcuts (s/w/o/g/p/x/u/U/i, always available -- these aren't
  * vim conventions and don't depend on Vim Mode) on whichever node currently
  * has keyboard focus (CanvasStore.focusedAlias).
  *
@@ -216,6 +216,16 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
           if (isStart || isFrame) return;
           e.preventDefault();
           canvasStore.openColumnPicker('group', alias, anchorFor(alias));
+          return;
+        case 'p':
+          // Unlike 'g', offered on a checkpoint too - a sealed group:/limit:
+          // output is just as valid a place to search paths from as any real
+          // table (pine-lang's `? table` resolves through it the same way a
+          // real join does - see ast/table.clj's resolve-table).
+          if (isStart) return;
+          e.preventDefault();
+          if (isFrame) void canvasStore.openCheckpointPicker('path', anchorFor(alias));
+          else canvasStore.openPathPicker(alias, anchorFor(alias));
           return;
         // 'x' and Delete/Backspace are the same gesture - "remove the thing
         // that's the target of a key right now" - so a person who reaches

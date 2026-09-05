@@ -1,5 +1,5 @@
 import { makeAutoObservable, reaction, runInAction } from 'mobx';
-import { TableHint } from '../client';
+import { PathHint, TableHint } from '../client';
 import { Session } from '../session';
 import {
   CanvasFrameNode,
@@ -7,6 +7,7 @@ import {
   CanvasTableNode,
   ConfigItem,
   JoinType,
+  MoreAction,
   PENDING_CHECKPOINT_FRAME_ID,
   PickerAnchor,
   PickerItem,
@@ -29,7 +30,8 @@ import { probeBuild } from './probe';
 const hasMultipleBlocks = (expression: string): boolean => /\n\s*\n/.test(expression.trim());
 
 /** Identifies a picker request for the "already open for this" check below - table has no alias to key on. */
-const requestKey = (r: PickerRequest): string => (r.kind === 'table' ? 'table' : `${r.kind}:${r.alias}`);
+const requestKey = (r: PickerRequest): string =>
+  r.kind === 'table' ? 'table' : r.kind === 'path-route' ? `path-route:${r.alias}:${r.target}` : `${r.kind}:${r.alias}`;
 
 const emptyGraph: CanvasGraph = { nodes: [], edges: [], parsing: true, singleBlock: true };
 
@@ -717,14 +719,26 @@ export class CanvasStore {
     const base = (relevant.length ? toText(relevant) : this.session.expression).replace(/\|\s*$/, '').trimEnd();
     const current = this.session.ast?.current;
     const focusPrefix = request.alias !== current ? `${base} | from: ${request.alias}` : base;
+    // Step 2 of the path picker (a specific destination already chosen) -
+    // unlike every other kind below, this one has a real target to name
+    // after `?`, not a fixed keyword prefix - see openPathRoutePicker.
+    if (request.kind === 'path-route') {
+      const target = request.targetSchema ? `${request.targetSchema}.${request.target}` : request.target;
+      return `${focusPrefix} | ? ${target}`;
+    }
     // pine-lang has no dedicated hint category for group-by candidates (see
     // pine-actions.ts's getGroupColumns/setGroupColumns comment) - reuse
     // select's, since "which columns exist on this table" is exactly the
-    // same question either way.
+    // same question either way. `path` (step 1, no destination named yet -
+    // see openPathPicker) reuses pine-lang's own `?` operator with nothing
+    // after it, which falls back to reachability-filtered table suggestions
+    // (docs/paths.md) rather than a real path search.
     const opPrefix =
       request.kind === 'join'
         ? ''
-        : `${request.kind === 'where' ? 'w' : request.kind === 'order' ? 'o' : 's'}: `;
+        : request.kind === 'path'
+          ? '? '
+          : `${request.kind === 'where' ? 'w' : request.kind === 'order' ? 'o' : 's'}: `;
     return `${focusPrefix} | ${opPrefix}`.trimEnd();
   }
 
@@ -843,6 +857,120 @@ export class CanvasStore {
         ].filter(g => g.items.length > 0),
       };
     });
+  }
+
+  /**
+   * Step 1 of `? table` (pine-lang docs/paths.md): pick a destination table.
+   * Reuses hints.table exactly like openTablePicker/openJoinPicker - the
+   * server already narrows it to tables actually reachable from `alias`
+   * within the search's hop cap (not every table in the schema), so there's
+   * nothing path-specific to filter here on top of that. Selecting an item
+   * doesn't commit anything (see Picker.tsx's onSelect) - it opens
+   * openPathRoutePicker for the chosen table instead.
+   */
+  openPathPicker(alias: string, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
+    const request: PickerRequest = { kind: 'path', alias };
+    void this.openListPicker(request, anchor, async () => {
+      const expr = this.buildProbeExpression(request);
+      const ast = await probeBuild(expr, this.session.connectionId);
+      if (!ast) throw new Error('Failed to build path suggestions');
+      const items: PickerItem[] = ast.hints.table.map(h => ({
+        id: `${h.schema ?? ''}.${h.table}`,
+        label: h.table,
+        detail: h.schema ?? undefined,
+        // Not h.pine (unlike every other list picker) - this step only
+        // names a destination, it doesn't commit a join, so what's needed
+        // downstream is the bare table/schema openPathRoutePicker searches
+        // for, not a pine fragment.
+        value: h.table,
+      }));
+      return { groups: [{ label: '', items }] };
+    });
+  }
+
+  /**
+   * Step 2: the actual routes to `target` - each hop shaped exactly like a
+   * TableHint (see PathHint), so asTableHint (Picker.tsx) reconstructs a
+   * committable hint from the LAST hop's table/schema plus the full
+   * multi-hop `pine` string unchanged - commitJoin needs no path-specific
+   * branch at all.
+   */
+  openPathRoutePicker(
+    alias: string,
+    target: string,
+    targetSchema: string | undefined,
+    anchor: PickerAnchor = CanvasStore.defaultAnchor,
+  ) {
+    const request: PickerRequest = { kind: 'path-route', alias, target, targetSchema };
+    void this.openListPicker(request, anchor, async () => {
+      const expr = this.buildProbeExpression(request);
+      const ast = await probeBuild(expr, this.session.connectionId);
+      if (!ast) throw new Error('Failed to build route suggestions');
+      const routeLabel = (path: PathHint): string | undefined => {
+        if (path.length <= 1) return undefined;
+        // Every hop but the last is a stop along the way - the last hop IS
+        // the destination the user already picked in step 1, so repeating
+        // it here would just be noise.
+        return `via ${path.hops
+          .slice(0, -1)
+          .map(h => h.table)
+          .join(', ')}`;
+      };
+      const items: PickerItem[] = ast.hints.paths.map((path, i) => {
+        const last = path.hops[path.hops.length - 1];
+        return {
+          id: `${path.pine}-${i}`,
+          label: last.table,
+          detail: last.schema ?? undefined,
+          value: path.pine,
+          subLabel: routeLabel(path),
+        };
+      });
+      return { groups: [{ label: '', items }] };
+    });
+  }
+
+  /**
+   * The "+" overflow trigger's own menu (TableNode.tsx/FrameNode.tsx) - a
+   * fixed, non-searchable set of 2-3 actions, not a data-backed list, so it
+   * opens directly rather than through openListPicker (no probeBuild, no
+   * loading state - see PickerState's 'more' mode and Picker.tsx's mirrored
+   * 'join-type' rendering, the closest existing precedent for a small static
+   * popover).
+   */
+  openMorePicker(
+    alias: string,
+    offer: MoreAction[],
+    isFrame: boolean,
+    anchor: PickerAnchor = CanvasStore.defaultAnchor,
+  ) {
+    if (this.picker.open && this.picker.mode === 'more' && this.picker.alias === alias) {
+      this.closePicker();
+      return;
+    }
+    this.picker = { open: true, mode: 'more', alias, offer, isFrame, anchor };
+  }
+
+  /**
+   * Dispatches one "+" menu pick to the real picker it stands for - Picker.tsx
+   * calls this for both a mouse click and its own o/g/p mnemonics, so the
+   * routing lives in one place rather than being duplicated at both call
+   * sites. `isFrame` mirrors openCheckpointPicker's own routing: a
+   * checkpoint's pinned name needs re-resolving (openCheckpointPicker does
+   * that internally), so `alias` is unused in that branch - passed anyway so
+   * the non-frame branch doesn't need a separate signature.
+   */
+  activateMoreAction(alias: string, action: MoreAction, isFrame: boolean, anchor: PickerAnchor) {
+    if (isFrame) {
+      if (action === 'group') return; // never offered for a checkpoint frame - see FrameNode.tsx
+      void this.openCheckpointPicker(action, anchor);
+      return;
+    }
+    if (action === 'path') {
+      this.openPathPicker(alias, anchor);
+      return;
+    }
+    this.openColumnPicker(action, alias, anchor);
   }
 
   openColumnPicker(
@@ -1231,12 +1359,16 @@ export class CanvasStore {
    * actual pick still goes through the full pinning pipeline regardless
    * (see toggleSelectColumn etc.) - this only covers opening the picker.
    */
-  async openCheckpointPicker(kind: 'select' | 'where' | 'order' | 'join', anchor: PickerAnchor) {
+  async openCheckpointPicker(kind: 'select' | 'where' | 'order' | 'join' | 'path', anchor: PickerAnchor) {
     const segments = segmentsFromAst(this.session.expression, this.session.ast) ?? [];
     const name = currentCheckpointName(segments) ?? (await this.ensureCheckpointPinnedShared());
     if (!name) return;
     if (kind === 'join') {
       this.openJoinPicker(name, anchor);
+      return;
+    }
+    if (kind === 'path') {
+      this.openPathPicker(name, anchor);
       return;
     }
     this.openColumnPicker(kind, name, anchor);

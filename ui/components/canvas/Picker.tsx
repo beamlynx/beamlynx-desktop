@@ -3,6 +3,7 @@ import { observer } from 'mobx-react-lite';
 import {
   CanvasTableNode,
   JOIN_TYPES,
+  MORE_ACTIONS,
   PickerAnchor,
   PickerItem,
   WHERE_OPERATORS,
@@ -267,18 +268,58 @@ const Picker: React.FC = observer(() => {
     return () => window.removeEventListener('mousedown', onMouseDown, true);
   }, [picker.open, store]);
 
-  // Focuses the join-type panel's own root div so its onKeyDown below
-  // (i/l/r mnemonics, arrow keys) fires without a click first - the filter/
-  // value inputs in every other mode get this via a plain `autoFocus`
-  // attribute, which a bare `<div>` doesn't support (it's not natively
-  // focusable without a tabIndex, and React only recognizes `autoFocus` on
-  // elements that are).
-  const joinTypeAlias = picker.open && picker.mode === 'join-type' ? picker.alias : null;
+  // Focuses the join-type/more panel's own root div so its onKeyDown below
+  // (mnemonics, arrow keys) fires without a click first - the filter/value
+  // inputs in every other mode get this via a plain `autoFocus` attribute,
+  // which a bare `<div>` doesn't support (it's not natively focusable
+  // without a tabIndex, and React only recognizes `autoFocus` on elements
+  // that are).
+  const focusRootAlias =
+    picker.open && (picker.mode === 'join-type' || picker.mode === 'more') ? picker.alias : null;
   useEffect(() => {
-    if (joinTypeAlias !== null) rootRef.current?.focus();
-  }, [joinTypeAlias]);
+    if (focusRootAlias !== null) rootRef.current?.focus();
+  }, [focusRootAlias]);
 
   if (!picker.open) return null;
+
+  if (picker.mode === 'more') {
+    const offered = MORE_ACTIONS.filter(o => picker.offer.includes(o.action));
+    return (
+      <div
+        ref={rootRef}
+        tabIndex={-1}
+        onKeyDown={e => {
+          const match = offered.find(o => o.key === e.key.toLowerCase());
+          if (match) {
+            e.preventDefault();
+            store.activateMoreAction(picker.alias, match.action, picker.isFrame, picker.anchor);
+          }
+        }}
+        style={{ ...anchoredStyle(picker.anchor), padding: 8, minWidth: 140, maxHeight: 'none' }}
+        data-testid="canvas-picker"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {offered.map(option => (
+            <div
+              key={option.action}
+              data-testid={`more-${option.action}-${picker.alias}`}
+              onClick={() => store.activateMoreAction(picker.alias, option.action, picker.isFrame, picker.anchor)}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                padding: '4px 6px',
+                borderRadius: 3,
+                cursor: 'pointer',
+              }}
+            >
+              <span>{option.label}</span>
+              <span style={{ opacity: 0.5 }}>{option.key}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (picker.mode === 'join-type') {
     const node = store.canvasGraph.nodes.find(
@@ -448,6 +489,18 @@ const Picker: React.FC = observer(() => {
       case 'where':
         store.beginWhereValue(request.alias, item.value);
         return;
+      // Step 1: `item.value` here is a bare table name (not h.pine - see
+      // openPathPicker), naming the destination for step 2 to search
+      // routes to. Doesn't commit anything itself.
+      case 'path':
+        store.openPathRoutePicker(request.alias, item.value, item.detail, picker.anchor);
+        return;
+      // Step 2: item.value IS a full (possibly multi-hop) pine fragment -
+      // asTableHint reconstructs a committable hint from it exactly like
+      // any single-hop join candidate (see openPathRoutePicker).
+      case 'path-route':
+        void store.commitJoin(asTableHint(item), request.alias);
+        return;
     }
   };
 
@@ -607,6 +660,21 @@ const Picker: React.FC = observer(() => {
                           }}
                         >
                           .{item.columnHint}
+                        </div>
+                      )}
+                      {/* Only set for a path-route item whose destination is
+                          reachable more than one way (openPathRoutePicker) -
+                          same role as columnHint above (distinguishing rows
+                          that would otherwise render identically), just
+                          plain text rather than a Pine `.column` fragment. */}
+                      {item.subLabel && (
+                        <div
+                          style={{
+                            fontSize: 'calc(11px * var(--text-scale, 1))',
+                            color: 'var(--canvas-text-dim)',
+                          }}
+                        >
+                          {item.subLabel}
                         </div>
                       )}
                     </div>

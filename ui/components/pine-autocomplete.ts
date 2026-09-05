@@ -7,7 +7,7 @@ import {
 } from '@codemirror/autocomplete';
 import { Extension } from '@codemirror/state';
 import { EditorView, ViewPlugin, ViewUpdate } from '@codemirror/view';
-import { Hints, TableHint } from '../store/client';
+import { Hints, PathHint, TableHint } from '../store/client';
 
 // Configuration constants
 const MAX_AUTOCOMPLETE_OPTIONS = 15;
@@ -55,8 +55,75 @@ function getPineCompletions(
   // Check if cursor is immediately after a pipe and space
   const afterPipeSpace = beforeCursor.trim().endsWith('|');
 
-  // Add table hints (preserving original order)
-  if (hints?.table) {
+  // Is the operation currently being typed a `? table` path search
+  // (pine-lang docs/paths.md), rather than a normal table/join? Unlike every
+  // other operation, its segment starts with a literal `?`, which the `word`
+  // regex above never captures (it's not a word character) - `wordStart`
+  // alone can only ever point at the partial table name after it, never at
+  // the `?` itself. Look at the text since the last top-level pipe instead.
+  const clauseStart = beforeCursor.lastIndexOf('|') + 1;
+  const clause = beforeCursor.slice(clauseStart);
+  const inPathsContext = clause.trimStart().startsWith('?');
+  // Absolute doc position of the `?` itself - a chosen route needs to
+  // replace the WHOLE `? partial-target` fragment, not just the partial
+  // word after it, or the `?` is left dangling in the text.
+  const qPos = inPathsContext ? line.from + clauseStart + clause.indexOf('?') : -1;
+
+  if (inPathsContext) {
+    // Once the typed target names a real table, pine-lang's search has
+    // already run (ast.hints.paths) - offer the discovered routes
+    // themselves, replacing the entire `? target` fragment (from qPos, not
+    // wordStart) with the full (possibly multi-hop) route text.
+    if (hints?.paths?.length) {
+      hints.paths.forEach((path: PathHint, index) => {
+        const lastHop = path.hops[path.hops.length - 1];
+        completions.push({
+          expression: path.pine,
+          section: 'Paths',
+          label: lastHop.table,
+          // Only set when this destination is reachable more than one way -
+          // same role as a join hint's own `info` (line ~78 below), just
+          // naming the stops along the route instead of a disambiguating FK
+          // column.
+          detail:
+            path.length > 1
+              ? `via ${path.hops
+                  .slice(0, -1)
+                  .map(h => h.table)
+                  .join(', ')}`
+              : undefined,
+          type: 'variable',
+          apply: (view: EditorView) => {
+            view.dispatch({
+              changes: { from: qPos, to: pos, insert: path.pine + '|' },
+              selection: { anchor: qPos + path.pine.length + 1 },
+            });
+            if (callbacks?.onPipe) {
+              callbacks.onPipe(view);
+            }
+          },
+          boost: hints.paths.length - index,
+        });
+      });
+    } else {
+      // Still naming the destination - offer bare table names (reachability-
+      // filtered server-side, see pine-lang's generate-path-hints), not a
+      // whole new operation: no schema prefix, no trailing pipe, since this
+      // only completes `?`'s own target, not a table op of its own.
+      hints?.table?.forEach((hint, index) => {
+        if (hint.table.toLowerCase().includes(word.toLowerCase()) || word === '') {
+          completions.push({
+            expression: hint.table,
+            section: 'Tables',
+            label: hint.table,
+            type: 'variable',
+            apply: hint.table,
+            boost: (hints.table?.length ?? 0) - index,
+          });
+        }
+      });
+    }
+  } else if (hints?.table) {
     const getKey = (hint: TableHint) => `${hint.schema}.${hint.table}`;
     const tableCount =
       hints?.table?.reduce((acc, hint) => {

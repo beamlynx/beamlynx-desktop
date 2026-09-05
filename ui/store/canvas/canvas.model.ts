@@ -132,6 +132,14 @@ export type PickerItem = {
    * before this field existed.
    */
   columnHint?: string;
+  /**
+   * Set only for a path-route item (openPathRoutePicker) whose destination
+   * table is reachable more than one way - e.g. "via employee" - so two
+   * routes to the identical table (same label/detail) read as distinguishable
+   * rows. Unlike columnHint, this isn't a Pine `.column` fragment, so it
+   * renders as plain text rather than a dot-prefixed one.
+   */
+  subLabel?: string;
 };
 
 export type PickerRequest =
@@ -140,7 +148,11 @@ export type PickerRequest =
   | { kind: 'select'; alias: string }
   | { kind: 'where'; alias: string }
   | { kind: 'order'; alias: string }
-  | { kind: 'group'; alias: string };
+  | { kind: 'group'; alias: string }
+  /** Step 1 of `? table` (docs/paths.md in pine-lang): pick a destination table - see CanvasStore.openPathPicker. */
+  | { kind: 'path'; alias: string }
+  /** Step 2: pick one of the discovered routes to `target` - see CanvasStore.openPathRoutePicker. */
+  | { kind: 'path-route'; alias: string; target: string; targetSchema?: string };
 
 /** Inner is Pine's default (no table modifier) - see pine-actions.ts's setJoinType/JOIN_MODIFIER_RE. */
 export type JoinType = 'inner' | 'left' | 'right';
@@ -219,6 +231,24 @@ export type PickerState =
       alias: string;
       current: JoinType;
       anchor: PickerAnchor;
+    }
+  | {
+      open: true;
+      mode: 'more';
+      alias: string;
+      /** Which overflow actions to offer - group is never offered on a checkpoint frame (see FrameNode.tsx). */
+      offer: MoreAction[];
+      /** Whether `alias` names a checkpoint frame rather than a plain table - decides join-type routing (openCheckpointPicker vs the direct open*Picker methods). */
+      isFrame: boolean;
+      anchor: PickerAnchor;
     };
+
+/** The actions tucked behind a node's "+" overflow trigger - see TableNode.tsx/FrameNode.tsx. */
+export type MoreAction = 'order' | 'group' | 'path';
+export const MORE_ACTIONS: { action: MoreAction; label: string; key: string }[] = [
+  { action: 'order', label: 'order', key: 'o' },
+  { action: 'group', label: 'group', key: 'g' },
+  { action: 'path', label: 'path', key: 'p' },
+];
 
 export const WHERE_OPERATORS = ['=', '!=', '>', '<', 'like', 'not like', 'ilike', 'is', 'is not'] as const;

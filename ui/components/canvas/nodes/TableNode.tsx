@@ -16,40 +16,52 @@ import { NOTCHED_NODE_THEMES } from '../../../styles/palette/themes';
  */
 export const pickerAliasFor = (picker: PickerState): string | null => {
   if (!picker.open) return null;
-  if (picker.mode === 'where-value' || picker.mode === 'join-type') return picker.alias;
+  if (picker.mode === 'where-value' || picker.mode === 'join-type' || picker.mode === 'more') return picker.alias;
   return 'alias' in picker.request ? picker.request.alias : null;
 };
 
-export type OperationKind = 'select' | 'join' | 'where' | 'order' | 'group';
+/**
+ * 'more' is the "+" overflow trigger itself (order/group/path tucked behind
+ * it - see TableNode's own action bar below), not a picker request kind on
+ * its own; 'path' is pine-lang's `? table` search (docs/paths.md).
+ */
+export type OperationKind = 'select' | 'join' | 'where' | 'order' | 'group' | 'path' | 'more';
 
 /**
  * Which single operation this node's own action bar is mid-flight on, if
  * any - null whenever nothing is open for this alias, or the open picker is
  * the table picker (StartNode's, which never targets a real alias). While
  * this is non-null, the action bar shows only that one operation instead of
- * all five: once you're inside e.g. "select", seeing "join"/"where"/"order"/
- * "group" alongside it is just noise you can't act on right now (a picker
- * being open already means we're in insert mode - see CanvasStore.mode -
- * where none of those other letters do anything). Exported for FrameNode.tsx
- * to apply the same decluttering to a checkpoint's own action bar -
- * `openCheckpointPicker` (canvas.store.ts) ultimately calls
- * `openColumnPicker`/`openJoinPicker` with the checkpoint's pinned name,
- * which is exactly the FrameNode's own `id` (see that file's own doc
- * comment), so this same alias-keyed check works unchanged for it.
+ * all four: once you're inside e.g. "select", seeing "where"/"join"/"+"
+ * alongside it is just noise you can't act on right now (a picker being open
+ * already means we're in insert mode - see CanvasStore.mode - where none of
+ * those other letters do anything). Exported for FrameNode.tsx to apply the
+ * same decluttering to a checkpoint's own action bar - `openCheckpointPicker`
+ * (canvas.store.ts) ultimately calls `openColumnPicker`/`openJoinPicker`/
+ * `openPathPicker` with the checkpoint's pinned name, which is exactly the
+ * FrameNode's own `id` (see that file's own doc comment), so this same
+ * alias-keyed check works unchanged for it.
  */
 export const activeOperationFor = (picker: PickerState, alias: string): OperationKind | null => {
   if (!picker.open) return null;
   if (picker.mode === 'where-value') return picker.alias === alias ? 'where' : null;
   // A join-TYPE popover (TraceEdge's own click, or the keyboard config
   // cursor) is still editing that node's join, same as the join-picker
-  // itself - dims select/where/order/group for it exactly the same way.
+  // itself - dims everything else for it exactly the same way.
   if (picker.mode === 'join-type') return picker.alias === alias ? 'join' : null;
+  // The "+" overflow menu itself, before any of its own items (order/group/
+  // path) has been picked - dims select/where/join the same as any other
+  // open picker would.
+  if (picker.mode === 'more') return picker.alias === alias ? 'more' : null;
   // Every `PickerRequest` variant except `{ kind: 'table' }` carries `alias`
   // (see canvas.model.ts) - the `'alias' in` check below already narrows
   // `picker.request.kind` to exclude `'table'`, so no separate check for it
   // is needed (TS itself flags one as unreachable).
   if (!('alias' in picker.request) || picker.request.alias !== alias) return null;
-  return picker.request.kind;
+  // path-route (step 2: picking a discovered route) is still the same
+  // logical operation as path (step 1: picking a destination) - both dim
+  // the bar down to the same single 'path' button.
+  return picker.request.kind === 'path-route' ? 'path' : picker.request.kind;
 };
 
 // A small, self-contained equivalent of RelationHandles.tsx - not imported
@@ -469,10 +481,17 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
   // it regardless, since neither of those is "just browsing".
   const engaged = hovered || pickerOpenHere || (isFocusTarget && !hasConfigCursor);
 
-  // The five operations, in their fixed display order - a plain lookup
-  // (not derived from anywhere else) so both render paths below (all five,
-  // or just the one mid-flight) read off the same list instead of two
-  // hand-duplicated JSX blocks drifting apart.
+  // The three always-visible operations, in their fixed display order - a
+  // plain lookup (not derived from anywhere else) so both render paths below
+  // (all three, or just the one mid-flight) read off the same list instead
+  // of two hand-duplicated JSX blocks drifting apart. order/group/path move
+  // behind the "+" trigger rendered after this row (MORE_ACTIONS) - a graph
+  // with several nodes read as wall-to-wall verbs with all six shown at
+  // once, and these three are every keyboard shortcut's own natural
+  // "most-reached-for" set; the other three keep working identically via
+  // their own bare-letter shortcut (o/g/p, see useCanvasKeybindings.ts) or a
+  // click through "+" - nothing about them actually moved, only which ones
+  // get a standing button.
   const operations: {
     kind: OperationKind;
     label: string;
@@ -487,6 +506,12 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
       emphasize: showKeyHints,
     },
     {
+      kind: 'where',
+      label: 'where',
+      onClick: anchor => canvasStore.openColumnPicker('where', data.alias, anchor),
+      emphasize: showKeyHints,
+    },
+    {
       kind: 'join',
       label: 'join',
       // `i` (insert) opens this same picker (see useCanvasKeybindings.ts)
@@ -498,33 +523,15 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
       emphasize: showKeyHints,
       emphasizeIndex: 2,
     },
-    {
-      kind: 'where',
-      label: 'where',
-      onClick: anchor => canvasStore.openColumnPicker('where', data.alias, anchor),
-      emphasize: showKeyHints,
-    },
-    {
-      kind: 'order',
-      label: 'order',
-      onClick: anchor => canvasStore.openColumnPicker('order', data.alias, anchor),
-      emphasize: showKeyHints,
-    },
-    {
-      kind: 'group',
-      label: 'group',
-      onClick: anchor => canvasStore.openColumnPicker('group', data.alias, anchor),
-      emphasize: showKeyHints,
-    },
   ];
   // While this node's own picker is open (insert mode, on this alias) -
-  // exactly one operation is "current" right now, so the other four aren't
-  // doing anything - dim them rather than removing them (see ActionButton's
+  // exactly one operation is "current" right now, so the others aren't doing
+  // anything - dim them rather than removing them (see ActionButton's
   // `suppressed` doc comment for why removal was the first version of this
   // and had to be reverted). Nothing to do with the config cursor: the bar
   // itself is already hidden entirely whenever that's active with no picker
-  // open (see `engaged` above), so there's no "dim 4 of 5" state to compute
-  // for that case - it's just not shown at all.
+  // open (see `engaged` above), so there's no "dim the rest" state to
+  // compute for that case - it's just not shown at all.
   const activeOperation = activeOperationFor(canvasStore.picker, data.alias);
 
   return (
@@ -585,6 +592,18 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
             />
           </React.Fragment>
         ))}
+        <ActionDivider />
+        {/* order/group/path, tucked behind one trigger - see the `operations`
+            comment above for why. No own keyboard letter of its own (o/g/p
+            still work directly on this node regardless of whether this menu
+            is ever opened - see useCanvasKeybindings.ts), so unlike the
+            three above this never renders emphasized. */}
+        <ActionButton
+          label="+"
+          testId={`action-more-${data.alias}`}
+          onClick={anchor => canvasStore.openMorePicker(data.alias, ['order', 'group', 'path'], false, anchor)}
+          suppressed={activeOperation !== null && activeOperation !== 'more'}
+        />
       </div>
 
       {/* Identity - the outer wrapper here is the positioning context for the
