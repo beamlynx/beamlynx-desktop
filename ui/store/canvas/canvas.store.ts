@@ -5,6 +5,8 @@ import {
   CanvasFrameNode,
   CanvasGraph,
   CanvasTableNode,
+  ConfigItem,
+  JoinType,
   PENDING_CHECKPOINT_FRAME_ID,
   PickerAnchor,
   PickerItem,
@@ -30,6 +32,16 @@ const hasMultipleBlocks = (expression: string): boolean => /\n\s*\n/.test(expres
 const requestKey = (r: PickerRequest): string => (r.kind === 'table' ? 'table' : `${r.kind}:${r.alias}`);
 
 const emptyGraph: CanvasGraph = { nodes: [], edges: [], parsing: true, singleBlock: true };
+
+/**
+ * One stop in CanvasStore's single flattened navigation sequence (see
+ * `flatStops`) - either a node's own bare "just this node" stop, or one of
+ * its reconfigurable items. Not exported: nothing outside CanvasStore reads
+ * a stop directly - components only ever read `focusedAlias`/
+ * `focusedConfigItem`, which are derived from whichever stop the cursor is
+ * currently on.
+ */
+type FocusStop = { kind: 'node'; alias: string } | { kind: 'config'; alias: string; item: ConfigItem };
 
 /**
  * One per session, mirroring how `session.graph` (store/graph.util.ts) works
@@ -65,7 +77,20 @@ export class CanvasStore {
   // already passes to openColumnPicker/openJoinPicker. Never read directly -
   // see the `focusedAlias` getter below, which is what stays valid across
   // graph changes.
-  private _focusedAlias: string | null = null;
+  // One cursor, one flat sequence (see flatStops below) - a node's own bare
+  // stop, or one of its reconfigurable items. Up/Down (focusNext/focusPrev)
+  // and Left/Right (configNext/configPrev) both just move this same cursor
+  // through two different views of the same list: Up/Down skips straight
+  // between 'node' stops; Left/Right walks every stop in order, visiting
+  // each node's own items before crossing into the next node's. Holds the
+  // stop's own identity, not a raw position - select/order/group pickers
+  // deliberately stay open across repeat toggles (toggleSelectColumn et al
+  // never call closePicker), so a plain index captured before one of those
+  // toggles can end up pointing at a totally different item once the list's
+  // shape changes (confirmed live, back when node-focus and the config
+  // cursor were two separate fields that could drift out of sync with each
+  // other).
+  private _cursor: FocusStop | null = null;
   private pickerSeq = 0;
   // Shares one in-flight checkpoint-naming commit across concurrent picker
   // opens that land before an earlier one resolves - see
@@ -149,22 +174,222 @@ export class CanvasStore {
 
   /**
    * The effective keyboard focus - always a currently-valid target, never
-   * null. Falls back (without writing `_focusedAlias`, so this stays a pure
+   * null. Falls back (without writing `_cursor`, so this stays a pure
    * computed read) to the AST's own current node, then to the first target,
-   * whenever the stored alias no longer exists (first mount, or a node that
-   * disappeared some way other than through focusNext/focusPrev/deleteNode's
-   * own bookkeeping below).
+   * whenever the cursor's alias no longer exists (first mount, or a node
+   * that disappeared some way other than through focusNext/focusPrev/
+   * deleteNode's own bookkeeping below).
    */
   get focusedAlias(): string {
     const targets = this.orderedFocusTargets;
-    if (this._focusedAlias && targets.includes(this._focusedAlias)) return this._focusedAlias;
+    if (this._cursor && targets.includes(this._cursor.alias)) return this._cursor.alias;
     const current = this.session.ast?.current;
     if (current && targets.includes(current)) return current;
     return targets[0];
   }
 
+  /** Lands the cursor on `alias`'s own bare stop - no config item highlighted. Up/Down (focusNext/focusPrev below) and every mouse click that changes focus go through this. */
   focusNode(alias: string) {
-    this._focusedAlias = alias;
+    this._cursor = { kind: 'node', alias };
+  }
+
+  /** Whether `alias` has an incoming join whose type is configurable - see CanvasEdge.joinTargetAlias. Its own thing, not one of `configItemsForAlias`' items - see `flatStops`' own comment for why. */
+  private hasIncomingJoin(alias: string): boolean {
+    return this.canvasGraph.edges.some(e => e.joinTargetAlias === alias);
+  }
+
+  /**
+   * `alias`'s own reconfigurable items (everything BUT its incoming join -
+   * see `hasIncomingJoin`/`flatStops`), in a fixed order matching the
+   * action bar's own select/where/order/group buttons: its select columns,
+   * its where conditions, its order columns, then its group columns.
+   */
+  private configItemsForAlias(alias: string): ConfigItem[] {
+    const node = this.canvasGraph.nodes.find(
+      (n): n is CanvasTableNode => n.type === 'table-node' && n.id === alias,
+    );
+    const items: ConfigItem[] = [];
+    (node?.data.selectColumns ?? []).forEach(column => items.push({ kind: 'select', column }));
+    (node?.data.whereChips ?? []).forEach((_, index) => items.push({ kind: 'where', index }));
+    (node?.data.orderChips ?? []).forEach(chip => items.push({ kind: 'order', column: chip.replace(/\s+(asc|desc)$/i, '') }));
+    (node?.data.groupChips ?? []).forEach(column => items.push({ kind: 'group', column }));
+    return items;
+  }
+
+  /**
+   * Every stop across the WHOLE pipeline, in one flat sequence: a node's
+   * incoming join (if it has one), then its own bare stop, then its own
+   * reconfigurable items (`configItemsForAlias` order) - then the next
+   * node's, and so on. The join comes BEFORE the node it leads into, not
+   * after (confirmed live: landing on a node and only then being offered
+   * "the join with the PREVIOUS node" read backwards) - it's the connection
+   * you cross to arrive at this node, the same way reading the pipeline
+   * left to right would put the arrow before the box it points to. This is
+   * what Left/Right (configNext/configPrev) walks, one stop at a time;
+   * Up/Down (focusNext/focusPrev) walks the same underlying node order but
+   * skips straight between the 'node' stops, never stopping on a join or
+   * any other config item. A node with nothing configured yet (and no
+   * incoming join) still gets its own bare stop here (so Left/Right visits
+   * it - just with nothing to pause on before the next node's), which is
+   * exactly why `orderedFocusTargets` alone (not this list) is what Up/Down
+   * needs.
+   */
+  private get flatStops(): FocusStop[] {
+    const stops: FocusStop[] = [];
+    for (const alias of this.orderedFocusTargets) {
+      if (this.hasIncomingJoin(alias)) {
+        stops.push({ kind: 'config', alias, item: { kind: 'join-type' } });
+      }
+      stops.push({ kind: 'node', alias });
+      if (alias === START_NODE_ID) continue;
+      for (const item of this.configItemsForAlias(alias)) {
+        stops.push({ kind: 'config', alias, item });
+      }
+    }
+    return stops;
+  }
+
+  /** Identifies a ConfigItem for equality checks below - not just its array position, which select/order/group deliberately don't carry (see canvas.model.ts's own comment on ConfigItem). */
+  private static configItemKey(item: ConfigItem): string {
+    if (item.kind === 'join-type') return 'join-type';
+    if (item.kind === 'where') return `where:${item.index}`;
+    return `${item.kind}:${item.column}`;
+  }
+
+  private static stopKey(stop: FocusStop): string {
+    return stop.kind === 'node' ? `node:${stop.alias}` : `config:${stop.alias}:${CanvasStore.configItemKey(stop.item)}`;
+  }
+
+  /**
+   * Re-resolved every read against the CURRENT node's items by identity,
+   * not a stored position - `_cursor` holds the stop itself, and (once
+   * confirmed to be a 'config' stop) this looks it up fresh each time.
+   * Degrades to "nothing highlighted" (not a coincidentally-repositioned
+   * neighbor) once that exact item is gone - the bug this replaced: a plain
+   * index survived a toggle that shrank the list out from under it and got
+   * silently reinterpreted as whatever OTHER item had slid into that same
+   * slot. `join-type` is checked against `hasIncomingJoin` directly rather
+   * than `configItemsForAlias`, which no longer carries it (see flatStops'
+   * own comment on why it's tracked separately).
+   */
+  get focusedConfigItem(): ConfigItem | null {
+    if (!this._cursor || this._cursor.kind !== 'config') return null;
+    if (this._cursor.item.kind === 'join-type') {
+      return this.hasIncomingJoin(this._cursor.alias) ? { kind: 'join-type' } : null;
+    }
+    const key = CanvasStore.configItemKey(this._cursor.item);
+    return this.configItemsForAlias(this._cursor.alias).find(i => CanvasStore.configItemKey(i) === key) ?? null;
+  }
+
+  /**
+   * Shift+J - the next stop in `flatStops`, the single flat sequence
+   * spanning the whole pipeline. Moving off the last stop of one node lands
+   * on the very next node's own bare stop, not its first config item -
+   * visiting the node itself is part of the sequence, not skipped past on
+   * the way to what's configured on it. Wraps from the pipeline's last stop
+   * back to its first. Deliberately not bound to a spatial direction
+   * (ArrowRight, an earlier version of this) - "next" in this sequence has
+   * no reliable on-screen direction to match, since a "belongs to" relation
+   * can render a node's own parent to its LEFT (confirmed live).
+   */
+  configNext() {
+    const stops = this.flatStops;
+    const currentKey = this._cursor ? CanvasStore.stopKey(this._cursor) : null;
+    const idx = currentKey ? stops.findIndex(s => CanvasStore.stopKey(s) === currentKey) : -1;
+    this._cursor = stops[idx === -1 ? 0 : (idx + 1) % stops.length];
+  }
+
+  /** Shift+K - mirrors configNext. */
+  configPrev() {
+    const stops = this.flatStops;
+    const currentKey = this._cursor ? CanvasStore.stopKey(this._cursor) : null;
+    const idx = currentKey ? stops.findIndex(s => CanvasStore.stopKey(s) === currentKey) : -1;
+    this._cursor = stops[idx === -1 ? stops.length - 1 : (idx - 1 + stops.length) % stops.length];
+  }
+
+  /**
+   * The current incoming join type on `alias`, read off the same edge
+   * configItemsForAlias/openConfigCursor key off (`joinTargetAlias ===
+   * alias`) - shared so both agree on what "current" means without
+   * recomputing it twice.
+   */
+  private incomingJoinType(alias: string): JoinType {
+    const incoming = this.canvasGraph.edges.find(e => e.joinTargetAlias === alias);
+    return incoming?.joinType === 'LEFT' ? 'left' : incoming?.joinType === 'RIGHT' ? 'right' : 'inner';
+  }
+
+  /** Enter/Space on whatever configNext/configPrev last highlighted - opens the same editor its mouse equivalent (the edge's join-type icon, or a chip's own click) would. No-op with nothing highlighted. */
+  openConfigCursor(anchor: PickerAnchor) {
+    const item = this.focusedConfigItem;
+    if (!item) return;
+    const alias = this.focusedAlias;
+    switch (item.kind) {
+      case 'join-type':
+        this.openJoinTypePicker(alias, this.incomingJoinType(alias), anchor);
+        return;
+      case 'where':
+        this.openWhereEditor(alias, item.index, anchor);
+        return;
+      case 'select':
+      case 'order':
+      case 'group':
+        // These three don't have a per-chip value/operator to prefill the
+        // way a where condition or a join's type do (see canvas.model.ts's
+        // WHERE_OPERATORS/JOIN_TYPES) - reopening means the same list
+        // picker ChipRow's onSelect/the action bar's own button already
+        // open. `item.column` (this ConfigItem's own identity, not a
+        // recomputed lookup) still points it at the exact column this
+        // cursor is on (Picker.tsx's own sinkSelected already shows it
+        // checked) rather than defaulting to the top of the list - without
+        // it, Enter again would toggle whatever's first alphabetically,
+        // which reads as "I asked to remove this column and it added a
+        // different one instead."
+        this.openColumnPicker(item.kind, alias, anchor, item.column);
+        return;
+    }
+  }
+
+  /**
+   * 'x'/Delete/Backspace on whatever configNext/configPrev last highlighted -
+   * the keyboard equivalent of that item's own ChipRow `×`. A join's "type"
+   * can't be removed the way a chip can (every join has exactly one), so
+   * this resets it to inner - Pine's own default (no `:left`/`:right`
+   * modifier) - rather than being a no-op or an error.
+   */
+  async removeConfigCursor(): Promise<void> {
+    const item = this.focusedConfigItem;
+    if (!item) return;
+    const alias = this.focusedAlias;
+    switch (item.kind) {
+      case 'join-type':
+        await this.setJoinType(alias, 'inner');
+        return;
+      case 'where':
+        await this.removeWhereAt(alias, item.index);
+        return;
+      case 'select':
+        await this.toggleSelectColumn(alias, item.column);
+        return;
+      case 'group':
+        await this.toggleGroupColumn(alias, item.column);
+        return;
+      case 'order': {
+        // removeOrderAt takes an array index - unlike toggleSelectColumn/
+        // toggleGroupColumn, there's no value-keyed remove for order (each
+        // entry also carries a direction, not just a column name), so this
+        // is the one case that still needs a fresh index lookup rather than
+        // trusting a stored one - found by the same column identity this
+        // ConfigItem already carries, not a position captured earlier.
+        const node = this.canvasGraph.nodes.find(
+          (n): n is CanvasTableNode => n.type === 'table-node' && n.id === alias,
+        );
+        const index = (node?.data.orderChips ?? []).findIndex(
+          chip => chip.replace(/\s+(asc|desc)$/i, '') === item.column,
+        );
+        if (index >= 0) await this.removeOrderAt(alias, index);
+        return;
+      }
+    }
   }
 
   /** Next-higher `data.order` (ArrowDown/j) - wraps from the last node back to the first. */
@@ -324,17 +549,17 @@ export class CanvasStore {
 
   /**
    * Restores the previous snapshot. Closes any open picker and clears the
-   * multi-select and keyboard focus - all three can hold onto a node alias
-   * (picker.request.alias, selectedAliases, _focusedAlias) that this undo
-   * may make stale (e.g. undoing past the gesture that pinned/created that
+   * multi-select and keyboard cursor - all three can hold onto a node alias
+   * (picker.request.alias, selectedAliases, `_cursor`) that this undo may
+   * make stale (e.g. undoing past the gesture that pinned/created that
    * alias), the same class of staleness `runCommit`'s aliasMap-rename
    * handling exists for, just with no rename to follow this time since the
-   * alias may no longer exist at all. Clearing `_focusedAlias` rather than
-   * leaving it dangling matters here specifically: the `focusedAlias`
-   * getter's fallback only fires when the stored alias is *absent* from the
-   * new graph - if undo happens to land on a graph that coincidentally
-   * still has an alias of that same name (a different table entirely), the
-   * stale value would silently look valid.
+   * alias may no longer exist at all. Clearing `_cursor` rather than leaving
+   * it dangling matters here specifically: the `focusedAlias` getter's
+   * fallback only fires when the stored alias is *absent* from the new
+   * graph - if undo happens to land on a graph that coincidentally still
+   * has an alias of that same name (a different table entirely), the stale
+   * value would silently look valid.
    */
   undo() {
     if (this.undoStack.length === 0) return;
@@ -342,7 +567,7 @@ export class CanvasStore {
     this.redoStack.push(this.session.expression);
     this.closePicker();
     this.selectedAliases = [];
-    this._focusedAlias = null;
+    this._cursor = null;
     this.session.expression = previous;
     this.notifyAutoRun();
   }
@@ -353,7 +578,7 @@ export class CanvasStore {
     this.undoStack.push(this.session.expression);
     this.closePicker();
     this.selectedAliases = [];
-    this._focusedAlias = null;
+    this._cursor = null;
     this.session.expression = next;
     this.notifyAutoRun();
   }
@@ -507,14 +732,28 @@ export class CanvasStore {
     request: PickerRequest,
     anchor: PickerAnchor,
     load: () => Promise<{ groups: { label: string; items: PickerItem[] }[] }>,
+    focusValue?: string,
   ) {
     // Re-clicking the action button that's already open shouldn't reopen
     // it - that meant a redundant probeBuild round-trip and, worse, the
     // anchor snapping to wherever on the button this particular click
     // landed (confirmed live: clicking the same "select" button twice made
     // the dropdown visibly jump). A picker already open for the same
-    // request just stays exactly as it is.
+    // request just stays exactly as it is - EXCEPT `focusValue`: select/
+    // order/group pickers deliberately stay open across repeat picks (see
+    // toggleSelectColumn), so clicking a DIFFERENT already-selected chip (or
+    // moving the keyboard config cursor to one) while that same alias+kind
+    // picker is still open from a moment ago must still move the highlight
+    // there - without this, the picker silently kept showing wherever it
+    // last was, which read as "reopening this chip did nothing." Left
+    // untouched (still a pure no-op) when focusValue is absent, which is
+    // exactly the action bar's own button reopening itself - the "don't let
+    // repeat clicks jump the anchor" case this guard exists for in the
+    // first place.
     if (this.picker.open && this.picker.mode === 'list' && requestKey(this.picker.request) === requestKey(request)) {
+      if (focusValue !== undefined) {
+        this.picker = { ...this.picker, anchor, focusValue };
+      }
       return;
     }
 
@@ -523,7 +762,7 @@ export class CanvasStore {
     // an observable field, so reading `this.picker.request` back gives a
     // proxy that never === the original closure variable.
     const seq = ++this.pickerSeq;
-    this.picker = { open: true, mode: 'list', request, anchor, loading: true, groups: [], filter: '' };
+    this.picker = { open: true, mode: 'list', request, anchor, loading: true, groups: [], filter: '', focusValue };
     try {
       const { groups } = await load();
       // pine-lang's hints can legitimately list the same join fragment twice
@@ -610,18 +849,53 @@ export class CanvasStore {
     kind: 'select' | 'where' | 'order' | 'group',
     alias: string,
     anchor: PickerAnchor = CanvasStore.defaultAnchor,
+    /** Pre-highlight this column once the list loads - see PickerState's own `focusValue` doc. */
+    focusValue?: string,
   ) {
     const request: PickerRequest = { kind, alias };
-    void this.openListPicker(request, anchor, async () => {
-      const expr = this.buildProbeExpression(request);
-      const ast = await probeBuild(expr, this.session.connectionId);
-      if (!ast) throw new Error('Failed to build column suggestions');
-      // No dedicated hint category for group - see buildProbeExpression's
-      // matching comment; reuses select's.
-      const hints = kind === 'where' ? ast.hints.where : kind === 'order' ? ast.hints.order : ast.hints.select;
-      const items: PickerItem[] = hints.map(h => ({ id: h.column, label: h.column, value: h.column }));
-      return { groups: [{ label: '', items }] };
-    });
+    void this.openListPicker(
+      request,
+      anchor,
+      async () => {
+        const expr = this.buildProbeExpression(request);
+        const ast = await probeBuild(expr, this.session.connectionId);
+        if (!ast) throw new Error('Failed to build column suggestions');
+        // No dedicated hint category for group - see buildProbeExpression's
+        // matching comment; reuses select's.
+        const hints = kind === 'where' ? ast.hints.where : kind === 'order' ? ast.hints.order : ast.hints.select;
+        const items: PickerItem[] = hints.map(h => ({ id: h.column, label: h.column, value: h.column }));
+        // hints.select (and order/group, which reuse it) only ever lists
+        // what could still be ADDED - buildProbeExpression's own comment
+        // calls this deliberate for select's "what else could I add"
+        // question. That means an already-selected column reopened via its
+        // own chip (ChipRow's onSelect/openConfigCursor, both passing it as
+        // `focusValue`) doesn't actually exist in this list at all - not
+        // findable, not highlightable, and pressing Enter on whatever IS
+        // first among the genuinely-new candidates adds a different column
+        // instead of removing the one just clicked. Merging the node's own
+        // current selection back in (Picker.tsx's sinkSelected already sorts
+        // it to the bottom and checks it - insertion position here doesn't
+        // matter) fixes the picker for the one case its hints were never
+        // meant to answer alone.
+        if (kind === 'select' || kind === 'order' || kind === 'group') {
+          const node = this.canvasGraph.nodes.find(
+            (n): n is CanvasTableNode => n.type === 'table-node' && n.id === alias,
+          );
+          const existing =
+            kind === 'select'
+              ? node?.data.selectColumns ?? []
+              : kind === 'group'
+                ? node?.data.groupChips ?? []
+                : (node?.data.orderChips ?? []).map(c => c.replace(/\s+(asc|desc)$/i, ''));
+          const present = new Set(items.map(i => i.value));
+          for (const column of existing) {
+            if (!present.has(column)) items.push({ id: column, label: column, value: column });
+          }
+        }
+        return { groups: [{ label: '', items }] };
+      },
+      focusValue,
+    );
   }
 
   // --- commits ---------------------------------------------------------
@@ -664,6 +938,29 @@ export class CanvasStore {
     if (createdAlias) this.focusNode(createdAlias);
   }
 
+  /**
+   * Opens the small Inner/Left/Right popover for one join - a click on
+   * TraceEdge's own label/pin, or openConfigCursor's keyboard equivalent.
+   * `alias` is always the edge's `joinTargetAlias` (see CanvasEdge's own
+   * comment for why that can differ from the edge's rendered `target`), not
+   * something this method resolves itself. Re-clicking the edge that's
+   * already open closes it, same toggle convention as openListPicker's own
+   * re-click guard.
+   */
+  openJoinTypePicker(alias: string, current: JoinType, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
+    if (this.picker.open && this.picker.mode === 'join-type' && this.picker.alias === alias) {
+      this.closePicker();
+      return;
+    }
+    this.picker = { open: true, mode: 'join-type', alias, current, anchor };
+  }
+
+  /** Inner/Left/Right, mutually exclusive - always a full commit+close, never staying open for repeat picks (unlike select/order/group's checkbox-style toggles), since picking one answers the whole question. */
+  async setJoinType(alias: string, type: JoinType) {
+    await this.commit(base => actions.setJoinType(base, actions.resolveAlias(base, alias), type));
+    this.closePicker();
+  }
+
   async commitSelectColumns(alias: string, columns: string[]) {
     await this.commit(base => actions.setSelectColumns(base, actions.resolveAlias(base, alias), columns));
   }
@@ -692,6 +989,23 @@ export class CanvasStore {
     this.picker = { open: true, mode: 'where-value', alias, column, operator: '=', value: '', anchor };
   }
 
+  /**
+   * Reopens the where-value panel for an EXISTING condition (a chip's own
+   * click, or configNext/openConfigCursor's keyboard equivalent), prefilled
+   * from `ast.where` - structured data already, so no re-parsing of the
+   * derived `whereChips` display string (`"id = 1"`) is needed. `index` is
+   * the same pipeline-order indexing removeWhereConditionAt/
+   * updateWhereConditionAt use. No-op if the index doesn't currently exist
+   * (e.g. a stale click racing a commit that just removed it).
+   */
+  openWhereEditor(alias: string, index: number, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
+    const condition = (this.session.ast?.where ?? []).filter(w => w[0] === alias)[index];
+    if (!condition) return;
+    const [, column, , operator, val] = condition;
+    const value = val && 'value' in val ? String(val.value) : '';
+    this.picker = { open: true, mode: 'where-value', alias, column, operator, value, anchor, editIndex: index };
+  }
+
   setWhereOperator(operator: string) {
     if (this.picker.open && this.picker.mode === 'where-value') this.picker = { ...this.picker, operator };
   }
@@ -702,8 +1016,12 @@ export class CanvasStore {
 
   async submitWhereValue() {
     if (!this.picker.open || this.picker.mode !== 'where-value' || !this.picker.value.trim()) return;
-    const { alias, column, operator, value } = this.picker;
-    await this.commitWhere(alias, column, operator, value.trim());
+    const { alias, column, operator, value, editIndex } = this.picker;
+    if (editIndex !== undefined) {
+      await this.commitWhereUpdate(alias, editIndex, column, operator, value.trim());
+    } else {
+      await this.commitWhere(alias, column, operator, value.trim());
+    }
   }
 
   async commitWhere(alias: string, column: string, operator: string, value: string) {
@@ -711,8 +1029,21 @@ export class CanvasStore {
     this.closePicker();
   }
 
+  async commitWhereUpdate(alias: string, index: number, column: string, operator: string, value: string) {
+    await this.commit(base =>
+      actions.updateWhereConditionAt(base, actions.resolveAlias(base, alias), index, column, operator, value),
+    );
+    this.closePicker();
+  }
+
   async removeWhereAt(alias: string, index: number) {
     await this.commit(base => actions.removeWhereConditionAt(base, actions.resolveAlias(base, alias), index));
+  }
+
+  /** The where-value panel's own "remove" action (offered only while editing an existing condition - see Picker.tsx) - removes, then closes, unlike removeWhereAt's own (ChipRow's × stays open on nothing, since there's nothing left to show). */
+  async removeWhereAndClose(alias: string, index: number) {
+    await this.removeWhereAt(alias, index);
+    this.closePicker();
   }
 
   /**

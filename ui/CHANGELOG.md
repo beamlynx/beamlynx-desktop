@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- Canvas mode: click a join's icon to pick Inner, Left, or Right. It's the same two-circle diagram most SQL join references use - inner shades just the overlap, left/right shades one whole side plus the overlap - so the type reads at a glance with no text label needed.
+- Canvas mode: click an existing `where` condition, selected column, order column, or group column to reopen it for editing, instead of removing it and adding a new one.
+- Canvas mode: Shift+J and Shift+K step through the whole pipeline as one list - each node, then everything configured on it (its incoming join, selected columns, where conditions, order columns, group columns), then the next node's. Enter or Space opens whichever one is highlighted; Delete, Backspace, or `x` removes it.
 
 ## [0.57.0] - 2026-09-02
 ### Added

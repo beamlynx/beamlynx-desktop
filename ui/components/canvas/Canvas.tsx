@@ -154,15 +154,26 @@ const Flow: React.FC<{
   // sharing a color would blur that.
   const edges = canvasGraph.edges.map(e => {
     // Edges are a derived, read-only rendering of the joins in ast.joins -
-    // there's no gesture that does anything with a *selected* edge, so
-    // letting them be clickable/selectable at all was just a way to end up
-    // with an inert highlighted edge and no idea why.
+    // there's no gesture that does anything with a ReactFlow-*selected*
+    // edge, so letting them be clickable/selectable at all was just a way to
+    // end up with an inert highlighted edge and no idea why. The join-type
+    // pill (TraceEdge.tsx's own EdgeLabelRenderer overlay) still opens a
+    // picker on click - that's handled entirely on the overlay's own
+    // onClick, bypassing ReactFlow's selection machinery altogether, so it
+    // doesn't need selectable/focusable to be true.
     const base = {
       ...e,
       selectable: false,
       focusable: false,
       type: 'trace',
       style: { stroke: 'var(--canvas-trace)', strokeWidth: 1.5 },
+      // ReactFlow only forwards an edge's own recognized fields (id/source/
+      // target/style/markerEnd/...) to its custom edge component - the rest
+      // of `...e` above (joinType, joinTargetAlias, unresolved, uncertain)
+      // never reaches TraceEdge.tsx as props. `unresolved`/`uncertain` never
+      // needed to (only the style computed below does); joinType/
+      // joinTargetAlias do, via the one field ReactFlow does pass through.
+      data: { joinType: e.joinType, joinTargetAlias: e.joinTargetAlias },
     };
     if (e.unresolved) {
       return {

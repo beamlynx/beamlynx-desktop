@@ -1,4 +1,5 @@
 import { Ast, TableHint } from '../client';
+import { JoinType } from './canvas.model';
 import {
   appendOwnedSegment,
   appendTableSegment,
@@ -100,6 +101,31 @@ export const join = (base: PinnedBase, hint: TableHint, alias: string, fromAlias
   return toText(appendTableSegment(base.segments, hint.pine, alias, fromAlias, targetsCheckpoint));
 };
 
+// Matches a table segment's own `:left`/`:right` modifier (pine.bnf's
+// table-mod) so setJoinType can strip a prior one before applying the next -
+// table modifiers can appear in any order/repeat per the grammar (see
+// pine-text.ts's extractAsAlias), but canvas only ever writes at most one of
+// these on a segment it generated.
+const JOIN_MODIFIER_RE = /\s+:(?:left|right)\b/gi;
+
+/**
+ * Sets (or clears, for 'inner') the `:left`/`:right` modifier on `alias`'s
+ * own table segment - the segment `appendTableSegment` created for it when
+ * it was first joined in. This is the one thing that actually changes the
+ * emitted SQL join keyword (pine-lang's eval.clj); which "has"/"belongs to"
+ * FK direction resolved the join (ast.joins's `relation[2]`) is a completely
+ * separate axis this doesn't touch.
+ */
+export const setJoinType = (base: PinnedBase, alias: string, type: JoinType): string => {
+  const idx = base.segments.findIndex(s => s.kind === 'table' && s.owner === alias);
+  if (idx < 0) return toText(base.segments);
+  const stripped = base.segments[idx].text.replace(JOIN_MODIFIER_RE, '');
+  const text = type === 'inner' ? stripped : `${stripped} :${type}`;
+  const next = [...base.segments];
+  next[idx] = { ...next[idx], text };
+  return toText(next);
+};
+
 // Select/order chips are always written by canvas as plain `alias.column` -
 // so toggling the desired set and regenerating the whole segment is safe.
 // (This loses a hand-typed column-function form like `created_at => month`
@@ -186,6 +212,32 @@ export const removeWhereConditionAt = (base: PinnedBase, alias: string, index: n
   const target = whereSegments[index];
   if (!target) return toText(base.segments);
   return toText(base.segments.filter(s => s !== target));
+};
+
+/**
+ * Rewrites the condition at `index` (same pipeline-order indexing as
+ * removeWhereConditionAt) in place, keeping its position rather than
+ * removing and re-appending it - lets a condition be edited without visibly
+ * jumping to the end of its alias's chip row. `column` is passed back in
+ * unchanged by every caller today (CanvasStore.openWhereEditor's picker only
+ * offers operator/value to edit), but takes it explicitly rather than
+ * re-reading the old segment's own column so a future column-change edit
+ * needs no new plumbing here.
+ */
+export const updateWhereConditionAt = (
+  base: PinnedBase,
+  alias: string,
+  index: number,
+  column: string,
+  operator: string,
+  value: string,
+): string => {
+  const whereSegments = base.segments.filter(s => s.owner === alias && s.kind === 'where');
+  const target = whereSegments[index];
+  if (!target) return toText(base.segments);
+  const condition = `${alias}.${column} ${operator} ${buildWhereLiteral(value)}`;
+  const next = base.segments.map(s => (s === target ? { ...s, text: `where: ${condition}` } : s));
+  return toText(next);
 };
 
 export const addOrderColumn = (

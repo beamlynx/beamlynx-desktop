@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import {
   CanvasTableNode,
+  JOIN_TYPES,
   PickerAnchor,
   PickerItem,
   WHERE_OPERATORS,
@@ -158,12 +159,39 @@ const Picker: React.FC = observer(() => {
         )
       : [];
   const flatKey = flatItems.map(i => i.id).join('|');
+  const focusValue = picker.open && picker.mode === 'list' ? picker.focusValue : undefined;
 
-  // Reset to the top item whenever a fresh picker opens or the visible set
-  // changes (typing narrows the filter, or results finish loading).
+  // Reset the highlight whenever a fresh picker opens or the visible set
+  // changes (typing narrows the filter, or results finish loading) - to
+  // `focusValue`'s own row when CanvasStore.openConfigCursor set one (so
+  // Enter immediately toggles that SAME column back off), the top item
+  // otherwise.
   useEffect(() => {
+    if (focusValue) {
+      const idx = flatItems.findIndex(i => i.value === focusValue);
+      if (idx >= 0) {
+        setHighlighted(idx);
+        return;
+      }
+    }
     setHighlighted(0);
-  }, [picker.open, flatKey]);
+    // flatItems is recomputed every render (a fresh array each time) - keying
+    // this off it directly would re-run on every render instead of only
+    // when the actual visible set changes; flatKey is its stable identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [picker.open, flatKey, focusValue]);
+
+  // Keeps the highlighted row scrolled into view as ArrowUp/Down/Tab move
+  // it (or as the effect above lands it on a specific `focusValue` row that
+  // may be well below the fold, sunk to the bottom by sinkSelected) -
+  // without this, arrowing past the visible area kept "moving" a selection
+  // the scrollable body never actually followed.
+  const itemRefs = useRef(new Map<string, HTMLDivElement>());
+  useEffect(() => {
+    const id = flatItems[highlighted]?.id;
+    if (id) itemRefs.current.get(id)?.scrollIntoView({ block: 'nearest' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlighted, flatKey]);
 
   // The picker's filter/value input is `autoFocus`ed while open. Closing it
   // (however that happens - a single-pick commit like commitFirstTable,
@@ -239,7 +267,92 @@ const Picker: React.FC = observer(() => {
     return () => window.removeEventListener('mousedown', onMouseDown, true);
   }, [picker.open, store]);
 
+  // Focuses the join-type panel's own root div so its onKeyDown below
+  // (i/l/r mnemonics, arrow keys) fires without a click first - the filter/
+  // value inputs in every other mode get this via a plain `autoFocus`
+  // attribute, which a bare `<div>` doesn't support (it's not natively
+  // focusable without a tabIndex, and React only recognizes `autoFocus` on
+  // elements that are).
+  const joinTypeAlias = picker.open && picker.mode === 'join-type' ? picker.alias : null;
+  useEffect(() => {
+    if (joinTypeAlias !== null) rootRef.current?.focus();
+  }, [joinTypeAlias]);
+
   if (!picker.open) return null;
+
+  if (picker.mode === 'join-type') {
+    const node = store.canvasGraph.nodes.find(
+      (n): n is CanvasTableNode => n.id === picker.alias && n.type === 'table-node',
+    );
+    return (
+      <div
+        ref={rootRef}
+        tabIndex={-1}
+        onKeyDown={e => {
+          const idx = JOIN_TYPES.findIndex(o => o.type === picker.current);
+          if (e.key === 'ArrowDown' || e.key === 'ArrowRight' || e.key === 'Tab') {
+            e.preventDefault();
+            void store.setJoinType(picker.alias, JOIN_TYPES[(idx + 1) % JOIN_TYPES.length].type);
+            return;
+          }
+          if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+            e.preventDefault();
+            void store.setJoinType(picker.alias, JOIN_TYPES[(idx - 1 + JOIN_TYPES.length) % JOIN_TYPES.length].type);
+            return;
+          }
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            store.closePicker();
+            return;
+          }
+          // i/l/r mnemonics - safe to bind directly here (unlike a
+          // canvas-global letter shortcut) because this popover owns the
+          // keyboard exclusively while it's open, the same reason
+          // useCanvasKeybindings.ts's whole bare-key layer goes silent
+          // whenever any picker (canvasStore.mode !== 'normal') is up.
+          const match = JOIN_TYPES.find(o => o.key === e.key.toLowerCase());
+          if (match) {
+            e.preventDefault();
+            void store.setJoinType(picker.alias, match.type);
+          }
+        }}
+        style={{ ...anchoredStyle(picker.anchor), padding: 8, minWidth: 140, maxHeight: 'none' }}
+        data-testid="canvas-picker"
+      >
+        <div
+          style={{
+            marginBottom: 6,
+            opacity: 0.7,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {node?.data.table ?? picker.alias} join
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {JOIN_TYPES.map(option => (
+            <div
+              key={option.type}
+              data-testid={`join-type-${option.type}`}
+              onClick={() => void store.setJoinType(picker.alias, option.type)}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                padding: '4px 6px',
+                borderRadius: 3,
+                cursor: 'pointer',
+                background: option.type === picker.current ? 'var(--canvas-chip-bg)' : 'transparent',
+              }}
+            >
+              <span>{option.label}</span>
+              <span style={{ opacity: 0.5 }}>{option.key}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (picker.mode === 'where-value') {
     const node = store.canvasGraph.nodes.find(
@@ -291,11 +404,19 @@ const Picker: React.FC = observer(() => {
           <span style={{ cursor: 'pointer', opacity: 0.7 }} onClick={() => store.closePicker()}>
             cancel
           </span>
+          {picker.editIndex !== undefined && (
+            <span
+              style={{ cursor: 'pointer', color: 'var(--canvas-warn)' }}
+              onClick={() => void store.removeWhereAndClose(picker.alias, picker.editIndex as number)}
+            >
+              remove
+            </span>
+          )}
           <span
             style={{ cursor: 'pointer', color: 'var(--canvas-trace)' }}
             onClick={() => void store.submitWhereValue()}
           >
-            add
+            {picker.editIndex !== undefined ? 'update' : 'add'}
           </span>
         </div>
       </div>
@@ -404,6 +525,16 @@ const Picker: React.FC = observer(() => {
                     style={{
                       position: 'sticky',
                       top: 0,
+                      // Without an explicit stacking order, this sticky
+                      // header (earlier in the DOM than the items below it)
+                      // can still paint BEHIND those items once scrolling
+                      // makes them overlap it - later same-stacking-context
+                      // siblings paint on top of earlier ones by default.
+                      // The symptom was exactly "HAS" not looking pinned at
+                      // the top: the tail of whatever scrolled past showed
+                      // through the sliver of the header its own background
+                      // should have covered.
+                      zIndex: 1,
                       background: 'var(--canvas-picker-bg)',
                       borderLeft: `3px solid ${groupAccent(group.label)}`,
                       paddingLeft: 6,
@@ -433,6 +564,10 @@ const Picker: React.FC = observer(() => {
                   return (
                     <div
                       key={item.id}
+                      ref={el => {
+                        if (el) itemRefs.current.set(item.id, el);
+                        else itemRefs.current.delete(item.id);
+                      }}
                       data-testid={`picker-item-${item.label}`}
                       onClick={() => onSelect(item)}
                       style={{

@@ -91,8 +91,31 @@ const toHandles = (m: Map<string, CanvasHandle> | undefined): CanvasHandle[] =>
  * naming, same uncertain/unresolved flagging - rather than a second,
  * drifting copy of this logic.
  */
-const addJoins = (joins: JoinTuple[], handles: HandleMaps, edges: CanvasEdge[]): void => {
-  for (const [fromAlias, toAlias, relation] of joins) {
+// JoinTuple[3] is typed as plain `string | null` (client.ts) since it's an
+// untyped wire value - pine-lang only ever actually sends 'LEFT'/'RIGHT'/nil
+// (see eval.clj's join-keyword), but nothing upstream enforces that in TS.
+// Narrows defensively rather than asserting, so an unexpected future value
+// degrades to "render as inner" instead of silently mistyping CanvasEdge.
+const asJoinType = (value: string | null): 'LEFT' | 'RIGHT' | null =>
+  value === 'LEFT' || value === 'RIGHT' ? value : null;
+
+const addJoins = (
+  joins: JoinTuple[],
+  handles: HandleMaps,
+  edges: CanvasEdge[],
+  // A join naming a checkpoint's own pinned name directly (a table joined
+  // onto a sealed group:/limit: output - see deriveGraph's own comment on
+  // `rankAnchors`/`t.table`) has no table segment of its own for
+  // pine-actions.ts's setJoinType to find - the checkpoint is an `= name`
+  // assign, not a `table` segment with a `:left`/`:right` modifier slot.
+  // Leaving `joinTargetAlias` unset for that case (rather than pointing it
+  // at a name setJoinType can never resolve) is what keeps TraceEdge from
+  // rendering a click target that always silently no-ops.
+  isCheckpointName: (name: string) => boolean,
+): void => {
+  for (const [fromAlias, toAlias, relation, rawJoinType] of joins) {
+    const joinType = asJoinType(rawJoinType);
+    const joinTargetAlias = isCheckpointName(toAlias) ? undefined : toAlias;
     // pine-lang can return a "hint-less" relation - not null, but with
     // col/f-col/resolution all nil - when an explicit join-column no longer
     // matches any real reference (e.g. a canvas edit retargeted this join
@@ -103,7 +126,14 @@ const addJoins = (joins: JoinTuple[], handles: HandleMaps, edges: CanvasEdge[]):
     // were certain, and fed null column names into the handles below.
     if (!relation || !relation[5]) {
       // Unresolved join (see pipeline.md) - still shown, flagged, rather than silently dropped.
-      edges.push({ id: `${fromAlias}-${toAlias}`, source: fromAlias, target: toAlias, unresolved: true });
+      edges.push({
+        id: `${fromAlias}-${toAlias}`,
+        source: fromAlias,
+        target: toAlias,
+        unresolved: true,
+        joinType,
+        joinTargetAlias,
+      });
       continue;
     }
     const parentIsFrom = relation[2] === 'has';
@@ -125,6 +155,14 @@ const addJoins = (joins: JoinTuple[], handles: HandleMaps, edges: CanvasEdge[]):
       sourceHandle: `r:${parentCol}`,
       targetHandle: `l:${childCol}`,
       ...(uncertain ? { uncertain: true } : {}),
+      // Always toAlias (via joinTargetAlias above), not toNode - see
+      // CanvasEdge.joinTargetAlias's own comment for why these two can
+      // differ (a "belongs to" relation swaps fromNode/toNode for layout,
+      // but the `:left`/`:right` modifier stays on whichever table
+      // JoinTuple's own [1] names, regardless of which side of the screen it
+      // renders on).
+      joinType,
+      joinTargetAlias,
     });
   }
 };
@@ -199,7 +237,7 @@ const deriveGraph = (
 
   const handles: HandleMaps = { left: {}, right: {} };
   const edges: CanvasEdge[] = [];
-  addJoins(ast.joins ?? [], handles, edges);
+  addJoins(ast.joins ?? [], handles, edges, name => !!checkpointFor(ast, name));
 
   const nodes: CanvasNode[] = [];
   const frames: FrameSpec[] = [];
@@ -225,7 +263,7 @@ const deriveGraph = (
       const innerTables = (checkpoint.tables ?? checkpoint['selected-tables'] ?? []).filter(
         it => !checkpointFor(ast, it.table),
       );
-      addJoins(checkpoint.joins ?? [], handles, edges);
+      addJoins(checkpoint.joins ?? [], handles, edges, name => !!checkpointFor(ast, name));
       // checkpoint.columns tells us what each inner alias contributed to
       // the sealed output - but VariableAst has no equivalent of ast.where/
       // ast.order/ast.group, so where/order chips and the select-vs-group

@@ -12,10 +12,12 @@ interface CanvasKeybindingsProps {
 
 /**
  * The bare-key keyboard layer for canvas mode: node-to-node navigation
- * (arrows always, j/k only with Vim Mode on) and this app's own mnemonic
- * single-letter operation shortcuts (s/w/o/g/x/u/U/i, always available --
- * these aren't vim conventions and don't depend on Vim Mode) on whichever
- * node currently has keyboard focus (CanvasStore.focusedAlias).
+ * (arrows always, j/k only with Vim Mode on), Shift+J/Shift+K's finer-
+ * grained walk through every node's own configured items (always available,
+ * regardless of Vim Mode), and this app's own mnemonic single-letter
+ * operation shortcuts (s/w/o/g/x/u/U/i, always available -- these aren't
+ * vim conventions and don't depend on Vim Mode) on whichever node currently
+ * has keyboard focus (CanvasStore.focusedAlias).
  *
  * Mirrors useGlobalKeybindings.ts's structure (a single document-level
  * `keydown` listener) but is deliberately its own hook rather than an
@@ -117,10 +119,11 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
       // same way PineInput.tsx/SqlInput.tsx gate CodeMirror's vim mode --
       // one app-wide "Vim Mode" preference governs both. This does NOT
       // extend to the single-letter operation shortcuts below (s/w/o/g/x/
-      // u/U/i) -- those are this app's own mnemonic scheme for canvas
-      // operations, not vim conventions, and stay independent of this
-      // setting (confirmed live: gating them on Vim Mode too was wrong,
-      // since they have nothing to do with vim in the first place).
+      // u/U/i), nor to Shift+J/Shift+K below - those are this app's own
+      // mnemonic scheme for canvas operations, not vim conventions, and
+      // stay independent of this setting (confirmed live: gating them on
+      // Vim Mode too was wrong, since they have nothing to do with vim in
+      // the first place).
       if (global.vimMode) {
         switch (e.key) {
           case 'j':
@@ -135,9 +138,44 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
       }
 
       switch (e.key) {
-        // ArrowLeft/h, ArrowRight/l: reserved. There's no second navigation
-        // axis today (data.order is a single, strictly sequential list) -
-        // see the plan doc's "Explicitly out of scope".
+        // The fine-grained counterpart to plain j/k (or ArrowUp/Down) above:
+        // those jump straight between nodes, skipping whatever's configured
+        // on each one. Shift+J/Shift+K instead walk EVERY stop in the
+        // pipeline one at a time - a node's own bare stop, then its
+        // incoming join/select columns/where conditions/order columns/
+        // group columns, then the next node's - see CanvasStore.flatStops.
+        // Deliberately not ArrowLeft/ArrowRight (an earlier version of this):
+        // "next"/"previous" in that flat sequence has nothing to do with
+        // on-screen left/right - a "belongs to" relation can render a
+        // node's own parent to its LEFT (confirmed live: pressing the arrow
+        // that reads as "forward" kept landing on a node rendered further
+        // left on screen, which read as backwards). J/K read as "next/
+        // previous" the same way they already do for plain j/k, with no
+        // implied screen direction to contradict. `e.key` is 'J'/'K' (not
+        // 'j'/'k' + shiftKey) when Shift is held - same convention as 'U'
+        // below - and this is deliberately NOT gated on global.vimMode: it's
+        // this app's own mnemonic scheme, not a vim convention (see the
+        // comment on plain j/k above).
+        case 'J':
+          e.preventDefault();
+          canvasStore.configNext();
+          return;
+        case 'K':
+          e.preventDefault();
+          canvasStore.configPrev();
+          return;
+        // Opens whatever Shift+J/Shift+K above last highlighted on the
+        // focused node - the same editor its mouse equivalent (TraceEdge's
+        // own click, or a where chip's click) opens. A bare Enter/Space
+        // with nothing highlighted falls through to the `default: return`
+        // below, same as any other unbound key.
+        case 'Enter':
+        case ' ':
+          if (canvasStore.focusedConfigItem) {
+            e.preventDefault();
+            canvasStore.openConfigCursor(anchorFor(alias));
+          }
+          return;
         // `|` is Pine's own pipe operator - a join is "pipe a new table onto
         // this one", so it doubles as a second, mnemonic way to trigger the
         // exact same action as `i` below (not a different one).
@@ -179,8 +217,22 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
           e.preventDefault();
           canvasStore.openColumnPicker('group', alias, anchorFor(alias));
           return;
-        case 'x': {
+        // 'x' and Delete/Backspace are the same gesture - "remove the thing
+        // that's the target of a key right now" - so a person who reaches
+        // for Delete (the natural instinct on a regular keyboard) gets
+        // exactly what 'x' (this app's original, vim-flavored binding) does.
+        // With a config item highlighted (see Shift+J/Shift+K above),
+        // that target is the highlighted chip/join, not the whole node -
+        // the keyboard equivalent of that item's own ChipRow `×`.
+        case 'x':
+        case 'Delete':
+        case 'Backspace': {
           if (isStart) return;
+          if (canvasStore.focusedConfigItem) {
+            e.preventDefault();
+            void canvasStore.removeConfigCursor();
+            return;
+          }
           if (isFrame) {
             // Cancels the container itself - removes the whole
             // group:/limit:/name run, leaving its member tables as plain

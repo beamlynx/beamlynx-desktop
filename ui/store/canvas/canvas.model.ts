@@ -90,7 +90,21 @@ export type CanvasTableNode = Node<CanvasTableNodeData>;
 export type CanvasStartNode = Node<CanvasStartNodeData>;
 export type CanvasFrameNode = Node<CanvasFrameNodeData>;
 export type CanvasNode = CanvasTableNode | CanvasStartNode | CanvasFrameNode;
-export type CanvasEdge = Edge & { unresolved?: boolean; uncertain?: boolean };
+export type CanvasEdge = Edge & {
+  unresolved?: boolean;
+  uncertain?: boolean;
+  /** Raw wire value from JoinTuple[3] (client.ts) - null means inner (Pine's default, no `:left`/`:right` modifier). */
+  joinType?: 'LEFT' | 'RIGHT' | null;
+  /**
+   * The alias whose own table segment carries the `:left`/`:right` modifier -
+   * always JoinTuple's literal `to-alias`, which is NOT necessarily this
+   * edge's rendered `target` (addJoins in layout.ts swaps source/target for
+   * "belongs to" relations so the FK parent renders on the left, but the
+   * modifier always lives on the table that was actually appended second in
+   * the pipeline - see pine-actions.ts's setJoinType).
+   */
+  joinTargetAlias?: string;
+};
 
 export type CanvasGraph = {
   nodes: CanvasNode[];
@@ -128,6 +142,40 @@ export type PickerRequest =
   | { kind: 'order'; alias: string }
   | { kind: 'group'; alias: string };
 
+/** Inner is Pine's default (no table modifier) - see pine-actions.ts's setJoinType/JOIN_MODIFIER_RE. */
+export type JoinType = 'inner' | 'left' | 'right';
+export const JOIN_TYPES: { type: JoinType; label: string; key: string }[] = [
+  { type: 'inner', label: 'Inner', key: 'i' },
+  { type: 'left', label: 'Left', key: 'l' },
+  { type: 'right', label: 'Right', key: 'r' },
+];
+
+/**
+ * One reconfigurable item on a focused table node - what CanvasStore's
+ * Left/Right config cursor (configNext/configPrev) moves between, in the
+ * same order TableNode.tsx's own action bar lists these five operations.
+ * `join-type` has no identity beyond its kind (a node has at most one
+ * incoming join). `select`/`order`/`group` identify by the column's own
+ * VALUE, not its array position - unlike `where` (whose conditions have no
+ * unique value to key on, since two conditions can name the same column),
+ * these three pickers deliberately stay open across repeat toggles
+ * (toggleSelectColumn et al never call closePicker), so a plain index
+ * captured before a toggle can point at a completely different column once
+ * the array shrinks out from under it (confirmed live: removing a select
+ * chip while it was config-cursor-highlighted moved the highlight to
+ * whatever other already-selected column happened to slide into that same
+ * numeric slot). Tracking by value instead means CanvasStore.
+ * focusedConfigItem naturally reports "nothing" once the exact item is
+ * gone, rather than silently reinterpreting a stale index as a different
+ * item still being highlighted.
+ */
+export type ConfigItem =
+  | { kind: 'select'; column: string }
+  | { kind: 'join-type' }
+  | { kind: 'where'; index: number }
+  | { kind: 'order'; column: string }
+  | { kind: 'group'; column: string };
+
 /** Viewport coordinates (clientX/clientY) of the action button that opened the picker - see Picker.tsx. */
 export type PickerAnchor = { x: number; y: number };
 
@@ -142,6 +190,17 @@ export type PickerState =
       groups: { label: string; items: PickerItem[] }[];
       filter: string;
       error?: string;
+      /**
+       * Pre-highlight this item (matched against PickerItem.value) once the
+       * list loads, instead of defaulting to the top row - set only when
+       * reopened from a specific already-selected chip (CanvasStore.
+       * openConfigCursor's select/order/group branch), so pressing Enter
+       * immediately toggles the SAME column back off (removes it) rather
+       * than landing on whatever's first in the list and adding a different
+       * one. Undefined for the action bar's own "select"/"order"/"group"
+       * button, which has no one chip to return to.
+       */
+      focusValue?: string;
     }
   | {
       open: true;
@@ -150,6 +209,15 @@ export type PickerState =
       column: string;
       operator: string;
       value: string;
+      anchor: PickerAnchor;
+      /** Set only when reopened from an existing chip (ChipRow's onSelect) - see CanvasStore.openWhereEditor/submitWhereValue. Undefined for a brand-new condition. */
+      editIndex?: number;
+    }
+  | {
+      open: true;
+      mode: 'join-type';
+      alias: string;
+      current: JoinType;
       anchor: PickerAnchor;
     };
 

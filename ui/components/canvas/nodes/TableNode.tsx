@@ -16,7 +16,7 @@ import { NOTCHED_NODE_THEMES } from '../../../styles/palette/themes';
  */
 export const pickerAliasFor = (picker: PickerState): string | null => {
   if (!picker.open) return null;
-  if (picker.mode === 'where-value') return picker.alias;
+  if (picker.mode === 'where-value' || picker.mode === 'join-type') return picker.alias;
   return 'alias' in picker.request ? picker.request.alias : null;
 };
 
@@ -40,6 +40,10 @@ export type OperationKind = 'select' | 'join' | 'where' | 'order' | 'group';
 export const activeOperationFor = (picker: PickerState, alias: string): OperationKind | null => {
   if (!picker.open) return null;
   if (picker.mode === 'where-value') return picker.alias === alias ? 'where' : null;
+  // A join-TYPE popover (TraceEdge's own click, or the keyboard config
+  // cursor) is still editing that node's join, same as the join-picker
+  // itself - dims select/where/order/group for it exactly the same way.
+  if (picker.mode === 'join-type') return picker.alias === alias ? 'join' : null;
   // Every `PickerRequest` variant except `{ kind: 'table' }` carries `alias`
   // (see canvas.model.ts) - the `'alias' in` check below already narrows
   // `picker.request.kind` to exclude `'table'`, so no separate check for it
@@ -299,10 +303,16 @@ const ChipRow = ({
   label,
   chips,
   onRemove,
+  onSelect,
+  highlightIndex,
 }: {
   label: string;
   chips: string[];
   onRemove?: (index: number) => void;
+  /** Reopens this chip's own config panel with its current value prefilled - see CanvasStore.openWhereEditor. Only offered for "where" today; select/order/group chips are already fully edited by toggling. */
+  onSelect?: (index: number, anchor: { x: number; y: number }) => void;
+  /** The chip at this index is CanvasStore.focusedConfigItem's current target - drawn with the same "current" ring TableNode's own border uses for keyboard focus. */
+  highlightIndex?: number;
 }) => {
   if (chips.length === 0) return null;
   return (
@@ -331,17 +341,26 @@ const ChipRow = ({
       {chips.map((chip, i) => (
         <div
           key={`${chip}-${i}`}
+          onClick={
+            onSelect
+              ? e => {
+                  e.stopPropagation();
+                  onSelect(i, { x: e.clientX, y: e.clientY });
+                }
+              : undefined
+          }
           style={{
             fontSize: 'calc(10px * var(--text-scale, 1))',
             fontFamily: 'var(--canvas-font)',
             background: 'var(--canvas-chip-bg)',
             padding: '2px 6px',
             borderRadius: '3px',
-            border: '1px solid var(--canvas-chip-border)',
+            border: `1px solid ${highlightIndex === i ? 'var(--canvas-node-border-current)' : 'var(--canvas-chip-border)'}`,
             color: 'var(--canvas-text)',
             display: 'flex',
             alignItems: 'center',
             gap: '4px',
+            cursor: onSelect ? 'pointer' : undefined,
           }}
         >
           <span style={{ width: 4, height: 4, flexShrink: 0, background: 'var(--canvas-pin)' }} />
@@ -416,13 +435,39 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
   const isFocusTarget = canvasStore.focusedAlias === data.alias;
   const showKeyHints = isFocusTarget && canvasStore.mode === 'normal';
 
-  // Actions stay visible either on hover, on keyboard focus, OR while a
-  // picker this node opened is still open - otherwise moving the mouse off
-  // the node to click an item in the select/where/order dropdown (which
-  // renders outside the node's own hover region) makes the action bar
-  // vanish mid-interaction, which reads as "the actions are gone" even
-  // though you're still using one of them.
-  const engaged = hovered || isFocusTarget || pickerAliasFor(canvasStore.picker) === data.alias;
+  // Only meaningful while this node itself is the keyboard focus - a config
+  // cursor is always relative to canvasStore.focusedAlias, so a different
+  // node's own where chips must never pick up its highlight.
+  const cursorItem = isFocusTarget ? canvasStore.focusedConfigItem : null;
+  // Once the config cursor has moved onto one specific item (a chip, or the
+  // incoming join's own icon on TraceEdge.tsx), that item's own highlight
+  // ring IS the selection - keeping the whole node's thick "current" border
+  // on top of it read as two different things selected at once. The node
+  // still needs SOME visual trace of being the focus root (so Left/Right's
+  // effect is legible: "highlight moved within this node"), just not the
+  // same strong treatment a config item's own ring already carries.
+  const hasConfigCursor = cursorItem !== null;
+  // A picker actually open for this alias - distinct from merely being
+  // config-cursor-highlighted (see `engaged` below, which treats these
+  // differently: the action bar is a hint for "what can I do to this
+  // node" and has no business showing while you're just looking at
+  // something it already has, only once you've actually opened an editor
+  // for it).
+  const pickerOpenHere = pickerAliasFor(canvasStore.picker) === data.alias;
+
+  // The action bar is a HINT ("here's what you can do on this node"), not
+  // a persistent toolbar - it belongs on a bare node (hover, or plain
+  // keyboard focus with nothing drilled into), and while an editor is
+  // actually open for one specific operation (dimmed to just that one -
+  // see `activeOperation` below). It does NOT belong while the config
+  // cursor (Left/Right) is merely highlighting an existing chip/join icon
+  // without having opened anything yet - at that point the chip/icon's own
+  // highlight is already the whole story, and five "things you could add"
+  // buttons floating above it read as "part of this is still selectable",
+  // which it isn't. `hasConfigCursor` only suppresses the PLAIN-focus half
+  // of this condition - hover and an actually-open picker both still show
+  // it regardless, since neither of those is "just browsing".
+  const engaged = hovered || pickerOpenHere || (isFocusTarget && !hasConfigCursor);
 
   // The five operations, in their fixed display order - a plain lookup
   // (not derived from anywhere else) so both render paths below (all five,
@@ -472,12 +517,14 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
       emphasize: showKeyHints,
     },
   ];
-  // While this node's own picker is open (insert mode, on this alias), the
-  // other four operations aren't doing anything right now - dim them rather
-  // than removing them (see ActionButton's `suppressed` doc comment for why
-  // removal was the first version of this and had to be reverted: with the
-  // row's `justifyContent: center`, dropping four of five buttons re-centers
-  // the row around the survivor, visibly moving its label).
+  // While this node's own picker is open (insert mode, on this alias) -
+  // exactly one operation is "current" right now, so the other four aren't
+  // doing anything - dim them rather than removing them (see ActionButton's
+  // `suppressed` doc comment for why removal was the first version of this
+  // and had to be reverted). Nothing to do with the config cursor: the bar
+  // itself is already hidden entirely whenever that's active with no picker
+  // open (see `engaged` above), so there's no "dim 4 of 5" state to compute
+  // for that case - it's just not shown at all.
   const activeOperation = activeOperationFor(canvasStore.picker, data.alias);
 
   return (
@@ -555,13 +602,18 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
             width: nodeWidth,
             minHeight: height,
             padding: '10px 10px 6px 10px',
-            border: isFocusTarget
+            // Plain, unfocused styling the instant a config item owns the
+            // highlight (hasConfigCursor) - even a thinner/quieter accent
+            // border here was still a SECOND thing visibly reading as
+            // "selected" alongside the chip's own ring or the join icon's
+            // own halo (confirmed live - "it is selecting the join and the
+            // node at the same time"). Only one thing shows as current at
+            // once: the specific config item while there is one, the whole
+            // node otherwise.
+            border: isFocusTarget && !hasConfigCursor
               ? '3px solid var(--canvas-node-border-current)'
               : '1.5px solid var(--canvas-node-border)',
-            // A background swap (not just a border/glow, which turned out too
-            // subtle to notice at a glance across a busy graph) for whichever
-            // node has keyboard focus - see isFocusTarget above.
-            background: isFocusTarget ? 'var(--canvas-node-bg-current)' : 'var(--canvas-node-bg)',
+            background: isFocusTarget && !hasConfigCursor ? 'var(--canvas-node-bg-current)' : 'var(--canvas-node-bg)',
             borderRadius: hasNotch ? '3px' : '8px',
             clipPath: hasNotch ? cardClipPath : undefined,
             color: 'var(--canvas-text)',
@@ -634,21 +686,35 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
         label="sel"
         chips={data.selectColumns}
         onRemove={i => void canvasStore.toggleSelectColumn(data.alias, data.selectColumns[i])}
+        onSelect={(i, anchor) => canvasStore.openColumnPicker('select', data.alias, anchor, data.selectColumns[i])}
+        highlightIndex={cursorItem?.kind === 'select' ? data.selectColumns.indexOf(cursorItem.column) : undefined}
       />
       <ChipRow
         label="where"
         chips={data.whereChips}
         onRemove={i => void canvasStore.removeWhereAt(data.alias, i)}
+        onSelect={(i, anchor) => canvasStore.openWhereEditor(data.alias, i, anchor)}
+        highlightIndex={cursorItem?.kind === 'where' ? cursorItem.index : undefined}
       />
       <ChipRow
         label="order"
         chips={data.orderChips}
         onRemove={i => void canvasStore.removeOrderAt(data.alias, i)}
+        onSelect={(i, anchor) =>
+          canvasStore.openColumnPicker('order', data.alias, anchor, data.orderChips[i]?.replace(/\s+(asc|desc)$/i, ''))
+        }
+        highlightIndex={
+          cursorItem?.kind === 'order'
+            ? data.orderChips.findIndex(chip => chip.replace(/\s+(asc|desc)$/i, '') === cursorItem.column)
+            : undefined
+        }
       />
       <ChipRow
         label="group"
         chips={data.groupChips}
         onRemove={i => void canvasStore.toggleGroupColumn(data.alias, data.groupChips[i])}
+        onSelect={(i, anchor) => canvasStore.openColumnPicker('group', data.alias, anchor, data.groupChips[i])}
+        highlightIndex={cursorItem?.kind === 'group' ? data.groupChips.indexOf(cursorItem.column) : undefined}
       />
     </div>
   );
