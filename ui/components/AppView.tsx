@@ -78,7 +78,7 @@ const PlaygroundDisabled = () => {
         The playground is disabled. Redirecting you to download the app...
       </Typography>
       <Link href={PLAYGROUND_DOWNLOAD_URL} underline="hover">
-        Click here if you're not redirected
+        Click here if you&apos;re not redirected
       </Link>
     </Box>
   );
