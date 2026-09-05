@@ -1,5 +1,5 @@
 {
-  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang bumped to its tagged 0.42.0 (pine-lang now tags releases): adds prettified output to /api/v1/eval, matching what /api/v1/build already returned. beamlynx-ui bumped to its tagged 0.57.0, which adds a draggable/reorderable tab strip and vertical tab rail, a redesigned Database Connections list, and fixes 'Only apply to MCP server' reverting to off after almost any connection action.",
-  "pineLangRef": "0.42.0",
-  "beamlynxUiRef": "0.57.0"
+  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang bumped to its tagged 0.43.0: adds `? table`, which finds every join chain between two tables (not just the direct next hop), ranked by how much of a real ownership relationship each route stays within. beamlynx-ui bumped to its tagged 0.58.0, which adds the matching canvas-mode 'path' action and Pine-editor autocomplete for that search, a join-type (Inner/Left/Right) picker, click-to-edit chips, Shift+J/Shift+K pipeline navigation, and several canvas focus/hover fixes.",
+  "pineLangRef": "0.43.0",
+  "beamlynxUiRef": "0.58.0"
 }

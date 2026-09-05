@@ -5,9 +5,20 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
-## [0.11.1] - 2026-09-06
+## [0.12.0] - 2026-09-06
+### Added
+- `? table` finds every join chain between two tables through the schema graph, not just the direct next hop -- e.g. `company | ? document` searches for every route, multi-hop ones included. Results are ranked by how much of a real ownership relationship each route stays within, not just by length: a denormalized shortcut column (the classic "every row also stores its tenant id" pattern) ranks last even when it's shortest, since it duplicates what a longer, more specific chain already reaches (bundled pine-lang 0.43.0).
+- Canvas mode: a new "path" action (tucked behind a "+" next to select/where/join) runs the `? table` search above and lets you commit one of the discovered routes all the way to the destination in one go. The Pine editor's own autocomplete completes the same search when typed directly (bundled beamlynx-ui 0.58.0).
+- Canvas mode: click a join's icon to pick Inner, Left, or Right, using the same two-circle diagram most SQL join references use (bundled beamlynx-ui 0.58.0).
+- Canvas mode: click an existing where/select/order/group chip to edit it in place, instead of removing and re-adding it. Shift+J/Shift+K step through the whole pipeline -- each node, then everything configured on it -- as one flat list (bundled beamlynx-ui 0.58.0).
+
 ### Changed
 - A connection's access policy can now be explicitly set to "None" (unrestricted access) even while MCP is on for it, instead of being refused -- useful for a local or sandbox database the owner doesn't need redacted. MCP still refuses to turn on, or keep running, against a named policy that has no active rule.
+- Canvas mode: a resolved join's line is now a plain neutral color instead of the theme's accent -- the accent now lives on the join-type icon itself, marking the one clickable thing on the edge rather than the whole line (bundled beamlynx-ui 0.58.0).
+
+### Fixed
+- Canvas mode: a stray trailing pipe (typed by hand, or left over from an earlier edit) no longer survives adding an operation -- it used to stay in the committed expression as a dangling `| ` (bundled beamlynx-ui 0.58.0).
+- Canvas mode: hovering a node now moves keyboard focus there too, matching what clicking or arrow-key navigation already did -- previously only its action bar appeared, while the "current" border stayed on whichever node the keyboard had last focused (bundled beamlynx-ui 0.58.0).
 
 ## [0.11.0] - 2026-09-02
 ### Added
