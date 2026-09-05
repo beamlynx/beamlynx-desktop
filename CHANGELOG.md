@@ -5,7 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
-## [0.12.0] - 2026-09-06
+## [0.12.1] - 2026-09-06
 ### Added
 - `? table` finds every join chain between two tables through the schema graph, not just the direct next hop -- e.g. `company | ? document` searches for every route, multi-hop ones included. Results are ranked by how much of a real ownership relationship each route stays within, not just by length: a denormalized shortcut column (the classic "every row also stores its tenant id" pattern) ranks last even when it's shortest, since it duplicates what a longer, more specific chain already reaches (bundled pine-lang 0.43.0).
 - Canvas mode: a new "path" action (tucked behind a "+" next to select/where/join) runs the `? table` search above and lets you commit one of the discovered routes all the way to the destination in one go. The Pine editor's own autocomplete completes the same search when typed directly (bundled beamlynx-ui 0.58.0).
