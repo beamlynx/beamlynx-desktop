@@ -23,6 +23,29 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.59.0',
+    date: '2026-09-06',
+    added: [
+      {
+        title: 'Canvas mode: hovering a table spotlights its columns in the Results grid',
+        description:
+          "Makes it easy to see which columns come from which joined table without needing to turn on the \"Table colors\" preference.",
+      },
+      {
+        title: 'Canvas mode: click an existing order chip to change its direction',
+        description:
+          'Opens an Asc/Desc popover instead of reopening the column-add list. Arrow keys or the a/d mnemonics flip it; a "remove" action deletes the chip.',
+      },
+    ],
+    fixed: [
+      {
+        title: 'Results grid "Filter" now scopes to the right table',
+        description:
+          "Right-clicking a cell and choosing \"Filter\" generated an unqualified where: that silently filtered whichever table the query's pipe ended on. It now scopes to the table that cell's column actually belongs to (alias.column).",
+      },
+    ],
+  },
+  {
     version: '0.58.0',
     date: '2026-09-06',
     breaking: [
@@ -1746,4 +1769,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.58.0';
+export const LATEST_VERSION = '0.59.0';
