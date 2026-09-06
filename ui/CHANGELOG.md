@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.59.0] - 2026-09-06
 ### Added
 - Canvas mode: hovering a table node now spotlights that table's columns in the Results grid below, so it's easy to see which columns come from which joined table without needing to turn on the "Table colors" preference.
 - Canvas mode: clicking an existing `order` chip now opens an Asc/Desc popover to change its direction, instead of reopening the column-add list. Arrow keys or the `a`/`d` mnemonics flip it; a "remove" action deletes the chip.
