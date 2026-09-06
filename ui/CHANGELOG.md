@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Fixed
+- Canvas mode: a `where` chip added via the Results grid's right-click "Filter" action can now always be deleted or edited. It used to land at the end of the query's pipe text regardless of which table it filtered, so canvas's position-based bookkeeping could attribute it to the wrong table - deleting or editing it then silently did nothing, or acted on an unrelated chip that happened to share its position.
 
 ## [0.59.0] - 2026-09-06
 ### Added

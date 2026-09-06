@@ -210,20 +210,22 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
       return;
     }
 
-    // `where:` with a bare column name filters whatever table is `:current`
-    // at the end of the whole pipe (see pine-lang's ast/where.clj), which is
-    // almost never the table this cell's column actually belongs to once
-    // more than one table is joined in. Qualify with the owning alias so the
-    // filter lands on the right table instead of silently applying to
-    // whichever table the pipe ends on.
+    // Route through the same commit path the canvas where-picker uses
+    // (CanvasStore.commitWhere), not a raw pipeAndUpdateExpression string
+    // append. Appending at the end of the whole pipe text left the new
+    // condition's client-side owner (assigned by position, see
+    // pine-text.ts's assignOwners) misattributed to whichever table the
+    // pipe happens to end on, rather than the alias this cell actually
+    // belongs to - the where-chip still displayed under the right node
+    // (the server resolves that alias correctly), but deleting or editing
+    // it looked it up by that wrong owner and silently no-opped, or hit an
+    // unrelated chip that happened to share the index. commitWhere's
+    // appendOwnedSegment inserts right after the owning alias's own
+    // segments instead, keeping the two attributions in agreement.
     const alias = session.columnMetadata.colIndexToAliasLookup[contextMenu.fieldIndex];
     const dbColumn = session.columnMetadata.colIndexToColumnLookup[contextMenu.fieldIndex];
     if (alias && dbColumn) {
-      await session.pipeAndUpdateExpression(
-        `where: ${alias}.${dbColumn} = '${pineEscape(String(contextMenu.cellValue))}'`,
-        false,
-      );
-      await session.evaluate();
+      await session.getCanvasStore().commitWhere(alias, dbColumn, '=', String(contextMenu.cellValue));
     } else {
       console.error('Missing alias/column metadata for filter action:', {
         fieldIndex: contextMenu.fieldIndex,
