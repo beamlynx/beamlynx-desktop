@@ -8,6 +8,7 @@ import {
   ConfigItem,
   JoinType,
   MoreAction,
+  OrderDirection,
   PENDING_CHECKPOINT_FRAME_ID,
   PickerAnchor,
   PickerItem,
@@ -363,10 +364,9 @@ export class CanvasStore {
         this.openWhereEditor(alias, item.index, anchor);
         return;
       case 'select':
-      case 'order':
       case 'group':
-        // These three don't have a per-chip value/operator to prefill the
-        // way a where condition or a join's type do (see canvas.model.ts's
+        // These two don't have a per-chip value/operator to prefill the way
+        // a where condition or a join's type do (see canvas.model.ts's
         // WHERE_OPERATORS/JOIN_TYPES) - reopening means the same list
         // picker ChipRow's onSelect/the action bar's own button already
         // open. `item.column` (this ConfigItem's own identity, not a
@@ -378,6 +378,21 @@ export class CanvasStore {
         // different one instead."
         this.openColumnPicker(item.kind, alias, anchor, item.column);
         return;
+      case 'order': {
+        // Same fresh index lookup as removeConfigCursor's own 'order' case -
+        // openOrderEditor needs the chip's array position and current
+        // direction, neither of which this ConfigItem carries (see its own
+        // comment for why order only stores the column identity).
+        const node = this.canvasGraph.nodes.find(
+          (n): n is CanvasTableNode => n.type === 'table-node' && n.id === alias,
+        );
+        const chips = node?.data.orderChips ?? [];
+        const index = chips.findIndex(chip => chip.replace(/\s+(asc|desc)$/i, '') === item.column);
+        if (index < 0) return;
+        const current = /\bdesc$/i.test(chips[index]) ? 'desc' : 'asc';
+        this.openOrderEditor(alias, index, item.column, current, anchor);
+        return;
+      }
     }
   }
 
@@ -1129,6 +1144,38 @@ export class CanvasStore {
   /** Inner/Left/Right, mutually exclusive - always a full commit+close, never staying open for repeat picks (unlike select/order/group's checkbox-style toggles), since picking one answers the whole question. */
   async setJoinType(alias: string, type: JoinType) {
     await this.commit(base => actions.setJoinType(base, actions.resolveAlias(base, alias), type));
+    this.closePicker();
+  }
+
+  /**
+   * Reopens an EXISTING order chip for direction editing rather than the
+   * column-add list (a chip's own click, or configNext/openConfigCursor's
+   * keyboard equivalent) - `column`/`current` come straight from the
+   * rendered chip (TableNode.tsx strips the trailing asc/desc for `column`)
+   * since order has no compiled-AST equivalent of where's `session.ast.where`
+   * to re-derive them from. `index` is the same pipeline-order indexing
+   * removeOrderColumnAt/setOrderDirectionAt use.
+   */
+  openOrderEditor(
+    alias: string,
+    index: number,
+    column: string,
+    current: OrderDirection,
+    anchor: PickerAnchor = CanvasStore.defaultAnchor,
+  ) {
+    if (this.picker.open && this.picker.mode === 'order-direction' && this.picker.alias === alias && this.picker.index === index) {
+      this.closePicker();
+      return;
+    }
+    this.focusConfigItem(alias, { kind: 'order', column });
+    this.picker = { open: true, mode: 'order-direction', alias, column, index, current, anchor };
+  }
+
+  /** Asc/Desc, mutually exclusive - same full commit+close pattern as setJoinType. */
+  async setOrderDirection(direction: OrderDirection) {
+    if (!this.picker.open || this.picker.mode !== 'order-direction') return;
+    const { alias, index } = this.picker;
+    await this.commit(base => actions.setOrderDirectionAt(base, actions.resolveAlias(base, alias), index, direction));
     this.closePicker();
   }
 

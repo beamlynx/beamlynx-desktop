@@ -6,6 +6,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ## [Unreleased]
 ### Added
 - Canvas mode: hovering a table node now spotlights that table's columns in the Results grid below, so it's easy to see which columns come from which joined table without needing to turn on the "Table colors" preference.
+- Canvas mode: clicking an existing `order` chip now opens an Asc/Desc popover to change its direction, instead of reopening the column-add list. Arrow keys or the `a`/`d` mnemonics flip it; a "remove" action deletes the chip.
 
 ### Fixed
 - Results grid: right-clicking a cell and choosing "Filter" now scopes the generated `where:` to the table that cell's column actually belongs to (`alias.column`), instead of an unqualified column name that silently filtered whichever table the query's pipe ended on.

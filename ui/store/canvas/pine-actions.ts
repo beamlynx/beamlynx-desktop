@@ -265,6 +265,22 @@ export const getOrderColumns = (base: PinnedBase, alias: string): string[] => {
   });
 };
 
+/** Flips an existing order column's direction in place - the index stays stable, unlike remove+re-add. */
+export const setOrderDirectionAt = (
+  base: PinnedBase,
+  alias: string,
+  index: number,
+  direction: 'asc' | 'desc',
+): string => {
+  const existing = base.segments.find(s => s.owner === alias && s.kind === 'order');
+  if (!existing) return toText(base.segments);
+  const columns = splitTopLevel(existing.text.replace(/^(order:|o:)\s*/i, ''));
+  const target = columns[index];
+  if (target === undefined) return toText(base.segments);
+  columns[index] = `${target.replace(/\s+(asc|desc)$/i, '')} ${direction}`;
+  return toText(upsertOwnedSegment(base.segments, alias, 'order', `order: ${columns.join(', ')}`));
+};
+
 export const removeOrderColumnAt = (base: PinnedBase, alias: string, index: number): string => {
   const existing = base.segments.find(s => s.owner === alias && s.kind === 'order');
   if (!existing) return toText(base.segments);

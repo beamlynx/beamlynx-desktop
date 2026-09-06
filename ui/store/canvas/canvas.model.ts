@@ -162,6 +162,12 @@ export const JOIN_TYPES: { type: JoinType; label: string; key: string }[] = [
   { type: 'right', label: 'Right', key: 'r' },
 ];
 
+export type OrderDirection = 'asc' | 'desc';
+export const ORDER_DIRECTIONS: { direction: OrderDirection; label: string; key: string }[] = [
+  { direction: 'asc', label: 'Asc', key: 'a' },
+  { direction: 'desc', label: 'Desc', key: 'd' },
+];
+
 /**
  * One reconfigurable item on a focused table node - what CanvasStore's
  * Left/Right config cursor (configNext/configPrev) moves between, in the
@@ -230,6 +236,16 @@ export type PickerState =
       mode: 'join-type';
       alias: string;
       current: JoinType;
+      anchor: PickerAnchor;
+    }
+  | {
+      open: true;
+      mode: 'order-direction';
+      alias: string;
+      column: string;
+      /** Same pipeline-order indexing as removeOrderColumnAt/setOrderDirectionAt. */
+      index: number;
+      current: OrderDirection;
       anchor: PickerAnchor;
     }
   | {

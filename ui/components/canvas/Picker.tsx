@@ -4,6 +4,7 @@ import {
   CanvasTableNode,
   JOIN_TYPES,
   MORE_ACTIONS,
+  ORDER_DIRECTIONS,
   PickerAnchor,
   PickerItem,
   WHERE_OPERATORS,
@@ -275,7 +276,9 @@ const Picker: React.FC = observer(() => {
   // without a tabIndex, and React only recognizes `autoFocus` on elements
   // that are).
   const focusRootAlias =
-    picker.open && (picker.mode === 'join-type' || picker.mode === 'more') ? picker.alias : null;
+    picker.open && (picker.mode === 'join-type' || picker.mode === 'more' || picker.mode === 'order-direction')
+      ? picker.alias
+      : null;
   useEffect(() => {
     if (focusRootAlias !== null) rootRef.current?.focus();
   }, [focusRootAlias]);
@@ -390,6 +393,89 @@ const Picker: React.FC = observer(() => {
               <span style={{ opacity: 0.5 }}>{option.key}</span>
             </div>
           ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (picker.mode === 'order-direction') {
+    const node = store.canvasGraph.nodes.find(
+      (n): n is CanvasTableNode => n.id === picker.alias && n.type === 'table-node',
+    );
+    return (
+      <div
+        ref={rootRef}
+        tabIndex={-1}
+        onKeyDown={e => {
+          const idx = ORDER_DIRECTIONS.findIndex(o => o.direction === picker.current);
+          if (e.key === 'ArrowDown' || e.key === 'ArrowRight' || e.key === 'Tab') {
+            e.preventDefault();
+            void store.setOrderDirection(ORDER_DIRECTIONS[(idx + 1) % ORDER_DIRECTIONS.length].direction);
+            return;
+          }
+          if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+            e.preventDefault();
+            void store.setOrderDirection(
+              ORDER_DIRECTIONS[(idx - 1 + ORDER_DIRECTIONS.length) % ORDER_DIRECTIONS.length].direction,
+            );
+            return;
+          }
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            store.closePicker();
+            return;
+          }
+          // a/d mnemonics - safe to bind directly here since this popover
+          // owns the keyboard exclusively while it's open (see join-type's
+          // matching comment above).
+          const match = ORDER_DIRECTIONS.find(o => o.key === e.key.toLowerCase());
+          if (match) {
+            e.preventDefault();
+            void store.setOrderDirection(match.direction);
+          }
+        }}
+        style={{ ...anchoredStyle(picker.anchor), padding: 8, minWidth: 140, maxHeight: 'none' }}
+        data-testid="canvas-picker"
+      >
+        <div
+          title={`${node?.data.table ?? picker.alias}.${picker.column}`}
+          style={{
+            marginBottom: 6,
+            opacity: 0.7,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {node?.data.table ?? picker.alias}.{picker.column} order
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {ORDER_DIRECTIONS.map(option => (
+            <div
+              key={option.direction}
+              data-testid={`order-direction-${option.direction}`}
+              onClick={() => void store.setOrderDirection(option.direction)}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                padding: '4px 6px',
+                borderRadius: 3,
+                cursor: 'pointer',
+                background: option.direction === picker.current ? 'var(--canvas-chip-bg)' : 'transparent',
+              }}
+            >
+              <span>{option.label}</span>
+              <span style={{ opacity: 0.5 }}>{option.key}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
+          <span
+            style={{ cursor: 'pointer', color: 'var(--canvas-warn)' }}
+            onClick={() => void store.removeOrderAt(picker.alias, picker.index).then(() => store.closePicker())}
+          >
+            remove
+          </span>
         </div>
       </div>
     );

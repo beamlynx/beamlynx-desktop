@@ -16,7 +16,13 @@ import { NOTCHED_NODE_THEMES } from '../../../styles/palette/themes';
  */
 export const pickerAliasFor = (picker: PickerState): string | null => {
   if (!picker.open) return null;
-  if (picker.mode === 'where-value' || picker.mode === 'join-type' || picker.mode === 'more') return picker.alias;
+  if (
+    picker.mode === 'where-value' ||
+    picker.mode === 'join-type' ||
+    picker.mode === 'more' ||
+    picker.mode === 'order-direction'
+  )
+    return picker.alias;
   return 'alias' in picker.request ? picker.request.alias : null;
 };
 
@@ -53,6 +59,9 @@ export const activeOperationFor = (picker: PickerState, alias: string): Operatio
   // path) has been picked - dims select/where/join the same as any other
   // open picker would.
   if (picker.mode === 'more') return picker.alias === alias ? 'more' : null;
+  // A per-chip direction popover (a click on an existing order chip, or the
+  // keyboard config cursor) is still editing that node's order operation.
+  if (picker.mode === 'order-direction') return picker.alias === alias ? 'order' : null;
   // Every `PickerRequest` variant except `{ kind: 'table' }` carries `alias`
   // (see canvas.model.ts) - the `'alias' in` check below already narrows
   // `picker.request.kind` to exclude `'table'`, so no separate check for it
@@ -764,9 +773,11 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
         label="order"
         chips={data.orderChips}
         onRemove={i => void canvasStore.removeOrderAt(data.alias, i)}
-        onSelect={(i, anchor) =>
-          canvasStore.openColumnPicker('order', data.alias, anchor, data.orderChips[i]?.replace(/\s+(asc|desc)$/i, ''))
-        }
+        onSelect={(i, anchor) => {
+          const chip = data.orderChips[i] ?? '';
+          const current = /\bdesc$/i.test(chip) ? 'desc' : 'asc';
+          canvasStore.openOrderEditor(data.alias, i, chip.replace(/\s+(asc|desc)$/i, ''), current, anchor);
+        }}
         onHover={i =>
           canvasStore.focusConfigItem(data.alias, {
             kind: 'order',
