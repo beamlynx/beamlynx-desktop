@@ -175,17 +175,25 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
       return;
     }
 
-    const column = columns[parseInt(contextMenu.fieldIndex)];
-    if (column?.headerName) {
+    // `where:` with a bare column name filters whatever table is `:current`
+    // at the end of the whole pipe (see pine-lang's ast/where.clj), which is
+    // almost never the table this cell's column actually belongs to once
+    // more than one table is joined in. Qualify with the owning alias so the
+    // filter lands on the right table instead of silently applying to
+    // whichever table the pipe ends on.
+    const alias = session.columnMetadata.colIndexToAliasLookup[contextMenu.fieldIndex];
+    const dbColumn = session.columnMetadata.colIndexToColumnLookup[contextMenu.fieldIndex];
+    if (alias && dbColumn) {
       await session.pipeAndUpdateExpression(
-        `where: ${column.headerName} = '${contextMenu.cellValue}'`,
+        `where: ${alias}.${dbColumn} = '${pineEscape(String(contextMenu.cellValue))}'`,
         false,
       );
       await session.evaluate();
     } else {
-      console.error('Column missing header name for filter action:', {
+      console.error('Missing alias/column metadata for filter action:', {
         fieldIndex: contextMenu.fieldIndex,
-        column,
+        alias,
+        dbColumn,
       });
     }
     handleContextMenuClose();
