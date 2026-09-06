@@ -196,6 +196,20 @@ export class CanvasStore {
   }
 
   /**
+   * Which table's columns Result.tsx should spotlight right now - set/cleared
+   * directly by TableNode's onMouseEnter/onMouseLeave. Deliberately separate
+   * from `_cursor`/`focusedAlias` above: that's a sticky "current stop" that
+   * only ever moves forward (see focusNode's own comment - nothing clears
+   * it), which is right for keyboard/click navigation but wrong for a hover
+   * spotlight that must disappear the instant the pointer leaves.
+   */
+  hoveredAlias: string | null = null;
+
+  setHoveredAlias(alias: string | null) {
+    this.hoveredAlias = alias;
+  }
+
+  /**
    * Lands the cursor directly on one specific config item (a chip, or an
    * incoming join's own icon) - the mouse's equivalent of what Left/Right
    * (configNext/configPrev) does one stop at a time. Every picker that

@@ -433,6 +433,18 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
     updateNodeInternals(id);
   }, [id, handleKey, updateNodeInternals]);
 
+  useEffect(() => {
+    // React never fires onMouseLeave for an element removed out from under
+    // the pointer (deleting this node while hovering, or the graph
+    // re-deriving on eval) - without this, hoveredAlias sticks to an alias
+    // that's no longer on screen and Result.tsx spotlights it forever.
+    return () => {
+      if (canvasStore.hoveredAlias === data.alias) {
+        canvasStore.setHoveredAlias(null);
+      }
+    };
+  }, [canvasStore, data.alias]);
+
   const height = getNodeHeight({ id, type: 'table-node', position: { x: 0, y: 0 }, data });
 
   // Keyboard focus (the modal keybinding layer's cursor, CanvasStore.
@@ -554,8 +566,20 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
         // stop, which read as two different nodes both claiming to be
         // focused at once.
         canvasStore.focusNode(data.alias);
+        // Spotlights this table's columns in Result.tsx - see hoveredAlias's
+        // own comment for why this is a separate field from focusNode above.
+        canvasStore.setHoveredAlias(data.alias);
       }}
-      onMouseLeave={() => setHovered(false)}
+      onMouseLeave={() => {
+        setHovered(false);
+        // Guard against the next node's mouseenter (setting hoveredAlias)
+        // firing before this one's mouseleave when the pointer crosses
+        // straight from one node into an adjacent one - only clear if we're
+        // still the one being spotlighted.
+        if (canvasStore.hoveredAlias === data.alias) {
+          canvasStore.setHoveredAlias(null);
+        }
+      }}
     >
       {/* Action bar - progressive disclosure: hidden until the node is
           hovered (or its own picker is open, see `engaged` above), so a

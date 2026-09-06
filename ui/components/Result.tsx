@@ -62,18 +62,28 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const colIndexToAlias = session.columnMetadata.colIndexToAliasLookup;
 
   const showResultColors = shouldShowTableColors(global.pineTableColorsEnabled, session, global.canvasActive);
+  // Only ever constructs a CanvasStore for sessions that have actually used
+  // Canvas (see getCanvasStore's own comment on why that's lazy) - reading
+  // it unconditionally here would force one into existence for every plain
+  // text-mode session just to check a hover state that can never be set
+  // outside Canvas anyway.
+  const hoveredAlias = global.canvasActive ? session.getCanvasStore().hoveredAlias : null;
 
   // Add custom edit component and column color classes by table alias
   const columns = baseColumns.map(column => {
     const alias = colIndexToAlias[column.field] ?? '';
-    const aliasClass =
-      showResultColors && alias ? `result-col-${alias.replace(/[^a-z0-9_]/gi, '_')}` : '';
+    const classNames = [
+      showResultColors && alias ? `result-col-${alias.replace(/[^a-z0-9_]/gi, '_')}` : '',
+      alias && alias === hoveredAlias ? 'result-col-hovered' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
     return {
       ...column,
       renderEditCell: (params: any) => <CellEditComponent {...params} />,
-      ...(aliasClass && {
-        headerClassName: aliasClass,
-        cellClassName: aliasClass,
+      ...(classNames && {
+        headerClassName: classNames,
+        cellClassName: classNames,
       }),
     };
   });
@@ -93,6 +103,31 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
           }),
         )
       : {};
+  // A hover spotlight, independent of the "Table colors" preference above -
+  // this answers "which columns belong to the table I'm pointing at right
+  // now", not "always tint everything", so it fires regardless of
+  // showResultColors. Reuses the same alias->color mapping so the two never
+  // disagree when both are visible at once; the border is the part that
+  // still shows even when a column's background already matches (ambient
+  // colors on, hovering its own table).
+  const hoveredColorSx = hoveredAlias
+    ? {
+        '& .MuiDataGrid-columnHeader.result-col-hovered': {
+          backgroundColor: getColorForAlias(hoveredAlias, ast, isDark),
+          // inset box-shadow, not border-top: a real border adds 2px of
+          // layout height only to the hovered columns' headers, jittering
+          // the header row as the spotlight moves between them - a shadow
+          // paints over existing space instead, and (unlike a border-width
+          // change) actually animates via the transition below.
+          boxShadow: 'inset 0 2px 0 var(--canvas-trace)',
+          transition: 'background-color 120ms ease, box-shadow 120ms ease',
+        },
+        '& .MuiDataGrid-cell.result-col-hovered': {
+          backgroundColor: getColorForAlias(hoveredAlias, ast, isDark),
+          transition: 'background-color 120ms ease',
+        },
+      }
+    : {};
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('lg'));
   // Also true in New Layout: the two icon buttons below float 40px ABOVE
   // this component's own box everywhere else (compactMode false), relying
@@ -626,6 +661,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
                   msUserSelect: 'none',
                 },
                 ...columnColorSx,
+                ...hoveredColorSx,
                 '& .MuiDataGrid-row:hover': {
                   backgroundColor: 'var(--canvas-chip-bg)',
                 },
