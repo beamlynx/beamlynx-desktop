@@ -5,6 +5,14 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-09-06
+### Added
+- Canvas mode: hovering a table now spotlights its columns in the Results grid below, so it's easy to see which columns come from which joined table without needing to turn on the "Table colors" preference (bundled beamlynx-ui 0.59.0).
+- Canvas mode: click an existing order chip to open an Asc/Desc popover and change its direction, instead of reopening the column-add list (bundled beamlynx-ui 0.59.0).
+
+### Fixed
+- Results grid: right-clicking a cell and choosing "Filter" now scopes the generated `where:` to the table that cell's column actually belongs to, instead of an unqualified column name that could silently filter the wrong table in a join (bundled beamlynx-ui 0.59.0).
+
 ## [0.12.1] - 2026-09-06
 ### Added
 - `? table` finds every join chain between two tables through the schema graph, not just the direct next hop -- e.g. `company | ? document` searches for every route, multi-hop ones included. Results are ranked by how much of a real ownership relationship each route stays within, not just by length: a denormalized shortcut column (the classic "every row also stores its tenant id" pattern) ranks last even when it's shortest, since it duplicates what a longer, more specific chain already reaches (bundled pine-lang 0.43.0).
