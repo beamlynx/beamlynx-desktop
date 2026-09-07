@@ -442,39 +442,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
       return;
     }
 
-    // Get column headers (excluding the _id column if present)
-    const headers = columns
-      .filter(col => col.field !== '_id')
-      .map(col => col.headerName || col.field);
-
-    // Convert rows to CSV format
-    const csvRows = [
-      headers.join(','), // Header row
-      ...rows.map(row =>
-        columns
-          .filter(col => col.field !== '_id')
-          .map(col => {
-            const value = row[col.field];
-            // Handle values that might contain commas, quotes, or newlines
-            if (value === null || value === undefined) {
-              return '';
-            }
-            const stringValue = String(value);
-            if (
-              stringValue.includes(',') ||
-              stringValue.includes('"') ||
-              stringValue.includes('\n')
-            ) {
-              return `"${stringValue.replace(/"/g, '""')}"`;
-            }
-            return stringValue;
-          })
-          .join(','),
-      ),
-    ];
-
-    // Create CSV content and open modal
-    const csvContent = csvRows.join('\n');
+    const csvContent = session.getResultClipboardText();
     const defaultFilename = `pine-export-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`;
 
     setExportData({ filename: defaultFilename, csvContent });
@@ -555,6 +523,46 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
           </IconButton>
         </Tooltip>
 
+        {/* Copy Result Button */}
+        <Tooltip title="Copy result as CSV">
+          <IconButton
+            onClick={() => {
+              navigator.clipboard.writeText(session.getResultClipboardText()).then(() => {
+                global.setCopiedMessage(sessionId, `${rows.length} row${rows.length === 1 ? '' : 's'}`);
+              });
+            }}
+            disabled={rows.length === 0}
+            sx={{
+              position: 'absolute',
+              ...(compactMode
+                ? {
+                    top: 4,
+                    right: 48,
+                  }
+                : {
+                    top: -40,
+                    right: 44,
+                  }),
+              zIndex: 1000,
+              borderRadius: '4px',
+              backgroundColor: 'var(--canvas-node-bg)',
+              border: '1px solid var(--canvas-node-border)',
+              color: 'var(--canvas-trace)',
+              fontFamily: 'var(--canvas-font)',
+              '&:hover': {
+                backgroundColor: 'var(--canvas-chip-bg)',
+              },
+              '&:disabled': {
+                opacity: 0.5,
+                color: 'var(--canvas-text-dim)',
+              },
+            }}
+            size="small"
+          >
+            <ContentCopy fontSize="small" />
+          </IconButton>
+        </Tooltip>
+
         {/* Bar Chart Toggle Button */}
         {isBarChartSuitable() && (
           <Tooltip title={viewMode === 'table' ? 'View as Bar Chart' : 'View as Table'}>
@@ -565,11 +573,11 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
                 ...(compactMode
                   ? {
                       top: 4,
-                      right: 48,
+                      right: 92,
                     }
                   : {
                       top: -40,
-                      right: 44,
+                      right: 88,
                     }),
                 zIndex: 1000,
                 borderRadius: '4px',

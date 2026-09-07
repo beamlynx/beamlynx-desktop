@@ -166,6 +166,19 @@ const COMMANDS: Command[] = [
     isEnabled: (_global, session) => session.query.trim() !== '',
   },
   {
+    id: 'copy-result',
+    label: 'Copy Result',
+    category: 'Query',
+    handler: (global, session) => {
+      const text = session.getResultClipboardText();
+      navigator.clipboard.writeText(text).then(() => {
+        const count = session.rows.length;
+        global.setCopiedMessage(session.id, `${count} row${count === 1 ? '' : 's'}`);
+      });
+    },
+    isEnabled: (_global, session) => session.columns.length > 0 && session.rows.length > 0,
+  },
+  {
     id: 'save-tab',
     label: 'Save Tab',
     category: 'Query',

@@ -135,6 +135,19 @@ export class Session {
   /** True while lazily (re)connecting this tab's assigned connection in the background. */
   connecting: boolean = false;
 
+  /**
+   * Desktop-only: set when this tab was opened to review an MCP agent's
+   * request_reveal call (see RevealRequestHandler.tsx) -- the id the agent's
+   * matching check_reveal poll is waiting on. Cleared once the owner
+   * reveals or declines (RevealRequestBanner.tsx), at which point this goes
+   * back to being an ordinary tab. A normal tab opened any other way never
+   * has this set.
+   */
+  pendingRevealRequestId?: string;
+
+  /** The agent-supplied reason for the request_reveal call this tab is reviewing, if any. */
+  revealReason?: string;
+
   /** Database connection monitoring */
   monitor: boolean = false;
   connectionCountLogs: { time: string; count: number }[] = [];
@@ -252,7 +265,8 @@ export class Session {
    * one tab MCP-driven queries actually run in (see
    * GlobalStore.getOrCreateMcpSession) -- which always gets the assigned
    * policy while mcpEnabled is on; any other (human) tab instead follows
-   * the connection's own bypassPolicyForOwnQueries toggle, independent of mcpEnabled.
+   * the connection's own applyPolicyToOwnQueries toggle (off by default --
+   * the policy exists to gate the agent, not the owner), independent of mcpEnabled.
    * eval/build forward this verbatim to pine-lang, which redacts any column
    * no rule in it allows (see pine.access-policy). Always empty in browser
    * mode (no profileId, no policy concept there).
@@ -722,6 +736,40 @@ export class Session {
       .map(line => (line ? `-- ${line}` : '--'))
       .join('\n');
     return `${commentedPine}\n\n${sql}`;
+  }
+
+  /**
+   * Clipboard text for the current result grid, as CSV (header row + one row per result row).
+   * Mirrors Result.tsx's exportToCSV so the toolbar button and the copy-result command agree.
+   */
+  getResultClipboardText(): string {
+    const visibleColumns = this.columns.filter(col => col.field !== '_id');
+    const headers = visibleColumns.map(col => col.headerName || col.field);
+
+    const csvRows = [
+      headers.join(','),
+      ...this.rows.map(row =>
+        visibleColumns
+          .map(col => {
+            const value = row[col.field];
+            if (value === null || value === undefined) {
+              return '';
+            }
+            const stringValue = String(value);
+            if (
+              stringValue.includes(',') ||
+              stringValue.includes('"') ||
+              stringValue.includes('\n')
+            ) {
+              return `"${stringValue.replace(/"/g, '""')}"`;
+            }
+            return stringValue;
+          })
+          .join(','),
+      ),
+    ];
+
+    return csvRows.join('\n');
   }
 
   async updateConnectionLogs() {
