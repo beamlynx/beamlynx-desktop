@@ -1222,7 +1222,8 @@ export class CanvasStore {
     const [, column, , operator, val] = condition;
     const value = val && 'value' in val ? String(val.value) : '';
     this.focusConfigItem(alias, { kind: 'where', index });
-    this.picker = { open: true, mode: 'where-value', alias, column, operator, value, anchor, editIndex: index };
+    // ast.where operators come back SQL-cased (e.g. "ILIKE") from pine-lang; Pine syntax is lowercase-only.
+    this.picker = { open: true, mode: 'where-value', alias, column, operator: operator.toLowerCase(), value, anchor, editIndex: index };
   }
 
   setWhereOperator(operator: string) {
