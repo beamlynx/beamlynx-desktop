@@ -60,14 +60,23 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
   const colIndexToAlias = session.columnMetadata.colIndexToAliasLookup;
+  // A single-table result has nothing to distinguish by table - both the
+  // ambient per-table tint and the hover spotlight below are gated on this,
+  // since coloring or highlighting the one table present would just be
+  // visual noise with no information in it.
+  const uniqueAliases = Array.from(new Set(Object.values(colIndexToAlias).filter(Boolean)));
+  const hasMultipleTables = uniqueAliases.length > 1;
 
-  const showResultColors = shouldShowTableColors(global.pineTableColorsEnabled, session, global.canvasActive);
+  const showResultColors =
+    hasMultipleTables &&
+    shouldShowTableColors(global.pineTableColorsEnabled, session, global.canvasActive);
   // Only ever constructs a CanvasStore for sessions that have actually used
   // Canvas (see getCanvasStore's own comment on why that's lazy) - reading
   // it unconditionally here would force one into existence for every plain
   // text-mode session just to check a hover state that can never be set
   // outside Canvas anyway.
-  const hoveredAlias = global.canvasActive ? session.getCanvasStore().hoveredAlias : null;
+  const hoveredAlias =
+    hasMultipleTables && global.canvasActive ? session.getCanvasStore().hoveredAlias : null;
 
   // Add custom edit component and column color classes by table alias
   const columns = baseColumns.map(column => {
@@ -89,7 +98,6 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   });
 
   const ast = session.response?.ast ?? null;
-  const uniqueAliases = Array.from(new Set(Object.values(colIndexToAlias).filter(Boolean)));
   const columnColorSx =
     showResultColors && uniqueAliases.length
       ? Object.fromEntries(

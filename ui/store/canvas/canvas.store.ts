@@ -211,6 +211,16 @@ export class CanvasStore {
   }
 
   /**
+   * True until the first successful graph build seeds `hoveredAlias` below.
+   * Guards that seed to fire exactly once per store instance - without it,
+   * every later recompute() where the user has since mouse-left a node
+   * (hoveredAlias legitimately back to null) would re-highlight whatever's
+   * focused on the next unrelated edit, fighting the mouse-leave clear
+   * TableNode relies on.
+   */
+  private hasSeededHoverAlias = false;
+
+  /**
    * Lands the cursor directly on one specific config item (a chip, or an
    * incoming join's own icon) - the mouse's equivalent of what Left/Right
    * (configNext/configPrev) does one stop at a time. Every picker that
@@ -553,6 +563,10 @@ export class CanvasStore {
     // with FrameNode.tsx showing its own loading state for that on-demand
     // pin instead.
     this.canvasGraph = buildCanvasGraph(ast, this.positions, hasCheckpoint);
+    if (!this.hasSeededHoverAlias && this.orderedFocusTargets.length > 0) {
+      this.hasSeededHoverAlias = true;
+      this.setHoveredAlias(this.focusedAlias);
+    }
   }
 
   setNodePosition(id: string, position: { x: number; y: number }) {
