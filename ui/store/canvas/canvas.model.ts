@@ -230,6 +230,19 @@ export type PickerState =
       anchor: PickerAnchor;
       /** Set only when reopened from an existing chip (ChipRow's onSelect) - see CanvasStore.openWhereEditor/submitWhereValue. Undefined for a brand-new condition. */
       editIndex?: number;
+      /**
+       * `operator` doubles as the relative-date picks - 'today' and 'in the
+       * last' are two extra entries Picker.tsx appends to the operator
+       * <select> for a brand-new condition on a column that
+       * looksLikeDateColumn (never while editing an existing one - see
+       * CanvasStore.submitWhereValue's own comment), rather than a separate
+       * mode/tab. `value` is unused for both; `rollingCount`/`rollingUnit`
+       * are unused except for 'in the last'. Always reset to '=' when the
+       * panel (re)opens - a stored condition has no record of having been
+       * built from one of these, so there's nothing to restore.
+       */
+      rollingCount: number;
+      rollingUnit: RelativeDateUnit;
     }
   | {
       open: true;
@@ -268,3 +281,25 @@ export const MORE_ACTIONS: { action: MoreAction; label: string; key: string }[] 
 ];
 
 export const WHERE_OPERATORS = ['=', '!=', '>', '<', 'like', 'not like', 'ilike', 'is', 'is not'] as const;
+
+export const RELATIVE_DATE_UNITS = [
+  { value: 'day', label: 'day' },
+  { value: 'week', label: 'week' },
+  { value: 'month', label: 'month' },
+  { value: 'year', label: 'year' },
+] as const;
+export type RelativeDateUnit = (typeof RELATIVE_DATE_UNITS)[number]['value'];
+
+/**
+ * The two extra entries Picker.tsx appends to the where-value operator
+ * <select> for a date-shaped column (see PickerState's `mode: 'where-value'`
+ * doc) - picking either drives CanvasStore.submitWhereValue down the
+ * relative-date path instead of a plain comparison. Named string constants
+ * rather than inline literals so the option's `value`, the store's dispatch
+ * check, and computeDateBounds's caller all read the same source.
+ */
+export const WHERE_TODAY_OPERATOR = 'today';
+export const WHERE_ROLLING_OPERATOR = 'in the last';
+
+/** What `computeDateBounds` (relative-date.ts) turns into a `>`/`<` literal pair. */
+export type RelativeDateSelection = { kind: 'today' } | { kind: 'rolling'; count: number; unit: RelativeDateUnit };

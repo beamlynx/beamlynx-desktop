@@ -14,7 +14,10 @@ import {
   PickerItem,
   PickerRequest,
   PickerState,
+  RelativeDateUnit,
   START_NODE_ID,
+  WHERE_ROLLING_OPERATOR,
+  WHERE_TODAY_OPERATOR,
 } from './canvas.model';
 import { buildCanvasGraph } from './layout';
 import {
@@ -27,6 +30,7 @@ import {
 } from './pine-text';
 import * as actions from './pine-actions';
 import { probeBuild } from './probe';
+import { computeDateBounds } from './relative-date';
 
 const hasMultipleBlocks = (expression: string): boolean => /\n\s*\n/.test(expression.trim());
 
@@ -191,18 +195,23 @@ export class CanvasStore {
     return targets[0];
   }
 
-  /** Lands the cursor on `alias`'s own bare stop - no config item highlighted. Up/Down (focusNext/focusPrev below) and every mouse click that changes focus go through this. */
+  /**
+   * Lands the cursor on `alias`'s own bare stop - no config item highlighted.
+   * Up/Down (focusNext/focusPrev below) and every mouse click that changes
+   * focus go through this - also spotlights `alias`'s columns in Result.tsx
+   * (see `hoveredAlias`), so keyboard nav gets the same column highlight
+   * hovering a node already gave mouse users.
+   */
   focusNode(alias: string) {
     this._cursor = { kind: 'node', alias };
+    this.setHoveredAlias(alias);
   }
 
   /**
-   * Which table's columns Result.tsx should spotlight right now - set/cleared
-   * directly by TableNode's onMouseEnter/onMouseLeave. Deliberately separate
-   * from `_cursor`/`focusedAlias` above: that's a sticky "current stop" that
-   * only ever moves forward (see focusNode's own comment - nothing clears
-   * it), which is right for keyboard/click navigation but wrong for a hover
-   * spotlight that must disappear the instant the pointer leaves.
+   * Which table's columns Result.tsx should spotlight right now. Set here by
+   * focusNode (keyboard nav and node clicks); cleared by TableNode's own
+   * onMouseLeave the instant the pointer leaves with nothing else having
+   * claimed it since (see that handler's own comment).
    */
   hoveredAlias: string | null = null;
 
@@ -1218,7 +1227,17 @@ export class CanvasStore {
   /** Column chosen from the where picker's list - switch to entering an operator/value, same anchor. */
   beginWhereValue(alias: string, column: string) {
     const anchor = this.picker.open ? this.picker.anchor : CanvasStore.defaultAnchor;
-    this.picker = { open: true, mode: 'where-value', alias, column, operator: '=', value: '', anchor };
+    this.picker = {
+      open: true,
+      mode: 'where-value',
+      alias,
+      column,
+      operator: '=',
+      value: '',
+      anchor,
+      rollingCount: 1,
+      rollingUnit: 'day',
+    };
   }
 
   /**
@@ -1235,9 +1254,21 @@ export class CanvasStore {
     if (!condition) return;
     const [, column, , operator, val] = condition;
     const value = val && 'value' in val ? String(val.value) : '';
-    this.focusConfigItem(alias, { kind: 'where', index });
     // ast.where operators come back SQL-cased (e.g. "ILIKE") from pine-lang; Pine syntax is lowercase-only.
-    this.picker = { open: true, mode: 'where-value', alias, column, operator: operator.toLowerCase(), value, anchor, editIndex: index };
+    const pineOperator = operator.toLowerCase();
+    this.focusConfigItem(alias, { kind: 'where', index });
+    this.picker = {
+      open: true,
+      mode: 'where-value',
+      alias,
+      column,
+      operator: pineOperator,
+      value,
+      anchor,
+      editIndex: index,
+      rollingCount: 1,
+      rollingUnit: 'day',
+    };
   }
 
   setWhereOperator(operator: string) {
@@ -1248,9 +1279,36 @@ export class CanvasStore {
     if (this.picker.open && this.picker.mode === 'where-value') this.picker = { ...this.picker, value };
   }
 
+  setWhereRolling(rollingCount: number, rollingUnit: RelativeDateUnit) {
+    if (this.picker.open && this.picker.mode === 'where-value') this.picker = { ...this.picker, rollingCount, rollingUnit };
+  }
+
+  /**
+   * `operator` doubles as the two relative-date picks (WHERE_TODAY_OPERATOR/
+   * WHERE_ROLLING_OPERATOR - see PickerState's own comment), so this is the
+   * one submit path for the where-value panel regardless of which the
+   * dropdown holds. Both relative picks always ADD a new pair of `where:`
+   * conditions rather than editing in place - Picker.tsx only offers them
+   * for a brand-new condition (editIndex undefined), and this bails out too
+   * as a second guard, since merging one back into a single existing
+   * condition would need updateWhereConditionAt to grow a second segment
+   * mid-commit, not worth it for what's meant to stay a quick-add shortcut.
+   */
   async submitWhereValue() {
-    if (!this.picker.open || this.picker.mode !== 'where-value' || !this.picker.value.trim()) return;
-    const { alias, column, operator, value, editIndex } = this.picker;
+    if (!this.picker.open || this.picker.mode !== 'where-value') return;
+    const { alias, column, operator, value, editIndex, rollingCount, rollingUnit } = this.picker;
+    if (operator === WHERE_TODAY_OPERATOR || operator === WHERE_ROLLING_OPERATOR) {
+      if (editIndex !== undefined) return;
+      const bounds = computeDateBounds(
+        operator === WHERE_TODAY_OPERATOR ? { kind: 'today' } : { kind: 'rolling', count: rollingCount, unit: rollingUnit },
+      );
+      await this.commit(base =>
+        actions.addRelativeDateWhereCondition(base, actions.resolveAlias(base, alias), column, bounds),
+      );
+      this.closePicker();
+      return;
+    }
+    if (!value.trim()) return;
     if (editIndex !== undefined) {
       await this.commitWhereUpdate(alias, editIndex, column, operator, value.trim());
     } else {

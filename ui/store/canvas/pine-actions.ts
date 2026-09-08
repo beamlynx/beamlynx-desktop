@@ -1,5 +1,6 @@
 import { Ast, TableHint } from '../client';
 import { JoinType } from './canvas.model';
+import { DateBounds } from './relative-date';
 import {
   appendOwnedSegment,
   appendTableSegment,
@@ -238,6 +239,27 @@ export const updateWhereConditionAt = (
   const condition = `${alias}.${column} ${operator} ${buildWhereLiteral(value)}`;
   const next = base.segments.map(s => (s === target ? { ...s, text: `where: ${condition}` } : s));
   return toText(next);
+};
+
+// Same "own `where:` step per filter" reasoning as addWhereCondition, just
+// two steps instead of one - see DateBounds' own comment (relative-date.ts)
+// for why a relative-date selection compiles to a `>`/`<` pair rather than a
+// single `>=` condition.
+export const addRelativeDateWhereCondition = (
+  base: PinnedBase,
+  alias: string,
+  column: string,
+  bounds: DateBounds,
+): string => {
+  const withLower = appendOwnedSegment(
+    base.segments,
+    alias,
+    'where',
+    `where: ${alias}.${column} > '${bounds.lowerExclusive}'`,
+  );
+  return toText(
+    appendOwnedSegment(withLower, alias, 'where', `where: ${alias}.${column} < '${bounds.upperExclusive}'`),
+  );
 };
 
 export const addOrderColumn = (

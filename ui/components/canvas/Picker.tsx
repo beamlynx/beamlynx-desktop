@@ -7,9 +7,16 @@ import {
   ORDER_DIRECTIONS,
   PickerAnchor,
   PickerItem,
+  RELATIVE_DATE_UNITS,
+  RelativeDateUnit,
   WHERE_OPERATORS,
+  WHERE_ROLLING_OPERATOR,
+  WHERE_TODAY_OPERATOR,
 } from '../../store/canvas/canvas.model';
+import { looksLikeDateColumn } from '../../store/canvas/relative-date';
 import { useCanvasStore } from './canvas-context';
+
+const pluralize = (count: number, unit: string): string => (count === 1 ? unit : `${unit}s`);
 
 const pickerWidth = 280;
 const pickerHeight = 320;
@@ -505,7 +512,12 @@ const Picker: React.FC = observer(() => {
         <div style={{ display: 'flex', gap: 8 }}>
           {/* Autofocused, not the value input below -- picking the
               comparison (=, !=, ...) is the first decision here, and it's
-              a <select> a keyboard user can immediately arrow through. */}
+              a <select> a keyboard user can immediately arrow through.
+              For a brand-new condition on a date-shaped column, two extra
+              entries (today / in the last) turn the row after this one into
+              a relative-date builder instead of a plain value input - see
+              CanvasStore.submitWhereValue's own comment for why these live
+              on the operator itself rather than a separate mode. */}
           <select
             autoFocus
             value={picker.operator}
@@ -517,15 +529,47 @@ const Picker: React.FC = observer(() => {
                 {op}
               </option>
             ))}
+            {picker.editIndex === undefined && looksLikeDateColumn(picker.column) && (
+              <>
+                <option value={WHERE_TODAY_OPERATOR}>{WHERE_TODAY_OPERATOR}</option>
+                <option value={WHERE_ROLLING_OPERATOR}>{WHERE_ROLLING_OPERATOR}</option>
+              </>
+            )}
           </select>
-          <input
-            value={picker.value}
-            onChange={e => store.setWhereValue(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter') void store.submitWhereValue();
-            }}
-            style={{ ...inputStyle, flex: 1, minWidth: 0 }}
-          />
+          {picker.operator === WHERE_TODAY_OPERATOR ? null : picker.operator === WHERE_ROLLING_OPERATOR ? (
+            <>
+              <input
+                type="number"
+                min={1}
+                value={picker.rollingCount}
+                onChange={e => store.setWhereRolling(Math.max(1, Number(e.target.value) || 1), picker.rollingUnit)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') void store.submitWhereValue();
+                }}
+                style={{ ...inputStyle, width: 44 }}
+              />
+              <select
+                value={picker.rollingUnit}
+                onChange={e => store.setWhereRolling(picker.rollingCount, e.target.value as RelativeDateUnit)}
+                style={{ ...inputStyle, flex: 1, minWidth: 0 }}
+              >
+                {RELATIVE_DATE_UNITS.map(u => (
+                  <option key={u.value} value={u.value}>
+                    {pluralize(picker.rollingCount, u.label)}
+                  </option>
+                ))}
+              </select>
+            </>
+          ) : (
+            <input
+              value={picker.value}
+              onChange={e => store.setWhereValue(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') void store.submitWhereValue();
+              }}
+              style={{ ...inputStyle, flex: 1, minWidth: 0 }}
+            />
+          )}
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 6 }}>
           <span style={{ cursor: 'pointer', opacity: 0.7 }} onClick={() => store.closePicker()}>
@@ -539,10 +583,7 @@ const Picker: React.FC = observer(() => {
               remove
             </span>
           )}
-          <span
-            style={{ cursor: 'pointer', color: 'var(--canvas-trace)' }}
-            onClick={() => void store.submitWhereValue()}
-          >
+          <span style={{ cursor: 'pointer', color: 'var(--canvas-trace)' }} onClick={() => void store.submitWhereValue()}>
             {picker.editIndex !== undefined ? 'update' : 'add'}
           </span>
         </div>
