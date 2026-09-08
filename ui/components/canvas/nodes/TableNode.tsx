@@ -573,11 +573,9 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
         // revealed ITS action bar (via `engaged` above) while the border/
         // background "current" treatment stayed on the keyboard's last
         // stop, which read as two different nodes both claiming to be
-        // focused at once.
+        // focused at once. Also spotlights this table's columns in
+        // Result.tsx - see focusNode's own comment.
         canvasStore.focusNode(data.alias);
-        // Spotlights this table's columns in Result.tsx - see hoveredAlias's
-        // own comment for why this is a separate field from focusNode above.
-        canvasStore.setHoveredAlias(data.alias);
       }}
       onMouseLeave={() => {
         setHovered(false);

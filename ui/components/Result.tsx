@@ -26,6 +26,14 @@ import DownloadResultsModal from './DownloadResultsModal';
 import { pineEscape } from '../store/util';
 import { getColorForAlias, shouldShowTableColors } from '../store/table-colors.util';
 import { BarChart } from './BarChart';
+import JsonCellContent from './JsonCellContent';
+import JsonInspectorPanel from './JsonInspectorPanel';
+import {
+  columnLooksLikeJson,
+  minifyJsonText,
+  parseJsonCellValue,
+  prettyJson,
+} from './json-cell.util';
 
 interface ResultProps {
   sessionId: string;
@@ -46,9 +54,10 @@ interface UpdateData {
   updateExpression: string;
 }
 
-interface EditingCell {
+interface JsonPanelState {
   id: string | number;
   field: string;
+  editing: boolean;
 }
 
 const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
@@ -78,6 +87,19 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const hoveredAlias =
     hasMultipleTables && global.canvasActive ? session.getCanvasStore().hoveredAlias : null;
 
+  // Columns whose values are JSON get a prettified, syntax-highlighted
+  // preview/editor instead of the plain single-line text every other column
+  // gets - detected once per render off a sample of rows (see
+  // columnLooksLikeJson) rather than per cell, so an ordinary text/number
+  // column never pays for the check on every row.
+  const jsonColumnFields = React.useMemo(() => {
+    const fields = new Set<string>();
+    baseColumns.forEach(column => {
+      if (columnLooksLikeJson(rows, column.field)) fields.add(column.field);
+    });
+    return fields;
+  }, [rows, baseColumns]);
+
   // Add custom edit component and column color classes by table alias
   const columns = baseColumns.map(column => {
     const alias = colIndexToAlias[column.field] ?? '';
@@ -87,9 +109,25 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     ]
       .filter(Boolean)
       .join(' ');
+    const isJsonColumn = jsonColumnFields.has(column.field);
     return {
       ...column,
       renderEditCell: (params: any) => <CellEditComponent {...params} />,
+      ...(isJsonColumn && {
+        // Not editable at the DataGrid level - editing a JSON cell happens
+        // entirely inside JsonInspectorPanel, opened already in edit mode by
+        // this same click (see onOpen below), not via DataGrid's own
+        // double-click/F2/type-to-edit. renderEditCell above is therefore
+        // dead code for this column (never invoked), left in place rather
+        // than branched around since it's harmless.
+        editable: false,
+        renderCell: (params: any) => (
+          <JsonCellContent
+            value={params.value}
+            onOpen={() => setJsonPanel({ id: params.id, field: params.field, editing: true })}
+          />
+        ),
+      }),
       ...(classNames && {
         headerClassName: classNames,
         cellClassName: classNames,
@@ -149,7 +187,111 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [updateData, setUpdateData] = useState<UpdateData | undefined>(undefined);
-  const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
+  const [jsonPanel, setJsonPanel] = useState<JsonPanelState | null>(null);
+  // Looked up fresh from rows/columnMetadata each render (not captured when
+  // the panel opens) so it reflects a re-evaluated session rather than a
+  // frozen snapshot - jsonPanel itself only ever needs to remember "which
+  // cell, and am I editing it", not that cell's value.
+  const jsonPanelValue = jsonPanel
+    ? rows.find(row => row._id === jsonPanel.id)?.[jsonPanel.field]
+    : undefined;
+  const jsonPanelParsed = jsonPanel ? parseJsonCellValue(jsonPanelValue) : undefined;
+  const jsonPanelAlias = jsonPanel
+    ? session.columnMetadata.colIndexToAliasLookup[jsonPanel.field]
+    : '';
+  const jsonPanelColumn = jsonPanel
+    ? session.columnMetadata.colIndexToColumnLookup[jsonPanel.field]
+    : '';
+
+  const closeJsonPanel = () => setJsonPanel(null);
+
+  // The row this panel points at can stop being JSON (or disappear) out
+  // from under it - the session re-evaluates, a filter drops the row, and
+  // so on. Rather than leave the panel open on a value that no longer
+  // exists (or, worse, leave jsonPanel set but the panel invisible - see
+  // the `open` prop below - so a re-click on the same cell looks like it
+  // does nothing), close it the moment that happens. Only while viewing -
+  // an in-progress edit has its own dirty-guard (JsonInspectorPanel's own
+  // handleClose) that already refuses to disappear out from under typed
+  // text, and closing it here too would fight that guard.
+  useEffect(() => {
+    if (jsonPanel && !jsonPanel.editing && jsonPanelParsed === undefined) {
+      setJsonPanel(null);
+    }
+  }, [jsonPanel, jsonPanelParsed]);
+
+  const copyJsonPanel = () => {
+    if (jsonPanelParsed === undefined) return;
+    const text = prettyJson(jsonPanelParsed);
+    navigator.clipboard.writeText(text).then(() => {
+      global.setCopiedMessage(sessionId, text, true);
+    });
+  };
+
+  const startEditingJsonPanel = () => {
+    if (!jsonPanel) return;
+    setJsonPanel({ ...jsonPanel, editing: true });
+  };
+
+  const cancelEditingJsonPanel = () => {
+    if (!jsonPanel) return;
+    setJsonPanel({ ...jsonPanel, editing: false });
+  };
+
+  // The panel's own Save button - runs the same direct-execute update every
+  // other cell's Enter-to-commit already does (createUpdateExpression below
+  // + a virtual-session evaluate), just reached from the panel instead of
+  // DataGrid's processRowUpdate (JSON columns are `editable: false` at the
+  // DataGrid level now - see the columns map above - so processRowUpdate
+  // never runs for them). Returns whether the commit succeeded so the panel
+  // knows whether to show its own inline "Invalid JSON" state or flip back
+  // to view mode.
+  const commitJsonPanel = async (text: string): Promise<boolean> => {
+    if (!jsonPanel) return false;
+    const minified = minifyJsonText(text);
+    if (!minified.ok) return false;
+    const alias = session.columnMetadata.colIndexToAliasLookup[jsonPanel.field];
+    const idColumnIndex = session.columnMetadata.aliasToIdLookup[alias];
+    if (!idColumnIndex) {
+      console.error('No id column index found for alias:', alias);
+      return false;
+    }
+    const rowData = rows.find(row => row._id === jsonPanel.id);
+    if (!rowData) {
+      console.error('Row data not found for id:', jsonPanel.id);
+      return false;
+    }
+    const rowId = rowData[idColumnIndex];
+    const column = session.columnMetadata.colIndexToColumnLookup[jsonPanel.field];
+    try {
+      const updateExpression = await createUpdateExpression(
+        session.expression,
+        alias,
+        rowId,
+        column,
+        minified.value,
+      );
+      const vs = global.getVirtualSession();
+      runInAction(() => {
+        vs.expression = updateExpression;
+      });
+      await vs.evaluate();
+      await session.evaluate();
+    } catch (error) {
+      console.error('JSON cell update failed:', error);
+      return false;
+    }
+    // Close rather than flip back to view mode: session.evaluate() just
+    // rebuilt `rows`, and `_id` is a positional index re-assigned on every
+    // evaluation (see default.plugin.tsx), not a stable row identity - if
+    // the update changed row order or count, jsonPanel.id could now name a
+    // different row entirely. Staying open risks confidently showing the
+    // wrong row's value as "what you just saved"; closing doesn't claim
+    // anything.
+    setJsonPanel(null);
+    return true;
+  };
+
   const [viewMode, setViewMode] = useState<'table' | 'chart'>('table');
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [exportData, setExportData] = useState<{ filename: string; csvContent: string }>({
@@ -204,8 +346,15 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
 
   const handleCopyAction = () => {
     if (contextMenu?.cellValue !== undefined && contextMenu?.cellValue !== null) {
-      navigator.clipboard.writeText(String(contextMenu.cellValue)).then(() => {
-        global.setCopiedMessage(sessionId, contextMenu.cellValue, true);
+      // Pretty-print a JSON cell rather than copying its raw (possibly
+      // minified, possibly object-shaped) value verbatim - this is the
+      // grid's one copy action, JSON cell or not, so it doesn't need its
+      // own separate "copy" button to find and learn.
+      const parsedJson = parseJsonCellValue(contextMenu.cellValue);
+      const text =
+        parsedJson !== undefined ? prettyJson(parsedJson) : String(contextMenu.cellValue);
+      navigator.clipboard.writeText(text).then(() => {
+        global.setCopiedMessage(sessionId, text, true);
       });
     }
     handleContextMenuClose();
@@ -233,7 +382,9 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     const alias = session.columnMetadata.colIndexToAliasLookup[contextMenu.fieldIndex];
     const dbColumn = session.columnMetadata.colIndexToColumnLookup[contextMenu.fieldIndex];
     if (alias && dbColumn) {
-      await session.getCanvasStore().commitWhere(alias, dbColumn, '=', String(contextMenu.cellValue));
+      await session
+        .getCanvasStore()
+        .commitWhere(alias, dbColumn, '=', String(contextMenu.cellValue));
     } else {
       console.error('Missing alias/column metadata for filter action:', {
         fieldIndex: contextMenu.fieldIndex,
@@ -331,6 +482,36 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     await vs.pipeAndUpdateExpression(`update! ${column} = '${pineEscape(value)}'`);
 
     return vs.expression;
+  };
+
+  // Inspect action for JsonInspectorPanel's own "Inspect" button (edit mode
+  // only) - mirrors CellEditComponent's handleInspectClick below, minified
+  // rather than the prettified text the panel shows, since that's the value
+  // that will actually be committed.
+  const openJsonInspect = async (id: string | number, field: string, text: string) => {
+    const minified = minifyJsonText(text);
+    if (!minified.ok) return;
+    const alias = session.columnMetadata.colIndexToAliasLookup[field];
+    const idColumnIndex = session.columnMetadata.aliasToIdLookup[alias];
+    if (!idColumnIndex) {
+      console.error('No id column index found for alias:', alias);
+      return;
+    }
+    const rowData = rows.find(row => row._id === id);
+    if (!rowData) {
+      console.error('Row data not found for id:', id);
+      return;
+    }
+    const rowId = rowData[idColumnIndex];
+    const column = session.columnMetadata.colIndexToColumnLookup[field];
+    const updateExpression = await createUpdateExpression(
+      session.expression,
+      alias,
+      rowId,
+      column,
+      minified.value,
+    );
+    setUpdateData({ column, id: rowId, value: minified.value, alias, updateExpression });
   };
 
   // Custom edit component that shows inspect icon during editing
@@ -536,7 +717,10 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
           <IconButton
             onClick={() => {
               navigator.clipboard.writeText(session.getResultClipboardText()).then(() => {
-                global.setCopiedMessage(sessionId, `${rows.length} row${rows.length === 1 ? '' : 's'}`);
+                global.setCopiedMessage(
+                  sessionId,
+                  `${rows.length} row${rows.length === 1 ? '' : 's'}`,
+                );
               });
             }}
             disabled={rows.length === 0}
@@ -709,12 +893,6 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
               getRowId={row => row._id ?? ''}
               columnVisibilityModel={session.columnVisibilityModel}
               processRowUpdate={updateRecord}
-              onCellEditStart={params => {
-                setEditingCell({ id: params.id, field: params.field });
-              }}
-              onCellEditStop={() => {
-                setEditingCell(null);
-              }}
             />
           </Box>
         ) : (
@@ -796,6 +974,24 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
         defaultFilename={exportData.filename}
         csvContent={exportData.csvContent}
         onClose={() => setExportModalOpen(false)}
+      />
+
+      {/* JSON cell inspector - view and edit, see JsonInspectorPanel's own comment for why this replaced three separate surfaces */}
+      <JsonInspectorPanel
+        open={!!jsonPanel && jsonPanelParsed !== undefined}
+        title={`${jsonPanelAlias}.${jsonPanelColumn}`}
+        parsed={jsonPanelParsed}
+        isDark={isDark}
+        editing={!!jsonPanel?.editing}
+        onClose={closeJsonPanel}
+        onCopy={copyJsonPanel}
+        onEditStart={startEditingJsonPanel}
+        onCancelEdit={cancelEditingJsonPanel}
+        onCommit={commitJsonPanel}
+        onInspect={text => {
+          if (!jsonPanel) return;
+          openJsonInspect(jsonPanel.id, jsonPanel.field, text);
+        }}
       />
     </div>
   );

@@ -92,6 +92,30 @@ export const editorChrome = (isDark: boolean): Extension =>
         backgroundColor: 'var(--canvas-picker-bg)',
         color: 'var(--canvas-text)',
       },
+      // Themed rather than the OS default scrollbar - matches the Results
+      // grid's own DataGrid scrollbar treatment (Result.tsx, same two
+      // tokens) so every scrollable code surface in the app (Pine/SQL
+      // input, and JsonInspectorPanel's view/edit CodeMirror) agrees with
+      // it, not just with each other. `.cm-scroller` (not `&`) since that's
+      // CodeMirror's own internal scrolling element - the one that
+      // actually grows a scrollbar once content exceeds an editor's own
+      // height, independent of whatever ELSE also happens to scroll around
+      // it (e.g. JsonInspectorPanel's own wrapping Box, for an editor left
+      // to size to its content instead of a fixed height).
+      '.cm-scroller::-webkit-scrollbar': {
+        width: '10px',
+        height: '10px',
+      },
+      '.cm-scroller::-webkit-scrollbar-track': {
+        background: 'transparent',
+      },
+      '.cm-scroller::-webkit-scrollbar-thumb': {
+        backgroundColor: 'var(--canvas-pin)',
+        borderRadius: '5px',
+      },
+      '.cm-scroller::-webkit-scrollbar-thumb:hover': {
+        background: 'var(--canvas-trace)',
+      },
     },
     { dark: isDark },
   );

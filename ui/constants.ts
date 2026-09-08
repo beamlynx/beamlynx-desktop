@@ -46,6 +46,13 @@ export const MIN_NEW_LAYOUT_PANEL_SIZE = 160;
 export const DEFAULT_SETTINGS_PANEL_WIDTH = 640;
 export const MIN_SETTINGS_PANEL_WIDTH = 420;
 
+/* Results grid's JSON cell inspector (JsonInspectorPanel.tsx) - a fixed-
+ * position Drawer, not a layout sibling, so its own sizing rather than
+ * reusing the docked-panel constants above. Narrower default than Settings:
+ * this holds one value, not a whole settings UI. */
+export const DEFAULT_JSON_PANEL_WIDTH = 420;
+export const MIN_JSON_PANEL_WIDTH = 320;
+
 /* Vertical tab rail (PineTabs.tsx, Appearance -> Tabs = Vertical). Fixed,
  * not resizable: the rail only ever holds session names, so there's no
  * content whose size would justify a drag handle -- and every other
