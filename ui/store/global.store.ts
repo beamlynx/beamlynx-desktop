@@ -1,7 +1,7 @@
 import { makeAutoObservable, reaction, runInAction } from 'mobx';
 import { lt } from 'semver';
 import { AccessPolicy, AccessPolicyRule, HttpClient, ConnectionInfo, effectiveAccessPolicyRules } from './client';
-import type { CredentialsStatus } from '../desktop';
+import type { CredentialsStatus, RevealOutcome } from '../desktop';
 import { Session, Theme, InputMode } from './session';
 import { THEME_MODE, ThemeId } from '../styles/palette/tokens';
 import { UiFontId, CodeFontId } from '../styles/fonts';
@@ -697,7 +697,7 @@ export class GlobalStore {
           dbPort: p.dbPort,
           mcpEnabled: p.mcpEnabled,
           policyId: p.policyId,
-          bypassPolicyForOwnQueries: p.bypassPolicyForOwnQueries,
+          applyPolicyToOwnQueries: p.applyPolicyToOwnQueries,
         }));
         this.connections.forEach(c => this.assignConnectionColor(c.id));
         // Keep the active pine connection's own color alive even though it's
@@ -1229,22 +1229,44 @@ export class GlobalStore {
   };
 
   /**
-   * Whether the connection owner has switched the assigned policy OFF for
-   * their own tab queries on it -- MCP always uses the assigned policy and
-   * never reads this. Never refused: unlike setMcpEnabled/setConnectionPolicy
-   * there's no "pointing at nothing" state this could create, since it
-   * doesn't touch mcpEnabled or policyId. See credential-store.ts's
-   * setBypassPolicyForOwnQueries.
+   * Whether the connection owner has switched the assigned policy ON for
+   * their own tab queries on it too -- MCP always uses the assigned policy
+   * and never reads this. Never refused: unlike
+   * setMcpEnabled/setConnectionPolicy there's no "pointing at nothing" state
+   * this could create, since it doesn't touch mcpEnabled or policyId. See
+   * credential-store.ts's setApplyPolicyToOwnQueries.
    */
-  setBypassPolicyForOwnQueries = async (id: string, bypass: boolean): Promise<void> => {
+  setApplyPolicyToOwnQueries = async (id: string, apply: boolean): Promise<void> => {
     if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
-    const updated = await window.beamlynxDesktop.credentials.setBypassPolicyForOwnQueries(id, bypass);
+    const updated = await window.beamlynxDesktop.credentials.setApplyPolicyToOwnQueries(id, apply);
     if (!updated) return;
     runInAction(() => {
       this.connections = this.connections.map(c =>
-        c.id === id ? { ...c, bypassPolicyForOwnQueries: updated.bypassPolicyForOwnQueries } : c,
+        c.id === id ? { ...c, applyPolicyToOwnQueries: updated.applyPolicyToOwnQueries } : c,
       );
     });
+  };
+
+  /**
+   * Reports what the connection owner decided on a pending request_reveal
+   * (see RevealRequestHandler.tsx/RevealRequestBanner.tsx) -- a plain,
+   * side-effect-free forward to main's in-memory queue
+   * (reveal-requests.ts's resolveRevealRequest), which is what the agent's
+   * matching check_reveal poll reads. Never touches GlobalStore/Session
+   * state itself; the caller clears the session's own
+   * pendingRevealRequestId once this resolves.
+   */
+  resolveRevealRequest = async (id: string, outcome: RevealOutcome): Promise<void> => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
+    // A reveal outcome's columns/rows come straight from Session state
+    // (session.columns is a MobX-observable array), and Electron IPC's
+    // structured clone cannot serialize a MobX Proxy -- confirmed the hard
+    // way: "An object could not be cloned." thrown synchronously from this
+    // call. Same fix mcp-query.ts's toPlainJson uses at the equivalent
+    // main<-renderer IPC boundary: a JSON round-trip forces a plain,
+    // guaranteed-cloneable copy, which loses nothing since this data is
+    // already JSON-shaped.
+    await window.beamlynxDesktop.mcpReveal.resolve(id, JSON.parse(JSON.stringify(outcome)));
   };
 
   /**

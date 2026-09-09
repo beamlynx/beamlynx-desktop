@@ -233,11 +233,12 @@ export type ConnectionInfo = {
   // effectiveAccessPolicyRules below.
   policyId?: string | null;
   // Desktop-only: whether the connection owner has switched the assigned
-  // policy OFF for their own (non-MCP) queries on this connection -- MCP
-  // always uses the assigned policy regardless of this. Defaults to false
-  // (protected by default); undefined (older saved connections) means
-  // false. See effectiveAccessPolicyRules below.
-  bypassPolicyForOwnQueries?: boolean;
+  // policy ON for their own (non-MCP) queries on this connection too -- MCP
+  // always uses the assigned policy regardless of this. Defaults to false:
+  // the owner's own tabs see real data on this connection unless they opt
+  // in. Undefined (older saved connections) also means false. See
+  // effectiveAccessPolicyRules below.
+  applyPolicyToOwnQueries?: boolean;
 };
 
 // The single place that decides which rules actually apply for a
@@ -252,20 +253,22 @@ export type ConnectionInfo = {
 //   deliberately unrestricted) or already resolves to a policy with an
 //   active rule, so there is no undecided "MCP on, no policy" state to
 //   handle here, only the deliberate one (which the `!connection?.policyId`
-//   check below already returns [] for). bypassPolicyForOwnQueries is never
+//   check below already returns [] for). applyPolicyToOwnQueries is never
 //   consulted for this caller: it governs the human's own tabs only, never
 //   what the agent sees.
-// - A human's own tab (forMcp: false) applies the assigned policy unless
-//   bypassPolicyForOwnQueries is explicitly true -- independent of
-//   mcpEnabled, so turning MCP off (or never turning it on) doesn't also
-//   unprotect the human's own browsing on that connection.
+// - A human's own tab (forMcp: false) never applies the assigned policy
+//   unless applyPolicyToOwnQueries is explicitly true -- the access policy
+//   exists to gate the MCP agent, not the connection's own owner, so an
+//   owner's own queries see real data by default regardless of mcpEnabled.
+//   Independent of mcpEnabled either way, so turning MCP on doesn't also
+//   redact the human's own browsing on that connection.
 export function effectiveAccessPolicyRules(
   connection: ConnectionInfo | undefined,
   policies: AccessPolicy[],
   forMcp: boolean,
 ): AccessPolicyRule[] {
   if (!connection?.policyId) return [];
-  if (forMcp ? !connection.mcpEnabled : connection.bypassPolicyForOwnQueries === true) return [];
+  if (forMcp ? !connection.mcpEnabled : connection.applyPolicyToOwnQueries !== true) return [];
   const policy = policies.find(p => p.id === connection.policyId);
   if (!policy) return [];
   return policy.rules.filter(m => m.enabled).map(({ enabled: _enabled, ...rule }) => rule);

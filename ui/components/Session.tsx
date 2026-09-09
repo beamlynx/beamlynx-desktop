@@ -22,6 +22,7 @@ import NewLayoutView from './NewLayoutView';
 import Query from './Query';
 import Result from './Result';
 import ErrorMessage from './ErrorMessage';
+import RevealRequestBanner from './RevealRequestBanner';
 
 interface SessionProps {
   sessionId: string;
@@ -280,10 +281,27 @@ const MainView = observer(
 
 const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
   const { global } = useStores();
-  return global.layoutMode === 'new' ? (
-    <NewLayoutView sessionId={sessionId} />
-  ) : (
-    <LegacySessionView sessionId={sessionId} />
+  const session = global.getSession(sessionId);
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0 }}>
+      {session.pendingRevealRequestId && <RevealRequestBanner session={session} />}
+      {/* Same flex-column/flex:1/minHeight:0 combination PineTabs' TabPanel
+          already gives this component directly -- kept identical here so
+          NewLayoutView/LegacySessionView (each already relying on that
+          exact parent shape for their own internal sizing) render under an
+          equivalent box, with the banner above just taking its own space
+          out of the column first. flexDirection must stay 'column': a bare
+          display:'flex' defaults to row, which would hand both layout
+          views a horizontal main axis instead of the vertical one they're
+          built for. */}
+      <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0 }}>
+        {global.layoutMode === 'new' ? (
+          <NewLayoutView sessionId={sessionId} />
+        ) : (
+          <LegacySessionView sessionId={sessionId} />
+        )}
+      </Box>
+    </Box>
   );
 });
 

@@ -8,6 +8,7 @@ import DesktopUpdateBanner from '../components/DesktopUpdateBanner';
 import ConnectionErrorSnackbar from '../components/ConnectionErrorSnackbar';
 import McpBridge from '../components/McpBridge';
 import DeepLinkHandler from '../components/DeepLinkHandler';
+import RevealRequestHandler from '../components/RevealRequestHandler';
 import { useStores } from '../store/store-container';
 import { isDesktop, isDevelopment, isPlayground } from '../store/util';
 import { appFontVariablesClassName } from '../styles/app-font';
@@ -92,6 +93,7 @@ const Home: NextPage = () => {
       <ConnectionErrorSnackbar />
       <McpBridge />
       <DeepLinkHandler />
+      <RevealRequestHandler />
     </Container>
   );
 

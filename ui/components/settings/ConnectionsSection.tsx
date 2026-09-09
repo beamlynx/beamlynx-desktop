@@ -447,7 +447,7 @@ const ConnectionRow = observer(
     label,
     mcpEnabled,
     policyId,
-    bypassPolicyForOwnQueries,
+    applyPolicyToOwnQueries,
     isActive,
     isLive,
     switchDisabled,
@@ -457,7 +457,7 @@ const ConnectionRow = observer(
     label: string;
     mcpEnabled?: boolean;
     policyId?: string | null;
-    bypassPolicyForOwnQueries?: boolean;
+    applyPolicyToOwnQueries?: boolean;
     isActive: boolean;
     isLive: boolean;
     switchDisabled: boolean;
@@ -858,10 +858,10 @@ const ConnectionRow = observer(
             />
 
             <ToggleRow
-              label="Only apply to MCP server"
-              description="When on, this policy protects the agent only -- your own queries on this connection show real data instead."
-              checked={!!bypassPolicyForOwnQueries}
-              onChange={value => global.setBypassPolicyForOwnQueries(id, value)}
+              label="Also restrict my own queries"
+              description="This policy always protects the MCP agent. Turn this on to have it redact your own queries on this connection too."
+              checked={!!applyPolicyToOwnQueries}
+              onChange={value => global.setApplyPolicyToOwnQueries(id, value)}
               disabled={!policyId}
             />
 
@@ -1015,7 +1015,7 @@ const ConnectionsSection = () => {
           </Typography>
         )}
         {global.connections.map(
-          ({ id, label, mcpEnabled, policyId, bypassPolicyForOwnQueries }) => {
+          ({ id, label, mcpEnabled, policyId, applyPolicyToOwnQueries }) => {
             const isActive = isDesktop()
               ? id === global.activeProfileId
               : id === activeSession?.connectionId;
@@ -1027,7 +1027,7 @@ const ConnectionsSection = () => {
                 label={label}
                 mcpEnabled={mcpEnabled}
                 policyId={policyId}
-                bypassPolicyForOwnQueries={bypassPolicyForOwnQueries}
+                applyPolicyToOwnQueries={applyPolicyToOwnQueries}
                 isActive={isActive}
                 isLive={isLive}
                 switchDisabled={switchingConnection}
