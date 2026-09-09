@@ -965,6 +965,15 @@ export class GlobalStore {
    * separate panels. Invoking one while the panel is already open in that
    * exact mode closes it (a true toggle); invoking it while the panel is
    * open in the OTHER mode just switches the mode, without closing.
+   *
+   * Either way, opening (or mode-switching) the panel also moves keyboard
+   * focus into it -- session.focusTextInput() flips textInputFocused, which
+   * PineInput/SqlInput's own effect turns into a real CodeMirror .focus()
+   * call. That's a deliberate, explicit "give this panel the keyboard" act
+   * (the whole point of invoking the shortcut/button), unlike the
+   * NewLayoutView autoFocus={false} case (see PineInput's own comment on
+   * that prop) which guards against stealing focus from the graph on every
+   * *other* re-render of an already-open panel.
    */
   public togglePinePanel(session: Session) {
     if (this.newLayoutPanelVisible && session.inputMode === 'pine') {
@@ -972,6 +981,7 @@ export class GlobalStore {
     } else {
       this.newLayoutPanelVisible = true;
       session.setInputMode('pine');
+      session.focusTextInput();
     }
   }
 
@@ -981,6 +991,7 @@ export class GlobalStore {
     } else {
       this.newLayoutPanelVisible = true;
       session.setInputMode('sql');
+      session.focusTextInput();
     }
   }
 

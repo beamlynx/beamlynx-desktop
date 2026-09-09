@@ -63,6 +63,20 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true 
     }
   }, [session.textInputFocused]);
 
+  // Covers the same race as PineInput.tsx's own onCreateEditor comment:
+  // when focus is requested (session.focusTextInput()) in the same tick
+  // this editor mounts -- GlobalStore.toggleSqlPanel opening New Layout's
+  // panel -- the effect above already ran and found no view to focus yet.
+  // Fire once more the moment the view actually exists.
+  const onCreateEditor = useCallback(
+    (view: EditorView) => {
+      if (session.textInputFocused) {
+        view.focus();
+      }
+    },
+    [session],
+  );
+
   const handleChange = useCallback(
     (value: string) => {
       if (value !== session.query) {
@@ -137,6 +151,7 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true 
       height="100%"
       theme="none"
       extensions={extensions}
+      onCreateEditor={onCreateEditor}
       onFocus={() => {
         session.focusTextInput();
       }}

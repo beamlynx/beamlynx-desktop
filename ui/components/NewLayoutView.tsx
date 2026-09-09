@@ -248,13 +248,15 @@ const NewLayoutView: React.FC<NewLayoutViewProps> = observer(({ sessionId }) => 
   // the graph wherever the old pan/zoom put it, off-center or partly cut
   // off, until the next edit happens to trigger a fitView. Bumping this on
   // every orientation change (manual toggle or the small-screen override
-  // above), or on entering/exiting Zen mode (which resizes Canvas's
-  // container just as drastically), forces that re-fit regardless of which
-  // caused it.
+  // above), on entering/exiting Zen mode (which resizes Canvas's container
+  // just as drastically), or on the Pine/SQL panel opening/closing (same
+  // reason - see LeftPane's panelVisible/panelBesideCanvas, which shrinks or
+  // restores Canvas's share of this pane), forces that re-fit regardless of
+  // which caused it.
   const [recenterRequestCount, setRecenterRequestCount] = useState(0);
   useEffect(() => {
     setRecenterRequestCount(c => c + 1);
-  }, [effectiveOrientation, global.isZenModeActive]);
+  }, [effectiveOrientation, global.isZenModeActive, global.newLayoutPanelVisible]);
 
   return (
     <Box

@@ -363,9 +363,29 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
   // tab's editor exists), so there's never a subsequent "expression changed"
   // moment for updateEditorValue's effect above to correct the cursor on.
   // Set it explicitly, once, right after creation.
-  const onCreateEditor = useCallback((view: EditorView) => {
-    view.dispatch({ selection: { anchor: initialValueRef.current.length } });
-  }, []);
+  const onCreateEditor = useCallback(
+    (view: EditorView) => {
+      view.dispatch({ selection: { anchor: initialValueRef.current.length } });
+
+      // If focus was already requested (session.focusTextInput()) before this
+      // editor finished mounting -- e.g. GlobalStore.togglePinePanel firing
+      // in the same tick that opens New Layout's panel -- the effect below
+      // keyed on session.textInputFocused has already run and found
+      // inputRef.current?.view undefined, since @uiw/react-codemirror
+      // creates its EditorView a render or two after the initial mount (see
+      // its useCodeMirror.ts: the view only exists once `container` state
+      // has round-tripped through a render). That effect never fires again
+      // on its own, because the boolean it watches doesn't change again --
+      // so without this, the panel opens with the graph correctly
+      // deprioritized (textInputFocused blocks its keybindings) but nothing
+      // visibly focused to type into. Call .focus() here too, the moment
+      // the view actually exists, to close that race.
+      if (session.textInputFocused) {
+        view.focus();
+      }
+    },
+    [session],
+  );
 
   return (
     <CodeMirror
