@@ -325,6 +325,82 @@ export function formatConnections(connections: ConnectionRecord[]): string {
   ].join('\n');
 }
 
+/** What the control plane's POST /reveal route returns. */
+export type RevealCreatedResponse = { requestId?: string; status?: string; error?: string };
+
+/** The outcome half of what GET /reveal/:id returns, once resolved. */
+export type RevealOutcome =
+  | { expression: string; columns?: EvalResponse['columns']; rows?: EvalResponse['rows'] }
+  | { comment?: string };
+
+/** What the control plane's GET /reveal/:id route returns. */
+export type RevealStatusResponse = {
+  request?: {
+    id: string;
+    expression: string;
+    status: 'pending' | 'revealed' | 'declined';
+    outcome?: RevealOutcome;
+  };
+  error?: string;
+};
+
+/**
+ * request_reveal never returns the outcome itself -- see
+ * control-plane-server.ts's own comment on why this has to be
+ * fire-and-forget. This just confirms the request was created and tells the
+ * agent what to do next.
+ */
+export function formatRevealCreated(response: RevealCreatedResponse): string {
+  if (response.error) {
+    return response.error;
+  }
+  return (
+    `Reveal request ${response.requestId} sent to the user for review -- not resolved yet. The user may edit ` +
+    'the expression, reveal the real results, or decline (optionally with a comment). Call check_reveal with ' +
+    'this id every few seconds until it stops saying "pending".'
+  );
+}
+
+/**
+ * columns/rows on the revealed outcome are shaped exactly like /query's own
+ * EvalResponse (both ultimately come from the same session.evaluate() call
+ * in beamlynx-ui, see mcp-query.ts and RevealRequestBanner.tsx), so revealed
+ * rows render through the same formatRows this file already uses for
+ * run_query -- one row-rendering convention, not two.
+ */
+export function formatRevealStatus(response: RevealStatusResponse): string {
+  if (response.error) {
+    return response.error;
+  }
+  const request = response.request;
+  if (!request) {
+    return 'No such reveal request. It may have been from a previous app session.';
+  }
+
+  if (request.status === 'pending') {
+    return 'Still pending -- the user has not responded yet. Check back again in a few seconds.';
+  }
+
+  if (request.status === 'declined') {
+    const comment = (request.outcome as { comment?: string } | undefined)?.comment;
+    return [
+      'Declined by the user.',
+      comment ? `Their comment: ${comment}` : 'No comment was given.',
+      'Adjust the expression to address it (if a comment explains why) and call request_reveal again if needed.',
+    ].join('\n');
+  }
+
+  const outcome = request.outcome as { expression: string; columns?: EvalResponse['columns']; rows?: EvalResponse['rows'] };
+  const sections = [];
+  if (outcome.expression !== request.expression) {
+    sections.push(`Revealed -- note the user edited the expression before running it:\n  ${outcome.expression}`);
+  } else {
+    sections.push('Revealed:');
+  }
+  sections.push(formatRows({ columns: outcome.columns, rows: outcome.rows }));
+  return sections.join('\n\n');
+}
+
 // Pine operation names, and the doc topic that teaches each. Short forms
 // are included because an agent that saw `s:` in a hint may well mistype
 // that rather than the long form.
@@ -359,6 +435,25 @@ function levenshtein(a: string, b: string): number {
     }
   }
   return prev[b.length];
+}
+
+/**
+ * Pine has no quoted-identifier syntax -- pine-lang quotes every identifier
+ * itself in the SQL it emits, so a Pine expression never needs to. An agent
+ * reaching for SQL habits on a camelCase or reserved-looking column (e.g.
+ * `select: "tenantId"`) hits a parse error right at the `"`, and it's an
+ * unusually unhelpful one: tidyParseError strips every regex terminal from
+ * "Expected one of", which for this failure is all of them, leaving just
+ * `--`, `|`, `,`. Nothing there tells the agent quotes are the problem, so
+ * that case gets a direct, one-line correction instead of relying on the
+ * generic error text.
+ */
+function isStrayQuote(errorText: string): boolean {
+  const location = /Parse error at line (\d+), column (\d+):\n([\s\S]*?)\n/.exec(errorText);
+  if (!location) return false;
+  const column = Number(location[2]);
+  const line = location[3];
+  return line[column - 1] === '"';
 }
 
 /**
@@ -454,6 +549,12 @@ export function formatExpressionError(
   getDoc: (topic: string) => string | null,
 ): string {
   const sections = [tidyParseError(errorText)];
+
+  if (isStrayQuote(errorText)) {
+    sections.push(
+      'Pine never quotes identifiers, even camelCase or reserved-looking ones. Drop the quotes -- `select: tenantId`, not `select: "tenantId"`.',
+    );
+  }
 
   const match = pickDocTopic(errorText);
   if (match) {

@@ -118,15 +118,17 @@ export type SavedConnectionMeta = {
   // no separate state for the former because a connection can't reach
   // mcpEnabled: true without someone having looked at the policy picker.
   policyId: string | null;
-  // Whether the connection owner has switched OFF the assigned policy for
-  // their own queries, from any of their own (non-MCP) tabs -- independent
+  // Whether the connection owner has switched the assigned policy ON for
+  // their own queries too, from any of their own (non-MCP) tabs -- independent
   // of MCP, which always applies the policy unconditionally and never reads
-  // this. Defaults to false (protected by default, same posture as
-  // mcpEnabled/policyId): the policy applies to the owner's own queries too
-  // unless they explicitly bypass it -- e.g. to see real data while
-  // debugging -- which never weakens what an MCP agent sees on the same
-  // connection. Moot when policyId is null (nothing to bypass either way).
-  bypassPolicyForOwnQueries: boolean;
+  // this. Defaults to false: the access policy exists to gate what an MCP
+  // agent can see, never the owner's own session -- an owner's own tabs
+  // always see real data on this connection unless they explicitly opt in to
+  // wearing the same restriction (e.g. to preview what the agent sees).
+  // Turning this on never weakens what an MCP agent sees on the same
+  // connection -- that's governed by mcpEnabled/policyId alone. Moot when
+  // policyId is null (nothing to apply either way).
+  applyPolicyToOwnQueries: boolean;
 };
 
 type StoredConnectionRecord = SavedConnectionMeta & { dbPasswordEncrypted: string };
@@ -241,12 +243,16 @@ function toMeta(record: StoredConnectionRecord): SavedConnectionMeta {
   const { dbPasswordEncrypted: _dbPasswordEncrypted, ...meta } = record;
   // Records written before these fields existed have neither key -- default
   // each to its protective value (opt-in for mcpEnabled, no policy assigned
-  // for policyId, not bypassed for bypassPolicyForOwnQueries) rather than
-  // leaving it undefined.
+  // for policyId, not applied to the owner's own queries for
+  // applyPolicyToOwnQueries) rather than leaving it undefined. A record
+  // written under the old, inverted `bypassPolicyForOwnQueries` field also
+  // has neither key here, so it lands on the same false default -- which is
+  // the intended behavior change, not a migration gap: the owner's own
+  // session was never meant to be redacted by default.
   const mcpEnabled = meta.mcpEnabled ?? false;
   const policyId = meta.policyId ?? null;
-  const bypassPolicyForOwnQueries = meta.bypassPolicyForOwnQueries ?? false;
-  return { ...meta, mcpEnabled, policyId, bypassPolicyForOwnQueries };
+  const applyPolicyToOwnQueries = meta.applyPolicyToOwnQueries ?? false;
+  return { ...meta, mcpEnabled, policyId, applyPolicyToOwnQueries };
 }
 
 function makeLabel(input: Pick<SaveConnectionInput, 'dbUser' | 'dbHost' | 'dbPort' | 'dbName'>): string {
@@ -330,7 +336,7 @@ export function saveConnection(input: SaveConnectionInput): SaveConnectionResult
       // for this connection, a policy is already applying. Falls back to
       // null only if every policy has been deleted.
       policyId: store.accessPolicies[0]?.id ?? null,
-      bypassPolicyForOwnQueries: false,
+      applyPolicyToOwnQueries: false,
     };
     store.connections.push(record);
   }
@@ -426,18 +432,18 @@ export function setConnectionPolicy(id: string, policyId: string | null): SetCon
   return { ok: true, profile: toMeta(store.connections[index]) };
 }
 
-// Whether THIS connection's owner has switched the assigned policy off for
-// their own queries -- see SavedConnectionMeta.bypassPolicyForOwnQueries.
+// Whether THIS connection's owner has switched the assigned policy on for
+// their own queries too -- see SavedConnectionMeta.applyPolicyToOwnQueries.
 // No precondition of its own, unlike setConnectionPolicy/setMcpEnabled: it
 // never affects what MCP sees, only the human's own tabs, so there's
 // nothing to guard against.
-export function setBypassPolicyForOwnQueries(id: string, bypass: boolean): SavedConnectionMeta | null {
+export function setApplyPolicyToOwnQueries(id: string, apply: boolean): SavedConnectionMeta | null {
   const store = readStore();
   const index = store.connections.findIndex(c => c.id === id);
   if (index < 0) return null;
-  store.connections[index] = { ...store.connections[index], bypassPolicyForOwnQueries: bypass };
+  store.connections[index] = { ...store.connections[index], applyPolicyToOwnQueries: apply };
   writeStore(store);
-  console.log(`[credentials] setBypassPolicyForOwnQueries: id=${id} bypass=${bypass}`);
+  console.log(`[credentials] setApplyPolicyToOwnQueries: id=${id} apply=${apply}`);
   return toMeta(store.connections[index]);
 }
 
@@ -591,8 +597,8 @@ export function registerCredentialIpc(): void {
   ipcMain.handle('credentials:set-connection-policy', (_event, id: string, policyId: string | null) =>
     setConnectionPolicy(id, policyId),
   );
-  ipcMain.handle('credentials:set-bypass-policy-for-own-queries', (_event, id: string, bypass: boolean) =>
-    setBypassPolicyForOwnQueries(id, bypass),
+  ipcMain.handle('credentials:set-apply-policy-for-own-queries', (_event, id: string, apply: boolean) =>
+    setApplyPolicyToOwnQueries(id, apply),
   );
   ipcMain.handle('credentials:rename', (_event, id: string, label: string) => renameConnection(id, label));
   ipcMain.handle('access-policy:list', () => listAccessPolicies());

@@ -35,7 +35,16 @@ test('stdio-relay.ts registers exactly the expected tool set', () => {
   const registered = [...STDIO_RELAY_SOURCE.matchAll(/registerTool\(\s*['"]([\w-]+)['"]/g)].map(m => m[1]);
   assert.deepEqual(
     registered.sort(),
-    ['complete_query', 'find_tables', 'get_pine_doc', 'list_connections', 'open_in_desktop', 'run_query'].sort(),
+    [
+      'check_reveal',
+      'complete_query',
+      'find_tables',
+      'get_pine_doc',
+      'list_connections',
+      'open_in_desktop',
+      'request_reveal',
+      'run_query',
+    ].sort(),
     'Registered tool set changed -- if this was intentional, update this test; if not, something was added ' +
       '(or removed) unexpectedly. Keep this an exact-set assertion: the point is that a raw-SQL tool cannot be ' +
       'added back without a test failing, and a substring check would not catch that.',

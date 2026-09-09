@@ -59,7 +59,7 @@ const {
   saveConnection,
   setMcpEnabled,
   setConnectionPolicy,
-  setBypassPolicyForOwnQueries,
+  setApplyPolicyToOwnQueries,
   createAccessPolicy,
   setAccessPolicyModuleEnabled,
   deleteAccessPolicy,
@@ -157,11 +157,11 @@ test('setConnectionPolicy never itself changes mcpEnabled', () => {
   assert.deepEqual(result, { ok: true, profile: { ...conn, mcpEnabled: true, policyId: otherPolicy.id } });
 });
 
-test('setBypassPolicyForOwnQueries never reads or writes mcpEnabled or policyId', () => {
+test('setApplyPolicyToOwnQueries never reads or writes mcpEnabled or policyId', () => {
   const conn = addConnection();
   assert.equal(setMcpEnabled(conn.id, true).ok, true);
-  const updated = setBypassPolicyForOwnQueries(conn.id, true);
-  assert.deepEqual(updated, { ...conn, mcpEnabled: true, bypassPolicyForOwnQueries: true });
+  const updated = setApplyPolicyToOwnQueries(conn.id, true);
+  assert.deepEqual(updated, { ...conn, mcpEnabled: true, applyPolicyToOwnQueries: true });
 });
 
 test('deleteAccessPolicy sets both policyId: null and mcpEnabled: false on every connection that pointed at it', () => {

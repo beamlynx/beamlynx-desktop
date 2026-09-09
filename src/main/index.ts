@@ -5,6 +5,7 @@ import * as path from 'path';
 import { initAutoUpdater } from './auto-update';
 import { registerCredentialIpc } from './credential-store';
 import { startControlPlaneServer } from './mcp/control-plane-server';
+import { registerRevealIpc } from './mcp/reveal-requests';
 import { startMcpRelay } from './mcp/stdio-relay';
 import { getResourcesRoot } from './resources';
 import { ServerHandle, startServer } from './server-process';
@@ -296,6 +297,7 @@ function loadRealUi(): void {
 async function main(): Promise<void> {
   Menu.setApplicationMenu(buildMenu());
   registerCredentialIpc();
+  registerRevealIpc();
 
   // Started here rather than after the server/UI are up -- it only starts
   // accepting real work once a run_query/complete_query request actually

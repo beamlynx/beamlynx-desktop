@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- Two new MCP tools, `request_reveal` and `check_reveal`, let an agent ask the user to review a query an access policy is redacting: `request_reveal` opens it in a real tab (bundled beamlynx-ui), where the user can edit the expression, reveal the real results, or decline with a comment, and returns a request id right away; `check_reveal` polls that id for the outcome.
+
+### Changed
+- A connection's "apply access policy to my own queries" toggle is now off by default and opt-in, instead of on by default with an opt-out "bypass" -- an access policy protects the MCP agent only unless the owner explicitly turns this on too (bundled beamlynx-ui).
 
 ## [0.13.0] - 2026-09-06
 ### Added

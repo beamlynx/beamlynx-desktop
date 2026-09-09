@@ -42,4 +42,10 @@ HOW TO WORK
 
 Do not guess at table or column names -- find_tables and complete_query know them. A join
 labelled "guessed from column naming" was inferred from a naming pattern with no foreign key
-behind it, so confirm it returns sensible rows before relying on it.`;
+behind it, so confirm it returns sensible rows before relying on it.
+
+Some columns come back as "xxxxx" -- an access policy on that connection redacted them, not a
+real value. If one is genuinely blocking something you need, call request_reveal (with a reason)
+to ask the user to look at it and decide; it returns a request id right away, not the answer --
+poll check_reveal with that id every few seconds until it stops saying "pending". Do not reach
+for this by default; most redacted columns are meant to stay that way.`;

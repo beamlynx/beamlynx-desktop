@@ -26,6 +26,20 @@ type McpQueryRequest = {
   expression: string;
 };
 
+// Matches beamlynx-ui's desktop.d.ts RevealRequest/RevealOutcome -- see
+// src/main/mcp/reveal-requests.ts, the source of truth for both shapes.
+type RevealRequest = {
+  id: string;
+  profileId: string;
+  expression: string;
+  reason?: string;
+  createdAt: number;
+  status: 'pending' | 'revealed' | 'declined';
+};
+type RevealOutcome =
+  | { ok: true; expression: string; columns: unknown; rows: unknown }
+  | { ok: false; comment?: string };
+
 contextBridge.exposeInMainWorld('beamlynxDesktop', {
   onUpdateStatus: (callback: (status: UpdateStatus) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, status: UpdateStatus) => callback(status);
@@ -45,8 +59,8 @@ contextBridge.exposeInMainWorld('beamlynxDesktop', {
       ipcRenderer.invoke('credentials:set-mcp-enabled', id, enabled),
     setConnectionPolicy: (id: string, policyId: string | null): Promise<SetConnectionPolicyResult> =>
       ipcRenderer.invoke('credentials:set-connection-policy', id, policyId),
-    setBypassPolicyForOwnQueries: (id: string, bypass: boolean): Promise<SavedConnectionMeta | null> =>
-      ipcRenderer.invoke('credentials:set-bypass-policy-for-own-queries', id, bypass),
+    setApplyPolicyToOwnQueries: (id: string, apply: boolean): Promise<SavedConnectionMeta | null> =>
+      ipcRenderer.invoke('credentials:set-apply-policy-for-own-queries', id, apply),
     rename: (id: string, label: string): Promise<SavedConnectionMeta | null> =>
       ipcRenderer.invoke('credentials:rename', id, label),
   },
@@ -106,6 +120,23 @@ contextBridge.exposeInMainWorld('beamlynxDesktop', {
       ipcRenderer.on('mcp:query-request', listener);
       return () => ipcRenderer.removeListener('mcp:query-request', listener);
     },
+  },
+  // control-plane-server.ts's POST /reveal (behind the MCP request_reveal
+  // tool) creates a request and fires 'mcp:reveal-request' here rather than
+  // awaiting a response the way onQueryRequest above does -- a human review
+  // can take minutes, far past what one HTTP call should block on. onRequest
+  // is how RevealRequestHandler.tsx (beamlynx-ui) learns a new one arrived,
+  // so it can open a real tab for the owner to look at; resolve is how
+  // RevealRequestBanner.tsx reports back what the owner decided, which
+  // check_reveal (the matching poll-side MCP tool) then reads.
+  mcpReveal: {
+    onRequest: (callback: (request: RevealRequest) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, request: RevealRequest) => callback(request);
+      ipcRenderer.on('mcp:reveal-request', listener);
+      return () => ipcRenderer.removeListener('mcp:reveal-request', listener);
+    },
+    resolve: (id: string, outcome: RevealOutcome): Promise<RevealRequest | null> =>
+      ipcRenderer.invoke('mcp:reveal-resolve', id, outcome),
   },
   onDeepLink: (callback: (params: { connection?: string; expression?: string }) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, params: { connection?: string; expression?: string }) =>

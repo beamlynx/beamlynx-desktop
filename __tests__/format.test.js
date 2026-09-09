@@ -22,6 +22,8 @@ const {
   formatConnections,
   formatTableMatches,
   formatRows,
+  formatRevealCreated,
+  formatRevealStatus,
   formatExpressionError,
   pickDocTopic,
 } = require(DIST);
@@ -78,6 +80,12 @@ const TABLE_SEARCH_RESPONSE = {
 const PARSE_ERROR =
   'Parse error at line 1, column 13:\nuser | wehre: x\n            ^\nExpected one of:\n.\n|\n' +
   '#"(?s)/\\*.*?\\*/"\n--\n#"[ \\t\\r\\n]+"\n#"[A-Za-z][A-Za-z0-9-_]*"\nnot\nin\nis\n=\nilike\nlike\n=>\n\n';
+
+// Captured against a live pine-lang for `user | select: "tenantId"` -- Pine
+// has no quoted-identifier syntax, so the parser chokes right on the `"`.
+const PARSE_ERROR_QUOTE =
+  'Parse error at line 1, column 16:\nuser | select: "tenantId"\n               ^\nExpected one of:\n' +
+  '#"[A-Za-z][A-Za-z0-9-_]*"\n#"(?s)/\\*.*?\\*/"\n--\n#"[ \\t\\r\\n]+"\n|\n,\n\n';
 
 // ---------------------------------------------------------------------------
 // The hard rule
@@ -276,6 +284,17 @@ test('the matched doc is pushed inline with the error', () => {
   assert.match(out, /Keeps only the rows matching a condition/);
 });
 
+test('a quoted identifier gets a direct correction, not just the bare parse error', () => {
+  const out = formatExpressionError('user | select: "tenantId"', PARSE_ERROR_QUOTE, noDocs);
+  assert.match(out, /never quotes identifiers/);
+  assert.match(out, /select: tenantId/);
+});
+
+test('an ordinary parse error carries no quoting note', () => {
+  const out = formatExpressionError('user | wehre: x', PARSE_ERROR, noDocs);
+  assert.ok(!out.includes('never quotes identifiers'));
+});
+
 test('grammar regex terminals are stripped from parse errors', () => {
   const out = formatExpressionError('user | wehre: x', PARSE_ERROR, noDocs);
   assert.ok(!out.includes('#"'), 'raw grammar terminals are noise an agent cannot act on');
@@ -312,4 +331,75 @@ test('list_connections exposes only the id and label, not stored credentials', (
 
 test('list_connections explains how to enable one when there are none', () => {
   assert.match(formatConnections([]), /Enable for MCP access/);
+});
+
+// ---------------------------------------------------------------------------
+// request_reveal / check_reveal
+// ---------------------------------------------------------------------------
+
+test('formatRevealCreated tells the agent to poll check_reveal, not to expect an answer yet', () => {
+  const out = formatRevealCreated({ requestId: 'req-1', status: 'pending' });
+  assert.match(out, /req-1/);
+  assert.match(out, /check_reveal/);
+  assert.match(out, /not resolved yet|pending/i);
+});
+
+test('formatRevealCreated surfaces a control-plane error verbatim', () => {
+  assert.equal(formatRevealCreated({ error: 'boom' }), 'boom');
+});
+
+test('formatRevealStatus says pending plainly, with no results to leak', () => {
+  const out = formatRevealStatus({ request: { id: 'req-1', expression: 'user', status: 'pending' } });
+  assert.match(out, /pending/i);
+});
+
+test('formatRevealStatus renders a decline with the user\'s comment', () => {
+  const out = formatRevealStatus({
+    request: {
+      id: 'req-1',
+      expression: 'user | select: email',
+      status: 'declined',
+      outcome: { comment: 'that column is off-limits for agents' },
+    },
+  });
+  assert.match(out, /Declined/);
+  assert.match(out, /off-limits for agents/);
+});
+
+test('formatRevealStatus says so when a decline carries no comment', () => {
+  const out = formatRevealStatus({
+    request: { id: 'req-1', expression: 'user', status: 'declined', outcome: {} },
+  });
+  assert.match(out, /No comment was given/);
+});
+
+test('formatRevealStatus renders revealed rows through the same formatRows convention as run_query', () => {
+  const out = formatRevealStatus({
+    request: {
+      id: 'req-1',
+      expression: 'user | select: email',
+      status: 'revealed',
+      outcome: { expression: 'user | select: email', columns: [], rows: [['email'], ['real@example.com']] },
+    },
+  });
+  assert.match(out, /real@example\.com/);
+  assert.ok(!/xxxxx/.test(out), 'a revealed result must never still show the redacted placeholder');
+});
+
+test('formatRevealStatus flags it when the user edited the expression before revealing', () => {
+  const out = formatRevealStatus({
+    request: {
+      id: 'req-1',
+      expression: 'user | select: email, ssn',
+      status: 'revealed',
+      outcome: { expression: 'user | select: email', columns: [], rows: [['email'], ['real@example.com']] },
+    },
+  });
+  assert.match(out, /edited the expression/);
+  assert.ok(out.includes('user | select: email'));
+  assert.ok(!out.includes('ssn'), 'must render what actually ran, not the agent\'s original expression');
+});
+
+test('formatRevealStatus reports an unknown request id rather than throwing', () => {
+  assert.match(formatRevealStatus({}), /No such reveal request/);
 });

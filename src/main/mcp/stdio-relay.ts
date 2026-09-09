@@ -29,7 +29,14 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CONTROL_PLANE_PORT } from './control-plane-server';
 import { getResourcesRoot } from '../resources';
 import { SERVER_INSTRUCTIONS } from './instructions';
-import { formatCompletion, formatConnections, formatRows, formatTableMatches } from './format';
+import {
+  formatCompletion,
+  formatConnections,
+  formatRevealCreated,
+  formatRevealStatus,
+  formatRows,
+  formatTableMatches,
+} from './format';
 import type { BuildResponse } from './format';
 
 const GUI_LAUNCH_TIMEOUT_MS = 30000;
@@ -298,6 +305,58 @@ async function registerTools(server: McpServer): Promise<void> {
         );
       }
       return textResult(content);
+    },
+  );
+
+  server.registerTool(
+    'request_reveal',
+    {
+      description:
+        'Ask the user to reveal the real, unredacted results of a query the connection\'s access policy is ' +
+        'currently redacting (shown as "xxxxx" in run_query output). Use this only when a redacted value is ' +
+        'blocking something you legitimately need -- not as a default way around the policy. Opens the query in ' +
+        'a real, visible tab in the beamlynx app; the user can edit the expression, reveal the real results, or ' +
+        'decline (optionally explaining why). Returns immediately with a request id -- the user has not ' +
+        'responded yet. Call check_reveal with that id to find out what they decided.',
+      inputSchema: {
+        connection_id: z.string().describe('A connection id from list_connections'),
+        expression: z.string().describe('The Pine expression whose real results you want to see'),
+        reason: z
+          .string()
+          .optional()
+          .describe('Why you need the real data -- shown to the user to help them decide'),
+      },
+    },
+    async ({ connection_id, expression, reason }: { connection_id: string; expression: string; reason?: string }) => {
+      try {
+        await ensureGuiRunning();
+        const result = await controlPlaneRequest('POST', '/reveal', { profileId: connection_id, expression, reason });
+        return textResult(formatRevealCreated(result));
+      } catch (e) {
+        return errorResult(e instanceof Error ? e.message : String(e));
+      }
+    },
+  );
+
+  server.registerTool(
+    'check_reveal',
+    {
+      description:
+        'Check the outcome of a request_reveal call. There is no notification when the user responds -- poll ' +
+        'this every few seconds until it stops saying "pending". Returns the real rows if revealed (note: the ' +
+        'user may have edited the expression before running it), or a decline, with the user\'s comment if they ' +
+        'left one, if not.',
+      inputSchema: {
+        request_id: z.string().describe('The request id returned by request_reveal'),
+      },
+    },
+    async ({ request_id }: { request_id: string }) => {
+      try {
+        const result = await controlPlaneRequest('GET', `/reveal/${encodeURIComponent(request_id)}`);
+        return textResult(formatRevealStatus(result));
+      } catch (e) {
+        return errorResult(e instanceof Error ? e.message : String(e));
+      }
     },
   );
 

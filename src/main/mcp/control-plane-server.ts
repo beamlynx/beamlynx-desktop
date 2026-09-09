@@ -11,6 +11,7 @@ import { BrowserWindow } from 'electron';
 import * as http from 'http';
 import { getMcpAccessStatus, listMcpEnabledConnections } from '../credential-store';
 import { runInRenderer } from './render-bridge';
+import { createRevealRequest, getRevealRequest } from './reveal-requests';
 
 export const CONTROL_PLANE_PORT = 33334;
 
@@ -99,6 +100,43 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
         const kind = req.url === '/explain' ? 'build' : 'eval';
         const result = await runInRenderer(mainWindow, { kind, profileId, expression });
         return sendJson(res, 200, { result });
+      }
+
+      // request_reveal (see stdio-relay.ts). Returns immediately with a
+      // request id rather than blocking on the human's response the way
+      // /query and /explain block on the renderer's -- a review can take
+      // minutes, far past any timeout an MCP client or this server itself
+      // would tolerate on one call. check_reveal (GET /reveal/:id below) is
+      // how the agent finds out what happened.
+      if (req.method === 'POST' && req.url === '/reveal') {
+        const body = await readJsonBody(req);
+        const { profileId, expression, reason } = body ?? {};
+        if (!profileId || typeof expression !== 'string') {
+          return sendJson(res, 400, { error: 'profileId and expression are required' });
+        }
+        assertWhitelisted(profileId);
+
+        const mainWindow = options.getMainWindow();
+        if (!mainWindow) {
+          return sendJson(res, 503, { error: 'The beamlynx window is not available yet' });
+        }
+
+        const request = createRevealRequest(profileId, expression, typeof reason === 'string' ? reason : undefined);
+        // Fire-and-forget: RevealRequestHandler.tsx (beamlynx-ui) opens a
+        // real tab for the owner to review. Nothing here awaits that --
+        // the whole point is that this HTTP call returns right away.
+        mainWindow.webContents.send('mcp:reveal-request', request);
+        return sendJson(res, 200, { requestId: request.id, status: request.status });
+      }
+
+      // Always 200, even for an id this process has never seen (a stale id
+      // from a previous app run, or a typo) -- `request: null` is a normal,
+      // expected outcome check_reveal has to render a message for
+      // (format.ts's formatRevealStatus), not a transport-level failure the
+      // relay's controlPlaneRequest should reject on.
+      if (req.method === 'GET' && req.url?.startsWith('/reveal/')) {
+        const id = decodeURIComponent(req.url.slice('/reveal/'.length));
+        return sendJson(res, 200, { request: getRevealRequest(id) ?? null });
       }
 
       sendJson(res, 404, { error: 'Not found' });
