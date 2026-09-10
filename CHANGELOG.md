@@ -4,11 +4,22 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.14.0] - 2026-09-10
 ### Added
 - Two new MCP tools, `request_reveal` and `check_reveal`, let an agent ask the user to review a query an access policy is redacting: `request_reveal` opens it in a real tab (bundled beamlynx-ui), where the user can edit the expression, reveal the real results, or decline with a comment, and returns a request id right away; `check_reveal` polls that id for the outcome.
+- Results grid: a "Copy result as CSV" button (next to Export to CSV) copies the whole result to the clipboard as CSV. Also available as a "Copy Result" command palette entry (bundled beamlynx-ui 0.60.0).
+- Canvas mode: adding a `where` filter on a date-looking column now offers "today" and "in the last" alongside the usual operators, adding a pair of `where:` conditions instead of asking for a literal value (bundled beamlynx-ui 0.60.0).
+- Results grid: clicking a cell in a JSON column now opens its formatted, syntax-highlighted value in an editable side panel instead of editing inline in the grid row (bundled beamlynx-ui 0.60.0).
 
 ### Changed
 - A connection's "apply access policy to my own queries" toggle is now off by default and opt-in, instead of on by default with an opt-out "bypass" -- an access policy protects the MCP agent only unless the owner explicitly turns this on too (bundled beamlynx-ui).
+- Canvas mode: moving between table nodes with the keyboard now spotlights that table's columns in the Results grid, the same way hovering a node with the mouse already did (bundled beamlynx-ui 0.60.0).
+
+### Fixed
+- New Layout: opening the Pine/SQL panel now moves keyboard focus into it and reframes the graph to fit the canvas's new size (bundled beamlynx-ui 0.60.0).
+- Canvas mode: a `where` chip added via the Results grid's right-click "Filter" action can now always be deleted or edited, instead of sometimes landing on the wrong table (bundled beamlynx-ui 0.60.0).
+- Canvas mode: reopening an existing `where` chip using `ilike` no longer breaks the query on save (bundled beamlynx-ui 0.60.0).
 
 ## [0.13.0] - 2026-09-06
 ### Added

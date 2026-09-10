@@ -1,5 +1,5 @@
 {
-  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang unchanged at its tagged 0.43.0. beamlynx-ui bumped to its tagged 0.59.0, which adds canvas-mode hover column spotlighting in the Results grid, order-chip direction editing (Asc/Desc), and a fix for the Results grid's right-click Filter scoping to the wrong table in a join.",
+  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang unchanged at its tagged 0.43.0. beamlynx-ui bumped to its tagged 0.60.0, which adds the MCP request_reveal/check_reveal flow (paired with this release's own desktop-side support), the access-policy default flip, a Copy Result CSV button, canvas-mode relative-date where filters and keyboard column spotlighting, and a handful of New Layout/canvas fixes.",
   "pineLangRef": "0.43.0",
-  "beamlynxUiRef": "0.59.0"
+  "beamlynxUiRef": "0.60.0"
 }
