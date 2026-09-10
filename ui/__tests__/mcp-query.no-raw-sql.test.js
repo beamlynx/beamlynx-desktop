@@ -2,7 +2,8 @@
 // beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md: the MCP
 // server must NEVER have a path to raw SQL execution, under any
 // configuration, and must always be redacted by whichever access policy its
-// connection has assigned -- never governed by the human-only bypass.
+// connection has assigned -- never governed by the human-only
+// applyPolicyToOwnQueries opt-in.
 //
 // Most assertions here call the real functions (store/mcp-query.ts's
 // runMcpQuery/explainMcpQuery with a fake McpQueryDeps -- exactly what that
@@ -144,8 +145,10 @@ test('explainMcpQuery passes the connection\'s freshly-resolved accessPolicyRule
 // client.ts's effectiveAccessPolicyRules -- the single place that decides
 // which rules actually apply. forMcp splits the two callers cleanly: MCP
 // (forMcp: true) is gated on mcpEnabled and must never read
-// bypassPolicyForOwnQueries; a human tab (forMcp: false) is gated on
-// bypassPolicyForOwnQueries and must never read mcpEnabled.
+// applyPolicyToOwnQueries; a human tab (forMcp: false) is gated on
+// applyPolicyToOwnQueries and must never read mcpEnabled. The policy exists
+// to gate the agent, not the owner -- a human tab only gets redacted when
+// applyPolicyToOwnQueries is explicitly true.
 test('effectiveAccessPolicyRules: no policyId means no rules, for either caller', () => {
   const policies = [{ id: 'p1', name: 'X', rules: [{ type: 'foreign-key', enabled: true }] }];
   assert.deepEqual(effectiveAccessPolicyRules({ policyId: null, mcpEnabled: true }, policies, true), []);
@@ -153,18 +156,23 @@ test('effectiveAccessPolicyRules: no policyId means no rules, for either caller'
   assert.deepEqual(effectiveAccessPolicyRules(undefined, policies, true), []);
 });
 
-test('effectiveAccessPolicyRules: MCP path is gated on mcpEnabled, never on bypassPolicyForOwnQueries', () => {
+test('effectiveAccessPolicyRules: MCP path is gated on mcpEnabled, never on applyPolicyToOwnQueries', () => {
   const policies = [{ id: 'p1', name: 'X', rules: [{ type: 'foreign-key', enabled: true }] }];
-  const conn = { policyId: 'p1', mcpEnabled: true, bypassPolicyForOwnQueries: true };
+  const conn = { policyId: 'p1', mcpEnabled: true, applyPolicyToOwnQueries: false };
   assert.deepEqual(effectiveAccessPolicyRules(conn, policies, true), [{ type: 'foreign-key' }]);
   assert.deepEqual(effectiveAccessPolicyRules({ ...conn, mcpEnabled: false }, policies, true), []);
 });
 
-test('effectiveAccessPolicyRules: human path is gated on bypassPolicyForOwnQueries, never on mcpEnabled', () => {
+test('effectiveAccessPolicyRules: human path is gated on applyPolicyToOwnQueries, never on mcpEnabled', () => {
   const policies = [{ id: 'p1', name: 'X', rules: [{ type: 'foreign-key', enabled: true }] }];
-  const conn = { policyId: 'p1', mcpEnabled: false, bypassPolicyForOwnQueries: false };
+  const conn = { policyId: 'p1', mcpEnabled: false, applyPolicyToOwnQueries: true };
   assert.deepEqual(effectiveAccessPolicyRules(conn, policies, false), [{ type: 'foreign-key' }]);
-  assert.deepEqual(effectiveAccessPolicyRules({ ...conn, bypassPolicyForOwnQueries: true }, policies, false), []);
+  assert.deepEqual(effectiveAccessPolicyRules({ ...conn, applyPolicyToOwnQueries: false }, policies, false), []);
+});
+
+test('effectiveAccessPolicyRules: human path defaults to no redaction when applyPolicyToOwnQueries is absent', () => {
+  const policies = [{ id: 'p1', name: 'X', rules: [{ type: 'foreign-key', enabled: true }] }];
+  assert.deepEqual(effectiveAccessPolicyRules({ policyId: 'p1', mcpEnabled: true }, policies, false), []);
 });
 
 test('effectiveAccessPolicyRules: only enabled rules are returned, with `enabled` itself stripped', () => {
@@ -213,20 +221,20 @@ test("session.ts's accessPolicyRules getter derives from the connected profile's
 
 test("session.ts passes forMcp based on whether this session IS globalStore.mcpSessionId, not a hardcoded value", () => {
   const fakeGlobalStore = {
-    connections: [{ id: 'c1', mcpEnabled: true, policyId: 'p1', bypassPolicyForOwnQueries: true }],
+    connections: [{ id: 'c1', mcpEnabled: true, policyId: 'p1', applyPolicyToOwnQueries: false }],
     accessPolicies: [{ id: 'p1', name: 'X', rules: [{ type: 'foreign-key', enabled: true }] }],
     mcpSessionId: 'session-mcp',
   };
   const mcpSession = new Session('mcp', fakeGlobalStore);
   mcpSession.profileId = 'c1';
-  // forMcp: true -- ignores bypassPolicyForOwnQueries, sees the real rules.
+  // forMcp: true -- ignores applyPolicyToOwnQueries, sees the real rules.
   assert.deepEqual(mcpSession.accessPolicyRules, [{ type: 'foreign-key' }]);
 
   const humanSession = new Session('human-tab', fakeGlobalStore);
   humanSession.profileId = 'c1';
-  // forMcp: false -- this connection's owner switched the policy off for
-  // their own queries, so this must come back empty even though mcpEnabled
-  // is true and the policy itself is active.
+  // forMcp: false -- this connection's owner never opted in to applying the
+  // policy to their own queries, so this must come back empty even though
+  // mcpEnabled is true and the policy itself is active.
   assert.deepEqual(humanSession.accessPolicyRules, []);
 });
 
@@ -261,6 +269,6 @@ test("global.store.ts's resolveAccessPolicyRules always passes forMcp: true to e
     'resolveAccessPolicyRules -- the only path runMcpQuery/explainMcpQuery use to resolve rules -- must call ' +
       'effectiveAccessPolicyRules with forMcp hardcoded to true. It has no Session to derive forMcp from the ' +
       "way Session.accessPolicyRules does, and this is only ever reached from the MCP path, so a `false` or " +
-      "computed value here would let a connection's bypassPolicyForOwnQueries silently leak into what MCP sees.",
+      "computed value here would let a connection's applyPolicyToOwnQueries silently leak into what MCP sees.",
   );
 });

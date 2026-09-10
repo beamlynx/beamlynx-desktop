@@ -31,11 +31,12 @@ type SavedConnectionMeta = {
   // this connection, or null for none. See client.ts's
   // effectiveAccessPolicyRules.
   policyId: string | null;
-  // Whether the connection owner has switched the assigned policy OFF for
-  // their own (non-MCP) queries on this connection -- MCP is unconditional
-  // and never reads this. Defaults to false (protected by default);
-  // undefined (older saved connections) means false.
-  bypassPolicyForOwnQueries?: boolean;
+  // Whether the connection owner has switched the assigned policy ON for
+  // their own (non-MCP) queries on this connection too -- MCP is
+  // unconditional and never reads this. Defaults to false: the owner's own
+  // session sees real data on this connection unless they opt in.
+  // Undefined (older saved connections) also means false.
+  applyPolicyToOwnQueries?: boolean;
 };
 
 // `null` (SavedConnectionMeta's other failure shape) already means
@@ -69,6 +70,27 @@ type McpQueryRequest = {
 type McpQueryResult =
   | { requestId: string; ok: true; result: unknown }
   | { requestId: string; ok: false; error: string };
+
+// Sent by the main process (control-plane-server.ts, behind the MCP
+// request_reveal tool) when the connection's access policy is redacting
+// something the agent says it legitimately needs -- RevealRequestHandler.tsx
+// opens a real tab for the owner to review it in. See
+// beamlynx-desktop's src/main/mcp/reveal-requests.ts.
+type RevealRequest = {
+  id: string;
+  profileId: string;
+  expression: string;
+  reason?: string;
+  createdAt: number;
+  status: 'pending' | 'revealed' | 'declined';
+};
+
+// What RevealRequestBanner.tsx reports back once the owner decides --
+// `expression` on the reveal case is whatever actually ran, which may differ
+// from the request's own if the owner edited it first.
+type RevealOutcome =
+  | { ok: true; expression: string; columns: unknown; rows: unknown }
+  | { ok: false; comment?: string };
 
 type CredentialsStatus = {
   persistenceAvailable: boolean;
@@ -111,7 +133,7 @@ interface BeamlynxDesktopApi {
     delete: (id: string) => Promise<void>;
     setMcpEnabled: (id: string, enabled: boolean) => Promise<SetMcpEnabledResult>;
     setConnectionPolicy: (id: string, policyId: string | null) => Promise<SetConnectionPolicyResult>;
-    setBypassPolicyForOwnQueries: (id: string, bypass: boolean) => Promise<SavedConnectionMeta | null>;
+    setApplyPolicyToOwnQueries: (id: string, apply: boolean) => Promise<SavedConnectionMeta | null>;
     rename: (id: string, label: string) => Promise<SavedConnectionMeta | null>;
   };
   // Named, user-creatable access policies -- each connection independently
@@ -141,6 +163,16 @@ interface BeamlynxDesktopApi {
     getSetupInfo: () => Promise<{ command: string; args: string[] }>;
     onQueryRequest: (handler: (request: McpQueryRequest) => Promise<unknown>) => () => void;
   };
+  // request_reveal/check_reveal's renderer half -- see
+  // RevealRequestHandler.tsx and RevealRequestBanner.tsx. onRequest fires as
+  // soon as an agent's request_reveal call is created (fire-and-forget, no
+  // response for it to wait on -- see control-plane-server.ts); resolve
+  // reports what the owner decided, which the agent's check_reveal poll
+  // reads back.
+  mcpReveal: {
+    onRequest: (callback: (request: RevealRequest) => void) => () => void;
+    resolve: (id: string, outcome: RevealOutcome) => Promise<RevealRequest | null>;
+  };
   // Fired when the user clicks a beamlynx:// deep link and this window is
   // the one that ends up handling it (see main/index.ts's handleDeepLink).
   onDeepLink: (callback: (params: { connection?: string; expression?: string }) => void) => () => void;
@@ -166,4 +198,6 @@ export type {
   GetConnectionResult,
   McpQueryRequest,
   McpQueryResult,
+  RevealRequest,
+  RevealOutcome,
 };
