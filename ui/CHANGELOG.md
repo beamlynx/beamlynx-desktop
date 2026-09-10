@@ -4,12 +4,17 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.60.0] - 2026-09-10
 ### Added
 - MCP: when a connection's access policy is redacting something an agent legitimately needs, it can now call `request_reveal` to ask you to look at the real query. It opens in a normal tab where you can edit the expression, then reveal the real results to the agent or decline with a comment explaining why (so it can adjust and retry). Requires beamlynx-desktop's matching support.
+- Results grid: a new "Copy result as CSV" button (next to Export to CSV) copies the whole result to your clipboard as CSV, ready to paste into a spreadsheet. Also available as a "Copy Result" command in the command palette.
+- Canvas mode: adding a `where` filter on a column that looks like a date now offers "today" and "in the last" alongside the usual operator choices (=, !=, ...) - picking either adds a pair of `where:` conditions instead of asking for a literal value.
 - Results grid: clicking a cell in a JSON column opens its formatted, syntax-highlighted value in a panel on the right, already in edit mode - type your change and press Mod+Enter or the checkmark to save, or the undo icon to cancel back to the read-only view. JSON cells no longer edit inline in the grid row. Copying from the right-click menu also copies the pretty-printed form. The panel's own left edge can be dragged to resize it, its editor respects Vim mode when you have that on in Settings, and pressing Escape while editing no longer closes the panel (in Vim mode it exits to normal mode instead, matching Vim's own behavior). Every code editor's scrollbar (this panel, Pine/SQL input) now matches the app's theme instead of the OS default.
 
 ### Changed
 - Database Connections: the per-connection "apply access policy to my own queries" toggle is now off by default and opt-in, instead of on by default with an opt-out "bypass". An access policy protects the MCP agent only unless you explicitly turn this on to have it also redact your own queries on that connection.
+- Canvas mode: moving between table nodes with the keyboard (arrow keys, `j`/`k`) now spotlights that table's columns in the Results grid, the same way hovering a node with the mouse already did.
 
 ### Fixed
 - New Layout: opening the Pine/SQL panel (Ctrl/Cmd+./+Shift+., the toolbar buttons, or the command palette) now moves keyboard focus into it and reframes the graph to fit the canvas's new size. Neither used to happen reliably - the panel could open with the graph's own keyboard shortcuts silently disabled and nowhere for keystrokes to land instead, and the graph stayed wherever the old pan/zoom left it, partly cut off by the resized canvas.

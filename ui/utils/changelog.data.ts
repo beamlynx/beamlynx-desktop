@@ -23,6 +23,61 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.60.0',
+    date: '2026-09-10',
+    added: [
+      {
+        title: 'MCP: request_reveal lets an agent ask you to reveal a redacted result',
+        description:
+          "When a connection's access policy is redacting something an agent legitimately needs, it can now call request_reveal to ask you to look at the real query. It opens in a normal tab where you can edit the expression, then reveal the real results to the agent or decline with a comment explaining why (so it can adjust and retry). Requires beamlynx-desktop's matching support.",
+      },
+      {
+        title: 'Results grid: "Copy result as CSV" button',
+        description:
+          'Next to Export to CSV, copies the whole result to your clipboard as CSV, ready to paste into a spreadsheet. Also available as a "Copy Result" command in the command palette.',
+      },
+      {
+        title: 'Canvas mode: quick "today" / "in the last" filters for date columns',
+        description:
+          'Adding a where filter on a column that looks like a date now offers these alongside the usual operator choices (=, !=, ...) -- picking either adds a pair of where: conditions instead of asking for a literal value.',
+      },
+      {
+        title: 'Results grid: JSON cells open in an editable side panel',
+        description:
+          "Clicking a cell in a JSON column opens its formatted, syntax-highlighted value in a panel on the right, already in edit mode -- type your change and press Mod+Enter or the checkmark to save, or the undo icon to cancel back to the read-only view. JSON cells no longer edit inline in the grid row. Copying from the right-click menu also copies the pretty-printed form. The panel's own left edge can be dragged to resize it, its editor respects Vim mode when you have that on in Settings, and pressing Escape while editing no longer closes the panel (in Vim mode it exits to normal mode instead). Every code editor's scrollbar now matches the app's theme instead of the OS default.",
+      },
+    ],
+    changed: [
+      {
+        title: "Database Connections: access policy no longer applies to your own queries by default",
+        description:
+          'The per-connection "apply access policy to my own queries" toggle is now off by default and opt-in, instead of on by default with an opt-out "bypass". An access policy protects the MCP agent only unless you explicitly turn this on to have it also redact your own queries on that connection.',
+      },
+      {
+        title: 'Canvas mode: keyboard navigation spotlights columns too',
+        description:
+          "Moving between table nodes with the keyboard (arrow keys, j/k) now spotlights that table's columns in the Results grid, the same way hovering a node with the mouse already did.",
+      },
+    ],
+    fixed: [
+      {
+        title: 'New Layout: opening the Pine/SQL panel now focuses it and reframes the graph',
+        description:
+          "Neither used to happen reliably -- the panel could open with the graph's own keyboard shortcuts silently disabled and nowhere for keystrokes to land instead, and the graph stayed wherever the old pan/zoom left it, partly cut off by the resized canvas.",
+      },
+      {
+        title: 'Canvas mode: a `where` chip added via "Filter" can always be deleted or edited',
+        description:
+          "It used to land at the end of the query's pipe text regardless of which table it filtered, so canvas's position-based bookkeeping could attribute it to the wrong table -- deleting or editing it then silently did nothing, or acted on an unrelated chip that happened to share its position.",
+      },
+      {
+        title: 'Canvas mode: reopening an `ilike` where chip no longer breaks the query',
+        description:
+          "The server reports operators in their SQL casing (ILIKE), and the editor was writing that casing straight back into the Pine text, which pine-lang's parser rejects since it only accepts lowercase operator keywords.",
+      },
+    ],
+  },
+  {
     version: '0.59.0',
     date: '2026-09-06',
     added: [
@@ -1769,4 +1824,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.59.0';
+export const LATEST_VERSION = '0.60.0';
