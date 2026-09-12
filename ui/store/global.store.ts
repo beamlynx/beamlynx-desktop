@@ -53,6 +53,11 @@ type ConnectionParams = {
   dbName: string;
   dbUser: string;
   dbPassword: string;
+  // Defaults to 'postgres' (see client.createConnection) when omitted --
+  // every caller that reconstructs this from a saved profile or MCP
+  // credentials doesn't carry a db type yet (beamlynx-desktop's
+  // SavedConnectionMeta has no such field), only the "add connection" form.
+  dbType?: 'postgres' | 'mysql';
   // Desktop-only (see credentials.save) -- pine-lang itself has no concept of
   // a custom label, so this is ignored on the plain HTTP createConnection call.
   label?: string;
@@ -105,7 +110,13 @@ export class GlobalStore {
   // Set by connectToSavedProfile on a decryption failure, so the settings
   // form can pre-fill the (still-plaintext) host/port/db/user and prompt the
   // user to just re-enter the password, instead of retyping everything.
-  reconnectHint: { dbHost: string; dbPort: string; dbName: string; dbUser: string } | null = null;
+  reconnectHint: {
+    dbHost: string;
+    dbPort: string;
+    dbName: string;
+    dbUser: string;
+    dbType: 'postgres' | 'mysql';
+  } | null = null;
 
   // Pine's own ids that are actually live (a pool exists) *right now* --
   // refreshed via listConnections() (loadConnectionMetadata,
@@ -1070,9 +1081,9 @@ export class GlobalStore {
     console.log('[credentials] getSavedProfileCredentials: get result ->', result);
     if (!result.ok) {
       if (result.error === 'decryption-failed') {
-        const { dbHost, dbPort, dbName, dbUser } = result.profile;
+        const { dbHost, dbPort, dbName, dbUser, dbType } = result.profile;
         runInAction(() => {
-          this.reconnectHint = { dbHost, dbPort, dbName, dbUser };
+          this.reconnectHint = { dbHost, dbPort, dbName, dbUser, dbType };
         });
         throw new DecryptionFailedError();
       }
@@ -1085,6 +1096,7 @@ export class GlobalStore {
       dbName: profile.dbName,
       dbUser: profile.dbUser,
       dbPassword,
+      dbType: profile.dbType,
     };
   };
 

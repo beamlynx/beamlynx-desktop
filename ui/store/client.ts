@@ -494,6 +494,7 @@ export class HttpClient {
     dbName: string;
     dbUser: string;
     dbPassword: string;
+    dbType?: 'postgres' | 'mysql';
   }): Promise<string> {
     type ServerConnectionParams = {
       host: string;
@@ -508,7 +509,11 @@ export class HttpClient {
     const connectionParams: ServerConnectionParams = {
       host: connection.dbHost,
       port: connection.dbPort,
-      dbtype: 'postgres', // Assuming postgres as default
+      // Defaults to postgres for every existing caller that doesn't pass
+      // dbType (saved-profile reconnects, MCP's ensureConnection) -- none
+      // of those round-trip a db type today, see beamlynx-desktop's
+      // SavedConnectionMeta.
+      dbtype: connection.dbType ?? 'postgres',
       dbname: connection.dbName,
       user: connection.dbUser,
       password: connection.dbPassword,

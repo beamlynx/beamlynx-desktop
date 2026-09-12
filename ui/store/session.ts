@@ -1,10 +1,10 @@
 import { GridColDef } from '@mui/x-data-grid';
 import { makeAutoObservable, reaction, runInAction } from 'mobx';
-import { format } from 'sql-formatter';
 import { TOTAL_BARS } from '../constants';
 import { DefaultPlugin } from '../plugin/default.plugin';
 import { EvaluateOptions } from '../plugin/plugin.interface';
 import { RecursiveDeletePlugin } from '../plugin/recursive-delete.plugin';
+import { formatSql } from '../utils/formatSql';
 import { CanvasStore } from './canvas/canvas.store';
 import {
   AccessPolicyRule,
@@ -453,7 +453,7 @@ export class Session {
           this.ast = response.ast;
 
           // query
-          this.query = formatQuery(response.query);
+          this.query = formatSql(response.query);
 
           // operation
           this.operation = handleOperation(response);
@@ -820,14 +820,3 @@ const handleError = (response: Response): { error: string; errorType: string } =
   };
 };
 
-const formatQuery = (query: string): string => {
-  if (!query) return '';
-  try {
-    return format(query, {
-      language: 'postgresql',
-      indentStyle: 'tabularRight',
-      denseOperators: false,
-    });
-  } catch (e) {}
-  return '';
-};

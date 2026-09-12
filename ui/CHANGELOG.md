@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- Database Connections: a "Database type" picker (Postgres/MySQL) when adding a connection, with the port field defaulting to match (5432/3306). Pasting a connection string now also accepts `mysql://` (in addition to `postgresql://`/`postgres://`) and sets the picker accordingly. The SQL panel (and the Pine/SQL input's SQL mode) correctly renders a MySQL connection's backtick-quoted SQL too. Requires pine-lang 0.44.0+ (`RequiredVersion` bumped accordingly).
+
+### Fixed
+- A query that failed at the network level (e.g. the server unreachable) left the loading spinner stuck on forever with no error shown, since the query-evaluation path had no `try/catch` around its network call — a thrown exception skipped every one of its `loading = false` sites. It now always resets and shows the failure.
 
 ## [0.60.0] - 2026-09-10
 ### Added

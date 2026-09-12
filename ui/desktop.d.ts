@@ -20,6 +20,10 @@ type SavedConnectionMeta = {
   dbPort: string;
   dbName: string;
   dbUser: string;
+  // Defaults to 'postgres' for connections saved before this field existed
+  // (credential-store.ts's toMeta) -- matches client.ts's own createConnection
+  // default, so an old saved profile still reconnects exactly as before.
+  dbType: 'postgres' | 'mysql';
   createdAt: string;
   lastUsedAt: string;
   // MCP always uses this connection's own assigned policy whenever this is
@@ -103,6 +107,8 @@ type SaveConnectionInput = {
   dbName: string;
   dbUser: string;
   dbPassword: string;
+  // Optional; defaults to 'postgres' (credential-store.ts's saveConnection).
+  dbType?: 'postgres' | 'mysql';
   // Optional; falls back to a derived `user@host:port/db` label when blank
   // or omitted.
   label?: string;

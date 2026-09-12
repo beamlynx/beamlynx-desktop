@@ -28,10 +28,10 @@ import ToggleRow from './ToggleRow';
 
 const REMOVE_CONFIRM_TIMEOUT_MS = 3000;
 
-// Single entry today -- Pine only speaks Postgres wire protocol -- but kept
-// as a list (not a hardcoded default) so adding a second type later is just
-// another entry here, not a rework of the dropdown/port-defaulting wiring.
-const DB_TYPES = [{ value: 'postgres', label: 'PostgreSQL', defaultPort: '5432' }] as const;
+const DB_TYPES = [
+  { value: 'postgres', label: 'PostgreSQL', defaultPort: '5432' },
+  { value: 'mysql', label: 'MySQL', defaultPort: '3306' },
+] as const;
 type DbTypeValue = (typeof DB_TYPES)[number]['value'];
 
 const fieldSx = {
@@ -90,7 +90,7 @@ const SecurityNotice = ({ persistenceAvailable }: { persistenceAvailable?: boole
 const AddConnectionForm = ({ onDone }: { onDone: () => void }) => {
   const { global } = useStores();
   const [reconnectHint] = useState(() => global.consumeReconnectHint());
-  const [dbType, setDbType] = useState<DbTypeValue>('postgres');
+  const [dbType, setDbType] = useState<DbTypeValue>(reconnectHint?.dbType ?? 'postgres');
   const [dbHost, setDbHost] = useState(reconnectHint?.dbHost ?? '');
   const [dbPort, setDbPort] = useState(reconnectHint?.dbPort ?? DB_TYPES[0].defaultPort);
   const [dbName, setDbName] = useState(reconnectHint?.dbName ?? '');
@@ -132,6 +132,7 @@ const AddConnectionForm = ({ onDone }: { onDone: () => void }) => {
       setDbHost(parsed.dbHost);
       setDbPort(parsed.dbPort);
       setDbName(parsed.dbName);
+      setDbType(parsed.dbType);
       setConnectionStringError('');
     } catch (parseError) {
       // Only surface the error once the string looks like a connection string;
@@ -156,6 +157,7 @@ const AddConnectionForm = ({ onDone }: { onDone: () => void }) => {
         dbName,
         dbUser,
         dbPassword,
+        dbType,
         label: label.trim() || undefined,
       });
       console.debug('Database connection created with ID:', connectionId);
@@ -345,7 +347,7 @@ const AddConnectionForm = ({ onDone }: { onDone: () => void }) => {
             name="connection-string"
             type={showConnectionString ? 'text' : 'password'}
             autoComplete="current-password"
-            placeholder="postgresql://user:password@host:5432/database"
+            placeholder="postgresql://user:password@host:5432/database or mysql://user:password@host:3306/database"
             value={connectionString}
             onChange={e => handleConnectionStringChange(e.target.value)}
             disabled={connected}
