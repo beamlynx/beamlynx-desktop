@@ -4,7 +4,10 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.15.0] - 2026-09-12
 ### Added
+- Database Connections: MySQL support -- a "Database type" picker (Postgres/MySQL) when adding a connection, `mysql://` connection strings, and correctly-rendered SQL (bundled pine-lang 0.44.0, beamlynx-ui 0.61.0).
 - Saved connections now remember their database type (Postgres/MySQL), so a saved MySQL connection reconnects as MySQL on relaunch instead of silently defaulting back to Postgres and failing with a confusing "An error occurred while setting up the SSL connection" error.
 
 ## [0.14.0] - 2026-09-10
