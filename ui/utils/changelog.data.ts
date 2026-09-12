@@ -23,6 +23,31 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.61.0',
+    date: '2026-09-12',
+    added: [
+      {
+        title: 'Database Connections: MySQL support',
+        description:
+          'A "Database type" picker (Postgres/MySQL) when adding a connection, with the port field defaulting to match (5432/3306). Pasting a connection string now also accepts mysql:// (in addition to postgresql:///postgres://) and sets the picker accordingly. The SQL panel (and the Pine/SQL input\'s SQL mode) correctly renders a MySQL connection\'s backtick-quoted SQL too.',
+      },
+    ],
+    fixed: [
+      {
+        title: 'A failed query no longer leaves the loading spinner stuck on forever',
+        description:
+          'A query that failed at the network level (e.g. the server unreachable) left the loading spinner stuck on forever with no error shown, since the query-evaluation path had no try/catch around its network call -- a thrown exception skipped every one of its loading = false sites. It now always resets and shows the failure.',
+      },
+    ],
+    breaking: [
+      {
+        title: 'Minimum required pine-lang server version raised to 0.44.0',
+        description:
+          'Needed for the MySQL connection support above. Connecting to an older server now shows the upgrade-required screen instead of the app.',
+      },
+    ],
+  },
+  {
     version: '0.60.0',
     date: '2026-09-10',
     added: [
@@ -1824,4 +1849,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.60.0';
+export const LATEST_VERSION = '0.61.0';
