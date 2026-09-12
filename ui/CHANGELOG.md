@@ -4,8 +4,12 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- Database Connections: a "Database type" picker (Postgres/MySQL) when adding a connection, with the port field defaulting to match (5432/3306). Pasting a connection string now also accepts `mysql://` (in addition to `postgresql://`/`postgres://`) and sets the picker accordingly. Requires a pine-lang version with MySQL support.
 
-## [0.60.0] - 2026-09-10
+### Fixed
+- A query that failed at the network level (e.g. the server unreachable) left the loading spinner stuck on forever with no error shown, since the query-evaluation path had no `try/catch` around its network call — a thrown exception skipped every one of its `loading = false` sites. It now always resets and shows the failure.
+- The SQL panel (and the Pine/SQL input's SQL mode) showed nothing for a MySQL connection: the SQL pretty-printer was hardcoded to a Postgres-only dialect, which throws a hard parse error on MySQL's backtick-quoted identifiers — silently caught and discarded, leaving the panel blank with no visible error. It now detects the dialect from the query text itself, and falls back to showing the raw, unformatted query on any formatter error instead of nothing.
 ### Added
 - MCP: when a connection's access policy is redacting something an agent legitimately needs, it can now call `request_reveal` to ask you to look at the real query. It opens in a normal tab where you can edit the expression, then reveal the real results to the agent or decline with a comment explaining why (so it can adjust and retry). Requires beamlynx-desktop's matching support.
 - Results grid: a new "Copy result as CSV" button (next to Export to CSV) copies the whole result to your clipboard as CSV, ready to paste into a spreadsheet. Also available as a "Copy Result" command in the command palette.

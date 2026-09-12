@@ -4,6 +4,7 @@ export type ParsedConnectionString = {
   dbName: string;
   dbUser: string;
   dbPassword: string;
+  dbType: 'postgres' | 'mysql';
 };
 
 const safeDecode = (value: string): string => {
@@ -14,9 +15,16 @@ const safeDecode = (value: string): string => {
   }
 };
 
+const SCHEMES: Record<string, { dbType: 'postgres' | 'mysql'; defaultPort: string }> = {
+  'postgres:': { dbType: 'postgres', defaultPort: '5432' },
+  'postgresql:': { dbType: 'postgres', defaultPort: '5432' },
+  'mysql:': { dbType: 'mysql', defaultPort: '3306' },
+};
+
 /**
- * Parses a Postgres connection string, e.g.
+ * Parses a Postgres or MySQL connection string, e.g.
  * postgresql://user:password@host:5432/database
+ * mysql://user:password@host:3306/database
  */
 export function parseConnectionString(connectionString: string): ParsedConnectionString {
   let url: URL;
@@ -24,12 +32,14 @@ export function parseConnectionString(connectionString: string): ParsedConnectio
     url = new URL(connectionString.trim());
   } catch {
     throw new Error(
-      'Invalid connection string. Expected format: postgresql://user:password@host:port/database'
+      'Invalid connection string. Expected format: postgresql://user:password@host:port/database ' +
+        'or mysql://user:password@host:port/database'
     );
   }
 
-  if (url.protocol !== 'postgres:' && url.protocol !== 'postgresql:') {
-    throw new Error('Only postgresql:// connection strings are supported.');
+  const scheme = SCHEMES[url.protocol];
+  if (!scheme) {
+    throw new Error('Only postgresql:// or mysql:// connection strings are supported.');
   }
 
   const dbName = url.pathname.replace(/^\//, '');
@@ -39,9 +49,10 @@ export function parseConnectionString(connectionString: string): ParsedConnectio
 
   return {
     dbHost: url.hostname,
-    dbPort: url.port || '5432',
+    dbPort: url.port || scheme.defaultPort,
     dbName: safeDecode(dbName),
     dbUser: safeDecode(url.username),
     dbPassword: safeDecode(url.password),
+    dbType: scheme.dbType,
   };
 }

@@ -1,8 +1,8 @@
 import { runInAction } from 'mobx';
-import { format } from 'sql-formatter';
 import { Row, Session } from '../store/session';
 import { EvaluateOptions, PluginInterface } from './plugin.interface';
 import { Ast, HttpClient } from '../store/client';
+import { formatSql } from '../utils/formatSql';
 
 export class RecursiveDeletePlugin implements PluginInterface {
   private readonly client: HttpClient;
@@ -36,16 +36,7 @@ export class RecursiveDeletePlugin implements PluginInterface {
 
       // Format the queries
       const formattedQuery = queries
-        .map(q => {
-          if (q.trim().startsWith('/*')) {
-            return q;
-          }
-          return format(q, {
-            language: 'postgresql',
-            indentStyle: 'tabularRight',
-            denseOperators: false,
-          });
-        })
+        .map(q => (q.trim().startsWith('/*') ? q : formatSql(q)))
         .join('\n\n');
       runInAction(() => {
         this.session.query = formattedQuery;
