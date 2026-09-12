@@ -91,6 +91,14 @@ export type SavedConnectionMeta = {
   dbPort: string;
   dbName: string;
   dbUser: string;
+  // Defaults to 'postgres' for records saved before this field existed (see
+  // toMeta) -- pine-lang's own createConnection default, so an old record
+  // round-trips exactly as it always did. Reconnecting without this was the
+  // actual bug behind a saved MySQL profile failing with a confusing
+  // "SSL connection" error on relaunch: it silently defaulted back to
+  // postgres and tried to speak the Postgres wire protocol to a MySQL
+  // server, which happens to fail in an SSL-negotiation-shaped way.
+  dbType: 'postgres' | 'mysql';
   createdAt: string;
   lastUsedAt: string;
   // Off by default -- this is the access-control lever for the MCP server
@@ -146,6 +154,11 @@ export type SaveConnectionInput = {
   dbName: string;
   dbUser: string;
   dbPassword: string;
+  // Optional; defaults to 'postgres' (saveConnection) -- matches
+  // beamlynx-ui's own client.ts default, so a caller that predates dbType
+  // (there's no other one today, but keeps this consistent with
+  // SavedConnectionMeta) behaves exactly as it always did.
+  dbType?: 'postgres' | 'mysql';
   // Optional; falls back to makeLabel's derived `user@host:port/db` when
   // blank or omitted. Only used for a brand-new record -- an upsert onto an
   // existing one (see saveConnection below) keeps that record's own label,
@@ -252,7 +265,8 @@ function toMeta(record: StoredConnectionRecord): SavedConnectionMeta {
   const mcpEnabled = meta.mcpEnabled ?? false;
   const policyId = meta.policyId ?? null;
   const applyPolicyToOwnQueries = meta.applyPolicyToOwnQueries ?? false;
-  return { ...meta, mcpEnabled, policyId, applyPolicyToOwnQueries };
+  const dbType = meta.dbType ?? 'postgres';
+  return { ...meta, mcpEnabled, policyId, applyPolicyToOwnQueries, dbType };
 }
 
 function makeLabel(input: Pick<SaveConnectionInput, 'dbUser' | 'dbHost' | 'dbPort' | 'dbName'>): string {
@@ -304,6 +318,7 @@ export function saveConnection(input: SaveConnectionInput): SaveConnectionResult
   }
 
   const dbPasswordEncrypted = safeStorage.encryptString(input.dbPassword).toString('base64');
+  const dbType = input.dbType ?? 'postgres';
   const now = new Date().toISOString();
 
   const store = readStore();
@@ -312,7 +327,8 @@ export function saveConnection(input: SaveConnectionInput): SaveConnectionResult
       c.dbHost === input.dbHost &&
       c.dbPort === input.dbPort &&
       c.dbName === input.dbName &&
-      c.dbUser === input.dbUser,
+      c.dbUser === input.dbUser &&
+      (c.dbType ?? 'postgres') === dbType,
   );
 
   let record: StoredConnectionRecord;
@@ -327,6 +343,7 @@ export function saveConnection(input: SaveConnectionInput): SaveConnectionResult
       dbPort: input.dbPort,
       dbName: input.dbName,
       dbUser: input.dbUser,
+      dbType,
       createdAt: now,
       lastUsedAt: now,
       dbPasswordEncrypted,

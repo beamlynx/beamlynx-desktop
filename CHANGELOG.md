@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Fixed
+- A saved MySQL connection failed to reconnect on relaunch with a confusing "An error occurred while setting up the SSL connection" error: the saved-profile store had no concept of a connection's database type, so reconnecting silently defaulted back to Postgres and tried to speak the Postgres wire protocol to a MySQL server. Saved connections now remember their database type.
 
 ## [0.14.0] - 2026-09-10
 ### Added
