@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- Saved connections now remember their database type (Postgres/MySQL), so a saved MySQL connection reconnects as MySQL on relaunch instead of silently defaulting back to Postgres and failing with a confusing "An error occurred while setting up the SSL connection" error.
 
 ## [0.14.0] - 2026-09-10
 ### Added
