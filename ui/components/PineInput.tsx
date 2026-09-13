@@ -107,7 +107,7 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
   );
 
   // Tab pressed while the graph (not this input) has focus -- session
-  // bumps tabCycleRequestCount (see components/Graph.box.tsx), and this
+  // bumps tabCycleRequestCount (see components/canvas/Canvas.tsx), and this
   // brings focus back here and runs the same candidate-cycling Tab already
   // does, so Tab means the same thing everywhere instead of falling through
   // to React Flow's own node/edge tab navigation.
@@ -221,7 +221,7 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
   }, [session]);
 
   // Only color segments when we should show table colors (pref + rows + in-sync)
-  const showColors = shouldShowTableColors(global.pineTableColorsEnabled, session, global.canvasActive);
+  const showColors = shouldShowTableColors(global.pineTableColorsEnabled, session);
   const colorAst = showColors ? session.ast : null;
   const isDark = global.theme === 'dark';
 

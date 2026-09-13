@@ -17,7 +17,6 @@ export const STORAGE_KEYS = {
   COMMAND_HISTORY: 'pine-command-history',
   CONNECTION_COLORS: 'pine-connection-colors',
   SESSIONS: 'pine-sessions',
-  CANVAS_MODE: 'pine-canvas-mode',
   AUTO_RUN_ENABLED: 'pine-auto-run-enabled',
   LAYOUT_MODE: 'pine-layout-mode',
   NEW_LAYOUT_ORIENTATION: 'pine-new-layout-orientation',

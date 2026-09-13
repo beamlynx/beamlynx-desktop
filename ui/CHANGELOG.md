@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Removed
+- The classic Graph mode (the non-interactive node diagram you got with the "Canvas mode" preference off) is gone. Canvas is now the only graph editor, in both Legacy and New layout. The "Canvas mode" toggle in Preferences and its command-palette entry are gone with it; if you had it turned off, you'll now see Canvas instead.
 
 ## [0.61.0] - 2026-09-12
 ### Added

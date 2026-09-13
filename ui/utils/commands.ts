@@ -257,17 +257,6 @@ const COMMANDS: Command[] = [
     isEnabled: ALWAYS_ENABLED,
   },
   {
-    id: 'toggle-canvas',
-    label: 'Toggle Canvas Mode',
-    category: 'Experimental',
-    // Global (like theme), not per-session - see global.store.ts's
-    // canvasModeEnabled and Session.tsx's MainView, which is what actually
-    // decides whether the 'graph' view renders Canvas mode or the classic
-    // Graph mode.
-    handler: global => global.toggleCanvasMode(),
-    isEnabled: ALWAYS_ENABLED,
-  },
-  {
     id: 'toggle-auto-run',
     label: 'Toggle Auto-Run on Canvas Edit',
     category: 'Experimental',

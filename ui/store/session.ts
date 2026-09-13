@@ -50,9 +50,9 @@ function findActiveBlock(blocks: ExpressionBlock[], cursorLine: number): number 
   return blocks.length - 1;
 }
 
-// Canvas is not a distinct mode here - it's a global preference
-// (global.canvasModeEnabled) that decides what the 'graph' mode renders,
-// same session-mode value either way. See components/Session.tsx's MainView.
+// Canvas is not a distinct mode here - it's the only renderer 'graph' has
+// (the classic node-graph widget, GraphBox, was removed). See
+// components/Session.tsx's MainView.
 export type Mode = 'documentation' | 'graph' | 'result' | 'monitor';
 
 export type Theme = 'light' | 'dark';
@@ -248,9 +248,8 @@ export class Session {
   /** Counter to trigger hint regeneration on demand */
   hintsRequestedCounter: number = 0;
 
-  /** Whether Canvas mode is the active graph editor right now (New Layout,
-   * or Legacy Layout with its canvas/legacy graph switcher on) - see
-   * GlobalStore.canvasActive. */
+  /** Always true - Canvas is the only graph editor now, in every layout.
+   * See GlobalStore.canvasActive. */
   get canvasActive(): boolean {
     return this.globalStore?.canvasActive ?? false;
   }
@@ -364,30 +363,12 @@ export class Session {
         trigger: this.hintsRequestedCounter,
       }),
       debounce(async ({ expression }) => {
-        // Skip building if in SQL mode - UNLESS canvas mode is active. This
-        // guard predates canvas mode entirely (see git blame): it was
-        // written when SQL mode meant "the user opted out of Pine for this
-        // whole session," so there was never anything useful a build could
-        // produce - no Pine editor to autocomplete, no graph to refresh.
-        // Canvas mode breaks that assumption: it keeps rendering a graph and
-        // needs a fresh `ast` regardless of which text panel (if any) is
-        // open next to it (New Layout's Pine/SQL panel is a hand-editing
-        // convenience, not a replacement for the canvas). Skipping this
-        // build while canvas is active left `session.ast` stuck on
-        // whatever it was when SQL mode was entered - canvas gestures kept
-        // writing `session.expression`, but nothing ever re-derived the
-        // graph from it (confirmed live: a join clicked while the SQL panel
-        // was open never appeared, and the SQL panel's own text went stale
-        // instead of reflecting it), and a session restored with `inputMode`
-        // already 'sql' from a previous visit got stuck on the
-        // "Connecting…" banner forever (also confirmed live, via reload).
-        if (this.inputMode === 'sql' && !this.globalStore?.canvasActive) {
-          runInAction(() => {
-            this.hintsLoading = false;
-          });
-          return;
-        }
-
+        // Canvas is always mounted now (the classic node-graph widget,
+        // GraphBox, was removed), and it keeps rendering a graph and needs a
+        // fresh `ast` regardless of which text panel (if any) is open next
+        // to it (New Layout's Pine/SQL panel is a hand-editing convenience,
+        // not a replacement for the canvas) - so, unlike before Canvas mode
+        // existed, a build always runs here even in SQL mode.
         runInAction(() => {
           // reset the candidate
           this.candidateIndex = undefined;

@@ -178,7 +178,16 @@ const AppView = observer(() => {
   // that state is surfaced instead -- inline, not a takeover). Was previously
   // a Docker-run-command onboarding page, which stopped being the right
   // default once the desktop app became the primary distribution.
-  if (!global.pineConnected && !global.canvasActive && isPlayground()) {
+  //
+  // The one exception is the hosted playground specifically: its backend is
+  // intentionally shut down (see PLAYGROUND_DOWNLOAD_URL above), so any
+  // disconnected visit there redirects to the download page instead of
+  // falling through to an app shell with nothing behind it. This used to
+  // also check `!global.canvasActive` (skipping the redirect whenever Canvas
+  // was the active graph editor, since its own empty state was "enough" to
+  // show instead) -- that distinction no longer exists now that Canvas is
+  // the only graph editor, so every disconnected playground visit redirects.
+  if (!global.pineConnected && isPlayground()) {
     return <PlaygroundDisabled />;
   }
 

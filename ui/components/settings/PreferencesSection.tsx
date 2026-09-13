@@ -38,12 +38,6 @@ const PreferencesSection = () => {
           onChange={() => global.togglePineTableColors()}
         />
         <ToggleRow
-          label="Canvas mode"
-          description="Build queries by clicking through tables in a graph instead of writing text. Off uses the classic Graph mode."
-          checked={global.canvasModeEnabled}
-          onChange={() => global.toggleCanvasMode()}
-        />
-        <ToggleRow
           label="Auto-run on canvas edit"
           description="Automatically run the query each time a canvas gesture commits a valid change."
           checked={global.autoRunEnabled}

@@ -77,8 +77,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const hasMultipleTables = uniqueAliases.length > 1;
 
   const showResultColors =
-    hasMultipleTables &&
-    shouldShowTableColors(global.pineTableColorsEnabled, session, global.canvasActive);
+    hasMultipleTables && shouldShowTableColors(global.pineTableColorsEnabled, session);
   // Only ever constructs a CanvasStore for sessions that have actually used
   // Canvas (see getCanvasStore's own comment on why that's lazy) - reading
   // it unconditionally here would force one into existence for every plain

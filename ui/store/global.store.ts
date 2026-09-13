@@ -229,7 +229,7 @@ export class GlobalStore {
     setUserPreference(STORAGE_KEYS.TEXT_SIZE, newTextSize);
   }
 
-  // Vim-style navigation/editing -- global (like canvasModeEnabled below),
+  // Vim-style navigation/editing -- global (like theme below),
   // not per-session: one Preferences toggle governs it, not a per-tab
   // choice, so it belongs here rather than on Session. It used to live on
   // Session (each instance seeding its own copy from the same underlying
@@ -266,23 +266,9 @@ export class GlobalStore {
     setUserPreference(STORAGE_KEYS.PINE_TABLE_COLORS, value);
   }
 
-  // Canvas mode - global (like theme), not per-session: every tab's "graph"
-  // view shows the experimental canvas instead of the classic node graph
-  // while this is on, rather than each session remembering its own choice.
-  _canvasModeEnabled: boolean;
-
-  get canvasModeEnabled(): boolean {
-    return this._canvasModeEnabled;
-  }
-
-  set canvasModeEnabled(value: boolean) {
-    this._canvasModeEnabled = value;
-    setUserPreference(STORAGE_KEYS.CANVAS_MODE, value);
-  }
-
   // Auto-run - whenever a canvas gesture commits a new, backend-confirmed-
   // valid expression, run it immediately instead of waiting for an explicit
-  // Run. Global (like canvasModeEnabled), not per-session.
+  // Run. Global (like layoutMode), not per-session.
   _autoRunEnabled: boolean;
 
   get autoRunEnabled(): boolean {
@@ -296,12 +282,9 @@ export class GlobalStore {
 
   // Which overall app layout wraps a session - the new Canvas-first two-pane
   // arrangement (default for everyone) or the classic sidebar layout kept
-  // around for people who aren't ready to leave it. Orthogonal to
-  // canvasModeEnabled: layoutMode picks the *layout*, canvasModeEnabled
-  // (Legacy Layout only) picks which graph editor Legacy's own graph panel
-  // uses. New Layout is always Canvas, with no switcher of its own - see
-  // canvasActive below for the derived "a canvas is on screen right now"
-  // check other code should read instead of canvasModeEnabled directly.
+  // around for people who aren't ready to leave it. Both layouts render
+  // Canvas as their graph editor (the classic node-graph widget, GraphBox,
+  // was removed) - see canvasActive below.
   _layoutMode: 'legacy' | 'new';
 
   get layoutMode(): 'legacy' | 'new' {
@@ -313,8 +296,13 @@ export class GlobalStore {
     setUserPreference(STORAGE_KEYS.LAYOUT_MODE, value);
   }
 
+  // Always true now - Canvas is the only graph editor, in both layouts (the
+  // classic node-graph widget, GraphBox, was removed). Kept as a named
+  // getter (rather than inlining `true` at each call site) since callers
+  // read it as "is Canvas the mounted graph editor", a question still worth
+  // asking by name even though the answer no longer varies.
   get canvasActive(): boolean {
-    return this.layoutMode === 'new' || this.canvasModeEnabled;
+    return true;
   }
 
   // Whether New Layout's canvas pane shows an editable text panel alongside
@@ -371,7 +359,7 @@ export class GlobalStore {
   // A graph-only, distraction-free view: New Layout's header, tab strip, and
   // Results pane all hide, leaving just Canvas (see AppView.tsx/PineTabs.tsx/
   // NewLayoutView.tsx's isZenModeActive checks). Transient, not persisted -
-  // unlike layoutMode/canvasModeEnabled above, this is a momentary focus
+  // unlike layoutMode above, this is a momentary focus
   // toggle for the current sitting, not a lasting preference, so it always
   // starts off on reload. Read isZenModeActive below, not this field
   // directly, in every one of those render checks.
@@ -492,7 +480,6 @@ export class GlobalStore {
     this._textSize = getUserPreference(STORAGE_KEYS.TEXT_SIZE, 'medium');
     this._vimModeEnabled = getUserPreference(STORAGE_KEYS.VIM_MODE, false);
     this._pineTableColorsEnabled = getUserPreference(STORAGE_KEYS.PINE_TABLE_COLORS, false);
-    this._canvasModeEnabled = getUserPreference(STORAGE_KEYS.CANVAS_MODE, false);
     this._autoRunEnabled = getUserPreference(STORAGE_KEYS.AUTO_RUN_ENABLED, true);
     this._layoutMode = getUserPreference(STORAGE_KEYS.LAYOUT_MODE, 'new');
     this._newLayoutPanelVisible = getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_VISIBLE, false);
@@ -933,10 +920,6 @@ export class GlobalStore {
   public toggleTheme() {
     const order: ThemeId[] = ['light', 'dark', 'sepia'];
     this.themeId = order[(order.indexOf(this.themeId) + 1) % order.length];
-  }
-
-  public toggleCanvasMode() {
-    this.canvasModeEnabled = !this.canvasModeEnabled;
   }
 
   public toggleAutoRunEnabled() {

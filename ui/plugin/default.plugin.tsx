@@ -108,16 +108,15 @@ export class DefaultPlugin implements PluginInterface {
         session.expressionAtLastEval = runsSql ? sqlQuery : session.expression;
 
         // session.message = pickSuccessMessage();
-        // Only the classic text-first workflow wants focus pulled back to the
-        // Pine input after a run finishes. Canvas mode manages its own
-        // keyboard focus - and since the Pine input often isn't even mounted
-        // there (New Layout's SQL/Pine panel is opt-in), nothing would ever
-        // flip session.textInputFocused back to false afterwards, silently
-        // and permanently disabling every canvas keybinding (see
-        // useCanvasKeybindings.ts's textInputFocused guard).
-        if (!session.canvasActive) {
-          session.focusTextInput();
-        }
+        // Canvas is always mounted now (the classic node-graph widget,
+        // GraphBox, was removed) and manages its own keyboard focus - and
+        // since the Pine input often isn't even mounted (New Layout's SQL/
+        // Pine panel is opt-in), pulling focus back to it here would leave
+        // session.textInputFocused stuck true with nothing to flip it back,
+        // silently and permanently disabling every canvas keybinding (see
+        // useCanvasKeybindings.ts's textInputFocused guard) - so, unlike the
+        // classic text-first workflow this used to also serve, focus is
+        // never pulled back to the Pine input after a run finishes.
         session.mode = 'result';
       });
 
