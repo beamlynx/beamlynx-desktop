@@ -41,15 +41,15 @@ const PineTabs = observer(() => {
   const vertical = global.tabOrientation === 'vertical';
 
   // How the strip meets the session content beside/above it: its divider and
-  // its insets. Three self-contained cases rather than a shared base plus
+  // its insets. Two self-contained cases rather than a shared base plus
   // overrides -- they disagree on the divider, on the insets, AND on the
   // units those insets are expressed in, so a common base would be mostly
   // declarations one case immediately undoes.
   //
-  // The insets exist because a vertical rail sits BESIDE the content instead
-  // of above it, so it has to adopt whatever top/bottom inset that content
-  // gives itself; without them it runs the full height of AppView's tab row
-  // and overhangs the graph panel at both ends.
+  // The vertical inset exists because a vertical rail sits BESIDE the
+  // content instead of above it, so it has to adopt whatever top/bottom
+  // inset that content gives itself; without it, it runs the full height of
+  // AppView's tab row and overhangs the graph panel at both ends.
   const stripFrame = !vertical
     ? {
         // Stacked above the content: one full-width rule, and the content's
@@ -58,34 +58,23 @@ const PineTabs = observer(() => {
         alignItems: 'center',
         mt: 0,
       }
-    : global.layoutMode === 'new'
-      ? {
-          // Beside the content in New Layout, where every pane -- Canvas,
-          // Results, docked Settings -- reads as a bordered card with the
-          // gutter between it and its neighbour. A bare right divider here
-          // instead put the rail's hard square edge flush against Canvas's
-          // own rounded border, reading as one doubled seam (reported
-          // directly). Same token and radius as NewLayoutView's pane
-          // wrapper, so the rail is a sibling card rather than the one bit
-          // of chrome that opted out. Literal px for the gutter, matching
-          // `my: NEW_LAYOUT_GUTTER` on that same wrapper.
-          border: '1px solid var(--border-color)',
-          borderRadius: 1,
-          overflow: 'hidden',
-          mt: `${NEW_LAYOUT_GUTTER}px`,
-          mb: `${NEW_LAYOUT_GUTTER}px`,
-          mr: `${NEW_LAYOUT_GUTTER}px`,
-        }
-      : {
-          // Legacy has no card convention to match -- its sidebar sits flush
-          // and unbordered -- so a plain divider is the consistent choice
-          // there, not the odd one out. `mt: 1` mirrors LegacySessionView's
-          // own Grid: MUI theme spacing, which Text Size scales, so a
-          // hardcoded 8px would drift from it at Small and Large. Legacy
-          // gives itself no bottom inset, so neither does this.
-          borderRight: '1px solid var(--border-color)',
-          mt: 1,
-        };
+    : {
+        // Beside the content, where every pane -- Canvas, Results, docked
+        // Settings -- reads as a bordered card with the gutter between it
+        // and its neighbour. A bare right divider here instead put the
+        // rail's hard square edge flush against Canvas's own rounded
+        // border, reading as one doubled seam (reported directly). Same
+        // token and radius as NewLayoutView's pane wrapper, so the rail is
+        // a sibling card rather than the one bit of chrome that opted out.
+        // Literal px for the gutter, matching `my: NEW_LAYOUT_GUTTER` on
+        // that same wrapper.
+        border: '1px solid var(--border-color)',
+        borderRadius: 1,
+        overflow: 'hidden',
+        mt: `${NEW_LAYOUT_GUTTER}px`,
+        mb: `${NEW_LAYOUT_GUTTER}px`,
+        mr: `${NEW_LAYOUT_GUTTER}px`,
+      };
 
   const setActiveTab = (newSessionId: string) => {
     runInAction(() => {

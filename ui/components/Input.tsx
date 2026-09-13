@@ -13,7 +13,8 @@ interface InputProps {
   session: Session;
   onRun?: () => void | Promise<void>;
   /** See PineInput/SqlInput's own doc comment - forwarded to whichever
-   * editor is currently shown. Defaults true (Legacy Layout's behavior). */
+   * editor is currently shown. Defaults true; NewLayoutView passes false
+   * for its own optional Pine/SQL panel. */
   autoFocus?: boolean;
 }
 

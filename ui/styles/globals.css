@@ -44,16 +44,6 @@ a {
   cursor: pointer;
 }
 
-/* Focus */
-
-.unfocussed {
-  border: 1px solid var(--border-color);
-}
-
-.focussed {
-  border: 1px solid var(--focus-border-color);
-}
-
 /* Text utility classes */
 .text-primary {
   color: var(--text-primary-color);

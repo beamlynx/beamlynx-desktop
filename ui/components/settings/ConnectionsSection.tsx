@@ -695,7 +695,7 @@ const ConnectionRow = observer(
                   minWidth: 0,
                   py: 0,
                   fontFamily: 'var(--canvas-font)',
-                  // Fixed px, not rem -- see SettingsModal.tsx's
+                  // Fixed px, not rem -- see SettingsPanelContent.tsx's
                   // settingsTheme comment.
                   fontSize: '14px',
                   color: 'var(--text-color)',

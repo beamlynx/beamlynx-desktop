@@ -97,8 +97,8 @@ const COMMANDS: Command[] = [
     label: 'Open Settings',
     category: 'View',
     // No section arg -- leaves whatever section was last open, matching
-    // the header gear icon's own behavior (see SettingsModal.tsx). Toggles
-    // rather than always opening, matching that same gear icon's behavior --
+    // the header gear icon's own behavior (see SettingsDockedPanel.tsx).
+    // Toggles rather than always opening, matching that same gear icon's --
     // makes the keybinding bound to this (see keybindings.ts) useful as a
     // press-again-to-close, not just an open.
     handler: global => global.setShowSettings(!global.showSettings),
@@ -109,7 +109,7 @@ const COMMANDS: Command[] = [
     label: 'Toggle Zen Mode',
     category: 'View',
     handler: global => global.toggleZenMode(),
-    isEnabled: global => global.layoutMode === 'new',
+    isEnabled: ALWAYS_ENABLED,
   },
   {
     id: 'open-appearance',
@@ -264,36 +264,27 @@ const COMMANDS: Command[] = [
     isEnabled: ALWAYS_ENABLED,
   },
   {
-    id: 'toggle-layout-mode',
-    label: 'Toggle Layout (New / Legacy)',
-    category: 'View',
-    handler: global => global.toggleLayoutMode(),
-    isEnabled: ALWAYS_ENABLED,
-  },
-  {
     id: 'toggle-pine-panel',
     label: 'Toggle Pine Panel',
     category: 'View',
     handler: (global, session) => global.togglePinePanel(session),
-    isEnabled: global => global.layoutMode === 'new',
+    isEnabled: ALWAYS_ENABLED,
   },
   {
     id: 'toggle-sql-panel',
     label: 'Toggle SQL Panel',
     category: 'View',
     handler: (global, session) => global.toggleSqlPanel(session),
-    isEnabled: global => global.layoutMode === 'new',
+    isEnabled: ALWAYS_ENABLED,
   },
   {
     id: 'toggle-orientation',
     label: 'Toggle Layout Orientation (Side by Side / Top and Bottom)',
     category: 'View',
     handler: global => global.toggleNewLayoutOrientation(),
-    isEnabled: global => global.layoutMode === 'new',
+    isEnabled: ALWAYS_ENABLED,
   },
   {
-    // No layoutMode guard, unlike 'toggle-orientation' above -- the tab
-    // strip exists in both layouts, so this is always applicable.
     id: 'toggle-tab-orientation',
     label: 'Toggle Tab Orientation (Horizontal / Vertical)',
     category: 'View',

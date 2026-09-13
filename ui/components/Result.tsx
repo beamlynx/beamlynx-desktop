@@ -3,17 +3,7 @@ import { runInAction, toJS } from 'mobx';
 import { observer } from 'mobx-react-lite';
 import React, { useState, useEffect, useRef } from 'react';
 import { useStores } from '../store/store-container';
-import {
-  Box,
-  IconButton,
-  Tooltip,
-  useTheme,
-  useMediaQuery,
-  Menu,
-  MenuItem,
-  ListItemIcon,
-  ListItemText,
-} from '@mui/material';
+import { Box, IconButton, Tooltip, useTheme, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
 import {
   FileDownload,
   ContentCopy,
@@ -173,17 +163,6 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
         },
       }
     : {};
-  const isSmallScreen = useMediaQuery(theme.breakpoints.down('lg'));
-  // Also true in New Layout: the two icon buttons below float 40px ABOVE
-  // this component's own box everywhere else (compactMode false), relying
-  // on Legacy Layout's sidebar arrangement to already have that much blank
-  // header space above the grid. New Layout's RightPane (NewLayoutView.tsx)
-  // never reserves that gap, so without this the icons bled upward into
-  // whatever sits above Results there - Canvas's own bottom-right corner in
-  // top/bottom orientation, confirmed live as "the Run button is hidden
-  // behind the download icon".
-  const compactMode = isSmallScreen || global.layoutMode === 'new';
-
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [updateData, setUpdateData] = useState<UpdateData | undefined>(undefined);
   const [jsonPanel, setJsonPanel] = useState<JsonPanelState | null>(null);
@@ -682,15 +661,8 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
             disabled={rows.length === 0}
             sx={{
               position: 'absolute',
-              ...(compactMode
-                ? {
-                    top: 4,
-                    right: 4,
-                  }
-                : {
-                    top: -40,
-                    right: 0,
-                  }),
+              top: 4,
+              right: 4,
               zIndex: 1000,
               borderRadius: '4px',
               backgroundColor: 'var(--canvas-node-bg)',
@@ -725,15 +697,8 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
             disabled={rows.length === 0}
             sx={{
               position: 'absolute',
-              ...(compactMode
-                ? {
-                    top: 4,
-                    right: 48,
-                  }
-                : {
-                    top: -40,
-                    right: 44,
-                  }),
+              top: 4,
+              right: 48,
               zIndex: 1000,
               borderRadius: '4px',
               backgroundColor: 'var(--canvas-node-bg)',
@@ -761,15 +726,8 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
               onClick={() => setViewMode(viewMode === 'table' ? 'chart' : 'table')}
               sx={{
                 position: 'absolute',
-                ...(compactMode
-                  ? {
-                      top: 4,
-                      right: 92,
-                    }
-                  : {
-                      top: -40,
-                      right: 88,
-                    }),
+                top: 4,
+                right: 92,
                 zIndex: 1000,
                 borderRadius: '4px',
                 backgroundColor: 'var(--canvas-node-bg)',

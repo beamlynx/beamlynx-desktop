@@ -313,9 +313,10 @@ const Flow: React.FC<{
 
 interface CanvasProps {
   sessionId: string;
-  /** An extra icon appended to the top-left toolbar, past undo/redo - e.g.
-   * New Layout's orientation toggle. Omitted by Legacy Layout's canvas view,
-   * which has no such setting to offer. */
+  /** An extra icon appended to the top-left toolbar, past undo/redo -
+   * currently only ever NewLayoutView's orientation toggle. Optional since
+   * Canvas itself doesn't otherwise know anything about the layout using
+   * it. */
   toolbarExtraAction?: CanvasToolbarExtraAction;
   /**
    * Bump this (any change, not the value itself, is what matters - same

@@ -1,6 +1,4 @@
 export const STORAGE_KEYS = {
-  SIDEBAR_WIDTH: 'pine-sidebar-width',
-  SIDEBAR_SECOND_VIEW_HEIGHT: 'pine-sidebar-second-view-height',
   // Holds a ThemeId ('light'|'dark'|'sepia') - the key predates the switch
   // from a plain light/dark toggle to three named themes, kept as-is since
   // 'light'/'dark' are still valid ThemeId values (an existing user's saved
@@ -18,7 +16,6 @@ export const STORAGE_KEYS = {
   CONNECTION_COLORS: 'pine-connection-colors',
   SESSIONS: 'pine-sessions',
   AUTO_RUN_ENABLED: 'pine-auto-run-enabled',
-  LAYOUT_MODE: 'pine-layout-mode',
   NEW_LAYOUT_ORIENTATION: 'pine-new-layout-orientation',
   NEW_LAYOUT_PANE_WIDTH: 'pine-new-layout-pane-width',
   NEW_LAYOUT_PANE_HEIGHT: 'pine-new-layout-pane-height',
@@ -29,7 +26,7 @@ export const STORAGE_KEYS = {
   JSON_PANEL_WIDTH: 'pine-json-panel-width',
   // Which edge the session tab strip runs along (PineTabs.tsx). Named
   // without a NEW_LAYOUT_ prefix on purpose -- unlike the keys above it,
-  // the tab strip is shared by both layouts, so this preference is too.
+  // this isn't specific to New Layout's own pane arrangement.
   TAB_ORIENTATION: 'pine-tab-orientation',
 } as const;
 

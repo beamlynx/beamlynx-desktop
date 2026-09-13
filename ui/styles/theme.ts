@@ -66,10 +66,11 @@ export const createAppTheme = (themeId: ThemeId, textScale: number, htmlFontSize
 /**
  * A theme for UI that must hold still while Text Size changes, even though
  * it lives in the same React tree as everything that setting scales (e.g.
- * SettingsModal.tsx, so its own Text Size control doesn't visibly reflow
- * out from under you while you use it -- reported live as "it scrolls away
- * and I have to scroll back"). Fixing typography.fontSize/spacing (what
- * `createAppTheme(themeId, 1)` alone gives you) only cancels out the part
+ * SettingsPanelContent.tsx, so its own Text Size control doesn't visibly
+ * reflow out from under you while you use it -- reported live as "it
+ * scrolls away and I have to scroll back"). Fixing typography.fontSize/
+ * spacing (what `createAppTheme(themeId, 1)` alone gives you) only cancels
+ * out the part
  * of the scaling that flows through the theme object. It does NOT cancel
  * the OTHER, independent mechanism: MUI's own Typography variants render
  * as `rem`, which always resolves against the document root's font-size,

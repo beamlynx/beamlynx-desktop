@@ -17,7 +17,6 @@ import CommandPalette from './CommandPalette';
 import SavePineModal from './SavePineModal';
 import NotificationBell from './NotificationBell';
 import SettingsButton from './SettingsButton';
-import SettingsModal from './settings/SettingsModal';
 import SettingsDockedPanel from './settings/SettingsDockedPanel';
 import { NewLayoutSettingsPanelDivider } from './ResizableDividers';
 import { useGlobalKeybindings } from '../hooks/useGlobalKeybindings';
@@ -26,29 +25,6 @@ import { useSettingsKeybindings } from '../hooks/useSettingsKeybindings';
 import { LATEST_VERSION } from '../utils/changelog.data';
 import { compare } from 'semver';
 import { getKeybindingDisplayForCommand } from '../utils/keybindings';
-import { GlobalStore } from '../store/global.store';
-
-/**
- * The header's only mention of layout - never graph mode/canvas mode (that
- * switch lives inside the graph/canvas widget itself now, in Legacy Layout's
- * own MainView - see Session.tsx's InteractiveViewToggle - so this and that
- * never appear in the same place and can't be read as one confusing set of
- * choices). Always rendered, names whichever layout you'd switch TO.
- */
-const LayoutSwitcher = observer(({ global }: { global: GlobalStore }) => (
-  <Typography
-    variant="caption"
-    color="gray"
-    onClick={() => global.toggleLayoutMode()}
-    sx={{
-      cursor: 'pointer',
-      whiteSpace: 'nowrap',
-      '&:hover': { color: 'var(--primary-color)', textDecoration: 'underline' },
-    }}
-  >
-    {global.layoutMode === 'new' ? 'Switch to legacy layout' : 'Switch to new layout'}
-  </Typography>
-));
 
 // The hosted playground's backend has been intentionally shut down (not a
 // bug) -- send visitors to the download page instead. The redirect is a
@@ -266,7 +242,6 @@ const AppView = observer(() => {
                 rowGap: 0,
               }}
             >
-              <LayoutSwitcher global={global} />
               {!isDesktop() && (
                 <Typography variant="caption" color="gray" component="code">
                   [{global.version ?? 'obsolete'}]
@@ -279,15 +254,6 @@ const AppView = observer(() => {
           </Grid>
         </Grid>
       )}
-      {/* New Layout docks Settings as a panel here (a sibling of PineTabs,
-          spanning every tab, not just the active one - see the
-          settingsPanelWidth comment above) rather than mounting it as a
-          floating overlay - see SettingsDockedPanel.tsx. Legacy keeps the
-          floating Modal, since it never shows Canvas and Results at once
-          (Session.tsx's MainView mode-switches between them), so there's
-          nothing a docked panel there would avoid covering. */}
-      {global.layoutMode !== 'new' && <SettingsModal />}
-
       {/* mt: 1 (not 0) - the header row above and the tab row below both
           have their own solid background now (previously neither did, so
           zero margin was invisible); with no gap the search box's bottom
@@ -335,7 +301,7 @@ const AppView = observer(() => {
           mr: global.isZenModeActive ? 0 : 1,
         }}
       >
-        {global.layoutMode === 'new' && global.showSettings && (
+        {global.showSettings && (
           // Wrapped together (not given individual margins) so the Box and
           // the divider stretch to match each other's height automatically
           // -- NewLayoutView's own outer wrapper insets Canvas/Results from

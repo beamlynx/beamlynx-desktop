@@ -31,13 +31,12 @@ interface NewLayoutViewProps {
 
 /**
  * The right pane: Results, with an error band above it when the last run
- * failed. Legacy surfaces `session.error` inside the sidebar (see
- * Session.tsx); New Layout's plain Canvas|Results split has no other slot
- * for it, and auto-run makes execution failures (a query that parses fine
- * but fails at the DB) a routine occurrence here, not a corner case.
+ * failed. The plain Canvas|Results split has no other slot for it, and
+ * auto-run makes execution failures (a query that parses fine but fails at
+ * the DB) a routine occurrence here, not a corner case.
  *
  * Also handles `session.mode === 'monitor'` (see the `toggle-connection-monitor`
- * command) for parity with Legacy, which has no dedicated pane for it either.
+ * command), since there's no other dedicated pane for it.
  */
 const RightPane = observer(({ sessionId }: { sessionId: string }) => {
   const { global } = useStores();
@@ -208,11 +207,11 @@ const LeftPane = observer(
 
 /**
  * Canvas-first two-pane layout: Canvas on the left/top, Results on the
- * right/bottom, orientation configurable and persisted. This is New Layout's
- * entire arrangement - unlike Legacy's Session/MainView, Canvas is rendered
- * unconditionally here (not gated on `session.mode`), so an auto-run's flip
- * to `session.mode === 'result'` never unmounts/remounts it (see
- * Session.getCanvasStore() for the other half of that fix).
+ * right/bottom, orientation configurable and persisted. This is the app's
+ * entire arrangement - Canvas is rendered unconditionally here (not gated
+ * on `session.mode`), so an auto-run's flip to `session.mode === 'result'`
+ * never unmounts/remounts it (see Session.getCanvasStore() for the other
+ * half of that fix).
  */
 const NewLayoutView: React.FC<NewLayoutViewProps> = observer(({ sessionId }) => {
   const { global } = useStores();
@@ -232,7 +231,7 @@ const NewLayoutView: React.FC<NewLayoutViewProps> = observer(({ sessionId }) => 
   }, []);
 
   // Small screens always stack top-bottom, regardless of the persisted
-  // preference - the same override `compactMode` applies in Legacy Layout.
+  // preference.
   const effectiveOrientation: Orientation = isSmallScreen
     ? 'vertical'
     : global.newLayoutOrientation;

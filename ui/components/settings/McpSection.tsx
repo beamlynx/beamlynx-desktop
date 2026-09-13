@@ -14,7 +14,7 @@ const CopyBlock = ({ text }: { text: string }) => {
         borderRadius: 1,
         fontFamily: 'monospace',
         // Fixed, not rem -- this modal's own chrome is frozen at one scale
-        // regardless of the Text Size setting (see SettingsModal.tsx's
+        // regardless of the Text Size setting (see SettingsPanelContent.tsx's
         // settingsTheme comment for why).
         fontSize: '12.8px',
         color: '#f8f8f2',

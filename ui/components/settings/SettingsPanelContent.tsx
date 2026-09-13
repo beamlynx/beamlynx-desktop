@@ -38,12 +38,10 @@ export const RAIL_ITEMS: { id: SettingsSection; label: string }[] = [
 export const DESKTOP_ONLY_SECTIONS: SettingsSection[] = ['access-policy', 'mcp'];
 
 /**
- * Rail nav + section content, shared by both Settings shells: the floating
- * Modal (SettingsModal.tsx, Legacy Layout) and the docked panel
- * (SettingsDockedPanel.tsx, New Layout). Neither shell contributes anything
- * but its own outer positioning/chrome -- this is the entire "what Settings
- * actually shows" surface, so the two never drift out of sync with each
- * other. Fills whatever box its shell gives it (`height: 100%`).
+ * Rail nav + section content -- the entire "what Settings actually shows"
+ * surface. Its shell (SettingsDockedPanel.tsx) contributes nothing but its
+ * own outer positioning/chrome. Fills whatever box its shell gives it
+ * (`height: 100%`).
  */
 const SettingsPanelContent = () => {
   const { global } = useStores();

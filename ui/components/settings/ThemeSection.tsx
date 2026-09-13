@@ -56,7 +56,7 @@ const SegmentedControl = <T extends string>({
             px: 3,
             py: 1,
             fontFamily: 'var(--canvas-font)',
-            // Fixed px, not rem -- see SettingsModal.tsx's settingsTheme
+            // Fixed px, not rem -- see SettingsPanelContent.tsx's settingsTheme
             // comment.
             fontSize: '13.6px',
             color: active ? 'var(--primary-text-color)' : 'var(--text-color)',

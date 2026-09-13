@@ -20,12 +20,13 @@ import { tableColorDecoration } from './table-colors';
 
 interface PineInputProps {
   session: Session;
-  /** Legacy Layout wants this focused the moment it mounts (it's the
-   * primary, only-once-mounted entry point) - New Layout's optional panel
-   * remounts this every time it's opened, and autofocusing there would
-   * steal keyboard focus away from the canvas on every open, blocking every
-   * canvas keybinding until the user clicked back into it. Defaults to true
-   * to preserve Legacy's behavior; NewLayoutView passes false. */
+  /** Most callers (e.g. UpdateModal.tsx) want this focused the moment it
+   * mounts - it's their primary, only-once-mounted entry point. New
+   * Layout's optional Pine/SQL panel is the exception: it remounts this
+   * every time it's opened, and autofocusing there would steal keyboard
+   * focus away from the canvas on every open, blocking every canvas
+   * keybinding until the user clicked back into it. Defaults to true;
+   * NewLayoutView passes false. */
   autoFocus?: boolean;
 }
 

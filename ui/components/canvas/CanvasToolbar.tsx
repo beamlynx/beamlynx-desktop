@@ -95,8 +95,9 @@ const Divider = () => (
 );
 
 /** An extra icon appended to the toolbar, past a divider, after undo/redo -
- * e.g. New Layout's orientation toggle. Legacy Layout's canvas view (which
- * has no such settings) simply doesn't pass one. */
+ * currently only ever the orientation toggle NewLayoutView's canvas pane
+ * supplies. Optional rather than baked into CanvasToolbar directly since
+ * this widget doesn't otherwise know anything about the layout around it. */
 export interface CanvasToolbarExtraAction {
   icon: React.ReactNode;
   tooltip: string;
@@ -112,11 +113,10 @@ export interface CanvasToolbarExtraAction {
  * design. Also bound to `u`/`Shift+U` now via useCanvasKeybindings.ts - this
  * stays the click-driven path for mouse-only use, not superseded by it.
  *
- * Auto-run lives here (not on a Run button) so its state is visible in the
- * same place regardless of layout - Legacy Layout's Run button lives in the
- * Pine/SQL input area, unrelated to the canvas, and New Layout's floating
- * Run button only exists there. This toolbar is the one thing both layouts'
- * canvas view already puts in the same corner.
+ * Auto-run lives here (not on a Run button) so its state is always visible
+ * on the canvas itself - the floating Run button (Input.tsx's RunButton, see
+ * NewLayoutView.tsx's LeftPane) only shows up when the Pine/SQL panel is
+ * closed, so it isn't a reliable place to show this.
  */
 const CanvasToolbar: React.FC<{ canvasStore: CanvasStore; extraAction?: CanvasToolbarExtraAction }> =
   observer(({ canvasStore, extraAction }) => {
@@ -169,33 +169,29 @@ const CanvasToolbar: React.FC<{ canvasStore: CanvasStore; extraAction?: CanvasTo
         >
           <Bolt />
         </span>
-        {global.layoutMode === 'new' && (
-          <>
-            <Divider />
-            <span
-              title={
-                global.newLayoutPanelVisible && canvasStore.session.inputMode === 'pine'
-                  ? 'Hide the Pine panel'
-                  : 'Show the Pine panel'
-              }
-              style={panelToggleStyle(global.newLayoutPanelVisible && canvasStore.session.inputMode === 'pine')}
-              onClick={() => global.togglePinePanel(canvasStore.session)}
-            >
-              PINE
-            </span>
-            <span
-              title={
-                global.newLayoutPanelVisible && canvasStore.session.inputMode === 'sql'
-                  ? 'Hide the SQL panel'
-                  : 'Show the SQL panel'
-              }
-              style={panelToggleStyle(global.newLayoutPanelVisible && canvasStore.session.inputMode === 'sql')}
-              onClick={() => global.toggleSqlPanel(canvasStore.session)}
-            >
-              SQL
-            </span>
-          </>
-        )}
+        <Divider />
+        <span
+          title={
+            global.newLayoutPanelVisible && canvasStore.session.inputMode === 'pine'
+              ? 'Hide the Pine panel'
+              : 'Show the Pine panel'
+          }
+          style={panelToggleStyle(global.newLayoutPanelVisible && canvasStore.session.inputMode === 'pine')}
+          onClick={() => global.togglePinePanel(canvasStore.session)}
+        >
+          PINE
+        </span>
+        <span
+          title={
+            global.newLayoutPanelVisible && canvasStore.session.inputMode === 'sql'
+              ? 'Hide the SQL panel'
+              : 'Show the SQL panel'
+          }
+          style={panelToggleStyle(global.newLayoutPanelVisible && canvasStore.session.inputMode === 'sql')}
+          onClick={() => global.toggleSqlPanel(canvasStore.session)}
+        >
+          SQL
+        </span>
         {extraAction && (
           <>
             <Divider />

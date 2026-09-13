@@ -5,7 +5,8 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 ### Removed
-- The classic Graph mode (the non-interactive node diagram you got with the "Canvas mode" preference off) is gone. Canvas is now the only graph editor, in both Legacy and New layout. The "Canvas mode" toggle in Preferences and its command-palette entry are gone with it; if you had it turned off, you'll now see Canvas instead.
+- The classic Graph mode (the non-interactive node diagram you got with the "Canvas mode" preference off) is gone. Canvas is now the only graph editor. The "Canvas mode" toggle in Preferences and its command-palette entry are gone with it; if you had it turned off, you'll now see Canvas instead.
+- Legacy Layout (the classic sidebar arrangement) is gone. The Canvas-first two-pane layout (Canvas + Results) is now the only layout. The "Switch to legacy layout" header link, the "New layout" toggle in Preferences, and their command-palette entries are gone with it; if you were on Legacy Layout, you'll now see the new one. Settings always opens as a docked panel now, not a floating window.
 
 ## [0.61.0] - 2026-09-12
 ### Added

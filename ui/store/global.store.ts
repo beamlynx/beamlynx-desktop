@@ -268,7 +268,7 @@ export class GlobalStore {
 
   // Auto-run - whenever a canvas gesture commits a new, backend-confirmed-
   // valid expression, run it immediately instead of waiting for an explicit
-  // Run. Global (like layoutMode), not per-session.
+  // Run. Global (like theme), not per-session.
   _autoRunEnabled: boolean;
 
   get autoRunEnabled(): boolean {
@@ -280,27 +280,13 @@ export class GlobalStore {
     setUserPreference(STORAGE_KEYS.AUTO_RUN_ENABLED, value);
   }
 
-  // Which overall app layout wraps a session - the new Canvas-first two-pane
-  // arrangement (default for everyone) or the classic sidebar layout kept
-  // around for people who aren't ready to leave it. Both layouts render
-  // Canvas as their graph editor (the classic node-graph widget, GraphBox,
-  // was removed) - see canvasActive below.
-  _layoutMode: 'legacy' | 'new';
-
-  get layoutMode(): 'legacy' | 'new' {
-    return this._layoutMode;
-  }
-
-  set layoutMode(value: 'legacy' | 'new') {
-    this._layoutMode = value;
-    setUserPreference(STORAGE_KEYS.LAYOUT_MODE, value);
-  }
-
-  // Always true now - Canvas is the only graph editor, in both layouts (the
-  // classic node-graph widget, GraphBox, was removed). Kept as a named
-  // getter (rather than inlining `true` at each call site) since callers
-  // read it as "is Canvas the mounted graph editor", a question still worth
-  // asking by name even though the answer no longer varies.
+  // Always true now - Canvas is the only graph editor, and New Layout (the
+  // Canvas-first two-pane arrangement) is the only layout (the classic
+  // node-graph widget, GraphBox, and the classic sidebar layout it lived in
+  // were both removed). Kept as a named getter (rather than inlining `true`
+  // at each call site) since callers read it as "is Canvas the mounted
+  // graph editor", a question still worth asking by name even though the
+  // answer no longer varies.
   get canvasActive(): boolean {
     return true;
   }
@@ -310,8 +296,8 @@ export class GlobalStore {
   // both the Pine and SQL editors (Input.tsx already switches between them
   // on session.inputMode) - "Pine panel"/"SQL panel" are two different ways
   // to open the SAME panel in a given mode, not two different panels. Global
-  // (like layoutMode itself), not per-session - it's how you like to work,
-  // not something that should vary tab to tab.
+  // (like theme), not per-session - it's how you like to work, not
+  // something that should vary tab to tab.
   _newLayoutPanelVisible: boolean;
 
   get newLayoutPanelVisible(): boolean {
@@ -324,9 +310,9 @@ export class GlobalStore {
   }
 
   // New Layout's Canvas|Results split: side-by-side or stacked top/bottom.
-  // Global (like layoutMode), not per-session -- see NewLayoutView.tsx,
-  // which also overrides this to 'vertical' on small screens regardless of
-  // what's stored here.
+  // Global (like theme), not per-session -- see NewLayoutView.tsx, which
+  // also overrides this to 'vertical' on small screens regardless of what's
+  // stored here.
   _newLayoutOrientation: 'horizontal' | 'vertical';
 
   get newLayoutOrientation(): 'horizontal' | 'vertical' {
@@ -341,9 +327,8 @@ export class GlobalStore {
   // Which edge the session tab strip runs along: 'horizontal' (the classic
   // strip across the top) or 'vertical' (a rail down the left, which trades
   // width for room to show more tabs and longer names without the strip
-  // scrolling). Unlike newLayoutOrientation above this isn't New-Layout-
-  // specific -- PineTabs.tsx is the same component in both layouts, so the
-  // preference applies to both. Global, not per-session, for the same
+  // scrolling). Unlike newLayoutOrientation above this isn't specific to
+  // New Layout's own pane arrangement. Global, not per-session, for the same
   // reason the rest of these are: it's how you like to work.
   _tabOrientation: TabOrientation;
 
@@ -356,13 +341,12 @@ export class GlobalStore {
     setUserPreference(STORAGE_KEYS.TAB_ORIENTATION, value);
   }
 
-  // A graph-only, distraction-free view: New Layout's header, tab strip, and
-  // Results pane all hide, leaving just Canvas (see AppView.tsx/PineTabs.tsx/
+  // A graph-only, distraction-free view: the header, tab strip, and Results
+  // pane all hide, leaving just Canvas (see AppView.tsx/PineTabs.tsx/
   // NewLayoutView.tsx's isZenModeActive checks). Transient, not persisted -
-  // unlike layoutMode above, this is a momentary focus
-  // toggle for the current sitting, not a lasting preference, so it always
-  // starts off on reload. Read isZenModeActive below, not this field
-  // directly, in every one of those render checks.
+  // this is a momentary focus toggle for the current sitting, not a lasting
+  // preference, so it always starts off on reload. Read isZenModeActive
+  // below, not this field directly, in every one of those render checks.
   zenMode = false;
 
   // What autoRunEnabled was the instant before toggleZenMode last turned Zen
@@ -372,12 +356,13 @@ export class GlobalStore {
   // hand auto-run back exactly as you left it instead of guessing a default.
   _autoRunBeforeZenMode: boolean | null = null;
 
-  // The check every render site (AppView/PineTabs/NewLayoutView) actually
-  // wants - `zenMode` alone would hide Legacy Layout's header too if it were
-  // ever left `true` while switching layouts, even though Legacy never has
-  // the Canvas/Results crowding problem Zen mode exists to solve.
+  // A separate getter (rather than reading `zenMode` directly at every
+  // render site) since Zen mode used to only make sense in New Layout - now
+  // the only layout there is, so this is just `zenMode`, but kept named for
+  // the same reason `canvasActive` is: every call site reads it as asking a
+  // real question, not an implementation detail.
   get isZenModeActive(): boolean {
-    return this.zenMode && this.layoutMode === 'new';
+    return this.zenMode;
   }
 
   // User
@@ -427,10 +412,10 @@ export class GlobalStore {
 
   // Settings
   showSettings = false;
-  // Which section the settings modal opens to -- defaults to Connections
+  // Which section the settings panel opens to -- defaults to Connections
   // since that's the section a decryption-failure reconnect or "add
-  // connection" click needs to land on; the modal remembers whatever
-  // section was last open otherwise (see SettingsModal.tsx's rail).
+  // connection" click needs to land on; the panel remembers whatever
+  // section was last open otherwise (see SettingsPanelContent.tsx's rail).
   settingsSection: SettingsSection = 'connections';
   // Consume-once signal (same pattern as reconnectHint below) telling the
   // Connections section to open straight to its "add" sub-view instead of
@@ -481,7 +466,6 @@ export class GlobalStore {
     this._vimModeEnabled = getUserPreference(STORAGE_KEYS.VIM_MODE, false);
     this._pineTableColorsEnabled = getUserPreference(STORAGE_KEYS.PINE_TABLE_COLORS, false);
     this._autoRunEnabled = getUserPreference(STORAGE_KEYS.AUTO_RUN_ENABLED, true);
-    this._layoutMode = getUserPreference(STORAGE_KEYS.LAYOUT_MODE, 'new');
     this._newLayoutPanelVisible = getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_VISIBLE, false);
     this._newLayoutOrientation = getUserPreference(
       STORAGE_KEYS.NEW_LAYOUT_ORIENTATION,
@@ -924,10 +908,6 @@ export class GlobalStore {
 
   public toggleAutoRunEnabled() {
     this.autoRunEnabled = !this.autoRunEnabled;
-  }
-
-  public toggleLayoutMode() {
-    this.layoutMode = this.layoutMode === 'legacy' ? 'new' : 'legacy';
   }
 
   public toggleNewLayoutOrientation() {
