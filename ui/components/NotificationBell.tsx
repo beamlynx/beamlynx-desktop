@@ -23,7 +23,11 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
       {/* No explicit tabIndex -- see SettingsButton.tsx's identical comment
           for why a positive value here (this used to be 1) was hijacking
           Tab order document-wide. */}
-      <IconButton onClick={onClick} color="inherit">
+      <IconButton
+        onClick={onClick}
+        color="inherit"
+        aria-label={hasUnreadUpdates ? "What's new (unread updates)" : "What's new"}
+      >
         <Notifications
           sx={{
             color: hasUnreadUpdates ? 'var(--notification-color)' : 'inherit',

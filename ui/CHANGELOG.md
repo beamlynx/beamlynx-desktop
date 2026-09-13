@@ -4,9 +4,18 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Changed
+- Database Connections: renaming a connection now has its own pencil icon next to the name, independent of the row's expand/advanced-options toggle. Previously renaming only worked by first expanding the row.
+
 ### Removed
 - The classic Graph mode (the non-interactive node diagram you got with the "Canvas mode" preference off) is gone. Canvas is now the only graph editor. The "Canvas mode" toggle in Preferences and its command-palette entry are gone with it; if you had it turned off, you'll now see Canvas instead.
 - Legacy Layout (the classic sidebar arrangement) is gone. The Canvas-first two-pane layout (Canvas + Results) is now the only layout. The "Switch to legacy layout" header link, the "New layout" toggle in Preferences, and their command-palette entries are gone with it; if you were on Legacy Layout, you'll now see the new one. Settings always opens as a docked panel now, not a floating window.
+
+### Fixed
+- Header: the version badge no longer shows "obsolete" when you're simply not connected yet -- it just doesn't show until there's a real version to display.
+- Database Connections: typing a space while renaming a connection did nothing to the text and silently switched your active connection instead. The row's own keyboard shortcut (Enter/Space to switch to that connection) was intercepting keystrokes meant for the rename field nested inside it.
+- Database Connections: the rename pencil and the MCP badge could misalign across rows, and the badge would shift sideways the moment you clicked the pencil. Both were the same underlying layout issue -- the badge sat between the pencil and the expand arrow instead of sharing space with the name, so its presence (or the pencil's own visibility while renaming) pushed everything after it sideways. The rename/expand icons now form a stable column regardless of a row's MCP state.
+- Various icon-only buttons across the app (close, download, save, notifications, tab controls, the JSON inspector) now have accessible labels for screen readers.
 
 ## [0.61.0] - 2026-09-12
 ### Added

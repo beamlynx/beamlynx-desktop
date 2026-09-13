@@ -242,9 +242,9 @@ const AppView = observer(() => {
                 rowGap: 0,
               }}
             >
-              {!isDesktop() && (
+              {!isDesktop() && global.version && (
                 <Typography variant="caption" color="gray" component="code">
-                  [{global.version ?? 'obsolete'}]
+                  [{global.version}]
                 </Typography>
               )}
               {UserContent}

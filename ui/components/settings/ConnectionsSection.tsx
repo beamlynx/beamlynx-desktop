@@ -1,5 +1,6 @@
 import CheckIcon from '@mui/icons-material/Check';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import EditIcon from '@mui/icons-material/Edit';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SecurityIcon from '@mui/icons-material/Security';
@@ -428,15 +429,19 @@ const AddConnectionForm = ({ onDone }: { onDone: () => void }) => {
 };
 
 /**
- * One saved connection: a collapsed row (switch active, recolor, a quick
- * "MCP" badge when it's on) plus, for desktop only, an expandable panel
- * holding everything else -- rename, access policy, MCP access, the
+ * One saved connection: a collapsed row (switch active, recolor, rename, a
+ * quick "MCP" badge when it's on) plus, for desktop only, an expandable
+ * panel holding everything else -- access policy, MCP access, the
  * apply-to-own-queries exception, refresh, and delete. Those five used to
  * all live as icons/popovers on the collapsed row at once, which made the
  * relationship between "MCP access" and "access policy" (MCP can only be on
  * once a policy with an active rule is assigned) hard to read at a glance.
  * Laid out top-to-bottom here in that same dependency order instead: pick a
- * policy, then turn MCP on.
+ * policy, then turn MCP on. Rename stays on the collapsed row, as its own
+ * pencil icon next to the name (matching AccessPolicySection's rename
+ * pattern) -- unlike the other five, it isn't part of that dependency
+ * chain, so tucking it behind the same expand affordance would only make
+ * it a click further away for no reason.
  *
  * Browser/playground mode never had this problem -- no MCP or policy
  * concept there at all -- so it keeps the old flat row (color, name,
@@ -472,6 +477,12 @@ const ConnectionRow = observer(
     const [removing, setRemoving] = useState(false);
     const [reindexing, setReindexing] = useState(false);
     const [reindexed, setReindexed] = useState(false);
+    // Independent of `expanded` -- renaming is its own affordance (the
+    // pencil icon next to the name), not a side effect of opening the row's
+    // advanced options (access policy/MCP/delete). Matches
+    // AccessPolicySection's own dedicated rename pattern rather than the
+    // two sections each inventing their own.
+    const [renaming, setRenaming] = useState(false);
     const [renameValue, setRenameValue] = useState(label);
     const [renameSaving, setRenameSaving] = useState(false);
     const [colorPickerAnchor, setColorPickerAnchor] = useState<HTMLElement | null>(null);
@@ -494,9 +505,13 @@ const ConnectionRow = observer(
       const trimmed = renameValue.trim();
       if (!trimmed) {
         setRenameValue(label);
+        setRenaming(false);
         return;
       }
-      if (trimmed === label) return;
+      if (trimmed === label) {
+        setRenaming(false);
+        return;
+      }
       setRenameSaving(true);
       try {
         await global.renameConnection(id, trimmed);
@@ -504,6 +519,7 @@ const ConnectionRow = observer(
         // Failure is already surfaced via the global connection-error snackbar.
       } finally {
         setRenameSaving(false);
+        setRenaming(false);
       }
     };
 
@@ -570,6 +586,15 @@ const ConnectionRow = observer(
           role="button"
           aria-label={`Switch to connection ${label}`}
           onKeyDown={e => {
+            // A keydown on the rename TextField (a real descendant of this
+            // row, not a separate stop) bubbles up to this handler same as
+            // any other keydown -- without this check, Space while renaming
+            // never reached the input (this role="button" Space/Enter
+            // activation ran first, calling preventDefault) and switched to
+            // this connection as a side effect on top of that (reported
+            // directly as "can't add spaces" to a connection name).
+            const target = e.target as HTMLElement;
+            if (target.closest('input, textarea, [contenteditable="true"]')) return;
             if ((e.key === 'Enter' || e.key === ' ') && !disabledWhileBusy) {
               e.preventDefault();
               onSwitch();
@@ -662,81 +687,118 @@ const ConnectionRow = observer(
               ))}
             </Popover>
           )}
-          {desktop && expanded ? (
-            <TextField
-              autoFocus
-              variant="standard"
-              size="small"
-              value={renameValue}
-              disabled={renameSaving}
-              onClick={e => e.stopPropagation()}
-              onFocus={e => e.target.select()}
-              onChange={e => setRenameValue(e.target.value)}
-              onBlur={commitRename}
-              onKeyDown={e => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  (e.target as HTMLInputElement).blur();
-                } else if (e.key === 'Escape') {
-                  setRenameValue(label);
-                }
-              }}
-              sx={{
-                flex: 1,
-                minWidth: 0,
-                // A long saved hostname (e.g. a full connection string) must
-                // not push this field wider than the row -- MUI nests a
-                // couple of flex layers between the TextField root and the
-                // actual <input>, and each one needs its own min-width: 0
-                // or the outermost one alone doesn't let the real overflow
-                // culprit (the input's own intrinsic content width) shrink.
-                '& .MuiInputBase-root': { minWidth: 0 },
-                '& .MuiInput-input': {
+          {/* Name (or its rename field) and the MCP chip share this flexible
+              region, rather than the chip sitting in the fixed trailing
+              cluster below -- a chip that came and went between the pencil
+              and the chevron dragged the pencil sideways with it (the name
+              box next to it is flex:1, so it resized to compensate),
+              misaligning the pencil across rows depending on which ones
+              happened to have MCP on (reported directly). Here, the name
+              simply truncates a little further to make room instead, and
+              the trailing action icons never move. */}
+          <Box sx={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 1 }}>
+            {desktop && renaming ? (
+              <TextField
+                autoFocus
+                variant="standard"
+                size="small"
+                value={renameValue}
+                disabled={renameSaving}
+                onClick={e => e.stopPropagation()}
+                onFocus={e => e.target.select()}
+                onChange={e => setRenameValue(e.target.value)}
+                onBlur={commitRename}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    (e.target as HTMLInputElement).blur();
+                  } else if (e.key === 'Escape') {
+                    setRenameValue(label);
+                    setRenaming(false);
+                  }
+                }}
+                sx={{
+                  flex: 1,
                   minWidth: 0,
-                  py: 0,
+                  // A long saved hostname (e.g. a full connection string) must
+                  // not push this field wider than the row -- MUI nests a
+                  // couple of flex layers between the TextField root and the
+                  // actual <input>, and each one needs its own min-width: 0
+                  // or the outermost one alone doesn't let the real overflow
+                  // culprit (the input's own intrinsic content width) shrink.
+                  '& .MuiInputBase-root': { minWidth: 0 },
+                  '& .MuiInput-input': {
+                    minWidth: 0,
+                    py: 0,
+                    fontFamily: 'var(--canvas-font)',
+                    // Fixed px, not rem -- see SettingsPanelContent.tsx's
+                    // settingsTheme comment.
+                    fontSize: '14px',
+                    color: 'var(--text-color)',
+                  },
+                  '& .MuiInput-underline:before': { borderBottomColor: 'var(--border-color)' },
+                }}
+              />
+            ) : (
+              <Typography
+                component="span"
+                variant="body2"
+                title={isActive ? 'Active connection' : undefined}
+                sx={{
+                  flex: 1,
+                  minWidth: 0,
                   fontFamily: 'var(--canvas-font)',
-                  // Fixed px, not rem -- see SettingsPanelContent.tsx's
-                  // settingsTheme comment.
-                  fontSize: '14px',
-                  color: 'var(--text-color)',
-                },
-                '& .MuiInput-underline:before': { borderBottomColor: 'var(--border-color)' },
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {label}
+              </Typography>
+            )}
+            {desktop && mcpEnabled && !expanded && (
+              <Box
+                title="MCP access is on -- an AI agent can query this connection"
+                sx={{
+                  fontSize: 10,
+                  fontFamily: 'var(--canvas-font)',
+                  letterSpacing: '0.02em',
+                  color: 'var(--icon-color-highlight)',
+                  border: '1px solid var(--icon-color-highlight)',
+                  borderRadius: '3px',
+                  px: 0.5,
+                  py: '1px',
+                  flexShrink: 0,
+                }}
+              >
+                MCP
+              </Box>
+            )}
+          </Box>
+          {desktop && (
+            // Always mounted (hidden via visibility, not conditionally
+            // unmounted) while renaming -- unmounting it freed up its own
+            // width, which the flex:1 name/chip wrapper next to it
+            // absorbed, dragging the MCP chip sideways with it the same
+            // way the chip itself used to drag the pencil (reported
+            // directly). Reserving its space keeps that wrapper's
+            // available width constant across every state.
+            <EditIcon
+              onClick={e => {
+                e.stopPropagation();
+                setRenameValue(label);
+                setRenaming(true);
+              }}
+              titleAccess="Rename connection"
+              sx={{
+                fontSize: 14,
+                cursor: 'pointer',
+                opacity: 0.35,
+                flexShrink: 0,
+                visibility: renaming ? 'hidden' : 'visible',
+                '&:hover': { opacity: 0.9 },
               }}
             />
-          ) : (
-            <Typography
-              component="span"
-              variant="body2"
-              title={isActive ? 'Active connection' : undefined}
-              sx={{
-                flex: 1,
-                minWidth: 0,
-                fontFamily: 'var(--canvas-font)',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {label}
-            </Typography>
-          )}
-          {desktop && mcpEnabled && !expanded && (
-            <Box
-              title="MCP access is on -- an AI agent can query this connection"
-              sx={{
-                fontSize: 10,
-                fontFamily: 'var(--canvas-font)',
-                letterSpacing: '0.02em',
-                color: 'var(--icon-color-highlight)',
-                border: '1px solid var(--icon-color-highlight)',
-                borderRadius: '3px',
-                px: 0.5,
-                py: '1px',
-                flexShrink: 0,
-              }}
-            >
-              MCP
-            </Box>
           )}
           {desktop ? (
             <IconButton

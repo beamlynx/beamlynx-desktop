@@ -84,6 +84,7 @@ const SettingsPanelContent = () => {
           onClick={handleClose}
           size="small"
           tabIndex={-1}
+          aria-label="Close settings"
           sx={{
             position: 'absolute',
             top: 8,

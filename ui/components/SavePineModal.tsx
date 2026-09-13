@@ -89,6 +89,7 @@ const SavePineModal = observer(() => {
           <IconButton
             onClick={handleClose}
             size="small"
+            aria-label="Close"
             sx={{
               color: 'var(--text-color)',
               '&:hover': {

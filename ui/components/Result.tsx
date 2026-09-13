@@ -581,6 +581,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
           <IconButton
             size="small"
             onClick={handleInspectClick}
+            aria-label="Inspect update"
             sx={{
               position: 'absolute',
               right: 4,
@@ -659,6 +660,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
           <IconButton
             onClick={exportToCSV}
             disabled={rows.length === 0}
+            aria-label="Export to CSV"
             sx={{
               position: 'absolute',
               top: 4,
@@ -695,6 +697,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
               });
             }}
             disabled={rows.length === 0}
+            aria-label="Copy result as CSV"
             sx={{
               position: 'absolute',
               top: 4,
@@ -724,6 +727,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
           <Tooltip title={viewMode === 'table' ? 'View as Bar Chart' : 'View as Table'}>
             <IconButton
               onClick={() => setViewMode(viewMode === 'table' ? 'chart' : 'table')}
+              aria-label={viewMode === 'table' ? 'View as bar chart' : 'View as table'}
               sx={{
                 position: 'absolute',
                 top: 4,

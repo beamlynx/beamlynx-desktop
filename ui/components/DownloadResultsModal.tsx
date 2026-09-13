@@ -100,6 +100,7 @@ const DownloadResultsModal: React.FC<DownloadResultsModalProps> = ({
           <IconButton
             onClick={onClose}
             size="small"
+            aria-label="Close"
             sx={{
               color: 'var(--text-color)',
               '&:hover': {

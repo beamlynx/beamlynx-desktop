@@ -316,6 +316,7 @@ const PineTabs = observer(() => {
                   <IconButton
                     onClick={addTab}
                     size="small"
+                    aria-label="New tab"
                     tabIndex={-1} // Prevent tab focus, like every control in this strip
                     sx={{
                       color: 'var(--canvas-trace)',
@@ -567,6 +568,7 @@ const PineTabs = observer(() => {
                           style={{ marginLeft: '5px' }}
                           size="small"
                           component="span"
+                          aria-label="Close tab"
                           tabIndex={-1} // Prevent tab focus
                           onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
                             event.stopPropagation();

@@ -290,18 +290,19 @@ const JsonInspectorPanel: React.FC<JsonInspectorPanelProps> = ({
                       size="small"
                       disabled={invalid}
                       onClick={() => onInspect(textRef.current)}
+                      aria-label="Inspect update"
                     >
                       <Code fontSize="small" />
                     </IconButton>
                   </span>
                 </Tooltip>
                 <Tooltip title="Cancel (discards changes, back to viewing)">
-                  <IconButton size="small" onClick={handleCancelEdit}>
+                  <IconButton size="small" onClick={handleCancelEdit} aria-label="Cancel">
                     <Undo fontSize="small" />
                   </IconButton>
                 </Tooltip>
                 <Tooltip title="Save (Mod+Enter)">
-                  <IconButton size="small" onClick={handleCommit} disabled={saving}>
+                  <IconButton size="small" onClick={handleCommit} disabled={saving} aria-label="Save">
                     <Check fontSize="small" />
                   </IconButton>
                 </Tooltip>
@@ -309,17 +310,17 @@ const JsonInspectorPanel: React.FC<JsonInspectorPanelProps> = ({
             ) : (
               <>
                 <Tooltip title="Copy formatted JSON">
-                  <IconButton size="small" onClick={onCopy}>
+                  <IconButton size="small" onClick={onCopy} aria-label="Copy formatted JSON">
                     <ContentCopy fontSize="small" />
                   </IconButton>
                 </Tooltip>
                 <Tooltip title="Edit">
-                  <IconButton size="small" onClick={handleEditStart}>
+                  <IconButton size="small" onClick={handleEditStart} aria-label="Edit">
                     <Edit fontSize="small" />
                   </IconButton>
                 </Tooltip>
                 <Tooltip title="Close">
-                  <IconButton size="small" onClick={onClose}>
+                  <IconButton size="small" onClick={onClose} aria-label="Close">
                     <Close fontSize="small" />
                   </IconButton>
                 </Tooltip>
