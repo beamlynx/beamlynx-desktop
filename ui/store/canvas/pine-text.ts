@@ -361,6 +361,19 @@ export const currentCheckpointName = (segments: Segment[]): string | null => {
   return assign ? extractAssignName(assign.text) : null;
 };
 
+/**
+ * The pipeline's current `limit:` value, if any - read-only, never mutates.
+ * At most one such segment exists anywhere in the pipeline (see
+ * pine-actions.ts's setLimit), so unlike currentCheckpointName this doesn't
+ * need to look inside the trailing checkpoint run specifically.
+ */
+export const currentLimit = (segments: Segment[]): number | null => {
+  const existing = segments.find(s => s.kind === 'limit');
+  if (!existing) return null;
+  const n = parseInt(existing.text.replace(/^(limit:|l:)\s*/i, ''), 10);
+  return Number.isFinite(n) ? n : null;
+};
+
 export type CheckpointNameResult = { segments: Segment[]; changed: boolean; name: string | null };
 
 /**

@@ -28,7 +28,12 @@ const disabledButtonStyle: React.CSSProperties = {
 /**
  * Appears once 2+ nodes are box/shift-selected (see Canvas.tsx's
  * onSelectionChange). `limit` is fully wired - a pipeline-wide `limit: N`,
- * unrelated to which specific nodes are selected. `assign` is shown per the
+ * unrelated to which specific nodes are selected. Also reachable one node at
+ * a time now via each node's own "+" overflow (TableNode.tsx/FrameNode.tsx,
+ * CanvasStore.openLimitEditor) - kept here too, unlike `group`'s full move
+ * off this toolbar, since a bulk "limit everything I've selected" gesture
+ * still reads naturally without picking one specific node to open it from.
+ * `assign` is shown per the
  * requested design but not yet wired to a mutation - it implies pine's `|=`
  * variable/checkpoint syntax, which needs multi-block support canvas mode
  * doesn't have yet (see the plan doc's scope boundaries) - needs a decision

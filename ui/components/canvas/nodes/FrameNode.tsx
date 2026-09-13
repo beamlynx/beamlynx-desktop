@@ -91,9 +91,9 @@ const FrameNode: React.FC<NodeProps<CanvasFrameNodeData>> = observer(({ id, data
   // Same decluttering as TableNode.tsx's own action bar: while a picker this
   // frame opened is already in flight, dim the others rather than removing
   // them - see ActionButton's `suppressed` doc comment for why (removing
-  // them shifts the survivor to a different on-screen position). order/path
-  // move behind the same "+" trigger TableNode.tsx uses (group is still
-  // never offered here - see this file's own top comment).
+  // them shifts the survivor to a different on-screen position). order/path/
+  // limit move behind the same "+" trigger TableNode.tsx uses (group is
+  // still never offered here - see this file's own top comment).
   const operations: {
     kind: 'select' | 'join' | 'where';
     label: string;
@@ -182,7 +182,7 @@ const FrameNode: React.FC<NodeProps<CanvasFrameNodeData>> = observer(({ id, data
             <ActionButton
               label="+"
               testId={`frame-action-more-${id}`}
-              onClick={anchor => canvasStore.openMorePicker(resolvedAlias, ['order', 'path'], true, anchor)}
+              onClick={anchor => canvasStore.openMorePicker(resolvedAlias, ['order', 'path', 'limit'], true, anchor)}
               suppressed={activeOperation !== null && activeOperation !== 'more'}
             />
           </>

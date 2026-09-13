@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- Canvas mode: `limit:` is now also a per-node action, reachable from any table's or checkpoint's own "+" overflow (or the `l` key), not just the bulk multi-select toolbar. Reopening it shows the pipeline's current limit already filled in, with a "clear" action to remove it.
+
 ### Changed
 - Database Connections: renaming a connection now has its own pencil icon next to the name, independent of the row's expand/advanced-options toggle. Previously renaming only worked by first expanding the row.
 

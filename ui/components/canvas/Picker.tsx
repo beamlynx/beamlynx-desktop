@@ -488,6 +488,46 @@ const Picker: React.FC = observer(() => {
     );
   }
 
+  if (picker.mode === 'limit-value') {
+    return (
+      <div
+        ref={rootRef}
+        style={{ ...anchoredStyle(picker.anchor), padding: 8, maxHeight: 'none' }}
+        data-testid="canvas-picker"
+      >
+        <div style={{ marginBottom: 6, opacity: 0.7 }}>limit</div>
+        <input
+          autoFocus
+          type="number"
+          min={1}
+          data-testid="limit-value-input"
+          value={picker.value}
+          onChange={e => store.setLimitValue(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') void store.submitLimit();
+          }}
+          style={{ ...inputStyle, width: 80 }}
+        />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 6 }}>
+          <span style={{ cursor: 'pointer', opacity: 0.7 }} onClick={() => store.closePicker()}>
+            cancel
+          </span>
+          {picker.current !== null && (
+            <span
+              style={{ cursor: 'pointer', color: 'var(--canvas-warn)' }}
+              onClick={() => void store.clearLimit()}
+            >
+              clear
+            </span>
+          )}
+          <span style={{ cursor: 'pointer', color: 'var(--canvas-trace)' }} onClick={() => void store.submitLimit()}>
+            set
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   if (picker.mode === 'where-value') {
     const node = store.canvasGraph.nodes.find(
       (n): n is CanvasTableNode => n.id === picker.alias && n.type === 'table-node',

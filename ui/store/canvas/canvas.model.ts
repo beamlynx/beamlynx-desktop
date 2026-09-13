@@ -270,13 +270,25 @@ export type PickerState =
       /** Whether `alias` names a checkpoint frame rather than a plain table - decides join-type routing (openCheckpointPicker vs the direct open*Picker methods). */
       isFrame: boolean;
       anchor: PickerAnchor;
+    }
+  | {
+      open: true;
+      mode: 'limit-value';
+      /** The node the gesture was opened from - `limit:` itself is pipeline-wide, not owned by this alias (see pine-actions.ts's setLimit). */
+      alias: string;
+      /** The pipeline's existing limit, if any - null shows no "clear" action (see Picker.tsx). Unlike `value` below, never changed after the picker opens. */
+      current: number | null;
+      /** The input's live text, seeded from `current` (CanvasStore.openLimitEditor) - a string, not a number, so a mid-edit empty/partial value doesn't need its own placeholder state. */
+      value: string;
+      anchor: PickerAnchor;
     };
 
 /** The actions tucked behind a node's "+" overflow trigger - see TableNode.tsx/FrameNode.tsx. */
-export type MoreAction = 'order' | 'group' | 'path';
+export type MoreAction = 'order' | 'group' | 'path' | 'limit';
 export const MORE_ACTIONS: { action: MoreAction; label: string; key: string }[] = [
   { action: 'order', label: 'order', key: 'o' },
   { action: 'group', label: 'group', key: 'g' },
+  { action: 'limit', label: 'limit', key: 'l' },
   { action: 'path', label: 'path', key: 'p' },
 ];
 

@@ -20,18 +20,20 @@ export const pickerAliasFor = (picker: PickerState): string | null => {
     picker.mode === 'where-value' ||
     picker.mode === 'join-type' ||
     picker.mode === 'more' ||
-    picker.mode === 'order-direction'
+    picker.mode === 'order-direction' ||
+    picker.mode === 'limit-value'
   )
     return picker.alias;
   return 'alias' in picker.request ? picker.request.alias : null;
 };
 
 /**
- * 'more' is the "+" overflow trigger itself (order/group/path tucked behind
- * it - see TableNode's own action bar below), not a picker request kind on
- * its own; 'path' is pine-lang's `? table` search (docs/paths.md).
+ * 'more' is the "+" overflow trigger itself (order/group/path/limit tucked
+ * behind it - see TableNode's own action bar below), not a picker request
+ * kind on its own; 'path' is pine-lang's `? table` search (docs/paths.md);
+ * 'limit' is the pipeline-wide `limit:` value (CanvasStore.openLimitEditor).
  */
-export type OperationKind = 'select' | 'join' | 'where' | 'order' | 'group' | 'path' | 'more';
+export type OperationKind = 'select' | 'join' | 'where' | 'order' | 'group' | 'path' | 'limit' | 'more';
 
 /**
  * Which single operation this node's own action bar is mid-flight on, if
@@ -62,6 +64,10 @@ export const activeOperationFor = (picker: PickerState, alias: string): Operatio
   // A per-chip direction popover (a click on an existing order chip, or the
   // keyboard config cursor) is still editing that node's order operation.
   if (picker.mode === 'order-direction') return picker.alias === alias ? 'order' : null;
+  // The limit number-entry popover - same dimming as any other open picker,
+  // even though `limit:` itself isn't owned by `alias` (see
+  // CanvasStore.openLimitEditor).
+  if (picker.mode === 'limit-value') return picker.alias === alias ? 'limit' : null;
   // Every `PickerRequest` variant except `{ kind: 'table' }` carries `alias`
   // (see canvas.model.ts) - the `'alias' in` check below already narrows
   // `picker.request.kind` to exclude `'table'`, so no separate check for it
@@ -641,15 +647,15 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
           </React.Fragment>
         ))}
         <ActionDivider />
-        {/* order/group/path, tucked behind one trigger - see the `operations`
-            comment above for why. No own keyboard letter of its own (o/g/p
-            still work directly on this node regardless of whether this menu
-            is ever opened - see useCanvasKeybindings.ts), so unlike the
-            three above this never renders emphasized. */}
+        {/* order/group/path/limit, tucked behind one trigger - see the
+            `operations` comment above for why. No own keyboard letter of its
+            own (o/g/p/l still work directly on this node regardless of
+            whether this menu is ever opened - see useCanvasKeybindings.ts),
+            so unlike the three above this never renders emphasized. */}
         <ActionButton
           label="+"
           testId={`action-more-${data.alias}`}
-          onClick={anchor => canvasStore.openMorePicker(data.alias, ['order', 'group', 'path'], false, anchor)}
+          onClick={anchor => canvasStore.openMorePicker(data.alias, ['order', 'group', 'path', 'limit'], false, anchor)}
           suppressed={activeOperation !== null && activeOperation !== 'more'}
         />
       </div>

@@ -22,6 +22,7 @@ import {
 import { buildCanvasGraph } from './layout';
 import {
   currentCheckpointName,
+  currentLimit,
   hasTrailingCheckpoint,
   makeAlias,
   segmentsFromAst,
@@ -1032,6 +1033,15 @@ export class CanvasStore {
    * the non-frame branch doesn't need a separate signature.
    */
   activateMoreAction(alias: string, action: MoreAction, isFrame: boolean, anchor: PickerAnchor) {
+    // Checked before the isFrame branch below: `limit:` is pipeline-wide,
+    // not a checkpoint-specific gesture, so it must never route through
+    // openCheckpointPicker (which pins a `|= name` on first use - see
+    // ensureCheckpointPinned) - that would pin a name for no reason on a
+    // plain "set the limit" click.
+    if (action === 'limit') {
+      this.openLimitEditor(alias, anchor);
+      return;
+    }
     if (isFrame) {
       if (action === 'group') return; // never offered for a checkpoint frame - see FrameNode.tsx
       void this.openCheckpointPicker(action, anchor);
@@ -1042,6 +1052,42 @@ export class CanvasStore {
       return;
     }
     this.openColumnPicker(action, alias, anchor);
+  }
+
+  /**
+   * Opens a small number-entry popover for the pipeline-wide `limit:` value -
+   * `alias` is just the node the gesture was opened from, not an owner (see
+   * pine-actions.ts's setLimit); offered on both a plain table and a
+   * checkpoint frame, same as `path` (unlike `group`, which is table-only -
+   * see FrameNode.tsx). Prefills with whatever `limit:` already exists
+   * anywhere in the pipeline, read straight from the current segments rather
+   * than the async pinnedBase(), same as resolveFrameAlias just above.
+   */
+  openLimitEditor(alias: string, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
+    this.focusNode(alias);
+    const segments = segmentsFromAst(this.session.expression, this.session.ast) ?? [];
+    const current = currentLimit(segments);
+    this.picker = { open: true, mode: 'limit-value', alias, current, value: current === null ? '' : String(current), anchor };
+  }
+
+  setLimitValue(value: string) {
+    if (this.picker.open && this.picker.mode === 'limit-value') this.picker = { ...this.picker, value };
+  }
+
+  /** The limit panel's submit action (Enter, or its "set" button) - a blank/invalid value is a no-op, not a clear (use clearLimit for that). */
+  async submitLimit() {
+    if (!this.picker.open || this.picker.mode !== 'limit-value') return;
+    const n = parseInt(this.picker.value, 10);
+    if (!Number.isFinite(n) || n <= 0) return;
+    await this.commitLimit(n);
+    this.closePicker();
+  }
+
+  /** The limit panel's own "clear" action (offered only while a limit already exists - see Picker.tsx) - removes, then closes, unlike a plain remove staying open on nothing left to show (see removeWhereAndClose's matching comment). */
+  async clearLimit() {
+    if (!this.picker.open || this.picker.mode !== 'limit-value') return;
+    await this.commitLimit(null);
+    this.closePicker();
   }
 
   openColumnPicker(
