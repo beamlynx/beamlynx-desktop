@@ -56,3 +56,34 @@ export function parseConnectionString(connectionString: string): ParsedConnectio
     dbType: scheme.dbType,
   };
 }
+
+const SCHEME_FOR_TYPE: Record<ParsedConnectionString['dbType'], string> = {
+  postgres: 'postgresql',
+  mysql: 'mysql',
+};
+
+/**
+ * Builds a connection string from individual fields -- the inverse of
+ * parseConnectionString, so the "Connection string" tab can show a live
+ * equivalent of whatever's currently in the "Fields" tab. User, password,
+ * and database name are percent-encoded (matches safeDecode above, so this
+ * round-trips through parseConnectionString); host and port are not, since
+ * neither can validly contain characters that would need it. The password
+ * segment is omitted entirely when blank, rather than rendered as a bare
+ * trailing colon (`user:@host`).
+ */
+export function buildConnectionString(fields: {
+  dbType: ParsedConnectionString['dbType'];
+  dbHost: string;
+  dbPort: string;
+  dbName: string;
+  dbUser: string;
+  dbPassword: string;
+}): string {
+  const scheme = SCHEME_FOR_TYPE[fields.dbType];
+  const auth = fields.dbUser
+    ? `${encodeURIComponent(fields.dbUser)}${fields.dbPassword ? `:${encodeURIComponent(fields.dbPassword)}` : ''}@`
+    : '';
+  const port = fields.dbPort ? `:${fields.dbPort}` : '';
+  return `${scheme}://${auth}${fields.dbHost}${port}/${encodeURIComponent(fields.dbName)}`;
+}

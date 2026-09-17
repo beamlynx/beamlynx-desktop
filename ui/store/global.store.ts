@@ -145,7 +145,7 @@ export class GlobalStore {
   // opposed to merely being a tab's *assigned* connection (see
   // Session.connectionId), which persists across restarts/reconnects even
   // while nothing is live. `liveConnectionIds` is always keyed by pine's own
-  // id (host:port), but callers here (the saved-connections list/picker)
+  // id (host:port:dbname), but callers here (the saved-connections list/picker)
   // pass a saved-profile id in desktop mode -- a different id space for the
   // same logical connection (see resolveConnectionEntry). Resolve both sides
   // to the same identity before comparing, so this works regardless of
@@ -610,16 +610,24 @@ export class GlobalStore {
 
   // In desktop mode, `connections` is keyed by saved-profile id, while
   // `activeSession.connectionId`/`this.connection` are pine's own id
-  // (`host:port`) -- two different id spaces for the same logical
+  // (`host:port:dbname`) -- two different id spaces for the same logical
   // connection. Resolve pine's id back to its profile by comparing
-  // host:port, so color/label lookups work regardless of which id space
-  // they were called with. A no-op in browser mode, where `connections`
-  // is already keyed by pine's own id (first condition matches directly).
+  // host:port:dbname, so color/label lookups work regardless of which id
+  // space they were called with. A no-op in browser mode, where
+  // `connections` is already keyed by pine's own id (first condition
+  // matches directly).
+  //
+  // Also matches the older bare `host:port` shape (no dbname), which a
+  // PersistedSession from before pine folded dbname into the id may still
+  // hold in localStorage -- that form is ambiguous whenever two saved
+  // profiles now share a host:port with different databases, and this picks
+  // the first match, same as it always has for any other ambiguity here.
   private resolveConnectionEntry = (connectionId: string): ConnectionInfo | undefined => {
     if (!connectionId) return undefined;
     return this.connections.find(
       c =>
         c.id === connectionId ||
+        (c.dbHost && c.dbPort && c.dbName && `${c.dbHost}:${c.dbPort}:${c.dbName}` === connectionId) ||
         (c.dbHost && c.dbPort && `${c.dbHost}:${c.dbPort}` === connectionId),
     );
   };
@@ -677,6 +685,7 @@ export class GlobalStore {
           label: p.label,
           dbHost: p.dbHost,
           dbPort: p.dbPort,
+          dbName: p.dbName,
           mcpEnabled: p.mcpEnabled,
           policyId: p.policyId,
           applyPolicyToOwnQueries: p.applyPolicyToOwnQueries,
@@ -1286,11 +1295,13 @@ export class GlobalStore {
     const useDesktop = isDesktop() && !!desktopApi;
     const conn = this.connections.find(c => c.id === id);
     // In desktop mode, `id` is the saved profile's id, not pine's -- derive
-    // pine's own id (host:port) the same way pine derives it itself
+    // pine's own id (host:port:dbname) the same way pine derives it itself
     // (pine.db.connections/make-connection-id) so the close attempt targets
     // the right pool.
     const pineId =
-      useDesktop && conn?.dbHost && conn?.dbPort ? `${conn.dbHost}:${conn.dbPort}` : id;
+      useDesktop && conn?.dbHost && conn?.dbPort && conn?.dbName
+        ? `${conn.dbHost}:${conn.dbPort}:${conn.dbName}`
+        : id;
     console.log(
       `[credentials] deleteConnection: id=${id} useDesktop=${useDesktop} pineId=${pineId}`,
     );
@@ -1343,9 +1354,11 @@ export class GlobalStore {
     const useDesktop = isDesktop();
     const conn = this.connections.find(c => c.id === id);
     // Same id resolution as deleteConnection: in desktop mode `id` is the
-    // saved profile's id, not pine's own (host:port) id.
+    // saved profile's id, not pine's own (host:port:dbname) id.
     const pineId =
-      useDesktop && conn?.dbHost && conn?.dbPort ? `${conn.dbHost}:${conn.dbPort}` : id;
+      useDesktop && conn?.dbHost && conn?.dbPort && conn?.dbName
+        ? `${conn.dbHost}:${conn.dbPort}:${conn.dbName}`
+        : id;
     try {
       await client.reindexConnection(pineId);
     } catch (e) {

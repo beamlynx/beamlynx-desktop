@@ -214,9 +214,10 @@ export type ConnectionInfo = {
   // Only present in desktop mode, where entries come from locally saved
   // profiles rather than pine-server's live session list -- carried here so
   // GlobalStore.deleteConnection can derive pine's own connection id
-  // (`${dbHost}:${dbPort}`) without an extra round trip.
+  // (`${dbHost}:${dbPort}:${dbName}`) without an extra round trip.
   dbHost?: string;
   dbPort?: string;
+  dbName?: string;
   // Desktop-only: whether this saved connection has been opted in to MCP
   // access. See GlobalStore.setMcpEnabled and
   // beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md.
@@ -530,7 +531,10 @@ export class HttpClient {
   }
 
   public async useConnection(connectionId: string): Promise<{ id: string; version: string }> {
-    const response = await this.post(`connections/${connectionId}/connect`, {});
+    // Encoded because the id now folds dbname in (host:port:dbname, see
+    // pine.db.connections/make-connection-id) -- a dbname with a character
+    // that's not path-safe would otherwise land as extra/malformed segments.
+    const response = await this.post(`connections/${encodeURIComponent(connectionId)}/connect`, {});
     if (!response) {
       throw new Error('No response when trying to test connection');
     }
@@ -541,7 +545,7 @@ export class HttpClient {
   }
 
   public async deleteConnection(connectionId: string): Promise<void> {
-    const response = await this.del(`connections/${connectionId}`);
+    const response = await this.del(`connections/${encodeURIComponent(connectionId)}`);
     if (!response) {
       throw new Error('No response when trying to remove connection');
     }
@@ -551,7 +555,7 @@ export class HttpClient {
   }
 
   public async reindexConnection(connectionId: string): Promise<void> {
-    const response = await this.post(`connections/${connectionId}/reindex`, {});
+    const response = await this.post(`connections/${encodeURIComponent(connectionId)}/reindex`, {});
     if (!response) {
       throw new Error('No response when trying to reindex connection');
     }

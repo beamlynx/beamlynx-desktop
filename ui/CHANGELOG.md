@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- Database Connections: you can now have more than one connection to the same host and port, as long as they point at different databases -- previously the second one was rejected. Requires a pine-lang server that also has this fix (folds the database name into its connection id); older servers still reject the second connection.
+- Add Connection form: switching to the "Connection string" tab now rebuilds the string from whatever's currently in the Fields tab, so the two stay in sync in both directions instead of just string-to-fields.
+
 ### Changed
 - Database Connections: renaming a connection now has its own pencil icon next to the name, independent of the row's expand/advanced-options toggle. Previously renaming only worked by first expanding the row.
 

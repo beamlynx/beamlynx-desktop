@@ -24,7 +24,7 @@ import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 're
 import { useStores } from '../../store/store-container';
 import { CONNECTION_COLOR_PALETTE, isDesktop, isPlayground } from '../../store/util';
 import { DecryptionFailedError } from '../../store/global.store';
-import { parseConnectionString } from '../../utils/connectionString';
+import { buildConnectionString, parseConnectionString } from '../../utils/connectionString';
 import ToggleRow from './ToggleRow';
 
 const REMOVE_CONFIRM_TIMEOUT_MS = 3000;
@@ -146,6 +146,22 @@ const AddConnectionForm = ({ onDone }: { onDone: () => void }) => {
     }
   };
 
+  // Entering the "Connection string" tab regenerates the string from
+  // whatever's currently in the fields, so the two stay in sync in both
+  // directions -- typing a string already flows into the fields on every
+  // keystroke (handleConnectionStringChange above); this is the other
+  // direction, fields -> string. Deliberately only on tab entry, not a
+  // useEffect keyed on the field state: that would also fire while the
+  // string tab is open and being typed into, clobbering the string mid-edit
+  // with a version rebuilt from fields the string itself hasn't updated yet.
+  const handleModeChange = (value: 'fields' | 'string') => {
+    setMode(value);
+    if (value === 'string') {
+      setConnectionString(buildConnectionString({ dbType, dbHost, dbPort, dbName, dbUser, dbPassword }));
+      setConnectionStringError('');
+    }
+  };
+
   const handleConnect = async () => {
     if (connected || connecting) {
       return;
@@ -252,7 +268,7 @@ const AddConnectionForm = ({ onDone }: { onDone: () => void }) => {
           />
         )}
 
-        <Tabs value={mode} onChange={(_e, v) => setMode(v)} sx={{ mb: 2, minHeight: 36 }}>
+        <Tabs value={mode} onChange={(_e, v) => handleModeChange(v)} sx={{ mb: 2, minHeight: 36 }}>
           <Tab label="Fields" value="fields" sx={{ minHeight: 36 }} />
           <Tab label="Connection string" value="string" sx={{ minHeight: 36 }} />
         </Tabs>
@@ -352,7 +368,7 @@ const AddConnectionForm = ({ onDone }: { onDone: () => void }) => {
             value={connectionString}
             onChange={e => handleConnectionStringChange(e.target.value)}
             disabled={connected}
-            helperText="Filling this in also fills the individual fields above -- switch tabs to check them."
+            helperText="Kept in sync with the Fields tab -- typing here fills the fields, and switching to this tab rebuilds the string from whatever's in them."
             slotProps={{
               input: {
                 endAdornment: (
