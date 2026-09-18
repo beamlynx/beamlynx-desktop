@@ -88,13 +88,32 @@ const RevealRequestBanner = observer(({ session }: { session: SessionType }) => 
     >
       <Typography variant="body2">
         An agent wants to see this query&apos;s real results. Your access policy is currently hiding them.
-        {session.revealReason && (
-          <>
-            {' '}
-            Their reason: <em>&ldquo;{session.revealReason}&rdquo;</em>
-          </>
-        )}
-        {' '}
+      </Typography>
+
+      {session.revealReason && (
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 0.25,
+            pl: 1.5,
+            py: 0.5,
+            // Amber, matching the pinned tab's own "needs your attention"
+            // icon color (--notification-color) -- this is the agent's own
+            // words set apart from our explanatory text, not a second
+            // system message, so it reads as quoted rather than blended
+            // into the paragraph above.
+            borderLeft: '3px solid var(--notification-color)',
+          }}
+        >
+          <Typography variant="caption" sx={{ color: 'var(--canvas-text-dim)' }}>
+            Agent&apos;s reason
+          </Typography>
+          <Typography variant="body2">{session.revealReason}</Typography>
+        </Box>
+      )}
+
+      <Typography variant="body2">
         Edit the expression above if you&apos;d rather run something narrower, then reveal or decline below.
       </Typography>
 
