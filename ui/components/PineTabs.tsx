@@ -399,16 +399,7 @@ const PineTabs = observer(() => {
                         },
                       },
                     }
-                  : {
-                      // 'standard' variant only sizes tabs to their own
-                      // content, so without this the strip would hug the
-                      // user's tabs and leave the pinned agent tab sitting
-                      // right after them instead of at the true right edge.
-                      // minWidth: 0 lets it actually shrink below that
-                      // content width once the strip has more tabs than fit.
-                      flex: 1,
-                      minWidth: 0,
-                    }),
+                  : {}),
                 // A close button on every tab at all times is six competing
                 // "delete" targets in a row (see the horizontal strip with a
                 // few tabs open) -- so reveal each tab's own on hover of that
@@ -531,12 +522,22 @@ const PineTabs = observer(() => {
                       opacity: draggedId === tab.sessionId ? 0.4 : 1,
                       ...(tab.pinned
                         ? {
-                            // Pushes it to the strip's far end -- see
-                            // TabList's own sx above for why that end is now
-                            // reachable (flex: 1) instead of hugging content.
-                            // The border reads as "set apart from your own
-                            // tabs" rather than just the last one in the row.
-                            marginLeft: !vertical ? 'auto' : undefined,
+                            // Vertical: the rail's TabList already stretches
+                            // to the rail's full height (flex: 1 above, kept
+                            // for scroll behavior regardless of this tab), so
+                            // marginTop: 'auto' reaches the rail's true
+                            // bottom edge. Horizontal has no equivalent --
+                            // TabList there hugs its tabs' own content width
+                            // (variant="standard"), and the "+ New tab" icon
+                            // is a sibling AFTER it, not one of its Tab
+                            // children (MUI clones Tabs-specific props onto
+                            // every child, which breaks on a plain icon) --
+                            // so stretching TabList to reach the true right
+                            // edge would drag "+" out there with it. A fixed
+                            // gap instead of a push, then; the border is what
+                            // actually carries "set apart from your own
+                            // tabs" in that case.
+                            ml: !vertical ? 3 : undefined,
                             marginTop: vertical ? 'auto' : undefined,
                             borderLeft: !vertical ? '1px solid var(--border-color)' : undefined,
                             borderTop: vertical ? '1px solid var(--border-color)' : undefined,
