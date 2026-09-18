@@ -16,9 +16,10 @@
 // request and notifies the renderer (RevealRequestHandler.tsx, which opens a
 // real tab for it); the renderer resolves it once the owner reveals or
 // declines (RevealRequestBanner.tsx, via the IPC handler registered below);
-// the --mcp relay's check_reveal tool polls it by id until it stops being
-// pending.
+// the --mcp relay's check_reveal tool long-polls it by id (waitForRevealRequest
+// below), re-callable if it comes back still pending.
 import { randomUUID } from 'crypto';
+import { EventEmitter } from 'events';
 import { ipcMain } from 'electron';
 
 export type RevealOutcome =
@@ -39,6 +40,18 @@ export type RevealRequest = {
 };
 
 const requests = new Map<string, RevealRequest>();
+
+// Wakes up waitForRevealRequest's long-poll below the moment a request
+// resolves, instead of making it re-check the map on a timer. Event name is
+// the request id -- a single shared emitter rather than one per request,
+// since requests are created and discarded constantly and an emitter has no
+// natural "done, delete me" moment of its own. Several waiters on the same
+// id (e.g. an agent retrying check_reveal after a network hiccup, briefly
+// overlapping the previous call's own still-pending wait) are expected and
+// harmless, so the default max-listeners-per-event-name warning (10) is
+// raised well past anything that could happen here.
+const resolutionEvents = new EventEmitter();
+resolutionEvents.setMaxListeners(50);
 
 export function createRevealRequest(profileId: string, expression: string, reason?: string): RevealRequest {
   const request: RevealRequest = {
@@ -67,7 +80,36 @@ export function resolveRevealRequest(id: string, outcome: RevealOutcome): Reveal
   if (!request) return null;
   request.status = outcome.ok ? 'revealed' : 'declined';
   request.outcome = outcome;
+  resolutionEvents.emit(id, request);
   return request;
+}
+
+/**
+ * Resolves once the given request stops being pending, or after `timeoutMs`,
+ * whichever comes first -- what check_reveal's long-poll (GET /reveal/:id in
+ * control-plane-server.ts) awaits instead of returning "pending" immediately.
+ * Always resolves, never rejects: a still-pending request after the wait is
+ * a completely normal outcome (the owner just hasn't decided yet), the same
+ * as what a plain getRevealRequest() call would have returned before this
+ * existed -- not a failure the caller needs a catch block for. An unknown id
+ * resolves immediately with `undefined`, same as getRevealRequest would.
+ */
+export function waitForRevealRequest(id: string, timeoutMs: number): Promise<RevealRequest | undefined> {
+  const current = requests.get(id);
+  if (!current || current.status !== 'pending') {
+    return Promise.resolve(current);
+  }
+  return new Promise(resolve => {
+    const onResolve = (request: RevealRequest) => {
+      clearTimeout(timer);
+      resolve(request);
+    };
+    const timer = setTimeout(() => {
+      resolutionEvents.off(id, onResolve);
+      resolve(requests.get(id));
+    }, timeoutMs);
+    resolutionEvents.once(id, onResolve);
+  });
 }
 
 export function registerRevealIpc(): void {

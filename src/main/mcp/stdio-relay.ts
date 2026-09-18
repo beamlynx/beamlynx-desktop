@@ -317,7 +317,7 @@ async function registerTools(server: McpServer): Promise<void> {
         'blocking something you legitimately need -- not as a default way around the policy. Opens the query in ' +
         'a real, visible tab in the beamlynx app; the user can edit the expression, reveal the real results, or ' +
         'decline (optionally explaining why). Returns immediately with a request id -- the user has not ' +
-        'responded yet. Call check_reveal with that id to find out what they decided.',
+        'responded yet. Call check_reveal with that id to wait for what they decide.',
       inputSchema: {
         connection_id: z.string().describe('A connection id from list_connections'),
         expression: z.string().describe('The Pine expression whose real results you want to see'),
@@ -342,10 +342,11 @@ async function registerTools(server: McpServer): Promise<void> {
     'check_reveal',
     {
       description:
-        'Check the outcome of a request_reveal call. There is no notification when the user responds -- poll ' +
-        'this every few seconds until it stops saying "pending". Returns the real rows if revealed (note: the ' +
-        'user may have edited the expression before running it), or a decline, with the user\'s comment if they ' +
-        'left one, if not.',
+        'Wait for the outcome of a request_reveal call. Blocks for up to 25 seconds for the user to respond, ' +
+        'so just call it once and wait -- no need for your own delay between calls. If it comes back still ' +
+        'pending, the user simply hasn\'t decided yet; call it again to keep waiting. Returns the real rows if ' +
+        'revealed (note: the user may have edited the expression before running it), or a decline, with the ' +
+        'user\'s comment if they left one, if not.',
       inputSchema: {
         request_id: z.string().describe('The request id returned by request_reveal'),
       },

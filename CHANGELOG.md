@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Changed
+- `check_reveal` now waits (up to 25 seconds) for the user to respond instead of returning "pending" immediately -- an agent can call it once and wait for a decision, rather than needing to invent its own retry delay between calls. Still returns "still pending" if the user hasn't decided within that window; calling it again keeps waiting.
 
 ## [0.15.0] - 2026-09-12
 ### Added

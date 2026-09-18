@@ -357,7 +357,7 @@ export function formatRevealCreated(response: RevealCreatedResponse): string {
   return (
     `Reveal request ${response.requestId} sent to the user for review -- not resolved yet. The user may edit ` +
     'the expression, reveal the real results, or decline (optionally with a comment). Call check_reveal with ' +
-    'this id every few seconds until it stops saying "pending".'
+    'this id to wait for their decision.'
   );
 }
 
@@ -378,7 +378,7 @@ export function formatRevealStatus(response: RevealStatusResponse): string {
   }
 
   if (request.status === 'pending') {
-    return 'Still pending -- the user has not responded yet. Check back again in a few seconds.';
+    return 'Still pending after waiting -- the user has not responded yet. Call check_reveal again to keep waiting.';
   }
 
   if (request.status === 'declined') {

@@ -23,7 +23,7 @@ require.cache[electronPath] = {
   exports: { ipcMain: { handle: () => {} } },
 };
 
-const { createRevealRequest, getRevealRequest, resolveRevealRequest } = require(DIST);
+const { createRevealRequest, getRevealRequest, resolveRevealRequest, waitForRevealRequest } = require(DIST);
 
 test('createRevealRequest starts pending, with no outcome yet', () => {
   const request = createRevealRequest('conn-1', 'user | select: email', 'need to verify a support ticket');
@@ -80,4 +80,50 @@ test('resolving twice overwrites the earlier outcome -- there is nothing to guar
     rows: [],
   });
   assert.equal(resolved.status, 'revealed');
+});
+
+test('waitForRevealRequest resolves immediately for an id that does not exist', async () => {
+  const result = await waitForRevealRequest('does-not-exist', 1000);
+  assert.equal(result, undefined);
+});
+
+test('waitForRevealRequest resolves immediately for a request that is already resolved', async () => {
+  const request = createRevealRequest('conn-1', 'user | select: email');
+  resolveRevealRequest(request.id, { ok: false, comment: 'already declined' });
+  const start = Date.now();
+  const result = await waitForRevealRequest(request.id, 1000);
+  assert.equal(result.status, 'declined');
+  // Not a hard latency assertion (CI machines vary) -- just confirms this
+  // took the immediate-return path, not the timeout path.
+  assert.ok(Date.now() - start < 1000);
+});
+
+test('waitForRevealRequest wakes up as soon as the request resolves, without waiting for the timeout', async () => {
+  const request = createRevealRequest('conn-1', 'user | select: email');
+  const waiting = waitForRevealRequest(request.id, 5000);
+  setTimeout(() => resolveRevealRequest(request.id, { ok: true, expression: 'user | select: email', columns: [], rows: [] }), 20);
+  const start = Date.now();
+  const result = await waiting;
+  assert.equal(result.status, 'revealed');
+  assert.ok(Date.now() - start < 5000, 'should have woken on resolve, not sat out the full 5s timeout');
+});
+
+test('waitForRevealRequest returns the still-pending request once the timeout elapses with no resolution', async () => {
+  const request = createRevealRequest('conn-1', 'user | select: email');
+  const result = await waitForRevealRequest(request.id, 20);
+  assert.equal(result.status, 'pending');
+});
+
+test('waitForRevealRequest supports several concurrent waiters on the same id, all woken by one resolve', async () => {
+  const request = createRevealRequest('conn-1', 'user | select: email');
+  const waiters = [
+    waitForRevealRequest(request.id, 5000),
+    waitForRevealRequest(request.id, 5000),
+    waitForRevealRequest(request.id, 5000),
+  ];
+  setTimeout(() => resolveRevealRequest(request.id, { ok: false, comment: 'declined for everyone waiting' }), 20);
+  const results = await Promise.all(waiters);
+  for (const result of results) {
+    assert.equal(result.status, 'declined');
+  }
 });

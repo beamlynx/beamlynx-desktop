@@ -11,9 +11,17 @@ import { BrowserWindow } from 'electron';
 import * as http from 'http';
 import { getMcpAccessStatus, listMcpEnabledConnections } from '../credential-store';
 import { runInRenderer } from './render-bridge';
-import { createRevealRequest, getRevealRequest } from './reveal-requests';
+import { createRevealRequest, waitForRevealRequest } from './reveal-requests';
 
 export const CONTROL_PLANE_PORT = 33334;
+
+// How long GET /reveal/:id blocks waiting for a decision before returning
+// "still pending" -- stdio-relay.ts's controlPlaneRequest gives every call a
+// 35s client-side socket timeout, and render-bridge.ts's own renderer round
+// trip already uses all but 5s of that budget for /query and /explain, so
+// this stays comfortably under it with margin to spare for this call's own
+// (much smaller) IPC/JSON overhead.
+const REVEAL_LONG_POLL_TIMEOUT_MS = 25000;
 
 type StartControlPlaneServerOptions = {
   getMainWindow: () => BrowserWindow | null;
@@ -129,14 +137,20 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
         return sendJson(res, 200, { requestId: request.id, status: request.status });
       }
 
-      // Always 200, even for an id this process has never seen (a stale id
-      // from a previous app run, or a typo) -- `request: null` is a normal,
-      // expected outcome check_reveal has to render a message for
-      // (format.ts's formatRevealStatus), not a transport-level failure the
-      // relay's controlPlaneRequest should reject on.
+      // check_reveal (see stdio-relay.ts). Long-polls: blocks up to
+      // REVEAL_LONG_POLL_TIMEOUT_MS for the request to stop being pending,
+      // rather than returning "pending" immediately and leaving the agent to
+      // invent its own retry delay. Still always 200, even for an id this
+      // process has never seen (a stale id from a previous app run, or a
+      // typo) or one that's still pending once the wait elapses --
+      // `request: null`/a pending request are both normal, expected outcomes
+      // check_reveal has to render a message for (format.ts's
+      // formatRevealStatus), not transport-level failures the relay's
+      // controlPlaneRequest should reject on.
       if (req.method === 'GET' && req.url?.startsWith('/reveal/')) {
         const id = decodeURIComponent(req.url.slice('/reveal/'.length));
-        return sendJson(res, 200, { request: getRevealRequest(id) ?? null });
+        const request = await waitForRevealRequest(id, REVEAL_LONG_POLL_TIMEOUT_MS);
+        return sendJson(res, 200, { request: request ?? null });
       }
 
       sendJson(res, 404, { error: 'Not found' });
