@@ -87,8 +87,7 @@ const RevealRequestBanner = observer(({ session }: { session: SessionType }) => 
       }}
     >
       <Typography variant="body2">
-        An MCP agent asked to see this query&apos;s real results, currently redacted by this connection&apos;s
-        access policy.
+        An agent wants to see this query&apos;s real results. Your access policy is currently hiding them.
         {session.revealReason && (
           <>
             {' '}

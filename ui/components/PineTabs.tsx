@@ -665,17 +665,24 @@ const PineTabs = observer(() => {
               const session = global.getSession(pinned.sessionId);
               const isActive = pinned.sessionId === sessionId;
               const isFirstPinned = pinnedIndex === 0;
-              const label = pinned.kind === 'mcp' ? 'Agent activity' : 'Reveal request';
+              const label = pinned.kind === 'mcp' ? 'Agent activity' : 'Needs approval';
               const title =
                 pinned.kind === 'mcp'
                   ? 'Agent activity -- safe to close, the next agent query recreates it'
-                  : `Reveal request${session.revealReason ? `: ${session.revealReason}` : ''} -- closing this tab declines it`;
-              // Reveal requests are a warning color regardless of active
-              // state (an agent is blocked waiting on a decision), unlike
-              // the MCP tab's plain informational dim/active treatment.
-              const idleColor =
-                pinned.kind === 'reveal' ? 'var(--canvas-warn)' : 'var(--canvas-text-dim)';
-              const activeColor = pinned.kind === 'reveal' ? 'var(--canvas-warn)' : 'var(--canvas-trace)';
+                  : `An agent wants to see something hidden by your access policy${
+                      session.revealReason ? `: "${session.revealReason}"` : ''
+                    }. Closing this tab declines the request.`;
+              // Both use the tab strip's normal dim/active text treatment --
+              // this isn't an error state, just something waiting on you, so
+              // it shouldn't read as one. The icon alone carries "this needs
+              // your attention" (idleIconColor below), the same amber token
+              // NotificationBell and McpActivityButton's own unseen-activity
+              // dot already use for that, rather than borrowing the app's
+              // actual error/warning color.
+              const idleColor = 'var(--canvas-text-dim)';
+              const activeColor = 'var(--canvas-trace)';
+              const idleIconColor =
+                pinned.kind === 'reveal' ? 'var(--notification-color)' : undefined;
               return (
                 <ButtonBase
                   key={pinned.sessionId}
@@ -701,7 +708,7 @@ const PineTabs = observer(() => {
                     transition: 'background-color 120ms ease, color 120ms ease',
                     '&:hover': {
                       backgroundColor: 'var(--canvas-chip-bg)',
-                      color: pinned.kind === 'reveal' ? activeColor : 'var(--canvas-text)',
+                      color: 'var(--canvas-text)',
                     },
                     // Same hover-to-reveal as the user's own tabs
                     // ('& .MuiTab-root:hover .pine-tab-close' on TabList
@@ -742,7 +749,7 @@ const PineTabs = observer(() => {
                   {pinned.kind === 'mcp' ? (
                     <SmartToyOutlined sx={{ fontSize: 14, flexShrink: 0 }} />
                   ) : (
-                    <VisibilityOutlined sx={{ fontSize: 14, flexShrink: 0 }} />
+                    <VisibilityOutlined sx={{ fontSize: 14, flexShrink: 0, color: idleIconColor }} />
                   )}
                   {(session.loading || session.connecting) && (
                     <CircularProgress size={12} sx={{ color: 'inherit' }} />
