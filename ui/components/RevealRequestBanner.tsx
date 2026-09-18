@@ -75,6 +75,8 @@ const RevealRequestBanner = observer(({ session }: { session: SessionType }) => 
   };
 
   const connectionLabel = global.getConnectionLabel(session.connectionId);
+  const connectionColor = global.getConnectionColor(session.connectionId);
+  const connectionIsLive = global.isConnectionLive(session.connectionId);
 
   return (
     <Box
@@ -89,8 +91,27 @@ const RevealRequestBanner = observer(({ session }: { session: SessionType }) => 
       }}
     >
       <Typography variant="body2">
-        An agent wants to see this query&apos;s real results on <strong>{connectionLabel}</strong>. Your access
-        policy is hiding them -- edit the expression above if you&apos;d like, then decide below.
+        An agent wants to see this query&apos;s real results on{' '}
+        <Box
+          component="span"
+          sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, verticalAlign: 'middle' }}
+        >
+          <Box
+            component="span"
+            title={connectionIsLive ? undefined : 'Assigned but not connected yet'}
+            sx={{
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              flexShrink: 0,
+              boxSizing: 'border-box',
+              backgroundColor: connectionIsLive ? connectionColor : 'transparent',
+              border: connectionIsLive ? 'none' : `1.5px solid ${connectionColor || 'var(--canvas-node-border)'}`,
+            }}
+          />
+          <strong>{connectionLabel}</strong>
+        </Box>
+        . Your access policy is hiding them -- edit the expression above if you&apos;d like, then decide below.
       </Typography>
 
       {session.revealReason && (

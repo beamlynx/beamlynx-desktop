@@ -665,6 +665,12 @@ const PineTabs = observer(() => {
               const session = global.getSession(pinned.sessionId);
               const isActive = pinned.sessionId === sessionId;
               const isFirstPinned = pinnedIndex === 0;
+              // Same connection dot the user's own tabs get (below, in
+              // regularTabs' own Tab label) -- which connection this pinned
+              // tab is on isn't otherwise visible without opening it.
+              const pinnedConnectionId = session.connectionId || '';
+              const pinnedConnectionColor = global.getConnectionColor(pinnedConnectionId);
+              const pinnedConnectionIsLive = global.isConnectionLive(pinnedConnectionId);
               const label = pinned.kind === 'mcp' ? 'Agent activity' : 'Needs approval';
               const title =
                 pinned.kind === 'mcp'
@@ -752,6 +758,23 @@ const PineTabs = observer(() => {
                     <SmartToyOutlined sx={{ fontSize: 14, flexShrink: 0 }} />
                   ) : (
                     <VisibilityOutlined sx={{ fontSize: 14, flexShrink: 0, color: idleIconColor }} />
+                  )}
+                  {pinnedConnectionId && (
+                    <span
+                      title={pinnedConnectionIsLive ? undefined : 'Assigned but not connected yet'}
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: '50%',
+                        backgroundColor: pinnedConnectionIsLive ? pinnedConnectionColor : 'transparent',
+                        border: pinnedConnectionIsLive
+                          ? 'none'
+                          : `1.5px solid ${pinnedConnectionColor || 'var(--canvas-node-border)'}`,
+                        boxSizing: 'border-box',
+                        display: 'inline-block',
+                        flexShrink: 0,
+                      }}
+                    />
                   )}
                   {(session.loading || session.connecting) && (
                     <CircularProgress size={12} sx={{ color: 'inherit' }} />
