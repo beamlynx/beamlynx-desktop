@@ -74,30 +74,32 @@ const RevealRequestBanner = observer(({ session }: { session: SessionType }) => 
     }
   };
 
+  const connectionLabel = global.getConnectionLabel(session.connectionId);
+
   return (
     <Box
       sx={{
         px: 2,
-        py: 1.5,
+        py: 1,
         borderBottom: '1px solid var(--border-color)',
         backgroundColor: 'var(--canvas-chip-bg)',
         display: 'flex',
         flexDirection: 'column',
-        gap: 1,
+        gap: 0.75,
       }}
     >
       <Typography variant="body2">
-        An agent wants to see this query&apos;s real results. Your access policy is currently hiding them.
+        An agent wants to see this query&apos;s real results on <strong>{connectionLabel}</strong>. Your access
+        policy is hiding them -- edit the expression above if you&apos;d like, then decide below.
       </Typography>
 
       {session.revealReason && (
         <Box
           sx={{
             display: 'flex',
-            flexDirection: 'column',
-            gap: 0.25,
+            alignItems: 'baseline',
+            gap: 0.75,
             pl: 1.5,
-            py: 0.5,
             // Amber, matching the pinned tab's own "needs your attention"
             // icon color (--notification-color) -- this is the agent's own
             // words set apart from our explanatory text, not a second
@@ -106,16 +108,12 @@ const RevealRequestBanner = observer(({ session }: { session: SessionType }) => 
             borderLeft: '3px solid var(--notification-color)',
           }}
         >
-          <Typography variant="caption" sx={{ color: 'var(--canvas-text-dim)' }}>
-            Agent&apos;s reason
+          <Typography variant="caption" sx={{ color: 'var(--canvas-text-dim)', flexShrink: 0 }}>
+            Agent&apos;s reason:
           </Typography>
           <Typography variant="body2">{session.revealReason}</Typography>
         </Box>
       )}
-
-      <Typography variant="body2">
-        Edit the expression above if you&apos;d rather run something narrower, then reveal or decline below.
-      </Typography>
 
       {declining ? (
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
@@ -137,7 +135,7 @@ const RevealRequestBanner = observer(({ session }: { session: SessionType }) => 
       ) : (
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Button size="small" variant="contained" disabled={busy} onClick={handleReveal}>
-            Reveal to agent
+            Approve
           </Button>
           <Button size="small" color="error" disabled={busy} onClick={() => setDeclining(true)}>
             Decline...

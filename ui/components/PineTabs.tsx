@@ -669,7 +669,9 @@ const PineTabs = observer(() => {
               const title =
                 pinned.kind === 'mcp'
                   ? 'Agent activity -- safe to close, the next agent query recreates it'
-                  : `An agent wants to see something hidden by your access policy${
+                  : `An agent wants to see something hidden by your access policy on ${global.getConnectionLabel(
+                      session.connectionId,
+                    )}${
                       session.revealReason ? `: "${session.revealReason}"` : ''
                     }. Closing this tab declines the request.`;
               // Both use the tab strip's normal dim/active text treatment --
