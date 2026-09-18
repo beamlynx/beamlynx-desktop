@@ -8,7 +8,7 @@ import Session from './Session';
 import { observer } from 'mobx-react-lite';
 import { runInAction } from 'mobx';
 import { useStores } from '../store/store-container';
-import { AddCircle, CloseOutlined } from '@mui/icons-material';
+import { AddCircle, CloseOutlined, SmartToyOutlined } from '@mui/icons-material';
 import { IconButton, CircularProgress, Tooltip } from '@mui/material';
 import { NEW_LAYOUT_GUTTER, VERTICAL_TAB_RAIL_WIDTH } from '../constants';
 
@@ -25,8 +25,15 @@ const RAIL_AUTOSCROLL_MAX_SPEED = 14;
 const PineTabs = observer(() => {
   const { global } = useStores();
 
-  // Derive tabs directly from global sessions
-  const tabs = Object.keys(global.sessions).map(sessionId => ({ sessionId }));
+  // The user's own tabs, plus (if the agent has run a query this session)
+  // the one dedicated MCP session pinned at the end -- see
+  // GlobalStore.mcpSessionId's own comment. `pinned` drives the rendering
+  // differences below: not draggable, marked with a robot icon instead of
+  // the usual connection dot/name, and pushed to the far end of the strip.
+  const tabs = [
+    ...global.visibleSessionIds.map(sessionId => ({ sessionId, pinned: false })),
+    ...(global.mcpSessionId ? [{ sessionId: global.mcpSessionId, pinned: true }] : []),
+  ];
   const sessionId = global.activeSessionId;
   const activeSession = global.sessions[sessionId];
   const activeConnectionId = activeSession?.connectionId || '';
@@ -182,7 +189,7 @@ const PineTabs = observer(() => {
     event.dataTransfer.dropEffect = 'move';
     if (overId === draggedId) return;
 
-    const ids = Object.keys(global.sessions);
+    const ids = global.visibleSessionIds;
     const from = ids.indexOf(draggedId);
     const overIndex = ids.indexOf(overId);
     if (from < 0 || overIndex < 0) return;
@@ -392,7 +399,16 @@ const PineTabs = observer(() => {
                         },
                       },
                     }
-                  : {}),
+                  : {
+                      // 'standard' variant only sizes tabs to their own
+                      // content, so without this the strip would hug the
+                      // user's tabs and leave the pinned agent tab sitting
+                      // right after them instead of at the true right edge.
+                      // minWidth: 0 lets it actually shrink below that
+                      // content width once the strip has more tabs than fit.
+                      flex: 1,
+                      minWidth: 0,
+                    }),
                 // A close button on every tab at all times is six competing
                 // "delete" targets in a row (see the horizontal strip with a
                 // few tabs open) -- so reveal each tab's own on hover of that
@@ -473,7 +489,12 @@ const PineTabs = observer(() => {
                   <Tab
                     key={tab.sessionId}
                     tabIndex={-1} // Prevent tab focus
-                    draggable
+                    // The pinned agent tab doesn't take part in reordering --
+                    // draggable={false} stops the gesture from starting at
+                    // all, so onDragStart below never fires for it (it can
+                    // still be a no-op drop target under another tab's drag,
+                    // see handleDragOver's use of visibleSessionIds).
+                    draggable={!tab.pinned}
                     onDragStart={(event: React.DragEvent<HTMLElement>) => {
                       setDraggedId(tab.sessionId);
                       event.dataTransfer.effectAllowed = 'move';
@@ -508,9 +529,27 @@ const PineTabs = observer(() => {
                       // and a strip that resizes mid-drag is much harder to
                       // aim.
                       opacity: draggedId === tab.sessionId ? 0.4 : 1,
+                      ...(tab.pinned
+                        ? {
+                            // Pushes it to the strip's far end -- see
+                            // TabList's own sx above for why that end is now
+                            // reachable (flex: 1) instead of hugging content.
+                            // The border reads as "set apart from your own
+                            // tabs" rather than just the last one in the row.
+                            marginLeft: !vertical ? 'auto' : undefined,
+                            marginTop: vertical ? 'auto' : undefined,
+                            borderLeft: !vertical ? '1px solid var(--border-color)' : undefined,
+                            borderTop: vertical ? '1px solid var(--border-color)' : undefined,
+                          }
+                        : {}),
                     }}
                     label={
                       <span
+                        title={
+                          tab.pinned
+                            ? 'Agent activity -- safe to close, the next agent query recreates it'
+                            : undefined
+                        }
                         style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -520,22 +559,26 @@ const PineTabs = observer(() => {
                           ...(vertical ? { width: '100%', minWidth: 0 } : {}),
                         }}
                       >
-                        {sessionConnectionId && (
-                          <span
-                            title={isLive ? undefined : 'Assigned but not connected yet'}
-                            style={{
-                              width: 6,
-                              height: 6,
-                              borderRadius: '50%',
-                              backgroundColor: isLive ? connectionColor : 'transparent',
-                              border: isLive
-                                ? 'none'
-                                : `1.5px solid ${connectionColor || 'var(--canvas-node-border)'}`,
-                              boxSizing: 'border-box',
-                              display: 'inline-block',
-                              flexShrink: 0,
-                            }}
-                          />
+                        {tab.pinned ? (
+                          <SmartToyOutlined sx={{ fontSize: 14, flexShrink: 0 }} />
+                        ) : (
+                          sessionConnectionId && (
+                            <span
+                              title={isLive ? undefined : 'Assigned but not connected yet'}
+                              style={{
+                                width: 6,
+                                height: 6,
+                                borderRadius: '50%',
+                                backgroundColor: isLive ? connectionColor : 'transparent',
+                                border: isLive
+                                  ? 'none'
+                                  : `1.5px solid ${connectionColor || 'var(--canvas-node-border)'}`,
+                                boxSizing: 'border-box',
+                                display: 'inline-block',
+                                flexShrink: 0,
+                              }}
+                            />
+                          )
                         )}
                         {(session.loading || session.connecting) && (
                           <CircularProgress size={12} sx={{ color: 'inherit' }} />
@@ -561,7 +604,7 @@ const PineTabs = observer(() => {
                               : undefined
                           }
                         >
-                          {global.getSessionName(tab.sessionId)}
+                          {tab.pinned ? 'Agent activity' : global.getSessionName(tab.sessionId)}
                         </span>
                         <IconButton
                           className="pine-tab-close"

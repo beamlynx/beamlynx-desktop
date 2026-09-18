@@ -11,7 +11,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Changed
 - Database Connections: switching the active tab's connection while it still has a query in it no longer silently opens a new tab instead. You now get a warning that the query may reference tables or columns that don't exist on the new connection, with the choice to switch anyway (in the same tab) or cancel.
 - Database Connections: renaming a connection now has its own pencil icon next to the name, independent of the row's expand/advanced-options toggle. Previously renaming only worked by first expanding the row.
-- MCP: queries an agent runs no longer open in a regular tab next to your own. They now show in a docked "Agent activity" panel, opened from a new icon in the header (next to the bell). The panel always shows the same query slot, since an agent's next query replaces whatever was there before -- closing it is always safe.
+- MCP: queries an agent runs now show in their own tab, pinned to the end of the tab strip and marked with a robot icon so it doesn't read as one of your own tabs. A new icon in the header (next to the bell) jumps to it, with a dot when a result landed while you were looking elsewhere. It always shows the same query slot, since an agent's next query replaces whatever was there before -- closing it is always safe.
 
 ### Removed
 - The classic Graph mode (the non-interactive node diagram you got with the "Canvas mode" preference off) is gone. Canvas is now the only graph editor. The "Canvas mode" toggle in Preferences and its command-palette entry are gone with it; if you had it turned off, you'll now see Canvas instead.

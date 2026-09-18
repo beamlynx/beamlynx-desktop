@@ -114,24 +114,20 @@ export class GlobalStore {
   // Desktop-only: the one dedicated session MCP-driven queries run in (see
   // runMcpQuery/explainMcpQuery below and store/mcp-query.ts). Deliberately
   // separate from activeSessionId -- MCP-driven queries must never hijack
-  // whatever tab the human is currently looking at. It stays in `sessions`
+  // whatever tab the human is currently looking at, so a finished query
+  // doesn't switch focus to it on its own. It IS a real tab in `sessions`
   // (getOrCreateMcpSession/session.evaluate both need a real Session to work
-  // against) but is deliberately excluded from `visibleSessionIds`, so it no
-  // longer shows up in the tab strip itself -- see McpActivityPanel.tsx for
-  // where it's shown instead, and why (users reported being wary of closing
-  // what looked like an ordinary tab; it's actually a singleton the agent
-  // silently overwrites on every call, which a docked panel communicates
-  // better than a tab ever could).
+  // against) and PineTabs.tsx does render it in the strip -- pinned at the
+  // end, not draggable, and excluded from Ctrl+Tab cycling (see
+  // visibleSessionIds) -- but excluded from `getSessionName`'s treatment and
+  // marked with its own icon instead, so it still reads as "the agent's
+  // tab" rather than one of yours. It's still always safe to close: the
+  // agent's next query just recreates it (getOrCreateMcpSession below).
   mcpSessionId: string | null = null;
-  // Docked Agent-activity panel (McpActivityPanel.tsx), same on/off pattern
-  // as showSettings below. Never auto-opened by an incoming query -- same
-  // "don't hijack what the human is looking at" rule mcpSessionId's own
-  // comment states, just applied to a panel instead of a tab.
-  showMcpPanel = false;
-  // True from the moment an MCP-driven query finishes until the panel is
-  // next opened (setShowMcpPanel clears it) -- drives the small dot on
-  // McpActivityButton, the only way to know a result landed while the panel
-  // was closed (mirrors NotificationBell's hasUnreadUpdates).
+  // True from the moment an MCP-driven query finishes until that tab is next
+  // activated (McpActivityButton.tsx's onClick clears it) -- drives the
+  // small dot on that button, the only way to know a result landed while
+  // looking at a different tab (mirrors NotificationBell's hasUnreadUpdates).
   mcpHasUnseenActivity = false;
   // profileId -> live pine-lang connection-id, cached per app session so
   // every MCP query doesn't spin up a fresh Hikari pool. See
@@ -1186,12 +1182,12 @@ export class GlobalStore {
    */
   runMcpQuery = async (args: { profileId: string; expression: string }) => {
     const result = await runMcpQueryImpl(this.mcpQueryDeps(), args);
-    // Flag the Agent-activity panel's badge (McpActivityButton) regardless
-    // of `result.error` -- a failed MCP query is still activity worth
-    // surfacing, not something to swallow silently. Not wrapped into
-    // runMcpQueryImpl itself: that file is deliberately isolated (see its
-    // own top comment) to keep __tests__/mcp-query.no-raw-sql.test.ts
-    // scoped to query execution, not UI panel state.
+    // Flag McpActivityButton's badge regardless of `result.error` -- a
+    // failed MCP query is still activity worth surfacing, not something to
+    // swallow silently. Not wrapped into runMcpQueryImpl itself: that file
+    // is deliberately isolated (see its own top comment) to keep
+    // __tests__/mcp-query.no-raw-sql.test.ts scoped to query execution, not
+    // UI state.
     runInAction(() => {
       this.mcpHasUnseenActivity = true;
     });
@@ -1686,26 +1682,39 @@ export class GlobalStore {
     this.activeSessionId = session.id;
   };
 
-  // Tab-strip membership: every open session except the one dedicated MCP
-  // session (mcpSessionId), which no longer renders in the strip -- see its
-  // own comment above. Tab close/reorder/cycling all read this instead of
-  // `Object.keys(sessions)` directly, so the hidden MCP session can never
-  // become the active tab, eat the "last tab" reset-in-place slot, or show
-  // up in Ctrl+Tab cycling (confirmed live: without this, closing a user's
-  // only other tab handed `activeSessionId` to the invisible MCP session
+  // The user's OWN tabs -- every open session except the one dedicated MCP
+  // session (mcpSessionId), which PineTabs.tsx renders separately, pinned at
+  // the end of the same strip (see mcpSessionId's own comment). Reorder and
+  // cycling read this instead of `Object.keys(sessions)` directly, so the
+  // pinned MCP tab can't be dragged out of its end position or show up in
+  // Ctrl+Tab cycling (confirmed live: without this exclusion, closing a
+  // user's only other tab handed `activeSessionId` to the MCP session
   // instead of resetting it in place, since `sessions` always had 2 entries
-  // even with one visible tab).
+  // even with one of the user's own tabs open).
   get visibleSessionIds(): string[] {
     return Object.keys(this.sessions).filter(id => id !== this.mcpSessionId);
   }
 
   /**
    * Close a tab with proper cleanup and switching logic.
-   * If it's the last visible tab, resets it instead of closing.
+   * If it's the pinned MCP tab, just drops it -- the agent's next query
+   * recreates it (getOrCreateMcpSession), so there's no "last tab" case to
+   * special-case the way there is for the user's own tabs below.
+   * Otherwise, if it's the last one of the user's own tabs, resets it
+   * instead of closing.
    *
    * @param sessionId The session ID to close
    */
   closeTab = (sessionId: string) => {
+    if (sessionId === this.mcpSessionId) {
+      this.deleteSession(sessionId);
+      this.mcpSessionId = null;
+      if (this.activeSessionId === sessionId) {
+        this.activeSessionId = this.visibleSessionIds[0] ?? this.activeSessionId;
+      }
+      return;
+    }
+
     const sessionIds = this.visibleSessionIds;
 
     // If it's the last visible tab, reset it instead of closing
@@ -1755,7 +1764,7 @@ export class GlobalStore {
 
     const reordered: Record<string, Session> = {};
     ids.forEach(id => (reordered[id] = this.sessions[id]));
-    // The hidden MCP session isn't part of the draggable strip -- carry it
+    // The pinned MCP session isn't part of the draggable strip -- carry it
     // over unchanged rather than dropping it, since it's excluded from `ids`
     // above (visibleSessionIds) and would otherwise vanish from `sessions`.
     if (this.mcpSessionId && this.sessions[this.mcpSessionId]) {
@@ -1769,11 +1778,21 @@ export class GlobalStore {
    * Ctrl+Tab/Ctrl+Shift+Tab has over a real browser's own tab strip (see
    * utils/keybindings.ts). Order matches PineTabs.tsx's own tab strip
    * (`visibleSessionIds`), so this always moves to the visually adjacent
-   * tab, and never lands on the hidden MCP session.
+   * one of the user's own tabs, and never lands on the pinned MCP tab --
+   * including cycling FROM it: unlike the user's own tabs, activeSessionId
+   * can now be the MCP session (clicking its pinned tab, or
+   * revealMcpSession), so `indexOf` below can legitimately be -1, not just
+   * "not found". Treat that as "off the end", same as a real browser tab
+   * strip cycling away from a pinned tab: Ctrl+Tab goes to the first tab,
+   * Ctrl+Shift+Tab to the last.
    */
   activateAdjacentTab = (direction: 1 | -1) => {
     const sessionIds = this.visibleSessionIds;
     const currentIndex = sessionIds.indexOf(this.activeSessionId);
+    if (currentIndex < 0) {
+      this.activeSessionId = sessionIds[direction === 1 ? 0 : sessionIds.length - 1];
+      return;
+    }
     const nextIndex = (currentIndex + direction + sessionIds.length) % sessionIds.length;
     this.activeSessionId = sessionIds[nextIndex];
   };
@@ -1885,11 +1904,10 @@ export class GlobalStore {
     session.message = `📋 Copied: ${v}`;
   };
 
-  // Only ever called for a visible (non-MCP) tab now -- PineTabs.tsx renders
-  // off `visibleSessionIds`, and McpActivityPanel labels its own session
-  // directly rather than through this name (see its own header). No longer
-  // branches on mcpSessionId (the 🤖-prefix treatment that used to live
-  // here moved to McpActivityButton's icon instead).
+  // Called for every tab, including the pinned MCP one -- PineTabs.tsx
+  // overrides that one's rendered label with a robot icon instead of using
+  // this name, so what this returns for it is never actually shown, but it
+  // still needs to not throw.
   getSessionName = (sessionId: string) => {
     const session = this.getSession(sessionId);
     const length = session.expression.length;
@@ -1911,14 +1929,14 @@ export class GlobalStore {
     }
   };
 
-  setShowMcpPanel = (show: boolean) => {
-    this.showMcpPanel = show;
-    // Opening the panel is what "reading" the activity means here -- there's
-    // no per-result read/unread list, just one badge for "something changed
-    // since you last looked."
-    if (show) {
-      this.mcpHasUnseenActivity = false;
-    }
+  // Switches to the pinned MCP tab (McpActivityButton's onClick) -- a no-op
+  // if the agent hasn't run a query yet this session. Activating it is what
+  // "reading" the activity means here -- there's no per-result read/unread
+  // list, just one badge for "something changed since you last looked."
+  revealMcpSession = () => {
+    if (!this.mcpSessionId) return;
+    this.activeSessionId = this.mcpSessionId;
+    this.mcpHasUnseenActivity = false;
   };
 
   setSettingsSection = (section: SettingsSection) => {

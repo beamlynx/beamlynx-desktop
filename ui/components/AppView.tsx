@@ -10,7 +10,7 @@ import UserBox from './UserBox';
 import { isDesktop, isDevelopment, isPlayground } from '../store/util';
 import { useState, useEffect, useCallback } from 'react';
 import { getUserPreference, STORAGE_KEYS } from '../store/preferences';
-import { DEFAULT_SETTINGS_PANEL_WIDTH, DEFAULT_MCP_PANEL_WIDTH } from '../constants';
+import { DEFAULT_SETTINGS_PANEL_WIDTH } from '../constants';
 import AnalysisModal from './AnalysisModal';
 import ChangelogModal from './ChangelogModal';
 import CommandPalette from './CommandPalette';
@@ -20,8 +20,7 @@ import NotificationBell from './NotificationBell';
 import SettingsButton from './SettingsButton';
 import SettingsDockedPanel from './settings/SettingsDockedPanel';
 import McpActivityButton from './McpActivityButton';
-import McpActivityPanel from './McpActivityPanel';
-import { NewLayoutSettingsPanelDivider, NewLayoutMcpPanelDivider } from './ResizableDividers';
+import { NewLayoutSettingsPanelDivider } from './ResizableDividers';
 import { useGlobalKeybindings } from '../hooks/useGlobalKeybindings';
 import { useFocusedPanelTracking } from '../hooks/useFocusedPanelTracking';
 import { useSettingsKeybindings } from '../hooks/useSettingsKeybindings';
@@ -77,9 +76,6 @@ const AppView = observer(() => {
   // "settings show inside a tab, it should show on the left of all the
   // tabs as well").
   const [settingsPanelWidth, setSettingsPanelWidth] = useState(DEFAULT_SETTINGS_PANEL_WIDTH);
-  // Docked Agent-activity panel width -- same pattern/reasoning as
-  // settingsPanelWidth just above, own storage key (McpActivityPanel.tsx).
-  const [mcpPanelWidth, setMcpPanelWidth] = useState(DEFAULT_MCP_PANEL_WIDTH);
 
   const handleOpenChangelog = () => {
     global.setShowChangelog(true);
@@ -114,7 +110,6 @@ const AppView = observer(() => {
     setSettingsPanelWidth(
       getUserPreference(STORAGE_KEYS.SETTINGS_PANEL_WIDTH, DEFAULT_SETTINGS_PANEL_WIDTH),
     );
-    setMcpPanelWidth(getUserPreference(STORAGE_KEYS.MCP_PANEL_WIDTH, DEFAULT_MCP_PANEL_WIDTH));
   }, []);
 
   useEffect(() => {
@@ -354,29 +349,6 @@ const AppView = observer(() => {
         >
           <PineTabs></PineTabs>
         </Box>
-        {global.showMcpPanel && (
-          // Mirrors the Settings block above, just on the other side of
-          // PineTabs (Settings sits left of it, this sits right) -- same
-          // wrapping-together-with-its-divider reasoning, see that block's
-          // own comment.
-          <Box sx={{ display: 'flex', flexDirection: 'row', mb: global.isZenModeActive ? 0 : 1 }}>
-            <NewLayoutMcpPanelDivider
-              mcpPanelWidth={mcpPanelWidth}
-              setMcpPanelWidth={setMcpPanelWidth}
-            />
-            <Box
-              sx={{
-                width: mcpPanelWidth,
-                flexShrink: 0,
-                border: '1px solid var(--border-color)',
-                borderRadius: 1,
-                overflow: 'hidden',
-              }}
-            >
-              <McpActivityPanel />
-            </Box>
-          </Box>
-        )}
       </Box>
     </>
   );
