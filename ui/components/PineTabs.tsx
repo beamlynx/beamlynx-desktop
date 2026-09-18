@@ -9,7 +9,7 @@ import { observer } from 'mobx-react-lite';
 import { runInAction } from 'mobx';
 import { useStores } from '../store/store-container';
 import { AddCircle, CloseOutlined, SmartToyOutlined } from '@mui/icons-material';
-import { IconButton, CircularProgress, Tooltip } from '@mui/material';
+import { IconButton, CircularProgress, Tooltip, ButtonBase } from '@mui/material';
 import { NEW_LAYOUT_GUTTER, VERTICAL_TAB_RAIL_WIDTH } from '../constants';
 
 /* Drag auto-scroll for the vertical rail: how far from either end the pointer
@@ -25,15 +25,22 @@ const RAIL_AUTOSCROLL_MAX_SPEED = 14;
 const PineTabs = observer(() => {
   const { global } = useStores();
 
-  // The user's own tabs, plus (if the agent has run a query this session)
-  // the one dedicated MCP session pinned at the end -- see
-  // GlobalStore.mcpSessionId's own comment. `pinned` drives the rendering
-  // differences below: not draggable, marked with a robot icon instead of
-  // the usual connection dot/name, and pushed to the far end of the strip.
-  const tabs = [
-    ...global.visibleSessionIds.map(sessionId => ({ sessionId, pinned: false })),
-    ...(global.mcpSessionId ? [{ sessionId: global.mcpSessionId, pinned: true }] : []),
-  ];
+  // The user's own tabs, rendered by TabList/TabPanel below in the usual way.
+  const regularTabs = global.visibleSessionIds.map(sessionId => ({ sessionId }));
+  // The one dedicated MCP session, if the agent has run a query this session
+  // -- rendered as its own element after TabList (see the pinned-tab render
+  // below), pushed to the strip's far end, rather than as one of TabList's
+  // own Tab children. It can't be one of those and still land after "+ New
+  // tab": that button has to come after the user's own tabs but before this
+  // one, which means this one has to live outside TabList's child list to
+  // get its own place in that order (TabList/Tabs clones Tabs-specific
+  // props onto every child it's given, which "+"'s plain icon can't take
+  // either way). See GlobalStore.mcpSessionId's own comment for why it
+  // exists at all.
+  const pinnedSessionId = global.mcpSessionId;
+  // Every session that needs a TabPanel below, regardless of how each one's
+  // own clickable trigger above it is rendered.
+  const tabs = [...regularTabs, ...(pinnedSessionId ? [{ sessionId: pinnedSessionId }] : [])];
   const sessionId = global.activeSessionId;
   const activeSession = global.sessions[sessionId];
   const activeConnectionId = activeSession?.connectionId || '';
@@ -471,7 +478,7 @@ const PineTabs = observer(() => {
                 },
               }}
             >
-              {tabs.map((tab, index) => {
+              {regularTabs.map((tab, index) => {
                 const session = global.getSession(tab.sessionId);
                 const sessionConnectionId = session.connectionId || '';
                 const connectionColor = global.getConnectionColor(sessionConnectionId);
@@ -480,12 +487,7 @@ const PineTabs = observer(() => {
                   <Tab
                     key={tab.sessionId}
                     tabIndex={-1} // Prevent tab focus
-                    // The pinned agent tab doesn't take part in reordering --
-                    // draggable={false} stops the gesture from starting at
-                    // all, so onDragStart below never fires for it (it can
-                    // still be a no-op drop target under another tab's drag,
-                    // see handleDragOver's use of visibleSessionIds).
-                    draggable={!tab.pinned}
+                    draggable
                     onDragStart={(event: React.DragEvent<HTMLElement>) => {
                       setDraggedId(tab.sessionId);
                       event.dataTransfer.effectAllowed = 'move';
@@ -520,37 +522,9 @@ const PineTabs = observer(() => {
                       // and a strip that resizes mid-drag is much harder to
                       // aim.
                       opacity: draggedId === tab.sessionId ? 0.4 : 1,
-                      ...(tab.pinned
-                        ? {
-                            // Vertical: the rail's TabList already stretches
-                            // to the rail's full height (flex: 1 above, kept
-                            // for scroll behavior regardless of this tab), so
-                            // marginTop: 'auto' reaches the rail's true
-                            // bottom edge. Horizontal has no equivalent --
-                            // TabList there hugs its tabs' own content width
-                            // (variant="standard"), and the "+ New tab" icon
-                            // is a sibling AFTER it, not one of its Tab
-                            // children (MUI clones Tabs-specific props onto
-                            // every child, which breaks on a plain icon) --
-                            // so stretching TabList to reach the true right
-                            // edge would drag "+" out there with it. A fixed
-                            // gap instead of a push, then; the border is what
-                            // actually carries "set apart from your own
-                            // tabs" in that case.
-                            ml: !vertical ? 3 : undefined,
-                            marginTop: vertical ? 'auto' : undefined,
-                            borderLeft: !vertical ? '1px solid var(--border-color)' : undefined,
-                            borderTop: vertical ? '1px solid var(--border-color)' : undefined,
-                          }
-                        : {}),
                     }}
                     label={
                       <span
-                        title={
-                          tab.pinned
-                            ? 'Agent activity -- safe to close, the next agent query recreates it'
-                            : undefined
-                        }
                         style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -560,26 +534,22 @@ const PineTabs = observer(() => {
                           ...(vertical ? { width: '100%', minWidth: 0 } : {}),
                         }}
                       >
-                        {tab.pinned ? (
-                          <SmartToyOutlined sx={{ fontSize: 14, flexShrink: 0 }} />
-                        ) : (
-                          sessionConnectionId && (
-                            <span
-                              title={isLive ? undefined : 'Assigned but not connected yet'}
-                              style={{
-                                width: 6,
-                                height: 6,
-                                borderRadius: '50%',
-                                backgroundColor: isLive ? connectionColor : 'transparent',
-                                border: isLive
-                                  ? 'none'
-                                  : `1.5px solid ${connectionColor || 'var(--canvas-node-border)'}`,
-                                boxSizing: 'border-box',
-                                display: 'inline-block',
-                                flexShrink: 0,
-                              }}
-                            />
-                          )
+                        {sessionConnectionId && (
+                          <span
+                            title={isLive ? undefined : 'Assigned but not connected yet'}
+                            style={{
+                              width: 6,
+                              height: 6,
+                              borderRadius: '50%',
+                              backgroundColor: isLive ? connectionColor : 'transparent',
+                              border: isLive
+                                ? 'none'
+                                : `1.5px solid ${connectionColor || 'var(--canvas-node-border)'}`,
+                              boxSizing: 'border-box',
+                              display: 'inline-block',
+                              flexShrink: 0,
+                            }}
+                          />
                         )}
                         {(session.loading || session.connecting) && (
                           <CircularProgress size={12} sx={{ color: 'inherit' }} />
@@ -605,7 +575,7 @@ const PineTabs = observer(() => {
                               : undefined
                           }
                         >
-                          {tab.pinned ? 'Agent activity' : global.getSessionName(tab.sessionId)}
+                          {global.getSessionName(tab.sessionId)}
                         </span>
                         <IconButton
                           className="pine-tab-close"
@@ -669,6 +639,114 @@ const PineTabs = observer(() => {
                 />
               </Tooltip>
             )}
+
+            {/* The pinned agent tab -- see pinnedSessionId's own comment for
+                why it's a plain ButtonBase here rather than one of TabList's
+                Tab children. marginLeft: 'auto' (horizontal) reaches the true
+                right edge of this row without touching TabList's own sizing
+                (railRef, this element's parent, already spans the full
+                width) -- no such margin needed in vertical, where TabList's
+                own flex: 1 already claims all the rail's leftover height, so
+                this -- the next sibling after it -- lands at the bottom on
+                its own. There's no MuiTabs-indicator to carry "this one's
+                active" the way the user's own tabs get, since that only
+                spans TabList's actual children -- the border-bottom below
+                stands in for it. */}
+            {pinnedSessionId &&
+              (() => {
+                const session = global.getSession(pinnedSessionId);
+                const isActive = pinnedSessionId === sessionId;
+                return (
+                  <ButtonBase
+                    onClick={() => setActiveTab(pinnedSessionId)}
+                    title="Agent activity -- safe to close, the next agent query recreates it"
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      flexShrink: 0,
+                      minHeight: 40,
+                      // Explicit rather than relying on CssBaseline: the
+                      // horizontal branch's borderBottom below (2px, used as
+                      // this element's own stand-in for MuiTabs-indicator)
+                      // must be absorbed into minHeight, not added on top of
+                      // it -- otherwise this tab would sit 2px taller than
+                      // its neighbours the moment it's active.
+                      boxSizing: 'border-box',
+                      padding: '12px 16px',
+                      fontFamily: 'var(--canvas-font)',
+                      fontSize: '0.875rem',
+                      color: isActive ? 'var(--canvas-trace)' : 'var(--canvas-text-dim)',
+                      transition: 'background-color 120ms ease, color 120ms ease',
+                      '&:hover': {
+                        backgroundColor: 'var(--canvas-chip-bg)',
+                        color: 'var(--canvas-text)',
+                      },
+                      // Same hover-to-reveal as the user's own tabs
+                      // ('& .MuiTab-root:hover .pine-tab-close' on TabList
+                      // above), just scoped to this element directly since
+                      // it's not a descendant of TabList.
+                      '& .pine-tab-close': {
+                        opacity: 0,
+                        pointerEvents: 'none',
+                        transition: 'opacity 120ms ease',
+                      },
+                      '&:hover .pine-tab-close': {
+                        opacity: 1,
+                        pointerEvents: 'auto',
+                      },
+                      '@media (hover: none)': {
+                        '& .pine-tab-close': { opacity: 1, pointerEvents: 'auto' },
+                      },
+                      ...(vertical
+                        ? {
+                            width: '100%',
+                            justifyContent: 'flex-start',
+                            borderTop: '1px solid var(--border-color)',
+                            // Belt-and-braces: TabList's own flex: 1 should
+                            // already push this sibling to the rail's true
+                            // bottom by consuming all the leftover height
+                            // itself, but this costs nothing if that holds
+                            // and saves the layout if it doesn't.
+                            marginTop: 'auto',
+                          }
+                        : {
+                            marginLeft: 'auto',
+                            borderLeft: '1px solid var(--border-color)',
+                            borderBottom: `2px solid ${isActive ? activeIndicatorColor : 'transparent'}`,
+                          }),
+                    }}
+                  >
+                    <SmartToyOutlined sx={{ fontSize: 14, flexShrink: 0 }} />
+                    {(session.loading || session.connecting) && (
+                      <CircularProgress size={12} sx={{ color: 'inherit' }} />
+                    )}
+                    <span>Agent activity</span>
+                    <IconButton
+                      className="pine-tab-close"
+                      style={{ marginLeft: '5px' }}
+                      size="small"
+                      component="span"
+                      aria-label="Close tab"
+                      tabIndex={-1}
+                      onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
+                        event.stopPropagation();
+                        removeTab(pinnedSessionId);
+                      }}
+                      sx={{
+                        flexShrink: 0,
+                        color: 'var(--canvas-text-dim)',
+                        '&:hover': {
+                          color: 'var(--canvas-text)',
+                          backgroundColor: 'var(--canvas-node-border)',
+                        },
+                      }}
+                    >
+                      <CloseOutlined sx={{ fontSize: '14px' }} tabIndex={-1} />
+                    </IconButton>
+                  </ButtonBase>
+                );
+              })()}
           </Box>
         )}
 
