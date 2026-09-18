@@ -63,6 +63,20 @@ type ConnectionParams = {
   label?: string;
 };
 
+// A connection switch that's on hold because the active tab has a non-empty
+// Pine expression -- switching would re-resolve it against a different
+// connection's schema, so the user gets a warning (ChangeConnectionModal)
+// before it's applied to the existing tab instead of it happening silently.
+// Only covers switching to an already-known connection (an existing web
+// session, or a desktop saved profile) -- these are the "pick a different
+// connection for this tab" UI entry points (ActiveConnection.tsx,
+// ConnectionsSection.tsx's switch action). Adding a brand-new connection via
+// the "Add Connection" form isn't gated this way: `connect()` always assigns
+// it to the active tab in place, same as before minus the silent-tab-fork.
+export type PendingConnectionSwitch =
+  | { kind: 'select'; connectionId: string }
+  | { kind: 'connectToSavedProfile'; id: string };
+
 export type SettingsSection = 'connections' | 'theme' | 'preferences' | 'access-policy' | 'mcp' | 'about';
 
 // Which edge the session tab strip runs along -- see tabOrientation below.
@@ -97,12 +111,28 @@ export class GlobalStore {
   accessPolicies: AccessPolicy[] = [];
   credentialsStatus: CredentialsStatus | null = null;
 
-  // Desktop-only: the one dedicated tab MCP-driven queries run in (see
+  // Desktop-only: the one dedicated session MCP-driven queries run in (see
   // runMcpQuery/explainMcpQuery below and store/mcp-query.ts). Deliberately
   // separate from activeSessionId -- MCP-driven queries must never hijack
-  // whatever tab the human is currently looking at; they show up in the tab
-  // bar (PineTabs renders every id in `sessions`) without switching focus.
+  // whatever tab the human is currently looking at. It stays in `sessions`
+  // (getOrCreateMcpSession/session.evaluate both need a real Session to work
+  // against) but is deliberately excluded from `visibleSessionIds`, so it no
+  // longer shows up in the tab strip itself -- see McpActivityPanel.tsx for
+  // where it's shown instead, and why (users reported being wary of closing
+  // what looked like an ordinary tab; it's actually a singleton the agent
+  // silently overwrites on every call, which a docked panel communicates
+  // better than a tab ever could).
   mcpSessionId: string | null = null;
+  // Docked Agent-activity panel (McpActivityPanel.tsx), same on/off pattern
+  // as showSettings below. Never auto-opened by an incoming query -- same
+  // "don't hijack what the human is looking at" rule mcpSessionId's own
+  // comment states, just applied to a panel instead of a tab.
+  showMcpPanel = false;
+  // True from the moment an MCP-driven query finishes until the panel is
+  // next opened (setShowMcpPanel clears it) -- drives the small dot on
+  // McpActivityButton, the only way to know a result landed while the panel
+  // was closed (mirrors NotificationBell's hasUnreadUpdates).
+  mcpHasUnseenActivity = false;
   // profileId -> live pine-lang connection-id, cached per app session so
   // every MCP query doesn't spin up a fresh Hikari pool. See
   // store/mcp-query.ts's ensureConnection.
@@ -442,6 +472,9 @@ export class GlobalStore {
 
   // Save-as-file modal (Ctrl/Cmd+S)
   showSaveModal = false;
+
+  // See PendingConnectionSwitch.
+  pendingConnectionSwitch: PendingConnectionSwitch | null = null;
 
   get commandHistory(): string[] {
     return this._commandHistory;
@@ -1004,15 +1037,24 @@ export class GlobalStore {
   }
 
   /**
-   * Select an existing server connection from the picker. Opens a new tab if the
-   * active tab has content; otherwise assigns the connection to the active tab.
+   * Select an existing server connection from the picker and assign it to the
+   * active tab. If that tab has a non-empty Pine expression, the switch is
+   * held in `pendingConnectionSwitch` and ChangeConnectionModal warns the
+   * user first -- pass `confirmed: true` (as confirmPendingConnectionSwitch
+   * does) to apply it anyway.
    */
-  selectConnection = async (connectionId: string) => {
+  selectConnection = async (connectionId: string, confirmed = false) => {
     const activeSession = this.sessions[this.activeSessionId];
     if (!activeSession) {
       return;
     }
     if (activeSession.connectionId === connectionId && this.connection === connectionId) {
+      return;
+    }
+    if (activeSession.expression.trim() && !confirmed) {
+      runInAction(() => {
+        this.pendingConnectionSwitch = { kind: 'select', connectionId };
+      });
       return;
     }
     try {
@@ -1021,13 +1063,13 @@ export class GlobalStore {
         this.connection = id;
         this.version = version ?? '0.0.0';
         this.liveConnectionIds = Array.from(new Set([...this.liveConnectionIds, id]));
-        if (activeSession.expression.trim()) {
-          const session = this.createSession();
-          this.activeSessionId = session.id;
-          session.connectionId = id;
-        } else {
-          activeSession.connectionId = id;
-        }
+        activeSession.connectionId = id;
+        // Nothing reacts to connectionId changing on its own -- bump the
+        // counter to force the debounced build reaction to re-resolve the
+        // existing expression against the new connection's schema, so any
+        // now-invalid table/column names surface via session.error.
+        activeSession.hintsRequestedCounter++;
+        this.pendingConnectionSwitch = null;
       });
       await this.refreshConnections();
     } catch (e) {
@@ -1076,8 +1118,10 @@ export class GlobalStore {
    * Connect to a saved (desktop-only) profile that may not have a live pine
    * pool yet this session -- fetches the decrypted credentials and goes
    * through the normal `connect` (create + use) path, rather than assuming
-   * a pool already exists the way `selectConnection` does. Manual/UI entry
-   * point: forks a new tab if the active one has content, same as `connect`.
+   * a pool already exists the way `selectConnection` does. No
+   * pendingConnectionSwitch warning here -- callers that need one
+   * (ActiveConnection.tsx / ConnectionsSection.tsx's switch action) check the
+   * active tab themselves via requestConnectionSwitch before calling this.
    * For a silent background reconnect of one specific (possibly inactive)
    * tab, see ensureSessionConnected instead.
    */
@@ -1140,8 +1184,19 @@ export class GlobalStore {
    * human's active tab. See store/mcp-query.ts for the safety rules this
    * enforces (no raw SQL, no delete!, connection-id always explicit).
    */
-  runMcpQuery = (args: { profileId: string; expression: string }) =>
-    runMcpQueryImpl(this.mcpQueryDeps(), args);
+  runMcpQuery = async (args: { profileId: string; expression: string }) => {
+    const result = await runMcpQueryImpl(this.mcpQueryDeps(), args);
+    // Flag the Agent-activity panel's badge (McpActivityButton) regardless
+    // of `result.error` -- a failed MCP query is still activity worth
+    // surfacing, not something to swallow silently. Not wrapped into
+    // runMcpQueryImpl itself: that file is deliberately isolated (see its
+    // own top comment) to keep __tests__/mcp-query.no-raw-sql.test.ts
+    // scoped to query execution, not UI panel state.
+    runInAction(() => {
+      this.mcpHasUnseenActivity = true;
+    });
+    return result;
+  };
 
   /** Backing call for the `complete_query` MCP tool -- parse/build only, no execution. */
   explainMcpQuery = (args: { profileId: string; expression: string }) =>
@@ -1391,9 +1446,15 @@ export class GlobalStore {
   };
 
   /**
-   * Create (or re-establish) a connection and make it the active tab's.
-   * Opens a new tab instead if the active tab already has content, so an
-   * in-progress query isn't silently switched to a different database.
+   * Create (or re-establish) a connection and make it the active tab's,
+   * whatever that tab currently contains -- no fork-a-new-tab side step, and
+   * no pendingConnectionSwitch warning here. `connectToSavedProfile`'s own
+   * callers gate this for their "switch this tab to a different saved
+   * profile" UI actions (see PendingConnectionSwitch); this primitive is also
+   * called by flows with no tab-content concern to warn about at all: the
+   * "Add Connection" form (a brand-new connection, not a switch) and the
+   * deep-link/reveal-request handlers (which always target a fresh tab they
+   * just created).
    *
    * @param knownProfileId Pass the saved profile id when it's already known
    * (connectToSavedProfile) so the session can be tagged with it directly,
@@ -1439,23 +1500,54 @@ export class GlobalStore {
 
       const activeSession = this.sessions[this.activeSessionId];
       if (activeSession) {
-        if (activeSession.expression.trim()) {
-          const session = this.createSession();
-          this.activeSessionId = session.id;
-          session.connectionId = id;
-          session.profileId = profileId;
-        } else {
-          activeSession.connectionId = id;
-          activeSession.profileId = profileId;
-        }
+        activeSession.connectionId = id;
+        activeSession.profileId = profileId;
+        // See the matching comment in selectConnection -- forces the
+        // existing expression to re-resolve against the new connection.
+        activeSession.hintsRequestedCounter++;
       }
       if (this.virtualSession) {
         this.virtualSession.connectionId = id;
       }
+      this.pendingConnectionSwitch = null;
     });
 
     await this.refreshConnections();
     return id;
+  };
+
+  /**
+   * Apply a connection switch that ChangeConnectionModal warned about and the
+   * user confirmed anyway.
+   */
+  confirmPendingConnectionSwitch = async (): Promise<void> => {
+    const pending = this.pendingConnectionSwitch;
+    if (!pending) {
+      return;
+    }
+    runInAction(() => {
+      this.pendingConnectionSwitch = null;
+    });
+    if (pending.kind === 'select') {
+      await this.selectConnection(pending.connectionId, true);
+    } else {
+      await this.connectToSavedProfile(pending.id);
+    }
+  };
+
+  cancelPendingConnectionSwitch = () => {
+    this.pendingConnectionSwitch = null;
+  };
+
+  /**
+   * Hold a "switch this tab to a different known connection" action behind
+   * ChangeConnectionModal's warning -- called by the UI switch actions in
+   * ActiveConnection.tsx / ConnectionsSection.tsx when the active tab has a
+   * non-empty Pine expression, instead of calling selectConnection /
+   * connectToSavedProfile directly.
+   */
+  requestConnectionSwitch = (pending: PendingConnectionSwitch) => {
+    this.pendingConnectionSwitch = pending;
   };
 
   /**
@@ -1594,16 +1686,29 @@ export class GlobalStore {
     this.activeSessionId = session.id;
   };
 
+  // Tab-strip membership: every open session except the one dedicated MCP
+  // session (mcpSessionId), which no longer renders in the strip -- see its
+  // own comment above. Tab close/reorder/cycling all read this instead of
+  // `Object.keys(sessions)` directly, so the hidden MCP session can never
+  // become the active tab, eat the "last tab" reset-in-place slot, or show
+  // up in Ctrl+Tab cycling (confirmed live: without this, closing a user's
+  // only other tab handed `activeSessionId` to the invisible MCP session
+  // instead of resetting it in place, since `sessions` always had 2 entries
+  // even with one visible tab).
+  get visibleSessionIds(): string[] {
+    return Object.keys(this.sessions).filter(id => id !== this.mcpSessionId);
+  }
+
   /**
    * Close a tab with proper cleanup and switching logic.
-   * If it's the last tab, resets it instead of closing.
+   * If it's the last visible tab, resets it instead of closing.
    *
    * @param sessionId The session ID to close
    */
   closeTab = (sessionId: string) => {
-    const sessionIds = Object.keys(this.sessions);
+    const sessionIds = this.visibleSessionIds;
 
-    // If it's the last tab, reset it instead of closing
+    // If it's the last visible tab, reset it instead of closing
     if (sessionIds.length === 1) {
       this.createSessionUsingId(sessionId.replace('session-', ''));
       return;
@@ -1614,7 +1719,7 @@ export class GlobalStore {
 
     // If the active tab is being closed, switch to another tab
     if (this.activeSessionId === sessionId && sessionIds.length > 1) {
-      const remainingSessions = Object.keys(this.sessions);
+      const remainingSessions = this.visibleSessionIds;
       if (remainingSessions.length > 0) {
         this.activeSessionId = remainingSessions[0];
       }
@@ -1641,7 +1746,7 @@ export class GlobalStore {
    * connection is disturbed by being dragged.
    */
   moveTab = (fromIndex: number, toIndex: number) => {
-    const ids = Object.keys(this.sessions);
+    const ids = this.visibleSessionIds;
     const valid = (i: number) => Number.isInteger(i) && i >= 0 && i < ids.length;
     if (fromIndex === toIndex || !valid(fromIndex) || !valid(toIndex)) return;
 
@@ -1650,6 +1755,12 @@ export class GlobalStore {
 
     const reordered: Record<string, Session> = {};
     ids.forEach(id => (reordered[id] = this.sessions[id]));
+    // The hidden MCP session isn't part of the draggable strip -- carry it
+    // over unchanged rather than dropping it, since it's excluded from `ids`
+    // above (visibleSessionIds) and would otherwise vanish from `sessions`.
+    if (this.mcpSessionId && this.sessions[this.mcpSessionId]) {
+      reordered[this.mcpSessionId] = this.sessions[this.mcpSessionId];
+    }
     this.sessions = reordered;
   };
 
@@ -1657,11 +1768,11 @@ export class GlobalStore {
    * Next/previous tab, wrapping at either end - the same cycling behavior
    * Ctrl+Tab/Ctrl+Shift+Tab has over a real browser's own tab strip (see
    * utils/keybindings.ts). Order matches PineTabs.tsx's own tab strip
-   * (`Object.keys(this.sessions)`), so this always moves to the visually
-   * adjacent tab.
+   * (`visibleSessionIds`), so this always moves to the visually adjacent
+   * tab, and never lands on the hidden MCP session.
    */
   activateAdjacentTab = (direction: 1 | -1) => {
-    const sessionIds = Object.keys(this.sessions);
+    const sessionIds = this.visibleSessionIds;
     const currentIndex = sessionIds.indexOf(this.activeSessionId);
     const nextIndex = (currentIndex + direction + sessionIds.length) % sessionIds.length;
     this.activeSessionId = sessionIds[nextIndex];
@@ -1774,6 +1885,11 @@ export class GlobalStore {
     session.message = `📋 Copied: ${v}`;
   };
 
+  // Only ever called for a visible (non-MCP) tab now -- PineTabs.tsx renders
+  // off `visibleSessionIds`, and McpActivityPanel labels its own session
+  // directly rather than through this name (see its own header). No longer
+  // branches on mcpSessionId (the 🤖-prefix treatment that used to live
+  // here moved to McpActivityButton's icon instead).
   getSessionName = (sessionId: string) => {
     const session = this.getSession(sessionId);
     const length = session.expression.length;
@@ -1783,20 +1899,25 @@ export class GlobalStore {
     const [x, y] = session.expression.split('.');
     const expression = y || x;
 
-    const name =
-      length > maxLength
-        ? expression.substring(0, maxLength).replaceAll('|', '') + '...'
-        : expression || '...';
-
-    // Visibly distinguish the tab MCP-driven queries run in from the
-    // human's own tabs -- see mcpSessionId/runMcpQuery above.
-    return sessionId === this.mcpSessionId ? `🤖 ${name}` : name;
+    return length > maxLength
+      ? expression.substring(0, maxLength).replaceAll('|', '') + '...'
+      : expression || '...';
   };
 
   setShowSettings = (show: boolean, section?: SettingsSection) => {
     this.showSettings = show;
     if (section) {
       this.settingsSection = section;
+    }
+  };
+
+  setShowMcpPanel = (show: boolean) => {
+    this.showMcpPanel = show;
+    // Opening the panel is what "reading" the activity means here -- there's
+    // no per-result read/unread list, just one badge for "something changed
+    // since you last looked."
+    if (show) {
+      this.mcpHasUnseenActivity = false;
     }
   };
 

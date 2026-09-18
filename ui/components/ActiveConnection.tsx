@@ -69,6 +69,11 @@ const ActiveConnection = () => {
         setConnectionMenuAnchor(null);
         return;
       }
+      if (activeSession?.expression.trim()) {
+        global.requestConnectionSwitch({ kind: 'connectToSavedProfile', id });
+        setConnectionMenuAnchor(null);
+        return;
+      }
       setSwitchingConnection(true);
       try {
         await global.connectToSavedProfile(id);

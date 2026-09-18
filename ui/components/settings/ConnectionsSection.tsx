@@ -1029,6 +1029,10 @@ const ConnectionsSection = () => {
   const handleSwitchTo = async (id: string) => {
     if (isDesktop()) {
       if (id === global.activeProfileId) return;
+      if (activeSession?.expression.trim()) {
+        global.requestConnectionSwitch({ kind: 'connectToSavedProfile', id });
+        return;
+      }
       setSwitchingConnection(true);
       try {
         await global.connectToSavedProfile(id);
