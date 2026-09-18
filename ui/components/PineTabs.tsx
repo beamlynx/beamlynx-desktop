@@ -42,10 +42,19 @@ const PineTabs = observer(() => {
     ...(global.mcpSessionId ? [{ sessionId: global.mcpSessionId, kind: 'mcp' as const }] : []),
     ...global.pendingRevealSessionIds.map(sessionId => ({ sessionId, kind: 'reveal' as const })),
   ];
-  // Every session that needs a TabPanel below, regardless of how each one's
-  // own clickable trigger above it is rendered.
-  const tabs = [...regularTabs, ...pinnedTabs.map(({ sessionId }) => ({ sessionId }))];
   const sessionId = global.activeSessionId;
+  // TabList's underlying Tabs component reads `value` from the same
+  // TabContext its own TabPanels do, and logs "The value provided to the
+  // Tabs component is invalid" (harmless, but noisy) whenever that value
+  // isn't one of ITS OWN children -- true every time a pinned tab is active,
+  // since those are deliberately excluded from TabList's children. This is
+  // ONLY what TabContext/TabList consume; the true activeSessionId
+  // (`sessionId` above) is still what every other comparison in this file
+  // uses, including which TabPanel (or pinned session, rendered separately
+  // below) is actually visible.
+  const tabListValue = regularTabs.some(t => t.sessionId === sessionId)
+    ? sessionId
+    : regularTabs[0]?.sessionId ?? sessionId;
   const activeSession = global.sessions[sessionId];
   const activeConnectionId = activeSession?.connectionId || '';
   const activeIndicatorColor =
@@ -238,7 +247,7 @@ const PineTabs = observer(() => {
         flexDirection: vertical ? 'row' : 'column',
       }}
     >
-      <TabContext value={sessionId}>
+      <TabContext value={tabListValue}>
         {/* Hidden in Zen mode -- the tab strip is exactly the kind of "app
             chrome" a graph-only view is meant to hide; the TabPanels below
             (the actual session content) stay mounted either way. */}
@@ -665,12 +674,6 @@ const PineTabs = observer(() => {
               const session = global.getSession(pinned.sessionId);
               const isActive = pinned.sessionId === sessionId;
               const isFirstPinned = pinnedIndex === 0;
-              // Same connection dot the user's own tabs get (below, in
-              // regularTabs' own Tab label) -- which connection this pinned
-              // tab is on isn't otherwise visible without opening it.
-              const pinnedConnectionId = session.connectionId || '';
-              const pinnedConnectionColor = global.getConnectionColor(pinnedConnectionId);
-              const pinnedConnectionIsLive = global.isConnectionLive(pinnedConnectionId);
               const label = pinned.kind === 'mcp' ? 'Agent activity' : 'Needs approval';
               const title =
                 pinned.kind === 'mcp'
@@ -759,23 +762,6 @@ const PineTabs = observer(() => {
                   ) : (
                     <VisibilityOutlined sx={{ fontSize: 14, flexShrink: 0, color: idleIconColor }} />
                   )}
-                  {pinnedConnectionId && (
-                    <span
-                      title={pinnedConnectionIsLive ? undefined : 'Assigned but not connected yet'}
-                      style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: '50%',
-                        backgroundColor: pinnedConnectionIsLive ? pinnedConnectionColor : 'transparent',
-                        border: pinnedConnectionIsLive
-                          ? 'none'
-                          : `1.5px solid ${pinnedConnectionColor || 'var(--canvas-node-border)'}`,
-                        boxSizing: 'border-box',
-                        display: 'inline-block',
-                        flexShrink: 0,
-                      }}
-                    />
-                  )}
                   {(session.loading || session.connecting) && (
                     <CircularProgress size={12} sx={{ color: 'inherit' }} />
                   )}
@@ -808,7 +794,7 @@ const PineTabs = observer(() => {
           </Box>
         )}
 
-        {tabs.map(tab => (
+        {regularTabs.map(tab => (
           <TabPanel
             key={tab.sessionId}
             // The flex/display overrides only apply to the ACTIVE tab's
@@ -843,6 +829,26 @@ const PineTabs = observer(() => {
           </TabPanel>
         ))}
       </TabContext>
+
+      {/* Pinned sessions' own content -- deliberately outside TabContext
+          (see tabListValue's own comment) and toggled by hand rather than
+          through TabPanel, since TabPanel only ever matches TabContext's
+          shared value, which these are excluded from. Same
+          shown/hidden-but-mounted shape TabPanel itself uses, so switching
+          to or from one of these preserves its state exactly like switching
+          between two of the user's own tabs does. */}
+      {pinnedTabs.map(pinned => (
+        <Box
+          key={pinned.sessionId}
+          sx={
+            pinned.sessionId === sessionId
+              ? { flex: 1, minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column' }
+              : { display: 'none' }
+          }
+        >
+          <Session sessionId={pinned.sessionId}></Session>
+        </Box>
+      ))}
     </Box>
   );
 });

@@ -90,28 +90,28 @@ const RevealRequestBanner = observer(({ session }: { session: SessionType }) => 
         gap: 0.75,
       }}
     >
-      <Typography variant="body2">
-        An agent wants to see this query&apos;s real results on{' '}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
         <Box
           component="span"
-          sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, verticalAlign: 'middle' }}
-        >
-          <Box
-            component="span"
-            title={connectionIsLive ? undefined : 'Assigned but not connected yet'}
-            sx={{
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              flexShrink: 0,
-              boxSizing: 'border-box',
-              backgroundColor: connectionIsLive ? connectionColor : 'transparent',
-              border: connectionIsLive ? 'none' : `1.5px solid ${connectionColor || 'var(--canvas-node-border)'}`,
-            }}
-          />
-          <strong>{connectionLabel}</strong>
-        </Box>
-        . Your access policy is hiding them -- edit the expression above if you&apos;d like, then decide below.
+          title={connectionIsLive ? undefined : 'Assigned but not connected yet'}
+          sx={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            flexShrink: 0,
+            boxSizing: 'border-box',
+            backgroundColor: connectionIsLive ? connectionColor : 'transparent',
+            border: connectionIsLive ? 'none' : `1.5px solid ${connectionColor || 'var(--canvas-node-border)'}`,
+          }}
+        />
+        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+          {connectionLabel}
+        </Typography>
+      </Box>
+
+      <Typography variant="body2">
+        An agent wants to see this query&apos;s real results, hidden by your access policy. Edit the expression
+        below if you&apos;d like, then decide.
       </Typography>
 
       {session.revealReason && (
