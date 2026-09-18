@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Box, Button, TextField, Typography } from '@mui/material';
 import { observer } from 'mobx-react-lite';
-import { runInAction } from 'mobx';
 import { Session as SessionType } from '../store/session';
 import { useStores } from '../store/store-container';
 
@@ -14,8 +13,9 @@ import { useStores } from '../store/store-container';
  *  - Reveal: sends this tab's current expression/columns/rows back to the
  *    agent, whatever they are right now (edited or not).
  *  - Decline: sends an optional comment instead, and runs nothing.
- * Either way ends review for this request -- the banner disappears and the
- * tab goes back to being a normal one.
+ * Either way ends review for this request -- clear() removes the pinned tab
+ * entirely (finishRevealSession), since it only ever existed for this one
+ * request; there's nothing to hand back to the user as an ordinary tab.
  */
 const RevealRequestBanner = observer(({ session }: { session: SessionType }) => {
   const { global } = useStores();
@@ -26,12 +26,7 @@ const RevealRequestBanner = observer(({ session }: { session: SessionType }) => 
   const requestId = session.pendingRevealRequestId;
   if (!requestId) return null;
 
-  const clear = () => {
-    runInAction(() => {
-      session.pendingRevealRequestId = undefined;
-      session.revealReason = undefined;
-    });
-  };
+  const clear = () => global.finishRevealSession(session.id);
 
   const handleReveal = async () => {
     setBusy(true);
@@ -48,6 +43,7 @@ const RevealRequestBanner = observer(({ session }: { session: SessionType }) => 
       // already-transformed grid state back out.
       const rawRows = await session.evaluate({ applyServerPrettified: true });
       if (session.error) {
+        setBusy(false);
         return;
       }
       await global.resolveRevealRequest(requestId, {
@@ -56,9 +52,13 @@ const RevealRequestBanner = observer(({ session }: { session: SessionType }) => 
         columns: session.columns,
         rows: rawRows,
       });
+      // No finally/setBusy(false) after this: clear() removes the pinned
+      // tab (finishRevealSession), unmounting this component -- a state
+      // update past that point has nothing left to update.
       clear();
-    } finally {
+    } catch (e) {
       setBusy(false);
+      throw e;
     }
   };
 
@@ -66,9 +66,11 @@ const RevealRequestBanner = observer(({ session }: { session: SessionType }) => 
     setBusy(true);
     try {
       await global.resolveRevealRequest(requestId, { ok: false, comment: comment.trim() || undefined });
+      // See handleReveal's own comment -- clear() unmounts this component.
       clear();
-    } finally {
+    } catch (e) {
       setBusy(false);
+      throw e;
     }
   };
 

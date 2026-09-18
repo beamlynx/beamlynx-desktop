@@ -66,7 +66,13 @@ function assertNoDestructiveOperator(expression: string): void {
   }
 }
 
-async function ensureConnection(deps: McpQueryDeps, profileId: string): Promise<string> {
+// Exported for RevealRequestHandler.tsx (via GlobalStore.ensureProfileConnection)
+// -- a reveal-review tab needs the exact same "resolve a saved profile to a
+// live connection id without pine-lang's shared active-connection singleton,
+// and without touching activeSessionId" behavior an MCP query gets, since it
+// must never steal focus onto itself the way connectToSavedProfile does (see
+// that method's own comment). Not otherwise MCP-specific.
+export async function ensureConnection(deps: McpQueryDeps, profileId: string): Promise<string> {
   const cached = deps.getMcpConnectionId(profileId);
   if (cached) return cached;
   const params = await deps.getSavedProfileCredentials(profileId);

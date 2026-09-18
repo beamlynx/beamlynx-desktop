@@ -14,6 +14,7 @@ import { CONNECTION_COLOR_PALETTE, isDesktop, isPlayground } from './util';
 import {
   runMcpQuery as runMcpQueryImpl,
   explainMcpQuery as explainMcpQueryImpl,
+  ensureConnection,
 } from './mcp-query';
 
 /**
@@ -1199,6 +1200,23 @@ export class GlobalStore {
     explainMcpQueryImpl(this.mcpQueryDeps(), args);
 
   /**
+   * Resolve a saved profile to a live pine-lang connection id the same way
+   * an MCP query does (mcp-query.ts's ensureConnection, reused here) --
+   * never pine-lang's shared "active connection" singleton, and never
+   * activeSessionId either. RevealRequestHandler.tsx uses this instead of
+   * connectToSavedProfile for exactly that second reason: a reveal-review
+   * tab must not steal focus onto itself the way connectToSavedProfile
+   * does. Refreshes connections afterward, same as connect() does, so the
+   * new session's (human-branch) accessPolicyRules and this connection's
+   * live/label state are current by the time it evaluates.
+   */
+  ensureProfileConnection = async (profileId: string): Promise<string> => {
+    const connectionId = await ensureConnection(this.mcpQueryDeps(), profileId);
+    await this.refreshConnections();
+    return connectionId;
+  };
+
+  /**
    * Toggles whether MCP clients may use a saved connection at all -- the
    * access-control lever for the MCP server. Off by default; the
    * control-plane server (beamlynx-desktop) refuses any MCP tool call
@@ -1302,6 +1320,28 @@ export class GlobalStore {
     // guaranteed-cloneable copy, which loses nothing since this data is
     // already JSON-shaped.
     await window.beamlynxDesktop.mcpReveal.resolve(id, JSON.parse(JSON.stringify(outcome)));
+  };
+
+  /**
+   * Removes a reveal-request tab once there's no more reason to keep it
+   * pinned: RevealRequestBanner.tsx calls this right after Reveal/Decline
+   * actually resolves the request (a pinned tab only exists while pending),
+   * and RevealRequestHandler.tsx calls it if connecting failed before a
+   * banner ever had a chance to render. Unlike closeTab's own reveal-request
+   * branch, this never itself calls resolveRevealRequest -- the request is
+   * already resolved (or about to be, by RevealRequestHandler's own
+   * decline) by the time either caller reaches this.
+   */
+  finishRevealSession = (sessionId: string) => {
+    this.deleteSession(sessionId);
+    if (this.activeSessionId === sessionId) {
+      // Land on another still-pending reveal request first, if there is
+      // one -- the whole point of one pinned tab per request is to work
+      // through them one at a time, and falling through to a regular tab
+      // first would lose that thread.
+      this.activeSessionId =
+        this.pendingRevealSessionIds[0] ?? this.visibleSessionIds[0] ?? this.activeSessionId;
+    }
   };
 
   /**
@@ -1666,6 +1706,23 @@ export class GlobalStore {
     return this.createSessionUsingId(id);
   };
 
+  /**
+   * Creates a session already tagged as a pending reveal-request tab, in one
+   * MobX action -- RevealRequestHandler.tsx must never do this as two
+   * separate statements (create, then a later `runInAction` to set
+   * pendingRevealRequestId), since `sessions` is itself observable: between
+   * those two statements the session would exist with no
+   * pendingRevealRequestId yet, landing in visibleSessionIds (and briefly
+   * flashing as a regular tab in the user's own strip) for however long
+   * React takes to react to the first change.
+   */
+  createRevealSession = (requestId: string, reason: string | undefined): Session => {
+    const session = this.createSession();
+    session.pendingRevealRequestId = requestId;
+    session.revealReason = reason;
+    return session;
+  };
+
   deleteSession = (sessionId: string) => {
     delete this.sessions[sessionId];
   };
@@ -1682,17 +1739,29 @@ export class GlobalStore {
     this.activeSessionId = session.id;
   };
 
-  // The user's OWN tabs -- every open session except the one dedicated MCP
-  // session (mcpSessionId), which PineTabs.tsx renders separately, pinned at
-  // the end of the same strip (see mcpSessionId's own comment). Reorder and
-  // cycling read this instead of `Object.keys(sessions)` directly, so the
-  // pinned MCP tab can't be dragged out of its end position or show up in
-  // Ctrl+Tab cycling (confirmed live: without this exclusion, closing a
-  // user's only other tab handed `activeSessionId` to the MCP session
-  // instead of resetting it in place, since `sessions` always had 2 entries
-  // even with one of the user's own tabs open).
+  // Every session with a reveal request awaiting the owner's decision (see
+  // RevealRequestHandler.tsx and Session.pendingRevealRequestId's own
+  // comment) -- each one gets its own pinned tab in PineTabs.tsx, clustered
+  // with the MCP tab at the strip's end, same reasoning as mcpSessionId:
+  // one of these is never just "one of your own tabs" the way a regular
+  // session is.
+  get pendingRevealSessionIds(): string[] {
+    return Object.keys(this.sessions).filter(id => this.sessions[id].pendingRevealRequestId);
+  }
+
+  // The user's OWN tabs -- every open session except the pinned ones above
+  // (the one dedicated MCP session, and any pending reveal-request
+  // sessions), which PineTabs.tsx renders separately, pinned at the end of
+  // the same strip. Reorder and cycling read this instead of
+  // `Object.keys(sessions)` directly, so a pinned tab can't be dragged out
+  // of its end position or show up in Ctrl+Tab cycling (confirmed live:
+  // without this exclusion, closing a user's only other tab handed
+  // `activeSessionId` to the MCP session instead of resetting it in place,
+  // since `sessions` always had 2+ entries even with one of the user's own
+  // tabs open).
   get visibleSessionIds(): string[] {
-    return Object.keys(this.sessions).filter(id => id !== this.mcpSessionId);
+    const pinned = new Set([this.mcpSessionId, ...this.pendingRevealSessionIds]);
+    return Object.keys(this.sessions).filter(id => !pinned.has(id));
   }
 
   /**
@@ -1700,6 +1769,11 @@ export class GlobalStore {
    * If it's the pinned MCP tab, just drops it -- the agent's next query
    * recreates it (getOrCreateMcpSession), so there's no "last tab" case to
    * special-case the way there is for the user's own tabs below.
+   * If it's a pinned reveal-request tab, drops it AND declines the request
+   * on the owner's behalf -- without this, the agent's check_reveal poll
+   * would spin forever with no way to find out the owner just closed the
+   * tab instead of using Reveal/Decline (see finishRevealSession for the
+   * counterpart once a request IS actually resolved through the banner).
    * Otherwise, if it's the last one of the user's own tabs, resets it
    * instead of closing.
    *
@@ -1712,6 +1786,16 @@ export class GlobalStore {
       if (this.activeSessionId === sessionId) {
         this.activeSessionId = this.visibleSessionIds[0] ?? this.activeSessionId;
       }
+      return;
+    }
+
+    const pendingRequestId = this.sessions[sessionId]?.pendingRevealRequestId;
+    if (pendingRequestId) {
+      this.finishRevealSession(sessionId);
+      this.resolveRevealRequest(pendingRequestId, {
+        ok: false,
+        comment: 'Closed without review.',
+      }).catch(e => console.error('[reveal-request] failed to decline on close ->', e));
       return;
     }
 
@@ -1764,12 +1848,17 @@ export class GlobalStore {
 
     const reordered: Record<string, Session> = {};
     ids.forEach(id => (reordered[id] = this.sessions[id]));
-    // The pinned MCP session isn't part of the draggable strip -- carry it
-    // over unchanged rather than dropping it, since it's excluded from `ids`
-    // above (visibleSessionIds) and would otherwise vanish from `sessions`.
-    if (this.mcpSessionId && this.sessions[this.mcpSessionId]) {
-      reordered[this.mcpSessionId] = this.sessions[this.mcpSessionId];
-    }
+    // No pinned session (the MCP one, or any pending reveal-request ones) is
+    // part of the draggable strip -- carry each over unchanged rather than
+    // dropping it, since none of them are in `ids` above (visibleSessionIds)
+    // and would otherwise vanish from `sessions`. Keyed off whatever isn't
+    // already in `reordered` rather than re-deriving the pinned id list, so
+    // this doesn't need its own copy of that logic to stay in sync with it.
+    Object.keys(this.sessions).forEach(id => {
+      if (!(id in reordered)) {
+        reordered[id] = this.sessions[id];
+      }
+    });
     this.sessions = reordered;
   };
 

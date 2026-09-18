@@ -8,7 +8,7 @@ import Session from './Session';
 import { observer } from 'mobx-react-lite';
 import { runInAction } from 'mobx';
 import { useStores } from '../store/store-container';
-import { AddCircle, CloseOutlined, SmartToyOutlined } from '@mui/icons-material';
+import { AddCircle, CloseOutlined, SmartToyOutlined, VisibilityOutlined } from '@mui/icons-material';
 import { IconButton, CircularProgress, Tooltip, ButtonBase } from '@mui/material';
 import { NEW_LAYOUT_GUTTER, VERTICAL_TAB_RAIL_WIDTH } from '../constants';
 
@@ -27,20 +27,24 @@ const PineTabs = observer(() => {
 
   // The user's own tabs, rendered by TabList/TabPanel below in the usual way.
   const regularTabs = global.visibleSessionIds.map(sessionId => ({ sessionId }));
-  // The one dedicated MCP session, if the agent has run a query this session
-  // -- rendered as its own element after TabList (see the pinned-tab render
-  // below), pushed to the strip's far end, rather than as one of TabList's
-  // own Tab children. It can't be one of those and still land after "+ New
-  // tab": that button has to come after the user's own tabs but before this
-  // one, which means this one has to live outside TabList's child list to
-  // get its own place in that order (TabList/Tabs clones Tabs-specific
-  // props onto every child it's given, which "+"'s plain icon can't take
-  // either way). See GlobalStore.mcpSessionId's own comment for why it
-  // exists at all.
-  const pinnedSessionId = global.mcpSessionId;
+  // The dedicated MCP session (if the agent has run a query this session)
+  // plus every reveal request still awaiting a decision, each rendered as
+  // its own element after TabList (see the pinned-tab render below),
+  // clustered at the strip's far end, rather than as one of TabList's own
+  // Tab children. They can't be one of those and still land after "+ New
+  // tab": that button has to come after the user's own tabs but before
+  // these, which means these have to live outside TabList's child list to
+  // get their own place in that order (TabList/Tabs clones Tabs-specific
+  // props onto every child it's given, which none of these can take either
+  // way). See GlobalStore.mcpSessionId's and pendingRevealSessionIds' own
+  // comments for why each exists.
+  const pinnedTabs = [
+    ...(global.mcpSessionId ? [{ sessionId: global.mcpSessionId, kind: 'mcp' as const }] : []),
+    ...global.pendingRevealSessionIds.map(sessionId => ({ sessionId, kind: 'reveal' as const })),
+  ];
   // Every session that needs a TabPanel below, regardless of how each one's
   // own clickable trigger above it is rendered.
-  const tabs = [...regularTabs, ...(pinnedSessionId ? [{ sessionId: pinnedSessionId }] : [])];
+  const tabs = [...regularTabs, ...pinnedTabs.map(({ sessionId }) => ({ sessionId }))];
   const sessionId = global.activeSessionId;
   const activeSession = global.sessions[sessionId];
   const activeConnectionId = activeSession?.connectionId || '';
@@ -640,113 +644,135 @@ const PineTabs = observer(() => {
               </Tooltip>
             )}
 
-            {/* The pinned agent tab -- see pinnedSessionId's own comment for
-                why it's a plain ButtonBase here rather than one of TabList's
-                Tab children. marginLeft: 'auto' (horizontal) reaches the true
-                right edge of this row without touching TabList's own sizing
-                (railRef, this element's parent, already spans the full
-                width) -- no such margin needed in vertical, where TabList's
-                own flex: 1 already claims all the rail's leftover height, so
-                this -- the next sibling after it -- lands at the bottom on
-                its own. There's no MuiTabs-indicator to carry "this one's
-                active" the way the user's own tabs get, since that only
-                spans TabList's actual children -- the border-bottom below
-                stands in for it. */}
-            {pinnedSessionId &&
-              (() => {
-                const session = global.getSession(pinnedSessionId);
-                const isActive = pinnedSessionId === sessionId;
-                return (
-                  <ButtonBase
-                    onClick={() => setActiveTab(pinnedSessionId)}
-                    title="Agent activity -- safe to close, the next agent query recreates it"
+            {/* The pinned tabs (MCP activity, plus one per pending reveal
+                request) -- see pinnedTabs' own comment for why these are
+                plain ButtonBases here rather than TabList's own Tab
+                children. marginLeft: 'auto' (horizontal), on the FIRST one
+                only, reaches the true right edge of this row without
+                touching TabList's own sizing (railRef, this element's
+                parent, already spans the full width) -- the rest cluster
+                right after it with no margin of their own needed. No such
+                margin needed in vertical, where TabList's own flex: 1
+                already claims all the rail's leftover height, so the first
+                pinned tab -- the next sibling after it -- lands at the
+                bottom on its own. There's no MuiTabs-indicator to carry
+                "this one's active" the way the user's own tabs get, since
+                that only spans TabList's actual children -- the
+                border-bottom below stands in for it (horizontal only; the
+                border already carries that in the rail, see the comment on
+                the map itself further down). */}
+            {pinnedTabs.map((pinned, pinnedIndex) => {
+              const session = global.getSession(pinned.sessionId);
+              const isActive = pinned.sessionId === sessionId;
+              const isFirstPinned = pinnedIndex === 0;
+              const label = pinned.kind === 'mcp' ? 'Agent activity' : 'Reveal request';
+              const title =
+                pinned.kind === 'mcp'
+                  ? 'Agent activity -- safe to close, the next agent query recreates it'
+                  : `Reveal request${session.revealReason ? `: ${session.revealReason}` : ''} -- closing this tab declines it`;
+              // Reveal requests are a warning color regardless of active
+              // state (an agent is blocked waiting on a decision), unlike
+              // the MCP tab's plain informational dim/active treatment.
+              const idleColor =
+                pinned.kind === 'reveal' ? 'var(--canvas-warn)' : 'var(--canvas-text-dim)';
+              const activeColor = pinned.kind === 'reveal' ? 'var(--canvas-warn)' : 'var(--canvas-trace)';
+              return (
+                <ButtonBase
+                  key={pinned.sessionId}
+                  onClick={() => setActiveTab(pinned.sessionId)}
+                  title={title}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    flexShrink: 0,
+                    minHeight: 40,
+                    // Explicit rather than relying on CssBaseline: the
+                    // horizontal branch's borderBottom below (2px, used as
+                    // this element's own stand-in for MuiTabs-indicator)
+                    // must be absorbed into minHeight, not added on top of
+                    // it -- otherwise this tab would sit 2px taller than
+                    // its neighbours the moment it's active.
+                    boxSizing: 'border-box',
+                    padding: '12px 16px',
+                    fontFamily: 'var(--canvas-font)',
+                    fontSize: '0.875rem',
+                    color: isActive ? activeColor : idleColor,
+                    transition: 'background-color 120ms ease, color 120ms ease',
+                    '&:hover': {
+                      backgroundColor: 'var(--canvas-chip-bg)',
+                      color: pinned.kind === 'reveal' ? activeColor : 'var(--canvas-text)',
+                    },
+                    // Same hover-to-reveal as the user's own tabs
+                    // ('& .MuiTab-root:hover .pine-tab-close' on TabList
+                    // above), just scoped to this element directly since
+                    // it's not a descendant of TabList.
+                    '& .pine-tab-close': {
+                      opacity: 0,
+                      pointerEvents: 'none',
+                      transition: 'opacity 120ms ease',
+                    },
+                    '&:hover .pine-tab-close': {
+                      opacity: 1,
+                      pointerEvents: 'auto',
+                    },
+                    '@media (hover: none)': {
+                      '& .pine-tab-close': { opacity: 1, pointerEvents: 'auto' },
+                    },
+                    ...(vertical
+                      ? {
+                          width: '100%',
+                          justifyContent: 'flex-start',
+                          borderTop: isFirstPinned ? '1px solid var(--border-color)' : undefined,
+                          // Belt-and-braces: TabList's own flex: 1 should
+                          // already push the first pinned tab to the rail's
+                          // true bottom by consuming all the leftover
+                          // height itself, but this costs nothing if that
+                          // holds and saves the layout if it doesn't. Only
+                          // the first needs it -- the rest just follow.
+                          marginTop: isFirstPinned ? 'auto' : undefined,
+                        }
+                      : {
+                          marginLeft: isFirstPinned ? 'auto' : undefined,
+                          borderLeft: isFirstPinned ? '1px solid var(--border-color)' : undefined,
+                          borderBottom: `2px solid ${isActive ? activeIndicatorColor : 'transparent'}`,
+                        }),
+                  }}
+                >
+                  {pinned.kind === 'mcp' ? (
+                    <SmartToyOutlined sx={{ fontSize: 14, flexShrink: 0 }} />
+                  ) : (
+                    <VisibilityOutlined sx={{ fontSize: 14, flexShrink: 0 }} />
+                  )}
+                  {(session.loading || session.connecting) && (
+                    <CircularProgress size={12} sx={{ color: 'inherit' }} />
+                  )}
+                  <span>{label}</span>
+                  <IconButton
+                    className="pine-tab-close"
+                    style={{ marginLeft: '5px' }}
+                    size="small"
+                    component="span"
+                    aria-label="Close tab"
+                    tabIndex={-1}
+                    onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
+                      event.stopPropagation();
+                      removeTab(pinned.sessionId);
+                    }}
                     sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
                       flexShrink: 0,
-                      minHeight: 40,
-                      // Explicit rather than relying on CssBaseline: the
-                      // horizontal branch's borderBottom below (2px, used as
-                      // this element's own stand-in for MuiTabs-indicator)
-                      // must be absorbed into minHeight, not added on top of
-                      // it -- otherwise this tab would sit 2px taller than
-                      // its neighbours the moment it's active.
-                      boxSizing: 'border-box',
-                      padding: '12px 16px',
-                      fontFamily: 'var(--canvas-font)',
-                      fontSize: '0.875rem',
-                      color: isActive ? 'var(--canvas-trace)' : 'var(--canvas-text-dim)',
-                      transition: 'background-color 120ms ease, color 120ms ease',
+                      color: 'var(--canvas-text-dim)',
                       '&:hover': {
-                        backgroundColor: 'var(--canvas-chip-bg)',
                         color: 'var(--canvas-text)',
+                        backgroundColor: 'var(--canvas-node-border)',
                       },
-                      // Same hover-to-reveal as the user's own tabs
-                      // ('& .MuiTab-root:hover .pine-tab-close' on TabList
-                      // above), just scoped to this element directly since
-                      // it's not a descendant of TabList.
-                      '& .pine-tab-close': {
-                        opacity: 0,
-                        pointerEvents: 'none',
-                        transition: 'opacity 120ms ease',
-                      },
-                      '&:hover .pine-tab-close': {
-                        opacity: 1,
-                        pointerEvents: 'auto',
-                      },
-                      '@media (hover: none)': {
-                        '& .pine-tab-close': { opacity: 1, pointerEvents: 'auto' },
-                      },
-                      ...(vertical
-                        ? {
-                            width: '100%',
-                            justifyContent: 'flex-start',
-                            borderTop: '1px solid var(--border-color)',
-                            // Belt-and-braces: TabList's own flex: 1 should
-                            // already push this sibling to the rail's true
-                            // bottom by consuming all the leftover height
-                            // itself, but this costs nothing if that holds
-                            // and saves the layout if it doesn't.
-                            marginTop: 'auto',
-                          }
-                        : {
-                            marginLeft: 'auto',
-                            borderLeft: '1px solid var(--border-color)',
-                            borderBottom: `2px solid ${isActive ? activeIndicatorColor : 'transparent'}`,
-                          }),
                     }}
                   >
-                    <SmartToyOutlined sx={{ fontSize: 14, flexShrink: 0 }} />
-                    {(session.loading || session.connecting) && (
-                      <CircularProgress size={12} sx={{ color: 'inherit' }} />
-                    )}
-                    <span>Agent activity</span>
-                    <IconButton
-                      className="pine-tab-close"
-                      style={{ marginLeft: '5px' }}
-                      size="small"
-                      component="span"
-                      aria-label="Close tab"
-                      tabIndex={-1}
-                      onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
-                        event.stopPropagation();
-                        removeTab(pinnedSessionId);
-                      }}
-                      sx={{
-                        flexShrink: 0,
-                        color: 'var(--canvas-text-dim)',
-                        '&:hover': {
-                          color: 'var(--canvas-text)',
-                          backgroundColor: 'var(--canvas-node-border)',
-                        },
-                      }}
-                    >
-                      <CloseOutlined sx={{ fontSize: '14px' }} tabIndex={-1} />
-                    </IconButton>
-                  </ButtonBase>
-                );
-              })()}
+                    <CloseOutlined sx={{ fontSize: '14px' }} tabIndex={-1} />
+                  </IconButton>
+                </ButtonBase>
+              );
+            })}
           </Box>
         )}
 
