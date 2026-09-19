@@ -21,6 +21,7 @@ import SettingsButton from './SettingsButton';
 import SettingsDockedPanel from './settings/SettingsDockedPanel';
 import McpActivityButton from './McpActivityButton';
 import { NewLayoutSettingsPanelDivider } from './ResizableDividers';
+import { useCollapseHeight } from '../hooks/useCollapseHeight';
 import { usePanelPresence } from '../hooks/usePanelPresence';
 import { useGlobalKeybindings } from '../hooks/useGlobalKeybindings';
 import { useFocusedPanelTracking } from '../hooks/useFocusedPanelTracking';
@@ -81,6 +82,10 @@ const AppView = observer(() => {
   // alone would unmount it the instant the gear is clicked, leaving nothing
   // on screen to animate away. See hooks/usePanelPresence.ts.
   const settings = usePanelPresence(global.showSettings);
+  // Zen mode hides the whole header row. Measured rather than fixed: it
+  // wraps differently with a long connection name, a wide version badge or
+  // a larger Text Size. See hooks/useCollapseHeight.ts.
+  const header = useCollapseHeight<HTMLDivElement>(!global.isZenModeActive);
 
   const handleOpenChangelog = () => {
     global.setShowChangelog(true);
@@ -191,78 +196,101 @@ const AppView = observer(() => {
           exactly the "everything else" it hides. The modals above are
           untouched (separate components, not part of this Grid), so e.g.
           the command palette shortcut still works to get back out. */}
-      {!global.isZenModeActive && (
-        <Grid container>
-          <Grid item xs={3}>
-            <Box sx={{ m: 2, mt: 1, mb: 0 }}>
-              <ActiveConnection />
-            </Box>
-          </Grid>
+      {/* Collapsed rather than unmounted on entering Zen mode. Zen is the
+          biggest single change of shape in the app - everything but the
+          graph goes away at once - and having it happen in one frame was
+          the most jarring version of exactly what this whole pass is
+          about. The contents hold their size inside the clip while the
+          wrapper closes over them, so the header slides up out of view
+          instead of each control reflowing on its way to nothing. */}
+      <Box
+        data-panel-motion
+        sx={{
+          flexShrink: 0,
+          overflow: 'hidden',
+          height: header.height,
+          opacity: global.isZenModeActive ? 0 : 1,
+          transition: global.isZenModeActive
+            ? 'height var(--motion-exit) var(--motion-ease-exit), opacity var(--motion-fast) var(--motion-ease-exit)'
+            : 'height var(--motion-enter) var(--motion-ease-enter), opacity var(--motion-enter) var(--motion-ease-enter)',
+        }}
+      >
+        <Box ref={header.contentRef}>
+          <Grid container>
+            <Grid item xs={3}>
+              <Box sx={{ m: 2, mt: 1, mb: 0 }}>
+                <ActiveConnection />
+              </Box>
+            </Grid>
 
-          <Grid item xs={6}>
-            <Box sx={{ m: 1, mt: 1, mb: 0, display: 'flex', justifyContent: 'center' }}>
-              <Box
-                onClick={() => global.setShowCommandPalette(true)}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  width: 600,
-                  maxWidth: '90vw',
-                  padding: '10px 16px',
-                  backgroundColor: 'var(--node-column-bg)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: 1,
-                  cursor: 'pointer',
-                  visibility: global.showCommandPalette ? 'hidden' : 'visible',
-                  '&:hover': {
-                    borderColor: 'var(--primary-color)',
-                    backgroundColor: 'var(--background-color)',
-                  },
-                }}
-              >
-                <Typography
-                  variant="body2"
+            <Grid item xs={6}>
+              <Box sx={{ m: 1, mt: 1, mb: 0, display: 'flex', justifyContent: 'center' }}>
+                <Box
+                  onClick={() => global.setShowCommandPalette(true)}
                   sx={{
-                    color: 'var(--text-color)',
-                    opacity: 0.6,
-                    userSelect: 'none',
-                    lineHeight: 1.5,
+                    display: 'flex',
+                    alignItems: 'center',
+                    width: 600,
+                    maxWidth: '90vw',
+                    padding: '10px 16px',
+                    backgroundColor: 'var(--node-column-bg)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 1,
+                    cursor: 'pointer',
+                    visibility: global.showCommandPalette ? 'hidden' : 'visible',
+                    '&:hover': {
+                      borderColor: 'var(--primary-color)',
+                      backgroundColor: 'var(--background-color)',
+                    },
                   }}
                 >
-                  Search commands... ({getKeybindingDisplayForCommand('command-palette')})
-                </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: 'var(--text-color)',
+                      opacity: 0.6,
+                      userSelect: 'none',
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    Search commands... ({getKeybindingDisplayForCommand('command-palette')})
+                  </Typography>
+                </Box>
+                {/* <Message /> */}
               </Box>
-              {/* <Message /> */}
-            </Box>
-          </Grid>
+            </Grid>
 
-          <Grid item xs={3}>
-            <Box
-              sx={{
-                m: 1,
-                mt: 0,
-                mb: 0,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'flex-end',
-                gap: 1,
-                flexWrap: 'wrap',
-                rowGap: 0,
-              }}
-            >
-              {!isDesktop() && global.version && (
-                <Typography variant="caption" color="gray" component="code">
-                  [{global.version}]
-                </Typography>
-              )}
-              {UserContent}
-              <NotificationBell hasUnreadUpdates={hasUnreadUpdates} onClick={handleOpenChangelog} />
-              <McpActivityButton />
-              <SettingsButton onClick={() => global.setShowSettings(!global.showSettings)} />
-            </Box>
+            <Grid item xs={3}>
+              <Box
+                sx={{
+                  m: 1,
+                  mt: 0,
+                  mb: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'flex-end',
+                  gap: 1,
+                  flexWrap: 'wrap',
+                  rowGap: 0,
+                }}
+              >
+                {!isDesktop() && global.version && (
+                  <Typography variant="caption" color="gray" component="code">
+                    [{global.version}]
+                  </Typography>
+                )}
+                {UserContent}
+                <NotificationBell
+                  hasUnreadUpdates={hasUnreadUpdates}
+                  onClick={handleOpenChangelog}
+                />
+                <McpActivityButton />
+                <SettingsButton onClick={() => global.setShowSettings(!global.showSettings)} />
+              </Box>
+            </Grid>
           </Grid>
-        </Grid>
-      )}
+        </Box>
+      </Box>
       {/* mt: 1 (not 0) - the header row above and the tab row below both
           have their own solid background now (previously neither did, so
           zero margin was invisible); with no gap the search box's bottom
@@ -333,6 +361,7 @@ const AppView = observer(() => {
           // children hold their real size (both carry flexShrink: 0) slides
           // the panel out of view intact instead.
           <Box
+            ref={settings.ref}
             data-panel-motion
             sx={{
               display: 'flex',

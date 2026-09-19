@@ -222,6 +222,7 @@ const LeftPane = observer(
             animating, which is what separate siblings would do. */}
         {panel.mounted && (
           <Box
+            ref={panel.ref}
             data-panel-motion
             sx={{
               display: 'flex',
