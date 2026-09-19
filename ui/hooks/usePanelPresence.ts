@@ -1,4 +1,5 @@
 import { RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { freezeResultsDuringMotion } from '../styles/freeze-during-motion';
 import { MOTION, motionDuration } from '../styles/motion';
 
 export interface PanelPresence<T extends HTMLElement> {
@@ -74,6 +75,9 @@ export function usePanelPresence<T extends HTMLElement = HTMLDivElement>(
       return;
     }
 
+    // Closing starts here (opening starts in the layout effect below, once
+    // the panel has actually been built).
+    freezeResultsDuringMotion(exitMs);
     setOpen(false);
     exitTimer.current = setTimeout(() => setMounted(false), motionDuration(exitMs));
     return cancelExit;
@@ -98,7 +102,12 @@ export function usePanelPresence<T extends HTMLElement = HTMLDivElement>(
     // in partly open, which is the jitter this whole pass is about.
     // Letting that frame finish first costs about 16ms nobody can see and
     // buys an animation that starts from a standing start.
-    const frame = requestAnimationFrame(() => setOpen(true));
+    const frame = requestAnimationFrame(() => {
+      // Pin the results grid before the width starts moving, not after --
+      // see styles/freeze-during-motion.ts.
+      freezeResultsDuringMotion(MOTION.enter);
+      setOpen(true);
+    });
     return () => cancelAnimationFrame(frame);
   }, [visible, mounted, open]);
 

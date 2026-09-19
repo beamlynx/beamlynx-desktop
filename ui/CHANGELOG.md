@@ -28,6 +28,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ### Fixed
 - Opening or closing Settings now re-centres the canvas. It takes up to 640px away from the canvas and never triggered a re-fit, so the graph was left off-centre (or partly cut off) until something else happened to move it.
+- Panels open and close smoothly rather than stuttering, including with a full table of results on screen -- the results grid resizes its columns to fit, which is expensive, and a panel opening beside it used to make it redo that work on every frame of the animation. It now holds still while the panel moves and fits itself once, afterwards.
 - Panels open and close smoothly rather than stuttering. The animations were competing with React re-rendering the whole application -- the tab strip, every open tab and the canvas -- several times per open, because the state driving them sat at the top of the tree. Measured: a 82ms frozen frame per open, now none, and a steady 60 frames a second once Settings has been opened once.
 - Entering and leaving Zen mode no longer resets the canvas. Zen mode rebuilt the canvas from scratch each way, losing whatever you had panned or zoomed to; it now keeps your view.
 ### Fixed
