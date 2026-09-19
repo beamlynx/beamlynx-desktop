@@ -25,6 +25,8 @@ import { useRetainedValue } from '../hooks/useRetainedValue';
 import DownloadResultsModal from './DownloadResultsModal';
 import { pineEscape } from '../store/util';
 import { getColorForAlias, shouldShowTableColors } from '../store/table-colors.util';
+import { estimateColumnWidth } from './column-width.util';
+import { MIN_RESULT_COLUMN_WIDTH, MAX_RESULT_COLUMN_WIDTH } from '../constants';
 import { BarChart } from './BarChart';
 import JsonCellContent from './JsonCellContent';
 import JsonInspectorPanel from './JsonInspectorPanel';
@@ -166,6 +168,18 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
         const isJsonColumn = jsonColumnFields.has(column.field);
         return {
           ...column,
+          // A fixed width, not flex - see column-width.util.ts's own
+          // comment for why, and plugin/default.plugin.tsx for the
+          // sizing props (flex/minWidth/maxWidth) this replaces at the
+          // source. Estimated here rather than at eval time because
+          // jsonColumnFields (whether to skip content sampling for this
+          // column) is only known once JSON detection has run, and both
+          // already live in this same memo.
+          width: estimateColumnWidth(rows, column.field, column.headerName ?? column.field, {
+            min: MIN_RESULT_COLUMN_WIDTH,
+            max: MAX_RESULT_COLUMN_WIDTH,
+            isJson: isJsonColumn,
+          }),
           renderEditCell: (params: any) => <CellEditComponent {...params} />,
           ...(isJsonColumn && {
             // Not editable at the DataGrid level - editing a JSON cell

@@ -31,7 +31,11 @@ export class DefaultPlugin implements PluginInterface {
       // loading spinner stuck on indefinitely with no error shown.
       const response = runsSql
         ? await this.client.sql(sqlQuery, session.connectionId)
-        : await this.client.eval(session.expressions, session.connectionId, session.accessPolicyRules);
+        : await this.client.eval(
+            session.expressions,
+            session.connectionId,
+            session.accessPolicyRules,
+          );
 
       if (!response) {
         runInAction(() => {
@@ -69,9 +73,11 @@ export class DefaultPlugin implements PluginInterface {
         return {
           field: index.toString(),
           headerName: column['column-alias'] || column['column'],
-          flex: 1,
-          minWidth: 100,
-          maxWidth: 400,
+          // No flex/width here - Result.tsx computes a fixed pixel width
+          // per column from a sample of the actual rows (column-width.util.ts).
+          // flex: 1 meant DataGrid recalculated every column's width across
+          // every visible row on every resize, expensive enough to stutter
+          // a panel animating at the same time.
           editable: true,
           disableReorder: true,
         };

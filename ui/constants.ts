@@ -39,6 +39,17 @@ export const MIN_SETTINGS_PANEL_WIDTH = 420;
 export const DEFAULT_JSON_PANEL_WIDTH = 420;
 export const MIN_JSON_PANEL_WIDTH = 320;
 
+/* Results grid column sizing (Result.tsx, column-width.util.ts). Each
+ * column gets a fixed pixel width estimated from its own content rather
+ * than MUI DataGrid's `flex: 1`, which recalculates every column across
+ * every visible row on every container resize - expensive enough on its
+ * own to stutter a panel animation happening at the same time. These are
+ * the same bounds `flex: 1, minWidth: 100, maxWidth: 400` used to enforce,
+ * kept for continuity - only the sizing mechanism changed, not the range a
+ * column can land in. */
+export const MIN_RESULT_COLUMN_WIDTH = 100;
+export const MAX_RESULT_COLUMN_WIDTH = 400;
+
 /* Vertical tab rail (PineTabs.tsx, Appearance -> Tabs = Vertical). Fixed,
  * not resizable: the rail only ever holds session names, so there's no
  * content whose size would justify a drag handle -- and every other
