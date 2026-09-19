@@ -57,6 +57,17 @@ export interface PanelPresence<T extends HTMLElement> {
 export function usePanelPresence<T extends HTMLElement = HTMLDivElement>(
   visible: boolean,
   exitMs: number = MOTION.exit,
+  // Only Settings and the Pine/SQL panel actually need the results grid
+  // protected while THEY move (see freeze-during-motion.ts) - true by
+  // default keeps their existing call sites unchanged. Anything else built
+  // on this hook, including a panel that exists BECAUSE of that freeze
+  // cycle (Result.tsx's own settling placeholder), must opt out: freezing
+  // is not a generic side effect of "something is animating in or out",
+  // and baking it in unconditionally here is what caused the placeholder
+  // itself to call freezeResultsDuringMotion on its own entrance, restart
+  // a fresh freeze cycle, and so keep `settling` true forever - confirmed
+  // live, opacity traced pinned at 1 with no further transitions.
+  freezeResults: boolean = true,
 ): PanelPresence<T> {
   const ref = useRef<T>(null);
   const [mounted, setMounted] = useState(visible);
@@ -77,11 +88,11 @@ export function usePanelPresence<T extends HTMLElement = HTMLDivElement>(
 
     // Closing starts here (opening starts in the layout effect below, once
     // the panel has actually been built).
-    freezeResultsDuringMotion(exitMs);
+    if (freezeResults) freezeResultsDuringMotion(exitMs);
     setOpen(false);
     exitTimer.current = setTimeout(() => setMounted(false), motionDuration(exitMs));
     return cancelExit;
-  }, [visible, exitMs]);
+  }, [visible, exitMs, freezeResults]);
 
   // Layout effect, not a plain one: this has to run right after the closed
   // state lands in the DOM, before the browser paints it.
@@ -105,11 +116,11 @@ export function usePanelPresence<T extends HTMLElement = HTMLDivElement>(
     const frame = requestAnimationFrame(() => {
       // Pin the results grid before the width starts moving, not after --
       // see styles/freeze-during-motion.ts.
-      freezeResultsDuringMotion(MOTION.enter);
+      if (freezeResults) freezeResultsDuringMotion(MOTION.enter);
       setOpen(true);
     });
     return () => cancelAnimationFrame(frame);
-  }, [visible, mounted, open]);
+  }, [visible, mounted, open, freezeResults]);
 
   return { mounted, open, ref };
 }

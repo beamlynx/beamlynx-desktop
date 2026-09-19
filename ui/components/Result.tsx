@@ -22,6 +22,9 @@ import {
 } from '@mui/icons-material';
 import UpdateModal from './UpdateModal';
 import { useRetainedValue } from '../hooks/useRetainedValue';
+import { useResultsSettling } from '../hooks/useResultsSettling';
+import { usePanelPresence } from '../hooks/usePanelPresence';
+import { MOTION } from '../styles/motion';
 import DownloadResultsModal from './DownloadResultsModal';
 import { pineEscape } from '../store/util';
 import { getColorForAlias, shouldShowTableColors } from '../store/table-colors.util';
@@ -256,6 +259,13 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   // The cell the update dialog was opened for, kept while it animates shut
   // -- see the UpdateModal render below. hooks/useRetainedValue.ts.
   const retainedUpdateData = useRetainedValue(updateData);
+  const resultsSettling = useResultsSettling();
+  // A short exit fade of its own (MOTION.fast, not the default MOTION.exit)
+  // -- freeze-during-motion.ts's own buffer already decides WHEN it's safe
+  // to reveal the grid; this only softens THAT reveal into a crossfade
+  // instead of a hard cut, so it shouldn't add a second, longer delay on
+  // top of a timing that was already tuned.
+  const settlingOverlay = usePanelPresence<HTMLDivElement>(resultsSettling, MOTION.fast, false);
   const [jsonPanel, setJsonPanel] = useState<JsonPanelState | null>(null);
   // Looked up fresh from rows/columnMetadata each render (not captured when
   // the panel opens) so it reflects a re-evaluated session rather than a
@@ -946,6 +956,36 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
               columnVisibilityModel={session.columnVisibilityModel}
               processRowUpdate={updateRecord}
             />
+            {/* Covers the grid while it does the resize settle-work
+                freeze-during-motion.ts describes - a real, measured chunk
+                of main-thread time (React reconciling GridCell/GridRow,
+                not layout or paint) that happens once, after a panel next
+                to this pane finishes moving. The grid is still mounted and
+                still doing that work underneath; this just means nobody
+                watches it happen. Deliberately plain - matching the grid's
+                own card styling, no spinner or shimmer - because nothing
+                is actually loading, something already on screen is just
+                momentarily settling into its new size. Its own opacity
+                fade is the only motion here, and it's cheap enough (a
+                single flat rectangle) to never itself be the thing that
+                stutters. pointerEvents: 'none' so it never intercepts a
+                click meant for the grid on the way out. */}
+            {settlingOverlay.mounted && (
+              <Box
+                ref={settlingOverlay.ref}
+                data-results-settling-overlay
+                sx={{
+                  position: 'absolute',
+                  inset: 0,
+                  pointerEvents: 'none',
+                  backgroundColor: 'var(--canvas-node-bg)',
+                  border: '1px solid var(--canvas-node-border)',
+                  borderRadius: '3px',
+                  opacity: settlingOverlay.open ? 1 : 0,
+                  transition: 'opacity var(--motion-fast) ease',
+                }}
+              />
+            )}
           </Box>
         ) : (
           <Box sx={{ width: '100%', overflow: 'auto' }}>
