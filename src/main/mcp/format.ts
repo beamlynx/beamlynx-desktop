@@ -74,14 +74,20 @@ const MAX_FK_JOINS = 12;
 const MAX_GUESSED_JOINS = 6;
 const MAX_TABLE_MATCHES = 25;
 
+// `count` and `count:` are two different things, and the footer used to
+// print the aggregate with a trailing colon -- which is a parse error, on
+// every single completion call. The grammar is explicit: an aggregate is a
+// bare word (`aggregate-function := "count" | ...`), while the standalone
+// operation is `count-op := <"count:">`. Printing them on adjacent lines
+// with the asymmetry called out is what stops the two being conflated.
 const OPERATIONS_CHEATSHEET = [
   '  other operations:',
   "    | select: <col>, <col>       pick columns",
   "    | where: <col> = 'value'     filter rows",
   '    | order: <col> desc          sort',
   '    | limit: <n>                 cap rows',
-  '    | group: <col> => count:     aggregate',
-  '    | count:                     row count',
+  '    | group: <col> => count      one row per value, with a count -- no colon after `count`',
+  '    | count:                     one number, the row count -- colon here',
 ].join('\n');
 
 function qualify(t: { schema: string | null; table: string }): string {
@@ -163,9 +169,39 @@ function renderColumnHints(ast: Ast, columns: ColumnHint[]): string[] {
   const lines: string[] = [];
   for (const [alias, cols] of byAlias) {
     const table = tables.find(t => t.alias === alias);
-    lines.push(`  ${table ? qualify(table) : alias} -- ${cols.join(', ')}`);
+    lines.push(`  ${table ? `${qualify(table)} (as ${alias})` : alias} -- ${cols.join(', ')}`);
   }
   return lines;
+}
+
+/**
+ * Every table in a pipeline has an alias, and the agent needs to see them:
+ * qualifying a column is the only way to reach a table other than the last
+ * one, and a bare table name does not work as a qualifier (Postgres rejects
+ * it -- "invalid reference to ... entry for table"). Two kinds show up here
+ * and both are equally typeable, verified live: the `c_0`/`o_1` names
+ * pine-lang assigns on its own, and whatever the expression named with
+ * `as`.
+ *
+ * Only rendered once there's more than one table, since with one there is
+ * nothing to disambiguate and the line is pure noise on the most common
+ * call of all.
+ */
+function renderAliases(ast: Ast): string | null {
+  const tables = ast['selected-tables'] ?? [];
+  if (tables.length < 2) return null;
+  return `aliases in scope: ${tables.map(t => `${t.alias} = ${qualify(t)}`).join(', ')}`;
+}
+
+/**
+ * The identifier in a trailing `<name>.`, which is how an agent asks for one
+ * table's columns mid-`select:` (the grammar's `partial-alias`). Used only
+ * to tell a mistyped or non-alias qualifier apart from an expression that
+ * simply ended somewhere with nothing to suggest -- pine-lang returns an
+ * empty hint set for both.
+ */
+function trailingQualifier(expression: string): string | null {
+  return /(?:^|[\s,:(|])([A-Za-z_][A-Za-z0-9_-]*)\.\s*$/.exec(expression)?.[1] ?? null;
 }
 
 /**
@@ -193,7 +229,8 @@ export function formatCompletion(
 
   const current = currentTable(ast);
   if (current) {
-    sections.push(`context: ${qualify(current)}`);
+    const aliases = renderAliases(ast);
+    sections.push(aliases ? `context: ${qualify(current)}\n${aliases}` : `context: ${qualify(current)}`);
   }
 
   const tableHints = hints.table ?? [];
@@ -206,8 +243,33 @@ export function formatCompletion(
     sections.push('To list a table\'s columns, call complete_query again with `| select: ` on the end.');
   } else if (columnHints.length) {
     sections.push(['COLUMNS:', ...renderColumnHints(ast, columnHints)].join('\n'));
+    // The old wording here -- "qualified by table (`document.userId`)" --
+    // taught the one form that cannot work: Postgres rejects a bare table
+    // name as a qualifier, and the only fix is an alias. Since this footer
+    // prints on every column completion, it's also the cheapest place to
+    // teach that an earlier table's columns are reachable at all.
+    //
+    // Every example is built from the expression in hand rather than a
+    // stock one. An agent that has just been shown `c_0 = public.customers`
+    // and then reads an example about `u_0.email` has to work out that the
+    // two are the same idea; one about `c_0.total_amount` leaves nothing to
+    // work out.
+    const tables = ast['selected-tables'] ?? [];
+    const exampleColumn = columnHints[0]?.column ?? 'id';
+    const exampleAlias = current?.alias ?? 'c_0';
+    const earlier = tables.find(t => t.alias !== current?.alias);
     sections.push(
-      ["Reference a column bare (`email`) or qualified by table (`document.userId`).", '', OPERATIONS_CHEATSHEET].join('\n'),
+      [
+        `Reference a column bare (\`${exampleColumn}\`), or qualified by an alias (\`${exampleAlias}.${exampleColumn}\`).`,
+        `A bare table name is never a valid qualifier. To use a name of your own instead of the generated alias: \`${current ? qualify(current) : 'public.customers'} as x | ... | select: x.${exampleColumn}\`.`,
+        ...(earlier
+          ? [
+              `Only the current table's columns are listed. For an earlier one, call complete_query again with its alias and a dot on the end -- \`| select: ${earlier.alias}.\` lists ${qualify(earlier)}.`,
+            ]
+          : []),
+        '',
+        OPERATIONS_CHEATSHEET,
+      ].join('\n'),
     );
   } else if (startHints.length) {
     // A partial table name typed as a whole expression. find_tables is the
@@ -220,11 +282,38 @@ export function formatCompletion(
       ].join('\n'),
     );
   } else if (current) {
-    // Parsed fine, but the expression ends somewhere with nothing to
-    // suggest (mid-value in a where clause, after `limit: 2`, ...).
-    sections.push(
-      ['No completions at this position. Append `| ` to see what this table joins to.', '', OPERATIONS_CHEATSHEET].join('\n'),
-    );
+    // A trailing `<name>.` that produced no columns means the name is not
+    // an alias in this expression -- almost always a table name used as a
+    // qualifier, the mistake the old footer actively encouraged. Saying so
+    // matters because the generic message below ("append `| `") is wrong
+    // advice mid-`select:`, and silence there reads to an agent as "keep
+    // guessing".
+    const qualifier = trailingQualifier(expression);
+    const tables = ast['selected-tables'] ?? [];
+    // The overwhelmingly common case: the qualifier is one of the
+    // pipeline's own table names. Naming that table's actual alias turns
+    // the message from a rule into a correction the agent can paste.
+    const meant = qualifier ? tables.find(t => t.table === qualifier || qualify(t) === qualifier) : undefined;
+    if (qualifier && tables.length) {
+      sections.push(
+        [
+          meant
+            ? `\`${qualifier}\` is a table name, and a table name cannot qualify a column. Its alias is \`${meant.alias}\` -- ask again with \`${meant.alias}.\` on the end.`
+            : `\`${qualifier}\` is not an alias in this expression, so there is nothing to complete after it. A table name cannot qualify a column either.`,
+          // renderAliases already printed the list above once there's more
+          // than one table; repeating it here would be the third mention of
+          // the same four words in one response.
+          ...(renderAliases(ast) ? [] : [`Aliases in scope: ${tables.map(t => `${t.alias} (${qualify(t)})`).join(', ')}.`]),
+          `To use a name of your own instead: \`${qualify(tables[0])} as x | ... | select: x.<col>\`.`,
+        ].join('\n'),
+      );
+    } else {
+      // Parsed fine, but the expression ends somewhere with nothing to
+      // suggest (mid-value in a where clause, after `limit: 2`, ...).
+      sections.push(
+        ['No completions at this position. Append `| ` to see what this table joins to.', '', OPERATIONS_CHEATSHEET].join('\n'),
+      );
+    }
   } else {
     sections.push('No table resolved yet. Call find_tables to find one to start from.');
   }
@@ -257,6 +346,56 @@ export function formatTableMatches(query: string, response: BuildResponse): stri
   ].join('\n');
 }
 
+// A query that parses but fails in the database comes back as Postgres's
+// own message, and three of those are routinely unactionable to an agent
+// that never sees the generated SQL. Each pattern below pairs with one
+// sentence saying what to do in *Pine* -- appended to the original message,
+// never replacing it, since the original is still the only thing that says
+// which column or table was involved.
+//
+// All three were reproduced live on 2026-09-19 (see beamlynx-plans/
+// completed/2026-09-19-mcp-pine-usability-feedback.md).
+const EVAL_ERROR_GUIDANCE: { pattern: RegExp; guidance: string }[] = [
+  {
+    // e.g. `customers | orders .customer_id | select: customers.email`
+    pattern: /invalid reference to .*entry for table/i,
+    guidance:
+      'In Pine a column is qualified by an alias, never by a table name. The hint above names the alias ' +
+      'pine-lang assigned -- that is a real alias you can type (`c_0.email`). You can also name your ' +
+      'own: `customers as c | ... | select: c.email`.',
+  },
+  {
+    // The same mistake unqualified: the column exists, but on an earlier
+    // table in the pipeline rather than the current one.
+    pattern: /column [^\s]*\.[^\s]* does not exist/i,
+    guidance:
+      'That column belongs to a different table in the pipeline. Qualify it with the alias the hint names, ' +
+      'or call complete_query with `<alias>.` on the end to see which columns each alias has.',
+  },
+  {
+    // e.g. `customers | orders .customer_id` where the column is really
+    // `customerId`. pine-lang builds the join with an empty column rather
+    // than rejecting it, so the failure surfaces here with nothing pointing
+    // at the cause.
+    pattern: /zero-length delimited identifier/i,
+    guidance:
+      'A `.column` join suffix in the expression names a column that does not exist, so the join was built ' +
+      'with an empty one. Column names are case-sensitive -- `customerId` and `customer_id` are different ' +
+      'columns. Call complete_query with the expression up to that join and `| ` on the end; it lists every ' +
+      'join with the exact column to use.',
+  },
+];
+
+/**
+ * Appends one line of Pine-level advice to a database error that has none.
+ * Pass-through for anything unrecognised -- a guess dressed up as a hint is
+ * worse than the plain message.
+ */
+export function explainEvalError(errorText: string): string {
+  const match = EVAL_ERROR_GUIDANCE.find(g => g.pattern.test(errorText));
+  return match ? `${errorText.trimEnd()}\n\n${match.guidance}` : errorText;
+}
+
 /**
  * Rows arrive with pine-lang's own header as row 0 plus a parallel
  * `columns` array of UI metadata (alias, column-alias, hidden, auto-id,
@@ -271,7 +410,7 @@ export function formatTableMatches(query: string, response: BuildResponse): stri
  */
 export function formatRows(response: EvalResponse): string {
   if (response.error) {
-    return response.error;
+    return explainEvalError(response.error);
   }
 
   const rows = response.rows ?? [];
@@ -362,6 +501,24 @@ export function formatRevealCreated(response: RevealCreatedResponse): string {
 }
 
 /**
+ * Whether the user changed the expression before revealing, ignoring layout.
+ * A raw string comparison said yes every time: the review tab round-trips
+ * the expression through pine-lang's prettifier, which puts each `|` on its
+ * own line, so an untouched expression comes back re-wrapped and the agent
+ * was told to re-read something it already knew.
+ *
+ * Pine has no whitespace-sensitive syntax outside quoted strings, so the
+ * only edit this now misses is whitespace changed *inside* a quoted value
+ * (`'a  b'` to `'a b'`). The rows rendered below are still the ones that
+ * actually ran either way, and a notice that fires on every single reveal
+ * is one nobody reads at all.
+ */
+function sameExpression(a: string, b: string): boolean {
+  const normalize = (text: string) => text.replace(/\s+/g, ' ').trim();
+  return normalize(a) === normalize(b);
+}
+
+/**
  * columns/rows on the revealed outcome are shaped exactly like /query's own
  * EvalResponse (both ultimately come from the same session.evaluate() call
  * in beamlynx-ui, see mcp-query.ts and RevealRequestBanner.tsx), so revealed
@@ -392,7 +549,7 @@ export function formatRevealStatus(response: RevealStatusResponse): string {
 
   const outcome = request.outcome as { expression: string; columns?: EvalResponse['columns']; rows?: EvalResponse['rows'] };
   const sections = [];
-  if (outcome.expression !== request.expression) {
+  if (!sameExpression(outcome.expression, request.expression)) {
     sections.push(`Revealed -- note the user edited the expression before running it:\n  ${outcome.expression}`);
   } else {
     sections.push('Revealed:');

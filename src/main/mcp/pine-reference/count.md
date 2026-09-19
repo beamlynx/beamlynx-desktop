@@ -41,3 +41,6 @@ customers as c | orders .customer_id | group: c.email => count
 ```
 
 Use `group:` rather than `count:` when you want one count per value. See the `group` topic.
+
+Note the colon. `count:` is an operation and always carries one; the `count` inside a `group:`
+is an aggregate name and never does. `group: c.email => count:` is a parse error.

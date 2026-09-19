@@ -182,7 +182,57 @@ test('context is the last selected table, not the AST context alias', () => {
   // their own alias.
   const out = formatCompletion('user | public.document .userId | select: ', COLUMN_RESPONSE, noDocs);
   assert.match(out, /context: public\.document/);
-  assert.match(out, /public\.document -- id, userId/);
+  assert.match(out, /public\.document \(as d_1\) -- id, userId/);
+});
+
+// Qualifying a column is the only way to reach a table the pipeline has
+// already joined past, and a bare table name is not a qualifier -- Postgres
+// rejects it. So the aliases have to be visible, and the footer must not
+// show the failing form. Both were wrong at once before: the footer's
+// example was `document.userId`, and nothing printed an alias at all.
+test('a joined expression names the aliases in scope', () => {
+  const out = formatCompletion('user | public.document .userId | select: ', COLUMN_RESPONSE, noDocs);
+  assert.match(out, /aliases in scope: u_0 = user, d_1 = public\.document/);
+  assert.match(out, /A bare table name is never a valid qualifier/);
+  assert.ok(!/qualified by table/.test(out), 'the footer must not teach the table-name qualifier that fails');
+});
+
+test('a single-table expression does not print an alias list it has no use for', () => {
+  const out = formatCompletion('user | ', JOIN_RESPONSE, noDocs);
+  assert.ok(!/aliases in scope/.test(out), 'nothing to disambiguate with one table -- this is the most common call');
+});
+
+test("a joined expression says how to list an earlier table's columns, with its real alias", () => {
+  const out = formatCompletion('user | public.document .userId | select: ', COLUMN_RESPONSE, noDocs);
+  assert.match(out, /`\| select: u_0\.` lists user/);
+});
+
+// pine-lang returns no hints at all for `select: document.` -- exactly what
+// it returns for an expression that simply ended somewhere uninteresting.
+// The generic fallback ("append `| `") is wrong advice mid-select:, and
+// silence reads to an agent as "keep guessing".
+test('a table name used as a qualifier is named as the mistake, with the aliases that would work', () => {
+  const noHints = { ast: { ...COLUMN_RESPONSE.ast, hints: { table: [], select: [] } } };
+  const out = formatCompletion('user | public.document .userId | select: document.', noHints, noDocs);
+  assert.match(out, /`document` is a table name/);
+  assert.match(out, /Its alias is `d_1`/);
+  assert.ok(!/Append `\| ` to see what this table joins to/.test(out));
+});
+
+test('an expression that simply ran out of suggestions still gets the generic message', () => {
+  const noHints = { ast: { ...COLUMN_RESPONSE.ast, hints: { table: [], select: [] } } };
+  const out = formatCompletion('user | limit: 2', noHints, noDocs);
+  assert.match(out, /No completions at this position/);
+});
+
+// The aggregate is a bare word; the standalone operation carries the colon.
+// The footer printed `=> count:` -- a parse error -- on every completion
+// call, which made it the most repeated wrong instruction in the server.
+test('the operations footer prints the group aggregate without a colon', () => {
+  const out = formatCompletion('user | ', JOIN_RESPONSE, noDocs);
+  assert.match(out, /\| group: <col> => count {2,}/);
+  assert.ok(!/=> count:/.test(out), '`group: <col> => count:` does not parse');
+  assert.match(out, /\| count: {2,}/);
 });
 
 // ---------------------------------------------------------------------------
@@ -240,8 +290,36 @@ test('formatRows reports an empty result rather than rendering nothing', () => {
   assert.match(formatRows({ columns: [], rows: [] }), /No rows/);
 });
 
+// Three database errors an agent cannot act on, because it never sees the
+// generated SQL the message is written about. Each keeps the original text
+// -- the only part naming the column -- and gains one sentence saying what
+// to do in Pine.
+test('a rejected table-name qualifier is explained as the alias rule', () => {
+  const out = formatRows({
+    error:
+      'ERROR: invalid reference to FROM-clause entry for table "document"\n' +
+      '  Hint: Perhaps you meant to reference the table alias "d_1".',
+  });
+  assert.match(out, /invalid reference to/);
+  assert.match(out, /qualified by an alias, never by a table name/);
+});
+
+test('a column that belongs to an earlier table points at the alias that reaches it', () => {
+  const out = formatRows({
+    error: 'ERROR: column d_1.email does not exist\n  Hint: Perhaps you meant to reference the column "u_0.email".',
+  });
+  assert.match(out, /belongs to a different table in the pipeline/);
+});
+
+test('an empty join column is explained as a wrong `.column` suffix rather than left as Postgres wrote it', () => {
+  const quotes = '"'.repeat(4);
+  const out = formatRows({ error: `ERROR: zero-length delimited identifier at or near ${quotes}\n  Position: 145` });
+  assert.match(out, /`\.column` join suffix/);
+  assert.match(out, /case-sensitive/);
+});
+
 test('formatRows surfaces an execution error verbatim', () => {
-  assert.match(formatRows({ error: 'relation "userz" does not exist' }), /relation "userz" does not exist/);
+  assert.equal(formatRows({ error: 'relation "userz" does not exist' }), 'relation "userz" does not exist');
 });
 
 // ---------------------------------------------------------------------------
@@ -398,6 +476,26 @@ test('formatRevealStatus flags it when the user edited the expression before rev
   assert.match(out, /edited the expression/);
   assert.ok(out.includes('user | select: email'));
   assert.ok(!out.includes('ssn'), 'must render what actually ran, not the agent\'s original expression');
+});
+
+// The review tab round-trips the expression through pine-lang's
+// prettifier, which puts each `|` on its own line. Compared raw, every
+// single reveal came back claiming the user had edited it.
+test('formatRevealStatus does not call a re-prettified expression an edit', () => {
+  const out = formatRevealStatus({
+    request: {
+      id: 'req-1',
+      expression: 'user | select: email',
+      status: 'revealed',
+      outcome: {
+        expression: 'user\n | select: email',
+        columns: [],
+        rows: [['email'], ['real@example.com']],
+      },
+    },
+  });
+  assert.ok(!/edited the expression/.test(out), 'only a real change is worth making the agent re-read');
+  assert.match(out, /Revealed:/);
 });
 
 test('formatRevealStatus reports an unknown request id rather than throwing', () => {

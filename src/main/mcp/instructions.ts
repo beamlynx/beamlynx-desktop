@@ -30,6 +30,23 @@ Joins are a table name plus the column to join on, not an ON clause:
 
 Operations: select: (s:), where: (w:), order: (o:), limit: (l:), group: (g:), count:, from: (f:)
 
+WHAT PINE DOES NOT HAVE
+
+Traps that cost the most round trips, because SQL habits reach for them first:
+
+  no \`or\` in where:   conditions always combine with AND, comma-separated or chained.
+                      For one column: \`where: status in ('blocked', 'active')\`.
+  no regex operators  no \`~\` or \`~*\`. Use \`where: first_name ilike '%jo%'\`.
+  no \`>=\` or \`<=\`     only \`<\` and \`>\`.
+  no table qualifiers A column is qualified by an alias, never a table name. Every table has
+                      one: \`u_0\` unless you name it yourself with \`public.user as u\`. Both
+                      are typeable; \`user.email\` is not.
+
+\`count\` and \`count:\` differ. As an aggregate it takes no colon, as an operation it does:
+
+  user | group: status => count
+  user | count:
+
 HOW TO WORK
 
 1. list_connections -- which databases you may query.
@@ -37,7 +54,9 @@ HOW TO WORK
 3. complete_query -- the one you will use most. Give it an expression ending in \`| \` and it
    returns exactly what can be appended at that position: which tables the current one joins
    to, or which columns are available. End with \`| select: \` to list a table's columns.
-   Build expressions by extending them one step at a time this way.
+   Build expressions by extending them one step at a time this way. After a join, only the
+   last table's columns are listed -- end with \`| select: u_0.\` (any alias, then a dot) to
+   list an earlier one's.
 4. run_query -- execute. Opens a visible tab in the user's beamlynx app so they can see it.
 
 Do not guess at table or column names -- find_tables and complete_query know them. A join
@@ -47,5 +66,5 @@ behind it, so confirm it returns sensible rows before relying on it.
 Some columns come back as "xxxxx" -- an access policy on that connection redacted them, not a
 real value. If one is genuinely blocking something you need, call request_reveal (with a reason)
 to ask the user to look at it and decide; it returns a request id right away, not the answer --
-poll check_reveal with that id every few seconds until it stops saying "pending". Do not reach
-for this by default; most redacted columns are meant to stay that way.`;
+call check_reveal with that id and it waits for the user's decision, so no delay of your own is
+needed. Do not reach for this by default; most redacted columns are meant to stay that way.`;

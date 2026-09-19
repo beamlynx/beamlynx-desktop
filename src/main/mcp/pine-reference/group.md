@@ -6,8 +6,13 @@ Collapses rows into one row per distinct value, with an aggregate alongside.
 
 **Syntax:**
 ```
-table_name | group: column_name => function
+table_name | group: column_name => count
 ```
+
+`count` takes no colon here. That is the opposite of the standalone `count:` operation, which
+does — see the `count` topic. `count` is also the only aggregate worth writing: the parser
+accepts `sum`, `avg`, `min`, `max` and `string_agg`, but they take no column argument and all
+come back as a constant.
 
 ## Examples
 
@@ -18,6 +23,16 @@ categories as c | products .category_id | order_items .product_id | group: c.nam
 ```
 
 One row per category name, with how many order items fall under it.
+
+### The count is there whether you ask for it or not
+
+```
+categories | group: name
+categories | group: name | select: name, count
+```
+
+`=> count` is optional. Grouping alone already produces a `count` column, which later
+operations can select, rename or order by.
 
 ### Group by several columns
 

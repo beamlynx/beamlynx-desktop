@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- MCP: `complete_query` now lists the aliases in scope for a joined expression (`aliases in scope: u_0 = public.user, d_1 = public.document`) and says how to list an earlier table's columns (`| select: u_0.`). An agent could previously see only the last joined table's columns and had no way to discover that the others were still reachable.
+- MCP: three database errors an agent cannot otherwise act on -- it never sees the generated SQL -- now come back with a line saying what to fix in Pine: a table name used as a column qualifier, a column that belongs to an earlier table in the pipeline, and a `.column` join suffix naming a column that does not exist.
+- Pine reference: `where:` now documents that there is no `or` (and what to use instead), that there are no regex operators, the `::text`/`::uuid` casts, comma-separated conditions, and the full list of comparison operators.
+
+### Fixed
+- MCP: the operations footer printed on every `complete_query` response taught `| group: <col> => count:`, which is a parse error -- the aggregate takes no colon. It now shows `=> count` next to the standalone `count:` operation so the two are not conflated.
+- MCP: the same footer told agents to qualify a column by table name (`document.userId`), which always fails -- only an alias works. It now shows the alias form, and says so when a table name is used as one.
+- MCP: `check_reveal` reported that the user had edited the expression on every successful reveal, because the review tab returns it re-prettified. Only a real change is flagged now.
+- Pine reference: `where:` documented `not status = 'archived'` as the way to negate, which does not parse. `!=`, `not like`, `not in` and `is not` do.
+
 ### Changed
 - `check_reveal` now waits (up to 25 seconds) for the user to respond instead of returning "pending" immediately -- an agent can call it once and wait for a decision, rather than needing to invent its own retry delay between calls. Still returns "still pending" if the user hasn't decided within that window; calling it again keeps waiting.
 

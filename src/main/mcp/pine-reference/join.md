@@ -57,7 +57,19 @@ Customers with no orders are kept, with the order columns empty.
 categories as p | categories as c
 ```
 
-Aliases are required here, so each side of the relationship can be referred to separately.
+Two copies of one table have to be told apart, so name both with `as`.
+
+### Referring to the columns of a table you joined past
+
+Once you join, the pipeline's current table is the last one, and an unqualified column is
+looked for there. Earlier tables are still reachable — by alias, never by table name:
+
+```
+customers as c | orders as o .customer_id | select: c.email, o.total_amount
+```
+
+Naming them with `as` is the readable way, but not required: Pine assigns `c_0`, `o_1` and so
+on when you do not, and those work as qualifiers too. See the `select` topic.
 
 ### Choose the direction
 
