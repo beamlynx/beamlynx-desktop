@@ -12,6 +12,7 @@ import {
   MenuItem,
   ListItemIcon,
   ListItemText,
+  Skeleton,
 } from '@mui/material';
 import {
   FileDownload,
@@ -295,6 +296,13 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   // instead of a hard cut, so it shouldn't add a second, longer delay on
   // top of a timing that was already tuned.
   const settlingOverlay = usePanelPresence<HTMLDivElement>(resultsSettling, MOTION.fast, false);
+  // Shared between the settling placeholder's header row and its skeleton
+  // body below, so the two don't each recompute (and risk disagreeing on)
+  // which columns are actually visible.
+  const visibleColumnsForSettling = React.useMemo(
+    () => columns.filter(col => session.columnVisibilityModel[col.field] !== false),
+    [columns, session.columnVisibilityModel],
+  );
   const [jsonPanel, setJsonPanel] = useState<JsonPanelState | null>(null);
   // Looked up fresh from rows/columnMetadata each render (not captured when
   // the panel opens) so it reflects a re-evaluated session rather than a
@@ -1034,56 +1042,83 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
                     row is rebuilt from the same `columns` this render
                     already computed (same widths, same names, same table-
                     color/hover tint), so what's on screen a moment ago is
-                    still recognizably there while the body is quiet. Static
-                    on purpose: a repeating line pattern at the real row
-                    height, not a shimmer - shimmer reads as "fetching new
-                    data", which isn't what's happening here. Row heights
-                    (40/36px) are read off the live grid rather than a MUI
-                    constant, since density is a prop we set, not a value
-                    published anywhere stable to import. */}
+                    still recognizably there while the body is quiet. Row
+                    heights (40/36px) are read off the live grid rather than
+                    a MUI constant, since density is a prop we set, not a
+                    value published anywhere stable to import. */}
                 <Box sx={{ display: 'flex', height: 40, flexShrink: 0 }}>
-                  {columns
-                    .filter(col => session.columnVisibilityModel[col.field] !== false)
-                    .map(col => {
-                      const alias = colIndexToAlias[col.field] ?? '';
-                      const tinted =
-                        (showResultColors && alias) || (alias && alias === hoveredAlias);
-                      return (
-                        <Box
-                          key={col.field}
-                          sx={{
-                            width: col.width,
-                            flexShrink: 0,
-                            display: 'flex',
-                            alignItems: 'center',
-                            px: '10px',
-                            borderRight: '1px solid var(--canvas-node-border)',
-                            borderBottom: '1px solid var(--canvas-node-border)',
-                            backgroundColor: tinted
-                              ? getColorForAlias(alias, ast, isDark)
-                              : 'var(--canvas-chip-bg)',
-                            color: 'var(--canvas-text)',
-                            fontFamily: 'var(--code-font)',
-                            fontSize: '0.875rem',
-                            fontWeight: 600,
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                          }}
-                        >
-                          {col.headerName}
-                        </Box>
-                      );
-                    })}
+                  {visibleColumnsForSettling.map(col => {
+                    const alias = colIndexToAlias[col.field] ?? '';
+                    const tinted = (showResultColors && alias) || (alias && alias === hoveredAlias);
+                    return (
+                      <Box
+                        key={col.field}
+                        sx={{
+                          width: col.width,
+                          flexShrink: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          px: '10px',
+                          borderRight: '1px solid var(--canvas-node-border)',
+                          borderBottom: '1px solid var(--canvas-node-border)',
+                          backgroundColor: tinted
+                            ? getColorForAlias(alias, ast, isDark)
+                            : 'var(--canvas-chip-bg)',
+                          color: 'var(--canvas-text)',
+                          fontFamily: 'var(--code-font)',
+                          fontSize: '0.875rem',
+                          fontWeight: 600,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {col.headerName}
+                      </Box>
+                    );
+                  })}
                 </Box>
-                <Box
-                  sx={{
-                    flex: 1,
-                    backgroundImage:
-                      'repeating-linear-gradient(to bottom, transparent, transparent 35px, var(--canvas-node-border) 35px, var(--canvas-node-border) 36px)',
-                    opacity: 0.5,
-                  }}
-                />
+                {/* Skeleton rows below the (real) header. Widths per cell
+                    vary a little (a seeded pattern, not random - random
+                    would reshuffle every render and read as flickering)
+                    rather than one uniform bar repeated, which is what
+                    reads as "rows of data" instead of "a striped rectangle"
+                    at a glance. Capped at 12 - this is a settle-window
+                    placeholder, not a paginated view, so it only ever needs
+                    to fill the visible card, never actually scroll. */}
+                {Array.from({ length: 12 }).map((_, rowIndex) => (
+                  <Box
+                    key={rowIndex}
+                    sx={{
+                      display: 'flex',
+                      height: 36,
+                      flexShrink: 0,
+                      borderBottom: '1px solid var(--canvas-node-border)',
+                    }}
+                  >
+                    {visibleColumnsForSettling.map((col, colIndex) => (
+                      <Box
+                        key={col.field}
+                        sx={{
+                          width: col.width,
+                          flexShrink: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          px: '10px',
+                          borderRight: '1px solid var(--canvas-node-border)',
+                        }}
+                      >
+                        <Skeleton
+                          variant="text"
+                          animation="wave"
+                          width={`${55 + ((rowIndex * 7 + colIndex * 13) % 35)}%`}
+                          height={14}
+                          sx={{ bgcolor: 'var(--canvas-chip-bg)', flexShrink: 0 }}
+                        />
+                      </Box>
+                    ))}
+                  </Box>
+                ))}
               </Box>
             )}
           </Box>
