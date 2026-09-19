@@ -122,6 +122,26 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     return fields;
   }, [rows, baseColumns]);
 
+  // A manual column resize used to live entirely inside DataGrid's own
+  // internal state, which is fine as long as DataGrid never unmounts - but
+  // it now does, briefly, during the resize settle-work (see the DataGrid
+  // render below and freeze-during-motion.ts for why). Unmounting destroys
+  // that internal state along with it, so a resize you just dragged would
+  // silently revert to the estimated default the moment a panel elsewhere
+  // finished animating - confirmed live, this is the regression that
+  // reintroduces. Tracked here instead, in state that outlives the grid's
+  // own mount/unmount cycle, and merged into the columns memo below.
+  const [resizedColumnWidths, setResizedColumnWidths] = useState<Record<string, number>>({});
+  // A new eval means new columns at new field indices - an old override
+  // keyed by field "2" has no reason to still apply to whatever column
+  // happens to be field "2" in a completely different result set.
+  useEffect(() => {
+    setResizedColumnWidths({});
+  }, [session.columns]);
+  const handleColumnWidthChange = (params: { colDef: { field: string }; width: number }) => {
+    setResizedColumnWidths(prev => ({ ...prev, [params.colDef.field]: params.width }));
+  };
+
   const ast = session.response?.ast ?? null;
 
   // Add custom edit component and column color classes by table alias.
@@ -178,11 +198,13 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
           // jsonColumnFields (whether to skip content sampling for this
           // column) is only known once JSON detection has run, and both
           // already live in this same memo.
-          width: estimateColumnWidth(rows, column.field, column.headerName ?? column.field, {
-            min: MIN_RESULT_COLUMN_WIDTH,
-            max: MAX_RESULT_COLUMN_WIDTH,
-            isJson: isJsonColumn,
-          }),
+          width:
+            resizedColumnWidths[column.field] ??
+            estimateColumnWidth(rows, column.field, column.headerName ?? column.field, {
+              min: MIN_RESULT_COLUMN_WIDTH,
+              max: MAX_RESULT_COLUMN_WIDTH,
+              isJson: isJsonColumn,
+            }),
           renderEditCell: (params: any) => <CellEditComponent {...params} />,
           ...(isJsonColumn && {
             // Not editable at the DataGrid level - editing a JSON cell
@@ -204,7 +226,14 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
         };
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [baseColumns, colIndexToAlias, showResultColors, hoveredAlias, jsonColumnFields],
+    [
+      baseColumns,
+      colIndexToAlias,
+      showResultColors,
+      hoveredAlias,
+      jsonColumnFields,
+      resizedColumnWidths,
+    ],
   );
 
   // Header-only, matching the classes above - see their own comment for why
@@ -880,96 +909,111 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
               }
             }}
           >
-            <DataGrid
-              sx={{
-                height: '100%',
-                '--DataGrid-containerBackground': 'var(--canvas-node-bg)',
-                '--DataGrid-rowBorderColor': 'var(--canvas-node-border)',
-                color: 'var(--canvas-text)',
-                // Tabular data benefits from the same monospace alignment
-                // code does - --code-font, not --canvas-font (the UI font),
-                // unlike the surrounding chrome (empty-state text, icon
-                // buttons, context menu) in this same file.
-                fontFamily: 'var(--code-font)',
-                // rem, not calc(...* var(--text-scale)) like the other code-
-                // surface font sizes in this file/Query.tsx/editor-theme.ts -
-                // those are px literals unaffected by the root font-size
-                // change pages/_app.tsx now also makes, but this one IS rem,
-                // so it already scales via inheritance; multiplying by
-                // --text-scale too would double-apply the scale.
-                fontSize: '0.875rem',
-                border: '1px solid var(--canvas-node-border)',
-                borderRadius: '3px',
-                overflow: 'hidden',
-                '& .MuiDataGrid-withBorderColor': {
-                  borderColor: 'transparent',
-                },
-                // A tonal step up from the body (the same "labeled section"
-                // idea as canvas mode's picker group headers), not just a
-                // border, so the header row reads as its own row rather
-                // than the first row of data.
-                '& .MuiDataGrid-columnHeaders': {
-                  backgroundColor: 'var(--canvas-chip-bg)',
-                  borderBottom: '1px solid var(--canvas-node-border)',
-                },
-                '& .MuiDataGrid-columnHeaderTitle': {
+            {/* Unmounted (not just hidden) while resultsSettling is true -
+                see the placeholder overlay's own comment for what that
+                buys over merely covering an unmounted grid. */}
+            {!resultsSettling && (
+              <DataGrid
+                sx={{
+                  height: '100%',
+                  '--DataGrid-containerBackground': 'var(--canvas-node-bg)',
+                  '--DataGrid-rowBorderColor': 'var(--canvas-node-border)',
                   color: 'var(--canvas-text)',
-                  fontWeight: 600,
-                },
-                '& .MuiDataGrid-cell': {
-                  color: 'var(--canvas-text)',
-                  borderBottom: '1px solid var(--canvas-node-border)',
-                  userSelect: 'none', // Prevent text selection
-                  WebkitUserSelect: 'none',
-                  MozUserSelect: 'none',
-                  msUserSelect: 'none',
-                },
-                ...columnColorSx,
-                ...hoveredColorSx,
-                '& .MuiDataGrid-row:hover': {
-                  backgroundColor: 'var(--canvas-chip-bg)',
-                },
-                '& .MuiTablePagination-root, & .MuiTablePagination-root .MuiSvgIcon-root, & .MuiTablePagination-root .MuiIconButton-root':
-                  {
-                    color: 'var(--canvas-text-dim)',
-                    fontFamily: 'var(--canvas-font)',
+                  // Tabular data benefits from the same monospace alignment
+                  // code does - --code-font, not --canvas-font (the UI font),
+                  // unlike the surrounding chrome (empty-state text, icon
+                  // buttons, context menu) in this same file.
+                  fontFamily: 'var(--code-font)',
+                  // rem, not calc(...* var(--text-scale)) like the other code-
+                  // surface font sizes in this file/Query.tsx/editor-theme.ts -
+                  // those are px literals unaffected by the root font-size
+                  // change pages/_app.tsx now also makes, but this one IS rem,
+                  // so it already scales via inheritance; multiplying by
+                  // --text-scale too would double-apply the scale.
+                  fontSize: '0.875rem',
+                  border: '1px solid var(--canvas-node-border)',
+                  borderRadius: '3px',
+                  overflow: 'hidden',
+                  '& .MuiDataGrid-withBorderColor': {
+                    borderColor: 'transparent',
                   },
-                '& ::-webkit-scrollbar': {
-                  width: '10px',
-                  height: '10px',
-                },
-                '& ::-webkit-scrollbar-track': {
-                  background: 'transparent',
-                },
-                '& ::-webkit-scrollbar-thumb': {
-                  backgroundColor: 'var(--canvas-pin)',
-                  borderRadius: '5px',
-                },
-                '& ::-webkit-scrollbar-thumb:hover': {
-                  background: 'var(--canvas-trace)',
-                },
-              }}
-              density="compact"
-              rows={rows}
-              columns={columns}
-              getRowId={row => row._id ?? ''}
-              columnVisibilityModel={session.columnVisibilityModel}
-              processRowUpdate={updateRecord}
-            />
-            {/* Covers the grid while it does the resize settle-work
-                freeze-during-motion.ts describes - a real, measured chunk
-                of main-thread time (React reconciling GridCell/GridRow,
-                not layout or paint) that happens once, after a panel next
-                to this pane finishes moving. The grid is still mounted and
-                still doing that work underneath; this just means nobody
-                watches it happen. Deliberately plain - matching the grid's
-                own card styling, no spinner or shimmer - because nothing
-                is actually loading, something already on screen is just
-                momentarily settling into its new size. Its own opacity
-                fade is the only motion here, and it's cheap enough (a
-                single flat rectangle) to never itself be the thing that
-                stutters. pointerEvents: 'none' so it never intercepts a
-                click meant for the grid on the way out. */}
+                  // A tonal step up from the body (the same "labeled section"
+                  // idea as canvas mode's picker group headers), not just a
+                  // border, so the header row reads as its own row rather
+                  // than the first row of data.
+                  '& .MuiDataGrid-columnHeaders': {
+                    backgroundColor: 'var(--canvas-chip-bg)',
+                    borderBottom: '1px solid var(--canvas-node-border)',
+                  },
+                  '& .MuiDataGrid-columnHeaderTitle': {
+                    color: 'var(--canvas-text)',
+                    fontWeight: 600,
+                  },
+                  '& .MuiDataGrid-cell': {
+                    color: 'var(--canvas-text)',
+                    borderBottom: '1px solid var(--canvas-node-border)',
+                    userSelect: 'none', // Prevent text selection
+                    WebkitUserSelect: 'none',
+                    MozUserSelect: 'none',
+                    msUserSelect: 'none',
+                  },
+                  ...columnColorSx,
+                  ...hoveredColorSx,
+                  '& .MuiDataGrid-row:hover': {
+                    backgroundColor: 'var(--canvas-chip-bg)',
+                  },
+                  '& .MuiTablePagination-root, & .MuiTablePagination-root .MuiSvgIcon-root, & .MuiTablePagination-root .MuiIconButton-root':
+                    {
+                      color: 'var(--canvas-text-dim)',
+                      fontFamily: 'var(--canvas-font)',
+                    },
+                  '& ::-webkit-scrollbar': {
+                    width: '10px',
+                    height: '10px',
+                  },
+                  '& ::-webkit-scrollbar-track': {
+                    background: 'transparent',
+                  },
+                  '& ::-webkit-scrollbar-thumb': {
+                    backgroundColor: 'var(--canvas-pin)',
+                    borderRadius: '5px',
+                  },
+                  '& ::-webkit-scrollbar-thumb:hover': {
+                    background: 'var(--canvas-trace)',
+                  },
+                }}
+                density="compact"
+                rows={rows}
+                columns={columns}
+                getRowId={row => row._id ?? ''}
+                columnVisibilityModel={session.columnVisibilityModel}
+                processRowUpdate={updateRecord}
+                onColumnWidthChange={handleColumnWidthChange}
+              />
+            )}
+            {/* EMPTY during the resize settle-work freeze-during-motion.ts
+                describes - not just covered, actually not there. Covering a
+                still-mounted grid (an earlier version of this) hides what's
+                drawn but does nothing for the cost itself: React still
+                reconciles every GridCell/GridRow and Emotion still
+                recomputes every cell's style on the SAME main thread
+                everything else runs on, so a click, a hover, anything else
+                on screen stayed blocked regardless of what was visually on
+                top of the grid - measured directly (a main-thread
+                responsiveness probe, not frame timing) at 300-400ms of
+                blocked time either way. Unmounting removes the trigger
+                instead of hiding its effect: nothing is reconciling if
+                nothing is mounted. The grid remounts once settling ends,
+                fresh, directly at its final size - a cold mount instead of
+                an old instance reconciling across a resize, which measured
+                as the cheaper of the two (see this commit's own history for
+                the comparison). Deliberately plain - no spinner or shimmer -
+                because nothing is loading, something already on screen is
+                momentarily settling into a new size. pointerEvents: 'none'
+                so it never intercepts a click meant for the grid on the way
+                out, and it's rendered on top of (not instead of) the
+                remounting grid for a brief window so the two crossfade
+                rather than the fresh mount popping in underneath it. */}
             {settlingOverlay.mounted && (
               <Box
                 ref={settlingOverlay.ref}
@@ -978,13 +1022,69 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
                   position: 'absolute',
                   inset: 0,
                   pointerEvents: 'none',
+                  overflow: 'hidden',
                   backgroundColor: 'var(--canvas-node-bg)',
                   border: '1px solid var(--canvas-node-border)',
                   borderRadius: '3px',
                   opacity: settlingOverlay.open ? 1 : 0,
                   transition: 'opacity var(--motion-fast) ease',
                 }}
-              />
+              >
+                {/* A shell of the real grid, not a blank card - the header
+                    row is rebuilt from the same `columns` this render
+                    already computed (same widths, same names, same table-
+                    color/hover tint), so what's on screen a moment ago is
+                    still recognizably there while the body is quiet. Static
+                    on purpose: a repeating line pattern at the real row
+                    height, not a shimmer - shimmer reads as "fetching new
+                    data", which isn't what's happening here. Row heights
+                    (40/36px) are read off the live grid rather than a MUI
+                    constant, since density is a prop we set, not a value
+                    published anywhere stable to import. */}
+                <Box sx={{ display: 'flex', height: 40, flexShrink: 0 }}>
+                  {columns
+                    .filter(col => session.columnVisibilityModel[col.field] !== false)
+                    .map(col => {
+                      const alias = colIndexToAlias[col.field] ?? '';
+                      const tinted =
+                        (showResultColors && alias) || (alias && alias === hoveredAlias);
+                      return (
+                        <Box
+                          key={col.field}
+                          sx={{
+                            width: col.width,
+                            flexShrink: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            px: '10px',
+                            borderRight: '1px solid var(--canvas-node-border)',
+                            borderBottom: '1px solid var(--canvas-node-border)',
+                            backgroundColor: tinted
+                              ? getColorForAlias(alias, ast, isDark)
+                              : 'var(--canvas-chip-bg)',
+                            color: 'var(--canvas-text)',
+                            fontFamily: 'var(--code-font)',
+                            fontSize: '0.875rem',
+                            fontWeight: 600,
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
+                        >
+                          {col.headerName}
+                        </Box>
+                      );
+                    })}
+                </Box>
+                <Box
+                  sx={{
+                    flex: 1,
+                    backgroundImage:
+                      'repeating-linear-gradient(to bottom, transparent, transparent 35px, var(--canvas-node-border) 35px, var(--canvas-node-border) 36px)',
+                    opacity: 0.5,
+                  }}
+                />
+              </Box>
             )}
           </Box>
         ) : (
