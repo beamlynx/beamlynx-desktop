@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Box, Button, TextField, Typography } from '@mui/material';
+import { Box, Button, TextField, Tooltip, Typography } from '@mui/material';
+import { VisibilityOutlined } from '@mui/icons-material';
 import { observer } from 'mobx-react-lite';
 import { Session as SessionType } from '../store/session';
 import { useStores } from '../store/store-container';
@@ -8,14 +9,20 @@ import { useStores } from '../store/store-container';
  * Shown at the top of a tab RevealRequestHandler.tsx opened for an MCP
  * agent's request_reveal call (see Session.pendingRevealRequestId). This tab
  * is an ordinary Pine session underneath -- the owner can edit the
- * expression in the editor above and re-run it exactly as they would any
+ * expression in the editor below and re-run it exactly as they would any
  * other query, before deciding:
- *  - Reveal: sends this tab's current expression/columns/rows back to the
+ *  - Approve: sends this tab's current expression/columns/rows back to the
  *    agent, whatever they are right now (edited or not).
  *  - Decline: sends an optional comment instead, and runs nothing.
  * Either way ends review for this request -- clear() removes the pinned tab
  * entirely (finishRevealSession), since it only ever existed for this one
  * request; there's nothing to hand back to the user as an ordinary tab.
+ *
+ * One row, not a block of prose: the only thing here the owner can't work
+ * out from context is the agent's own reason, so that's the only thing
+ * spelled out. What a reveal request even IS lives in the icon's tooltip --
+ * needed once, by someone seeing their first one, not on every subsequent
+ * request forever.
  */
 const RevealRequestBanner = observer(({ session }: { session: SessionType }) => {
   const { global } = useStores();
@@ -82,15 +89,23 @@ const RevealRequestBanner = observer(({ session }: { session: SessionType }) => 
     <Box
       sx={{
         px: 2,
-        py: 1,
+        py: 0.75,
         borderBottom: '1px solid var(--border-color)',
         backgroundColor: 'var(--canvas-chip-bg)',
         display: 'flex',
-        flexDirection: 'column',
-        gap: 0.75,
+        alignItems: 'center',
+        gap: 1.5,
       }}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+      {/* The same icon the pinned tab uses, carrying the same meaning, and
+          the only place the full explanation still lives. */}
+      <Tooltip title="An agent wants to see this query's real results, which your access policy is hiding. Edit the expression below if you'd like, then approve or decline.">
+        <VisibilityOutlined
+          sx={{ fontSize: 16, flexShrink: 0, color: 'var(--notification-color)' }}
+        />
+      </Tooltip>
+
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexShrink: 0 }}>
         <Box
           component="span"
           title={connectionIsLive ? undefined : 'Assigned but not connected yet'}
@@ -109,35 +124,8 @@ const RevealRequestBanner = observer(({ session }: { session: SessionType }) => 
         </Typography>
       </Box>
 
-      <Typography variant="body2">
-        An agent wants to see this query&apos;s real results, hidden by your access policy. Edit the expression
-        below if you&apos;d like, then decide.
-      </Typography>
-
-      {session.revealReason && (
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'baseline',
-            gap: 0.75,
-            pl: 1.5,
-            // Amber, matching the pinned tab's own "needs your attention"
-            // icon color (--notification-color) -- this is the agent's own
-            // words set apart from our explanatory text, not a second
-            // system message, so it reads as quoted rather than blended
-            // into the paragraph above.
-            borderLeft: '3px solid var(--notification-color)',
-          }}
-        >
-          <Typography variant="caption" sx={{ color: 'var(--canvas-text-dim)', flexShrink: 0 }}>
-            Agent&apos;s reason:
-          </Typography>
-          <Typography variant="body2">{session.revealReason}</Typography>
-        </Box>
-      )}
-
       {declining ? (
-        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+        <>
           <TextField
             size="small"
             fullWidth
@@ -145,23 +133,51 @@ const RevealRequestBanner = observer(({ session }: { session: SessionType }) => 
             placeholder="Why declining? Optional, but it helps the agent adjust and retry."
             value={comment}
             onChange={e => setComment(e.target.value)}
+            // Enter sends it, Escape backs out -- this field is the only
+            // thing focused once Decline... is clicked, so reaching for the
+            // mouse to finish a sentence you just typed is pure friction.
+            // stopPropagation as well as preventDefault: Escape is also a
+            // global keybinding (Zen mode / canvas gestures), and the
+            // keydown would otherwise keep bubbling after this handles it.
+            onKeyDown={event => {
+              if (event.key === 'Enter' && !busy) {
+                event.preventDefault();
+                event.stopPropagation();
+                void handleDecline();
+              } else if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                setDeclining(false);
+              }
+            }}
+            sx={{ flex: 1, minWidth: 0 }}
           />
-          <Button size="small" color="error" variant="contained" disabled={busy} onClick={handleDecline}>
-            Send decline
+          <Button size="small" color="error" disabled={busy} onClick={handleDecline}>
+            Decline
           </Button>
           <Button size="small" disabled={busy} onClick={() => setDeclining(false)}>
             Cancel
           </Button>
-        </Box>
+        </>
       ) : (
-        <Box sx={{ display: 'flex', gap: 1 }}>
+        <>
+          <Typography
+            variant="body2"
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              color: session.revealReason ? 'var(--text-color)' : 'var(--canvas-text-dim)',
+            }}
+          >
+            {session.revealReason ? `“${session.revealReason}”` : 'No reason given.'}
+          </Typography>
           <Button size="small" variant="contained" disabled={busy} onClick={handleReveal}>
             Approve
           </Button>
           <Button size="small" color="error" disabled={busy} onClick={() => setDeclining(true)}>
             Decline...
           </Button>
-        </Box>
+        </>
       )}
     </Box>
   );

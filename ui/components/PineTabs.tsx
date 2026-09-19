@@ -761,13 +761,21 @@ const PineTabs = observer(() => {
                         }),
                   }}
                 >
-                  {pinned.kind === 'mcp' ? (
+                  {/* The spinner REPLACES the icon rather than sitting next
+                      to it (which is what the user's own tabs do further up,
+                      where it's harmless). A pinned tab is anchored to the
+                      strip's far end by margin-left: auto, so anything that
+                      changes its width moves its LEFT edge -- inserting a
+                      second element here made the icon visibly jump sideways
+                      and back every time the session started and finished
+                      loading (reported directly). Same 14px footprint either
+                      way, so the tab's width never changes. */}
+                  {session.loading || session.connecting ? (
+                    <CircularProgress size={14} sx={{ color: 'inherit', flexShrink: 0 }} />
+                  ) : pinned.kind === 'mcp' ? (
                     <SmartToyOutlined sx={{ fontSize: 14, flexShrink: 0 }} />
                   ) : (
                     <VisibilityOutlined sx={{ fontSize: 14, flexShrink: 0, color: idleIconColor }} />
-                  )}
-                  {(session.loading || session.connecting) && (
-                    <CircularProgress size={12} sx={{ color: 'inherit' }} />
                   )}
                   <span>{label}</span>
                   <IconButton
