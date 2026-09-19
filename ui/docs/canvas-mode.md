@@ -127,6 +127,46 @@ whatever they showed before the edit — and a session restored with
   parsing - showing last valid graph" (a genuine syntax error; the last good
   graph stays on screen, dimmed).
 
+## What sits in which corner
+
+Every persistent thing on the canvas is an absolutely-positioned overlay over
+the ReactFlow surface, at the same 8px gutter. There are only so many corners,
+so this is the map to check before adding another one — the alternative is
+grepping for `position: 'absolute'` and hoping.
+
+```
+ ┌─ toolbar ──────────┬─ multi-select ─┬──────── banners ─────────┐
+ │ ⟲ ⟳ ⚡ ▤ PINE SQL   │  (2+ selected) │ "Not parsing…"           │
+ │ ┌────────────────┐ │                │ "Connecting…"            │
+ │ │ the comment    │ │                │ "…single expression      │
+ │ └────────────────┘ │                │    block"                │
+ │                    │                │                          │
+ │                    │                │                          │
+ ├─ mode indicator ───┴────────────────┴───────────── free ───────┤
+ │ ■ NORMAL · s w o g p + i x                                     │
+ └────────────────────────────────────────────────────────────────┘
+```
+
+| Corner | Owner | Always there? |
+| --- | --- | --- |
+| Top left | `CanvasToolbar`, and the comment directly under it (`PineDoc.tsx`) | Toolbar always; comment when there is one |
+| Top centre | `MultiSelectToolbar` | Only with 2+ nodes selected |
+| Top right | The banners in `Canvas.tsx` | Only in a non-nominal state |
+| Bottom left | `CanvasModeIndicator` | Always |
+| Bottom right | — | Free |
+
+The comment is top-left, under the toolbar, for three reasons. It is the
+premise for everything else on the canvas, so it belongs where reading starts.
+It shares a column with the control that writes it (the toolbar's own comment
+button). And the only other free-at-the-top corner is the banners', which
+fill exactly when the graph is degraded — the moment the comment is worth most,
+so a persistent block there would either collide or have to dodge.
+
+Overlays share the toolbar's `left: 8` and the same 8px gutter between them.
+Sharing that edge is what makes the toolbar and the comment read as one column
+rather than as a block that happened to land near a toolbar; an earlier version
+was 3px off and read as exactly that.
+
 ## Keybindings
 
 Canvas mode is built around a vim-style modal keyboard layer
@@ -179,9 +219,15 @@ to roam.
 | `g` | Open the group-by picker (not offered on a checkpoint node — grouping an already-grouped result is a different question, not implemented) |
 | `x` | Delete the focused node — a table if `removable`, or a checkpoint's whole `group:`/`limit:` run if focused on a frame (its member tables become plain nodes again, not deleted themselves) |
 | `u` | Undo the last canvas gesture |
+| `c` | Write (or edit) the comment at the top of the expression — see "The comment" below |
 | `Shift`+`U` | Redo |
 | `Ctrl`/`Cmd`+`Z` | Undo (same action as `u` — the combo most people already reach for) |
 | `Ctrl`/`Cmd`+`Shift`+`Z`, `Ctrl`+`Y` | Redo (same action as `Shift`+`U`) |
+
+`c`, `u` and `Shift`+`U` are the canvas-scoped ones: they need no focused
+node and work on the empty-canvas start node too. That is also why they are
+absent from the bottom-left legend, which lists only what acts on whatever is
+focused right now.
 
 A checkpoint (frame) node routes `s`/`w`/`o`/`i`/`x` through
 `openCheckpointPicker` instead of the per-table picker methods, but the same
@@ -217,6 +263,36 @@ enough on its own to suspend every letter shortcut above until it closes.
 
 ## How it works
 
+There is nothing keeping the graph and the expression in sync, because there
+is nothing to sync: the expression is the only state, and the graph is derived
+from it. Every gesture goes the long way round rather than touching a node.
+
+```
+                  ┌───────────────────────────────┐
+        ┌────────▶│      session.expression       │─────────┐
+        │         │  /* why */ company | employee │         │
+        │         └───────────────────────────────┘         │
+        │                                                   │ debounced
+ splice │                                                   ▼  build
+   text │                                        ┌──────────────────────┐
+        │                                        │  pine-lang /build    │
+        │                                        │  → ast (ranges, doc) │
+        │                                        └──────────────────────┘
+        │                                                   │
+ ┌──────┴────────────┐                          ┌───────────▼──────────┐
+ │  pine-actions.ts  │                          │  buildCanvasGraph()  │
+ │  segments → text  │                          │  ast → nodes + edges │
+ └───────────────────┘                          └──────────────────────┘
+        ▲                                                   │
+        │ gesture: pick a column, drop a                    │ render
+        │ node, type a comment                              ▼
+        └───────────────────────  the canvas  ◀─────────────┘
+```
+
+The graph cannot drift from the query, because it is not a second model of
+the query. That is the whole trade: every gesture is asynchronous (edit text →
+build → re-render), never a synchronous local mutation.
+
 **Text splice, not graph mutation.** Canvas mode never parses Pine itself and
 never edits `ast` or any node/edge array directly. Every gesture:
 
@@ -235,6 +311,53 @@ never edits `ast` or any node/edge array directly. Every gesture:
 5. Re-derives the whole graph from that AST (`store/canvas/layout.ts`'s
    `buildCanvasGraph`), via a MobX reaction owned by `CanvasStore`
    (`canvas.store.ts`).
+
+### The comment
+
+**It is the same loop, one layer out.** The block in the canvas's top-left
+corner (`components/PineDoc.tsx`) is a comment at the top of the expression,
+nothing more. Writing one goes through the same round trip as any other
+gesture, just with a simpler splice: `CanvasStore.setDoc` calls
+`pine-text.ts`'s `replaceDoc` to swap the leading comment in the expression
+text, and the rendered note comes back out of the rebuilt expression as
+`ast.doc` (pine-lang computes it — see that repo's `docs/comments.md`).
+Canvas holds no copy of the text; `docEditing` is a boolean, not a draft.
+
+Two differences from a segment gesture, both because a comment can't change
+what the query returns: no `probeBuild` first (there is nothing to confirm —
+a comment cannot make an expression stop parsing), and no auto-run after.
+
+The doc also has to be carried *through* every other gesture. A gesture
+rebuilds the expression from `ast.ranges`' operation spans, and a leading
+comment is inside none of them — so `toText` drops it. `applyExpression` is
+the single place a gesture writes `session.expression`, so it re-attaches the
+previous expression's comment there (`withDoc`). `setDoc` is the one caller
+that opts out, via `preserveDoc: false`; without that, deleting a comment
+would be impossible.
+
+**How it looks, and why.** The canvas is a schematic: nodes are IC packages
+with square pins and a pin-1 notch (`nodes/TableNode.tsx`), operations are set
+in the clipped, letter-spaced style of a drawing's printed annotations, and
+the surface under it all is a dot grid. So the comment is drawn as a drawing's
+title block — cleared board, hairline rules, square corners, the left rule in
+the trace colour. It is opaque and ruled on all four sides because a node can
+pan underneath it, and without an edge that overlap read as the node being
+clipped rather than as the comment sitting over it. The first version was a
+rounded card with a filled accent bar and a drop shadow, which belongs to a
+different system entirely.
+
+Two things the text itself needs. A block comment is hard-wrapped by whoever
+typed it to fit their editor, so keeping those breaks and re-wrapping at this
+much narrower measure gives a ragged column of half-lines — `asProse` re-wraps
+it (single newline → space, blank line → paragraph). And the block is bounded
+by the pane, not the viewport, or a long comment in a short canvas pane runs
+off the bottom into the mode indicator in the opposite corner.
+
+**Writing one.** `c` from the canvas, the toolbar's comment button, or a click
+on an existing comment. When there is none, a dim "Add a comment" stands in
+its place — the toolbar button alone was not findable, and an empty canvas
+gives no hint that a comment is even possible. `Cmd`/`Ctrl`+`Enter` or
+clicking away commits, `Escape` cancels.
 
 **Ownership.** `assignOwners` walks segments left to right: a table segment
 sets the "current" alias to its own (from an explicit `as <alias>`, falling

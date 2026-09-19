@@ -22,14 +22,60 @@ import { debounce } from './util';
 
 type ExpressionBlock = { text: string; startLine: number };
 
-function splitExpressions(text: string): ExpressionBlock[] {
+/**
+ * Whether `line` leaves a block comment open behind it, given it
+ * started `open`. Naive: it doesn't know about `/*` inside a string literal.
+ * That costs nothing here - the worst case is a blank line not ending a
+ * block, and the block boundary a user actually meant is the next one.
+ */
+function blockCommentOpenAfter(line: string, open: boolean): boolean {
+  let i = 0;
+  while (i < line.length) {
+    if (open) {
+      const close = line.indexOf('*/', i);
+      if (close === -1) return true;
+      open = false;
+      i = close + 2;
+    } else {
+      const start = line.indexOf('/*', i);
+      if (start === -1) return false;
+      open = true;
+      i = start + 2;
+    }
+  }
+  return open;
+}
+
+/**
+ * Split the editor text into blank-line-separated expression blocks.
+ *
+ * A blank line inside an open block comment is not a boundary. A doc comment
+ * at the top of a tab is exactly the place someone writes a paragraph break
+ * (see pine-lang's docs/comments.md), and splitting there would hand the
+ * server an unterminated comment as block 0 and the comment's own tail as
+ * block 1 - a parse error out of text that is perfectly valid Pine.
+ *
+ * Exported only so __tests__/expression-blocks.test.js can cover that rule
+ * directly; nothing outside this module uses it.
+ */
+export function splitExpressions(text: string): ExpressionBlock[] {
   const lines = text.split('\n');
   const blocks: ExpressionBlock[] = [];
   let current: string[] = [];
   let currentStart = 0;
+  let inBlockComment = false;
 
   for (let i = 0; i <= lines.length; i++) {
     const line = lines[i];
+    if (i < lines.length) {
+      const wasOpen = inBlockComment;
+      inBlockComment = blockCommentOpenAfter(line, inBlockComment);
+      if (wasOpen && line.trim() === '') {
+        if (current.length === 0) currentStart = i;
+        current.push(line);
+        continue;
+      }
+    }
     if (i === lines.length || line.trim() === '') {
       const joined = current.join('\n').trim();
       if (joined) blocks.push({ text: joined, startLine: currentStart });
@@ -210,6 +256,13 @@ export class Session {
   /** Ast */
   operation: Operation = { type: 'table' };
   ast: Ast | null = null; // observable
+  /**
+   * This tab's doc comment - the prose at the top of the expression,
+   * already cleaned up by pine-lang (see its docs/comments.md). Empty when
+   * the expression has no comment at the top, or against a server too old
+   * to return one.
+   */
+  doc: string = ''; // observable
   query: string = '';
   /** Currently selected text in the SQL editor, if any. Running a query while text is
    * selected runs only the selection instead of the full query. */
@@ -434,6 +487,25 @@ export class Session {
 
           // ast
           this.ast = response.ast;
+
+          // doc
+          //
+          // Only off a build that actually succeeded. A parse failure comes
+          // back with no `doc` at all, and this block renders directly above
+          // the editor being typed in - taking `response.doc` unconditionally
+          // would blank it on every keystroke that left the expression
+          // momentarily unparseable. A *successful* build with no doc is
+          // real (the comment was deleted), so that still clears it.
+          //
+          // `ast` is what makes this a build response specifically - only
+          // build returns a doc at all. Today `this.response` is written
+          // from exactly one place (the build reaction above), so this is
+          // belt-and-braces: were an eval response ever assigned here, it
+          // would carry neither `error` nor `doc` and would otherwise blank
+          // the block on every run.
+          if (!response.error && response.ast) {
+            this.doc = response.doc ?? '';
+          }
 
           // query
           this.query = formatSql(response.query);

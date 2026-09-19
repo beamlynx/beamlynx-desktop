@@ -9,6 +9,7 @@ import { TextSize } from '../styles/text-size';
 import { RequiredVersion } from '../constants';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
 import { DevState } from './dev-state';
+import { leadingDoc } from './canvas/pine-text';
 import { getCommandById } from '../utils/commands';
 import { CONNECTION_COLOR_PALETTE, isDesktop, isPlayground } from './util';
 import {
@@ -1999,11 +2000,16 @@ export class GlobalStore {
   // still needs to not throw.
   getSessionName = (sessionId: string) => {
     const session = this.getSession(sessionId);
-    const length = session.expression.length;
+    // A doc comment at the top of the expression is prose about the query,
+    // not the query - naming the tab from it produced things like "Checki..."
+    // off the second sentence, since the split on '.' below lands inside the
+    // comment's own punctuation. Name the tab from the Pine itself.
+    const source = session.expression.slice(leadingDoc(session.expression).length).trim();
+    const length = source.length;
     const maxLength = 10;
 
     // Skip the schema when naming the session
-    const [x, y] = session.expression.split('.');
+    const [x, y] = source.split('.');
     const expression = y || x;
 
     return length > maxLength

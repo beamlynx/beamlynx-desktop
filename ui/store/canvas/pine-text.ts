@@ -206,6 +206,60 @@ export const inProgressTable = (ast: Ast | null | undefined): InProgressTable | 
 
 export const toText = (segments: Segment[]): string => segments.map(s => s.text).join(' | ');
 
+// A leading block comment, or a run of leading `--` lines. Mirrors
+// pine-lang's own extract-doc (see its docs/comments.md) - deliberately only
+// the *span*, verbatim and undecoded, since the one thing this side needs is
+// to put the exact original characters back.
+const LEADING_BLOCK_COMMENT = /^\s*\/\*[\s\S]*?\*\//;
+const LEADING_LINE_COMMENTS = /^\s*(?:[ \t]*--[^\r\n]*(?:\r?\n|$))+/;
+
+/**
+ * The doc comment at the top of `expression`, exactly as written, or ''.
+ *
+ * Canvas rebuilds an expression out of `ast.ranges`' operation spans
+ * (segmentsFromAst + toText), and a leading comment is in none of them - so
+ * every gesture would silently delete the tab's own documentation. The
+ * server's prettify keeps a doc comment (pine-lang's parser/prettify), but
+ * that only helps text that still has one by the time it gets there.
+ * CanvasStore.applyExpression puts it back; see its comment.
+ */
+export const leadingDoc = (expression: string): string => {
+  const match = LEADING_BLOCK_COMMENT.exec(expression) ?? LEADING_LINE_COMMENTS.exec(expression);
+  return match ? match[0].trim() : '';
+};
+
+/**
+ * Replace (or, with empty `text`, remove) the doc comment at the top of
+ * `expression`.
+ *
+ * The write half of the same loop every other canvas gesture uses: a note
+ * typed on the canvas is spliced into the expression text here, and the
+ * rendered note comes back out of the rebuilt expression's own `ast.doc`.
+ * Canvas keeps no copy of it.
+ *
+ * A `*` followed by `/` inside `text` would close the comment early and turn
+ * the rest of the note into a syntax error, so it's spaced apart. Nothing
+ * else needs escaping - Pine block comments have no other terminator.
+ */
+export const replaceDoc = (expression: string, text: string): string => {
+  const body = expression.slice(leadingDoc(expression).length).replace(/^\s*\n/, '').trimStart();
+  const cleaned = text.trim().replace(/\*\//g, '* /');
+  if (!cleaned) return body;
+  const lines = cleaned.split('\n');
+  const comment =
+    lines.length === 1
+      ? `/* ${lines[0]} */`
+      : `/*\n${lines.map(line => `   ${line}`.trimEnd()).join('\n')}\n */`;
+  return body ? `${comment}\n${body}` : comment;
+};
+
+/** Re-attach `prev`'s doc comment to `next`, unless `next` already has one of its own. */
+export const withDoc = (prev: string, next: string): string => {
+  if (leadingDoc(next)) return next;
+  const doc = leadingDoc(prev);
+  return doc ? `${doc}\n${next}` : next;
+};
+
 const synthetic = (text: string, kind: SegmentKind, owner: string | null): Segment => ({
   text,
   start: -1,

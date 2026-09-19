@@ -25,8 +25,10 @@ import {
   hasTrailingCheckpoint,
   makeAlias,
   segmentsFromAst,
+  replaceDoc,
   splitAtCheckpoint,
   toText,
+  withDoc,
 } from './pine-text';
 import * as actions from './pine-actions';
 import { probeBuild } from './probe';
@@ -586,7 +588,26 @@ export class CanvasStore {
     this.selectedAliases = aliases;
   }
 
-  private applyExpression(expression: string, options?: { skipAutoRun?: boolean }) {
+  private applyExpression(
+    rawExpression: string,
+    options?: { skipAutoRun?: boolean; preserveDoc?: boolean },
+  ) {
+    // Every gesture rebuilds the expression from the operation spans in
+    // `ast.ranges` (pine-text.ts's segmentsFromAst + toText), and a doc
+    // comment at the top is outside all of them - so a gesture would
+    // otherwise delete this tab's own documentation on the way past. This is
+    // the single place a canvas gesture writes `session.expression` (the
+    // start-node's commitFirstTable and the probe/prettify path in runCommit
+    // both land here), so re-attaching it once here covers all of them.
+    // Undo/redo snapshots are taken after this, so they carry the doc too.
+    //
+    // setDoc opts out: it is the one write whose whole purpose is to change
+    // (or clear) the doc, so re-attaching the old one would make deleting a
+    // note impossible.
+    const expression =
+      options?.preserveDoc === false
+        ? rawExpression
+        : withDoc(this.session.expression, rawExpression);
     // A no-op gesture (e.g. deleteNode/setLimit returning the same text)
     // shouldn't push a snapshot that's identical to what undo would already
     // land on - it would just be a wasted step, never a wrong one, but it's
@@ -607,6 +628,45 @@ export class CanvasStore {
    */
   private notifyAutoRun() {
     this.session.notifyCanvasCommit();
+  }
+
+  // --- doc comment ------------------------------------------------------
+
+  /**
+   * True while the canvas note is open for editing (PineDoc.tsx renders a
+   * text field instead of the printed text).
+   *
+   * Note that the *text* being edited is not held here. It lives in the
+   * expression, like everything else on this canvas: the field starts from
+   * `session.doc` and `setDoc` splices the result back into
+   * `session.expression`, which rebuilds and hands the note back through
+   * `ast.doc`. Canvas keeps no copy to drift from - the same reason it holds
+   * no copy of the tables or the joins.
+   */
+  docEditing = false;
+
+  startDocEdit() {
+    this.docEditing = true;
+  }
+
+  cancelDocEdit() {
+    this.docEditing = false;
+  }
+
+  /**
+   * Write the canvas note into the expression. Empty text removes it.
+   *
+   * No probe first, unlike every other gesture (see runCommit): a comment
+   * cannot change whether the expression parses, so there is nothing to
+   * confirm. No auto-run either - a note says nothing about which rows come
+   * back, so re-running the query would be pure noise.
+   */
+  setDoc(text: string) {
+    this.docEditing = false;
+    this.applyExpression(replaceDoc(this.session.expression, text), {
+      skipAutoRun: true,
+      preserveDoc: false,
+    });
   }
 
   get canUndo(): boolean {

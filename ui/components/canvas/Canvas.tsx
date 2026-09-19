@@ -31,6 +31,7 @@ import TraceEdge from './edges/TraceEdge';
 import Picker from './Picker';
 import MultiSelectToolbar from './MultiSelectToolbar';
 import CanvasToolbar, { CanvasModeIndicator, CanvasToolbarExtraAction } from './CanvasToolbar';
+import PineDoc from '../PineDoc';
 
 const nodeTypes: NodeTypes = {
   'table-node': TableNode,
@@ -215,6 +216,12 @@ const Flow: React.FC<{
       {canvasGraph.singleBlock && !canvasGraph.parsing && !canvasStore.isConnecting && (
         <Banner>Not parsing - showing last valid graph</Banner>
       )}
+      {/* What this query is for, in the author's own words - see PineDoc.tsx.
+          Outside the graph wrapper below on purpose, so it stays legible at
+          full opacity even while the graph is dimmed for a parse failure:
+          that is exactly when knowing what the query was meant to do is
+          worth most. */}
+      <PineDoc canvasStore={canvasStore} />
       <div
         style={{
           width: '100%',

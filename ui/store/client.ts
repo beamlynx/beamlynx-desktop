@@ -154,6 +154,11 @@ export type Ast = {
   group?: GroupColumn[];
   prettified: string;
   ranges: PineRange[];
+  // The comment at the top of THIS expression, cleaned for display
+  // (delimiters, per-line markers and shared indentation removed) - see
+  // pine-lang's docs/comments.md. Null/absent when there isn't one, and
+  // absent entirely against a server older than the feature.
+  doc?: string | null;
   variables?: Record<string, VariableAst>;
   'pending-assignments'?: Record<string, VariableAst>;
   assign?: string;
@@ -167,6 +172,11 @@ export type Response = {
   // build
   ast: Ast;
   query: string;
+  // The TAB's doc comment: the one at the top of the *first* expression
+  // sent, not `ast.doc`, which is the last one's (the only expression `ast`
+  // describes). The same string for a single-block tab. See
+  // pine-lang's docs/comments.md.
+  doc?: string | null;
   // eval
   result: (string | number)[][];
   columns: Column[];

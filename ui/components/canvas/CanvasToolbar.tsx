@@ -68,6 +68,20 @@ const panelToggleStyle = (active: boolean): React.CSSProperties => ({
   color: active ? 'var(--canvas-trace)' : 'var(--canvas-text-dim)',
 });
 
+/**
+ * A drawing's title block: the ruled box in the corner of an engineering
+ * sheet carrying what the drawing is of. Reads as "the note about this
+ * query" in the same schematic vocabulary the rest of the canvas speaks,
+ * rather than importing a speech-bubble or sticky-note glyph from a
+ * commenting system this isn't one of.
+ */
+const TitleBlock = () => (
+  <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden>
+    <rect x="2" y="3" width="12" height="10" rx="1" fill="none" stroke="currentColor" strokeWidth="1.2" />
+    <path d="M4.5 6.5 H11.5 M4.5 9 H9.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+  </svg>
+);
+
 const iconButtonStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
@@ -168,6 +182,26 @@ const CanvasToolbar: React.FC<{ canvasStore: CanvasStore; extraAction?: CanvasTo
           onClick={() => global.toggleAutoRunEnabled()}
         >
           <Bolt />
+        </span>
+        <Divider />
+        <span
+          title={
+            canvasStore.session.doc
+              ? 'Edit this comment (c)'
+              : 'Add a comment saying what this query is for (c)'
+          }
+          style={{
+            ...iconButtonStyle,
+            color:
+              canvasStore.session.doc || canvasStore.docEditing
+                ? 'var(--canvas-trace)'
+                : 'var(--canvas-text-dim)',
+          }}
+          onClick={() =>
+            canvasStore.docEditing ? canvasStore.cancelDocEdit() : canvasStore.startDocEdit()
+          }
+        >
+          <TitleBlock />
         </span>
         <Divider />
         <span
