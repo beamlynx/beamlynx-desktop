@@ -148,20 +148,21 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     () =>
       baseColumns.map(column => {
         const alias = colIndexToAlias[column.field] ?? '';
-        // Ambient table colors tint the HEADER only, not every value in the
-        // column - highlighting every cell read as visual noise across a
-        // full table of rows, where the header alone already says which
-        // table a column belongs to. The hover spotlight below is
-        // unaffected: it's transient (only while pointing at a canvas
-        // node) and answers a different question - "which columns does
-        // THIS table own, right now" - so it still marks the cells too.
+        // Header-only, for both kinds of color this column can carry - the
+        // ambient "Table colors" preference AND the hover spotlight below.
+        // Coloring every cell (confirmed live: this was still happening
+        // while hovering a canvas node even with the preference OFF, since
+        // the spotlight was never gated on it) read as visual noise across
+        // a full table of rows; the header alone already says which table
+        // a column belongs to, whether that's shown all the time (colors
+        // on) or only while you're pointing at that table on the canvas
+        // (hovering).
         const headerClasses = [
           showResultColors && alias ? `result-col-${alias.replace(/[^a-z0-9_]/gi, '_')}` : '',
           alias && alias === hoveredAlias ? 'result-col-hovered' : '',
         ]
           .filter(Boolean)
           .join(' ');
-        const cellClasses = alias && alias === hoveredAlias ? 'result-col-hovered' : '';
         const isJsonColumn = jsonColumnFields.has(column.field);
         return {
           ...column,
@@ -183,7 +184,6 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
             ),
           }),
           ...(headerClasses && { headerClassName: headerClasses }),
-          ...(cellClasses && { cellClassName: cellClasses }),
         };
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -212,12 +212,12 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   // A hover spotlight, independent of the "Table colors" preference above -
   // this answers "which columns belong to the table I'm pointing at right
   // now", not "always tint everything", so it fires regardless of
-  // showResultColors and still marks cells (see the columns memo's own
-  // comment on why ambient color no longer does). Reuses the same
-  // alias->color mapping so the two never disagree when both are visible at
-  // once; the border is the part that still shows even when a column's
-  // header background already matches (ambient colors on, hovering its own
-  // table).
+  // showResultColors. Header-only, same as the ambient color above and for
+  // the same reason (see the columns memo's own comment) - this used to
+  // also tint every cell, visible even with "Table colors" turned off,
+  // which is what made the preference look like it wasn't doing anything.
+  // Reuses the same alias->color mapping so the two never disagree when
+  // both are visible at once.
   const hoveredColorSx = React.useMemo(
     () =>
       hoveredAlias
@@ -232,10 +232,6 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
               // transition below.
               boxShadow: 'inset 0 2px 0 var(--canvas-trace)',
               transition: 'background-color 120ms ease, box-shadow 120ms ease',
-            },
-            '& .MuiDataGrid-cell.result-col-hovered': {
-              backgroundColor: getColorForAlias(hoveredAlias, ast, isDark),
-              transition: 'background-color 120ms ease',
             },
           }
         : {},
