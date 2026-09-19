@@ -185,9 +185,10 @@ registry every other consumer has nothing to do with.
 
 The current mode is always visible bottom-left of the canvas
 (`CanvasModeIndicator`, in `CanvasToolbar.tsx`) — "normal" or "insert", plus,
-in normal mode, the exact letters armed for whichever node is currently
-focused (e.g. `s w o g i x` for a table with something to delete, `s w o i x`
-for a checkpoint, `i` alone for the empty-canvas start node). This legend is
+in normal mode, `c` (write the canvas comment, canvas-wide, always first)
+followed by the exact letters armed for whichever node is currently focused
+(e.g. `c s w o g i x` for a table with something to delete, `c s w o i x`
+for a checkpoint, `c i` for the empty-canvas start node). This legend is
 what makes the shortcuts discoverable without memorizing them up front.
 
 **Moving focus** (normal mode only):
@@ -220,9 +221,12 @@ to roam.
 | `Ctrl`/`Cmd`+`Shift`+`Z`, `Ctrl`+`Y` | Redo (same action as `Shift`+`U`) |
 
 `c`, `u` and `Shift`+`U` are the canvas-scoped ones: they need no focused
-node and work on the empty-canvas start node too. That is also why they are
-absent from the bottom-left legend, which lists only what acts on whatever is
-focused right now.
+node and work on the empty-canvas start node too. `c` leads the bottom-left
+legend for exactly that reason — it is new vocabulary unique to this app, so
+it earns the discoverability that legend exists to give. `u`/`Shift`+`U` stay
+out of it: undo/redo are a near-universal convention, already carrying their
+own always-visible icons in the toolbar above, so they don't need it
+(`CanvasToolbar.tsx`'s `legendKeysFor`).
 
 A checkpoint (frame) node routes `s`/`w`/`o`/`i`/`x` through
 `openCheckpointPicker` instead of the per-table picker methods, but the same

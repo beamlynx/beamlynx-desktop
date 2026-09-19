@@ -84,29 +84,29 @@ test('withDoc: a line-comment doc survives too', () => {
 
 const { replaceDoc } = require('../store/canvas/pine-text.ts');
 
-test('replaceDoc: adds a note to an expression that has none', () => {
+test('replaceDoc: adds a comment to an expression that has none', () => {
   assert.equal(replaceDoc('company | count:', 'Active companies'), '/* Active companies */\ncompany | count:');
 });
 
-test('replaceDoc: replaces an existing note', () => {
+test('replaceDoc: replaces an existing comment', () => {
   assert.equal(replaceDoc('/* old */\ncompany', 'new'), '/* new */\ncompany');
   assert.equal(replaceDoc('-- old\ncompany', 'new'), '/* new */\ncompany');
 });
 
-test('replaceDoc: empty text removes the note', () => {
+test('replaceDoc: empty text removes the comment', () => {
   assert.equal(replaceDoc('/* old */\ncompany | count:', ''), 'company | count:');
   assert.equal(replaceDoc('/* old */\ncompany', '   '), 'company');
 });
 
-test('replaceDoc: a multi-line note becomes a block comment', () => {
+test('replaceDoc: a multi-line comment becomes a block comment', () => {
   assert.equal(replaceDoc('company', 'one\ntwo'), '/*\n   one\n   two\n */\ncompany');
 });
 
 test('replaceDoc: a comment terminator in the text cannot close the comment early', () => {
   const out = replaceDoc('company', 'rate is 50*/month');
   assert.equal(out, '/* rate is 50* /month */\ncompany');
-  // The real property: the comment runs to the end of the note, so the query
-  // that follows is still the whole query and none of the note leaked into it.
+  // The real property: the comment runs to the end of the comment, so the query
+  // that follows is still the whole query and none of the comment leaked into it.
   assert.equal(leadingDoc(out), '/* rate is 50* /month */');
   assert.equal(out.slice(leadingDoc(out).length).trim(), 'company');
 });
@@ -122,6 +122,6 @@ test('replaceDoc: round-trips through leadingDoc', () => {
   }
 });
 
-test('replaceDoc: a note with no query yet is still valid Pine', () => {
+test('replaceDoc: a comment with no query yet is still valid Pine', () => {
   assert.equal(replaceDoc('', 'thinking out loud'), '/* thinking out loud */');
 });

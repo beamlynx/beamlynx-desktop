@@ -283,13 +283,14 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
         // browser build) and picks browser-safe alternates instead of
         // fighting the host chrome. Shift+U pairs visibly with plain `u`
         // without touching a combo a real browser tab would intercept.
-        // Canvas-scoped, like u/U below and unlike every key above it: a
-        // comment describes the whole query, so it needs no focused node and
-        // works on the start node too. Safe as a bare letter - the guards at
-        // the top bail out on any real text input, which includes the comment
-        // field this opens, so typing a `c` into a comment can never re-fire
-        // this. Deliberately not in CanvasModeIndicator's legend, which lists
-        // only the operations that act on the focused node.
+        // Canvas-scoped, like u/U below: a comment describes the whole
+        // query, so it needs no focused node and works on the start node
+        // too. Safe as a bare letter - the guards at the top bail out on
+        // any real text input, which includes the comment field this opens,
+        // so typing a `c` into a comment can never re-fire this. Unlike
+        // u/U, it does appear in CanvasModeIndicator's legend
+        // (CanvasToolbar.tsx's legendKeysFor) - see that function's own
+        // comment for why the two are treated differently.
         case 'c':
           e.preventDefault();
           canvasStore.startDocEdit();

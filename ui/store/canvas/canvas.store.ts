@@ -603,7 +603,7 @@ export class CanvasStore {
     //
     // setDoc opts out: it is the one write whose whole purpose is to change
     // (or clear) the doc, so re-attaching the old one would make deleting a
-    // note impossible.
+    // comment impossible.
     const expression =
       options?.preserveDoc === false
         ? rawExpression
@@ -633,7 +633,7 @@ export class CanvasStore {
   // --- doc comment ------------------------------------------------------
 
   /**
-   * True while the canvas note is open for editing (PineDoc.tsx renders a
+   * True while the canvas comment is open for editing (PineDoc.tsx renders a
    * text field instead of the printed text).
    *
    * Note that the *text* being edited is not held here. It lives in the
@@ -654,11 +654,11 @@ export class CanvasStore {
   }
 
   /**
-   * Write the canvas note into the expression. Empty text removes it.
+   * Write the canvas comment into the expression. Empty text removes it.
    *
    * No probe first, unlike every other gesture (see runCommit): a comment
    * cannot change whether the expression parses, so there is nothing to
-   * confirm. No auto-run either - a note says nothing about which rows come
+   * confirm. No auto-run either - a comment says nothing about which rows come
    * back, so re-running the query would be pure noise.
    */
   setDoc(text: string) {

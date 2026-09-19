@@ -232,13 +232,13 @@ export const leadingDoc = (expression: string): string => {
  * Replace (or, with empty `text`, remove) the doc comment at the top of
  * `expression`.
  *
- * The write half of the same loop every other canvas gesture uses: a note
+ * The write half of the same loop every other canvas gesture uses: a comment
  * typed on the canvas is spliced into the expression text here, and the
  * rendered comment comes back on the rebuilt expression's own build response.
  * Canvas keeps no copy of it.
  *
  * A `*` followed by `/` inside `text` would close the comment early and turn
- * the rest of the note into a syntax error, so it's spaced apart. Nothing
+ * the rest of the comment into a syntax error, so it's spaced apart. Nothing
  * else needs escaping - Pine block comments have no other terminator.
  */
 export const replaceDoc = (expression: string, text: string): string => {

@@ -3,13 +3,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import { CanvasStore } from '../store/canvas/canvas.store';
 
 /**
- * The note on a tab's canvas - what the query is for, in the author's words.
+ * The comment on a tab's canvas - what the query is for, in the author's words.
  *
  * It is a comment at the top of the Pine expression, nothing more. pine-lang
  * hands its text back on every build, stripped of delimiters and per-line
  * markers (`Session.doc`, see pine-lang's docs/comments.md), and editing it
  * here splices it straight back into the expression (`CanvasStore.setDoc`) -
- * the same round trip a join or a select goes through, so the note can never
+ * the same round trip a join or a select goes through, so the comment can never
  * drift from the text that produced it.
  *
  * Canvas only. The Pine panel already shows the comment - it is the first
@@ -21,7 +21,7 @@ import { CanvasStore } from '../store/canvas/canvas.store';
  * the clipped, letter-spaced style of a drawing's printed annotations, and
  * the surface under it all is a dot grid. An annotation on a drawing is
  * printed onto the board - so this is bare board (no card, no radius, no
- * shadow) with a hairline rule marking it as a margin note. A rule and not a
+ * shadow) with a hairline rule marking it as a margin comment. A rule and not a
  * filled bar, because this system draws in lines, not blocks.
  */
 
@@ -32,7 +32,7 @@ const isApple = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navig
 /** Lines past this are cut off, with the edge faded, until it's clicked open. */
 const LINE_CLAMP = 5;
 
-/** Shared by the printed text and the field that edits it, so the note doesn't move on click. */
+/** Shared by the printed text and the field that edits it, so the comment doesn't move on click. */
 const proseStyle: React.CSSProperties = {
   margin: 0,
   fontFamily: 'var(--canvas-font)',
@@ -71,7 +71,7 @@ const containerStyle: React.CSSProperties = {
   // A drawing's title block: cleared board, ruled in hairlines, square
   // corners. Opaque because a node can pan underneath it, and hairlined on
   // all four sides because without an edge that overlap read as the node
-  // being clipped rather than as the note sitting over it. Still nothing
+  // being clipped rather than as the comment sitting over it. Still nothing
   // like a card - no radius, no fill tint, no shadow. The left rule takes
   // the trace color, so the box reads as annotation attached to the drawing
   // rather than a panel floating above it.
@@ -80,7 +80,7 @@ const containerStyle: React.CSSProperties = {
   borderLeft: '1px solid var(--canvas-trace)',
   borderRadius: 0,
   padding: '5px 8px 5px 10px',
-  // Bounded by the canvas pane, not the viewport. A long note in a short
+  // Bounded by the canvas pane, not the viewport. A long comment in a short
   // pane used to run straight off the bottom and collide with the mode
   // indicator in the opposite corner (nothing here clips it) - 48 is this
   // block's own top offset, 28 leaves that indicator its row.
@@ -107,7 +107,7 @@ const DocEditor = observer(({ canvasStore }: { canvasStore: CanvasStore }) => {
         placeholder="What is this query for?"
         onChange={e => setText(e.target.value)}
         // Commits on the way out, so clicking back onto the canvas keeps what
-        // was typed rather than throwing it away - the note is a stray
+        // was typed rather than throwing it away - the comment is a stray
         // thought someone is getting down, and losing it to a misplaced click
         // is worse than an edit they have to undo.
         onBlur={() => canvasStore.setDoc(text)}
@@ -129,7 +129,7 @@ const DocEditor = observer(({ canvasStore }: { canvasStore: CanvasStore }) => {
             canvasStore.setDoc(text);
           }
           // Canvas keybindings are single letters (s/w/o/i/x...) - without
-          // this, typing a note would fire them all.
+          // this, typing a comment would fire them all.
           e.stopPropagation();
         }}
         rows={Math.min(Math.max(text.split('\n').length + 1, 3), 8)}
@@ -162,16 +162,16 @@ const DocEditor = observer(({ canvasStore }: { canvasStore: CanvasStore }) => {
 });
 
 /**
- * What stands in for the note before there is one.
+ * What stands in for the comment before there is one.
  *
  * The toolbar button alone was not enough to find: one more unlabelled icon
- * in a row of them, with nothing on the canvas hinting that a note is even
- * possible. This sits exactly where the note will, so it teaches the place
+ * in a row of them, with nothing on the canvas hinting that a comment is even
+ * possible. This sits exactly where the comment will, so it teaches the place
  * as well as the action, and it is gone for good the moment anything is
  * written. Words only, no rule and no box - an empty canvas should not carry
  * a panel waiting to be filled in.
  */
-const AddNote = observer(({ canvasStore }: { canvasStore: CanvasStore }) => {
+const AddComment = observer(({ canvasStore }: { canvasStore: CanvasStore }) => {
   const [hovered, setHovered] = useState(false);
   return (
     <div
@@ -182,7 +182,7 @@ const AddNote = observer(({ canvasStore }: { canvasStore: CanvasStore }) => {
       style={{
         position: 'absolute',
         top: containerStyle.top,
-        // Lines up with where the note's own text will sit, past its rule and
+        // Lines up with where the comment's own text will sit, past its rule and
         // padding - so writing one doesn't make the words jump sideways.
         left: 19,
         zIndex: 14,
@@ -202,7 +202,7 @@ const PineDoc: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasStore 
   if (canvasStore.docEditing) return <DocEditor canvasStore={canvasStore} />;
 
   const doc = asProse(canvasStore.session.doc.trim());
-  if (!doc) return <AddNote canvasStore={canvasStore} />;
+  if (!doc) return <AddComment canvasStore={canvasStore} />;
 
   // Roughly: more than the clamp can hold at this measure (~34 characters a
   // line), counting a blank line between paragraphs.
@@ -212,11 +212,11 @@ const PineDoc: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasStore 
   return (
     <div
       className="nodrag"
-      // Shrinks to the note: a one-line note in a box sized for five read as
+      // Shrinks to the comment: a one-line comment in a box sized for five read as
       // a panel waiting to be filled in.
       style={{ ...containerStyle, width: 'fit-content', cursor: 'text' }}
       // A single click opens the clamped tail; a second one (or a click on an
-      // already-whole note) edits it. Reading it shouldn't put you in a text
+      // already-whole comment) edits it. Reading it shouldn't put you in a text
       // field, and editing shouldn't be hidden behind a menu.
       onClick={() => (clamped ? setExpanded(true) : canvasStore.startDocEdit())}
       title={clamped ? doc : 'Click to edit this comment (c)'}
