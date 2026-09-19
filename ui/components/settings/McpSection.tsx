@@ -49,7 +49,7 @@ const CopyBlock = ({ text }: { text: string }) => {
  * itself. Registration is the agent's own concern (its own config format,
  * its own consent flow); a third-party app silently editing that file would
  * cross a trust boundary that isn't this app's to cross. See
- * beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md.
+ * beamlynx-plans/completed/2026-08-15-mcp-server-and-url-scheme.md.
  */
 const DesktopMcpInstructions = () => {
   const [setupInfo, setSetupInfo] = useState<{ command: string; args: string[] } | null>(null);

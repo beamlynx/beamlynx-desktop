@@ -1,5 +1,5 @@
 // Regression tests for the hard rule in
-// beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md: the MCP
+// beamlynx-plans/completed/2026-08-15-mcp-server-and-url-scheme.md: the MCP
 // server must NEVER have a path to raw SQL execution, under any
 // configuration, and must always be redacted by whichever access policy its
 // connection has assigned -- never governed by the human-only
@@ -41,7 +41,7 @@ test('mcp-query.ts never calls client.sql (raw SQL execution)', () => {
   assert.ok(
     !/\.sql\s*\(/.test(MCP_QUERY_SOURCE),
     'store/mcp-query.ts must never call client.sql() -- raw SQL execution must not be reachable from an MCP client, ' +
-      'not even behind a flag. See the "No run_sql tool" rule in beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md.',
+      'not even behind a flag. See the "No run_sql tool" rule in beamlynx-plans/completed/2026-08-15-mcp-server-and-url-scheme.md.',
   );
 });
 

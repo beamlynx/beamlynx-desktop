@@ -5,7 +5,7 @@
 // source text alone. Raw SQL execution (client.sql / pine-lang's
 // /api/v1/sql) and Pine's own `delete!` write operator must never be
 // reachable from here. See
-// beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md for why:
+// beamlynx-plans/completed/2026-08-15-mcp-server-and-url-scheme.md for why:
 // Pine expressions compile through pine-lang's AST layer, a real choke
 // point for column-level restrictions; raw SQL has no such choke point, so
 // it's excluded structurally rather than by a runtime flag. That choke

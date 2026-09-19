@@ -220,7 +220,7 @@ export type ConnectionInfo = {
   dbName?: string;
   // Desktop-only: whether this saved connection has been opted in to MCP
   // access. See GlobalStore.setMcpEnabled and
-  // beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md.
+  // beamlynx-plans/completed/2026-08-15-mcp-server-and-url-scheme.md.
   mcpEnabled?: boolean;
   // Desktop-only: which access policy (if any) applies to this connection,
   // defaulted at connection creation (credential-store.ts's saveConnection)

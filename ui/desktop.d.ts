@@ -63,7 +63,7 @@ type SetConnectionPolicyResult =
 // Sent by the main process (control-plane-server.ts) when an MCP client calls
 // the run_query or complete_query MCP tool -- the renderer is the only place
 // that can actually execute a query into a visible tab. See
-// beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md.
+// beamlynx-plans/completed/2026-08-15-mcp-server-and-url-scheme.md.
 type McpQueryRequest = {
   requestId: string;
   kind: 'eval' | 'build';
