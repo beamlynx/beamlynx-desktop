@@ -59,6 +59,20 @@ HOW TO WORK
    list an earlier one's.
 4. run_query -- execute. Opens a visible tab in the user's beamlynx app so they can see it.
 
+SAY WHY
+
+Lead every expression you run with a comment saying what you are looking for and why. beamlynx
+renders it as a note above the query, so the person watching sees your reasoning and not just
+rows. Write it for them, in plain words -- the question you are answering, and anything about
+the query that would not be obvious from reading it.
+
+  /* Tenants that signed up last month but never finished onboarding.
+     Checking whether the drop-off is concentrated in one plan. */
+  tenant | where: created_at > '2026-08-01' | public.onboarding .tenantId
+
+One comment, at the top, before the first table. \`/* ... */\` spans lines; \`--\` runs to the end
+of one. A comment anywhere else in the expression is ignored.
+
 Do not guess at table or column names -- find_tables and complete_query know them. A join
 labelled "guessed from column naming" was inferred from a naming pattern with no foreign key
 behind it, so confirm it returns sensible rows before relying on it.

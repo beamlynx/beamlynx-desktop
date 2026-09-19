@@ -260,7 +260,10 @@ async function registerTools(server: McpServer): Promise<void> {
         'Run a Pine expression against a connection (must be one returned by list_connections) and return the ' +
         'rows. Opens or updates a visible tab in the beamlynx app so the user can see what ran. Pine is not SQL ' +
         'and SQL is not accepted here. Build the expression with find_tables and complete_query rather than ' +
-        'guessing at table or column names. Results are capped by the server at 250 rows.',
+        'guessing at table or column names. Results are capped by the server at 250 rows. ' +
+        'Lead the expression with a `/* ... */` comment saying what you are looking for and why -- the tab ' +
+        'this opens renders it as a note above the query, which is how the user sees your reasoning rather ' +
+        'than just rows.',
       inputSchema: {
         connection_id: z.string().describe('A connection id from list_connections'),
         expression: z.string().describe('The Pine expression to run'),
