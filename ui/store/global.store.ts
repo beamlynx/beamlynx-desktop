@@ -1867,10 +1867,10 @@ export class GlobalStore {
    * Ctrl+Tab/Ctrl+Shift+Tab has over a real browser's own tab strip (see
    * utils/keybindings.ts). Order matches PineTabs.tsx's own tab strip
    * (`visibleSessionIds`), so this always moves to the visually adjacent
-   * one of the user's own tabs, and never lands on the pinned MCP tab --
-   * including cycling FROM it: unlike the user's own tabs, activeSessionId
-   * can now be the MCP session (clicking its pinned tab, or
-   * revealMcpSession), so `indexOf` below can legitimately be -1, not just
+   * one of the user's own tabs, and never lands on a pinned tab --
+   * including cycling FROM one: unlike the user's own tabs, activeSessionId
+   * can now be a pinned session (clicking its tab, or focusAgentTab), so
+   * `indexOf` below can legitimately be -1, not just
    * "not found". Treat that as "off the end", same as a real browser tab
    * strip cycling away from a pinned tab: Ctrl+Tab goes to the first tab,
    * Ctrl+Shift+Tab to the last.
@@ -2018,14 +2018,25 @@ export class GlobalStore {
     }
   };
 
-  // Switches to the pinned MCP tab (McpActivityButton's onClick) -- a no-op
-  // if the agent hasn't run a query yet this session. Activating it is what
-  // "reading" the activity means here -- there's no per-result read/unread
-  // list, just one badge for "something changed since you last looked."
-  revealMcpSession = () => {
-    if (!this.mcpSessionId) return;
-    this.activeSessionId = this.mcpSessionId;
-    this.mcpHasUnseenActivity = false;
+  /**
+   * Jumps to whichever agent tab most needs the owner right now -- what the
+   * single agent icon in the header (McpActivityButton) does on click.
+   * A pending reveal request wins over the MCP activity tab: an agent is
+   * blocked waiting on a decision there, where a query result has already
+   * landed and nothing is waiting on it. A no-op when the agent has neither.
+   */
+  focusAgentTab = () => {
+    const target = this.pendingRevealSessionIds[0] ?? this.mcpSessionId;
+    if (!target) return;
+    this.activeSessionId = target;
+    // Only counts as having "seen" the query activity when that's actually
+    // where this landed -- jumping to an approval instead leaves an unread
+    // result unread, which it still is. There's no per-result read/unread
+    // list either way, just the one flag for "something changed since you
+    // last looked."
+    if (target === this.mcpSessionId) {
+      this.mcpHasUnseenActivity = false;
+    }
   };
 
   setSettingsSection = (section: SettingsSection) => {
