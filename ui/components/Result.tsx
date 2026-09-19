@@ -63,8 +63,17 @@ interface JsonPanelState {
 const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const { global } = useStores();
   const session = global.getSession(sessionId);
-  const rows = toJS(session.rows);
-  const baseColumns = toJS(session.columns);
+  // Memoized against session.rows/session.columns THEMSELVES (the raw MobX
+  // observables), not against their own output - toJS() allocates a brand
+  // new array on every call, so keying a memo off its own result never
+  // skips anything. session.rows/session.columns are only ever reassigned
+  // on a fresh eval (see plugin/default.plugin.tsx) - stable in between,
+  // including across a hover change or an unrelated re-render like a panel
+  // opening elsewhere in the app. This is what makes jsonColumnFields below,
+  // and the columns/color memos further down, actually work rather than
+  // recomputing on every render regardless of their own dependency arrays.
+  const rows = React.useMemo(() => toJS(session.rows), [session.rows]);
+  const baseColumns = React.useMemo(() => toJS(session.columns), [session.columns]);
 
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
@@ -73,7 +82,16 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   // ambient per-table tint and the hover spotlight below are gated on this,
   // since coloring or highlighting the one table present would just be
   // visual noise with no information in it.
-  const uniqueAliases = Array.from(new Set(Object.values(colIndexToAlias).filter(Boolean)));
+  //
+  // Memoized against colIndexToAlias (stable between evals - see the
+  // rows/baseColumns comment above for why) rather than left as a plain
+  // Array.from(...)/new Set(...) computed fresh every render: this feeds
+  // columnColorSx below, and an unstable uniqueAliases would defeat that
+  // memo the same way an unstable baseColumns defeated jsonColumnFields'.
+  const uniqueAliases = React.useMemo(
+    () => Array.from(new Set(Object.values(colIndexToAlias).filter(Boolean))),
+    [colIndexToAlias],
+  );
   const hasMultipleTables = uniqueAliases.length > 1;
 
   const showResultColors =
@@ -99,80 +117,130 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     return fields;
   }, [rows, baseColumns]);
 
-  // Add custom edit component and column color classes by table alias
-  const columns = baseColumns.map(column => {
-    const alias = colIndexToAlias[column.field] ?? '';
-    const classNames = [
-      showResultColors && alias ? `result-col-${alias.replace(/[^a-z0-9_]/gi, '_')}` : '',
-      alias && alias === hoveredAlias ? 'result-col-hovered' : '',
-    ]
-      .filter(Boolean)
-      .join(' ');
-    const isJsonColumn = jsonColumnFields.has(column.field);
-    return {
-      ...column,
-      renderEditCell: (params: any) => <CellEditComponent {...params} />,
-      ...(isJsonColumn && {
-        // Not editable at the DataGrid level - editing a JSON cell happens
-        // entirely inside JsonInspectorPanel, opened already in edit mode by
-        // this same click (see onOpen below), not via DataGrid's own
-        // double-click/F2/type-to-edit. renderEditCell above is therefore
-        // dead code for this column (never invoked), left in place rather
-        // than branched around since it's harmless.
-        editable: false,
-        renderCell: (params: any) => (
-          <JsonCellContent
-            value={params.value}
-            onOpen={() => setJsonPanel({ id: params.id, field: params.field, editing: true })}
-          />
-        ),
-      }),
-      ...(classNames && {
-        headerClassName: classNames,
-        cellClassName: classNames,
-      }),
-    };
-  });
-
   const ast = session.response?.ast ?? null;
-  const columnColorSx =
-    showResultColors && uniqueAliases.length
-      ? Object.fromEntries(
-          uniqueAliases.flatMap(alias => {
-            const safeClass = `result-col-${alias.replace(/[^a-z0-9_]/gi, '_')}`;
-            const color = getColorForAlias(alias, ast, isDark);
-            return [
-              [`& .MuiDataGrid-columnHeader.${safeClass}`, { backgroundColor: color }],
-              [`& .MuiDataGrid-cell.${safeClass}`, { backgroundColor: color }],
-            ];
+
+  // Add custom edit component and column color classes by table alias.
+  //
+  // Memoized for two independent reasons. First, correctness: MUI DataGrid
+  // treats a brand-new `columns` array reference as a brand-new column
+  // model and resets state it otherwise tracks internally, including a
+  // width you just dragged by hand - confirmed live as "any time I resize
+  // a column, it goes back after a rerender". Passing the SAME array
+  // reference across a render that didn't actually change any column input
+  // is what keeps a manual resize intact.
+  //
+  // Second, cost: building this array runs a JSON-detection check and two
+  // string-building steps per column, and MUI re-derives cell/header
+  // rendering from whatever it's handed. Rebuilding it on every render this
+  // component makes - which, before rows/baseColumns were memoized above,
+  // was EVERY render, since toJS() output was its own unstable memo key -
+  // was extra work landing in the same window as whatever else triggered
+  // that render, including a panel opening elsewhere in the app.
+  //
+  // CellEditComponent and setJsonPanel are intentionally not in the
+  // dependency list. CellEditComponent is redefined every Result render
+  // (see its own definition further down) but only reads session/rows at
+  // the moment it's actually invoked (a cell edit), by which point this
+  // memo would already have re-run if either had changed - and setJsonPanel
+  // is a setState function, which React itself guarantees is stable for
+  // the lifetime of this component instance.
+  const columns = React.useMemo(
+    () =>
+      baseColumns.map(column => {
+        const alias = colIndexToAlias[column.field] ?? '';
+        // Ambient table colors tint the HEADER only, not every value in the
+        // column - highlighting every cell read as visual noise across a
+        // full table of rows, where the header alone already says which
+        // table a column belongs to. The hover spotlight below is
+        // unaffected: it's transient (only while pointing at a canvas
+        // node) and answers a different question - "which columns does
+        // THIS table own, right now" - so it still marks the cells too.
+        const headerClasses = [
+          showResultColors && alias ? `result-col-${alias.replace(/[^a-z0-9_]/gi, '_')}` : '',
+          alias && alias === hoveredAlias ? 'result-col-hovered' : '',
+        ]
+          .filter(Boolean)
+          .join(' ');
+        const cellClasses = alias && alias === hoveredAlias ? 'result-col-hovered' : '';
+        const isJsonColumn = jsonColumnFields.has(column.field);
+        return {
+          ...column,
+          renderEditCell: (params: any) => <CellEditComponent {...params} />,
+          ...(isJsonColumn && {
+            // Not editable at the DataGrid level - editing a JSON cell
+            // happens entirely inside JsonInspectorPanel, opened already in
+            // edit mode by this same click (see onOpen below), not via
+            // DataGrid's own double-click/F2/type-to-edit. renderEditCell
+            // above is therefore dead code for this column (never
+            // invoked), left in place rather than branched around since
+            // it's harmless.
+            editable: false,
+            renderCell: (params: any) => (
+              <JsonCellContent
+                value={params.value}
+                onOpen={() => setJsonPanel({ id: params.id, field: params.field, editing: true })}
+              />
+            ),
           }),
-        )
-      : {};
+          ...(headerClasses && { headerClassName: headerClasses }),
+          ...(cellClasses && { cellClassName: cellClasses }),
+        };
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [baseColumns, colIndexToAlias, showResultColors, hoveredAlias, jsonColumnFields],
+  );
+
+  // Header-only, matching the classes above - see their own comment for why
+  // cells no longer get an ambient background. Memoized for the same
+  // "unstable reference costs real work" reason as columns above: this
+  // object feeds the DataGrid's `sx` prop, and MUI's style engine has to
+  // reprocess and re-inject CSS whenever that reference changes, whether or
+  // not any color in it actually did.
+  const columnColorSx = React.useMemo(
+    () =>
+      showResultColors && uniqueAliases.length
+        ? Object.fromEntries(
+            uniqueAliases.map(alias => {
+              const safeClass = `result-col-${alias.replace(/[^a-z0-9_]/gi, '_')}`;
+              const color = getColorForAlias(alias, ast, isDark);
+              return [`& .MuiDataGrid-columnHeader.${safeClass}`, { backgroundColor: color }];
+            }),
+          )
+        : {},
+    [showResultColors, uniqueAliases, ast, isDark],
+  );
   // A hover spotlight, independent of the "Table colors" preference above -
   // this answers "which columns belong to the table I'm pointing at right
   // now", not "always tint everything", so it fires regardless of
-  // showResultColors. Reuses the same alias->color mapping so the two never
-  // disagree when both are visible at once; the border is the part that
-  // still shows even when a column's background already matches (ambient
-  // colors on, hovering its own table).
-  const hoveredColorSx = hoveredAlias
-    ? {
-        '& .MuiDataGrid-columnHeader.result-col-hovered': {
-          backgroundColor: getColorForAlias(hoveredAlias, ast, isDark),
-          // inset box-shadow, not border-top: a real border adds 2px of
-          // layout height only to the hovered columns' headers, jittering
-          // the header row as the spotlight moves between them - a shadow
-          // paints over existing space instead, and (unlike a border-width
-          // change) actually animates via the transition below.
-          boxShadow: 'inset 0 2px 0 var(--canvas-trace)',
-          transition: 'background-color 120ms ease, box-shadow 120ms ease',
-        },
-        '& .MuiDataGrid-cell.result-col-hovered': {
-          backgroundColor: getColorForAlias(hoveredAlias, ast, isDark),
-          transition: 'background-color 120ms ease',
-        },
-      }
-    : {};
+  // showResultColors and still marks cells (see the columns memo's own
+  // comment on why ambient color no longer does). Reuses the same
+  // alias->color mapping so the two never disagree when both are visible at
+  // once; the border is the part that still shows even when a column's
+  // header background already matches (ambient colors on, hovering its own
+  // table).
+  const hoveredColorSx = React.useMemo(
+    () =>
+      hoveredAlias
+        ? {
+            '& .MuiDataGrid-columnHeader.result-col-hovered': {
+              backgroundColor: getColorForAlias(hoveredAlias, ast, isDark),
+              // inset box-shadow, not border-top: a real border adds 2px of
+              // layout height only to the hovered columns' headers,
+              // jittering the header row as the spotlight moves between
+              // them - a shadow paints over existing space instead, and
+              // (unlike a border-width change) actually animates via the
+              // transition below.
+              boxShadow: 'inset 0 2px 0 var(--canvas-trace)',
+              transition: 'background-color 120ms ease, box-shadow 120ms ease',
+            },
+            '& .MuiDataGrid-cell.result-col-hovered': {
+              backgroundColor: getColorForAlias(hoveredAlias, ast, isDark),
+              transition: 'background-color 120ms ease',
+            },
+          }
+        : {},
+    [hoveredAlias, ast, isDark],
+  );
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [updateData, setUpdateData] = useState<UpdateData | undefined>(undefined);
   // The cell the update dialog was opened for, kept while it animates shut
