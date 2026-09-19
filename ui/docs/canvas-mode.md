@@ -1,10 +1,14 @@
 # Canvas Mode
 
 A graph editor for building a Pine expression by directly manipulating table
-nodes instead of typing pipe syntax. It's the default graph editor in New
-Layout, and an opt-in alternative to the classic graph in Legacy Layout — see
-[terminology.md](./terminology.md) for how the two layouts and the two graph
-modes fit together.
+nodes instead of typing pipe syntax. It is the only graph editor there is.
+
+Historical note, because the rest of this page keeps comparing against it:
+there used to be a second one, a read-only diagram called the classic graph
+(`components/Graph.box.tsx`), reachable by a toggle in a second page layout
+called Legacy Layout. Both are gone. Where this page says "the classic graph"
+it is explaining why canvas mode works the way it does, not describing
+something you can still switch to.
 
 ## Why
 
@@ -25,18 +29,10 @@ never a synchronous local mutation.
 
 ## Enabling it
 
-In New Layout (the default), Canvas mode is always on — there's no toggle for
-it there (`components/NewLayoutView.tsx` renders `<Canvas>` unconditionally).
-
-In Legacy Layout, a toggle inside the graph panel itself
-(`components/Session.tsx`'s `InteractiveViewToggle`, bottom-right of the
-graph/canvas widget - not the app header, which only ever refers to layout,
-see `docs/terminology.md`) switches between the classic graph and canvas mode
-for the active tab, via `GlobalStore.canvasModeEnabled` / `toggleCanvasMode()`.
-The preference persists across reloads (`STORAGE_KEYS.CANVAS_MODE`) and
-applies globally, not per session. `components/Session.tsx`'s `MainView`
-reads it to decide whether the `'graph'`/`'documentation'` mode slot renders
-`<Canvas>` or `<GraphBox>`.
+Nothing to enable. `components/NewLayoutView.tsx` renders `<Canvas>`
+unconditionally, and there is no toggle, preference or command for it — the
+`canvasModeEnabled` flag and its `InteractiveViewToggle` went with the classic
+graph.
 
 ## Auto-run
 
@@ -90,8 +86,7 @@ mode meant "no Pine editor on screen, nothing to build for." Canvas mode
 breaks that assumption — it renders a graph regardless of which text panel is
 open next to it, and needs a fresh `ast` after every gesture just the same.
 The guard now also checks `GlobalStore.canvasActive`, so it only actually
-skips when there's no canvas to keep in sync (Legacy Layout's classic
-SQL-only mode). Without this, a canvas edit made while the SQL panel was open
+skips when there is no canvas to keep in sync. Without this, a canvas edit made while the SQL panel was open
 silently went nowhere — the graph and the SQL panel's own text both stayed on
 whatever they showed before the edit — and a session restored with
 `inputMode` already `'sql'` from a previous visit got stuck on the
@@ -257,8 +252,7 @@ picker's own filter input maintain on focus/blur) and whether the event
 target is inside an `input`/`textarea`/`contenteditable` element — so typing
 a column name into a filter box, or hand-editing Pine/SQL in the panel, never
 triggers a single-letter canvas action by accident. The whole layer is also a
-no-op unless `global.canvasActive` is true (New Layout, or Legacy Layout with
-canvas mode on) and `canvasStore.mode === 'normal'` — a picker being open is
+no-op unless `global.canvasActive` is true and `canvasStore.mode === 'normal'` — a picker being open is
 enough on its own to suspend every letter shortcut above until it closes.
 
 ## How it works
@@ -319,8 +313,9 @@ corner (`components/PineDoc.tsx`) is a comment at the top of the expression,
 nothing more. Writing one goes through the same round trip as any other
 gesture, just with a simpler splice: `CanvasStore.setDoc` calls
 `pine-text.ts`'s `replaceDoc` to swap the leading comment in the expression
-text, and the rendered note comes back out of the rebuilt expression as
-`ast.doc` (pine-lang computes it — see that repo's `docs/comments.md`).
+text, and the rendered comment comes back on the rebuilt expression's own
+build response as `doc` (pine-lang computes it — see that repo's
+`docs/comments.md`).
 Canvas holds no copy of the text; `docEditing` is a boolean, not a draft.
 
 Two differences from a segment gesture, both because a comment can't change
@@ -455,9 +450,8 @@ Constraints).
   warning-colored, no column labels) rather than a plain solid line.
 - **No checkpoint/variable nodes.** There's no way to join onto, or select
   from, a `group:`/`limit:` checkpoint's own sealed/aggregated output as a
-  node in its own right (the classic graph's variable/checkpoint container is
-  the prior art — see `docs/classic-graph-node-types.md`). Checkpoints today only ever
-  sit at the pipeline's literal end.
+  node in its own right. Checkpoints today only ever sit at the pipeline's
+  literal end.
 - **No `update!`/`delete!` support.** Canvas mode only models read pipelines.
 - **Multi-select `assign` is inert.** Shown in the toolbar but not wired to
   any mutation — pine-lang's `|=` variable/checkpoint assignment needs
@@ -555,18 +549,14 @@ overridden on the y-axis by `sequenceYByAlias`).
 - `MultiSelectToolbar.tsx` — the floating toolbar shown for 2+ selected
   nodes; only `limit` is wired.
 - `CanvasToolbar.tsx` — the **canvas toolbar** (informally "the icon bar"),
-  pinned top-left: undo, redo, auto-run (a bolt icon; lit when on), a PINE/SQL
-  panel toggle (New Layout only — see "The Pine/SQL panel" below), plus one
-  optional caller-supplied extra action (New Layout's orientation toggle).
+  pinned top-left: undo, redo, auto-run (a bolt icon; lit when on), the
+  comment button, a PINE/SQL panel toggle (see "The Pine/SQL panel" below),
+  plus one optional caller-supplied extra action (the orientation toggle).
   Same file also exports `CanvasModeIndicator`, the bottom-left
   normal/insert status line with the focused node's armed-key legend.
 
 ### Integration points
 
-- `components/Session.tsx`'s `MainView` switches between `<Canvas>` and
-  `<GraphBox>` based on `global.canvasModeEnabled`.
-- `components/AppView.tsx`'s `InteractiveViewToggle` flips
-  `GlobalStore.canvasModeEnabled` (persisted via `STORAGE_KEYS.CANVAS_MODE`).
 - `store/session.ts` is otherwise unmodified for canvas mode — it owns
   `expression`/`ast`/the debounced build reaction regardless of which graph
   view is active; canvas mode only reads those fields and writes
