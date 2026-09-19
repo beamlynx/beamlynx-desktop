@@ -639,9 +639,9 @@ export class CanvasStore {
    * Note that the *text* being edited is not held here. It lives in the
    * expression, like everything else on this canvas: the field starts from
    * `session.doc` and `setDoc` splices the result back into
-   * `session.expression`, which rebuilds and hands the note back through
-   * `ast.doc`. Canvas keeps no copy to drift from - the same reason it holds
-   * no copy of the tables or the joins.
+   * `session.expression`, which rebuilds and hands the text back as the
+   * build response's `doc`. Canvas keeps no copy to drift from - the same
+   * reason it holds no copy of the tables or the joins.
    */
   docEditing = false;
 

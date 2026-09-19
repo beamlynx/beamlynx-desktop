@@ -234,7 +234,7 @@ export const leadingDoc = (expression: string): string => {
  *
  * The write half of the same loop every other canvas gesture uses: a note
  * typed on the canvas is spliced into the expression text here, and the
- * rendered note comes back out of the rebuilt expression's own `ast.doc`.
+ * rendered comment comes back on the rebuilt expression's own build response.
  * Canvas keeps no copy of it.
  *
  * A `*` followed by `/` inside `text` would close the comment early and turn
