@@ -12,6 +12,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - Add Connection form: switching to the "Connection string" tab now rebuilds the string from whatever's currently in the Fields tab, so the two stay in sync in both directions instead of just string-to-fields.
 
 ### Changed
+- Panels now open and close with a short animation instead of appearing in a single frame. Settings, the Pine/SQL panel, Zen mode, the error band above the results, the agent's pinned tabs and every dialog all move now, so you can see where something came from rather than having to find it again after each toggle. All of it follows your operating system's "reduce motion" setting -- turn that on and everything is instant again, with no separate setting here to keep in sync.
+- Dragging a pane divider no longer selects the text it passes over.
+### Changed
 - Database Connections: switching the active tab's connection while it still has a query in it no longer silently opens a new tab instead. You now get a warning that the query may reference tables or columns that don't exist on the new connection, with the choice to switch anyway (in the same tab) or cancel.
 - Database Connections: renaming a connection now has its own pencil icon next to the name, independent of the row's expand/advanced-options toggle. Previously renaming only worked by first expanding the row.
 - MCP: queries an agent runs now show in their own tab, pinned to the end of the tab strip and marked with a robot icon so it doesn't read as one of your own tabs. It always shows the same query slot, since an agent's next query replaces whatever was there before -- closing it is always safe.
@@ -22,6 +25,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - The classic Graph mode (the non-interactive node diagram you got with the "Canvas mode" preference off) is gone. Canvas is now the only graph editor. The "Canvas mode" toggle in Preferences and its command-palette entry are gone with it; if you had it turned off, you'll now see Canvas instead.
 - Legacy Layout (the classic sidebar arrangement) is gone. The Canvas-first two-pane layout (Canvas + Results) is now the only layout. The "Switch to legacy layout" header link, the "New layout" toggle in Preferences, and their command-palette entries are gone with it; if you were on Legacy Layout, you'll now see the new one. Settings always opens as a docked panel now, not a floating window.
 
+### Fixed
+- Opening or closing Settings now re-centres the canvas. It takes up to 640px away from the canvas and never triggered a re-fit, so the graph was left off-centre (or partly cut off) until something else happened to move it.
+- Entering and leaving Zen mode no longer resets the canvas. Zen mode rebuilt the canvas from scratch each way, losing whatever you had panned or zoomed to; it now keeps your view.
 ### Fixed
 - A blank line inside a `/* ... */` comment no longer breaks the expression. Blank lines separate one expression block from the next, and that rule used to apply inside a comment too -- so a comment with a paragraph break in it was split down the middle and sent to the server as an unterminated comment followed by loose text.
 - Header: the version badge no longer shows "obsolete" when you're simply not connected yet -- it just doesn't show until there's a real version to display.

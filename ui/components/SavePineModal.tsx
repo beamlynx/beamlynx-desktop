@@ -1,4 +1,5 @@
-import { Box, Modal, Typography, IconButton, TextField, Button } from '@mui/material';
+import { Box, Typography, IconButton, TextField, Button } from '@mui/material';
+import ModalSurface from './ModalSurface';
 import { Close } from '@mui/icons-material';
 import { observer } from 'mobx-react-lite';
 import React, { useEffect, useRef, useState } from 'react';
@@ -51,119 +52,107 @@ const SavePineModal = observer(() => {
   };
 
   return (
-    <Modal open={global.showSaveModal} onClose={handleClose}>
+    <ModalSurface
+      open={global.showSaveModal}
+      onClose={handleClose}
+      surfaceSx={{ width: 450, p: 3 }}
+    >
       <Box
         sx={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          width: 450,
-          bgcolor: 'var(--background-color)',
-          border: '1px solid var(--border-color)',
-          boxShadow: 24,
-          p: 3,
-          borderRadius: 2,
-          outline: 'none',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          mb: 2,
         }}
       >
-        <Box
+        <Typography
+          variant="h6"
+          component="h2"
           sx={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            mb: 2,
+            color: 'var(--text-color)',
+            fontWeight: 500,
           }}
         >
-          <Typography
-            variant="h6"
-            component="h2"
-            sx={{
-              color: 'var(--text-color)',
-              fontWeight: 500,
-            }}
-          >
-            Save Tab
-          </Typography>
+          Save Tab
+        </Typography>
 
-          <IconButton
-            onClick={handleClose}
-            size="small"
-            aria-label="Close"
-            sx={{
-              color: 'var(--text-color)',
-              '&:hover': {
-                backgroundColor: 'var(--hover-color)',
-              },
-            }}
-          >
-            <Close fontSize="small" />
-          </IconButton>
-        </Box>
-
-        <TextField
-          autoFocus
-          fullWidth
-          value={filename}
-          onChange={e => setFilename(e.target.value)}
-          onKeyPress={handleKeyPress}
-          variant="outlined"
+        <IconButton
+          onClick={handleClose}
           size="small"
-          inputRef={inputRef}
+          aria-label="Close"
           sx={{
-            mb: 3,
-            '& .MuiOutlinedInput-root': {
-              color: 'var(--text-color)',
-              '& fieldset': {
-                borderColor: 'var(--border-color)',
-              },
-              '&:hover fieldset': {
-                borderColor: 'var(--border-color)',
-              },
-              '&.Mui-focused fieldset': {
-                borderColor: 'var(--primary-color)',
-              },
-            },
-            '& .MuiInputBase-input': {
-              color: 'var(--text-color)',
+            color: 'var(--text-color)',
+            '&:hover': {
+              backgroundColor: 'var(--hover-color)',
             },
           }}
-        />
-
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-          <Button
-            onClick={handleClose}
-            sx={{
-              color: 'var(--text-color)',
-              '&:hover': {
-                backgroundColor: 'var(--hover-color)',
-              },
-            }}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSave}
-            variant="contained"
-            disabled={!filename.trim()}
-            sx={{
-              bgcolor: 'var(--primary-color)',
-              color: '#fff',
-              '&:hover': {
-                bgcolor: 'var(--primary-color)',
-                opacity: 0.9,
-              },
-              '&:disabled': {
-                bgcolor: 'var(--border-color)',
-                color: 'var(--text-color-secondary)',
-              },
-            }}
-          >
-            Save
-          </Button>
-        </Box>
+        >
+          <Close fontSize="small" />
+        </IconButton>
       </Box>
-    </Modal>
+
+      <TextField
+        autoFocus
+        fullWidth
+        value={filename}
+        onChange={e => setFilename(e.target.value)}
+        onKeyPress={handleKeyPress}
+        variant="outlined"
+        size="small"
+        inputRef={inputRef}
+        sx={{
+          mb: 3,
+          '& .MuiOutlinedInput-root': {
+            color: 'var(--text-color)',
+            '& fieldset': {
+              borderColor: 'var(--border-color)',
+            },
+            '&:hover fieldset': {
+              borderColor: 'var(--border-color)',
+            },
+            '&.Mui-focused fieldset': {
+              borderColor: 'var(--primary-color)',
+            },
+          },
+          '& .MuiInputBase-input': {
+            color: 'var(--text-color)',
+          },
+        }}
+      />
+
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+        <Button
+          onClick={handleClose}
+          sx={{
+            color: 'var(--text-color)',
+            '&:hover': {
+              backgroundColor: 'var(--hover-color)',
+            },
+          }}
+        >
+          Cancel
+        </Button>
+        <Button
+          onClick={handleSave}
+          variant="contained"
+          disabled={!filename.trim()}
+          sx={{
+            bgcolor: 'var(--primary-color)',
+            color: '#fff',
+            '&:hover': {
+              bgcolor: 'var(--primary-color)',
+              opacity: 0.9,
+            },
+            '&:disabled': {
+              bgcolor: 'var(--border-color)',
+              color: 'var(--text-color-secondary)',
+            },
+          }}
+        >
+          Save
+        </Button>
+      </Box>
+    </ModalSurface>
   );
 });
 

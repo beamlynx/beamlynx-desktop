@@ -5,7 +5,8 @@
  * own generated ones, keeping both vars defined everywhere that reads them
  * before pages/_app.tsx's own effects apply the user's actual choice. */
 .canvas-font-fallback {
-  --canvas-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  --canvas-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell,
+    sans-serif;
   --code-font: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
 }
 
@@ -167,4 +168,44 @@ a {
 .cm-editor .cm-tooltip-autocomplete ul li.pine-autocomplete-empty[aria-selected] {
   background: transparent !important;
   color: var(--node-suggested-border) !important;
+}
+
+/* ---------------------------------------------------------------------------
+ * Motion
+ * ------------------------------------------------------------------------- */
+
+/* Panels animate their width/height to open and close (see
+ * hooks/usePanelPresence.ts). A resizable divider sets that same dimension
+ * on every mousemove, so without this the panel would animate each step of
+ * the drag and lag rubber-band-style behind the cursor. useResizeDrag adds
+ * this class for the duration of a drag; every animated panel opts in by
+ * carrying data-panel-motion. */
+body.is-resizing [data-panel-motion] {
+  transition: none !important;
+}
+
+/* Dragging a divider used to select whatever text it passed over. */
+body.is-resizing {
+  user-select: none;
+}
+
+/* Honor the OS's "reduce motion" setting. Deliberately not a preference of
+ * our own: the OS already owns this choice, and a second switch that can
+ * disagree with it is a third state to keep working.
+ *
+ * This reaches CSS only. MUI's own transitions (Drawer, Modal) animate via
+ * inline styles and are handled in styles/theme.ts; our JS-side delays are
+ * handled by motionDuration() in styles/motion.ts.
+ *
+ * 0.01ms rather than 0: a zero-length transition never fires transitionend,
+ * which would strand any code waiting on one. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

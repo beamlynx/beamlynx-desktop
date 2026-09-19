@@ -20,7 +20,7 @@ import SettingsPanelContent from './SettingsPanelContent';
  * sits open in the background. Closed only by its own IconButton
  * (SettingsPanelContent) or the gear icon.
  */
-const SettingsDockedPanel = () => {
+const SettingsDockedPanel = ({ open }: { open: boolean }) => {
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Opening Settings (the gear icon, Ctrl/Cmd+,, the command palette, a
@@ -31,15 +31,22 @@ const SettingsDockedPanel = () => {
   // Settings appeared, and canvas shortcuts (j/k, vim-style single letters)
   // kept firing until the user happened to click something inside the
   // panel (confirmed live: opening Settings and immediately pressing a
-  // canvas shortcut still hit the canvas). This component only mounts
-  // while global.showSettings is true (see AppView.tsx's conditional
-  // render), so a mount-time focus grabs it exactly once per open -- it
-  // doesn't fight the click-to-focus handler below, which only matters for
-  // moving focus back here *after* it's left (e.g. clicking the canvas,
-  // then clicking back into Settings without a remount).
+  // canvas shortcut still hit the canvas). It doesn't fight the
+  // click-to-focus handler below, which only matters for moving focus back
+  // here *after* it's left (e.g. clicking the canvas, then clicking back
+  // into Settings).
+  //
+  // Keyed on `open`, NOT on mount. This used to be a mount-time effect,
+  // which worked because the component only existed while
+  // global.showSettings was true. It now outlives that flag by the length
+  // of its closing transition (AppView.tsx's usePanelPresence keeps it
+  // mounted so it has something to animate), so closing and immediately
+  // reopening -- inside that window -- reuses the same instance and would
+  // never re-run a mount-time effect, silently losing the focus grab and
+  // with it the whole fix above.
   useEffect(() => {
-    rootRef.current?.focus();
-  }, []);
+    if (open) rootRef.current?.focus();
+  }, [open]);
 
   return (
     <Box

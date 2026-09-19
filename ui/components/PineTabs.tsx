@@ -8,7 +8,12 @@ import Session from './Session';
 import { observer } from 'mobx-react-lite';
 import { runInAction } from 'mobx';
 import { useStores } from '../store/store-container';
-import { AddCircle, CloseOutlined, SmartToyOutlined, VisibilityOutlined } from '@mui/icons-material';
+import {
+  AddCircle,
+  CloseOutlined,
+  SmartToyOutlined,
+  VisibilityOutlined,
+} from '@mui/icons-material';
 import { IconButton, CircularProgress, Tooltip, ButtonBase } from '@mui/material';
 import { NEW_LAYOUT_GUTTER, VERTICAL_TAB_RAIL_WIDTH } from '../constants';
 
@@ -720,7 +725,25 @@ const PineTabs = observer(() => {
                     fontFamily: 'var(--canvas-font)',
                     fontSize: '0.875rem',
                     color: isActive ? activeColor : idleColor,
-                    transition: 'background-color 120ms ease, color 120ms ease',
+                    transition:
+                      'background-color var(--motion-fast) ease, color var(--motion-fast) ease',
+                    // A pinned tab is the only thing in the strip that
+                    // appears without the user doing anything -- an agent
+                    // queried something, or asked for approval, possibly
+                    // while they were looking elsewhere. Sliding it in from
+                    // the pinned end says where it came from; appearing
+                    // fully formed says nothing at all. Runs on mount only
+                    // (these are keyed by session id, so a new request gets
+                    // a fresh element) and needs no exit counterpart --
+                    // finishRevealSession removes the whole tab.
+                    animation: 'pine-pinned-tab-in var(--motion-enter) var(--motion-ease-enter)',
+                    '@keyframes pine-pinned-tab-in': {
+                      from: {
+                        opacity: 0,
+                        transform: vertical ? 'translateY(12px)' : 'translateX(12px)',
+                      },
+                      to: { opacity: 1, transform: 'none' },
+                    },
                     '&:hover': {
                       backgroundColor: 'var(--canvas-chip-bg)',
                       color: 'var(--canvas-text)',
@@ -775,7 +798,9 @@ const PineTabs = observer(() => {
                   ) : pinned.kind === 'mcp' ? (
                     <SmartToyOutlined sx={{ fontSize: 14, flexShrink: 0 }} />
                   ) : (
-                    <VisibilityOutlined sx={{ fontSize: 14, flexShrink: 0, color: idleIconColor }} />
+                    <VisibilityOutlined
+                      sx={{ fontSize: 14, flexShrink: 0, color: idleIconColor }}
+                    />
                   )}
                   <span>{label}</span>
                   <IconButton

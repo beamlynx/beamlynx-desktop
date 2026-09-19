@@ -10,7 +10,7 @@ import UserBox from './UserBox';
 import { isDesktop, isDevelopment, isPlayground } from '../store/util';
 import { useState, useEffect, useCallback } from 'react';
 import { getUserPreference, STORAGE_KEYS } from '../store/preferences';
-import { DEFAULT_SETTINGS_PANEL_WIDTH } from '../constants';
+import { DEFAULT_SETTINGS_PANEL_WIDTH, NEW_LAYOUT_GUTTER } from '../constants';
 import AnalysisModal from './AnalysisModal';
 import ChangelogModal from './ChangelogModal';
 import CommandPalette from './CommandPalette';
@@ -21,6 +21,7 @@ import SettingsButton from './SettingsButton';
 import SettingsDockedPanel from './settings/SettingsDockedPanel';
 import McpActivityButton from './McpActivityButton';
 import { NewLayoutSettingsPanelDivider } from './ResizableDividers';
+import { usePanelPresence } from '../hooks/usePanelPresence';
 import { useGlobalKeybindings } from '../hooks/useGlobalKeybindings';
 import { useFocusedPanelTracking } from '../hooks/useFocusedPanelTracking';
 import { useSettingsKeybindings } from '../hooks/useSettingsKeybindings';
@@ -76,6 +77,10 @@ const AppView = observer(() => {
   // "settings show inside a tab, it should show on the left of all the
   // tabs as well").
   const [settingsPanelWidth, setSettingsPanelWidth] = useState(DEFAULT_SETTINGS_PANEL_WIDTH);
+  // Keeps the dock mounted through its closing transition -- `showSettings`
+  // alone would unmount it the instant the gear is clicked, leaving nothing
+  // on screen to animate away. See hooks/usePanelPresence.ts.
+  const settings = usePanelPresence(global.showSettings);
 
   const handleOpenChangelog = () => {
     global.setShowChangelog(true);
@@ -305,7 +310,7 @@ const AppView = observer(() => {
           mr: global.isZenModeActive ? 0 : 1,
         }}
       >
-        {global.showSettings && (
+        {settings.mounted && (
           // Wrapped together (not given individual margins) so the Box and
           // the divider stretch to match each other's height automatically
           // -- NewLayoutView's own outer wrapper insets Canvas/Results from
@@ -315,7 +320,33 @@ const AppView = observer(() => {
           // keeps PineTabs itself flush (it doesn't need it - NewLayoutView
           // supplies its own), while still bottom-aligning Settings with
           // Canvas/Results.
-          <Box sx={{ display: 'flex', flexDirection: 'row', mb: global.isZenModeActive ? 0 : 1 }}>
+          //
+          // This same wrapper is also what ANIMATES the dock open and shut,
+          // and it has to be this one rather than the panel Box inside it.
+          // Two reasons, both of which look like bugs if you animate the
+          // inner box instead: the divider and the panel's own 1px borders
+          // aren't inside it, so it would bottom out at a ~10px sliver that
+          // then snaps away at unmount - a pop at exactly the moment this is
+          // meant to smooth over; and the panel's contents would re-lay-out
+          // at every width between full and zero, rewrapping text and
+          // collapsing controls the whole way down. Clipping a wrapper whose
+          // children hold their real size (both carry flexShrink: 0) slides
+          // the panel out of view intact instead.
+          <Box
+            data-panel-motion
+            sx={{
+              display: 'flex',
+              flexDirection: 'row',
+              mb: global.isZenModeActive ? 0 : 1,
+              flexShrink: 0,
+              overflow: 'hidden',
+              width: settings.open ? settingsPanelWidth + NEW_LAYOUT_GUTTER : 0,
+              opacity: settings.open ? 1 : 0,
+              transition: settings.open
+                ? 'width var(--motion-enter) var(--motion-ease-enter), opacity var(--motion-enter) var(--motion-ease-enter)'
+                : 'width var(--motion-exit) var(--motion-ease-exit), opacity var(--motion-exit) var(--motion-ease-exit)',
+            }}
+          >
             <Box
               sx={{
                 width: settingsPanelWidth,
@@ -330,7 +361,7 @@ const AppView = observer(() => {
                 overflow: 'hidden',
               }}
             >
-              <SettingsDockedPanel />
+              <SettingsDockedPanel open={settings.open} />
             </Box>
             <NewLayoutSettingsPanelDivider
               settingsPanelWidth={settingsPanelWidth}

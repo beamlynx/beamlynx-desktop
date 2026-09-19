@@ -1,16 +1,9 @@
-import {
-  Box,
-  Modal,
-  TextField,
-  Typography,
-  List,
-  ListItem,
-  ListItemText,
-  Chip,
-} from '@mui/material';
+import { Box, TextField, Typography, List, ListItem, ListItemText, Chip } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useStores } from '../store/store-container';
+import { prefersReducedMotion } from '../styles/motion';
+import ModalSurface from './ModalSurface';
 import { getAllCommands, Command, CommandCategory, CommandOption } from '../utils/commands';
 import { getKeybindingDisplayForCommand } from '../utils/keybindings';
 
@@ -48,9 +41,9 @@ const CommandPalette = observer(() => {
 
   // Get recent commands (only if no search query) - filter out disabled ones
   const recentCommands = !searchQuery
-    ? (global.commandHistory
+    ? global.commandHistory
         .map(id => allCommands.find(cmd => cmd.id === id))
-        .filter((cmd): cmd is Command => cmd !== undefined && cmd.isEnabled(global, session)))
+        .filter((cmd): cmd is Command => cmd !== undefined && cmd.isEnabled(global, session))
     : [];
 
   // Group filtered commands by category
@@ -176,207 +169,298 @@ const CommandPalette = observer(() => {
   useEffect(() => {
     const selectedElement = listRef.current?.querySelector(`[data-index="${selectedIndex}"]`);
     if (selectedElement) {
-      selectedElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      // globals.css's reduced-motion rule flattens CSS scroll-behavior, but
+      // this is a scripted scroll with its own behavior argument, which that
+      // rule can't reach.
+      selectedElement.scrollIntoView({
+        block: 'nearest',
+        behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+      });
     }
   }, [selectedIndex]);
 
   return (
-    <Modal
+    // align="top" rather than the default centring: the palette replaces
+    // the search box that sits at the top of the header, so it should grow
+    // out of roughly where that box was. The dead `// animation:
+    // 'slideDown...'` and its leftover @keyframes that used to live on the
+    // surface below are gone with it -- they were committed already
+    // commented out and never ran; ModalSurface does that job now, for
+    // every modal rather than this one.
+    <ModalSurface
       open={global.showCommandPalette}
       onClose={handleClose}
+      align="top"
       aria-labelledby="command-palette-title"
-      sx={{
-        display: 'flex',
-        alignItems: 'flex-start',
-        justifyContent: 'center',
-        paddingTop: '8px',
-      }}
+      sx={{ paddingTop: '8px' }}
       slotProps={{
         backdrop: {
           sx: {
-            // backgroundColor: 'rgba(0, 0, 0, 0.3)',
             backgroundColor: 'rgba(0, 0, 0, 0)',
           },
         },
       }}
+      surfaceSx={{
+        width: 600,
+        maxWidth: '90vw',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
+        borderRadius: 1, // Match search box (4px)
+        maxHeight: '60vh',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+      onKeyDown={handleKeyDown}
     >
-      <Box
+      {/* Search Input */}
+      <TextField
+        fullWidth
+        placeholder="Search commands..."
+        value={searchQuery}
+        onChange={e => setSearchQuery(e.target.value)}
+        inputRef={searchInputRef}
+        variant="outlined"
+        size="small"
+        autoComplete="off"
         sx={{
-          width: 600,
-          maxWidth: '90vw',
-          bgcolor: 'var(--background-color)',
-          border: '1px solid var(--border-color)',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
-          borderRadius: 1, // Match search box (4px)
-          outline: 'none',
-          maxHeight: '60vh',
-          display: 'flex',
-          flexDirection: 'column',
-          // animation: 'slideDown 0.15s ease-out',
-          '@keyframes slideDown': {
-            '0%': {
-              opacity: 0,
-              transform: 'translateY(-10px)',
+          '& .MuiInputBase-root': {
+            color: 'var(--text-color)',
+            backgroundColor: 'var(--node-column-bg)',
+            borderRadius: '4px 4px 0 0', // Match search box border radius (4px at top)
+            fontSize: '0.875rem', // Match button text size
+            fontFamily: 'var(--canvas-font)',
+          },
+          '& .MuiInputBase-input': {
+            fontSize: '0.875rem', // Match button text size
+            padding: '10px 16px', // Slightly taller than button
+          },
+          '& .MuiOutlinedInput-root': {
+            '& fieldset': {
+              borderColor: 'var(--border-color)',
+              borderBottom: '1px solid var(--border-color)',
             },
-            '100%': {
-              opacity: 1,
-              transform: 'translateY(0)',
+            '&:hover fieldset': { borderColor: 'var(--text-color)' },
+            '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
+          },
+        }}
+      />
+
+      {/* Breadcrumb for two-stage mode */}
+      {parentCommand && (
+        <Box
+          sx={{
+            px: 2,
+            py: 1,
+            borderBottom: '1px solid var(--border-color)',
+            backgroundColor: 'var(--node-column-bg)',
+          }}
+        >
+          <Typography variant="caption" sx={{ color: 'var(--text-color)', opacity: 0.7 }}>
+            {parentCommand.label} → Select option
+          </Typography>
+        </Box>
+      )}
+
+      {/* Commands List */}
+      <Box
+        ref={listRef}
+        sx={{
+          overflowY: 'auto',
+          flex: 1,
+          minHeight: 0,
+          // Custom scrollbar styling
+          '&::-webkit-scrollbar': {
+            width: '8px',
+          },
+          '&::-webkit-scrollbar-track': {
+            backgroundColor: 'var(--background-color)',
+          },
+          '&::-webkit-scrollbar-thumb': {
+            backgroundColor: 'var(--border-color)',
+            borderRadius: '4px',
+            '&:hover': {
+              backgroundColor: 'var(--text-color)',
+              opacity: 0.5,
             },
           },
         }}
-        onKeyDown={handleKeyDown}
       >
-        {/* Search Input */}
-        <TextField
-          fullWidth
-          placeholder="Search commands..."
-          value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
-          inputRef={searchInputRef}
-          variant="outlined"
-          size="small"
-          autoComplete="off"
-          sx={{
-            '& .MuiInputBase-root': {
-              color: 'var(--text-color)',
-              backgroundColor: 'var(--node-column-bg)',
-              borderRadius: '4px 4px 0 0', // Match search box border radius (4px at top)
-              fontSize: '0.875rem', // Match button text size
-              fontFamily: 'var(--canvas-font)',
-            },
-            '& .MuiInputBase-input': {
-              fontSize: '0.875rem', // Match button text size
-              padding: '10px 16px', // Slightly taller than button
-            },
-            '& .MuiOutlinedInput-root': {
-              '& fieldset': {
-                borderColor: 'var(--border-color)',
-                borderBottom: '1px solid var(--border-color)',
-              },
-              '&:hover fieldset': { borderColor: 'var(--text-color)' },
-              '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
-            },
-          }}
-        />
+        {/* Two-stage mode: Show options */}
+        {commandOptions ? (
+          filteredOptions.length === 0 ? (
+            <Box sx={{ p: 3, textAlign: 'center' }}>
+              <Typography sx={{ color: 'var(--text-color)', opacity: 0.6 }}>
+                No options found
+              </Typography>
+            </Box>
+          ) : (
+            <List disablePadding>
+              {filteredOptions.map((option, index) => {
+                const isSelected = index === selectedIndex;
 
-        {/* Breadcrumb for two-stage mode */}
-        {parentCommand && (
-          <Box
-            sx={{
-              px: 2,
-              py: 1,
-              borderBottom: '1px solid var(--border-color)',
-              backgroundColor: 'var(--node-column-bg)',
-            }}
-          >
-            <Typography variant="caption" sx={{ color: 'var(--text-color)', opacity: 0.7 }}>
-              {parentCommand.label} → Select option
-            </Typography>
-          </Box>
-        )}
-
-        {/* Commands List */}
-        <Box
-          ref={listRef}
-          sx={{
-            overflowY: 'auto',
-            flex: 1,
-            minHeight: 0,
-            // Custom scrollbar styling
-            '&::-webkit-scrollbar': {
-              width: '8px',
-            },
-            '&::-webkit-scrollbar-track': {
-              backgroundColor: 'var(--background-color)',
-            },
-            '&::-webkit-scrollbar-thumb': {
-              backgroundColor: 'var(--border-color)',
-              borderRadius: '4px',
-              '&:hover': {
-                backgroundColor: 'var(--text-color)',
-                opacity: 0.5,
-              },
-            },
-          }}
-        >
-          {/* Two-stage mode: Show options */}
-          {commandOptions ? (
-            filteredOptions.length === 0 ? (
-              <Box sx={{ p: 3, textAlign: 'center' }}>
-                <Typography sx={{ color: 'var(--text-color)', opacity: 0.6 }}>
-                  No options found
-                </Typography>
-              </Box>
-            ) : (
-              <List disablePadding>
-                {filteredOptions.map((option, index) => {
-                  const isSelected = index === selectedIndex;
-
-                  return (
-                    <ListItem
-                      key={option.id}
-                      data-index={index}
-                      component="div"
-                      onClick={() => executeOption(option)}
-                      sx={{
-                        px: 2,
-                        py: 0.5,
-                        cursor: 'pointer',
-                        backgroundColor: isSelected ? 'var(--primary-color)' : 'transparent',
-                        color: isSelected ? 'var(--primary-text-color)' : 'var(--text-color)',
-                        '&:hover': {
-                          backgroundColor: isSelected
-                            ? 'var(--primary-color)'
-                            : 'var(--node-column-bg)',
-                        },
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
-                        <Typography
+                return (
+                  <ListItem
+                    key={option.id}
+                    data-index={index}
+                    component="div"
+                    onClick={() => executeOption(option)}
+                    sx={{
+                      px: 2,
+                      py: 0.5,
+                      cursor: 'pointer',
+                      backgroundColor: isSelected ? 'var(--primary-color)' : 'transparent',
+                      color: isSelected ? 'var(--primary-text-color)' : 'var(--text-color)',
+                      '&:hover': {
+                        backgroundColor: isSelected
+                          ? 'var(--primary-color)'
+                          : 'var(--node-column-bg)',
+                      },
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
+                      <Typography
+                        sx={{
+                          color: 'inherit',
+                          fontWeight: isSelected ? 500 : 400,
+                          fontSize: '0.875rem',
+                          fontFamily: 'var(--canvas-font)',
+                        }}
+                      >
+                        {option.label}
+                      </Typography>
+                      {option.schema && (
+                        <Chip
+                          label={option.schema}
+                          size="small"
                           sx={{
-                            color: 'inherit',
-                            fontWeight: isSelected ? 500 : 400,
-                            fontSize: '0.875rem',
+                            height: 20,
+                            fontSize: '0.7rem',
+                            backgroundColor: option.schemaColor,
+                            color: '#000000',
+                            border: 'none',
                             fontFamily: 'var(--canvas-font)',
                           }}
-                        >
-                          {option.label}
-                        </Typography>
-                        {option.schema && (
+                        />
+                      )}
+                    </Box>
+                  </ListItem>
+                );
+              })}
+            </List>
+          )
+        ) : groupedCommands.length === 0 && recentCommands.length === 0 ? (
+          <Box sx={{ p: 3, textAlign: 'center' }}>
+            <Typography sx={{ color: 'var(--text-color)', opacity: 0.6 }}>
+              No commands found
+            </Typography>
+          </Box>
+        ) : (
+          <>
+            {/* Recent Commands Section */}
+            {recentCommands.length > 0 && (
+              <Box sx={{ mb: 0.5 }}>
+                {/* Recent Header */}
+                <Box
+                  sx={{
+                    px: 2,
+                    py: 0.5,
+                    backgroundColor: 'var(--node-column-bg)',
+                    borderBottom: '1px solid var(--border-color)',
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: 'var(--text-color)',
+                      opacity: 0.7,
+                      fontWeight: 600,
+                      textTransform: 'uppercase',
+                      fontSize: '0.75rem',
+                      letterSpacing: '0.5px',
+                    }}
+                  >
+                    Recent
+                  </Typography>
+                </Box>
+
+                {/* Recent Commands */}
+                <List disablePadding>
+                  {recentCommands.map((cmd, index) => {
+                    const isSelected = index === selectedIndex;
+
+                    return (
+                      <ListItem
+                        key={cmd.id}
+                        data-index={index}
+                        component="div"
+                        onClick={() => executeCommand(cmd)}
+                        sx={{
+                          px: 2,
+                          py: 0.5,
+                          cursor: 'pointer',
+                          backgroundColor: isSelected ? 'var(--primary-color)' : 'transparent',
+                          color: isSelected ? 'var(--primary-text-color)' : 'var(--text-color)',
+                          '&:hover': {
+                            backgroundColor: isSelected
+                              ? 'var(--primary-color)'
+                              : 'var(--node-column-bg)',
+                          },
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <ListItemText
+                          primary={cmd.label}
+                          primaryTypographyProps={{
+                            sx: {
+                              color: 'inherit',
+                              fontWeight: isSelected ? 500 : 400,
+                              fontSize: '0.875rem', // Match button text size
+                              fontFamily: 'var(--canvas-font)',
+                            },
+                          }}
+                        />
+                        {commandKeybindings.get(cmd.id) && (
                           <Chip
-                            label={option.schema}
+                            label={commandKeybindings.get(cmd.id)}
                             size="small"
                             sx={{
                               height: 20,
                               fontSize: '0.7rem',
-                              backgroundColor: option.schemaColor,
-                              color: '#000000',
-                              border: 'none',
+                              backgroundColor: isSelected
+                                ? 'rgba(255, 255, 255, 0.2)'
+                                : 'var(--node-column-bg)',
+                              color: isSelected ? 'var(--primary-text-color)' : 'var(--text-color)',
+                              border: '1px solid',
+                              borderColor: isSelected
+                                ? 'rgba(255, 255, 255, 0.3)'
+                                : 'var(--border-color)',
                               fontFamily: 'var(--canvas-font)',
                             }}
                           />
                         )}
-                      </Box>
-                    </ListItem>
-                  );
-                })}
-              </List>
-            )
-          ) : groupedCommands.length === 0 && recentCommands.length === 0 ? (
-            <Box sx={{ p: 3, textAlign: 'center' }}>
-              <Typography sx={{ color: 'var(--text-color)', opacity: 0.6 }}>
-                No commands found
-              </Typography>
-            </Box>
-          ) : (
-            <>
-              {/* Recent Commands Section */}
-              {recentCommands.length > 0 && (
-                <Box sx={{ mb: 0.5 }}>
-                  {/* Recent Header */}
+                      </ListItem>
+                    );
+                  })}
+                </List>
+              </Box>
+            )}
+
+            {/* Category Commands */}
+            {groupedCommands.map(({ category, commands }) => {
+              // Calculate the starting index for this category (account for recent commands)
+              const categoryStartIndex =
+                recentCommands.length +
+                flatCommands
+                  .slice(recentCommands.length)
+                  .findIndex(cmd => cmd.category === category);
+
+              return (
+                <Box key={category} sx={{ mb: 0.5 }}>
+                  {/* Category Header */}
                   <Box
                     sx={{
                       px: 2,
@@ -396,31 +480,36 @@ const CommandPalette = observer(() => {
                         letterSpacing: '0.5px',
                       }}
                     >
-                      Recent
+                      {category}
                     </Typography>
                   </Box>
 
-                  {/* Recent Commands */}
+                  {/* Category Commands */}
                   <List disablePadding>
-                    {recentCommands.map((cmd, index) => {
-                      const isSelected = index === selectedIndex;
+                    {commands.map((cmd, index) => {
+                      const commandIndex = categoryStartIndex + index;
+                      const isSelected = commandIndex === selectedIndex;
+                      const isDisabled = !cmd.isEnabled(global, session);
 
                       return (
                         <ListItem
                           key={cmd.id}
-                          data-index={index}
+                          data-index={commandIndex}
                           component="div"
-                          onClick={() => executeCommand(cmd)}
+                          onClick={() => !isDisabled && executeCommand(cmd)}
                           sx={{
                             px: 2,
                             py: 0.5,
-                            cursor: 'pointer',
+                            cursor: isDisabled ? 'not-allowed' : 'pointer',
                             backgroundColor: isSelected ? 'var(--primary-color)' : 'transparent',
                             color: isSelected ? 'var(--primary-text-color)' : 'var(--text-color)',
+                            opacity: isDisabled ? 0.5 : 1,
                             '&:hover': {
-                              backgroundColor: isSelected
-                                ? 'var(--primary-color)'
-                                : 'var(--node-column-bg)',
+                              backgroundColor: isDisabled
+                                ? 'transparent'
+                                : isSelected
+                                  ? 'var(--primary-color)'
+                                  : 'var(--node-column-bg)',
                             },
                             display: 'flex',
                             justifyContent: 'space-between',
@@ -464,140 +553,33 @@ const CommandPalette = observer(() => {
                     })}
                   </List>
                 </Box>
-              )}
+              );
+            })}
+          </>
+        )}
+      </Box>
 
-              {/* Category Commands */}
-              {groupedCommands.map(({ category, commands }) => {
-                // Calculate the starting index for this category (account for recent commands)
-                const categoryStartIndex =
-                  recentCommands.length +
-                  flatCommands
-                    .slice(recentCommands.length)
-                    .findIndex(cmd => cmd.category === category);
-
-                return (
-                  <Box key={category} sx={{ mb: 0.5 }}>
-                    {/* Category Header */}
-                    <Box
-                      sx={{
-                        px: 2,
-                        py: 0.5,
-                        backgroundColor: 'var(--node-column-bg)',
-                        borderBottom: '1px solid var(--border-color)',
-                      }}
-                    >
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          color: 'var(--text-color)',
-                          opacity: 0.7,
-                          fontWeight: 600,
-                          textTransform: 'uppercase',
-                          fontSize: '0.75rem',
-                          letterSpacing: '0.5px',
-                        }}
-                      >
-                        {category}
-                      </Typography>
-                    </Box>
-
-                    {/* Category Commands */}
-                    <List disablePadding>
-                      {commands.map((cmd, index) => {
-                        const commandIndex = categoryStartIndex + index;
-                        const isSelected = commandIndex === selectedIndex;
-                        const isDisabled = !cmd.isEnabled(global, session);
-
-                        return (
-                          <ListItem
-                            key={cmd.id}
-                            data-index={commandIndex}
-                            component="div"
-                            onClick={() => !isDisabled && executeCommand(cmd)}
-                            sx={{
-                              px: 2,
-                              py: 0.5,
-                              cursor: isDisabled ? 'not-allowed' : 'pointer',
-                              backgroundColor: isSelected ? 'var(--primary-color)' : 'transparent',
-                              color: isSelected ? 'var(--primary-text-color)' : 'var(--text-color)',
-                              opacity: isDisabled ? 0.5 : 1,
-                              '&:hover': {
-                                backgroundColor: isDisabled
-                                  ? 'transparent'
-                                  : isSelected
-                                    ? 'var(--primary-color)'
-                                    : 'var(--node-column-bg)',
-                              },
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                            }}
-                          >
-                            <ListItemText
-                              primary={cmd.label}
-                              primaryTypographyProps={{
-                                sx: {
-                                  color: 'inherit',
-                                  fontWeight: isSelected ? 500 : 400,
-                                  fontSize: '0.875rem', // Match button text size
-                                  fontFamily: 'var(--canvas-font)',
-                                },
-                              }}
-                            />
-                            {commandKeybindings.get(cmd.id) && (
-                              <Chip
-                                label={commandKeybindings.get(cmd.id)}
-                                size="small"
-                                sx={{
-                                  height: 20,
-                                  fontSize: '0.7rem',
-                                  backgroundColor: isSelected
-                                    ? 'rgba(255, 255, 255, 0.2)'
-                                    : 'var(--node-column-bg)',
-                                  color: isSelected
-                                    ? 'var(--primary-text-color)'
-                                    : 'var(--text-color)',
-                                  border: '1px solid',
-                                  borderColor: isSelected
-                                    ? 'rgba(255, 255, 255, 0.3)'
-                                    : 'var(--border-color)',
-                                  fontFamily: 'var(--canvas-font)',
-                                }}
-                              />
-                            )}
-                          </ListItem>
-                        );
-                      })}
-                    </List>
-                  </Box>
-                );
-              })}
-            </>
-          )}
-        </Box>
-
-        {/* Footer hint */}
-        <Box
+      {/* Footer hint */}
+      <Box
+        sx={{
+          px: 2,
+          py: 0.5,
+          borderTop: '1px solid var(--border-color)',
+          backgroundColor: 'var(--node-column-bg)',
+        }}
+      >
+        <Typography
+          variant="caption"
           sx={{
-            px: 2,
-            py: 0.5,
-            borderTop: '1px solid var(--border-color)',
-            backgroundColor: 'var(--node-column-bg)',
+            color: 'var(--text-color)',
+            opacity: 0.6,
+            fontSize: '0.75rem',
           }}
         >
-          <Typography
-            variant="caption"
-            sx={{
-              color: 'var(--text-color)',
-              opacity: 0.6,
-              fontSize: '0.75rem',
-            }}
-          >
-            Use ↑↓ to navigate • Enter to select • Esc to close
-          </Typography>
-        </Box>
+          Use ↑↓ to navigate • Enter to select • Esc to close
+        </Typography>
       </Box>
-    </Modal>
+    </ModalSurface>
   );
 });
 

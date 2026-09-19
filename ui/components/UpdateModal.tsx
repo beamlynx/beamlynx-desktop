@@ -1,4 +1,5 @@
-import { Box, Modal, Typography, IconButton, Tooltip } from '@mui/material';
+import { Box, Typography, IconButton, Tooltip } from '@mui/material';
+import ModalSurface from './ModalSurface';
 import { Close } from '@mui/icons-material';
 import { observer } from 'mobx-react-lite';
 import { runInAction } from 'mobx';
@@ -21,64 +22,57 @@ interface UpdateModalProps {
   onClose: () => void;
 }
 
-const UpdateModal: React.FC<UpdateModalProps> = observer(({ updateExpression, updateData, onClose }) => {
-  const { global } = useStores();
-  const vs = global.getVirtualSession();
-  const [title, setTitle] = useState('Review Update Query');
+const UpdateModal: React.FC<UpdateModalProps> = observer(
+  ({ updateExpression, updateData, onClose }) => {
+    const { global } = useStores();
+    const vs = global.getVirtualSession();
+    const [title, setTitle] = useState('Review Update Query');
 
-  const onRun = async () => {
-    try {
-      // Execute the update query
-      const [messageRow, countRow] = await vs.evaluate();
-      const message = messageRow[0];
-      const count = countRow[0];
-      setTitle(`✅ ${message}: ${count}`);
-      
-    } catch (error) {
-      setTitle(`❌ Update execution failed`);
-      console.error(error);
-    }
-  };
+    const onRun = async () => {
+      try {
+        // Execute the update query
+        const [messageRow, countRow] = await vs.evaluate();
+        const message = messageRow[0];
+        const count = countRow[0];
+        setTitle(`✅ ${message}: ${count}`);
+      } catch (error) {
+        setTitle(`❌ Update execution failed`);
+        console.error(error);
+      }
+    };
 
-  // Set up the Pine expression when modal opens with update data
-  useEffect(() => {
-    const { column, alias } = updateData;
+    // Set up the Pine expression when modal opens with update data
+    useEffect(() => {
+      const { column, alias } = updateData;
 
-    // Reset virtual session state
-    vs.setMessage('');
-    runInAction(() => {
-      vs.error = '';
-      vs.loading = false;
-    });
+      // Reset virtual session state
+      vs.setMessage('');
+      runInAction(() => {
+        vs.error = '';
+        vs.loading = false;
+      });
 
-    // Always start in Pine mode to ensure the build process triggers
-    vs.setInputMode('pine');
+      // Always start in Pine mode to ensure the build process triggers
+      vs.setInputMode('pine');
 
-    // Use the pre-built update expression
-    runInAction(() => {
-      vs.expression = updateExpression;
-    });
+      // Use the pre-built update expression
+      runInAction(() => {
+        vs.expression = updateExpression;
+      });
 
-    // Update title to be more specific
-    setTitle(`Update ${alias}.${column}`);
-  }, [updateData, vs, updateExpression]);
+      // Update title to be more specific
+      setTitle(`Update ${alias}.${column}`);
+    }, [updateData, vs, updateExpression]);
 
-  return (
-    <Modal open={!!updateData} onClose={onClose} aria-labelledby="update-modal-title">
-      <Box
-        sx={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
+    return (
+      <ModalSurface
+        open={!!updateData}
+        onClose={onClose}
+        aria-labelledby="update-modal-title"
+        surfaceSx={{
           width: '80%',
           maxWidth: 800,
-          bgcolor: 'var(--background-color)',
-          border: '1px solid var(--border-color)',
-          boxShadow: 24,
           p: 3,
-          borderRadius: 2,
-          outline: 'none',
           maxHeight: '80vh',
           overflow: 'auto',
         }}
@@ -121,9 +115,9 @@ const UpdateModal: React.FC<UpdateModalProps> = observer(({ updateExpression, up
 
         {/* The Input component */}
         <Input session={vs} onRun={onRun} />
-      </Box>
-    </Modal>
-  );
-});
+      </ModalSurface>
+    );
+  },
+);
 
 export default UpdateModal;

@@ -1,4 +1,14 @@
-import { Box, Button, FormControl, InputLabel, MenuItem, Modal, Select, TextField, Typography } from '@mui/material';
+import {
+  Box,
+  Button,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,
+  TextField,
+  Typography,
+} from '@mui/material';
+import ModalSurface from './ModalSurface';
 import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
 import { useStores } from '../store/store-container';
@@ -8,7 +18,7 @@ import { AnalysisTemplates } from '../utils/analysisTemplates.data';
 const AnalysisModal = () => {
   const { global } = useStores();
   const [analysisInput, setAnalysisInput] = useState('');
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string|null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
 
   // Set initial value when modal opens
   useEffect(() => {
@@ -34,108 +44,95 @@ const AnalysisModal = () => {
   };
 
   return (
-    <Modal
+    <ModalSurface
       open={global.showAnalysis}
       onClose={handleClose}
       aria-labelledby="analysis-modal-title"
       aria-describedby="analysis-modal-description"
+      surfaceSx={{ width: 500, p: 4 }}
     >
-      <Box
+      <Typography variant="h6" component="h2" gutterBottom sx={{ color: 'var(--text-color)' }}>
+        Analysis
+      </Typography>
+
+      <Typography variant="body2" sx={{ color: 'var(--text-color)', mb: 2 }}>
+        Enter your analysis parameters. This will run the relevant queries.
+      </Typography>
+
+      <TextField
+        fullWidth
+        margin="dense"
+        label="Analysis Input"
+        value={analysisInput}
+        onChange={e => setAnalysisInput(e.target.value)}
+        multiline
+        rows={3}
         sx={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          width: 500,
-          bgcolor: 'var(--background-color)',
-          border: '1px solid var(--border-color)',
-          boxShadow: 24,
-          p: 4,
-          borderRadius: 2,
-          outline: 'none',
+          mb: 2,
+          '& .MuiInputLabel-root': { color: 'var(--text-color)' },
+          '& .MuiInputLabel-root.Mui-focused': { color: 'var(--primary-color)' },
+          '& .MuiOutlinedInput-root': {
+            color: 'var(--text-color)',
+            '& fieldset': { borderColor: 'var(--border-color)' },
+            '&:hover fieldset': { borderColor: 'var(--text-color)' },
+            '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
+          },
         }}
-      >
-        <Typography variant="h6" component="h2" gutterBottom sx={{ color: 'var(--text-color)' }}>
-          Analysis
-        </Typography>
+      />
 
-        <Typography variant="body2" sx={{ color: 'var(--text-color)', mb: 2 }}>
-          Enter your analysis parameters. This will run the relevant queries.
-        </Typography>
-
-        <TextField
-          fullWidth
-          margin="dense"
-          label="Analysis Input"
-          value={analysisInput}
-          onChange={e => setAnalysisInput(e.target.value)}
-          multiline
-          rows={3}
+      <FormControl fullWidth margin="dense">
+        <InputLabel sx={{ color: 'var(--text-color)' }}>Analysis Template</InputLabel>
+        <Select
+          value={selectedTemplateId}
+          onChange={e => setSelectedTemplateId(e.target.value)}
+          label="Analysis Template"
           sx={{
-            mb: 2,
-            '& .MuiInputLabel-root': { color: 'var(--text-color)' },
-            '& .MuiInputLabel-root.Mui-focused': { color: 'var(--primary-color)' },
-            '& .MuiOutlinedInput-root': {
-              color: 'var(--text-color)',
-              '& fieldset': { borderColor: 'var(--border-color)' },
-              '&:hover fieldset': { borderColor: 'var(--text-color)' },
-              '&.Mui-focused fieldset': { borderColor: 'var(--primary-color)' },
+            color: 'var(--text-color)',
+            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-color)' },
+            '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--text-color)' },
+            '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+              borderColor: 'var(--primary-color)',
             },
           }}
-        />
+        >
+          {AnalysisTemplates.map(template => (
+            <MenuItem key={template.id} value={template.id}>
+              {template.id}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
 
-        <FormControl fullWidth margin="dense">
-          <InputLabel sx={{ color: 'var(--text-color)' }}>Analysis Template</InputLabel>
-          <Select
-            value={selectedTemplateId}
-            onChange={e => setSelectedTemplateId(e.target.value)}
-            label="Analysis Template"
-            sx={{
-              color: 'var(--text-color)',
-              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-color)' },
-              '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--text-color)' },
-              '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary-color)' },
-            }}
-          >
-            {AnalysisTemplates.map(template => (
-              <MenuItem key={template.id} value={template.id}>
-                {template.id}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-
-        <Box
+      <Box
+        sx={{
+          mt: 3,
+          display: 'flex',
+          gap: 2,
+          justifyContent: 'flex-end',
+        }}
+      >
+        <Button
+          variant="contained"
+          onClick={handleAnalyse}
+          disabled={!analysisInput.trim() || !selectedTemplateId}
           sx={{
-            mt: 3,
-            display: 'flex',
-            gap: 2,
-            justifyContent: 'flex-end',
+            backgroundColor: 'var(--primary-color)',
+            color: 'var(--primary-text-color)',
+            '&:hover': {
+              backgroundColor: 'var(--primary-color-hover)',
+            },
+            '&:disabled': {
+              backgroundColor: 'var(--icon-color)',
+              color: 'var(--text-color)',
+              opacity: 0.6,
+            },
           }}
         >
-          <Button
-            variant="contained"
-            onClick={handleAnalyse}
-            disabled={!analysisInput.trim() || !selectedTemplateId}
-            sx={{
-              backgroundColor: 'var(--primary-color)',
-              color: 'var(--primary-text-color)',
-              '&:hover': {
-                backgroundColor: 'var(--primary-color-hover)',
-              },
-              '&:disabled': {
-                backgroundColor: 'var(--icon-color)',
-                color: 'var(--text-color)',
-                opacity: 0.6,
-              },
-            }}
-          >
-            Analyse
-          </Button>
-        </Box>
+          Analyse
+        </Button>
       </Box>
-    </Modal>
+    </ModalSurface>
   );
 };
 
-export default observer(AnalysisModal); 
+export default observer(AnalysisModal);
