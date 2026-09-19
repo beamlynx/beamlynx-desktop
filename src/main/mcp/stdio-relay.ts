@@ -14,7 +14,7 @@
 // next. See format.ts for the measurements behind that.
 //
 // No `run_sql` tool exists here, on purpose, with no flag to add it back --
-// see beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md and
+// see beamlynx-plans/completed/2026-08-15-mcp-server-and-url-scheme.md and
 // beamlynx-ui's store/mcp-query.ts for the reasoning. The same rule runs
 // the other way too: no tool output may contain SQL either (format.ts).
 import { app } from 'electron';

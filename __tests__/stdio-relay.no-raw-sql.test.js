@@ -1,5 +1,5 @@
 // Regression test for the hard rule in
-// beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md: the tool
+// beamlynx-plans/completed/2026-08-15-mcp-server-and-url-scheme.md: the tool
 // surface an MCP client actually sees (src/main/mcp/stdio-relay.ts) must
 // never register a `run_sql`-shaped tool, under any configuration. The real
 // enforcement for query *execution* lives in beamlynx-ui's

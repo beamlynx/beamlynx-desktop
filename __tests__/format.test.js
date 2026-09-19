@@ -1,7 +1,7 @@
 // Tests for src/main/mcp/format.ts -- everything an MCP client actually
 // reads. The first suite here is the important one: it guards the hard rule
 // that no MCP output may contain SQL. Pine is the translation layer and the
-// enforcement choke point (see beamlynx-plans/pending/
+// enforcement choke point (see beamlynx-plans/completed/
 // 2026-08-15-mcp-server-and-url-scheme.md); an agent shown SQL starts
 // reasoning in SQL and trying to send it back, which makes that layer
 // meaningless.
@@ -65,6 +65,12 @@ const COLUMN_RESPONSE = {
   },
 };
 
+// What pine-lang returns for an expression that parsed but has nothing to
+// suggest at its end -- an invalid qualifier and a plain `| limit: 2` are
+// indistinguishable in the response, which is why format.ts has to tell
+// them apart from the expression itself.
+const NO_HINTS_RESPONSE = { ast: { ...COLUMN_RESPONSE.ast, hints: { table: [], select: [] } } };
+
 const TABLE_SEARCH_RESPONSE = {
   ast: {
     hints: {
@@ -105,6 +111,13 @@ test('no output path emits SQL', () => {
     formatCompletion('user | wehre: x', { error: PARSE_ERROR }, noDocs),
     formatTableMatches('ten', TABLE_SEARCH_RESPONSE),
     formatRows({ columns: [{ column: 'id' }], rows: [['id'], ['1']] }),
+    // The newer paths: the alias/qualifier guidance and the Pine-level
+    // advice appended to a database error. A passed-through Postgres
+    // message can legitimately quote its own grammar (`FROM-clause entry`);
+    // what must never appear is a query, so the cases checked here are the
+    // ones where format.ts writes the prose itself.
+    formatCompletion('user | public.document .userId | select: document.', NO_HINTS_RESPONSE, noDocs),
+    formatRows({ error: `zero-length delimited identifier at or near ${'"'.repeat(4)}` }),
   ];
   for (const out of outputs) {
     assert.ok(!SQL_KEYWORDS.test(out), `MCP output must never contain SQL, got:\n${out}`);
@@ -212,16 +225,22 @@ test("a joined expression says how to list an earlier table's columns, with its 
 // The generic fallback ("append `| `") is wrong advice mid-select:, and
 // silence reads to an agent as "keep guessing".
 test('a table name used as a qualifier is named as the mistake, with the aliases that would work', () => {
-  const noHints = { ast: { ...COLUMN_RESPONSE.ast, hints: { table: [], select: [] } } };
-  const out = formatCompletion('user | public.document .userId | select: document.', noHints, noDocs);
+  const out = formatCompletion('user | public.document .userId | select: document.', NO_HINTS_RESPONSE, noDocs);
   assert.match(out, /`document` is a table name/);
   assert.match(out, /Its alias is `d_1`/);
   assert.ok(!/Append `\| ` to see what this table joins to/.test(out));
 });
 
+// The same mistake is possible in `where:` and `order:`, not just
+// `select:` -- a qualifier is a qualifier wherever it appears.
+test('a table name used as a qualifier is caught in where: too, not only select:', () => {
+  const out = formatCompletion('user | public.document .userId | where: document.', NO_HINTS_RESPONSE, noDocs);
+  assert.match(out, /`document` is a table name/);
+  assert.match(out, /Its alias is `d_1`/);
+});
+
 test('an expression that simply ran out of suggestions still gets the generic message', () => {
-  const noHints = { ast: { ...COLUMN_RESPONSE.ast, hints: { table: [], select: [] } } };
-  const out = formatCompletion('user | limit: 2', noHints, noDocs);
+  const out = formatCompletion('user | limit: 2', NO_HINTS_RESPONSE, noDocs);
   assert.match(out, /No completions at this position/);
 });
 

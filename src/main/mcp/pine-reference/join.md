@@ -43,6 +43,12 @@ Needed when two tables are related through more than one column — for example 
 with both `customer_id` and `shipping_customer_id`. Ambiguity is the usual reason a join comes
 back wrong.
 
+Take the column from the join list that completions give you rather than guessing it. Names are
+case-sensitive, and a schema that mixes conventions (`customer_id` on one table, `customerId` on
+the next) defeats guessing about half the time. A column that does not exist is not rejected: the
+join is built with an empty one and the query fails later with `zero-length delimited identifier`,
+which says nothing about the cause.
+
 ### Keep unmatched rows
 
 ```

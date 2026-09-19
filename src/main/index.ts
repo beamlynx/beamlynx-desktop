@@ -36,7 +36,7 @@ if (process.argv.includes('--app-version')) {
 }
 
 // `beamlynx --mcp` is what Claude Code/Claude Desktop actually spawn (see
-// beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md) -- a thin
+// beamlynx-plans/completed/2026-08-15-mcp-server-and-url-scheme.md) -- a thin
 // stdio relay, not a second GUI. Checked before anything else in this file
 // runs: it must never contend for the single-instance lock below (that's
 // the GUI's lock to hold), never create a window, and must have nothing

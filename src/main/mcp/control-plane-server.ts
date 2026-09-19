@@ -6,7 +6,7 @@
 // just a thin proxy anyone could spawn) and drives real query execution
 // through the renderer, so MCP-driven queries land in a real, visible tab
 // instead of a parallel headless path. See
-// beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md.
+// beamlynx-plans/completed/2026-08-15-mcp-server-and-url-scheme.md.
 import { BrowserWindow } from 'electron';
 import * as http from 'http';
 import { getMcpAccessStatus, listMcpEnabledConnections } from '../credential-store';

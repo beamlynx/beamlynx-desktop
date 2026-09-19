@@ -7,6 +7,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Added
 - MCP: `complete_query` now lists the aliases in scope for a joined expression (`aliases in scope: u_0 = public.user, d_1 = public.document`) and says how to list an earlier table's columns (`| select: u_0.`). An agent could previously see only the last joined table's columns and had no way to discover that the others were still reachable.
 - MCP: three database errors an agent cannot otherwise act on -- it never sees the generated SQL -- now come back with a line saying what to fix in Pine: a table name used as a column qualifier, a column that belongs to an earlier table in the pipeline, and a `.column` join suffix naming a column that does not exist.
+- Pine reference: `join` now warns that a `.column` join suffix naming a column that does not exist is not rejected -- the query fails later with `zero-length delimited identifier`, which says nothing about the cause. Tracked as a pine-lang fix in `beamlynx-plans/pending/2026-09-19-pine-invalid-join-column.md`.
 - Pine reference: `where:` now documents that there is no `or` (and what to use instead), that there are no regex operators, the `::text`/`::uuid` casts, comma-separated conditions, and the full list of comparison operators.
 
 ### Fixed

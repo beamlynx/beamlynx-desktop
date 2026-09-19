@@ -9,7 +9,7 @@
 //
 // HARD RULE, and the reason this file exists as its own module with its own
 // test: **no output path may ever emit SQL.** Pine is the translation layer
-// and the enforcement choke point (see beamlynx-plans/pending/
+// and the enforcement choke point (see beamlynx-plans/completed/
 // 2026-08-15-mcp-server-and-url-scheme.md) -- an agent that reasons in SQL
 // makes that layer meaningless, and an agent shown SQL will try to send SQL
 // back. So `response.query` (pine-lang's compiled SQL) is never read here;

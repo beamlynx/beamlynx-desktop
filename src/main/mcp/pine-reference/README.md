@@ -7,7 +7,7 @@ that's `docs/` at the repo root.
 
 **These files contain no SQL, deliberately.** Pine is the translation layer between an agent and
 the database, and the only place query restrictions can be enforced (see
-`beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md`). An agent shown SQL starts
+`beamlynx-plans/completed/2026-08-15-mcp-server-and-url-scheme.md`). An agent shown SQL starts
 reasoning in SQL and trying to send it, which makes that layer meaningless — so no tool output
 and no doc here shows a `SELECT`. Examples describe what an expression *does* in words instead of
 showing an equivalent query.

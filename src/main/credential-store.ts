@@ -102,7 +102,7 @@ export type SavedConnectionMeta = {
   createdAt: string;
   lastUsedAt: string;
   // Off by default -- this is the access-control lever for the MCP server
-  // (see beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md).
+  // (see beamlynx-plans/completed/2026-08-15-mcp-server-and-url-scheme.md).
   // The control-plane server checks this before letting an MCP client touch a
   // connection at all; a connection a user has never explicitly opted in
   // stays invisible to MCP clients regardless of what pine-lang itself allows.
