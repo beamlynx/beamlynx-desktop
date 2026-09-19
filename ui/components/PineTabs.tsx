@@ -43,18 +43,22 @@ const PineTabs = observer(() => {
     ...global.pendingRevealSessionIds.map(sessionId => ({ sessionId, kind: 'reveal' as const })),
   ];
   const sessionId = global.activeSessionId;
-  // TabList's underlying Tabs component reads `value` from the same
-  // TabContext its own TabPanels do, and logs "The value provided to the
-  // Tabs component is invalid" (harmless, but noisy) whenever that value
-  // isn't one of ITS OWN children -- true every time a pinned tab is active,
-  // since those are deliberately excluded from TabList's children. This is
-  // ONLY what TabContext/TabList consume; the true activeSessionId
-  // (`sessionId` above) is still what every other comparison in this file
-  // uses, including which TabPanel (or pinned session, rendered separately
-  // below) is actually visible.
-  const tabListValue = regularTabs.some(t => t.sessionId === sessionId)
-    ? sessionId
-    : regularTabs[0]?.sessionId ?? sessionId;
+  // TabList's underlying Tabs component AND every regularTabs' TabPanel read
+  // `value` from this same TabContext -- so when a pinned tab is truly
+  // active, this must be something that matches NONE of the user's own
+  // tabs, on both sides. '' (session ids are never empty) does that: no
+  // TabPanel un-hides itself, and Tabs shows no selected indicator, both
+  // correctly reflecting that none of the user's own tabs are selected.
+  // A previous version of this fell back to regularTabs[0]'s own id instead
+  // -- which silenced Tabs' console warning, but made that ONE regular tab's
+  // TabPanel wrongly match and un-hide itself (confirmed live: the pinned
+  // tab's content rendered mixed in with whatever regularTabs[0] happened to
+  // be, and Tabs' sliding indicator jumped to highlight it, each time a
+  // pinned tab became active). '' does still trigger Tabs' own "value is
+  // invalid" console.error, but that check -- and the log call inside it --
+  // is wrapped in `if (process.env.NODE_ENV !== 'production')` in MUI's own
+  // source, so it never fires in the built app, only local dev tools.
+  const tabListValue = regularTabs.some(t => t.sessionId === sessionId) ? sessionId : '';
   const activeSession = global.sessions[sessionId];
   const activeConnectionId = activeSession?.connectionId || '';
   const activeIndicatorColor =
