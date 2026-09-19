@@ -334,21 +334,24 @@ const NewLayoutView: React.FC<NewLayoutViewProps> = observer(({ sessionId }) => 
     // though closing is quicker: a re-fit that lands slightly late is
     // invisible, one that lands early is the bug this guards against.
     //
-    // global.showSettings is in the list even though Settings lives in
-    // AppView, not here: opening it takes up to 640px away from Canvas and
-    // never triggered a re-fit at all, which was a (pre-existing) bug of
-    // exactly the kind the rest of this list exists to prevent.
+    // global.showSettings does NOT belong in this list, and used to be here
+    // on the assumption that opening Settings takes width away from Canvas.
+    // It doesn't: in horizontal orientation, LeftPane (Canvas, plus the
+    // Pine panel when open) has a fixed pixel width of its own
+    // (paneWidth, set below) and only RightPane (Results) is flex:1 - so
+    // Settings taking space from the row only ever shrinks Results.
+    // Verified directly: Canvas's own rendered width held at a constant
+    // 640px through an entire open+close of Settings. Keeping showSettings
+    // here fired a real ReactFlow fitView() - measured as part of the
+    // render burst on every Settings toggle - for a resize that never
+    // happened, on top of whatever DataGrid itself was already doing for
+    // the pane that actually did move.
     const timer = setTimeout(
       () => setRecenterRequestCount(c => c + 1),
       motionDuration(MOTION.enter) + 32,
     );
     return () => clearTimeout(timer);
-  }, [
-    effectiveOrientation,
-    global.isZenModeActive,
-    global.newLayoutPanelVisible,
-    global.showSettings,
-  ]);
+  }, [effectiveOrientation, global.isZenModeActive, global.newLayoutPanelVisible]);
 
   return (
     <Box
