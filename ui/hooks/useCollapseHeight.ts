@@ -26,18 +26,24 @@ export function useCollapseHeight<T extends HTMLElement>(expanded: boolean) {
   const contentRef = useRef<T>(null);
   const [contentHeight, setContentHeight] = useState<number | undefined>(undefined);
 
+  // Two effects on purpose. The measurement has to re-run on every render
+  // (the content can change without its element changing - a new error
+  // message, a longer connection name), but the observer must NOT be torn
+  // down and rebuilt each time: these live inside MobX observers that
+  // re-render on ordinary session activity, which would mean churning a
+  // ResizeObserver on a hot path for nothing.
   useLayoutEffect(() => {
     const el = contentRef.current;
-    if (!el) return;
+    if (el) setContentHeight(el.getBoundingClientRect().height);
+  });
 
-    const measure = () => setContentHeight(el.getBoundingClientRect().height);
-    measure();
-
-    if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(measure);
+  useLayoutEffect(() => {
+    const el = contentRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => setContentHeight(el.getBoundingClientRect().height));
     observer.observe(el);
     return () => observer.disconnect();
-  });
+  }, []);
 
   return {
     contentRef,

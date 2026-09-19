@@ -3,7 +3,16 @@ import { runInAction, toJS } from 'mobx';
 import { observer } from 'mobx-react-lite';
 import React, { useState, useEffect, useRef } from 'react';
 import { useStores } from '../store/store-container';
-import { Box, IconButton, Tooltip, useTheme, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
+import {
+  Box,
+  IconButton,
+  Tooltip,
+  useTheme,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
+} from '@mui/material';
 import {
   FileDownload,
   ContentCopy,
@@ -12,6 +21,7 @@ import {
   BarChart as BarChartIcon,
 } from '@mui/icons-material';
 import UpdateModal from './UpdateModal';
+import { useRetainedValue } from '../hooks/useRetainedValue';
 import DownloadResultsModal from './DownloadResultsModal';
 import { pineEscape } from '../store/util';
 import { getColorForAlias, shouldShowTableColors } from '../store/table-colors.util';
@@ -165,6 +175,9 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     : {};
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [updateData, setUpdateData] = useState<UpdateData | undefined>(undefined);
+  // The cell the update dialog was opened for, kept while it animates shut
+  // -- see the UpdateModal render below. hooks/useRetainedValue.ts.
+  const retainedUpdateData = useRetainedValue(updateData);
   const [jsonPanel, setJsonPanel] = useState<JsonPanelState | null>(null);
   // Looked up fresh from rows/columnMetadata each render (not captured when
   // the panel opens) so it reflects a re-evaluated session rather than a
@@ -920,14 +933,18 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
         </Menu>
       )}
 
-      {/* Update Modal */}
-      {updateData && (
-        <UpdateModal
-          updateExpression={updateData.updateExpression}
-          updateData={updateData}
-          onClose={handleModalClose}
-        />
-      )}
+      {/* Mounted unconditionally rather than behind `{updateData && ...}`:
+          unmounting it the instant the data cleared meant its closing
+          animation never got to run. It keeps rendering the cell it was
+          opened for while it fades (useRetainedValue); MUI's Modal still
+          takes its own contents out of the DOM once that finishes, so
+          nothing is left behind. */}
+      <UpdateModal
+        updateExpression={retainedUpdateData?.updateExpression ?? ''}
+        updateData={retainedUpdateData}
+        open={Boolean(updateData)}
+        onClose={handleModalClose}
+      />
 
       {/* Export Modal */}
       <DownloadResultsModal

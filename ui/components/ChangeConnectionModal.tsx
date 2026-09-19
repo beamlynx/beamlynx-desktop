@@ -2,6 +2,7 @@ import { Box, Typography, Button } from '@mui/material';
 import ModalSurface from './ModalSurface';
 import { observer } from 'mobx-react-lite';
 import React, { useState } from 'react';
+import { useRetainedValue } from '../hooks/useRetainedValue';
 import { useStores } from '../store/store-container';
 
 /**
@@ -16,9 +17,13 @@ const ChangeConnectionModal = observer(() => {
   const pending = global.pendingConnectionSwitch;
 
   const targetId = pending && (pending.kind === 'select' ? pending.connectionId : pending.id);
-  const targetLabel = targetId
-    ? global.connections.find(c => c.id === targetId)?.label ?? targetId
-    : '';
+  // Retained, because this dialog now animates out: `pending` is already
+  // null for the length of the closing transition, and without this the
+  // sentence below would spend its whole fade-out naming no connection at
+  // all. See hooks/useRetainedValue.ts.
+  const targetLabel = useRetainedValue(
+    targetId ? global.connections.find(c => c.id === targetId)?.label ?? targetId : null,
+  );
 
   const handleCancel = () => global.cancelPendingConnectionSwitch();
 

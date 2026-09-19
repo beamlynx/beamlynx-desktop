@@ -18,12 +18,19 @@ interface UpdateData {
 
 interface UpdateModalProps {
   updateExpression: string;
-  updateData: UpdateData;
+  updateData: UpdateData | null;
+  /**
+   * Separate from `updateData` being present: Result.tsx keeps this
+   * component mounted through the closing transition (ModalSurface's
+   * `closeAfterTransition`), so "has data" and "should be open" stop being
+   * the same question the moment this animates.
+   */
+  open: boolean;
   onClose: () => void;
 }
 
 const UpdateModal: React.FC<UpdateModalProps> = observer(
-  ({ updateExpression, updateData, onClose }) => {
+  ({ updateExpression, updateData, open, onClose }) => {
     const { global } = useStores();
     const vs = global.getVirtualSession();
     const [title, setTitle] = useState('Review Update Query');
@@ -43,6 +50,9 @@ const UpdateModal: React.FC<UpdateModalProps> = observer(
 
     // Set up the Pine expression when modal opens with update data
     useEffect(() => {
+      // Null while the dialog is closed or on its way out -- there is
+      // nothing to set up for a dialog nobody is opening.
+      if (!updateData) return;
       const { column, alias } = updateData;
 
       // Reset virtual session state
@@ -66,7 +76,7 @@ const UpdateModal: React.FC<UpdateModalProps> = observer(
 
     return (
       <ModalSurface
-        open={!!updateData}
+        open={open}
         onClose={onClose}
         aria-labelledby="update-modal-title"
         surfaceSx={{
