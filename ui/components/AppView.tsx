@@ -10,7 +10,7 @@ import UserBox from './UserBox';
 import { isDesktop, isDevelopment, isPlayground } from '../store/util';
 import { useState, useEffect, useCallback } from 'react';
 import { getUserPreference, STORAGE_KEYS } from '../store/preferences';
-import { DEFAULT_SETTINGS_PANEL_WIDTH, NEW_LAYOUT_GUTTER } from '../constants';
+
 import AnalysisModal from './AnalysisModal';
 import ChangelogModal from './ChangelogModal';
 import CommandPalette from './CommandPalette';
@@ -18,11 +18,9 @@ import SavePineModal from './SavePineModal';
 import ChangeConnectionModal from './ChangeConnectionModal';
 import NotificationBell from './NotificationBell';
 import SettingsButton from './SettingsButton';
-import SettingsDockedPanel from './settings/SettingsDockedPanel';
+import SettingsDock from './settings/SettingsDock';
 import McpActivityButton from './McpActivityButton';
-import { NewLayoutSettingsPanelDivider } from './ResizableDividers';
-import { useCollapseHeight } from '../hooks/useCollapseHeight';
-import { usePanelPresence } from '../hooks/usePanelPresence';
+import CollapsibleHeight from './CollapsibleHeight';
 import { useGlobalKeybindings } from '../hooks/useGlobalKeybindings';
 import { useFocusedPanelTracking } from '../hooks/useFocusedPanelTracking';
 import { useSettingsKeybindings } from '../hooks/useSettingsKeybindings';
@@ -69,23 +67,16 @@ const AppView = observer(() => {
   const session = global.getSession(global.activeSessionId);
   const [mounted, setMounted] = useState(false);
   const [hasUnreadUpdates, setHasUnreadUpdates] = useState(false);
-  // New Layout's docked Settings panel width - lives here (a sibling of
-  // PineTabs), not inside NewLayoutView, since global.showSettings is
-  // app-wide state, not per-session: nesting the dock inside a specific
-  // tab's own render tree meant it only showed for whichever tab happened
-  // to be active, and vanished on switching tabs instead of staying put
-  // like the rest of the app's chrome (confirmed live - reported as
-  // "settings show inside a tab, it should show on the left of all the
-  // tabs as well").
-  const [settingsPanelWidth, setSettingsPanelWidth] = useState(DEFAULT_SETTINGS_PANEL_WIDTH);
-  // Keeps the dock mounted through its closing transition -- `showSettings`
-  // alone would unmount it the instant the gear is clicked, leaving nothing
-  // on screen to animate away. See hooks/usePanelPresence.ts.
-  const settings = usePanelPresence(global.showSettings);
-  // Zen mode hides the whole header row. Measured rather than fixed: it
-  // wraps differently with a long connection name, a wide version badge or
-  // a larger Text Size. See hooks/useCollapseHeight.ts.
-  const header = useCollapseHeight<HTMLDivElement>(!global.isZenModeActive);
+  // The docked Settings panel is a sibling of PineTabs, not part of
+  // NewLayoutView, since global.showSettings is app-wide state rather than
+  // per-session: nesting the dock inside a specific tab's own render tree
+  // meant it only showed for whichever tab happened to be active, and
+  // vanished on switching tabs instead of staying put like the rest of the
+  // app's chrome (confirmed live - reported as "settings show inside a tab,
+  // it should show on the left of all the tabs as well"). Its width and its
+  // open/close animation live in SettingsDock itself -- deliberately NOT
+  // here, since state in this component re-renders PineTabs and every open
+  // Session with it.
 
   const handleOpenChangelog = () => {
     global.setShowChangelog(true);
@@ -116,10 +107,6 @@ const AppView = observer(() => {
     const lastReadVersion = getUserPreference(STORAGE_KEYS.LAST_READ_VERSION, '0.0.0');
     const hasUpdates = compare(LATEST_VERSION, lastReadVersion) > 0;
     setHasUnreadUpdates(hasUpdates);
-
-    setSettingsPanelWidth(
-      getUserPreference(STORAGE_KEYS.SETTINGS_PANEL_WIDTH, DEFAULT_SETTINGS_PANEL_WIDTH),
-    );
   }, []);
 
   useEffect(() => {
@@ -203,94 +190,91 @@ const AppView = observer(() => {
           about. The contents hold their size inside the clip while the
           wrapper closes over them, so the header slides up out of view
           instead of each control reflowing on its way to nothing. */}
-      <Box
-        data-panel-motion
-        sx={{
-          flexShrink: 0,
-          overflow: 'hidden',
-          height: header.height,
+      <CollapsibleHeight
+        expanded={!global.isZenModeActive}
+        transition={
+          global.isZenModeActive
+            ? 'height var(--motion-exit) var(--motion-ease-exit)'
+            : 'height var(--motion-enter) var(--motion-ease-enter)'
+        }
+        contentSx={{
           opacity: global.isZenModeActive ? 0 : 1,
           transition: global.isZenModeActive
-            ? 'height var(--motion-exit) var(--motion-ease-exit), opacity var(--motion-fast) var(--motion-ease-exit)'
-            : 'height var(--motion-enter) var(--motion-ease-enter), opacity var(--motion-enter) var(--motion-ease-enter)',
+            ? 'opacity var(--motion-fast) var(--motion-ease-exit)'
+            : 'opacity var(--motion-enter) var(--motion-ease-enter)',
         }}
       >
-        <Box ref={header.contentRef}>
-          <Grid container>
-            <Grid item xs={3}>
-              <Box sx={{ m: 2, mt: 1, mb: 0 }}>
-                <ActiveConnection />
-              </Box>
-            </Grid>
+        <Grid container>
+          <Grid item xs={3}>
+            <Box sx={{ m: 2, mt: 1, mb: 0 }}>
+              <ActiveConnection />
+            </Box>
+          </Grid>
 
-            <Grid item xs={6}>
-              <Box sx={{ m: 1, mt: 1, mb: 0, display: 'flex', justifyContent: 'center' }}>
-                <Box
-                  onClick={() => global.setShowCommandPalette(true)}
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    width: 600,
-                    maxWidth: '90vw',
-                    padding: '10px 16px',
-                    backgroundColor: 'var(--node-column-bg)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: 1,
-                    cursor: 'pointer',
-                    visibility: global.showCommandPalette ? 'hidden' : 'visible',
-                    '&:hover': {
-                      borderColor: 'var(--primary-color)',
-                      backgroundColor: 'var(--background-color)',
-                    },
-                  }}
-                >
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      color: 'var(--text-color)',
-                      opacity: 0.6,
-                      userSelect: 'none',
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    Search commands... ({getKeybindingDisplayForCommand('command-palette')})
-                  </Typography>
-                </Box>
-                {/* <Message /> */}
-              </Box>
-            </Grid>
-
-            <Grid item xs={3}>
+          <Grid item xs={6}>
+            <Box sx={{ m: 1, mt: 1, mb: 0, display: 'flex', justifyContent: 'center' }}>
               <Box
+                onClick={() => global.setShowCommandPalette(true)}
                 sx={{
-                  m: 1,
-                  mt: 0,
-                  mb: 0,
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'flex-end',
-                  gap: 1,
-                  flexWrap: 'wrap',
-                  rowGap: 0,
+                  width: 600,
+                  maxWidth: '90vw',
+                  padding: '10px 16px',
+                  backgroundColor: 'var(--node-column-bg)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 1,
+                  cursor: 'pointer',
+                  visibility: global.showCommandPalette ? 'hidden' : 'visible',
+                  '&:hover': {
+                    borderColor: 'var(--primary-color)',
+                    backgroundColor: 'var(--background-color)',
+                  },
                 }}
               >
-                {!isDesktop() && global.version && (
-                  <Typography variant="caption" color="gray" component="code">
-                    [{global.version}]
-                  </Typography>
-                )}
-                {UserContent}
-                <NotificationBell
-                  hasUnreadUpdates={hasUnreadUpdates}
-                  onClick={handleOpenChangelog}
-                />
-                <McpActivityButton />
-                <SettingsButton onClick={() => global.setShowSettings(!global.showSettings)} />
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: 'var(--text-color)',
+                    opacity: 0.6,
+                    userSelect: 'none',
+                    lineHeight: 1.5,
+                  }}
+                >
+                  Search commands... ({getKeybindingDisplayForCommand('command-palette')})
+                </Typography>
               </Box>
-            </Grid>
+              {/* <Message /> */}
+            </Box>
           </Grid>
-        </Box>
-      </Box>
+
+          <Grid item xs={3}>
+            <Box
+              sx={{
+                m: 1,
+                mt: 0,
+                mb: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                gap: 1,
+                flexWrap: 'wrap',
+                rowGap: 0,
+              }}
+            >
+              {!isDesktop() && global.version && (
+                <Typography variant="caption" color="gray" component="code">
+                  [{global.version}]
+                </Typography>
+              )}
+              {UserContent}
+              <NotificationBell hasUnreadUpdates={hasUnreadUpdates} onClick={handleOpenChangelog} />
+              <McpActivityButton />
+              <SettingsButton onClick={() => global.setShowSettings(!global.showSettings)} />
+            </Box>
+          </Grid>
+        </Grid>
+      </CollapsibleHeight>
       {/* mt: 1 (not 0) - the header row above and the tab row below both
           have their own solid background now (previously neither did, so
           zero margin was invisible); with no gap the search box's bottom
@@ -338,66 +322,7 @@ const AppView = observer(() => {
           mr: global.isZenModeActive ? 0 : 1,
         }}
       >
-        {settings.mounted && (
-          // Wrapped together (not given individual margins) so the Box and
-          // the divider stretch to match each other's height automatically
-          // -- NewLayoutView's own outer wrapper insets Canvas/Results from
-          // the viewport's bottom edge by NEW_LAYOUT_GUTTER (`my`, not just
-          // `mt`), but this row (above) only carries the top/left/right
-          // inset; giving the bottom margin here instead of on the row
-          // keeps PineTabs itself flush (it doesn't need it - NewLayoutView
-          // supplies its own), while still bottom-aligning Settings with
-          // Canvas/Results.
-          //
-          // This same wrapper is also what ANIMATES the dock open and shut,
-          // and it has to be this one rather than the panel Box inside it.
-          // Two reasons, both of which look like bugs if you animate the
-          // inner box instead: the divider and the panel's own 1px borders
-          // aren't inside it, so it would bottom out at a ~10px sliver that
-          // then snaps away at unmount - a pop at exactly the moment this is
-          // meant to smooth over; and the panel's contents would re-lay-out
-          // at every width between full and zero, rewrapping text and
-          // collapsing controls the whole way down. Clipping a wrapper whose
-          // children hold their real size (both carry flexShrink: 0) slides
-          // the panel out of view intact instead.
-          <Box
-            ref={settings.ref}
-            data-panel-motion
-            sx={{
-              display: 'flex',
-              flexDirection: 'row',
-              mb: global.isZenModeActive ? 0 : 1,
-              flexShrink: 0,
-              overflow: 'hidden',
-              width: settings.open ? settingsPanelWidth + NEW_LAYOUT_GUTTER : 0,
-              opacity: settings.open ? 1 : 0,
-              transition: settings.open
-                ? 'width var(--motion-enter) var(--motion-ease-enter), opacity var(--motion-enter) var(--motion-ease-enter)'
-                : 'width var(--motion-exit) var(--motion-ease-exit), opacity var(--motion-exit) var(--motion-ease-exit)',
-            }}
-          >
-            <Box
-              sx={{
-                width: settingsPanelWidth,
-                flexShrink: 0,
-                // Matches Canvas's own pane wrapper in NewLayoutView (same
-                // token, same radius) rather than a bare border - every
-                // other docked pane in New Layout reads as a bordered card,
-                // and Settings should too instead of looking like the odd
-                // one out.
-                border: '1px solid var(--border-color)',
-                borderRadius: 1,
-                overflow: 'hidden',
-              }}
-            >
-              <SettingsDockedPanel open={settings.open} />
-            </Box>
-            <NewLayoutSettingsPanelDivider
-              settingsPanelWidth={settingsPanelWidth}
-              setSettingsPanelWidth={setSettingsPanelWidth}
-            />
-          </Box>
-        )}
+        <SettingsDock />
         <Box
           sx={{
             display: 'flex',

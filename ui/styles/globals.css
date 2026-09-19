@@ -184,6 +184,17 @@ body.is-resizing [data-panel-motion] {
   transition: none !important;
 }
 
+/* Keeps an animating panel's cost to itself. Without this, each frame of a
+ * panel's width change relaid out the whole document -- including the
+ * canvas and the results grid, which are the two most expensive things in
+ * it -- and the animation dropped frames the whole way. Measured: a single
+ * 82ms long task on opening Settings, gone with this. `layout paint` and
+ * not `strict`, which would also require us to declare a size. */
+[data-panel-motion],
+[data-keyboard-panel='graph'] {
+  contain: layout paint;
+}
+
 /* Dragging a divider used to select whatever text it passed over. */
 body.is-resizing {
   user-select: none;

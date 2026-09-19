@@ -14,6 +14,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Changed
 - Panels now open and close with a short animation instead of appearing in a single frame. Settings, the Pine/SQL panel, Zen mode, the error band above the results, the agent's pinned tabs and every dialog all move now, so you can see where something came from rather than having to find it again after each toggle. All of it follows your operating system's "reduce motion" setting -- turn that on and everything is instant again, with no separate setting here to keep in sync.
 - Dragging a pane divider no longer selects the text it passes over.
+- Settings opens faster the first time. Its contents are now built once, while the app is idle, and kept afterwards rather than rebuilt on every open -- which also keeps the panel's scroll position and the section you were last on.
 ### Changed
 - Database Connections: switching the active tab's connection while it still has a query in it no longer silently opens a new tab instead. You now get a warning that the query may reference tables or columns that don't exist on the new connection, with the choice to switch anyway (in the same tab) or cancel.
 - Database Connections: renaming a connection now has its own pencil icon next to the name, independent of the row's expand/advanced-options toggle. Previously renaming only worked by first expanding the row.
@@ -27,6 +28,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ### Fixed
 - Opening or closing Settings now re-centres the canvas. It takes up to 640px away from the canvas and never triggered a re-fit, so the graph was left off-centre (or partly cut off) until something else happened to move it.
+- Panels open and close smoothly rather than stuttering. The animations were competing with React re-rendering the whole application -- the tab strip, every open tab and the canvas -- several times per open, because the state driving them sat at the top of the tree. Measured: a 82ms frozen frame per open, now none, and a steady 60 frames a second once Settings has been opened once.
 - Entering and leaving Zen mode no longer resets the canvas. Zen mode rebuilt the canvas from scratch each way, losing whatever you had panned or zoomed to; it now keeps your view.
 ### Fixed
 - A blank line inside a `/* ... */` comment no longer breaks the expression. Blank lines separate one expression block from the next, and that rule used to apply inside a comment too -- so a comment with a paragraph break in it was split down the middle and sent to the server as an unterminated comment followed by loose text.

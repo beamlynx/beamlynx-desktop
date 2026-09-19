@@ -26,23 +26,49 @@ export function useCollapseHeight<T extends HTMLElement>(expanded: boolean) {
   const contentRef = useRef<T>(null);
   const [contentHeight, setContentHeight] = useState<number | undefined>(undefined);
 
-  // Two effects on purpose. The measurement has to re-run on every render
-  // (the content can change without its element changing - a new error
-  // message, a longer connection name), but the observer must NOT be torn
-  // down and rebuilt each time: these live inside MobX observers that
-  // re-render on ordinary session activity, which would mean churning a
-  // ResizeObserver on a hot path for nothing.
-  useLayoutEffect(() => {
-    const el = contentRef.current;
-    if (el) setContentHeight(el.getBoundingClientRect().height);
-  });
+  // Only ever re-renders when the HEIGHT actually changed, and only on a
+  // whole pixel. This matters much more than it looks: these are full-width
+  // rows, so every frame of a *sibling* panel's opening animation resizes
+  // them too and fires the observer below. Without this guard that was a
+  // React re-render of the whole header on all eleven frames of a 200ms
+  // animation. Rounded because getBoundingClientRect returns subpixel
+  // floats that jiggle without anything really changing.
+  const lastHeight = useRef<number | undefined>(undefined);
+  const apply = (next: number) => {
+    const rounded = Math.round(next);
+    if (rounded === lastHeight.current) return;
+    lastHeight.current = rounded;
+    setContentHeight(rounded);
+  };
 
   useLayoutEffect(() => {
     const el = contentRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => setContentHeight(el.getBoundingClientRect().height));
+    if (!el) return;
+
+    // The one measurement that has to read the DOM directly -- there's no
+    // observer entry to read from yet.
+    apply(el.getBoundingClientRect().height);
+
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(entries => {
+      const entry = entries[0];
+      if (!entry) return;
+      // The entry's OWN size, never a fresh getBoundingClientRect(). Reading
+      // geometry inside a resize callback forces a synchronous layout, and
+      // with three of these hooks live at once that meant three forced
+      // layouts on every frame of any panel animation -- textbook layout
+      // thrashing, and measurably the jitter it was supposed to prevent.
+      // borderBoxSize, not contentRect: the wrapper animates to the
+      // content's full outer height, borders included.
+      apply(entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height);
+    });
     observer.observe(el);
     return () => observer.disconnect();
+    // Mount only. The observer covers every later change -- a longer error
+    // message, a wrapped connection name, a Text Size change -- so there's
+    // no reason to re-read on each render, and doing so put a forced layout
+    // on a path MobX re-renders constantly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return {

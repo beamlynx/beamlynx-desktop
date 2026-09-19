@@ -9,12 +9,12 @@ import {
   DEFAULT_NEW_LAYOUT_PANEL_WIDTH,
   NEW_LAYOUT_GUTTER,
 } from '../constants';
-import { useCollapseHeight } from '../hooks/useCollapseHeight';
 import { usePanelPresence } from '../hooks/usePanelPresence';
 import { MOTION, motionDuration } from '../styles/motion';
 import { getUserPreference, STORAGE_KEYS } from '../store/preferences';
 import { useStores } from '../store/store-container';
 import Canvas from './canvas/Canvas';
+import CollapsibleHeight from './CollapsibleHeight';
 import ErrorMessage from './ErrorMessage';
 import Input, { RunButton } from './Input';
 import { Monitor } from './Monitor';
@@ -44,10 +44,6 @@ interface NewLayoutViewProps {
 const RightPane = observer(({ sessionId }: { sessionId: string }) => {
   const { global } = useStores();
   const session = global.getSession(sessionId);
-  // Measured rather than given a fixed height: the message wraps to however
-  // many lines the error, the pane's width and the current Text Size make
-  // it. See hooks/useCollapseHeight.ts.
-  const errorBand = useCollapseHeight<HTMLDivElement>(Boolean(session.error));
 
   if (session.mode === 'monitor') {
     return <Monitor sessionId={sessionId} height="100%" />;
@@ -67,21 +63,16 @@ const RightPane = observer(({ sessionId }: { sessionId: string }) => {
           ErrorMessage keeps its own `if (!session.error) return null` as
           the safety net it always was; presence is owned here, by the one
           element that can animate. */}
-      <Box
-        data-panel-motion
-        sx={{
-          flexShrink: 0,
-          overflow: 'hidden',
-          height: errorBand.height,
+      <CollapsibleHeight
+        expanded={Boolean(session.error)}
+        transition="height var(--motion-fast) var(--motion-ease-enter)"
+        contentSx={{
           opacity: session.error ? 1 : 0,
-          transition:
-            'height var(--motion-fast) var(--motion-ease-enter), opacity var(--motion-fast) var(--motion-ease-enter)',
+          transition: 'opacity var(--motion-fast) var(--motion-ease-enter)',
         }}
       >
-        <Box ref={errorBand.contentRef}>
-          <ErrorMessage />
-        </Box>
-      </Box>
+        <ErrorMessage />
+      </CollapsibleHeight>
       <Box sx={{ flex: 1, minHeight: 0 }}>
         <Result sessionId={sessionId} />
       </Box>

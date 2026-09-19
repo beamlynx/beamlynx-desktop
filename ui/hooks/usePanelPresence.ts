@@ -79,16 +79,27 @@ export function usePanelPresence<T extends HTMLElement = HTMLDivElement>(
     return cancelExit;
   }, [visible, exitMs]);
 
-  // Layout effect, not a plain one: this has to run after the closed state
-  // is in the DOM but before the browser paints, so the open state lands in
-  // the very next style recalculation rather than a frame later.
+  // Layout effect, not a plain one: this has to run right after the closed
+  // state lands in the DOM, before the browser paints it.
   useLayoutEffect(() => {
     if (!visible || !mounted || open) return;
     // Reading geometry forces a synchronous style + layout flush, which is
-    // what gives the transition below something to start from. The value is
+    // what gives the transition something to start from. The value is
     // deliberately unused.
     ref.current?.getBoundingClientRect();
-    setOpen(true);
+    // ...and the flip waits one more frame, rather than happening right
+    // here. Mounting a panel is the single most expensive thing that
+    // happens on opening one (Settings' content costs tens of
+    // milliseconds), and the layout flush above pays for all of it at
+    // once. Starting the transition in that same frame means it begins
+    // life already behind: the browser advances a transition by wall
+    // clock, so the first stretch of the animation elapses while the main
+    // thread is still busy and is never drawn -- the panel appears to jump
+    // in partly open, which is the jitter this whole pass is about.
+    // Letting that frame finish first costs about 16ms nobody can see and
+    // buys an animation that starts from a standing start.
+    const frame = requestAnimationFrame(() => setOpen(true));
+    return () => cancelAnimationFrame(frame);
   }, [visible, mounted, open]);
 
   return { mounted, open, ref };
