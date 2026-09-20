@@ -23,6 +23,155 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.62.0',
+    date: '2026-09-20',
+    added: [
+      {
+        title: 'A tab can now explain itself',
+        description:
+          'Start an expression with a comment -- either /* ... */ across lines, or a run of -- lines -- and the canvas shows it in its top-left corner instead of leaving it as grey text to scroll past. Write what you are looking for and why when you open a tab, and it is still there when you come back to it.',
+      },
+      {
+        title: "Write a tab's comment from the canvas",
+        description:
+          'Press c (shown at the front of the bottom-left keybinding legend), click the comment button in the toolbar, or click an existing comment to edit it. A dim "Add a comment" marks the spot when there isn\'t one. What you type is spliced into the expression as a comment, the same way picking a table splices in an operation, so the canvas and the expression can never disagree. Emptying it removes the comment. Enter is a line break; Cmd/Ctrl+Enter or clicking away saves, Esc cancels.',
+      },
+      {
+        title: 'MCP: an agent says what each query is for',
+        description:
+          'An agent now leads every query it runs with a comment saying what it is looking for and why, so the tab it opens shows its reasoning, not just its results.',
+      },
+      {
+        title: 'Database Connections: more than one connection to the same host and port',
+        description:
+          'As long as they point at different databases. Previously the second one was rejected.',
+      },
+      {
+        title: 'Add Connection form: fields and connection string stay in sync both ways',
+        description:
+          'Switching to the "Connection string" tab rebuilds the string from whatever\'s in the Fields tab, instead of only going string-to-fields.',
+      },
+    ],
+    changed: [
+      {
+        title: 'Panels open and close with a short animation',
+        description:
+          'Settings, the Pine/SQL panel, Zen mode, the error band above the results, the agent\'s pinned tabs and every dialog all move now, so you can see where something came from. All of it follows your operating system\'s "reduce motion" setting -- turn that on and everything is instant again.',
+      },
+      {
+        title: 'Results columns size to their own content instead of stretching to fill the pane',
+        description:
+          'A UUID column gets the room it needs and a short "status" column isn\'t stretched to match; scroll horizontally if a wide result doesn\'t fit, the same as any spreadsheet.',
+      },
+      {
+        title: 'Table colors tint column headers only, not every value',
+        description:
+          'Coloring every cell read as noise -- and the canvas hover spotlight did it even with "Table colors" turned off, which made the preference look like it had no effect.',
+      },
+      {
+        title:
+          "Database Connections: switching a tab's connection warns instead of opening a new tab",
+        description:
+          "Switching the active tab's connection while it still has a query in it no longer silently opens a new tab. You get a warning that the query may reference tables or columns the new connection doesn't have, and the choice to switch anyway or cancel.",
+      },
+      {
+        title: 'Database Connections: renaming has its own pencil icon',
+        description: 'Previously renaming only worked by first expanding the row.',
+      },
+      {
+        title: "MCP: an agent's queries show in their own pinned tab",
+        description:
+          "Pinned to the end of the tab strip and marked with a robot icon so it doesn't read as one of your own. It always shows the same query slot -- an agent's next query replaces whatever was there -- so closing it is always safe.",
+      },
+      {
+        title: 'MCP: a reveal request gets its own "Needs approval" pinned tab',
+        description:
+          "When an agent asks to see something its access policy redacted, the request no longer opens as a new tab and steals focus. The tab names the connection, quotes the agent's reason, and offers Approve/Decline. Closing it without deciding declines, so an agent waiting on a decision never hangs.",
+      },
+      {
+        title: 'MCP: an agent icon in the header covers everything the agent is doing',
+        description:
+          'Next to the bell: a dot when a result landed while you were looking elsewhere, a count when approvals are waiting. Clicking it goes to whichever needs you most -- an approval first, since an agent is blocked on it, otherwise the activity tab.',
+      },
+      {
+        title: 'Settings opens faster the first time',
+        description:
+          'Its contents are built once while the app is idle and kept afterwards, which also preserves your scroll position and the section you were last on.',
+      },
+      {
+        title: 'Dragging a pane divider no longer selects the text it passes over',
+      },
+    ],
+    removed: [
+      {
+        title: 'The classic Graph mode is gone',
+        description:
+          'The non-interactive node diagram you got with "Canvas mode" off. Canvas is now the only graph editor, and the preference and its command-palette entry are gone with it.',
+      },
+      {
+        title: 'Legacy Layout is gone',
+        description:
+          'The Canvas + Results two-pane layout is now the only one. The "Switch to legacy layout" header link, the "New layout" toggle and their command-palette entries are gone with it. Settings always opens as a docked panel now, never a floating window.',
+      },
+    ],
+    fixed: [
+      {
+        title: 'Panels open and close smoothly, even with a full table of results on screen',
+        description:
+          'The results grid re-fits its columns whenever its container resizes, which is expensive, so a panel opening beside it used to redo that work on every frame. The grid now stands still while the panel moves -- a skeleton of your real column headers stands in for that moment -- and fits itself once, afterwards.',
+      },
+      {
+        title: 'Upgraded the results grid library',
+        description:
+          '@mui/x-data-grid 7.15.0 -> 7.29.13, 14 minor releases of fixes, measured as a ~18% cut in the main-thread work it does when its container resizes.',
+      },
+      {
+        title: 'Resizing a results column by hand no longer snaps back to its default width',
+        description:
+          "The grid was rebuilding its whole column list on every render -- including renders that had nothing to do with it, like hovering a table on the canvas -- and losing the width you'd just dragged.",
+      },
+      {
+        title: 'Entering and leaving Zen mode no longer resets the canvas',
+        description:
+          'It used to rebuild the canvas from scratch each way, losing whatever you had panned or zoomed to.',
+      },
+      {
+        title: 'A blank line inside a /* ... */ comment no longer breaks the expression',
+        description:
+          'Blank lines separate one expression block from the next, and that rule used to apply inside a comment too -- so a comment with a paragraph break was split down the middle and sent to the server as an unterminated comment followed by loose text.',
+      },
+      {
+        title:
+          'Header: the version badge no longer shows "obsolete" when you\'re simply not connected yet',
+        description: "It stays hidden until there's a real version to show.",
+      },
+      {
+        title:
+          'Database Connections: typing a space while renaming a connection switched connections',
+        description:
+          "It did nothing to the text and silently switched your active connection instead. The row's own Enter/Space shortcut was intercepting keystrokes meant for the rename field inside it.",
+      },
+      {
+        title:
+          'Database Connections: the rename pencil and the MCP badge could misalign across rows',
+        description:
+          "The badge also shifted sideways the moment you clicked the pencil. The rename and expand icons now form a stable column regardless of a row's MCP state.",
+      },
+      {
+        title: 'Icon-only buttons have accessible labels',
+        description:
+          'Close, download, save, notifications, tab controls and the JSON inspector now read correctly in a screen reader.',
+      },
+    ],
+    breaking: [
+      {
+        title: 'Minimum required pine-lang server version raised to 0.45.0',
+        description:
+          'Canvas comments need it: an older server deletes a comment the moment you touch the canvas, since it strips comments when it reformats an expression. Multiple connections to one host and port need it too. Connecting to an older server now shows the upgrade-required screen instead of the app.',
+      },
+    ],
+  },
+  {
     version: '0.61.0',
     date: '2026-09-12',
     added: [
@@ -74,7 +223,8 @@ export const CHANGELOG: ChangelogVersion[] = [
     ],
     changed: [
       {
-        title: "Database Connections: access policy no longer applies to your own queries by default",
+        title:
+          'Database Connections: access policy no longer applies to your own queries by default',
         description:
           'The per-connection "apply access policy to my own queries" toggle is now off by default and opt-in, instead of on by default with an opt-out "bypass". An access policy protects the MCP agent only unless you explicitly turn this on to have it also redact your own queries on that connection.',
       },
@@ -109,7 +259,7 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: 'Canvas mode: hovering a table spotlights its columns in the Results grid',
         description:
-          "Makes it easy to see which columns come from which joined table without needing to turn on the \"Table colors\" preference.",
+          'Makes it easy to see which columns come from which joined table without needing to turn on the "Table colors" preference.',
       },
       {
         title: 'Canvas mode: click an existing order chip to change its direction',
@@ -121,7 +271,7 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: 'Results grid "Filter" now scopes to the right table',
         description:
-          "Right-clicking a cell and choosing \"Filter\" generated an unqualified where: that silently filtered whichever table the query's pipe ended on. It now scopes to the table that cell's column actually belongs to (alias.column).",
+          'Right-clicking a cell and choosing "Filter" generated an unqualified where: that silently filtered whichever table the query\'s pipe ended on. It now scopes to the table that cell\'s column actually belongs to (alias.column).',
       },
     ],
   },
@@ -159,14 +309,14 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: 'Canvas mode: Shift+J / Shift+K step through the whole pipeline',
         description:
-          'Each node, then everything configured on it (its incoming join, selected columns, where conditions, order columns, group columns), then the next node\'s. Enter or Space opens whichever is highlighted; Delete, Backspace, or x removes it.',
+          "Each node, then everything configured on it (its incoming join, selected columns, where conditions, order columns, group columns), then the next node's. Enter or Space opens whichever is highlighted; Delete, Backspace, or x removes it.",
       },
     ],
     changed: [
       {
         title: "A resolved join's line is now neutral, not accented",
         description:
-          "The accent now lives on the join-type icon itself, marking the one clickable thing on the edge rather than the whole line. Broken and heuristic-only joins keep their own distinct colors, unchanged.",
+          'The accent now lives on the join-type icon itself, marking the one clickable thing on the edge rather than the whole line. Broken and heuristic-only joins keep their own distinct colors, unchanged.',
       },
     ],
     fixed: [
@@ -210,7 +360,8 @@ export const CHANGELOG: ChangelogVersion[] = [
     changed: [
       {
         title: 'Tab close buttons now appear on hover',
-        description: 'Instead of on every tab at once. Hovering a tab also tints it and brightens its label.',
+        description:
+          'Instead of on every tab at once. Hovering a tab also tints it and brightens its label.',
       },
     ],
     fixed: [
@@ -1849,4 +2000,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.61.0';
+export const LATEST_VERSION = '0.62.0';
