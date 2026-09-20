@@ -3,8 +3,12 @@
 // their own small file, not folded into GlobalStore, so that
 // __tests__/mcp-query.no-raw-sql.test.ts can assert against this file's
 // source text alone. Raw SQL execution (client.sql / pine-lang's
-// /api/v1/sql) and Pine's own `delete!` write operator must never be
-// reachable from here. See
+// /api/v1/sql) and any Pine operation that changes data must never be
+// reachable from here. The two are excluded differently: raw SQL
+// structurally, because nothing here may call client.sql at all; writes by
+// asking pine-lang to refuse them per request (allow-writes, below), since
+// the same eval path serves the person's own tab, where writes are the
+// point. See
 // beamlynx-plans/completed/2026-08-15-mcp-server-and-url-scheme.md for why:
 // Pine expressions compile through pine-lang's AST layer, a real choke
 // point for column-level restrictions; raw SQL has no such choke point, so
@@ -31,6 +35,8 @@
 // internally; explainMcpQuery uses its return value directly, since it
 // calls client.build() with no Session involved. See pine-lang's
 // pine.access-policy for what the rules actually do server-side.
+import { lt } from 'semver';
+import { McpWriteRefusalMinVersion } from '../constants';
 import { AccessPolicyRule, HttpClient } from './client';
 import type { Session } from './session';
 
@@ -49,19 +55,41 @@ export type McpQueryDeps = {
   getMcpConnectionId: (profileId: string) => string | undefined;
   setMcpConnectionId: (profileId: string, connectionId: string) => void;
   resolveAccessPolicyRules: (profileId: string) => Promise<AccessPolicyRule[]>;
+  // The connected pine-lang's version, for assertServerSupportsWriteRefusal.
+  // Read through a function rather than captured as a value: the deps object
+  // is built once per call site, and the version is only known after the
+  // app has talked to the server.
+  getServerVersion: () => string | undefined;
 };
 
-// Pine's `delete!` pipe operator issues a real DELETE against the database
-// (see buildDeleteQuery in client.ts and plugin/delete.plugin.tsx) -- it is
-// not a read, so it gets the same default-off treatment raw SQL writes
-// would have gotten. Opt-in only, and independent of whether raw SQL is
-// ever reintroduced (it won't be, see above).
-function assertNoDestructiveOperator(expression: string): void {
-  const allowDelete = process.env.BEAMLYNX_MCP_ALLOW_DELETE === '1';
-  if (!allowDelete && /\bdelete!\s*\./.test(expression)) {
+// An agent must never change the database. That is enforced by pine-lang,
+// not here: every eval on this path sends `allow-writes: false`, and the
+// server refuses any expression whose operations write -- delete!/update!
+// and their d!/u! short forms -- before running it (its
+// docs/side-effects.md).
+//
+// This used to be a regex over the expression text looking for `delete!`.
+// It missed `update!` entirely and missed both short forms, because it was
+// a second, hand-maintained model of a grammar living in another repo, and
+// nothing failed when the two drifted. Asking the parser is the same
+// question with no copy to keep in sync, and it covers any write operation
+// added later for free.
+//
+// The one way that could regress is a server too old to know the
+// parameter: it would ignore `allow-writes` and run the write anyway. So
+// check the version here and fail closed, since the alternative is being
+// silently less protected than the regex was.
+//
+// Against its own constant, not RequiredVersion: that one gates the whole
+// app (GlobalStore turns it into the upgrade-required screen), and only
+// this path needs the newer server. An agent being refused until the
+// server is upgraded is the right blast radius; the person's own app going
+// dark is not.
+function assertServerSupportsWriteRefusal(serverVersion: string | undefined): void {
+  if (!serverVersion || lt(serverVersion, McpWriteRefusalMinVersion)) {
     throw new Error(
-      'Refusing to run a Pine expression containing delete! from the MCP server. ' +
-        'Set BEAMLYNX_MCP_ALLOW_DELETE=1 on the machine to allow this explicitly.',
+      `Refusing to run a Pine expression from the MCP server: pine-lang ${serverVersion ?? '(unknown)'} ` +
+        `cannot refuse expressions that change data. Upgrade to ${McpWriteRefusalMinVersion} or newer.`,
     );
   }
 }
@@ -113,7 +141,7 @@ export async function runMcpQuery(
   deps: McpQueryDeps,
   { profileId, expression }: { profileId: string; expression: string },
 ): Promise<{ tabId: string; columns: unknown; rows: unknown; error: string }> {
-  assertNoDestructiveOperator(expression);
+  assertServerSupportsWriteRefusal(deps.getServerVersion());
   const connectionId = await ensureConnection(deps, profileId);
   // Refreshes GlobalStore.connections as a side effect (see this file's top
   // comment) -- session.evaluate() below reads Session.accessPolicyRules,
@@ -130,7 +158,9 @@ export async function runMcpQuery(
   // of it (already computed as part of this same eval call, see
   // client.ts's Response.prettified), instead of the raw string the agent
   // sent verbatim.
-  const rows = await session.evaluate({ applyServerPrettified: true });
+  // allowWrites: false unconditionally -- this is the whole guard, so it is
+  // set here rather than derived from anything the agent sent.
+  const rows = await session.evaluate({ applyServerPrettified: true, allowWrites: false });
   // Snapshot to plain JSON synchronously, in the same tick evaluate()
   // resolves in -- not after returning up through McpBridge/preload.
   // Confirmed the hard way: PineTabs renders every session's own <Session>
@@ -152,11 +182,18 @@ export async function explainMcpQuery(
   deps: McpQueryDeps,
   { profileId, expression }: { profileId: string; expression: string },
 ): Promise<{ query?: string; ast?: unknown; error?: string }> {
-  assertNoDestructiveOperator(expression);
+  // No write check here, deliberately: this builds an expression and never
+  // evaluates one, so it cannot change anything. The guard it used to carry
+  // was protecting a call that does not touch the database.
   const connectionId = await ensureConnection(deps, profileId);
   // Must match runMcpQuery's session (Session.accessPolicyRules), so a
   // build preview never shows a real value the matching eval would redact.
   const accessPolicyRules = await deps.resolveAccessPolicyRules(profileId);
-  const response = await deps.client.build([expression], undefined, connectionId, accessPolicyRules);
+  const response = await deps.client.build(
+    [expression],
+    undefined,
+    connectionId,
+    accessPolicyRules,
+  );
   return response;
 }

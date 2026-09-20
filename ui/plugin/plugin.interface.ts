@@ -17,6 +17,13 @@ export type EvaluateOptions = {
   // human's own Run must never rewrite text they're actively editing in the
   // Pine panel.
   applyServerPrettified?: boolean;
+
+  // false asks pine-lang to refuse an expression that changes data rather
+  // than run it (client.ts's eval, pine-lang's docs/side-effects.md). Set
+  // only by the MCP path, which must never change the person's database --
+  // and set there unconditionally, not as a policy decision this plugin
+  // makes. Absent everywhere else, so the person's own Run is unaffected.
+  allowWrites?: boolean;
 };
 
 export interface PluginInterface {

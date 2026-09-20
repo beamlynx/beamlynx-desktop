@@ -111,7 +111,15 @@ export type WhereCondition = [string, string, null, string, { type: string; valu
 // treat that the same as a null relation (see layout.ts's addJoins), not as
 // a resolved-but-uncertain join. Trailing element is needs-cast? (unused
 // here - only eval.clj's SQL generation reads it).
-export type JoinRelation = [string, string | null, 'has' | 'of', string, string | null, TableHint['resolution'] | null, boolean];
+export type JoinRelation = [
+  string,
+  string | null,
+  'has' | 'of',
+  string,
+  string | null,
+  TableHint['resolution'] | null,
+  boolean,
+];
 /** `[from-alias, to-alias, relation, join-type]` — join-type is `'LEFT'`/`'RIGHT'`/null (inner). */
 export type JoinTuple = [string, string, JoinRelation | null, string | null];
 
@@ -132,7 +140,12 @@ export type VariableAst = {
 };
 
 /** An order-by entry - distinct from Column: no `column-alias`/`hidden`, but carries direction. */
-export type OrderColumn = { alias: string; column: string; direction: 'ASC' | 'DESC'; 'operation-index'?: number };
+export type OrderColumn = {
+  alias: string;
+  column: string;
+  direction: 'ASC' | 'DESC';
+  'operation-index'?: number;
+};
 
 /** A group-by entry (pine-lang's ast/group.clj) - alias/column only, no aggregation info canvas mode needs. */
 export type GroupColumn = { alias: string; column: string; 'operation-index'?: number };
@@ -176,6 +189,12 @@ export type Response = {
   // eval
   result: (string | number)[][];
   columns: Column[];
+  // Whether the expression changes data -- true for delete!/update! (and d!/u!),
+  // false for everything else. Present on every eval response, including one
+  // refused because the caller sent allow-writes: false, which comes back with
+  // `error-type: "write-refused"`. Absent against a server older than the
+  // feature. See pine-lang's docs/side-effects.md.
+  writes?: boolean;
   // Nicely formatted rendering of the expression that ran - pine-lang
   // computes it on every build or eval alike (see client.prettify()'s own
   // use of ast.prettified for build), so it comes back here for free
@@ -395,10 +414,24 @@ export class HttpClient {
     expressions: string[],
     connectionId?: string,
     accessPolicyRules?: AccessPolicyRule[],
+    // false asks pine-lang to refuse an expression that changes data
+    // (delete!/update!, and their d!/u! short forms) rather than run it -- see
+    // its docs/side-effects.md. Sent only when explicitly false, so an
+    // ordinary call is byte-for-byte the request it was before; pine-lang
+    // treats the field's absence as "writes allowed", which is what the
+    // person's own editor needs.
+    allowWrites?: boolean,
   ): Promise<Response> {
-    const body: { expressions: string[]; 'access-policy'?: AccessPolicyRule[] } = { expressions };
+    const body: {
+      expressions: string[];
+      'access-policy'?: AccessPolicyRule[];
+      'allow-writes'?: boolean;
+    } = { expressions };
     if (accessPolicyRules?.length) {
       body['access-policy'] = accessPolicyRules;
+    }
+    if (allowWrites === false) {
+      body['allow-writes'] = false;
     }
     const response = await this.post('eval', this.withConnectionId(body, connectionId));
     if (!response) {
@@ -424,7 +457,11 @@ export class HttpClient {
     connectionId?: string,
     accessPolicyRules?: AccessPolicyRule[],
   ): Promise<Response> {
-    const body: { expressions: string[]; cursor?: CursorPosition; 'access-policy'?: AccessPolicyRule[] } = {
+    const body: {
+      expressions: string[];
+      cursor?: CursorPosition;
+      'access-policy'?: AccessPolicyRule[];
+    } = {
       expressions,
     };
     if (cursor) {
@@ -472,7 +509,10 @@ export class HttpClient {
       // through.
       .filter(
         (h): h is TableHint & { column: string } =>
-          !h.parent && h.resolution !== 'heuristic' && h.resolution !== 'synthetic' && h.column !== undefined,
+          !h.parent &&
+          h.resolution !== 'heuristic' &&
+          h.resolution !== 'synthetic' &&
+          h.column !== undefined,
       )
       .map(h => ({
         expression: `${x} ${h.pine}`,

@@ -1154,6 +1154,7 @@ export class GlobalStore {
     client,
     getSavedProfileCredentials: this.getSavedProfileCredentials,
     getOrCreateMcpSession: this.getOrCreateMcpSession,
+    getServerVersion: () => this.version,
     getMcpConnectionId: (profileId: string) => this.mcpConnectionsByProfile[profileId],
     setMcpConnectionId: (profileId: string, connectionId: string) => {
       runInAction(() => {

@@ -29,6 +29,7 @@ const { runMcpQuery, explainMcpQuery } = require('../store/mcp-query.ts');
 const { effectiveAccessPolicyRules } = require('../store/client.ts');
 const { Session } = require('../store/session.ts');
 const { GlobalStore } = require('../store/global.store.ts');
+const { McpWriteRefusalMinVersion } = require('../constants.ts');
 
 function stripComments(source) {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
@@ -68,13 +69,15 @@ test('mcp-query.ts only drives pine-lang through connections/eval/build', () => 
 // can check real call sequence, not just that both happened.
 function makeFakeDeps(overrides = {}) {
   const calls = [];
+  const evaluateOpts = [];
   const session = {
     id: 'mcp-session',
     inputMode: 'pine',
     columns: [{ name: 'id' }],
     error: '',
-    evaluate: async () => {
+    evaluate: async opts => {
       calls.push('session.evaluate');
+      evaluateOpts.push(opts);
       return [{ id: 1 }];
     },
     ...overrides.session,
@@ -98,23 +101,57 @@ function makeFakeDeps(overrides = {}) {
       calls.push('resolveAccessPolicyRules');
       return [{ type: 'foreign-key' }];
     },
+    // A server new enough to honour allow-writes, so the default fixture
+    // exercises the normal path. The version gate has its own test below.
+    getServerVersion: () => McpWriteRefusalMinVersion,
     ...overrides.deps,
   };
-  return { deps, session, calls };
+  return { deps, session, calls, evaluateOpts };
 }
 
-test('mcp-query.ts guards against the Pine delete! write operator unless explicitly allowed', async () => {
-  const { deps } = makeFakeDeps();
-  delete process.env.BEAMLYNX_MCP_ALLOW_DELETE;
-  await assert.rejects(
-    () => runMcpQuery(deps, { profileId: 'p1', expression: 'user | delete!.by_id' }),
-    /delete!/,
+// The write guard itself now lives in pine-lang: every eval on this path
+// sends allow-writes: false and the server refuses any expression whose
+// operations write. What this file can still assert -- and the thing that
+// would silently undo the guard if it regressed -- is that runMcpQuery
+// actually sends it, on every call, whatever the expression says.
+test('runMcpQuery always evaluates with allowWrites: false', async () => {
+  const { deps, evaluateOpts } = makeFakeDeps();
+  for (const expression of ['user', 'user | delete! .id', 'user | d! .id', "user | update! name = 'x'"]) {
+    await runMcpQuery(deps, { profileId: 'p1', expression });
+  }
+  assert.equal(evaluateOpts.length, 4);
+  for (const opts of evaluateOpts) {
+    assert.equal(opts?.allowWrites, false);
+  }
+});
+
+// The regex this replaced matched `delete!` only, so `update!`, `u!` and
+// `d!` all reached the database. Nothing in the file may pattern-match
+// write operators any more -- a leftover partial check reading as "handled"
+// is exactly how the old hole survived.
+test('mcp-query.ts no longer pattern-matches write operators in expression text', () => {
+  // MCP_QUERY_SOURCE has comments stripped, so the explanation of what this
+  // replaced doesn't itself trip the check.
+  assert.ok(
+    !/BEAMLYNX_MCP_ALLOW_DELETE/.test(MCP_QUERY_SOURCE),
+    'the machine-wide delete opt-out is gone; writes are refused by the server, per-request',
   );
-  process.env.BEAMLYNX_MCP_ALLOW_DELETE = '1';
-  try {
-    await assert.doesNotReject(() => runMcpQuery(deps, { profileId: 'p1', expression: 'user | delete!.by_id' }));
-  } finally {
-    delete process.env.BEAMLYNX_MCP_ALLOW_DELETE;
+  assert.ok(
+    !/(?:delete|update|\bd|\bu)!/.test(MCP_QUERY_SOURCE),
+    'store/mcp-query.ts names write operators again -- ask pine-lang (allow-writes) instead of keeping a second copy of the grammar here',
+  );
+});
+
+// Fails closed: a server too old to know allow-writes would ignore it and
+// run the write, which is worse than the regex this replaced.
+test('runMcpQuery refuses outright against a server too old to honour allow-writes', async () => {
+  for (const version of ['0.45.0', '0.44.0', undefined]) {
+    const { deps, calls } = makeFakeDeps({ deps: { getServerVersion: () => version } });
+    await assert.rejects(
+      () => runMcpQuery(deps, { profileId: 'p1', expression: 'user' }),
+      /cannot refuse expressions that change data/,
+    );
+    assert.ok(!calls.includes('session.evaluate'), `evaluated anyway on pine-lang ${version}`);
   }
 });
 
