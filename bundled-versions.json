@@ -1,5 +1,5 @@
 {
-  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang bumped to its tagged 0.44.0, and beamlynx-ui to its tagged 0.61.0, both adding MySQL 8.0+ as a second database backend (a Database Connections type picker, mysql:// connection strings, and a correctly-rendered SQL panel for MySQL's backtick-quoted SQL) -- paired with this release's own saved-connection dbType fix below.",
-  "pineLangRef": "0.44.0",
-  "beamlynxUiRef": "0.61.0"
+  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang bumped to its tagged 0.45.0 and beamlynx-ui to its tagged 0.62.0, the pair that adds tab comments (pine-lang returns a leading comment as `doc` and stops deleting it when it reformats an expression; beamlynx-ui shows and edits it on the canvas) and lets two saved connections share a host:port with different databases (pine-lang folds the database name into a connection's id).",
+  "pineLangRef": "0.45.0",
+  "beamlynxUiRef": "0.62.0"
 }

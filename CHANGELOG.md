@@ -4,21 +4,48 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.16.0] - 2026-09-20
 ### Added
-- MCP: an agent is now told to lead every expression it runs with a comment saying what it is looking for and why. beamlynx renders that comment as a note above the query, so the tab an agent opens shows its reasoning rather than only rows. Taught in the server instructions and repeated in `run_query`'s own description, since that is the tool that puts a tab in front of the user. Needs a beamlynx-ui and pine-lang that render doc comments; against older ones the comment is simply ignored, as any Pine comment always was.
-- MCP: `complete_query` now lists the aliases in scope for a joined expression (`aliases in scope: u_0 = public.user, d_1 = public.document`) and says how to list an earlier table's columns (`| select: u_0.`). An agent could previously see only the last joined table's columns and had no way to discover that the others were still reachable.
+- A tab can now explain itself. Start an expression with a comment -- either `/* ... */` across lines, or a run of `--` lines -- and the canvas shows it in its top-left corner instead of leaving it as grey text. Write it from the canvas too: press `c`, click the comment button in the toolbar, or click an existing comment to edit it (bundled beamlynx-ui 0.62.0, pine-lang 0.45.0).
+- MCP: an agent is now told to lead every expression it runs with a comment saying what it is looking for and why. beamlynx renders that comment as a note above the query, so the tab an agent opens shows its reasoning rather than only rows. Taught in the server instructions and repeated in `run_query`'s own description, since that is the tool that puts a tab in front of you.
+- MCP: `complete_query` now lists the aliases in scope for a joined expression (`aliases in scope: u_0 = public.user, d_1 = public.document`) and says how to list an earlier table's columns (`| select: u_0.`). An agent could previously see only the last joined table's columns, with no way to discover that the others were still reachable.
 - MCP: three database errors an agent cannot otherwise act on -- it never sees the generated SQL -- now come back with a line saying what to fix in Pine: a table name used as a column qualifier, a column that belongs to an earlier table in the pipeline, and a `.column` join suffix naming a column that does not exist.
-- Pine reference: `join` now warns that a `.column` join suffix naming a column that does not exist is not rejected -- the query fails later with `zero-length delimited identifier`, which says nothing about the cause. Tracked as a pine-lang fix in `beamlynx-plans/pending/2026-09-19-pine-invalid-join-column.md`.
 - Pine reference: `where:` now documents that there is no `or` (and what to use instead), that there are no regex operators, the `::text`/`::uuid` casts, comma-separated conditions, and the full list of comparison operators.
+- Pine reference: `join` now warns that a `.column` suffix naming a column that does not exist is not rejected. The query fails later with `zero-length delimited identifier`, which says nothing about the cause. Tracked as a pine-lang fix in `beamlynx-plans/pending/2026-09-19-pine-invalid-join-column.md`.
+- Database Connections: you can now have more than one saved connection to the same host and port, as long as they point at different databases. Previously the second one was rejected (bundled beamlynx-ui 0.62.0, pine-lang 0.45.0).
+- Add Connection form: switching to the "Connection string" tab rebuilds the string from whatever's in the Fields tab, so the two stay in sync in both directions (bundled beamlynx-ui 0.62.0).
+
+### Changed
+- MCP: `check_reveal` now waits up to 25 seconds for you to respond instead of returning "pending" immediately. An agent can call it once and wait for a decision rather than inventing its own retry delay. It still returns "still pending" if you haven't decided within that window; calling again keeps waiting.
+- MCP: queries an agent runs now show in their own tab, pinned to the end of the tab strip and marked with a robot icon so it doesn't read as one of your own. It always shows the same query slot -- an agent's next query replaces whatever was there -- so closing it is always safe (bundled beamlynx-ui 0.62.0).
+- MCP: when an agent asks to see something its access policy redacted, the request gets its own "Needs approval" pinned tab instead of opening as a new tab and stealing focus. The tab names the connection, quotes the agent's reason, and offers Approve/Decline. Closing it without deciding declines, so an agent waiting on a decision never hangs (bundled beamlynx-ui 0.62.0).
+- MCP: an agent icon in the header, next to the bell, covers everything the agent is doing -- a dot when a result landed while you were looking elsewhere, a count when approvals are waiting. Clicking it goes to whichever needs you most (bundled beamlynx-ui 0.62.0).
+- Panels now open and close with a short animation instead of appearing in a single frame, and follow your operating system's "reduce motion" setting (bundled beamlynx-ui 0.62.0).
+- Results columns size to their own content instead of stretching to fill the pane, so a UUID column gets the room it needs and a short "status" column isn't stretched to match (bundled beamlynx-ui 0.62.0).
+- Table colors, and hovering a table on the canvas, now tint each column's header only, not every value under it (bundled beamlynx-ui 0.62.0).
+- Database Connections: switching the active tab's connection while it still has a query in it now warns that the query may reference tables the new connection doesn't have, instead of silently opening a new tab (bundled beamlynx-ui 0.62.0).
+- Database Connections: renaming a connection now has its own pencil icon, instead of only working once the row is expanded (bundled beamlynx-ui 0.62.0).
+
+### Removed
+- The classic Graph mode and Legacy Layout are both gone, along with their preferences. Canvas and the Canvas + Results two-pane layout are now the only way the app works (bundled beamlynx-ui 0.62.0).
 
 ### Fixed
 - MCP: the operations footer printed on every `complete_query` response taught `| group: <col> => count:`, which is a parse error -- the aggregate takes no colon. It now shows `=> count` next to the standalone `count:` operation so the two are not conflated.
 - MCP: the same footer told agents to qualify a column by table name (`document.userId`), which always fails -- only an alias works. It now shows the alias form, and says so when a table name is used as one.
-- MCP: `check_reveal` reported that the user had edited the expression on every successful reveal, because the review tab returns it re-prettified. Only a real change is flagged now.
+- MCP: `check_reveal` reported that you had edited the expression on every successful reveal, because the review tab returns it re-prettified. Only a real change is flagged now.
 - Pine reference: `where:` documented `not status = 'archived'` as the way to negate, which does not parse. `!=`, `not like`, `not in` and `is not` do.
-
-### Changed
-- `check_reveal` now waits (up to 25 seconds) for the user to respond instead of returning "pending" immediately -- an agent can call it once and wait for a decision, rather than needing to invent its own retry delay between calls. Still returns "still pending" if the user hasn't decided within that window; calling it again keeps waiting.
+- Panels stay smooth even with a full table of results on screen. The results grid used to re-fit its columns on every frame of the animation; it now holds still, shows a skeleton of your real column headers, and fits itself once afterwards (bundled beamlynx-ui 0.62.0).
+- Resizing a results column by hand no longer snaps back to its default width (bundled beamlynx-ui 0.62.0).
+- Entering and leaving Zen mode no longer resets whatever you had panned or zoomed the canvas to (bundled beamlynx-ui 0.62.0).
+- A blank line inside a `/* ... */` comment no longer breaks the expression (bundled beamlynx-ui 0.62.0).
+- Database Connections: typing a space while renaming a connection did nothing to the text and silently switched your active connection instead (bundled beamlynx-ui 0.62.0).
+- Database Connections: the rename pencil and the MCP badge no longer misalign across rows (bundled beamlynx-ui 0.62.0).
+- Icon-only buttons (close, download, save, notifications, tab controls, the JSON inspector) now have accessible labels for screen readers (bundled beamlynx-ui 0.62.0).
+- `? table` no longer suggests join paths that route back through a table the expression has already joined (bundled pine-lang 0.45.0).
+- A comma inside one `where:` now means `OR`, as the syntax always suggested: `where: id = 1, id = 2`. Previously everything after the first condition was silently dropped (bundled pine-lang 0.45.0).
+- A table your database role can't `SELECT` from now still shows up in hints -- its columns were never indexed before, so it was invisible (bundled pine-lang 0.45.0).
+- A table, column, or alias starting with an underscore (`_user`) now parses (bundled pine-lang 0.45.0).
 
 ## [0.15.0] - 2026-09-12
 ### Added
