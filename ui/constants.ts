@@ -59,7 +59,7 @@ export const MAX_RESULT_COLUMN_WIDTH = 400;
 export const VERTICAL_TAB_RAIL_WIDTH = 190;
 
 /* Pine Server */
-export const RequiredVersion = '0.44.0';
+export const RequiredVersion = '0.45.0';
 
 /* Layout Constants */
 // Height calculations for main content areas
