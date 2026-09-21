@@ -17,6 +17,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 - A delete run can be paused, and picks up where it stopped. If one table fails -- a missing grant, a constraint -- the run stops there rather than pressing on into a parent whose child still has rows. Fix the cause, press Resume, and it retries that table and continues; the tables already done are not repeated.
 - A copy button on a delete plan, the same icon and behaviour as the one on the results grid.
+- A downloadable log of a delete run, once anything has actually run: every statement sent, the rows it removed, when, and how long it took -- and, if the run stopped partway, which tables were left. Same download icon as the results grid's export.
 
 ### Changed
 - `delete:` is gone from Pine, replaced by the canvas action above.

@@ -80,6 +80,8 @@ export type TraversalState = {
   depthCapped: boolean;
   /** The BEGIN;...COMMIT; script, for the delete verb once the walk finishes. */
   script: string | null;
+  /** Each node's own statement, aligned with `nodes` - see runDeleteScript. */
+  queries: string[];
   error: string | null;
   /**
    * Where the "do it for real" half is up to. 'idle' means the script has been
@@ -426,8 +428,27 @@ const rootTableOf = async (
 // The verbs
 // ---------------------------------------------------------------------------
 
-/** One node's outcome once the script has actually been run. */
-export type DeleteOutcome = { table: string; deleted: number } | { table: string; error: string };
+/**
+ * One statement's entry in the record of a run: what was asked for, what ran,
+ * what happened, and when.
+ *
+ * Kept per statement rather than as a running total because a delete is not
+ * one event -- it is a table at a time, and a run can stop in the middle and
+ * be resumed later. A total cannot say which tables are already gone.
+ */
+export type DeleteOutcome = {
+  table: string;
+  /** The Pine that was sent -- exactly what ran, not a reconstruction. */
+  expression: string;
+  /** The SQL that expression compiles to, from the plan shown beforehand. */
+  query: string;
+  /** When the statement finished, ISO 8601. */
+  at: string;
+  /** How long it took, milliseconds. */
+  ms: number;
+  deleted?: number;
+  error?: string;
+};
 
 /**
  * Where a delete run got to, so it can pick up from there.
@@ -466,6 +487,10 @@ export type DeleteProgress = { from: number };
 export const runDeleteScript = async (
   client: HttpClient,
   nodes: TraversalNode[],
+  // The SQL each node compiles to, from buildDeleteScript, positionally
+  // aligned with `nodes`. Recorded in the run's log so it says what actually
+  // ran and not only which expression asked for it.
+  queries: string[],
   connectionId?: string,
   onOutcome?: (outcome: DeleteOutcome) => void,
   // Where to start. Non-zero when resuming after a failure or a pause: the
@@ -475,24 +500,33 @@ export const runDeleteScript = async (
   signal?: { cancelled: boolean },
 ): Promise<DeleteOutcome[]> => {
   const outcomes: DeleteOutcome[] = [];
-  for (const node of nodes.slice(from)) {
+  for (const [offset, node] of Array.from(nodes.slice(from).entries())) {
     if (signal?.cancelled) break;
     const expression = `${node.expression} | limit: ${node.count} | delete! .${node.column}`;
-    let outcome: DeleteOutcome;
+    const startedAt = Date.now();
+    let result: { deleted?: number; error?: string };
     try {
       const response = await client.eval([expression], connectionId);
-      outcome = response?.error
-        ? { table: node.table, error: response.error }
-        : { table: node.table, deleted: Number(response?.result?.[1]?.[0] ?? 0) };
+      result = response?.error
+        ? { error: response.error }
+        : { deleted: Number(response?.result?.[1]?.[0] ?? 0) };
     } catch (e) {
-      outcome = { table: node.table, error: e instanceof Error ? e.message : 'Failed' };
+      result = { error: e instanceof Error ? e.message : 'Failed' };
     }
+    const outcome: DeleteOutcome = {
+      table: node.table,
+      expression,
+      query: queries[from + offset] ?? '',
+      at: new Date().toISOString(),
+      ms: Date.now() - startedAt,
+      ...result,
+    };
     outcomes.push(outcome);
     onOutcome?.(outcome);
     // Stop at the first failure. Carrying on would try to delete a parent
     // whose child still has rows, which fails on the foreign key anyway --
     // and a wall of consequential errors buries the one that matters.
-    if ('error' in outcome) break;
+    if (outcome.error) break;
   }
   return outcomes;
 };
@@ -535,12 +569,80 @@ const asSqlComment = (text: string): string =>
     .map(line => `-- ${line}`.trimEnd())
     .join('\n');
 
+/**
+ * The record of a delete run: every statement that was sent, what it did, and
+ * when.
+ *
+ * Written as text rather than CSV or JSON because the interesting column is a
+ * SQL statement spanning several lines, which neither of those carries
+ * readably -- and because the first thing anyone does with this is read it.
+ *
+ * Says what it does not know, too. A run can stop partway and be resumed
+ * later, so a log that only listed successes would read as a complete account
+ * of a job that is not complete. Anything not attempted is named at the end.
+ */
+export const buildAuditLog = (
+  traversal: Pick<TraversalState, 'rootExpression' | 'nodes' | 'outcomes' | 'run'>,
+  connection: string,
+): string => {
+  const { rootExpression, nodes, outcomes, run } = traversal;
+  const deleted = outcomes.reduce((sum, o) => sum + (o.deleted ?? 0), 0);
+  const failed = outcomes.filter(o => o.error);
+
+  const lines: string[] = [
+    'beamlynx delete log',
+    '',
+    `Connection    ${connection}`,
+    `Started from  ${withoutLeadingComment(rootExpression).replace(/\s+/g, ' ').trim()}`,
+    `Written       ${new Date().toISOString()}`,
+    `Statements    ${outcomes.length} of ${nodes.length} attempted`,
+    `Rows deleted  ${deleted}`,
+    `Outcome       ${
+      run === 'finished'
+        ? 'completed'
+        : run === 'paused'
+          ? 'paused before finishing'
+          : failed.length
+            ? 'stopped on an error'
+            : 'not finished'
+    }`,
+    '',
+    '='.repeat(72),
+  ];
+
+  outcomes.forEach((outcome, i) => {
+    lines.push(
+      '',
+      `[${i + 1}/${nodes.length}] ${outcome.table}  --  ${
+        outcome.error ? `FAILED: ${outcome.error}` : `${outcome.deleted ?? 0} rows deleted`
+      }`,
+      `at ${outcome.at} (${outcome.ms}ms)`,
+      '',
+      outcome.expression,
+      '',
+      outcome.query.trim(),
+      '',
+      '-'.repeat(72),
+    );
+  });
+
+  // Naming what was left is the part that makes this an account rather than a
+  // receipt: a resumed run picks up exactly here.
+  const remaining = nodes.slice(outcomes.length - failed.length);
+  if (run !== 'finished' && remaining.length) {
+    lines.push('', `Not deleted (${remaining.length}): ${remaining.map(n => n.table).join(', ')}`);
+  }
+
+  return lines.join('\n');
+};
+
 /** The `BEGIN; ... COMMIT;` script for a completed delete traversal. */
 export const buildDeleteScript = async (
   client: HttpClient,
   nodes: TraversalNode[],
   connectionId?: string,
-): Promise<string> => {
+): Promise<{ script: string; queries: string[] }> => {
+  const queries: string[] = [];
   // `--` line comments, never `/* ... */`.
   //
   // An expression can carry its own note, and that note is usually a block
@@ -566,10 +668,12 @@ export const buildDeleteScript = async (
       node.count,
       connectionId,
     );
+    queries.push(query);
     parts.push(asSqlComment(asLines(withoutLeadingComment(node.expression))));
     parts.push(query);
   }
   parts.push('COMMIT;');
   // Comments pass through untouched; only the statements are formatted.
-  return parts.map(part => (part.startsWith('--') ? part : formatSql(part))).join('\n\n');
+  const script = parts.map(part => (part.startsWith('--') ? part : formatSql(part))).join('\n\n');
+  return { script, queries };
 };

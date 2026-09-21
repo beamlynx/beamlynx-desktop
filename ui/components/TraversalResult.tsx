@@ -1,7 +1,8 @@
 import React from 'react';
 import { observer } from 'mobx-react-lite';
 import { Box, Button, IconButton, Tooltip, Typography } from '@mui/material';
-import { ContentCopy } from '@mui/icons-material';
+import { ContentCopy, FileDownload } from '@mui/icons-material';
+import { buildAuditLog } from '../store/canvas/traversal';
 import { Session } from '../store/session';
 import { themedScrollbarSx } from '../utils/scrollbar';
 
@@ -35,6 +36,30 @@ const TraversalResult: React.FC<{ session: Session }> = observer(({ session }) =
   if (!traversal) return null;
 
   const { verb, status, nodes, depthCapped, script, error, run, outcomes, runFrom } = traversal;
+  // The same icon-button treatment as the results grid's own download and copy
+  // controls (Result.tsx), so the two do not read as different features.
+  const iconButtonSx = {
+    borderRadius: '4px',
+    backgroundColor: 'var(--canvas-node-bg)',
+    border: '1px solid var(--canvas-node-border)',
+    color: 'var(--canvas-trace)',
+    '&:hover': { backgroundColor: 'var(--canvas-chip-bg)' },
+  };
+
+  const downloadLog = () => {
+    const log = buildAuditLog(traversal, session.traversalConnectionLabel);
+    const stamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+    const blob = new Blob([log], { type: 'text/plain;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `beamlynx-delete-log-${stamp}.txt`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const copyScript = async () => {
     if (!script) return;
     try {
@@ -50,8 +75,8 @@ const TraversalResult: React.FC<{ session: Session }> = observer(({ session }) =
   };
   const total = nodes.reduce((sum, n) => sum + n.count, 0);
   const walking = status === 'walking';
-  const deleted = outcomes.reduce((sum, o) => sum + ('deleted' in o ? o.deleted : 0), 0);
-  const failure = outcomes.find(o => 'error' in o);
+  const deleted = outcomes.reduce((sum, o) => sum + (o.deleted ?? 0), 0);
+  const failure = outcomes.find(o => o.error);
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
@@ -144,24 +169,34 @@ const TraversalResult: React.FC<{ session: Session }> = observer(({ session }) =
                 `Paused after ${runFrom} of ${nodes.length}. Resume picks up where it stopped.`}
               {run === 'failed' &&
                 `Stopped at ${nodes[runFrom]?.table ?? 'a table'}, ${runFrom} of ${nodes.length} done. ${
-                  failure && 'error' in failure ? failure.error : ''
+                  failure?.error ?? ''
                 } Resume retries that table — the ones already done are not repeated.`}
               {run === 'finished' && `Deleted ${deleted} ${deleted === 1 ? 'row' : 'rows'}.`}
             </Box>
             <Box sx={{ display: 'flex', gap: 1 }}>
+              {/* Once anything has actually run there is a record to keep,
+                  so offer it. Before that there is only the plan, which the
+                  copy button next to this already gives you. */}
+              {outcomes.length > 0 && (
+                <Tooltip title="Download a log of what was deleted">
+                  <IconButton
+                    size="small"
+                    data-testid="traversal-download-log"
+                    aria-label="Download a log of what was deleted"
+                    onClick={downloadLog}
+                    sx={iconButtonSx}
+                  >
+                    <FileDownload fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              )}
               <Tooltip title="Copy the delete queries">
                 <IconButton
                   size="small"
                   data-testid="traversal-copy"
                   aria-label="Copy the delete queries"
                   onClick={() => void copyScript()}
-                  sx={{
-                    borderRadius: '4px',
-                    backgroundColor: 'var(--canvas-node-bg)',
-                    border: '1px solid var(--canvas-node-border)',
-                    color: 'var(--canvas-trace)',
-                    '&:hover': { backgroundColor: 'var(--canvas-chip-bg)' },
-                  }}
+                  sx={iconButtonSx}
                 >
                   <ContentCopy fontSize="small" />
                 </IconButton>

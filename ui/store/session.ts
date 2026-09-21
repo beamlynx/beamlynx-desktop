@@ -783,6 +783,7 @@ export class Session {
         nodes: [],
         depthCapped: false,
         script: null,
+        queries: [],
         error: null,
         run: 'idle',
         outcomes: [],
@@ -817,7 +818,7 @@ export class Session {
         });
         return;
       }
-      const script =
+      const plan =
         verb === 'delete'
           ? await buildDeleteScript(traversalClient, result.nodes, this.connectionId)
           : null;
@@ -829,7 +830,8 @@ export class Session {
         // have to run in.
         this.traversal.nodes = result.nodes;
         this.traversal.depthCapped = result.depthCapped;
-        this.traversal.script = script;
+        this.traversal.script = plan?.script ?? null;
+        this.traversal.queries = plan?.queries ?? [];
         this.traversal.status = 'done';
       });
     } catch (e) {
@@ -922,6 +924,7 @@ export class Session {
     await runDeleteScript(
       traversalClient,
       traversal.nodes,
+      traversal.queries,
       this.connectionId,
       outcome =>
         runInAction(() => {
@@ -929,7 +932,7 @@ export class Session {
           traversal.outcomes = [...traversal.outcomes, outcome];
           // Advance only past a success. A failure leaves runFrom pointing AT
           // the node that failed, which is where a resume has to start.
-          if (!('error' in outcome)) traversal.runFrom += 1;
+          if (!outcome.error) traversal.runFrom += 1;
         }),
       traversal.runFrom,
       signal,

@@ -216,7 +216,7 @@ const node = (expression, table) => ({
 });
 
 test('a generated script survives an expression that carries its own comment', async () => {
-  const script = await buildDeleteScript(scriptClient, [
+  const { script, queries } = await buildDeleteScript(scriptClient, [
     node(
       "/* test */ public.tenant as t | where: t.id = '1' | public.user_information .tenant_id",
       'user_information',
@@ -247,4 +247,71 @@ test('a generated script survives an expression that carries its own comment', a
   // one line per step.
   assert.ok(script.includes('-- public.tenant as t'));
   assert.ok(script.includes('--  | public.user_information .tenant_id'));
+
+  // The statements come back alongside the script, positionally aligned with
+  // the nodes -- the run records them so its log says what actually ran.
+  assert.equal(queries.length, 2);
+});
+
+// The log of a delete run. The part worth protecting is that it reports what
+// it does NOT know: a run can stop partway and be resumed later, so a log
+// listing only successes would read as a complete account of an incomplete
+// job.
+const { buildAuditLog } = require('../store/canvas/traversal.ts');
+
+const outcome = (table, extra) => ({
+  table,
+  expression: `company | ${table} | limit: 1 | delete! .id`,
+  query: `DELETE FROM ${table} WHERE 1=1`,
+  at: '2026-09-21T20:00:00.000Z',
+  ms: 12,
+  ...extra,
+});
+
+test('a delete log names what was not deleted, not just what was', () => {
+  const log = buildAuditLog(
+    {
+      rootExpression: '/* clearing out acme */ company | where: id = 1',
+      nodes: [node('a', 'document'), node('b', 'employee'), node('c', 'company')],
+      outcomes: [
+        outcome('document', { deleted: 3 }),
+        outcome('employee', { error: 'permission denied' }),
+      ],
+      run: 'failed',
+    },
+    'staging (localhost/t)',
+  );
+
+  assert.match(log, /Connection {4}staging \(localhost\/t\)/);
+  assert.match(log, /Statements {4}2 of 3 attempted/);
+  assert.match(log, /Rows deleted {2}3/);
+  assert.match(log, /Outcome {7}stopped on an error/);
+
+  // Both the statement that worked and the one that did not.
+  assert.match(log, /document {2}--  3 rows deleted/);
+  assert.match(log, /employee {2}--  FAILED: permission denied/);
+
+  // The SQL that ran, not only the expression that asked for it.
+  assert.match(log, /DELETE FROM document WHERE 1=1/);
+
+  // And the part that makes it an account: a resumed run picks up here.
+  assert.match(log, /Not deleted \(2\): employee, company/);
+
+  // The tab's own note is stripped from the header line -- it is prose about
+  // the tab, and it would run the summary onto several lines.
+  assert.ok(!log.includes('Started from  /* clearing out acme */'));
+});
+
+test('a completed delete log does not claim anything is outstanding', () => {
+  const log = buildAuditLog(
+    {
+      rootExpression: 'company | where: id = 1',
+      nodes: [node('a', 'document'), node('b', 'company')],
+      outcomes: [outcome('document', { deleted: 3 }), outcome('company', { deleted: 1 })],
+      run: 'finished',
+    },
+    'local',
+  );
+  assert.match(log, /Outcome {7}completed/);
+  assert.ok(!log.includes('Not deleted'));
 });
