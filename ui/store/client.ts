@@ -76,7 +76,6 @@ export type Hints = {
 // There are more operations. I'll add them as we need to handle them here
 export type OperationType =
   | 'table'
-  | 'delete'
   | 'select'
   | 'select-partial'
   | 'order'
@@ -492,7 +491,10 @@ export class HttpClient {
   public async makeChildExpressions(
     expression: string,
     connectionId?: string,
-  ): Promise<{ expressions: { expression: string; column: string }[]; ast: Ast }> {
+  ): Promise<{
+    expressions: { expression: string; column: string; table: string; schema: string | null }[];
+    ast: Ast;
+  }> {
     // Add trailing `|` explicitly for child expressions
     const x = `${expression} |`;
     const response = await this.post(
@@ -514,9 +516,14 @@ export class HttpClient {
           h.resolution !== 'synthetic' &&
           h.column !== undefined,
       )
+      // table/schema come along so a caller can name the table without
+      // re-parsing `h.pine` -- store/canvas/traversal.ts keys its cycle check
+      // on them, and labels each row of its panel with them.
       .map(h => ({
         expression: `${x} ${h.pine}`,
         column: h.column,
+        table: h.table,
+        schema: h.schema,
       }));
     return { expressions, ast: response.ast };
   }

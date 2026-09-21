@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- Walking the tables that hang off one of yours is now an action on the canvas. Press `+` on a table, pick **traverse**, and choose what to do at every table it reaches by foreign key: **Count rows**, or **Delete rows…**. It follows real foreign keys, deepest first, and skips a branch as soon as it finds nothing there.
+- **Count rows** answers "what is actually under this?" -- a row per related table with its count, deepest first. Clicking any row opens that table's rows in a new tab, because every line in that list is a real query.
+- The list fills in while the walk runs, and the walk can be cancelled. A large tree no longer means staring at a frozen panel with no way out.
+- **Delete rows…** produces the same `BEGIN;` … `COMMIT;` script `delete:` produced before -- identical, byte for byte -- and stops there. It says so: nothing has been deleted. Running it is still your own step, as it always was.
+- Delete is offered only where it would be correct. Given an expression that joins back *up* (`employee | company`), the walk would empty a table the query itself depends on, and the delete would then remove nothing while reporting success. That is now caught before you can click it, and the menu entry says why instead of quietly vanishing.
+
+### Changed
+- `delete:` is gone from Pine, replaced by the canvas action above. A saved tab still ending in `delete:` has it removed when the tab is restored -- without that the tab would come back blank, since one unparseable word stops the canvas reading any of the expression.
+
 ### Security
 - An agent can no longer change your data through an operation the old check missed. MCP refused a Pine expression containing `delete!`, by looking for that word in the text. It did not look for `update!`, and it did not recognise the short forms `d!` and `u!` -- so three of the four ways to write to a database went straight through. The check now happens in the Pine server, which already knows which operations change data, so every form is covered and so is anything added later. Reads are unaffected, and so are your own queries: you can still run `delete!` and `update!` in your own tab exactly as before.
 - MCP now refuses to run anything at all against a Pine server older than 0.46.0. An older server ignores the request to refuse writes and runs them anyway, so falling back to it would be quietly less safe than the check it replaces. This applies to agent queries only -- the rest of the app still works against an older server exactly as before, and the minimum version it needs is unchanged.

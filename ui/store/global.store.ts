@@ -89,6 +89,26 @@ export type SettingsSection = 'connections' | 'theme' | 'preferences' | 'access-
 // the other.
 export type TabOrientation = 'horizontal' | 'vertical';
 
+/**
+ * Drops a trailing `delete:` / `d:` from a restored expression.
+ *
+ * pine-lang removed that operation (0.46.0), so an expression still carrying
+ * it no longer parses - and in canvas mode a parse error means no
+ * `ast.ranges`, which means the canvas can't segment *any* of the expression,
+ * not just the last operation. A tab saved before the upgrade would come back
+ * blank rather than merely missing its last word.
+ *
+ * A text regex, not the segment list, because the segment list comes from
+ * `ast.ranges` - the parse that just failed. Anchored to a pipe so it can't
+ * mangle a string literal that happens to end in `d:`.
+ *
+ * The expression text is the only thing that persists (see PersistedSession),
+ * so this is the one place it needs doing. Removable a release or two after
+ * 0.46.0 is the floor everywhere.
+ */
+export const stripRemovedDeleteOperation = (expression: string): string =>
+  expression.replace(/\|\s*(?:delete:|d:)\s*$/i, '').trimEnd();
+
 export class GlobalStore {
   connecting = false;
   connection = '';
@@ -589,7 +609,7 @@ export class GlobalStore {
 
     persisted.sessions.forEach((persistedSession, index) => {
       const session = this.createSessionUsingId(String(index));
-      const expression = persistedSession.expression ?? '';
+      const expression = stripRemovedDeleteOperation(persistedSession.expression ?? '');
       runInAction(() => {
         session.expression = expression;
         session.inputMode = persistedSession.inputMode === 'sql' ? 'sql' : 'pine';
@@ -1727,6 +1747,24 @@ export class GlobalStore {
 
   deleteSession = (sessionId: string) => {
     delete this.sessions[sessionId];
+  };
+
+  /**
+   * Open a Pine expression in a new tab, inheriting the current tab's
+   * connection, and switch to it.
+   *
+   * Used by the traversal panel: every table the walk reached carries a real,
+   * runnable expression, so a row in that list is something you can go and
+   * look at rather than a name and a number. A new tab rather than the
+   * current one - the expression you were working on is the reason the
+   * traversal exists, and overwriting it to inspect a branch of its own
+   * result would be a poor trade.
+   */
+  openExpressionInNewTab = (expression: string) => {
+    this.addTab();
+    const session = this.sessions[this.activeSessionId];
+    if (session) session.expression = expression;
+    return session;
   };
 
   /**

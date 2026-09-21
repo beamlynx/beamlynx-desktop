@@ -15,7 +15,6 @@ export type SegmentKind =
   | 'limit'
   | 'group'
   | 'count'
-  | 'delete'
   | 'delete-action'
   | 'update'
   | 'assign';
@@ -73,7 +72,6 @@ const classifyKind = (text: string): SegmentKind => {
   if (/^(group:|g:)/i.test(text)) return 'group';
   if (/^count:/i.test(text)) return 'count';
   if (/^(delete!|d!)/i.test(text)) return 'delete-action';
-  if (/^(delete:|d:)/i.test(text)) return 'delete';
   if (/^(update!|u!)/i.test(text)) return 'update';
   if (/^=\s*\S/.test(text)) return 'assign';
   return 'table';

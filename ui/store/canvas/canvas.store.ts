@@ -1,5 +1,5 @@
 import { makeAutoObservable, reaction, runInAction } from 'mobx';
-import { PathHint, TableHint } from '../client';
+import { HttpClient, PathHint, TableHint } from '../client';
 import { Session } from '../session';
 import {
   CanvasFrameNode,
@@ -32,6 +32,15 @@ import {
 } from './pine-text';
 import * as actions from './pine-actions';
 import { probeBuild } from './probe';
+import {
+  buildDeleteScript,
+  canDeleteTraverse,
+  runTraversal,
+  tablesInExpression,
+  TraversalNode,
+  TraversalStatus,
+  TraversalVerb,
+} from './traversal';
 import { computeDateBounds } from './relative-date';
 
 const hasMultipleBlocks = (expression: string): boolean => /\n\s*\n/.test(expression.trim());
@@ -65,9 +74,44 @@ type FocusStop = { kind: 'node'; alias: string } | { kind: 'config'; alias: stri
  * finishes. Nothing here talks to the pine-lang server except through that
  * one path plus the read-only probeBuild used for picker options.
  */
+/**
+ * The traversal's own client. Deliberately not the session's: that one carries
+ * an onBuild callback that writes every build's AST back into the session, and
+ * a traversal issues a build per node - which would leave the canvas rendering
+ * whichever child table the walk happened to finish on.
+ */
+const traversalClient = new HttpClient();
+
+/** A traversal in flight or finished - see CanvasStore.startTraversal. */
+export type TraversalState = {
+  verb: TraversalVerb;
+  rootExpression: string;
+  status: TraversalStatus;
+  nodes: TraversalNode[];
+  depthCapped: boolean;
+  /** The BEGIN;...COMMIT; script, for the delete verb once the walk finishes. */
+  script: string | null;
+  error: string | null;
+};
+
 export class CanvasStore {
   positions: Record<string, { x: number; y: number }> = {};
   picker: PickerState = { open: false };
+
+  /**
+   * The traversal shown in the panel, or null when there is none. Held as
+   * state rather than run as a one-shot call so the panel can fill in as the
+   * walk goes, the walk can be cancelled, and each node's expression stays
+   * around to be opened.
+   */
+  traversal: TraversalState | null = null;
+
+  /**
+   * Cancellation for the in-flight walk. Identity doubles as a generation
+   * check: a late callback from a superseded walk finds this !== its own
+   * signal and drops its result instead of writing over the newer one.
+   */
+  private traversalSignal: { cancelled: boolean } | null = null;
   canvasGraph: CanvasGraph = emptyGraph;
   /** Aliases of the currently box/shift-selected table nodes - see Canvas.tsx's onSelectionChange. */
   selectedAliases: string[] = [];
@@ -1092,6 +1136,14 @@ export class CanvasStore {
    * the non-frame branch doesn't need a separate signature.
    */
   activateMoreAction(alias: string, action: MoreAction, isFrame: boolean, anchor: PickerAnchor) {
+    if (action === 'traverse') {
+      // Plain nodes only. A checkpoint frame seals its contents into a CTE,
+      // and following a foreign key out of a CTE's output isn't a thing -
+      // FrameNode.tsx doesn't offer it either.
+      if (isFrame) return;
+      this.openTraversePicker(alias, anchor);
+      return;
+    }
     if (isFrame) {
       if (action === 'group') return; // never offered for a checkpoint frame - see FrameNode.tsx
       void this.openCheckpointPicker(action, anchor);
@@ -1102,6 +1154,131 @@ export class CanvasStore {
       return;
     }
     this.openColumnPicker(action, alias, anchor);
+  }
+
+  /**
+   * The verb menu for a traversal: Count rows, Delete rows...
+   *
+   * A fixed two-entry list, so it opens directly rather than through
+   * openListPicker - same as the "+" menu itself. Whether deleting is
+   * *correct* here needs the AST, which is already in hand, so that decision
+   * is made once at open time and carried on the picker rather than
+   * re-derived per click.
+   */
+  openTraversePicker(alias: string, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
+    if (this.picker.open && this.picker.mode === 'traverse' && this.picker.alias === alias) {
+      this.closePicker();
+      return;
+    }
+    this.focusNode(alias);
+    const verdict = canDeleteTraverse(this.session.ast);
+    this.picker = {
+      open: true,
+      mode: 'traverse',
+      alias,
+      deleteBlockedReason: verdict.ok ? null : verdict.reason,
+      anchor,
+    };
+  }
+
+  /**
+   * Runs a traversal from the expression as it stands.
+   *
+   * The root is `session.expression`, unmodified. There's no rooting logic
+   * here because the walk only ever *appends*: each node one level down is
+   * its parent's expression plus one more join (see traversal.ts). Acting on
+   * a node that isn't the end of the pipe is already handled the way every
+   * other canvas gesture handles it - a `from:` committed into the expression
+   * first (commitJoin's fromAlias) - so by the time this runs, the expression
+   * already points where it should.
+   */
+  async startTraversal(verb: TraversalVerb) {
+    const rootExpression = this.session.expression.trim();
+    if (!rootExpression) return;
+    this.closePicker();
+
+    const signal = { cancelled: false };
+    this.traversalSignal = signal;
+    runInAction(() => {
+      this.traversal = {
+        verb,
+        rootExpression,
+        status: 'walking',
+        nodes: [],
+        depthCapped: false,
+        script: null,
+        error: null,
+      };
+    });
+
+    try {
+      // The delete verb gets the run-time backstop. The two conditions
+      // canDeleteTraverse checks are an argument about the foreign-key graph,
+      // and the cost of that argument being wrong is a delete that silently
+      // removes nothing. Counting needs no such guard - it only reads.
+      const forbidden =
+        verb === 'delete'
+          ? tablesInExpression(this.session.ast, this.session.ast?.current ?? '')
+          : undefined;
+      const result = await runTraversal(traversalClient, rootExpression, {
+        connectionId: this.session.connectionId,
+        signal,
+        forbidden,
+        onNode: node =>
+          runInAction(() => {
+            if (this.traversal && this.traversalSignal === signal) {
+              this.traversal.nodes = [...this.traversal.nodes, node];
+            }
+          }),
+      });
+      if (signal.cancelled) {
+        runInAction(() => {
+          if (this.traversal && this.traversalSignal === signal) this.traversal.status = 'cancelled';
+        });
+        return;
+      }
+      const script =
+        verb === 'delete'
+          ? await buildDeleteScript(traversalClient, result.nodes, this.session.connectionId)
+          : null;
+      runInAction(() => {
+        if (!this.traversal || this.traversalSignal !== signal) return;
+        // Replaces the streamed list rather than appending to it: onNode
+        // fires as each count lands, so the panel fills in while the walk
+        // runs, but the finished list is post-order - the order the DELETEs
+        // have to run in.
+        this.traversal.nodes = result.nodes;
+        this.traversal.depthCapped = result.depthCapped;
+        this.traversal.script = script;
+        this.traversal.status = 'done';
+      });
+    } catch (e) {
+      runInAction(() => {
+        if (!this.traversal || this.traversalSignal !== signal) return;
+        this.traversal.status = 'failed';
+        this.traversal.error = e instanceof Error ? e.message : 'Traversal failed';
+      });
+    }
+  }
+
+  /**
+   * Opens one row of the traversal in a new tab. Each node's `expression` is
+   * ordinary Pine - the walk builds them by appending joins - so this needs
+   * no "traversal result" viewer, just a tab.
+   */
+  openTraversalNode(node: TraversalNode) {
+    this.session.globalStore?.openExpressionInNewTab?.(node.expression);
+  }
+
+  cancelTraversal() {
+    if (this.traversalSignal) this.traversalSignal.cancelled = true;
+  }
+
+  closeTraversal() {
+    this.cancelTraversal();
+    runInAction(() => {
+      this.traversal = null;
+    });
   }
 
   openColumnPicker(

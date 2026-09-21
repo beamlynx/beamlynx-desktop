@@ -270,14 +270,39 @@ export type PickerState =
       /** Whether `alias` names a checkpoint frame rather than a plain table - decides join-type routing (openCheckpointPicker vs the direct open*Picker methods). */
       isFrame: boolean;
       anchor: PickerAnchor;
+    }
+  | {
+      open: true;
+      mode: 'traverse';
+      alias: string;
+      /**
+       * Why "Delete rows..." can't be picked, when it can't. Counting is
+       * always available; deleting is only correct on a downward pipe whose
+       * last table is the current one (canDeleteTraverse in
+       * store/canvas/traversal.ts). Carried as a reason rather than a bare
+       * boolean so the entry can be shown disabled *with* its explanation -
+       * a missing menu item is a mystery, a disabled one with a sentence
+       * teaches the rule.
+       */
+      deleteBlockedReason: string | null;
+      anchor: PickerAnchor;
     };
 
 /** The actions tucked behind a node's "+" overflow trigger - see TableNode.tsx/FrameNode.tsx. */
-export type MoreAction = 'order' | 'group' | 'path';
+export type MoreAction = 'order' | 'group' | 'path' | 'traverse';
 export const MORE_ACTIONS: { action: MoreAction; label: string; key: string }[] = [
   { action: 'order', label: 'order', key: 'o' },
   { action: 'group', label: 'group', key: 'g' },
   { action: 'path', label: 'path', key: 'p' },
+  { action: 'traverse', label: 'traverse', key: 't' },
+];
+
+/** What a traversal does at each table it reaches - see store/canvas/traversal.ts. */
+export const TRAVERSE_VERBS: { verb: 'count' | 'delete'; label: string; key: string }[] = [
+  { verb: 'count', label: 'Count rows', key: 'c' },
+  // The ellipsis is doing real work: this produces the queries and stops.
+  // Running them is a separate decision, made in the panel afterwards.
+  { verb: 'delete', label: 'Delete rows…', key: 'd' },
 ];
 
 export const WHERE_OPERATORS = ['=', '!=', '>', '<', 'like', 'not like', 'ilike', 'is', 'is not'] as const;
