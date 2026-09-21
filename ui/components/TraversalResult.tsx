@@ -15,6 +15,36 @@ import { themedScrollbarSx } from '../utils/scrollbar';
 // (its bar-chart view); this is the same idea with a third shape, and it is
 // why Session.traversal sits next to Session.rows.
 
+/**
+ * The expression behind a row, shown on hover.
+ *
+ * A themed tooltip rather than the `title` attribute. A native tooltip is drawn
+ * by the operating system: it ignores the theme entirely, uses the system UI
+ * font for what is code, and collapses the line-per-step formatting the walk
+ * goes to the trouble of producing. Same surface tokens as the canvas pickers
+ * and the editor's own tooltips (--canvas-picker-bg/-border), and the code font
+ * the Pine panel uses, so an expression looks like an expression wherever it
+ * appears.
+ */
+const expressionTooltipSlotProps = {
+  tooltip: {
+    sx: {
+      background: 'var(--canvas-picker-bg)',
+      border: '1px solid var(--canvas-picker-border)',
+      borderRadius: '4px',
+      boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+      color: 'var(--canvas-text)',
+      fontFamily: 'var(--code-font)',
+      fontSize: 'calc(12px * var(--text-scale, 1))',
+      // The walk puts each step on its own line; keep them.
+      whiteSpace: 'pre' as const,
+      maxWidth: 'none',
+      padding: '8px 10px',
+      lineHeight: 1.5,
+    },
+  },
+};
+
 const rowSx = {
   display: 'flex',
   justifyContent: 'space-between',
@@ -127,23 +157,31 @@ const TraversalResult: React.FC<{ session: Session }> = observer(({ session }) =
 
       <Box sx={{ overflowY: 'auto', flex: script ? '0 0 45%' : 1, ...themedScrollbarSx }}>
         {nodes.map(node => (
-          <Box
+          <Tooltip
             key={`${node.id}-${node.depth}`}
-            data-testid={`traversal-node-${node.table}`}
-            onClick={() => session.openTraversalNode(node)}
             title={node.expression}
-            sx={{ ...rowSx, cursor: 'pointer', '&:hover': { background: 'var(--hover-color)' } }}
+            placement="left"
+            slotProps={expressionTooltipSlotProps}
+            // Long enough not to fire while running the cursor down the list,
+            // short enough to feel like an answer rather than a delay.
+            enterDelay={400}
           >
-            {/* Indented by depth so the shape of the tree is visible, and in
+            <Box
+              data-testid={`traversal-node-${node.table}`}
+              onClick={() => session.openTraversalNode(node)}
+              sx={{ ...rowSx, cursor: 'pointer', '&:hover': { background: 'var(--hover-color)' } }}
+            >
+              {/* Indented by depth so the shape of the tree is visible, and in
                 children-before-parents order, which is the order the DELETEs
                 have to run in. */}
-            <Box component="span" sx={{ pl: `${node.depth * 12}px` }}>
-              {node.table}
+              <Box component="span" sx={{ pl: `${node.depth * 12}px` }}>
+                {node.table}
+              </Box>
+              <Box component="span" sx={{ color: 'var(--canvas-text-dim)' }}>
+                {node.count}
+              </Box>
             </Box>
-            <Box component="span" sx={{ color: 'var(--canvas-text-dim)' }}>
-              {node.count}
-            </Box>
-          </Box>
+          </Tooltip>
         ))}
       </Box>
 
