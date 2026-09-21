@@ -60,6 +60,8 @@ const {
   setMcpEnabled,
   setConnectionPolicy,
   setApplyPolicyToOwnQueries,
+  setAllowDestructive,
+  listConnections,
   createAccessPolicy,
   setAccessPolicyModuleEnabled,
   deleteAccessPolicy,
@@ -203,4 +205,53 @@ test('listMcpEnabledConnections requires each connection\'s OWN policy to be act
     [active.id].sort(),
   );
   assert.ok(!result.some(c => c.id === wentInactive.id || c.id === neverEnabled.id));
+});
+
+// allowDestructive gates the canvas's "Delete rows..." traversal actually
+// running its generated script. It is the only thing standing between a
+// click and a recursive delete against whatever database the tab is pointed
+// at, so both directions are worth pinning down.
+test('allowDestructive is off for a new connection, and toggles independently per connection', () => {
+  const a = addConnection();
+  const b = addConnection();
+  assert.equal(a.allowDestructive, false, 'a new connection must not be destructive-capable');
+
+  assert.equal(setAllowDestructive(a.id, true).allowDestructive, true);
+  // Per connection, not global -- turning it on for the staging database must
+  // not also turn it on for production.
+  const stored = listConnections();
+  assert.equal(stored.find(c => c.id === a.id).allowDestructive, true);
+  assert.equal(stored.find(c => c.id === b.id).allowDestructive, false);
+
+  assert.equal(setAllowDestructive(a.id, false).allowDestructive, false);
+  assert.equal(setAllowDestructive('no-such-id', true), null);
+});
+
+test('a connection saved before allowDestructive existed reads as off, not on', () => {
+  // The one path where a stale record could silently become writable: the
+  // field is simply absent from anything written before this release, and an
+  // `undefined` that reads as truthy anywhere downstream would be a
+  // destructive default. Simulated by deleting the key from the store file,
+  // which is exactly the shape an old record has on disk.
+  const conn = addConnection();
+  setAllowDestructive(conn.id, true);
+  const storePath = path.join(userDataDir, 'connections.json');
+  const store = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
+  delete store.connections[0].allowDestructive;
+  fs.writeFileSync(storePath, JSON.stringify(store, null, 2));
+
+  assert.equal(listConnections()[0].allowDestructive, false);
+});
+
+// allowDestructive governs what the owner's own app may write; mcpEnabled and
+// policyId govern what an agent may read. Coupling them would be a mistake in
+// either direction, so the independence is asserted rather than assumed.
+test('allowDestructive is independent of the access-policy flags', () => {
+  const conn = addConnection();
+  setAllowDestructive(conn.id, true);
+  assert.deepEqual(setMcpEnabled(conn.id, true), {
+    ok: true,
+    profile: { ...conn, allowDestructive: true, mcpEnabled: true },
+  });
+  assert.equal(listConnections()[0].allowDestructive, true);
 });

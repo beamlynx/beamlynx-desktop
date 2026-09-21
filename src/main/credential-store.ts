@@ -137,6 +137,30 @@ export type SavedConnectionMeta = {
   // connection -- that's governed by mcpEnabled/policyId alone. Moot when
   // policyId is null (nothing to apply either way).
   applyPolicyToOwnQueries: boolean;
+  // Whether this connection may be written to by an action in the app that
+  // generates the statements itself -- today only the canvas's "Delete
+  // rows..." traversal, which walks child tables by foreign key and can empty
+  // a whole subtree in one go.
+  //
+  // Off by default, and the decision belongs here rather than at the moment
+  // of use. The thing that actually distinguishes a safe recursive delete
+  // from a catastrophic one is *which database you are pointed at* -- fine on
+  // localhost and on a staging copy, never fine on production. Asking someone
+  // to get that right on every click, while tired, on whichever tab happened
+  // to be focused, is asking them to be the safety mechanism. Decided once,
+  // per connection, away from the moment of use, it is a decision they can
+  // actually make well.
+  //
+  // Deliberately NOT a host heuristic. Treating `localhost` as safe is wrong
+  // in the one case that matters: an SSH tunnel to production listens on
+  // localhost, and that is exactly the setup where someone reaches for a
+  // recursive delete.
+  //
+  // Unrelated to mcpEnabled/policyId. Those govern what an agent may read;
+  // this governs what the owner's own app may write. An agent cannot reach
+  // this path at all -- a traversal is not an expression, so there is no
+  // Pine an agent can send that starts one.
+  allowDestructive: boolean;
 };
 
 type StoredConnectionRecord = SavedConnectionMeta & { dbPasswordEncrypted: string };
@@ -266,7 +290,11 @@ function toMeta(record: StoredConnectionRecord): SavedConnectionMeta {
   const policyId = meta.policyId ?? null;
   const applyPolicyToOwnQueries = meta.applyPolicyToOwnQueries ?? false;
   const dbType = meta.dbType ?? 'postgres';
-  return { ...meta, mcpEnabled, policyId, applyPolicyToOwnQueries, dbType };
+  // Every connection saved before this field existed reads as false. This is
+  // the one place a stale record could otherwise become writable by default,
+  // so it defaults to its protective value like the rest.
+  const allowDestructive = meta.allowDestructive ?? false;
+  return { ...meta, mcpEnabled, policyId, applyPolicyToOwnQueries, dbType, allowDestructive };
 }
 
 function makeLabel(input: Pick<SaveConnectionInput, 'dbUser' | 'dbHost' | 'dbPort' | 'dbName'>): string {
@@ -348,6 +376,9 @@ export function saveConnection(input: SaveConnectionInput): SaveConnectionResult
       lastUsedAt: now,
       dbPasswordEncrypted,
       mcpEnabled: false,
+      // Off from creation, same as mcpEnabled: a connection is never
+      // destructive-capable until someone says so for that connection.
+      allowDestructive: false,
       // Protected by default from creation, independent of mcpEnabled --
       // whichever policy exists first, so by the time MCP is ever turned on
       // for this connection, a policy is already applying. Falls back to
@@ -423,6 +454,24 @@ export function setMcpEnabled(id: string, enabled: boolean): SetMcpEnabledResult
   writeStore(store);
   console.log(`[credentials] setMcpEnabled: id=${id} enabled=${enabled}`);
   return { ok: true, profile: toMeta(store.connections[index]) };
+}
+
+/**
+ * Turns the destructive-action flag on or off for one connection.
+ *
+ * No invariant to maintain, unlike setMcpEnabled: this gates one button and
+ * interacts with nothing else. In particular it has no relationship to the
+ * access policy -- that governs what an agent may read, this governs what the
+ * owner's own app may write.
+ */
+export function setAllowDestructive(id: string, enabled: boolean): SavedConnectionMeta | null {
+  const store = readStore();
+  const index = store.connections.findIndex(c => c.id === id);
+  if (index < 0) return null;
+  store.connections[index] = { ...store.connections[index], allowDestructive: enabled };
+  writeStore(store);
+  console.log(`[credentials] setAllowDestructive: id=${id} enabled=${enabled}`);
+  return toMeta(store.connections[index]);
 }
 
 // The per-connection counterpart to the access policy: which one applies to
@@ -613,6 +662,9 @@ export function registerCredentialIpc(): void {
   ipcMain.handle('credentials:set-mcp-enabled', (_event, id: string, enabled: boolean) => setMcpEnabled(id, enabled));
   ipcMain.handle('credentials:set-connection-policy', (_event, id: string, policyId: string | null) =>
     setConnectionPolicy(id, policyId),
+  );
+  ipcMain.handle('credentials:set-allow-destructive', (_event, id: string, enabled: boolean) =>
+    setAllowDestructive(id, enabled),
   );
   ipcMain.handle('credentials:set-apply-policy-for-own-queries', (_event, id: string, apply: boolean) =>
     setApplyPolicyToOwnQueries(id, apply),
