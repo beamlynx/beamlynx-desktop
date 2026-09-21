@@ -35,8 +35,12 @@ function stripComments(source) {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 }
 
-const MCP_QUERY_SOURCE = stripComments(fs.readFileSync(path.join(__dirname, '..', 'store', 'mcp-query.ts'), 'utf-8'));
-const GLOBAL_STORE_SOURCE = stripComments(fs.readFileSync(path.join(__dirname, '..', 'store', 'global.store.ts'), 'utf-8'));
+const MCP_QUERY_SOURCE = stripComments(
+  fs.readFileSync(path.join(__dirname, '..', 'store', 'mcp-query.ts'), 'utf-8'),
+);
+const GLOBAL_STORE_SOURCE = stripComments(
+  fs.readFileSync(path.join(__dirname, '..', 'store', 'global.store.ts'), 'utf-8'),
+);
 
 test('mcp-query.ts never calls client.sql (raw SQL execution)', () => {
   assert.ok(
@@ -93,7 +97,13 @@ function makeFakeDeps(overrides = {}) {
         return { query: 'select 1', args };
       },
     },
-    getSavedProfileCredentials: async () => ({ dbHost: 'h', dbPort: '5432', dbName: 'd', dbUser: 'u', dbPassword: 'p' }),
+    getSavedProfileCredentials: async () => ({
+      dbHost: 'h',
+      dbPort: '5432',
+      dbName: 'd',
+      dbUser: 'u',
+      dbPassword: 'p',
+    }),
     getOrCreateMcpSession: () => session,
     getMcpConnectionId: () => undefined,
     setMcpConnectionId: () => {},
@@ -116,7 +126,12 @@ function makeFakeDeps(overrides = {}) {
 // actually sends it, on every call, whatever the expression says.
 test('runMcpQuery always evaluates with allowWrites: false', async () => {
   const { deps, evaluateOpts } = makeFakeDeps();
-  for (const expression of ['user', 'user | delete! .id', 'user | d! .id', "user | update! name = 'x'"]) {
+  for (const expression of [
+    'user',
+    'user | delete! .id',
+    'user | d! .id',
+    "user | update! name = 'x'",
+  ]) {
     await runMcpQuery(deps, { profileId: 'p1', expression });
   }
   assert.equal(evaluateOpts.length, 4);
@@ -155,7 +170,7 @@ test('runMcpQuery refuses outright against a server too old to honour allow-writ
   }
 });
 
-test('runMcpQuery refuses to evaluate a session that somehow isn\'t in pine input mode', async () => {
+test("runMcpQuery refuses to evaluate a session that somehow isn't in pine input mode", async () => {
   const { deps } = makeFakeDeps({ session: { inputMode: 'sql' } });
   await assert.rejects(
     () => runMcpQuery(deps, { profileId: 'p1', expression: 'user' }),
@@ -171,12 +186,17 @@ test('runMcpQuery resolves accessPolicyRules before evaluating, not just at sess
   assert.ok(resolveIndex !== -1 && evaluateIndex !== -1 && resolveIndex < evaluateIndex);
 });
 
-test('explainMcpQuery passes the connection\'s freshly-resolved accessPolicyRules straight to client.build', async () => {
+test("explainMcpQuery passes the connection's freshly-resolved accessPolicyRules straight to client.build", async () => {
   const { deps } = makeFakeDeps({
     deps: { resolveAccessPolicyRules: async () => [{ type: 'column-name', suffix: '_id' }] },
   });
   const result = await explainMcpQuery(deps, { profileId: 'p1', expression: 'user' });
-  assert.deepEqual(result.args, [['user'], undefined, 'conn-1', [{ type: 'column-name', suffix: '_id' }]]);
+  assert.deepEqual(result.args, [
+    ['user'],
+    undefined,
+    'conn-1',
+    [{ type: 'column-name', suffix: '_id' }],
+  ]);
 });
 
 // client.ts's effectiveAccessPolicyRules -- the single place that decides
@@ -188,7 +208,10 @@ test('explainMcpQuery passes the connection\'s freshly-resolved accessPolicyRule
 // applyPolicyToOwnQueries is explicitly true.
 test('effectiveAccessPolicyRules: no policyId means no rules, for either caller', () => {
   const policies = [{ id: 'p1', name: 'X', rules: [{ type: 'foreign-key', enabled: true }] }];
-  assert.deepEqual(effectiveAccessPolicyRules({ policyId: null, mcpEnabled: true }, policies, true), []);
+  assert.deepEqual(
+    effectiveAccessPolicyRules({ policyId: null, mcpEnabled: true }, policies, true),
+    [],
+  );
   assert.deepEqual(effectiveAccessPolicyRules({ policyId: null }, policies, false), []);
   assert.deepEqual(effectiveAccessPolicyRules(undefined, policies, true), []);
 });
@@ -204,12 +227,18 @@ test('effectiveAccessPolicyRules: human path is gated on applyPolicyToOwnQueries
   const policies = [{ id: 'p1', name: 'X', rules: [{ type: 'foreign-key', enabled: true }] }];
   const conn = { policyId: 'p1', mcpEnabled: false, applyPolicyToOwnQueries: true };
   assert.deepEqual(effectiveAccessPolicyRules(conn, policies, false), [{ type: 'foreign-key' }]);
-  assert.deepEqual(effectiveAccessPolicyRules({ ...conn, applyPolicyToOwnQueries: false }, policies, false), []);
+  assert.deepEqual(
+    effectiveAccessPolicyRules({ ...conn, applyPolicyToOwnQueries: false }, policies, false),
+    [],
+  );
 });
 
 test('effectiveAccessPolicyRules: human path defaults to no redaction when applyPolicyToOwnQueries is absent', () => {
   const policies = [{ id: 'p1', name: 'X', rules: [{ type: 'foreign-key', enabled: true }] }];
-  assert.deepEqual(effectiveAccessPolicyRules({ policyId: 'p1', mcpEnabled: true }, policies, false), []);
+  assert.deepEqual(
+    effectiveAccessPolicyRules({ policyId: 'p1', mcpEnabled: true }, policies, false),
+    [],
+  );
 });
 
 test('effectiveAccessPolicyRules: only enabled rules are returned, with `enabled` itself stripped', () => {
@@ -229,7 +258,10 @@ test('effectiveAccessPolicyRules: only enabled rules are returned, with `enabled
 
 test('effectiveAccessPolicyRules: an unresolvable policyId (deleted policy) yields no rules, not a throw', () => {
   const policies = [{ id: 'p1', name: 'X', rules: [{ type: 'foreign-key', enabled: true }] }];
-  assert.deepEqual(effectiveAccessPolicyRules({ policyId: 'gone', mcpEnabled: true }, policies, true), []);
+  assert.deepEqual(
+    effectiveAccessPolicyRules({ policyId: 'gone', mcpEnabled: true }, policies, true),
+    [],
+  );
 });
 
 // session.ts's accessPolicyRules getter -- Session.globalStore is typed
@@ -256,7 +288,7 @@ test("session.ts's accessPolicyRules getter derives from the connected profile's
   assert.deepEqual(session.accessPolicyRules, []);
 });
 
-test("session.ts passes forMcp based on whether this session IS globalStore.mcpSessionId, not a hardcoded value", () => {
+test('session.ts passes forMcp based on whether this session IS globalStore.mcpSessionId, not a hardcoded value', () => {
   const fakeGlobalStore = {
     connections: [{ id: 'c1', mcpEnabled: true, policyId: 'p1', applyPolicyToOwnQueries: false }],
     accessPolicies: [{ id: 'p1', name: 'X', rules: [{ type: 'foreign-key', enabled: true }] }],
@@ -305,7 +337,45 @@ test("global.store.ts's resolveAccessPolicyRules always passes forMcp: true to e
     /effectiveAccessPolicyRules\(/.test(body) && /,\s*true\s*\)\s*;/.test(body),
     'resolveAccessPolicyRules -- the only path runMcpQuery/explainMcpQuery use to resolve rules -- must call ' +
       'effectiveAccessPolicyRules with forMcp hardcoded to true. It has no Session to derive forMcp from the ' +
-      "way Session.accessPolicyRules does, and this is only ever reached from the MCP path, so a `false` or " +
+      'way Session.accessPolicyRules does, and this is only ever reached from the MCP path, so a `false` or ' +
       "computed value here would let a connection's applyPolicyToOwnQueries silently leak into what MCP sees.",
   );
+});
+
+// Defence in depth for the option above: runMcpQuery passing
+// allowWrites: false is what stops an agent today, but it is a per-call
+// decision, and `allow-writes` defaults to *allowed* server-side (so the
+// person's own editor keeps working). A future caller into the agent's tab
+// that forgets the option would therefore inherit writes. Binding it to the
+// session makes forgetting impossible -- and covers the person pressing Run
+// on the agent's own tab, where the expression on screen is the agent's.
+test('the MCP session forces allowWrites: false even when the caller omits it', async () => {
+  const store = new GlobalStore();
+  const mcpSession = store.getOrCreateMcpSession();
+  const humanSession = store.createSession();
+
+  assert.equal(mcpSession.isMcpSession, true);
+  assert.equal(humanSession.isMcpSession, false);
+
+  const seen = [];
+  mcpSession.plugins.default.evaluate = async opts => {
+    seen.push(opts);
+    return [];
+  };
+  humanSession.plugins.default.evaluate = async opts => {
+    seen.push(opts);
+    return [];
+  };
+
+  // No opts at all, and opts that explicitly ask for writes: the agent's
+  // session must come out false either way.
+  await mcpSession.evaluate();
+  await mcpSession.evaluate({ allowWrites: true });
+  assert.equal(seen[0]?.allowWrites, false);
+  assert.equal(seen[1]?.allowWrites, false);
+
+  // The person's own session is untouched -- delete!/update! in their own
+  // tab is the point, not a threat.
+  await humanSession.evaluate();
+  assert.equal(seen[2]?.allowWrites, undefined);
 });
