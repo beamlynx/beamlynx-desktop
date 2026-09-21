@@ -27,7 +27,11 @@ export type TraversalNode = {
   parentId: string | null;
   table: string;
   schema: string | null;
-  /** The foreign key column linking this table to its parent; '' at the root. */
+  /**
+   * The column this node's own DELETE keys on: the foreign key linking it to
+   * its parent, or - at the root, which has no parent - the hardcoded `id`
+   * that rootTableOf supplies. See that function for why it is hardcoded.
+   */
   column: string;
   expression: string;
   depth: number;
@@ -147,6 +151,37 @@ export class TraversalRevisitError extends Error {
   }
 }
 
+/**
+ * Thrown when a child table is reached through what is really one composite
+ * foreign key, which pine-lang reports as several independent single-column
+ * relations (see its docs/joins.md - combining them into one join is a
+ * separate change).
+ *
+ * Deleting through one column of a composite key over-matches, and the
+ * over-match is silent. Given
+ * `case_ref (case_id, search_id) -> kase (id, search_id)`, deleting
+ * `kase | where: id = 1` produces two DELETEs, and the second is
+ * `WHERE search_id IN (...)` alone - which also takes out rows belonging to a
+ * *different* kase that happens to share a search_id. Confirmed against a real
+ * database: a row whose parent survived the run was deleted anyway.
+ *
+ * Detected by the parent side of the join, which separates the two shapes
+ * cleanly. Pieces of one composite key point at different parent columns
+ * (`id` and `search_id`); two genuinely separate foreign keys to the same
+ * table point at the same one (`message.sender_id` and
+ * `message.recipient_id` both -> `appuser.id`), and for those the traversal is
+ * correct - it deletes the union, which is what deleting that parent means.
+ */
+export class CompositeKeyError extends Error {
+  constructor(public readonly table: string) {
+    super(
+      `Cannot delete through "${table}": it is linked by a foreign key made of more than one column, ` +
+        `and deleting on one column at a time would also remove rows belonging to other records.`,
+    );
+    this.name = 'CompositeKeyError';
+  }
+}
+
 export type WalkOptions = {
   connectionId?: string;
   maxDepth?: number;
@@ -159,6 +194,14 @@ export type WalkOptions = {
    * merely redundant there, not wrong.
    */
   forbidden?: Set<string>;
+  /**
+   * Whether this walk is planning a delete. Turns on the checks that only
+   * matter when the result will be used to remove rows: the composite-key
+   * refusal below, and `forbidden` above. Counting stays permissive - it
+   * reads, so the worst it can do is report a number that is larger than it
+   * should be, which is exactly what a composite key makes it do.
+   */
+  forDelete?: boolean;
   /** Called as each node's count lands, so a panel can fill in as it goes. */
   onNode?: (node: TraversalNode) => void;
 };
@@ -242,6 +285,23 @@ export const runTraversal = async (
     }
 
     const { expressions } = await client.makeChildExpressions(expression, options.connectionId);
+
+    if (options.forDelete) {
+      // One composite key arrives here as several single-column relations to
+      // the same table. Refuse before anything is generated - see
+      // CompositeKeyError.
+      const parentColumnsByTable = new Map<string, Set<string>>();
+      for (const child of expressions) {
+        const key = tableKey(child.table);
+        const seen = parentColumnsByTable.get(key) ?? new Set<string>();
+        seen.add(child.relatedColumn ?? '');
+        parentColumnsByTable.set(key, seen);
+      }
+      for (const [childTable, parentColumns] of Array.from(parentColumnsByTable)) {
+        if (parentColumns.size > 1) throw new CompositeKeyError(childTable);
+      }
+    }
+
     for (const child of expressions) {
       if (options.signal?.cancelled) return;
       const key = tableKey(child.table);

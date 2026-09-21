@@ -498,7 +498,13 @@ export class HttpClient {
     expression: string,
     connectionId?: string,
   ): Promise<{
-    expressions: { expression: string; column: string; table: string; schema: string | null }[];
+    expressions: {
+      expression: string;
+      column: string;
+      relatedColumn: string | null;
+      table: string;
+      schema: string | null;
+    }[];
     ast: Ast;
   }> {
     // Add trailing `|` explicitly for child expressions
@@ -528,6 +534,11 @@ export class HttpClient {
       .map(h => ({
         expression: `${x} ${h.pine}`,
         column: h.column,
+        // The column on THIS side of the join - which is how traversal.ts
+        // tells one composite foreign key split into pieces (the pieces
+        // point at different parent columns) from two genuinely separate
+        // foreign keys to the same table (both point at the same one).
+        relatedColumn: h['related-column'] ?? null,
         table: h.table,
         schema: h.schema,
       }));

@@ -1235,6 +1235,7 @@ export class CanvasStore {
         connectionId: this.session.connectionId,
         signal,
         forbidden,
+        forDelete: verb === 'delete',
         onNode: node =>
           runInAction(() => {
             if (this.traversal && this.traversalSignal === signal) {
