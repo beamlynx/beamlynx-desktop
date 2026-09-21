@@ -16,7 +16,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - The deletes run one table at a time, deepest first, and the confirmation says so: if one fails the rest are left alone, nothing is rolled back, and re-running finishes the job. A partial run never leaves a broken reference behind, because children always go before their parents.
 
 - A delete run can be paused, and picks up where it stopped. If one table fails -- a missing grant, a constraint -- the run stops there rather than pressing on into a parent whose child still has rows. Fix the cause, press Resume, and it retries that table and continues; the tables already done are not repeated.
-- **Copy queries** on a delete plan, which tells you it copied.
+- A copy button on a delete plan, the same icon and behaviour as the one on the results grid.
 
 ### Changed
 - `delete:` is gone from Pine, replaced by the canvas action above.

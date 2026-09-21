@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { observer } from 'mobx-react-lite';
-import { Box, Button, Typography } from '@mui/material';
+import { Box, Button, IconButton, Tooltip, Typography } from '@mui/material';
+import { ContentCopy } from '@mui/icons-material';
 import { Session } from '../store/session';
 import { themedScrollbarSx } from '../utils/scrollbar';
 
@@ -22,23 +23,29 @@ const rowSx = {
   fontSize: 'calc(13px * var(--text-scale, 1))',
 };
 
+/**
+ * Matches the results grid's own copy control (Result.tsx): the same
+ * ContentCopy icon button, and the same feedback -- a message on the session,
+ * through GlobalStore.setCopiedMessage, rather than a label that changes on
+ * the button itself. Copying is copying wherever you are in the results pane,
+ * so it should not look or behave like two different features.
+ */
 const TraversalResult: React.FC<{ session: Session }> = observer(({ session }) => {
   const traversal = session.traversal;
   if (!traversal) return null;
 
   const { verb, status, nodes, depthCapped, script, error, run, outcomes, runFrom } = traversal;
-  const [copied, setCopied] = useState(false);
   const copyScript = async () => {
     if (!script) return;
     try {
       await navigator.clipboard.writeText(script);
-      setCopied(true);
-      // Long enough to read, short enough that the button is ready again by
-      // the time anyone wants it twice.
-      setTimeout(() => setCopied(false), 1500);
+      session.globalStore?.setCopiedMessage?.(
+        session.id,
+        `${nodes.length} ${nodes.length === 1 ? 'query' : 'queries'}`,
+      );
     } catch {
-      // Clipboard denied (no permission, or an insecure context). Leave the
-      // label alone rather than claim a copy that did not happen.
+      // Clipboard denied (no permission, or an insecure context). Say nothing
+      // rather than claim a copy that did not happen.
     }
   };
   const total = nodes.reduce((sum, n) => sum + n.count, 0);
@@ -142,9 +149,23 @@ const TraversalResult: React.FC<{ session: Session }> = observer(({ session }) =
               {run === 'finished' && `Deleted ${deleted} ${deleted === 1 ? 'row' : 'rows'}.`}
             </Box>
             <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button size="small" data-testid="traversal-copy" onClick={() => void copyScript()}>
-                {copied ? 'Copied' : 'Copy queries'}
-              </Button>
+              <Tooltip title="Copy the delete queries">
+                <IconButton
+                  size="small"
+                  data-testid="traversal-copy"
+                  aria-label="Copy the delete queries"
+                  onClick={() => void copyScript()}
+                  sx={{
+                    borderRadius: '4px',
+                    backgroundColor: 'var(--canvas-node-bg)',
+                    border: '1px solid var(--canvas-node-border)',
+                    color: 'var(--canvas-trace)',
+                    '&:hover': { backgroundColor: 'var(--canvas-chip-bg)' },
+                  }}
+                >
+                  <ContentCopy fontSize="small" />
+                </IconButton>
+              </Tooltip>
               {run === 'running' && (
                 <Button
                   size="small"
