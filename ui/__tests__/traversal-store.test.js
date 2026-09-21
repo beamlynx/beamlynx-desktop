@@ -318,3 +318,55 @@ test('pausing stops before the next table and resuming continues from there', as
     stub.restore();
   }
 });
+
+// Opening a traversal row in a new tab has now been broken twice in two
+// different ways -- the build never firing (leaving an empty canvas), and the
+// run never firing (leaving the query on screen with no rows). Both were
+// reported rather than caught, so this asserts the whole journey: prettified
+// text, a built ast, rows on screen, and a way back to the tab it came from.
+test('opening an expression in a new tab prettifies, builds, and runs it', async () => {
+  const original = global.fetch;
+  global.fetch = async (url, options) => {
+    const body = JSON.parse(options.body);
+    if (String(url).endsWith('/prettify')) {
+      return { ok: true, json: async () => ({ query: 'company\n | where: id = 1' }) };
+    }
+    if (String(url).endsWith('/eval')) {
+      return {
+        ok: true,
+        json: async () => ({ result: [['name'], ['acme']], columns: [{ column: 'name' }] }),
+      };
+    }
+    return {
+      ok: true,
+      json: async () => ({
+        prettified: 'company\n | where: id = 1',
+        ast: { current: 'c_0', joins: [], 'selected-tables': [], hints: { table: [] } },
+      }),
+    };
+  };
+  try {
+    const store = new GlobalStore();
+    const from = store.activeSessionId;
+    const opened = await store.openExpressionInNewTab('company | where: id = 1');
+
+    // Back to where the detour started, not to tab one.
+    assert.equal(opened.openedFrom, from);
+    assert.notEqual(opened.id, from);
+
+    // The build has to fire, or the canvas has nothing to draw. It cannot come
+    // from the expression reaction: that reaction is created in the same
+    // action that creates the session, so it never observes a transition.
+    for (let i = 0; i < 40 && !opened.ast; i++) await new Promise(r => setTimeout(r, 25));
+    assert.ok(opened.ast, 'the new tab never built its expression');
+
+    // And the run, if auto-run is on -- building is not committing.
+    for (let i = 0; i < 40 && opened.rows.length === 0; i++) {
+      await new Promise(r => setTimeout(r, 25));
+    }
+    assert.equal(store.autoRunEnabled, true);
+    assert.ok(opened.rows.length > 0, 'the new tab built its query but never ran it');
+  } finally {
+    global.fetch = original;
+  }
+});

@@ -54,6 +54,17 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
       const target = e.target instanceof Element ? e.target : null;
       if (target?.closest('input, textarea, [contenteditable="true"]')) return;
 
+      // Anything typed inside the picker belongs to the picker, whatever the
+      // store says by the time this runs. The `mode` check below isn't enough
+      // on its own: a picker entry that CLOSES the picker does so during the
+      // same keydown, so by the time this document-level listener sees the
+      // event, mode has already flipped back to 'normal' and the key falls
+      // through to the bindings below. That's how `c` for "Count rows" in the
+      // traverse menu also opened the comment editor. The "+" menu's own
+      // o/g/p never showed it, because each of those opens ANOTHER picker, so
+      // the guard still held.
+      if (target?.closest('[data-testid="canvas-picker"]')) return;
+
       // A picker is open (insert mode) - its own keydown handlers
       // (Picker.tsx's onListKeyDown and window-level Escape listener) keep
       // exclusive control of the keyboard while it's up.

@@ -307,6 +307,9 @@ const Picker: React.FC = observer(() => {
           const match = offered.find(o => o.key === e.key.toLowerCase());
           if (match) {
             e.preventDefault();
+            // See the traverse menu below: only on a match, so Escape still
+            // reaches the window-level listener.
+            e.stopPropagation();
             store.activateMoreAction(picker.alias, match.action, picker.isFrame, picker.anchor);
           }
         }}
@@ -352,6 +355,9 @@ const Picker: React.FC = observer(() => {
           const match = TRAVERSE_VERBS.find(v => v.key === e.key.toLowerCase());
           if (match) {
             e.preventDefault();
+            // Only on a match, so Escape still reaches the window-level
+            // listener that closes the picker.
+            e.stopPropagation();
             activate(match.verb);
           }
         }}

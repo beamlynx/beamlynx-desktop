@@ -24,6 +24,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - Traversals follow foreign keys up to 25 levels deep, rather than 10. Cycles are handled separately, by tracking the tables on the path from the root, so the depth limit is only there for a schema nobody meant to walk all of -- and real ones nest further than a first guess suggests.
 
 ### Fixed
+- Pressing `c` for "Count rows" in the traverse menu no longer also opens the comment editor. Picking a verb closes the menu, and the canvas shortcuts were reading "is a menu open?" a moment too late -- by then it had closed, so the key counted twice. Keys pressed inside any menu now stay there.
+- Opening a table from a Count rows result now runs it, instead of showing the query and the graph and waiting. Building an expression is not the same as committing one, and auto-run listens for the commit.
+- The Pine expression above each generated DELETE is broken onto one line per step, rather than being one long line next to several lines of formatted SQL.
 - Ctrl+C on the canvas copies again instead of opening the comment editor. The canvas shortcuts are single letters and matched on the letter alone, so any of them fired with Ctrl or Cmd held -- `c` was the one people hit constantly, but Ctrl+V, Ctrl+A and Ctrl+F had the same collision waiting.
 - Switching tabs no longer shifts the layout. The pane and panel sizes are yours, app-wide, but they were being re-read every time a tab was shown -- so the layout started at its default size and moved to your saved one a moment later. That was the Pine panel appearing to animate, the canvas resizing, the graph recentring, and even the empty "Run a query to see results here" drifting slightly, all on every tab change. A saved tab still ending in `delete:` has it removed when the tab is restored -- without that the tab would come back blank, since one unparseable word stops the canvas reading any of the expression.
 

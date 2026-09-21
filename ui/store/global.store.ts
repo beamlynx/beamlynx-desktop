@@ -1845,6 +1845,15 @@ export class GlobalStore {
     // same trap and documents it at length. Past the action now (this await),
     // so bumping the counter is a real change the reaction sees.
     session.requestHints();
+
+    // And run it, if auto-run is on. Setting the expression builds it -- that
+    // is what draws the graph -- but building is not committing, and auto-run
+    // listens for a commit (notifyCanvasCommit, which every canvas gesture
+    // calls). Without this the new tab showed the query and the graph and then
+    // sat there, which is not what opening a row is for: the point is to see
+    // the rows. notifyCanvasCommit honours the auto-run preference itself, so
+    // there is nothing to check here.
+    session.notifyCanvasCommit();
     return session;
   };
 

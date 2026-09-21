@@ -497,6 +497,27 @@ export const runDeleteScript = async (
   return outcomes;
 };
 
+/**
+ * Breaks a Pine expression onto one line per operation, for the comment above
+ * each DELETE.
+ *
+ * The walk assembles expressions by appending joins, so they arrive as one
+ * long line. Read as a comment in a script -- next to a DELETE that is already
+ * several lines of formatted SQL -- that is the hardest part to scan.
+ *
+ * A plain split rather than a round trip to pine-lang's prettify for each
+ * node: the walk already costs several requests per table, and this text is a
+ * *comment*. The one thing a naive split gets wrong is a pipe inside a string
+ * literal (`where: name = 'a|b'`), and the cost of that here is a comment with
+ * an odd line break in it -- nothing is parsed, and nothing runs differently.
+ */
+const asLines = (expression: string): string =>
+  expression
+    .split('|')
+    .map(part => part.trim())
+    .filter(Boolean)
+    .join('\n | ');
+
 /** The `BEGIN; ... COMMIT;` script for a completed delete traversal. */
 export const buildDeleteScript = async (
   client: HttpClient,
@@ -511,7 +532,7 @@ export const buildDeleteScript = async (
       node.count,
       connectionId,
     );
-    parts.push(`/*\n${node.expression}\n*/`);
+    parts.push(`/*\n${asLines(node.expression)}\n*/`);
     parts.push(query);
   }
   parts.push('COMMIT;');
