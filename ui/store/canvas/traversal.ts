@@ -1,4 +1,4 @@
-import { Ast, HttpClient, pipesAtLineStart, TableHint } from '../client';
+import { Ast, deleteOp, HttpClient, pipesAtLineStart, TableHint } from '../client';
 import { formatSql } from '../../utils/formatSql';
 
 // Walking the tables that hang off the current one by foreign key, and doing
@@ -18,7 +18,7 @@ import { formatSql } from '../../utils/formatSql';
 //
 //   children of a node   POST /build with a trailing `|`, read ast.hints.table
 //   rows at a node       <expr> | count:
-//   the DELETE for one   <expr> | limit: N | delete! .<column>
+//   the DELETE for one   <expr> | limit: N | delete! .<column>[, .<column>]
 
 /** One table the walk reached. `expression` is real Pine, runnable on its own. */
 export type TraversalNode = {
@@ -28,11 +28,15 @@ export type TraversalNode = {
   table: string;
   schema: string | null;
   /**
-   * The column this node's own DELETE keys on: the foreign key linking it to
+   * The columns this node's own DELETE keys on: the foreign key linking it to
    * its parent, or - at the root, which has no parent - the hardcoded `id`
    * that rootTableOf supplies. See that function for why it is hardcoded.
+   *
+   * More than one when that foreign key is made of several columns. Deleting
+   * on one of them at a time removes rows belonging to other records, so the
+   * DELETE names all of them and pine-lang matches them as a row.
    */
-  column: string;
+  columns: string[];
   expression: string;
   depth: number;
   count: number;
@@ -197,37 +201,6 @@ export class TraversalRevisitError extends Error {
   }
 }
 
-/**
- * Thrown when a child table is reached through what is really one composite
- * foreign key, which pine-lang reports as several independent single-column
- * relations (see its docs/joins.md - combining them into one join is a
- * separate change).
- *
- * Deleting through one column of a composite key over-matches, and the
- * over-match is silent. Given
- * `case_ref (case_id, search_id) -> kase (id, search_id)`, deleting
- * `kase | where: id = 1` produces two DELETEs, and the second is
- * `WHERE search_id IN (...)` alone - which also takes out rows belonging to a
- * *different* kase that happens to share a search_id. Confirmed against a real
- * database: a row whose parent survived the run was deleted anyway.
- *
- * Detected by the parent side of the join, which separates the two shapes
- * cleanly. Pieces of one composite key point at different parent columns
- * (`id` and `search_id`); two genuinely separate foreign keys to the same
- * table point at the same one (`message.sender_id` and
- * `message.recipient_id` both -> `appuser.id`), and for those the traversal is
- * correct - it deletes the union, which is what deleting that parent means.
- */
-export class CompositeKeyError extends Error {
-  constructor(public readonly table: string) {
-    super(
-      `Cannot delete through "${table}": it is linked by a foreign key made of more than one column, ` +
-        `and deleting on one column at a time would also remove rows belonging to other records.`,
-    );
-    this.name = 'CompositeKeyError';
-  }
-}
-
 export type WalkOptions = {
   connectionId?: string;
   maxDepth?: number;
@@ -241,11 +214,10 @@ export type WalkOptions = {
    */
   forbidden?: Set<string>;
   /**
-   * Whether this walk is planning a delete. Turns on the checks that only
-   * matter when the result will be used to remove rows: the composite-key
-   * refusal below, and `forbidden` above. Counting stays permissive - it
-   * reads, so the worst it can do is report a number that is larger than it
-   * should be, which is exactly what a composite key makes it do.
+   * Whether this walk is planning a delete. Turns on `forbidden` above, which
+   * only matters when the result will be used to remove rows. Counting stays
+   * permissive - it reads, so the worst it can do is report a number that is
+   * larger than it should be.
    */
   forDelete?: boolean;
   /** Called as each node's count lands, so a panel can fill in as it goes. */
@@ -301,7 +273,7 @@ export const runTraversal = async (
     parentId: string | null,
     table: string,
     schema: string | null,
-    column: string,
+    columns: string[],
     depth: number,
     // Tables on the path from the root to here, for cycle termination.
     // Scoped to the path, NOT global: a table reachable by two different
@@ -322,7 +294,7 @@ export const runTraversal = async (
       parentId,
       table,
       schema,
-      column,
+      columns,
       expression,
       depth,
       count,
@@ -337,22 +309,6 @@ export const runTraversal = async (
 
     const { expressions } = await client.makeChildExpressions(expression, options.connectionId);
 
-    if (options.forDelete) {
-      // One composite key arrives here as several single-column relations to
-      // the same table. Refuse before anything is generated - see
-      // CompositeKeyError.
-      const parentColumnsByTable = new Map<string, Set<string>>();
-      for (const child of expressions) {
-        const key = tableKey(child.table);
-        const seen = parentColumnsByTable.get(key) ?? new Set<string>();
-        seen.add(child.relatedColumn ?? '');
-        parentColumnsByTable.set(key, seen);
-      }
-      for (const [childTable, parentColumns] of Array.from(parentColumnsByTable)) {
-        if (parentColumns.size > 1) throw new CompositeKeyError(childTable);
-      }
-    }
-
     for (const child of expressions) {
       if (options.signal?.cancelled) return;
       const key = tableKey(child.table);
@@ -366,7 +322,7 @@ export const runTraversal = async (
         expression,
         child.table,
         child.schema,
-        child.column,
+        child.columns,
         depth + 1,
         new Set([...Array.from(path), key]),
       );
@@ -382,7 +338,7 @@ export const runTraversal = async (
     null,
     root.table,
     root.schema,
-    root.column,
+    root.columns,
     0,
     new Set([tableKey(root.table)]),
   );
@@ -416,7 +372,7 @@ const rootTableOf = async (
   client: HttpClient,
   expression: string,
   connectionId?: string,
-): Promise<{ table: string; schema: string | null; column: string }> => {
+): Promise<{ table: string; schema: string | null; columns: string[] }> => {
   const alias = (await client.build([expression], undefined, connectionId))?.ast?.current;
   const probe = await client.build([`${expression} |`], undefined, connectionId);
   const match = probe?.ast?.['selected-tables']?.find(t => t.alias === alias);
@@ -425,7 +381,7 @@ const rootTableOf = async (
     // looks like a table name and is not one.
     table: match?.table ?? alias ?? 'table',
     schema: match?.schema ?? null,
-    column: ROOT_COLUMN,
+    columns: [ROOT_COLUMN],
   };
 };
 
@@ -478,7 +434,7 @@ export type DeleteProgress = { from: number };
  * fails outright rather than running non-atomically.
  *
  * So each node's own Pine goes down the ordinary eval path instead, as
- * `<expr> | limit: N | delete! .<column>`. That keeps the whole thing inside
+ * `<expr> | limit: N | delete! .<column>[, .<column>]`. That keeps the whole thing inside
  * the AST layer rather than reaching for raw SQL, and it lets the panel report
  * each table as it goes.
  *
@@ -507,7 +463,7 @@ export const runDeleteScript = async (
   const outcomes: DeleteOutcome[] = [];
   for (const [offset, node] of Array.from(nodes.slice(from).entries())) {
     if (signal?.cancelled) break;
-    const expression = `${node.expression} | limit: ${node.count} | delete! .${node.column}`;
+    const expression = `${node.expression} | limit: ${node.count} | ${deleteOp(node.columns)}`;
     const startedAt = Date.now();
     let result: { deleted?: number; error?: string };
     try {
@@ -669,7 +625,7 @@ export const buildDeleteScript = async (
   for (const node of nodes) {
     const query = await client.buildDeleteQuery(
       node.expression,
-      node.column,
+      node.columns,
       node.count,
       connectionId,
     );

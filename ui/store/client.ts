@@ -24,6 +24,16 @@ export type TableHint = {
   // relation at all yet to describe.
   column?: string;
   'related-column'?: string;
+  // Every column pair of the relation, present only when there is more than
+  // one - i.e. a foreign key made of several columns. `column`/
+  // `related-column` above are the first of these, the pair the hint's `pine`
+  // text names; joining needs no more than that, since naming any column of a
+  // key joins on the whole key. Something that has to name the whole key
+  // rather than join on it - scoping a `delete!` to the rows this relation
+  // reaches - needs them all. pine-lang leaves it off a single-column key,
+  // where it would only repeat the two fields above across what can be
+  // thousands of hints, so read it as `columns ?? [{column, related-column}]`.
+  columns?: { column: string; 'related-column': string }[];
   parent?: boolean;
   // 'synthetic' is a made-up id=id join with no real FK behind it (today only
   // ever the same-source case - see docs/variables.md in pine-lang - but not
@@ -330,6 +340,17 @@ export const pipesAtLineStart = (expression: string): string =>
     .map((line, i) => (i === 0 ? line : line.replace(/^[ \t]+\|/, '|')))
     .join('\n');
 
+/**
+ * The `delete!` operation scoping a delete to the given columns.
+ *
+ * More than one when the rows are identified by a foreign key made of several
+ * columns. pine-lang matches those as a row -- `WHERE (a, b) IN ( SELECT a, b
+ * ... )` -- which is the only correct thing to do: one column of such a key
+ * matches rows belonging to other records too, and says nothing about it.
+ */
+export const deleteOp = (columns: string[]): string =>
+  `delete! ${columns.map(c => `.${c}`).join(', ')}`;
+
 export class HttpClient {
   constructor(private readonly onBuild?: (ast: Ast) => void) {}
 
@@ -519,8 +540,7 @@ export class HttpClient {
   ): Promise<{
     expressions: {
       expression: string;
-      column: string;
-      relatedColumn: string | null;
+      columns: string[];
       table: string;
       schema: string | null;
     }[];
@@ -560,12 +580,12 @@ export class HttpClient {
         // generated DELETE, the log of a run, and the tab you get when you
         // open a row.
         expression: pipesAtLineStart(`${expression}\n| ${h.pine}`),
-        column: h.column,
-        // The column on THIS side of the join - which is how traversal.ts
-        // tells one composite foreign key split into pieces (the pieces
-        // point at different parent columns) from two genuinely separate
-        // foreign keys to the same table (both point at the same one).
-        relatedColumn: h['related-column'] ?? null,
+        // Every column on THIS side of the join, not just the first: a
+        // foreign key made of several columns needs all of them to scope a
+        // DELETE, and one of them alone removes rows belonging to other
+        // records. A single-column key carries no `columns` array (see
+        // TableHint), so fall back to the one column it does name.
+        columns: h.columns ? h.columns.map(c => c.column) : [h.column],
         table: h.table,
         schema: h.schema,
       }));
@@ -574,11 +594,11 @@ export class HttpClient {
 
   public async buildDeleteQuery(
     expression: string,
-    column: string,
+    columns: string[],
     limit: number,
     connectionId?: string,
   ): Promise<string> {
-    const x = `${expression}\n| limit: ${limit}\n| delete! .${column}`;
+    const x = `${expression}\n| limit: ${limit}\n| ${deleteOp(columns)}`;
     const response = await this.build([x], undefined, connectionId);
     if (!response) {
       throw new Error('No response when trying to build the delete query');

@@ -136,16 +136,17 @@ test('a restored expression loses a trailing delete:, and nothing else', () => {
   }
 });
 
-// A composite foreign key reaches the client as several independent
-// single-column relations (pine-lang's docs/joins.md -- combining them into
-// one join is a separate change there). Deleting through one column of such a
-// key over-matches, silently: confirmed against a real database, where
-// deleting one `kase` also removed a `case_ref` row belonging to a different
-// kase that merely shared a search_id, while that kase survived.
+// A composite foreign key used to reach the client as several independent
+// single-column relations, and the walk refused to plan a delete through one:
+// deleting on one column of such a key over-matches, silently. Confirmed
+// against a real database, where deleting one `kase` also removed a
+// `case_ref` row belonging to a different kase that merely shared a
+// search_id, while that kase survived.
 //
-// The parent side of the join separates the two shapes cleanly, which is what
-// makes this detectable at all -- see CompositeKeyError.
-const { runTraversal, CompositeKeyError } = require('../store/canvas/traversal.ts');
+// pine-lang now reports one relation carrying every column of the key, so the
+// walk names them all in the DELETE and pine matches them as a row. There is
+// nothing left to refuse.
+const { runTraversal } = require('../store/canvas/traversal.ts');
 
 // Minimal stand-in for HttpClient: enough for runTraversal, no network.
 function stubClient(childrenByExpression) {
@@ -159,35 +160,36 @@ function stubClient(childrenByExpression) {
   };
 }
 
-const child = (expression, column, relatedColumn, table) => ({
+const child = (expression, columns, table) => ({
   expression,
-  column,
-  relatedColumn,
+  columns,
   table,
   schema: 'public',
 });
 
-test('planning a delete refuses a composite foreign key', async () => {
-  // case_ref (case_id, search_id) -> kase (id, search_id): the two halves
-  // point at DIFFERENT parent columns, which is the tell.
+test('planning a delete through a composite foreign key keys on every column', async () => {
+  // case_ref (case_id, search_id) -> kase (id, search_id): one relation, two
+  // columns. The node's DELETE has to name both -- `case_id` alone removes
+  // every reference belonging to that kase, `search_id` alone removes
+  // references belonging to other kases entirely.
   const client = stubClient({
-    kase: [
-      child('kase | case_ref .case_id', 'case_id', 'id', 'case_ref'),
-      child('kase | case_ref .search_id', 'search_id', 'search_id', 'case_ref'),
-    ],
+    kase: [child('kase | case_ref .case_id', ['case_id', 'search_id'], 'case_ref')],
   });
-  await assert.rejects(() => runTraversal(client, 'kase', { forDelete: true }), CompositeKeyError);
+  const result = await runTraversal(client, 'kase', { forDelete: true });
+  assert.deepEqual(
+    result.nodes.map(n => n.columns),
+    [['case_id', 'search_id'], ['id']],
+  );
 });
 
 test('planning a delete allows two separate foreign keys to the same table', async () => {
-  // message.sender_id and message.recipient_id both -> appuser.id. Same parent
-  // column, so these are two real relationships, and deleting the user means
-  // deleting both sets. A blanket "same table twice" rule would wrongly block
-  // this, which is why the check is on the parent column rather than the table.
+  // message.sender_id and message.recipient_id both -> appuser.id. Two real
+  // relationships, not one key split in half, so deleting the user means
+  // deleting both sets.
   const client = stubClient({
     appuser: [
-      child('appuser | message .sender_id', 'sender_id', 'id', 'message'),
-      child('appuser | message .recipient_id', 'recipient_id', 'id', 'message'),
+      child('appuser | message .sender_id', ['sender_id'], 'message'),
+      child('appuser | message .recipient_id', ['recipient_id'], 'message'),
     ],
   });
   const result = await runTraversal(client, 'appuser', { forDelete: true });
@@ -195,24 +197,19 @@ test('planning a delete allows two separate foreign keys to the same table', asy
   // the hardcoded `id` rootTableOf supplies, not a foreign key -- it has no
   // parent to have one.
   assert.deepEqual(
-    result.nodes.map(n => n.column),
-    ['sender_id', 'recipient_id', 'id'],
+    result.nodes.map(n => n.columns),
+    [['sender_id'], ['recipient_id'], ['id']],
   );
 });
 
-test('counting is not blocked by a composite foreign key', async () => {
-  // Counting only reads. Its numbers are inflated by the same split join --
-  // a 3-row table can report 4 -- but that is wrong information, not a
-  // destructive act, so it is reported rather than refused.
+test('counting walks a composite foreign key like any other', async () => {
   const client = stubClient({
-    kase: [
-      child('kase | case_ref .case_id', 'case_id', 'id', 'case_ref'),
-      child('kase | case_ref .search_id', 'search_id', 'search_id', 'case_ref'),
-    ],
+    kase: [child('kase | case_ref .case_id', ['case_id', 'search_id'], 'case_ref')],
   });
   const result = await runTraversal(client, 'kase', {});
-  assert.equal(result.nodes.length, 3);
+  assert.equal(result.nodes.length, 2);
 });
+
 
 // A block comment cannot wrap an expression that already has one. The tab's
 // own note is usually `/* ... */`, and block comments do not nest portably:
