@@ -4,8 +4,6 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
-### Added
-- A saved connection can now allow destructive actions, off by default. It is what lets the app's "Delete rows…" traversal actually run the deletes it plans, rather than only showing you the queries. Set it per connection in Settings → Connections -- sensible for a local or staging database, and worth leaving off for anything you cannot afford to lose. Every connection saved before this release reads as off.
 
 ## [0.16.0] - 2026-09-20
 ### Added
