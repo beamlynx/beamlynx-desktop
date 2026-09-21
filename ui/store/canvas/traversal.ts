@@ -518,13 +518,47 @@ const asLines = (expression: string): string =>
     .filter(Boolean)
     .join('\n | ');
 
+/**
+ * A leading comment on an expression -- the tab's own note, which pine-lang
+ * returns as `doc`. Either style: a `/* ... *\/` block or a run of `--` lines.
+ */
+const LEADING_COMMENT = /^\s*(?:\/\*[\s\S]*?\*\/|(?:--[^\n]*(?:\n|$))+)\s*/;
+
+/** Every node's expression carries the root's note; this drops it. */
+const withoutLeadingComment = (expression: string): string =>
+  expression.replace(LEADING_COMMENT, '');
+
+/** Renders text as SQL line comments, one `--` per line. */
+const asSqlComment = (text: string): string =>
+  text
+    .split('\n')
+    .map(line => `-- ${line}`.trimEnd())
+    .join('\n');
+
 /** The `BEGIN; ... COMMIT;` script for a completed delete traversal. */
 export const buildDeleteScript = async (
   client: HttpClient,
   nodes: TraversalNode[],
   connectionId?: string,
 ): Promise<string> => {
-  const parts: string[] = ['/* DELETE queries */', 'BEGIN;'];
+  // `--` line comments, never `/* ... */`.
+  //
+  // An expression can carry its own note, and that note is usually a block
+  // comment. Wrapping it in another block comment produces `/* /* test */ ...
+  // */`, and block comments do not nest portably -- the inner `*/` closes the
+  // outer one, the rest of the Pine text spills out as bare SQL, and the
+  // trailing `*/` is a syntax error on top. A line comment cannot be closed
+  // early by anything the expression contains, which makes this immune rather
+  // than merely escaped.
+  const parts: string[] = [asSqlComment('DELETE queries')];
+
+  // The note once, at the top, rather than above every statement. Each node's
+  // expression is its parent's plus one more join, so the root's note is
+  // carried by all of them and would otherwise repeat once per table.
+  const note = nodes[0]?.expression.match(LEADING_COMMENT)?.[0].trim();
+  if (note) parts.push(asSqlComment(note));
+
+  parts.push('BEGIN;');
   for (const node of nodes) {
     const query = await client.buildDeleteQuery(
       node.expression,
@@ -532,11 +566,10 @@ export const buildDeleteScript = async (
       node.count,
       connectionId,
     );
-    parts.push(`/*\n${asLines(node.expression)}\n*/`);
+    parts.push(asSqlComment(asLines(withoutLeadingComment(node.expression))));
     parts.push(query);
   }
   parts.push('COMMIT;');
-  // Comments pass through untouched; only the statements are formatted. Same
-  // split the routine this replaces used, so the output is comparable.
-  return parts.map(part => (part.trim().startsWith('/*') ? part : formatSql(part))).join('\n\n');
+  // Comments pass through untouched; only the statements are formatted.
+  return parts.map(part => (part.startsWith('--') ? part : formatSql(part))).join('\n\n');
 };

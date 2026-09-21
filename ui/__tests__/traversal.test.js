@@ -192,3 +192,59 @@ test('counting is not blocked by a composite foreign key', async () => {
   const result = await runTraversal(client, 'kase', {});
   assert.equal(result.nodes.length, 3);
 });
+
+// A block comment cannot wrap an expression that already has one. The tab's
+// own note is usually `/* ... */`, and block comments do not nest portably:
+// the inner `*/` closes the outer wrapper, the rest of the Pine text spills
+// out as bare SQL, and the trailing `*/` is a syntax error on top. Reported
+// against a real script, which Postgres refused.
+const { buildDeleteScript } = require('../store/canvas/traversal.ts');
+
+const scriptClient = {
+  buildDeleteQuery: async () => 'DELETE FROM x WHERE 1=1',
+};
+
+const node = (expression, table) => ({
+  id: expression,
+  parentId: null,
+  table,
+  schema: 'public',
+  column: 'id',
+  expression,
+  depth: 0,
+  count: 1,
+});
+
+test('a generated script survives an expression that carries its own comment', async () => {
+  const script = await buildDeleteScript(scriptClient, [
+    node(
+      "/* test */ public.tenant as t | where: t.id = '1' | public.user_information .tenant_id",
+      'user_information',
+    ),
+    node("/* test */ public.tenant as t | where: t.id = '1'", 'tenant'),
+  ]);
+
+  // Nothing may open a block comment: a line comment cannot be closed early by
+  // anything the expression contains, which makes this immune rather than
+  // merely escaped.
+  assert.ok(!script.includes('/*\n'), 'the script must not wrap anything in a block comment');
+  for (const line of script.split('\n')) {
+    const isComment = line.startsWith('--');
+    const isBlank = line.trim() === '';
+    const looksLikeSql = /^\s*(BEGIN|COMMIT|DELETE|WHERE|SELECT|FROM|JOIN|LIMIT|\)|;)/i.test(line);
+    assert.ok(
+      isComment || isBlank || looksLikeSql,
+      `line is neither a comment nor SQL, so the wrapper leaked: ${JSON.stringify(line)}`,
+    );
+  }
+
+  // The note appears once, at the top -- not above every statement. Every
+  // node's expression is its parent's plus one more join, so all of them carry
+  // it.
+  assert.equal(script.split('/* test */').length - 1, 1);
+
+  // And the per-statement comments still say which expression they came from,
+  // one line per step.
+  assert.ok(script.includes('-- public.tenant as t'));
+  assert.ok(script.includes('--  | public.user_information .tenant_id'));
+});
