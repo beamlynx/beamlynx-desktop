@@ -96,3 +96,44 @@ test('a second traversal supersedes the first rather than merging into it', asyn
     restore();
   }
 });
+
+// Closing a tab used to jump to tab one from anywhere in the strip. A tab
+// opened to look at one row of a traversal is a detour, and finishing a
+// detour should put you back where you started -- not at the far left.
+const { GlobalStore } = require('../store/global.store.ts');
+
+test('closing a tab returns to the one it was opened from', () => {
+  const store = new GlobalStore();
+  const a = store.sessions[store.activeSessionId];
+  store.addTab();
+  const b = store.sessions[store.activeSessionId];
+  store.addTab();
+  const c = store.sessions[store.activeSessionId];
+
+  // A detour opened from c, the rightmost tab.
+  store.addTab();
+  const detour = store.sessions[store.activeSessionId];
+  detour.openedFrom = c.id;
+
+  store.closeTab(detour.id);
+  assert.equal(store.activeSessionId, c.id, 'should return to the tab it was opened from');
+  assert.notEqual(store.activeSessionId, a.id, 'must not jump to the first tab');
+  void b;
+});
+
+test('closing a tab with no origin falls back to its left-hand neighbour', () => {
+  const store = new GlobalStore();
+  const a = store.sessions[store.activeSessionId];
+  store.addTab();
+  const b = store.sessions[store.activeSessionId];
+  store.addTab();
+  const c = store.sessions[store.activeSessionId];
+
+  store.closeTab(c.id);
+  assert.equal(store.activeSessionId, b.id, 'neighbour on the left, not the first tab');
+
+  // Closing the leftmost has no left neighbour: the new first tab.
+  store.activeSessionId = a.id;
+  store.closeTab(a.id);
+  assert.equal(store.activeSessionId, b.id);
+});

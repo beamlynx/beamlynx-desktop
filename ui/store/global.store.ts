@@ -1787,10 +1787,38 @@ export class GlobalStore {
    * traversal exists, and overwriting it to inspect a branch of its own
    * result would be a poor trade.
    */
-  openExpressionInNewTab = (expression: string) => {
+  openExpressionInNewTab = async (expression: string) => {
+    const from = this.activeSessionId;
     this.addTab();
     const session = this.sessions[this.activeSessionId];
-    if (session) session.expression = expression;
+    if (!session) return undefined;
+    // Closing this tab should land back where it was opened from, not on
+    // whatever happens to be first (see closeTab).
+    session.openedFrom = from;
+
+    // Prettified before it is shown. The expressions a traversal builds are
+    // assembled by appending joins, so they arrive as one long line with
+    // doubled spaces -- correct Pine, but not what anyone would have typed.
+    let text = expression;
+    try {
+      text = await session.prettifyExpression(expression);
+    } catch {
+      // A prettify that fails is cosmetic; show the raw expression rather
+      // than nothing.
+    }
+    runInAction(() => {
+      session.expression = text;
+    });
+
+    // The expression -> build reaction cannot do this one. It was created
+    // inside `addTab` above, and a reaction created mid-action defers its
+    // first tracked read until that action unwinds -- by which point the
+    // expression is already its final value, so no before/after transition is
+    // ever observed and the build never fires. `ast` stays null, which is
+    // exactly the "no nodes on the canvas" symptom. restoreSessions hit the
+    // same trap and documents it at length. Past the action now (this await),
+    // so bumping the counter is a real change the reaction sees.
+    session.requestHints();
     return session;
   };
 
@@ -1874,14 +1902,26 @@ export class GlobalStore {
       return;
     }
 
+    const closedIndex = sessionIds.indexOf(sessionId);
+    const openedFrom = this.sessions[sessionId]?.openedFrom;
+
     // Remove the session
     this.deleteSession(sessionId);
 
     // If the active tab is being closed, switch to another tab
     if (this.activeSessionId === sessionId && sessionIds.length > 1) {
-      const remainingSessions = this.visibleSessionIds;
-      if (remainingSessions.length > 0) {
-        this.activeSessionId = remainingSessions[0];
+      const remaining = this.visibleSessionIds;
+      if (remaining.length > 0) {
+        // Where this tab was opened from, if that tab is still open. A tab
+        // opened to go and look at something -- a row of a traversal -- is a
+        // detour, and finishing a detour should put you back where you
+        // started.
+        const returnTo = openedFrom && remaining.includes(openedFrom) ? openedFrom : undefined;
+        // Otherwise the neighbour on the left, or the new first tab if this
+        // was the leftmost. Jumping to tab one from anywhere in the strip
+        // loses your place for no reason.
+        const neighbour = remaining[Math.max(0, Math.min(closedIndex - 1, remaining.length - 1))];
+        this.activeSessionId = returnTo ?? neighbour ?? remaining[0];
       }
     }
   };

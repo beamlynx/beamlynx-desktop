@@ -117,7 +117,7 @@ const TraversalResult: React.FC<{ session: Session }> = observer(({ session }) =
             <Box component="span" sx={{ color: 'var(--canvas-text-dim)' }}>
               {/* Said plainly, because the whole point of this verb is that it
                   stops here unless you go further on purpose. */}
-              {run === 'idle' && 'Nothing has been deleted.'}
+              {run === 'idle' && (session.runDeleteBlockedReason ?? 'Nothing has been deleted.')}
               {run === 'running' && `Deleting… ${outcomes.length}/${nodes.length}`}
               {run === 'finished' &&
                 (failure
@@ -134,11 +134,7 @@ const TraversalResult: React.FC<{ session: Session }> = observer(({ session }) =
                   color="error"
                   data-testid="traversal-run"
                   disabled={!session.canRunDelete || run === 'running'}
-                  title={
-                    session.canRunDelete
-                      ? undefined
-                      : 'Turn on "Allow destructive actions" for this connection in Settings → Connections. Off by default, and unavailable for a connection you have not saved.'
-                  }
+                  title={session.runDeleteBlockedReason ?? undefined}
                   onClick={() => session.requestTraversalRun()}
                 >
                   {run === 'running' ? 'Running…' : 'Run'}

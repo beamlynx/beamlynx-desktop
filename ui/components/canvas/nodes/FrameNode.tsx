@@ -1,7 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { NodeProps, Position, useUpdateNodeInternals } from 'reactflow';
-import { CanvasFrameNodeData, PENDING_CHECKPOINT_FRAME_ID } from '../../../store/canvas/canvas.model';
+import {
+  CanvasFrameNodeData,
+  MORE_ACTIONS_FOR_FRAME,
+  PENDING_CHECKPOINT_FRAME_ID,
+} from '../../../store/canvas/canvas.model';
 import { useCanvasStore } from '../canvas-context';
 import { ActionButton, ActionDivider, DeleteButton, RelationDots, activeOperationFor, pickerAliasFor } from './TableNode';
 
@@ -182,7 +186,7 @@ const FrameNode: React.FC<NodeProps<CanvasFrameNodeData>> = observer(({ id, data
             <ActionButton
               label="+"
               testId={`frame-action-more-${id}`}
-              onClick={anchor => canvasStore.openMorePicker(resolvedAlias, ['order', 'path'], true, anchor)}
+              onClick={anchor => canvasStore.openMorePicker(resolvedAlias, MORE_ACTIONS_FOR_FRAME, true, anchor)}
               suppressed={activeOperation !== null && activeOperation !== 'more'}
             />
           </>

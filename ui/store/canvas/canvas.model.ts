@@ -297,6 +297,20 @@ export const MORE_ACTIONS: { action: MoreAction; label: string; key: string }[] 
   { action: 'traverse', label: 'traverse', key: 't' },
 ];
 
+/**
+ * What the "+" menu offers, by node kind. Defined once because it is read from
+ * three places - TableNode's button, FrameNode's button, and the keyboard
+ * shortcut in useCanvasKeybindings - and three hand-maintained copies drift:
+ * `traverse` was added to the button's list and the keyboard opened a menu
+ * without it.
+ *
+ * A checkpoint frame gets less: `group` would re-group an already-grouped
+ * result, and `traverse` would have to follow a foreign key out of a CTE's
+ * sealed output, which is not a thing.
+ */
+export const MORE_ACTIONS_FOR_TABLE: MoreAction[] = ['order', 'group', 'path', 'traverse'];
+export const MORE_ACTIONS_FOR_FRAME: MoreAction[] = ['order', 'path'];
+
 /** What a traversal does at each table it reaches - see store/canvas/traversal.ts. */
 export const TRAVERSE_VERBS: { verb: 'count' | 'delete'; label: string; key: string }[] = [
   { verb: 'count', label: 'Count rows', key: 'c' },

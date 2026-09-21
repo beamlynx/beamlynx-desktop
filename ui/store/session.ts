@@ -154,6 +154,15 @@ export class Session {
   id: string;
 
   /**
+   * The tab this one was opened from, when it was opened as a detour rather
+   * than by someone pressing "+" -- today, clicking a row of a traversal to
+   * go and look at that table. Closing it goes back there (GlobalStore
+   * .closeTab). Undefined for a tab opened on its own, which has nowhere
+   * particular to return to.
+   */
+  openedFrom?: string;
+
+  /**
    * Layout properties
    */
   isSmallScreen: boolean = false;
@@ -842,6 +851,26 @@ export class Session {
    */
   get canRunDelete(): boolean {
     return this.globalStore?.allowsDestructiveActions?.(this.profileId) === true;
+  }
+
+  /**
+   * Why Run is disabled, or null when it isn't. Three different reasons, and
+   * saying the wrong one is worse than saying nothing -- pointing someone at a
+   * setting that does not exist in their build is a wild goose chase.
+   */
+  get runDeleteBlockedReason(): string | null {
+    if (this.canRunDelete) return null;
+    const desktop = typeof window !== 'undefined' && !!window.beamlynxDesktop;
+    if (!desktop) {
+      return 'Running deletes needs the desktop app, which is where saved connections live. Copy the queries and run them yourself.';
+    }
+    if (!window.beamlynxDesktop?.credentials?.setAllowDestructive) {
+      return 'This build of the desktop app does not have the "Allow destructive actions" setting yet. Copy the queries and run them yourself.';
+    }
+    if (!this.profileId) {
+      return 'Only a saved connection can allow this. Save this connection first, then turn on "Allow destructive actions" for it in Settings → Connections.';
+    }
+    return 'Turn on "Allow destructive actions" for this connection in Settings → Connections. It is off by default.';
   }
 
   /**
