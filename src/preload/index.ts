@@ -61,8 +61,6 @@ contextBridge.exposeInMainWorld('beamlynxDesktop', {
       ipcRenderer.invoke('credentials:set-connection-policy', id, policyId),
     setApplyPolicyToOwnQueries: (id: string, apply: boolean): Promise<SavedConnectionMeta | null> =>
       ipcRenderer.invoke('credentials:set-apply-policy-for-own-queries', id, apply),
-    setAllowDestructive: (id: string, enabled: boolean): Promise<SavedConnectionMeta | null> =>
-      ipcRenderer.invoke('credentials:set-allow-destructive', id, enabled),
     rename: (id: string, label: string): Promise<SavedConnectionMeta | null> =>
       ipcRenderer.invoke('credentials:rename', id, label),
   },
