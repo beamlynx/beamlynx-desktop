@@ -13,7 +13,6 @@ import { usePanelPresence } from '../hooks/usePanelPresence';
 import { freezeResultsDuringMotion } from '../styles/freeze-during-motion';
 import { MOTION, motionDuration } from '../styles/motion';
 import { getUserPreference, STORAGE_KEYS } from '../store/preferences';
-import { usePersistedSize } from '../hooks/usePersistedSize';
 import { useStores } from '../store/store-container';
 import Canvas from './canvas/Canvas';
 import CollapsibleHeight from './CollapsibleHeight';
@@ -135,22 +134,19 @@ const LeftPane = observer(
     // through its own closing animation.
     const panelBesideCanvas = panel.mounted && !isHorizontal;
 
-    const {
-      size: panelWidth,
-      setSize: setPanelWidth,
-      ready: widthReady,
-    } = usePersistedSize(STORAGE_KEYS.NEW_LAYOUT_PANEL_WIDTH, DEFAULT_NEW_LAYOUT_PANEL_WIDTH);
-    const {
-      size: panelHeight,
-      setSize: setPanelHeight,
-      ready: heightReady,
-    } = usePersistedSize(STORAGE_KEYS.NEW_LAYOUT_PANEL_HEIGHT, DEFAULT_NEW_LAYOUT_PANEL_HEIGHT);
-    // The saved sizes arrive one commit after mount, and a tab switch remounts
-    // this whole pane (MUI's TabPanel unmounts an inactive tab's children). So
-    // without this the panel animated from its default width to the saved one
-    // on every tab change -- an animation with no event behind it. See
-    // usePersistedSize.
-    const sizesReady = widthReady && heightReady;
+    // From the store, not local state read on mount. These are global sizes,
+    // and a tab switch remounts this pane (MUI unmounts an inactive tab's
+    // children) - so read on mount they started at their default and moved to
+    // the saved value a commit later, which is the canvas resizing and the
+    // graph recentring on every tab change.
+    const panelWidth = global.newLayoutPanelWidth;
+    const setPanelWidth = (v: number) => {
+      global.newLayoutPanelWidth = v;
+    };
+    const panelHeight = global.newLayoutPanelHeight;
+    const setPanelHeight = (v: number) => {
+      global.newLayoutPanelHeight = v;
+    };
 
     return (
       <Box
@@ -246,11 +242,9 @@ const LeftPane = observer(
               ...(panelBesideCanvas
                 ? { width: panel.open ? panelWidth + NEW_LAYOUT_GUTTER : 0 }
                 : { height: panel.open ? panelHeight + NEW_LAYOUT_GUTTER : 0 }),
-              transition: !sizesReady
-                ? 'none'
-                : panel.open
-                  ? 'width var(--motion-enter) var(--motion-ease-enter), height var(--motion-enter) var(--motion-ease-enter), opacity var(--motion-enter) var(--motion-ease-enter)'
-                  : 'width var(--motion-exit) var(--motion-ease-exit), height var(--motion-exit) var(--motion-ease-exit), opacity var(--motion-exit) var(--motion-ease-exit)',
+              transition: panel.open
+                ? 'width var(--motion-enter) var(--motion-ease-enter), height var(--motion-enter) var(--motion-ease-enter), opacity var(--motion-enter) var(--motion-ease-enter)'
+                : 'width var(--motion-exit) var(--motion-ease-exit), height var(--motion-exit) var(--motion-ease-exit), opacity var(--motion-exit) var(--motion-ease-exit)',
             }}
           >
             {panelBesideCanvas ? (
@@ -306,17 +300,16 @@ const NewLayoutView: React.FC<NewLayoutViewProps> = observer(({ sessionId }) => 
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('lg'));
 
-  const [paneWidth, setPaneWidth] = useState(DEFAULT_NEW_LAYOUT_PANE_WIDTH);
-  const [paneHeight, setPaneHeight] = useState(DEFAULT_NEW_LAYOUT_PANE_HEIGHT);
-
-  useEffect(() => {
-    setPaneWidth(
-      getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANE_WIDTH, DEFAULT_NEW_LAYOUT_PANE_WIDTH),
-    );
-    setPaneHeight(
-      getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANE_HEIGHT, DEFAULT_NEW_LAYOUT_PANE_HEIGHT),
-    );
-  }, []);
+  // Same as the panel sizes above: global, held on the store, so a tab switch
+  // doesn't reset them to their defaults for a commit.
+  const paneWidth = global.newLayoutPaneWidth;
+  const setPaneWidth = (v: number) => {
+    global.newLayoutPaneWidth = v;
+  };
+  const paneHeight = global.newLayoutPaneHeight;
+  const setPaneHeight = (v: number) => {
+    global.newLayoutPaneHeight = v;
+  };
 
   // Small screens always stack top-bottom, regardless of the persisted
   // preference.

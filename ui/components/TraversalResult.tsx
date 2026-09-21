@@ -138,7 +138,7 @@ const TraversalResult: React.FC<{ session: Session }> = observer(({ session }) =
             <Box component="span" sx={{ color: 'var(--canvas-text-dim)' }}>
               {/* Said plainly, because the whole point of this verb is that it
                   stops here unless you go further on purpose. */}
-              {run === 'idle' && (session.runDeleteBlockedReason ?? 'Nothing has been deleted.')}
+              {run === 'idle' && 'Nothing has been deleted.'}
               {run === 'running' && `Deleting… ${runFrom}/${nodes.length}`}
               {run === 'paused' &&
                 `Paused after ${runFrom} of ${nodes.length}. Resume picks up where it stopped.`}
@@ -180,8 +180,6 @@ const TraversalResult: React.FC<{ session: Session }> = observer(({ session }) =
                   size="small"
                   color="error"
                   data-testid="traversal-run"
-                  disabled={!session.canRunDelete}
-                  title={session.runDeleteBlockedReason ?? undefined}
                   // Resuming skips the confirmation: it was given for this
                   // exact set of tables, and only how far through them we are
                   // has changed.

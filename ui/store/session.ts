@@ -856,35 +856,11 @@ export class Session {
    * credential store to hold the decision - see
    * SavedConnectionMeta.allowDestructive.
    */
-  get canRunDelete(): boolean {
-    return this.globalStore?.allowsDestructiveActions?.(this.profileId) === true;
-  }
-
-  /**
-   * Why Run is disabled, or null when it isn't. Three different reasons, and
-   * saying the wrong one is worse than saying nothing -- pointing someone at a
-   * setting that does not exist in their build is a wild goose chase.
-   */
-  get runDeleteBlockedReason(): string | null {
-    if (this.canRunDelete) return null;
-    const desktop = typeof window !== 'undefined' && !!window.beamlynxDesktop;
-    if (!desktop) {
-      return 'Running deletes needs the desktop app, which is where saved connections live. Copy the queries and run them yourself.';
-    }
-    if (!window.beamlynxDesktop?.credentials?.setAllowDestructive) {
-      return 'This build of the desktop app does not have the "Allow destructive actions" setting yet. Copy the queries and run them yourself.';
-    }
-    if (!this.profileId) {
-      return 'Only a saved connection can allow this. Save this connection first, then turn on "Allow destructive actions" for it in Settings → Connections.';
-    }
-    return 'Turn on "Allow destructive actions" for this connection in Settings → Connections. It is off by default.';
-  }
-
   /**
    * How the connection is named in the confirmation. Its label AND its host,
-   * because a label alone is exactly the thing someone misreads when two
-   * connections are called something similar - and "which database" is the
-   * mistake the confirmation exists to catch.
+   * because a label alone is exactly what gets misread when two connections
+   * are named something similar -- and "which database am I pointed at" is
+   * the question the confirmation exists to answer.
    */
   get traversalConnectionLabel(): string {
     const connections = (this.globalStore?.connections ?? []) as {
@@ -902,7 +878,6 @@ export class Session {
   /** Opens the confirmation. Deliberately a separate step from running. */
   requestTraversalRun() {
     if (!this.traversal || this.traversal.verb !== 'delete' || !this.traversal.script) return;
-    if (!this.canRunDelete) return;
     runInAction(() => {
       if (this.traversal) this.traversal.run = 'confirming';
     });
@@ -922,7 +897,7 @@ export class Session {
    */
   async confirmTraversalRun() {
     const traversal = this.traversal;
-    if (!traversal || !this.canRunDelete) return;
+    if (!traversal) return;
     // From the confirmation, or resuming: paused, or stopped on an error
     // (which leaves run back at 'idle' with runFrom part-way through).
     // Resuming is deliberately NOT gated behind the confirmation again -- it
