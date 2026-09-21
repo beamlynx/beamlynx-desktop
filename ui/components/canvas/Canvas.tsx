@@ -30,7 +30,6 @@ import FrameNode from './nodes/FrameNode';
 import TraceEdge from './edges/TraceEdge';
 import Picker from './Picker';
 import MultiSelectToolbar from './MultiSelectToolbar';
-import TraversalPanel from './TraversalPanel';
 import CanvasToolbar, { CanvasModeIndicator, CanvasToolbarExtraAction } from './CanvasToolbar';
 import PineDoc from '../PineDoc';
 
@@ -315,7 +314,6 @@ const Flow: React.FC<{
       <CanvasToolbar canvasStore={canvasStore} extraAction={toolbarExtraAction} />
       <CanvasModeIndicator canvasStore={canvasStore} />
       <MultiSelectToolbar canvasStore={canvasStore} />
-      <TraversalPanel canvasStore={canvasStore} />
     </div>
   );
 });

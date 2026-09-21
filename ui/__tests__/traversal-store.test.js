@@ -63,18 +63,16 @@ test('startTraversal finishes and records what it found', async () => {
     const session = new Session('t', { connections: [], accessPolicies: [] });
     session.connectionId = CONN;
     session.expression = 'company';
-    const store = session.getCanvasStore();
-
-    await store.startTraversal('count');
+    await session.startTraversal('count');
 
     // The assertion that would have caught the original bug: the walk is over,
     // whatever it found.
-    assert.notEqual(store.traversal.status, 'walking', 'traversal never left the walking state');
-    assert.equal(store.traversal.status, 'done');
-    assert.equal(store.traversal.error, null);
+    assert.notEqual(session.traversal.status, 'walking', 'traversal never left the walking state');
+    assert.equal(session.traversal.status, 'done');
+    assert.equal(session.traversal.error, null);
     // Post-order: the child before the table it hangs off.
     assert.deepEqual(
-      store.traversal.nodes.map(n => `${n.table}(${n.count})`),
+      session.traversal.nodes.map(n => `${n.table}(${n.count})`),
       ['employee(2)', 'company(1)'],
     );
   } finally {
@@ -88,14 +86,12 @@ test('a second traversal supersedes the first rather than merging into it', asyn
     const session = new Session('t2', { connections: [], accessPolicies: [] });
     session.connectionId = CONN;
     session.expression = 'company';
-    const store = session.getCanvasStore();
+    await Promise.all([session.startTraversal('count'), session.startTraversal('count')]);
 
-    await Promise.all([store.startTraversal('count'), store.startTraversal('count')]);
-
-    assert.equal(store.traversal.status, 'done');
+    assert.equal(session.traversal.status, 'done');
     // The generation check is what keeps the loser's nodes out. Without it the
     // two walks would both append and the list would be doubled.
-    assert.equal(store.traversal.nodes.length, 2);
+    assert.equal(session.traversal.nodes.length, 2);
   } finally {
     restore();
   }

@@ -60,6 +60,33 @@ export type TraversalResult = {
   depthCapped: boolean;
 };
 
+/**
+ * The traversal's own client. Deliberately not the session's: that one carries
+ * an onBuild callback that writes every build's AST back into the session, and
+ * a traversal issues a build per node - which would leave the canvas rendering
+ * whichever child table the walk happened to finish on.
+ */
+export const traversalClient = new HttpClient();
+
+/** A traversal in flight or finished - see Session.startTraversal. */
+export type TraversalState = {
+  verb: TraversalVerb;
+  rootExpression: string;
+  status: TraversalStatus;
+  nodes: TraversalNode[];
+  depthCapped: boolean;
+  /** The BEGIN;...COMMIT; script, for the delete verb once the walk finishes. */
+  script: string | null;
+  error: string | null;
+  /**
+   * Where the "do it for real" half is up to. 'idle' means the script has been
+   * generated and nothing has run -- which is where a delete traversal stops
+   * unless the person explicitly goes further.
+   */
+  run: 'idle' | 'confirming' | 'running' | 'finished';
+  outcomes: DeleteOutcome[];
+};
+
 // ---------------------------------------------------------------------------
 // Whether deleting along this expression is correct at all
 // ---------------------------------------------------------------------------

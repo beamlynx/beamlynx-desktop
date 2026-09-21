@@ -6,7 +6,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ## [Unreleased]
 ### Added
 - Walking the tables that hang off one of yours is now an action on the canvas. Press `+` on a table, pick **traverse**, and choose what to do at every table it reaches by foreign key: **Count rows**, or **Delete rows…**. It follows real foreign keys, deepest first, and skips a branch as soon as it finds nothing there.
-- **Count rows** answers "what is actually under this?" -- a row per related table with its count, deepest first. Clicking any row opens that table's rows in a new tab, because every line in that list is a real query.
+- **Count rows** answers "what is actually under this?" -- a row per related table with its count, deepest first, shown in the results pane where every other answer shows up. Clicking any row opens that table's rows in a new tab, because every line in that list is a real query. Running a query afterwards takes the pane back, the same as running one always does.
 - The list fills in while the walk runs, and the walk can be cancelled. A large tree no longer means staring at a frozen panel with no way out.
 - **Delete rows…** produces the same `BEGIN;` … `COMMIT;` script `delete:` produced before -- identical, byte for byte -- and stops there. It says so: nothing has been deleted. Running it is still your own step, as it always was.
 - Delete is offered only where it would be correct. Given an expression that joins back *up* (`employee | company`), the walk would empty a table the query itself depends on, and the delete would then remove nothing while reporting success. That is now caught before you can click it, and the menu entry says why instead of quietly vanishing.

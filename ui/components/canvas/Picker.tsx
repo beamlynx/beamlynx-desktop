@@ -342,7 +342,7 @@ const Picker: React.FC = observer(() => {
     const blocked = picker.deleteBlockedReason;
     const activate = (verb: 'count' | 'delete') => {
       if (verb === 'delete' && blocked) return;
-      void store.startTraversal(verb);
+      void store.session.startTraversal(verb);
     };
     return (
       <div

@@ -6,6 +6,17 @@ import { EvaluateOptions } from '../plugin/plugin.interface';
 import { formatSql } from '../utils/formatSql';
 import { CanvasStore } from './canvas/canvas.store';
 import {
+  buildDeleteScript,
+  DeleteOutcome,
+  runDeleteScript,
+  runTraversal,
+  tablesInExpression,
+  TraversalNode,
+  TraversalState,
+  traversalClient,
+  TraversalVerb,
+} from './canvas/traversal';
+import {
   AccessPolicyRule,
   Ast,
   ConnectionInfo,
@@ -359,7 +370,11 @@ export class Session {
     this.id = `session-${id}`;
     this.globalStore = globalStore;
 
-    makeAutoObservable(this);
+    // traversalSignal excluded: an observable field hands back a Proxy of what
+    // was assigned, so the object read back would never be identical to the
+    // one handed to the walk -- which is exactly the bug that left a traversal
+    // stuck on "walking" forever. Nothing renders it either.
+    makeAutoObservable<Session, 'traversalSignal'>(this, { traversalSignal: false });
 
     /** Evaluation plugins */
     this.plugins = {
@@ -686,6 +701,219 @@ export class Session {
    */
   public notifyCanvasCommit() {
     this.autoRunTrigger();
+  }
+
+  /**
+   * The traversal shown in the results pane, or null when the pane is showing
+   * ordinary rows.
+   *
+   * A traversal IS a result -- counting the tables under one of yours answers
+   * a question about the data, the same as a query does; it just wants a tree
+   * rather than a grid. So it lives here next to `rows`/`columns` and renders
+   * in the results pane, rather than floating over the canvas in a panel of
+   * its own. Result.tsx already had the idea that one result can be drawn more
+   * than one way (its bar-chart view); this is the same idea with a third
+   * shape.
+   *
+   * Non-null is what tells the results pane to show a traversal instead of
+   * rows -- no separate mode flag, and an ordinary run clears it
+   * (DefaultPlugin), because running a query means the pane is showing that
+   * query now.
+   */
+  traversal: TraversalState | null = null;
+
+  /**
+   * Cancellation for the in-flight walk. Excluded from observability (see the
+   * makeAutoObservable call): an observable field hands back a Proxy of
+   * whatever was assigned, so the object read here would never be identical to
+   * the one handed to the walk. Nothing renders it either.
+   */
+  private traversalSignal: { cancelled: boolean } | null = null;
+
+  /**
+   * Generation counter for traversals, so a late callback from a superseded
+   * walk can tell it has been superseded and drop its result rather than
+   * writing over the newer one. A number rather than object identity, for the
+   * reason above.
+   */
+  private traversalSeq = 0;
+
+  /**
+   * Runs a traversal from the expression as it stands.
+   *
+   * The root is `session.expression`, unmodified. There's no rooting logic
+   * here because the walk only ever *appends*: each node one level down is
+   * its parent's expression plus one more join (see traversal.ts). Acting on
+   * a node that isn't the end of the pipe is already handled the way every
+   * other canvas gesture handles it - a `from:` committed into the expression
+   * first (commitJoin's fromAlias) - so by the time this runs, the expression
+   * already points where it should.
+   */
+  async startTraversal(verb: TraversalVerb) {
+    const rootExpression = this.expression.trim();
+    if (!rootExpression) return;
+    this.getCanvasStore().closePicker();
+
+    const signal = { cancelled: false };
+    const seq = ++this.traversalSeq;
+    this.traversalSignal = signal;
+    runInAction(() => {
+      // The results pane is showing this now, the same as it would show rows
+      // after a run.
+      this.mode = 'result';
+      this.traversal = {
+        verb,
+        rootExpression,
+        status: 'walking',
+        nodes: [],
+        depthCapped: false,
+        script: null,
+        error: null,
+        run: 'idle',
+        outcomes: [],
+      };
+    });
+
+    try {
+      // The delete verb gets the run-time backstop. The two conditions
+      // canDeleteTraverse checks are an argument about the foreign-key graph,
+      // and the cost of that argument being wrong is a delete that silently
+      // removes nothing. Counting needs no such guard - it only reads.
+      const forbidden =
+        verb === 'delete'
+          ? tablesInExpression(this.ast, this.ast?.current ?? '')
+          : undefined;
+      const result = await runTraversal(traversalClient, rootExpression, {
+        connectionId: this.connectionId,
+        signal,
+        forbidden,
+        forDelete: verb === 'delete',
+        onNode: node =>
+          runInAction(() => {
+            if (this.traversal && this.traversalSeq === seq) {
+              this.traversal.nodes = [...this.traversal.nodes, node];
+            }
+          }),
+      });
+      if (signal.cancelled) {
+        runInAction(() => {
+          if (this.traversal && this.traversalSeq === seq) this.traversal.status = 'cancelled';
+        });
+        return;
+      }
+      const script =
+        verb === 'delete'
+          ? await buildDeleteScript(traversalClient, result.nodes, this.connectionId)
+          : null;
+      runInAction(() => {
+        if (!this.traversal || this.traversalSeq !== seq) return;
+        // Replaces the streamed list rather than appending to it: onNode
+        // fires as each count lands, so the panel fills in while the walk
+        // runs, but the finished list is post-order - the order the DELETEs
+        // have to run in.
+        this.traversal.nodes = result.nodes;
+        this.traversal.depthCapped = result.depthCapped;
+        this.traversal.script = script;
+        this.traversal.status = 'done';
+      });
+    } catch (e) {
+      runInAction(() => {
+        if (!this.traversal || this.traversalSeq !== seq) return;
+        this.traversal.status = 'failed';
+        this.traversal.error = e instanceof Error ? e.message : 'Traversal failed';
+      });
+    }
+  }
+
+  /**
+   * Opens one row of the traversal in a new tab. Each node's `expression` is
+   * ordinary Pine - the walk builds them by appending joins - so this needs
+   * no "traversal result" viewer, just a tab.
+   */
+  openTraversalNode(node: TraversalNode) {
+    this.globalStore?.openExpressionInNewTab?.(node.expression);
+  }
+
+  /**
+   * Whether this tab's connection has been opted in to destructive actions.
+   * False for an unsaved connection, and false on web, where there is no
+   * credential store to hold the decision - see
+   * SavedConnectionMeta.allowDestructive.
+   */
+  get canRunDelete(): boolean {
+    return this.globalStore?.allowsDestructiveActions?.(this.profileId) === true;
+  }
+
+  /**
+   * How the connection is named in the confirmation. Its label AND its host,
+   * because a label alone is exactly the thing someone misreads when two
+   * connections are called something similar - and "which database" is the
+   * mistake the confirmation exists to catch.
+   */
+  get traversalConnectionLabel(): string {
+    const connections = (this.globalStore?.connections ?? []) as {
+      id: string;
+      label?: string;
+      dbHost?: string;
+      dbName?: string;
+    }[];
+    const match = connections.find(c => c.id === this.profileId);
+    if (!match) return this.connectionId || 'this connection';
+    const where = [match.dbHost, match.dbName].filter(Boolean).join('/');
+    return where ? `${match.label ?? match.id} (${where})` : (match.label ?? match.id);
+  }
+
+  /** Opens the confirmation. Deliberately a separate step from running. */
+  requestTraversalRun() {
+    if (!this.traversal || this.traversal.verb !== 'delete' || !this.traversal.script) return;
+    if (!this.canRunDelete) return;
+    runInAction(() => {
+      if (this.traversal) this.traversal.run = 'confirming';
+    });
+  }
+
+  dismissTraversalRun() {
+    runInAction(() => {
+      if (this.traversal && this.traversal.run === 'confirming') this.traversal.run = 'idle';
+    });
+  }
+
+  /**
+   * Runs the planned deletes. Gated twice on purpose, for two different
+   * mistakes: `canRunDelete` catches the wrong *database*, decided once per
+   * connection; the confirmation catches the wrong *query*, which you only
+   * notice with the numbers in front of you.
+   */
+  async confirmTraversalRun() {
+    const traversal = this.traversal;
+    if (!traversal || traversal.run !== 'confirming' || !this.canRunDelete) return;
+    runInAction(() => {
+      traversal.run = 'running';
+      traversal.outcomes = [];
+    });
+    await runDeleteScript(
+      traversalClient,
+      traversal.nodes,
+      this.connectionId,
+      outcome =>
+        runInAction(() => {
+          if (this.traversal === traversal) traversal.outcomes = [...traversal.outcomes, outcome];
+        }),
+    );
+    runInAction(() => {
+      if (this.traversal === traversal) traversal.run = 'finished';
+    });
+  }
+
+  cancelTraversal() {
+    if (this.traversalSignal) this.traversalSignal.cancelled = true;
+  }
+
+  closeTraversal() {
+    this.cancelTraversal();
+    runInAction(() => {
+      this.traversal = null;
+    });
   }
 
   public async evaluate(opts?: EvaluateOptions) {

@@ -1,5 +1,5 @@
 import { makeAutoObservable, reaction, runInAction } from 'mobx';
-import { HttpClient, PathHint, TableHint } from '../client';
+import { PathHint, TableHint } from '../client';
 import { Session } from '../session';
 import {
   CanvasFrameNode,
@@ -32,17 +32,7 @@ import {
 } from './pine-text';
 import * as actions from './pine-actions';
 import { probeBuild } from './probe';
-import {
-  buildDeleteScript,
-  canDeleteTraverse,
-  DeleteOutcome,
-  runDeleteScript,
-  runTraversal,
-  tablesInExpression,
-  TraversalNode,
-  TraversalStatus,
-  TraversalVerb,
-} from './traversal';
+import { canDeleteTraverse } from './traversal';
 import { computeDateBounds } from './relative-date';
 
 const hasMultipleBlocks = (expression: string): boolean => /\n\s*\n/.test(expression.trim());
@@ -76,61 +66,10 @@ type FocusStop = { kind: 'node'; alias: string } | { kind: 'config'; alias: stri
  * finishes. Nothing here talks to the pine-lang server except through that
  * one path plus the read-only probeBuild used for picker options.
  */
-/**
- * The traversal's own client. Deliberately not the session's: that one carries
- * an onBuild callback that writes every build's AST back into the session, and
- * a traversal issues a build per node - which would leave the canvas rendering
- * whichever child table the walk happened to finish on.
- */
-const traversalClient = new HttpClient();
-
-/** A traversal in flight or finished - see CanvasStore.startTraversal. */
-export type TraversalState = {
-  verb: TraversalVerb;
-  rootExpression: string;
-  status: TraversalStatus;
-  nodes: TraversalNode[];
-  depthCapped: boolean;
-  /** The BEGIN;...COMMIT; script, for the delete verb once the walk finishes. */
-  script: string | null;
-  error: string | null;
-  /**
-   * Where the "do it for real" half is up to. 'idle' means the script has been
-   * generated and nothing has run -- which is where a delete traversal stops
-   * unless the person explicitly goes further.
-   */
-  run: 'idle' | 'confirming' | 'running' | 'finished';
-  outcomes: DeleteOutcome[];
-};
-
 export class CanvasStore {
   positions: Record<string, { x: number; y: number }> = {};
   picker: PickerState = { open: false };
 
-  /**
-   * The traversal shown in the panel, or null when there is none. Held as
-   * state rather than run as a one-shot call so the panel can fill in as the
-   * walk goes, the walk can be cancelled, and each node's expression stays
-   * around to be opened.
-   */
-  traversal: TraversalState | null = null;
-
-  /**
-   * Cancellation for the in-flight walk. Excluded from observability below:
-   * an observable field hands back a Proxy of whatever was assigned, so the
-   * object read here would never be identical to the one handed to the walk.
-   * Nothing observes it either - it is a flag the walk polls, not state the
-   * UI renders.
-   */
-  private traversalSignal: { cancelled: boolean } | null = null;
-
-  /**
-   * Generation counter for traversals, so a late callback from a superseded
-   * walk can tell it has been superseded and drop its result rather than
-   * writing over the newer one. A number rather than object identity, for
-   * the reason above - same approach as pickerSeq.
-   */
-  private traversalSeq = 0;
   canvasGraph: CanvasGraph = emptyGraph;
   /** Aliases of the currently box/shift-selected table nodes - see Canvas.tsx's onSelectionChange. */
   selectedAliases: string[] = [];
@@ -559,10 +498,7 @@ export class CanvasStore {
 
   constructor(session: Session) {
     this.session = session;
-    makeAutoObservable<CanvasStore, 'session' | 'traversalSignal'>(this, {
-      session: false,
-      traversalSignal: false,
-    });
+    makeAutoObservable<CanvasStore, 'session'>(this, { session: false });
     this.recompute();
   }
 
@@ -1203,180 +1139,6 @@ export class CanvasStore {
     };
   }
 
-  /**
-   * Runs a traversal from the expression as it stands.
-   *
-   * The root is `session.expression`, unmodified. There's no rooting logic
-   * here because the walk only ever *appends*: each node one level down is
-   * its parent's expression plus one more join (see traversal.ts). Acting on
-   * a node that isn't the end of the pipe is already handled the way every
-   * other canvas gesture handles it - a `from:` committed into the expression
-   * first (commitJoin's fromAlias) - so by the time this runs, the expression
-   * already points where it should.
-   */
-  async startTraversal(verb: TraversalVerb) {
-    const rootExpression = this.session.expression.trim();
-    if (!rootExpression) return;
-    this.closePicker();
-
-    const signal = { cancelled: false };
-    const seq = ++this.traversalSeq;
-    this.traversalSignal = signal;
-    runInAction(() => {
-      this.traversal = {
-        verb,
-        rootExpression,
-        status: 'walking',
-        nodes: [],
-        depthCapped: false,
-        script: null,
-        error: null,
-        run: 'idle',
-        outcomes: [],
-      };
-    });
-
-    try {
-      // The delete verb gets the run-time backstop. The two conditions
-      // canDeleteTraverse checks are an argument about the foreign-key graph,
-      // and the cost of that argument being wrong is a delete that silently
-      // removes nothing. Counting needs no such guard - it only reads.
-      const forbidden =
-        verb === 'delete'
-          ? tablesInExpression(this.session.ast, this.session.ast?.current ?? '')
-          : undefined;
-      const result = await runTraversal(traversalClient, rootExpression, {
-        connectionId: this.session.connectionId,
-        signal,
-        forbidden,
-        forDelete: verb === 'delete',
-        onNode: node =>
-          runInAction(() => {
-            if (this.traversal && this.traversalSeq === seq) {
-              this.traversal.nodes = [...this.traversal.nodes, node];
-            }
-          }),
-      });
-      if (signal.cancelled) {
-        runInAction(() => {
-          if (this.traversal && this.traversalSeq === seq) this.traversal.status = 'cancelled';
-        });
-        return;
-      }
-      const script =
-        verb === 'delete'
-          ? await buildDeleteScript(traversalClient, result.nodes, this.session.connectionId)
-          : null;
-      runInAction(() => {
-        if (!this.traversal || this.traversalSeq !== seq) return;
-        // Replaces the streamed list rather than appending to it: onNode
-        // fires as each count lands, so the panel fills in while the walk
-        // runs, but the finished list is post-order - the order the DELETEs
-        // have to run in.
-        this.traversal.nodes = result.nodes;
-        this.traversal.depthCapped = result.depthCapped;
-        this.traversal.script = script;
-        this.traversal.status = 'done';
-      });
-    } catch (e) {
-      runInAction(() => {
-        if (!this.traversal || this.traversalSeq !== seq) return;
-        this.traversal.status = 'failed';
-        this.traversal.error = e instanceof Error ? e.message : 'Traversal failed';
-      });
-    }
-  }
-
-  /**
-   * Opens one row of the traversal in a new tab. Each node's `expression` is
-   * ordinary Pine - the walk builds them by appending joins - so this needs
-   * no "traversal result" viewer, just a tab.
-   */
-  openTraversalNode(node: TraversalNode) {
-    this.session.globalStore?.openExpressionInNewTab?.(node.expression);
-  }
-
-  /**
-   * Whether this tab's connection has been opted in to destructive actions.
-   * False for an unsaved connection, and false on web, where there is no
-   * credential store to hold the decision - see
-   * SavedConnectionMeta.allowDestructive.
-   */
-  get canRunDelete(): boolean {
-    return this.session.globalStore?.allowsDestructiveActions?.(this.session.profileId) === true;
-  }
-
-  /**
-   * How the connection is named in the confirmation. Its label AND its host,
-   * because a label alone is exactly the thing someone misreads when two
-   * connections are called something similar - and "which database" is the
-   * mistake the confirmation exists to catch.
-   */
-  get connectionLabel(): string {
-    const connections = (this.session.globalStore?.connections ?? []) as {
-      id: string;
-      label?: string;
-      dbHost?: string;
-      dbName?: string;
-    }[];
-    const match = connections.find(c => c.id === this.session.profileId);
-    if (!match) return this.session.connectionId || 'this connection';
-    const where = [match.dbHost, match.dbName].filter(Boolean).join('/');
-    return where ? `${match.label ?? match.id} (${where})` : (match.label ?? match.id);
-  }
-
-  /** Opens the confirmation. Deliberately a separate step from running. */
-  requestTraversalRun() {
-    if (!this.traversal || this.traversal.verb !== 'delete' || !this.traversal.script) return;
-    if (!this.canRunDelete) return;
-    runInAction(() => {
-      if (this.traversal) this.traversal.run = 'confirming';
-    });
-  }
-
-  dismissTraversalRun() {
-    runInAction(() => {
-      if (this.traversal && this.traversal.run === 'confirming') this.traversal.run = 'idle';
-    });
-  }
-
-  /**
-   * Runs the planned deletes. Gated twice on purpose, for two different
-   * mistakes: `canRunDelete` catches the wrong *database*, decided once per
-   * connection; the confirmation catches the wrong *query*, which you only
-   * notice with the numbers in front of you.
-   */
-  async confirmTraversalRun() {
-    const traversal = this.traversal;
-    if (!traversal || traversal.run !== 'confirming' || !this.canRunDelete) return;
-    runInAction(() => {
-      traversal.run = 'running';
-      traversal.outcomes = [];
-    });
-    await runDeleteScript(
-      traversalClient,
-      traversal.nodes,
-      this.session.connectionId,
-      outcome =>
-        runInAction(() => {
-          if (this.traversal === traversal) traversal.outcomes = [...traversal.outcomes, outcome];
-        }),
-    );
-    runInAction(() => {
-      if (this.traversal === traversal) traversal.run = 'finished';
-    });
-  }
-
-  cancelTraversal() {
-    if (this.traversalSignal) this.traversalSignal.cancelled = true;
-  }
-
-  closeTraversal() {
-    this.cancelTraversal();
-    runInAction(() => {
-      this.traversal = null;
-    });
-  }
 
   openColumnPicker(
     kind: 'select' | 'where' | 'order' | 'group',
