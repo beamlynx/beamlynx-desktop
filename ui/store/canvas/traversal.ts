@@ -45,14 +45,17 @@ export type TraversalStatus = 'walking' | 'done' | 'cancelled' | 'failed';
 /**
  * How deep the walk goes before stopping.
  *
- * Fixed, with no control to change it. The walk has a visited set, so it
- * terminates on a foreign-key cycle regardless -- this is the second guard,
- * for a schema that is acyclic but deep enough that walking all of it is
- * never what someone meant. What matters is that hitting it is *visible*:
+ * Not really a safety limit -- cycles are already handled, by tracking the
+ * tables on the path from the root -- so it is just a depth past which nobody
+ * meant to keep going. Real schemas nest further than a first guess suggests,
+ * so this is set well clear of them rather than tuned tight; hitting it should
+ * mean something is wrong, not that the schema is ordinary.
+ *
+ * What matters more than the number is that hitting it is *visible*:
  * `depthCapped` below, which the panel reports, rather than a truncated tree
  * presented as a complete one.
  */
-export const MAX_DEPTH = 10;
+export const MAX_DEPTH = 25;
 
 export type TraversalResult = {
   nodes: TraversalNode[];
@@ -83,8 +86,22 @@ export type TraversalState = {
    * generated and nothing has run -- which is where a delete traversal stops
    * unless the person explicitly goes further.
    */
-  run: 'idle' | 'confirming' | 'running' | 'finished';
+  /**
+   * Where the "do it for real" half is up to.
+   *
+   * 'failed' is its own state rather than being inferred from how far the run
+   * got: the first table can be the one that fails, and then "how far" is
+   * zero, which is indistinguishable from never having started. That is
+   * exactly the case where resuming matters most.
+   */
+  run: 'idle' | 'confirming' | 'running' | 'paused' | 'failed' | 'finished';
   outcomes: DeleteOutcome[];
+  /**
+   * The next node to attempt. Advances past each success, so a run that was
+   * paused or that stopped on an error resumes exactly where it left off
+   * instead of re-issuing deletes that already ran.
+   */
+  runFrom: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -413,6 +430,17 @@ const rootTableOf = async (
 export type DeleteOutcome = { table: string; deleted: number } | { table: string; error: string };
 
 /**
+ * Where a delete run got to, so it can pick up from there.
+ *
+ * `from` is the index into the node list that the next attempt starts at: one
+ * past the last node that succeeded. A failure leaves everything below it
+ * already deleted, and children always go before parents -- so resuming at the
+ * node that failed is both correct and the only sensible place to resume,
+ * rather than starting over and re-issuing deletes that already ran.
+ */
+export type DeleteProgress = { from: number };
+
+/**
  * Runs a planned delete, one node at a time, in the order the nodes are in.
  *
  * Not by sending the generated script to /api/v1/sql, which is the obvious
@@ -440,9 +468,15 @@ export const runDeleteScript = async (
   nodes: TraversalNode[],
   connectionId?: string,
   onOutcome?: (outcome: DeleteOutcome) => void,
+  // Where to start. Non-zero when resuming after a failure or a pause: the
+  // nodes before it are already gone, and re-running their DELETEs would at
+  // best be a no-op and at worst confusing to read in the outcome list.
+  from = 0,
+  signal?: { cancelled: boolean },
 ): Promise<DeleteOutcome[]> => {
   const outcomes: DeleteOutcome[] = [];
-  for (const node of nodes) {
+  for (const node of nodes.slice(from)) {
+    if (signal?.cancelled) break;
     const expression = `${node.expression} | limit: ${node.count} | delete! .${node.column}`;
     let outcome: DeleteOutcome;
     try {

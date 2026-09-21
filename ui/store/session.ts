@@ -383,7 +383,10 @@ export class Session {
     // was assigned, so the object read back would never be identical to the
     // one handed to the walk -- which is exactly the bug that left a traversal
     // stuck on "walking" forever. Nothing renders it either.
-    makeAutoObservable<Session, 'traversalSignal'>(this, { traversalSignal: false });
+    makeAutoObservable<Session, 'traversalSignal' | 'runSignal'>(this, {
+      traversalSignal: false,
+      runSignal: false,
+    });
 
     /** Evaluation plugins */
     this.plugins = {
@@ -739,6 +742,9 @@ export class Session {
    */
   private traversalSignal: { cancelled: boolean } | null = null;
 
+  /** Pause/cancel for an in-flight delete run. Non-observable, same reason. */
+  private runSignal: { cancelled: boolean } | null = null;
+
   /**
    * Generation counter for traversals, so a late callback from a superseded
    * walk can tell it has been superseded and drop its result rather than
@@ -780,6 +786,7 @@ export class Session {
         error: null,
         run: 'idle',
         outcomes: [],
+        runFrom: 0,
       };
     });
 
@@ -915,27 +922,76 @@ export class Session {
    */
   async confirmTraversalRun() {
     const traversal = this.traversal;
-    if (!traversal || traversal.run !== 'confirming' || !this.canRunDelete) return;
+    if (!traversal || !this.canRunDelete) return;
+    // From the confirmation, or resuming: paused, or stopped on an error
+    // (which leaves run back at 'idle' with runFrom part-way through).
+    // Resuming is deliberately NOT gated behind the confirmation again -- it
+    // was granted for this exact set of tables, and nothing about them has
+    // changed, only how far through them we are.
+    const resuming = traversal.run === 'paused' || traversal.run === 'failed';
+    if (traversal.run !== 'confirming' && !resuming) return;
+
+    const signal = { cancelled: false };
+    this.runSignal = signal;
     runInAction(() => {
       traversal.run = 'running';
-      traversal.outcomes = [];
+      // Drop the failure being retried, so the panel doesn't keep reporting a
+      // node as failed while it is being attempted again. Successes stay:
+      // they are what runFrom counts.
+      const last = traversal.outcomes[traversal.outcomes.length - 1];
+      if (resuming && last && 'error' in last) {
+        traversal.outcomes = traversal.outcomes.slice(0, -1);
+      }
     });
+
     await runDeleteScript(
       traversalClient,
       traversal.nodes,
       this.connectionId,
       outcome =>
         runInAction(() => {
-          if (this.traversal === traversal) traversal.outcomes = [...traversal.outcomes, outcome];
+          if (this.traversal !== traversal) return;
+          traversal.outcomes = [...traversal.outcomes, outcome];
+          // Advance only past a success. A failure leaves runFrom pointing AT
+          // the node that failed, which is where a resume has to start.
+          if (!('error' in outcome)) traversal.runFrom += 1;
         }),
+      traversal.runFrom,
+      signal,
     );
+
     runInAction(() => {
-      if (this.traversal === traversal) traversal.run = 'finished';
+      if (this.traversal !== traversal) return;
+      // Paused stays paused -- pauseTraversalRun already set it, and the loop
+      // simply stopped asking for more.
+      if (traversal.run !== 'paused') {
+        traversal.run =
+          traversal.runFrom >= traversal.nodes.length
+            ? 'finished'
+            : // Stopped short without being paused: the node at runFrom threw.
+              'failed';
+      }
     });
   }
 
   cancelTraversal() {
     if (this.traversalSignal) this.traversalSignal.cancelled = true;
+    if (this.runSignal) this.runSignal.cancelled = true;
+  }
+
+  /**
+   * Stops a delete run after the statement in flight, keeping its place.
+   *
+   * Not the same as cancelling the walk: nothing is undone, because nothing
+   * can be -- each table's DELETE is its own statement and the ones that ran
+   * are committed. Pausing only declines to start the next one, which is why
+   * the button says Pause rather than Stop.
+   */
+  pauseTraversalRun() {
+    if (this.runSignal) this.runSignal.cancelled = true;
+    runInAction(() => {
+      if (this.traversal && this.traversal.run === 'running') this.traversal.run = 'paused';
+    });
   }
 
   closeTraversal() {

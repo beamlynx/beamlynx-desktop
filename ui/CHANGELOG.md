@@ -15,8 +15,16 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - Deleting is refused where a table is linked by a foreign key made of more than one column. Pine reads such a key one column pair at a time, and deleting on one column alone would also remove rows belonging to other records -- quietly, with no error. Counting still works on those tables, though its numbers are inflated by the same split. Two separate foreign keys to the same table (a message with a sender and a recipient, say) are unaffected and still delete correctly.
 - The deletes run one table at a time, deepest first, and the confirmation says so: if one fails the rest are left alone, nothing is rolled back, and re-running finishes the job. A partial run never leaves a broken reference behind, because children always go before their parents.
 
+- A delete run can be paused, and picks up where it stopped. If one table fails -- a missing grant, a constraint -- the run stops there rather than pressing on into a parent whose child still has rows. Fix the cause, press Resume, and it retries that table and continues; the tables already done are not repeated.
+- **Copy queries** on a delete plan, which tells you it copied.
+
 ### Changed
-- `delete:` is gone from Pine, replaced by the canvas action above. A saved tab still ending in `delete:` has it removed when the tab is restored -- without that the tab would come back blank, since one unparseable word stops the canvas reading any of the expression.
+- `delete:` is gone from Pine, replaced by the canvas action above.
+- Traversals follow foreign keys up to 25 levels deep, rather than 10. Cycles are handled separately, by tracking the tables on the path from the root, so the depth limit is only there for a schema nobody meant to walk all of -- and real ones nest further than a first guess suggests.
+
+### Fixed
+- Ctrl+C on the canvas copies again instead of opening the comment editor. The canvas shortcuts are single letters and matched on the letter alone, so any of them fired with Ctrl or Cmd held -- `c` was the one people hit constantly, but Ctrl+V, Ctrl+A and Ctrl+F had the same collision waiting.
+- The Pine/SQL panel no longer animates when you switch tabs. It was not opening: the saved panel width arrives one moment after a tab is shown, and the panel was animating from its default width to your saved one every time. A saved tab still ending in `delete:` has it removed when the tab is restored -- without that the tab would come back blank, since one unparseable word stops the canvas reading any of the expression.
 
 ### Security
 - An agent can no longer change your data through an operation the old check missed. MCP refused a Pine expression containing `delete!`, by looking for that word in the text. It did not look for `update!`, and it did not recognise the short forms `d!` and `u!` -- so three of the four ways to write to a database went straight through. The check now happens in the Pine server, which already knows which operations change data, so every form is covered and so is anything added later. Reads are unaffected, and so are your own queries: you can still run `delete!` and `update!` in your own tab exactly as before.

@@ -81,6 +81,15 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
         return;
       }
 
+      // Every binding below is a bare letter, and none of them wants a
+      // modifier held. Without this, the switch matched on `e.key` alone and
+      // happily fired on Ctrl/Cmd+<letter> too -- so Ctrl+C, the most ordinary
+      // thing anyone does on a canvas, opened the comment editor instead of
+      // copying, and Ctrl+V/Ctrl+A/Ctrl+F had their own collisions waiting.
+      // The two shortcuts that DO take a modifier are handled above, before
+      // this line, precisely so this can be a blanket bail-out.
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
       const alias = canvasStore.focusedAlias;
       const isStart = alias === START_NODE_ID;
       // A frame/checkpoint node is a valid focus target (CanvasStore.

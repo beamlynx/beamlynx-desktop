@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { Box, Button, Typography } from '@mui/material';
 import { Session } from '../store/session';
@@ -26,7 +26,21 @@ const TraversalResult: React.FC<{ session: Session }> = observer(({ session }) =
   const traversal = session.traversal;
   if (!traversal) return null;
 
-  const { verb, status, nodes, depthCapped, script, error, run, outcomes } = traversal;
+  const { verb, status, nodes, depthCapped, script, error, run, outcomes, runFrom } = traversal;
+  const [copied, setCopied] = useState(false);
+  const copyScript = async () => {
+    if (!script) return;
+    try {
+      await navigator.clipboard.writeText(script);
+      setCopied(true);
+      // Long enough to read, short enough that the button is ready again by
+      // the time anyone wants it twice.
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard denied (no permission, or an insecure context). Leave the
+      // label alone rather than claim a copy that did not happen.
+    }
+  };
   const total = nodes.reduce((sum, n) => sum + n.count, 0);
   const walking = status === 'walking';
   const deleted = outcomes.reduce((sum, o) => sum + ('deleted' in o ? o.deleted : 0), 0);
@@ -118,26 +132,45 @@ const TraversalResult: React.FC<{ session: Session }> = observer(({ session }) =
               {/* Said plainly, because the whole point of this verb is that it
                   stops here unless you go further on purpose. */}
               {run === 'idle' && (session.runDeleteBlockedReason ?? 'Nothing has been deleted.')}
-              {run === 'running' && `Deleting… ${outcomes.length}/${nodes.length}`}
-              {run === 'finished' &&
-                (failure
-                  ? `Stopped after ${outcomes.length - 1} of ${nodes.length}. Nothing below is deleted; re-run to finish.`
-                  : `Deleted ${deleted} ${deleted === 1 ? 'row' : 'rows'}.`)}
+              {run === 'running' && `Deleting… ${runFrom}/${nodes.length}`}
+              {run === 'paused' &&
+                `Paused after ${runFrom} of ${nodes.length}. Resume picks up where it stopped.`}
+              {run === 'failed' &&
+                `Stopped at ${nodes[runFrom]?.table ?? 'a table'}, ${runFrom} of ${nodes.length} done. ${
+                  failure && 'error' in failure ? failure.error : ''
+                } Resume retries that table — the ones already done are not repeated.`}
+              {run === 'finished' && `Deleted ${deleted} ${deleted === 1 ? 'row' : 'rows'}.`}
             </Box>
             <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button size="small" onClick={() => void navigator.clipboard?.writeText(script)}>
-                Copy
+              <Button size="small" data-testid="traversal-copy" onClick={() => void copyScript()}>
+                {copied ? 'Copied' : 'Copy queries'}
               </Button>
-              {run !== 'finished' && (
+              {run === 'running' && (
+                <Button
+                  size="small"
+                  data-testid="traversal-pause"
+                  onClick={() => session.pauseTraversalRun()}
+                >
+                  Pause
+                </Button>
+              )}
+              {run !== 'finished' && run !== 'running' && (
                 <Button
                   size="small"
                   color="error"
                   data-testid="traversal-run"
-                  disabled={!session.canRunDelete || run === 'running'}
+                  disabled={!session.canRunDelete}
                   title={session.runDeleteBlockedReason ?? undefined}
-                  onClick={() => session.requestTraversalRun()}
+                  // Resuming skips the confirmation: it was given for this
+                  // exact set of tables, and only how far through them we are
+                  // has changed.
+                  onClick={() =>
+                    run === 'paused' || run === 'failed'
+                      ? void session.confirmTraversalRun()
+                      : session.requestTraversalRun()
+                  }
                 >
-                  {run === 'running' ? 'Running…' : 'Run'}
+                  {run === 'paused' || run === 'failed' ? 'Resume' : 'Run'}
                 </Button>
               )}
             </Box>

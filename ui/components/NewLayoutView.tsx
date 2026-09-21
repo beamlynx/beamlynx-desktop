@@ -13,6 +13,7 @@ import { usePanelPresence } from '../hooks/usePanelPresence';
 import { freezeResultsDuringMotion } from '../styles/freeze-during-motion';
 import { MOTION, motionDuration } from '../styles/motion';
 import { getUserPreference, STORAGE_KEYS } from '../store/preferences';
+import { usePersistedSize } from '../hooks/usePersistedSize';
 import { useStores } from '../store/store-container';
 import Canvas from './canvas/Canvas';
 import CollapsibleHeight from './CollapsibleHeight';
@@ -134,16 +135,22 @@ const LeftPane = observer(
     // through its own closing animation.
     const panelBesideCanvas = panel.mounted && !isHorizontal;
 
-    const [panelWidth, setPanelWidth] = useState(DEFAULT_NEW_LAYOUT_PANEL_WIDTH);
-    const [panelHeight, setPanelHeight] = useState(DEFAULT_NEW_LAYOUT_PANEL_HEIGHT);
-    useEffect(() => {
-      setPanelWidth(
-        getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_WIDTH, DEFAULT_NEW_LAYOUT_PANEL_WIDTH),
-      );
-      setPanelHeight(
-        getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_HEIGHT, DEFAULT_NEW_LAYOUT_PANEL_HEIGHT),
-      );
-    }, []);
+    const {
+      size: panelWidth,
+      setSize: setPanelWidth,
+      ready: widthReady,
+    } = usePersistedSize(STORAGE_KEYS.NEW_LAYOUT_PANEL_WIDTH, DEFAULT_NEW_LAYOUT_PANEL_WIDTH);
+    const {
+      size: panelHeight,
+      setSize: setPanelHeight,
+      ready: heightReady,
+    } = usePersistedSize(STORAGE_KEYS.NEW_LAYOUT_PANEL_HEIGHT, DEFAULT_NEW_LAYOUT_PANEL_HEIGHT);
+    // The saved sizes arrive one commit after mount, and a tab switch remounts
+    // this whole pane (MUI's TabPanel unmounts an inactive tab's children). So
+    // without this the panel animated from its default width to the saved one
+    // on every tab change -- an animation with no event behind it. See
+    // usePersistedSize.
+    const sizesReady = widthReady && heightReady;
 
     return (
       <Box
@@ -239,9 +246,11 @@ const LeftPane = observer(
               ...(panelBesideCanvas
                 ? { width: panel.open ? panelWidth + NEW_LAYOUT_GUTTER : 0 }
                 : { height: panel.open ? panelHeight + NEW_LAYOUT_GUTTER : 0 }),
-              transition: panel.open
-                ? 'width var(--motion-enter) var(--motion-ease-enter), height var(--motion-enter) var(--motion-ease-enter), opacity var(--motion-enter) var(--motion-ease-enter)'
-                : 'width var(--motion-exit) var(--motion-ease-exit), height var(--motion-exit) var(--motion-ease-exit), opacity var(--motion-exit) var(--motion-ease-exit)',
+              transition: !sizesReady
+                ? 'none'
+                : panel.open
+                  ? 'width var(--motion-enter) var(--motion-ease-enter), height var(--motion-enter) var(--motion-ease-enter), opacity var(--motion-enter) var(--motion-ease-enter)'
+                  : 'width var(--motion-exit) var(--motion-ease-exit), height var(--motion-exit) var(--motion-ease-exit), opacity var(--motion-exit) var(--motion-ease-exit)',
             }}
           >
             {panelBesideCanvas ? (

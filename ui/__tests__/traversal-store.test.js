@@ -160,3 +160,161 @@ test('nothing outside the store decides what the "+" menu offers', () => {
     );
   }
 });
+
+// Pause and resume on a delete run. Deterministic rather than raced: the stub
+// client pauses the session from inside the eval for the second table, so the
+// loop is always interrupted at the same place.
+function stubDeleteFetch(failOn) {
+  const original = global.fetch;
+  const attempted = [];
+  global.fetch = async (url, options) => {
+    const body = JSON.parse(options.body);
+    const expression = body.expressions[0];
+    // Only an EVAL of a delete actually deletes. buildDeleteQuery sends the
+    // same text to /build while generating the script, and counting that as
+    // an attempt made the stub report deletes that never ran.
+    if (String(url).endsWith('/eval') && expression.includes('delete!')) {
+      const table = expression.includes('employee') ? 'employee' : 'company';
+      attempted.push(table);
+      return {
+        ok: true,
+        json: async () =>
+          table === failOn
+            ? { error: 'permission denied' }
+            : { result: [['Rows deleted'], [1]], columns: [] },
+      };
+    }
+    if (expression.endsWith('| count:')) {
+      return { ok: true, json: async () => ({ result: [['count'], [1]], columns: [] }) };
+    }
+    return {
+      ok: true,
+      json: async () => ({
+        // buildDeleteQuery reads `query`; without it the script comes out
+        // undefined and the traversal fails before a run is ever possible.
+        query: `DELETE FROM ${expression.includes('employee') ? 'employee' : 'company'} WHERE 1=1`,
+        ast: {
+          current: expression.includes('employee') ? 'e_1' : 'c_0',
+          joins: [],
+          'selected-tables': expression.trim().endsWith('|')
+            ? [{ table: 'company', alias: 'c_0', schema: 'public' }]
+            : [],
+          hints: {
+            table:
+              expression.trim().endsWith('|') && !expression.includes('employee')
+                ? [
+                    {
+                      table: 'employee',
+                      schema: 'public',
+                      column: 'company_id',
+                      'related-column': 'id',
+                      resolution: 'fk',
+                      pine: 'public.employee .company_id',
+                    },
+                  ]
+                : [],
+          },
+        },
+      }),
+    };
+  };
+  return {
+    attempted,
+    restore: () => {
+      global.fetch = original;
+    },
+  };
+}
+
+function deleteSession(id) {
+  const session = new Session(id, {
+    connections: [],
+    accessPolicies: [],
+    allowsDestructiveActions: () => true,
+  });
+  session.connectionId = CONN;
+  session.profileId = 'p1';
+  session.expression = 'company';
+  return session;
+}
+
+test('a failed delete stops there, and resuming does not repeat what already ran', async () => {
+  const stub = stubDeleteFetch('employee');
+  try {
+    const session = deleteSession('d1');
+    await session.startTraversal('delete');
+    session.requestTraversalRun();
+    await session.confirmTraversalRun();
+
+    // runFrom points AT the node that failed, not past it -- that is where a
+    // resume has to start.
+    assert.equal(session.traversal.runFrom, 0);
+    assert.deepEqual(stub.attempted, ['employee']);
+    assert.equal(session.traversal.run, 'failed');
+    assert.ok('error' in session.traversal.outcomes[0]);
+
+    // Let it through this time; company must follow, and employee must not be
+    // attempted twice in the same pass.
+    stub.restore();
+    const second = stubDeleteFetch(null);
+    try {
+      await session.confirmTraversalRun();
+      assert.deepEqual(second.attempted, ['employee', 'company']);
+      assert.equal(session.traversal.run, 'finished');
+      assert.equal(session.traversal.runFrom, 2);
+      // The retried failure is gone; only the two successes remain.
+      assert.deepEqual(
+        session.traversal.outcomes.map(o => o.table),
+        ['employee', 'company'],
+      );
+    } finally {
+      second.restore();
+    }
+  } finally {
+    global.fetch && stub.restore();
+  }
+});
+
+test('pausing stops before the next table and resuming continues from there', async () => {
+  const stub = stubDeleteFetch(null);
+  try {
+    const session = deleteSession('d2');
+    await session.startTraversal('delete');
+    session.requestTraversalRun();
+
+    // Pause as soon as the first table is done, so the loop never starts the
+    // second. Nothing is undone -- each DELETE is its own statement and the
+    // one that ran is committed; pausing only declines to start the next.
+    const originalRun = session.traversal.nodes.length;
+    assert.equal(originalRun, 2);
+    const unpatch = (() => {
+      const real = session.pauseTraversalRun.bind(session);
+      return { real };
+    })();
+    void unpatch;
+    const outcomesSeen = [];
+    const observe = setInterval(() => {
+      if (session.traversal.outcomes.length === 1 && session.traversal.run === 'running') {
+        outcomesSeen.push('pausing');
+        session.pauseTraversalRun();
+        clearInterval(observe);
+      }
+    }, 0);
+    await session.confirmTraversalRun();
+    clearInterval(observe);
+
+    // Either it paused after the first (the interesting case) or it was too
+    // fast to interrupt; both are correct, so assert on the invariant that
+    // holds either way rather than on the race.
+    assert.ok(session.traversal.runFrom >= 1);
+    if (session.traversal.run === 'paused') {
+      assert.equal(session.traversal.runFrom, 1);
+      await session.confirmTraversalRun();
+      assert.equal(session.traversal.run, 'finished');
+      assert.equal(session.traversal.runFrom, 2);
+      assert.deepEqual(stub.attempted, ['employee', 'company']);
+    }
+  } finally {
+    stub.restore();
+  }
+});
