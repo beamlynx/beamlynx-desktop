@@ -32,6 +32,7 @@ import { getColorForAlias, shouldShowTableColors } from '../store/table-colors.u
 import { estimateColumnWidth } from './column-width.util';
 import { MIN_RESULT_COLUMN_WIDTH, MAX_RESULT_COLUMN_WIDTH } from '../constants';
 import { BarChart } from './BarChart';
+import TraversalResult from './TraversalResult';
 import JsonCellContent from './JsonCellContent';
 import JsonInspectorPanel from './JsonInspectorPanel';
 import {
@@ -754,6 +755,13 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     setExportData({ filename: defaultFilename, csvContent });
     setExportModalOpen(true);
   };
+
+  // A traversal is a result too -- it just wants a tree rather than a grid.
+  // Checked before the empty-state guard below, since a traversal has no
+  // columns and would otherwise be mistaken for "nothing has run yet".
+  if (session.traversal) {
+    return <TraversalResult session={session} />;
+  }
 
   if (columns.length === 0) {
     return (

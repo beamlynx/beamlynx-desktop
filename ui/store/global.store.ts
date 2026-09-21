@@ -1311,6 +1311,33 @@ export class GlobalStore {
    * this could create, since it doesn't touch mcpEnabled or policyId. See
    * credential-store.ts's setApplyPolicyToOwnQueries.
    */
+  /**
+   * Turns destructive actions on or off for one saved connection -- what the
+   * canvas's "Delete rows..." traversal checks before it will run the script
+   * it generated. See SavedConnectionMeta.allowDestructive.
+   */
+  setAllowDestructive = async (id: string, enabled: boolean): Promise<void> => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
+    const updated = await window.beamlynxDesktop.credentials.setAllowDestructive?.(id, enabled);
+    if (!updated) return;
+    runInAction(() => {
+      this.connections = this.connections.map(c =>
+        c.id === id ? { ...c, allowDestructive: updated.allowDestructive } : c,
+      );
+    });
+  };
+
+  /**
+   * Whether the given saved connection may be written to by an in-app action
+   * that generates its own statements. False for anything unsaved, and false
+   * on web, where there is no credential store to hold the decision.
+   */
+  allowsDestructiveActions = (profileId: string | undefined): boolean => {
+    if (!profileId) return false;
+    const connections = this.connections as ConnectionInfo[];
+    return connections.find(c => c.id === profileId)?.allowDestructive === true;
+  };
+
   setApplyPolicyToOwnQueries = async (id: string, apply: boolean): Promise<void> => {
     if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
     const updated = await window.beamlynxDesktop.credentials.setApplyPolicyToOwnQueries(id, apply);
@@ -1760,10 +1787,38 @@ export class GlobalStore {
    * traversal exists, and overwriting it to inspect a branch of its own
    * result would be a poor trade.
    */
-  openExpressionInNewTab = (expression: string) => {
+  openExpressionInNewTab = async (expression: string) => {
+    const from = this.activeSessionId;
     this.addTab();
     const session = this.sessions[this.activeSessionId];
-    if (session) session.expression = expression;
+    if (!session) return undefined;
+    // Closing this tab should land back where it was opened from, not on
+    // whatever happens to be first (see closeTab).
+    session.openedFrom = from;
+
+    // Prettified before it is shown. The expressions a traversal builds are
+    // assembled by appending joins, so they arrive as one long line with
+    // doubled spaces -- correct Pine, but not what anyone would have typed.
+    let text = expression;
+    try {
+      text = await session.prettifyExpression(expression);
+    } catch {
+      // A prettify that fails is cosmetic; show the raw expression rather
+      // than nothing.
+    }
+    runInAction(() => {
+      session.expression = text;
+    });
+
+    // The expression -> build reaction cannot do this one. It was created
+    // inside `addTab` above, and a reaction created mid-action defers its
+    // first tracked read until that action unwinds -- by which point the
+    // expression is already its final value, so no before/after transition is
+    // ever observed and the build never fires. `ast` stays null, which is
+    // exactly the "no nodes on the canvas" symptom. restoreSessions hit the
+    // same trap and documents it at length. Past the action now (this await),
+    // so bumping the counter is a real change the reaction sees.
+    session.requestHints();
     return session;
   };
 
@@ -1847,14 +1902,26 @@ export class GlobalStore {
       return;
     }
 
+    const closedIndex = sessionIds.indexOf(sessionId);
+    const openedFrom = this.sessions[sessionId]?.openedFrom;
+
     // Remove the session
     this.deleteSession(sessionId);
 
     // If the active tab is being closed, switch to another tab
     if (this.activeSessionId === sessionId && sessionIds.length > 1) {
-      const remainingSessions = this.visibleSessionIds;
-      if (remainingSessions.length > 0) {
-        this.activeSessionId = remainingSessions[0];
+      const remaining = this.visibleSessionIds;
+      if (remaining.length > 0) {
+        // Where this tab was opened from, if that tab is still open. A tab
+        // opened to go and look at something -- a row of a traversal -- is a
+        // detour, and finishing a detour should put you back where you
+        // started.
+        const returnTo = openedFrom && remaining.includes(openedFrom) ? openedFrom : undefined;
+        // Otherwise the neighbour on the left, or the new first tab if this
+        // was the leftmost. Jumping to tab one from anywhere in the strip
+        // loses your place for no reason.
+        const neighbour = remaining[Math.max(0, Math.min(closedIndex - 1, remaining.length - 1))];
+        this.activeSessionId = returnTo ?? neighbour ?? remaining[0];
       }
     }
   };

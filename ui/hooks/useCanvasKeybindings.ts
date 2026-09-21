@@ -236,7 +236,7 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
         case '+':
           if (isStart) return;
           e.preventDefault();
-          canvasStore.openMorePicker(alias, isFrame ? ['order', 'path'] : ['order', 'group', 'path'], isFrame, anchorFor(alias));
+          canvasStore.openMorePicker(alias, isFrame, anchorFor(alias));
           return;
         // 'x' and Delete/Backspace are the same gesture - "remove the thing
         // that's the target of a key right now" - so a person who reaches

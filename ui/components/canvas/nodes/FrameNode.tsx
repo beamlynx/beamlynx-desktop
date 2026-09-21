@@ -182,7 +182,7 @@ const FrameNode: React.FC<NodeProps<CanvasFrameNodeData>> = observer(({ id, data
             <ActionButton
               label="+"
               testId={`frame-action-more-${id}`}
-              onClick={anchor => canvasStore.openMorePicker(resolvedAlias, ['order', 'path'], true, anchor)}
+              onClick={anchor => canvasStore.openMorePicker(resolvedAlias, true, anchor)}
               suppressed={activeOperation !== null && activeOperation !== 'more'}
             />
           </>

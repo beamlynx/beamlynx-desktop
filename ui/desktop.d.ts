@@ -41,6 +41,15 @@ type SavedConnectionMeta = {
   // session sees real data on this connection unless they opt in.
   // Undefined (older saved connections) also means false.
   applyPolicyToOwnQueries?: boolean;
+  // Whether this connection may be written to by an action that generates the
+  // statements itself -- today only the canvas's "Delete rows..." traversal.
+  // Off by default, including for every connection saved before the field
+  // existed (credential-store.ts's toMeta). Decided per connection rather
+  // than per click: what separates a safe recursive delete from a
+  // catastrophic one is which database you are pointed at, and that is a
+  // decision worth making once, away from the moment of use. Unrelated to
+  // mcpEnabled/policyId, which govern what an agent may read.
+  allowDestructive?: boolean;
 };
 
 // `null` (SavedConnectionMeta's other failure shape) already means
@@ -140,6 +149,7 @@ interface BeamlynxDesktopApi {
     setMcpEnabled: (id: string, enabled: boolean) => Promise<SetMcpEnabledResult>;
     setConnectionPolicy: (id: string, policyId: string | null) => Promise<SetConnectionPolicyResult>;
     setApplyPolicyToOwnQueries: (id: string, apply: boolean) => Promise<SavedConnectionMeta | null>;
+    setAllowDestructive: (id: string, enabled: boolean) => Promise<SavedConnectionMeta | null>;
     rename: (id: string, label: string) => Promise<SavedConnectionMeta | null>;
   };
   // Named, user-creatable access policies -- each connection independently

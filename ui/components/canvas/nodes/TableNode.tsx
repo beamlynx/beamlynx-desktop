@@ -654,7 +654,7 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
         <ActionButton
           label="+"
           testId={`action-more-${data.alias}`}
-          onClick={anchor => canvasStore.openMorePicker(data.alias, ['order', 'group', 'path', 'traverse'], false, anchor)}
+          onClick={anchor => canvasStore.openMorePicker(data.alias, false, anchor)}
           suppressed={activeOperation !== null && activeOperation !== 'more'}
         />
       </div>

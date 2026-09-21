@@ -246,6 +246,12 @@ export type ConnectionInfo = {
   // access. See GlobalStore.setMcpEnabled and
   // beamlynx-plans/completed/2026-08-15-mcp-server-and-url-scheme.md.
   mcpEnabled?: boolean;
+  // Desktop-only: whether this connection may be written to by an action that
+  // generates the statements itself -- today only the canvas's "Delete
+  // rows..." traversal. Off by default, including for connections saved
+  // before the field existed. Unrelated to mcpEnabled/policyId: those govern
+  // what an agent may read, this governs what the owner's own app may write.
+  allowDestructive?: boolean;
   // Desktop-only: which access policy (if any) applies to this connection,
   // defaulted at connection creation (credential-store.ts's saveConnection)
   // to whichever policy exists first. Applies from any tab, not just
@@ -492,7 +498,13 @@ export class HttpClient {
     expression: string,
     connectionId?: string,
   ): Promise<{
-    expressions: { expression: string; column: string; table: string; schema: string | null }[];
+    expressions: {
+      expression: string;
+      column: string;
+      relatedColumn: string | null;
+      table: string;
+      schema: string | null;
+    }[];
     ast: Ast;
   }> {
     // Add trailing `|` explicitly for child expressions
@@ -522,6 +534,11 @@ export class HttpClient {
       .map(h => ({
         expression: `${x} ${h.pine}`,
         column: h.column,
+        // The column on THIS side of the join - which is how traversal.ts
+        // tells one composite foreign key split into pieces (the pieces
+        // point at different parent columns) from two genuinely separate
+        // foreign keys to the same table (both point at the same one).
+        relatedColumn: h['related-column'] ?? null,
         table: h.table,
         schema: h.schema,
       }));

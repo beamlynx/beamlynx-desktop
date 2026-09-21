@@ -27,7 +27,11 @@ export type TraversalNode = {
   parentId: string | null;
   table: string;
   schema: string | null;
-  /** The foreign key column linking this table to its parent; '' at the root. */
+  /**
+   * The column this node's own DELETE keys on: the foreign key linking it to
+   * its parent, or - at the root, which has no parent - the hardcoded `id`
+   * that rootTableOf supplies. See that function for why it is hardcoded.
+   */
   column: string;
   expression: string;
   depth: number;
@@ -54,6 +58,33 @@ export type TraversalResult = {
   nodes: TraversalNode[];
   /** True when the walk stopped somewhere because of MAX_DEPTH. */
   depthCapped: boolean;
+};
+
+/**
+ * The traversal's own client. Deliberately not the session's: that one carries
+ * an onBuild callback that writes every build's AST back into the session, and
+ * a traversal issues a build per node - which would leave the canvas rendering
+ * whichever child table the walk happened to finish on.
+ */
+export const traversalClient = new HttpClient();
+
+/** A traversal in flight or finished - see Session.startTraversal. */
+export type TraversalState = {
+  verb: TraversalVerb;
+  rootExpression: string;
+  status: TraversalStatus;
+  nodes: TraversalNode[];
+  depthCapped: boolean;
+  /** The BEGIN;...COMMIT; script, for the delete verb once the walk finishes. */
+  script: string | null;
+  error: string | null;
+  /**
+   * Where the "do it for real" half is up to. 'idle' means the script has been
+   * generated and nothing has run -- which is where a delete traversal stops
+   * unless the person explicitly goes further.
+   */
+  run: 'idle' | 'confirming' | 'running' | 'finished';
+  outcomes: DeleteOutcome[];
 };
 
 // ---------------------------------------------------------------------------
@@ -147,6 +178,37 @@ export class TraversalRevisitError extends Error {
   }
 }
 
+/**
+ * Thrown when a child table is reached through what is really one composite
+ * foreign key, which pine-lang reports as several independent single-column
+ * relations (see its docs/joins.md - combining them into one join is a
+ * separate change).
+ *
+ * Deleting through one column of a composite key over-matches, and the
+ * over-match is silent. Given
+ * `case_ref (case_id, search_id) -> kase (id, search_id)`, deleting
+ * `kase | where: id = 1` produces two DELETEs, and the second is
+ * `WHERE search_id IN (...)` alone - which also takes out rows belonging to a
+ * *different* kase that happens to share a search_id. Confirmed against a real
+ * database: a row whose parent survived the run was deleted anyway.
+ *
+ * Detected by the parent side of the join, which separates the two shapes
+ * cleanly. Pieces of one composite key point at different parent columns
+ * (`id` and `search_id`); two genuinely separate foreign keys to the same
+ * table point at the same one (`message.sender_id` and
+ * `message.recipient_id` both -> `appuser.id`), and for those the traversal is
+ * correct - it deletes the union, which is what deleting that parent means.
+ */
+export class CompositeKeyError extends Error {
+  constructor(public readonly table: string) {
+    super(
+      `Cannot delete through "${table}": it is linked by a foreign key made of more than one column, ` +
+        `and deleting on one column at a time would also remove rows belonging to other records.`,
+    );
+    this.name = 'CompositeKeyError';
+  }
+}
+
 export type WalkOptions = {
   connectionId?: string;
   maxDepth?: number;
@@ -159,6 +221,14 @@ export type WalkOptions = {
    * merely redundant there, not wrong.
    */
   forbidden?: Set<string>;
+  /**
+   * Whether this walk is planning a delete. Turns on the checks that only
+   * matter when the result will be used to remove rows: the composite-key
+   * refusal below, and `forbidden` above. Counting stays permissive - it
+   * reads, so the worst it can do is report a number that is larger than it
+   * should be, which is exactly what a composite key makes it do.
+   */
+  forDelete?: boolean;
   /** Called as each node's count lands, so a panel can fill in as it goes. */
   onNode?: (node: TraversalNode) => void;
 };
@@ -242,6 +312,23 @@ export const runTraversal = async (
     }
 
     const { expressions } = await client.makeChildExpressions(expression, options.connectionId);
+
+    if (options.forDelete) {
+      // One composite key arrives here as several single-column relations to
+      // the same table. Refuse before anything is generated - see
+      // CompositeKeyError.
+      const parentColumnsByTable = new Map<string, Set<string>>();
+      for (const child of expressions) {
+        const key = tableKey(child.table);
+        const seen = parentColumnsByTable.get(key) ?? new Set<string>();
+        seen.add(child.relatedColumn ?? '');
+        parentColumnsByTable.set(key, seen);
+      }
+      for (const [childTable, parentColumns] of Array.from(parentColumnsByTable)) {
+        if (parentColumns.size > 1) throw new CompositeKeyError(childTable);
+      }
+    }
+
     for (const child of expressions) {
       if (options.signal?.cancelled) return;
       const key = tableKey(child.table);
@@ -280,50 +367,101 @@ export const runTraversal = async (
 };
 
 /**
- * The table the root expression currently sits on, for labelling the root node.
+ * The column the root's own DELETE keys on.
  *
- * `column` is the one the root's own DELETE keys on, and it is hardcoded to
- * `id` -- carried forward from the routine this replaces, where the same
- * limitation lived as a FIXME. A table whose primary key is not `id` still
+ * Hardcoded, carried forward from the routine this replaces, where the same
+ * limitation lived as a FIXME: a table whose primary key is not `id` still
  * cannot be deleted through. It does not affect counting, which never uses it.
+ */
+const ROOT_COLUMN = 'id';
+
+/**
+ * The real name of the table the root expression sits on.
+ *
+ * Needs two builds, and the reason is a quirk worth stating: `selected-tables`
+ * deliberately omits the pipe's *final* table (pipeline.md), so a single-table
+ * expression like `company` reports no tables at all and there is nothing to
+ * look the current alias up in. Adding a trailing pipe makes that table no
+ * longer final, so the second build does list it -- and the first build is
+ * what says which alias to look for.
+ *
+ * The obvious shortcut, deriving the name from the alias, does not work:
+ * pine builds `c_0` from `company`, and stripping the suffix gives `c`.
  */
 const rootTableOf = async (
   client: HttpClient,
   expression: string,
   connectionId?: string,
 ): Promise<{ table: string; schema: string | null; column: string }> => {
-  const response = await client.build([expression], undefined, connectionId);
-  const ast = response?.ast;
-  const alias = ast?.current;
-  // `selected-tables` omits the pipe's final table (pipeline.md), so the
-  // current alias is usually not in it -- fall back to the last join's target
-  // table, and then to the alias itself, which is at worst a cosmetic label.
-  const fromSelected = ast?.['selected-tables']?.find(t => t.alias === alias);
-  if (fromSelected) {
-    return { table: fromSelected.table, schema: fromSelected.schema ?? null, column: 'id' };
-  }
-  const hint = lastJoinTarget(ast);
-  return { table: hint?.table ?? alias ?? 'table', schema: hint?.schema ?? null, column: 'id' };
-};
-
-const lastJoinTarget = (ast: Ast | undefined): { table: string; schema: string | null } | null => {
-  const joins = ast?.joins ?? [];
-  const last = joins[joins.length - 1];
-  if (!last) {
-    // No joins: a single-table expression. The table name is not in
-    // `selected-tables` either, so derive it from the alias, which pine-lang
-    // builds as <first letter(s)>_<index>.
-    const alias = ast?.current ?? '';
-    return alias ? { table: alias.replace(/_\d+$/, ''), schema: null } : null;
-  }
-  const hints = (ast?.hints?.table ?? []) as TableHint[];
-  const match = hints.find(h => h.table === last[1]);
-  return { table: last[1].replace(/_\d+$/, ''), schema: match?.schema ?? null };
+  const alias = (await client.build([expression], undefined, connectionId))?.ast?.current;
+  const probe = await client.build([`${expression} |`], undefined, connectionId);
+  const match = probe?.ast?.['selected-tables']?.find(t => t.alias === alias);
+  return {
+    // The alias is a poor label, but it is honest -- better than a guess that
+    // looks like a table name and is not one.
+    table: match?.table ?? alias ?? 'table',
+    schema: match?.schema ?? null,
+    column: ROOT_COLUMN,
+  };
 };
 
 // ---------------------------------------------------------------------------
 // The verbs
 // ---------------------------------------------------------------------------
+
+/** One node's outcome once the script has actually been run. */
+export type DeleteOutcome = { table: string; deleted: number } | { table: string; error: string };
+
+/**
+ * Runs a planned delete, one node at a time, in the order the nodes are in.
+ *
+ * Not by sending the generated script to /api/v1/sql, which is the obvious
+ * implementation and does not work: `run-sql` (pine-lang's db/exec.clj) picks
+ * SELECT-vs-action by string prefix, takes the action branch for a script
+ * starting with a comment, and hands the whole thing to `jdbc/execute!` --
+ * which prepares a statement, and PgJDBC refuses more than one command in a
+ * prepared statement. Its return shape assumes a single count too. The script
+ * fails outright rather than running non-atomically.
+ *
+ * So each node's own Pine goes down the ordinary eval path instead, as
+ * `<expr> | limit: N | delete! .<column>`. That keeps the whole thing inside
+ * the AST layer rather than reaching for raw SQL, and it lets the panel report
+ * each table as it goes.
+ *
+ * The cost, which the caller must state rather than imply: **there is no
+ * transaction across nodes.** A failure partway leaves the deeper deletes
+ * committed and the shallower ones not. For this shape that is an unfinished
+ * job rather than a corrupt one -- the order is children before parents, so a
+ * partial run never leaves a foreign key violated -- and re-running the
+ * traversal re-counts and finishes it.
+ */
+export const runDeleteScript = async (
+  client: HttpClient,
+  nodes: TraversalNode[],
+  connectionId?: string,
+  onOutcome?: (outcome: DeleteOutcome) => void,
+): Promise<DeleteOutcome[]> => {
+  const outcomes: DeleteOutcome[] = [];
+  for (const node of nodes) {
+    const expression = `${node.expression} | limit: ${node.count} | delete! .${node.column}`;
+    let outcome: DeleteOutcome;
+    try {
+      const response = await client.eval([expression], connectionId);
+      outcome = response?.error
+        ? { table: node.table, error: response.error }
+        : { table: node.table, deleted: Number(response?.result?.[1]?.[0] ?? 0) };
+    } catch (e) {
+      outcome = { table: node.table, error: e instanceof Error ? e.message : 'Failed' };
+    }
+    outcomes.push(outcome);
+    onOutcome?.(outcome);
+    // Stop at the first failure. Carrying on would try to delete a parent
+    // whose child still has rows, which fails on the foreign key anyway --
+    // and a wall of consequential errors buries the one that matters.
+    if ('error' in outcome) break;
+  }
+  return outcomes;
+};
 
 /** The `BEGIN; ... COMMIT;` script for a completed delete traversal. */
 export const buildDeleteScript = async (

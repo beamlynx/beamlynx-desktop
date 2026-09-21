@@ -16,6 +16,11 @@ export class DefaultPlugin implements PluginInterface {
       // session.message = '⏳ Fetching rows ...';
       session.error = '';
       session.loading = true;
+      // Running a query means the results pane is showing that query now, not
+      // whatever traversal was last in it. Non-null `traversal` is what makes
+      // the pane render a traversal instead of rows, so clearing it here is
+      // the whole handover.
+      session.traversal = null;
     });
 
     // In SQL mode, running with text selected runs only the selection.

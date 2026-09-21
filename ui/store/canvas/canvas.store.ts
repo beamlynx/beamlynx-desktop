@@ -1,5 +1,5 @@
 import { makeAutoObservable, reaction, runInAction } from 'mobx';
-import { HttpClient, PathHint, TableHint } from '../client';
+import { PathHint, TableHint } from '../client';
 import { Session } from '../session';
 import {
   CanvasFrameNode,
@@ -7,6 +7,8 @@ import {
   CanvasTableNode,
   ConfigItem,
   JoinType,
+  MORE_ACTIONS_FOR_FRAME,
+  MORE_ACTIONS_FOR_TABLE,
   MoreAction,
   OrderDirection,
   PENDING_CHECKPOINT_FRAME_ID,
@@ -32,15 +34,7 @@ import {
 } from './pine-text';
 import * as actions from './pine-actions';
 import { probeBuild } from './probe';
-import {
-  buildDeleteScript,
-  canDeleteTraverse,
-  runTraversal,
-  tablesInExpression,
-  TraversalNode,
-  TraversalStatus,
-  TraversalVerb,
-} from './traversal';
+import { canDeleteTraverse } from './traversal';
 import { computeDateBounds } from './relative-date';
 
 const hasMultipleBlocks = (expression: string): boolean => /\n\s*\n/.test(expression.trim());
@@ -74,44 +68,10 @@ type FocusStop = { kind: 'node'; alias: string } | { kind: 'config'; alias: stri
  * finishes. Nothing here talks to the pine-lang server except through that
  * one path plus the read-only probeBuild used for picker options.
  */
-/**
- * The traversal's own client. Deliberately not the session's: that one carries
- * an onBuild callback that writes every build's AST back into the session, and
- * a traversal issues a build per node - which would leave the canvas rendering
- * whichever child table the walk happened to finish on.
- */
-const traversalClient = new HttpClient();
-
-/** A traversal in flight or finished - see CanvasStore.startTraversal. */
-export type TraversalState = {
-  verb: TraversalVerb;
-  rootExpression: string;
-  status: TraversalStatus;
-  nodes: TraversalNode[];
-  depthCapped: boolean;
-  /** The BEGIN;...COMMIT; script, for the delete verb once the walk finishes. */
-  script: string | null;
-  error: string | null;
-};
-
 export class CanvasStore {
   positions: Record<string, { x: number; y: number }> = {};
   picker: PickerState = { open: false };
 
-  /**
-   * The traversal shown in the panel, or null when there is none. Held as
-   * state rather than run as a one-shot call so the panel can fill in as the
-   * walk goes, the walk can be cancelled, and each node's expression stays
-   * around to be opened.
-   */
-  traversal: TraversalState | null = null;
-
-  /**
-   * Cancellation for the in-flight walk. Identity doubles as a generation
-   * check: a late callback from a superseded walk finds this !== its own
-   * signal and drops its result instead of writing over the newer one.
-   */
-  private traversalSignal: { cancelled: boolean } | null = null;
   canvasGraph: CanvasGraph = emptyGraph;
   /** Aliases of the currently box/shift-selected table nodes - see Canvas.tsx's onSelectionChange. */
   selectedAliases: string[] = [];
@@ -1112,9 +1072,17 @@ export class CanvasStore {
    * 'join-type' rendering, the closest existing precedent for a small static
    * popover).
    */
+  /**
+   * The "+" overflow menu. What it offers is decided here, from `isFrame`
+   * alone - callers used to pass the list too, and a caller that can pass a
+   * list is a caller that can pass the wrong one. That is not hypothetical:
+   * `traverse` was added to the button's list and the keyboard shortcut kept
+   * opening a menu without it, because it had its own copy. There is nothing
+   * left to keep in step now; a new action is one edit to MORE_ACTIONS_FOR_*
+   * and every way of opening this menu has it.
+   */
   openMorePicker(
     alias: string,
-    offer: MoreAction[],
     isFrame: boolean,
     anchor: PickerAnchor = CanvasStore.defaultAnchor,
   ) {
@@ -1123,6 +1091,7 @@ export class CanvasStore {
       return;
     }
     this.focusNode(alias);
+    const offer = isFrame ? MORE_ACTIONS_FOR_FRAME : MORE_ACTIONS_FOR_TABLE;
     this.picker = { open: true, mode: 'more', alias, offer, isFrame, anchor };
   }
 
@@ -1181,105 +1150,6 @@ export class CanvasStore {
     };
   }
 
-  /**
-   * Runs a traversal from the expression as it stands.
-   *
-   * The root is `session.expression`, unmodified. There's no rooting logic
-   * here because the walk only ever *appends*: each node one level down is
-   * its parent's expression plus one more join (see traversal.ts). Acting on
-   * a node that isn't the end of the pipe is already handled the way every
-   * other canvas gesture handles it - a `from:` committed into the expression
-   * first (commitJoin's fromAlias) - so by the time this runs, the expression
-   * already points where it should.
-   */
-  async startTraversal(verb: TraversalVerb) {
-    const rootExpression = this.session.expression.trim();
-    if (!rootExpression) return;
-    this.closePicker();
-
-    const signal = { cancelled: false };
-    this.traversalSignal = signal;
-    runInAction(() => {
-      this.traversal = {
-        verb,
-        rootExpression,
-        status: 'walking',
-        nodes: [],
-        depthCapped: false,
-        script: null,
-        error: null,
-      };
-    });
-
-    try {
-      // The delete verb gets the run-time backstop. The two conditions
-      // canDeleteTraverse checks are an argument about the foreign-key graph,
-      // and the cost of that argument being wrong is a delete that silently
-      // removes nothing. Counting needs no such guard - it only reads.
-      const forbidden =
-        verb === 'delete'
-          ? tablesInExpression(this.session.ast, this.session.ast?.current ?? '')
-          : undefined;
-      const result = await runTraversal(traversalClient, rootExpression, {
-        connectionId: this.session.connectionId,
-        signal,
-        forbidden,
-        onNode: node =>
-          runInAction(() => {
-            if (this.traversal && this.traversalSignal === signal) {
-              this.traversal.nodes = [...this.traversal.nodes, node];
-            }
-          }),
-      });
-      if (signal.cancelled) {
-        runInAction(() => {
-          if (this.traversal && this.traversalSignal === signal) this.traversal.status = 'cancelled';
-        });
-        return;
-      }
-      const script =
-        verb === 'delete'
-          ? await buildDeleteScript(traversalClient, result.nodes, this.session.connectionId)
-          : null;
-      runInAction(() => {
-        if (!this.traversal || this.traversalSignal !== signal) return;
-        // Replaces the streamed list rather than appending to it: onNode
-        // fires as each count lands, so the panel fills in while the walk
-        // runs, but the finished list is post-order - the order the DELETEs
-        // have to run in.
-        this.traversal.nodes = result.nodes;
-        this.traversal.depthCapped = result.depthCapped;
-        this.traversal.script = script;
-        this.traversal.status = 'done';
-      });
-    } catch (e) {
-      runInAction(() => {
-        if (!this.traversal || this.traversalSignal !== signal) return;
-        this.traversal.status = 'failed';
-        this.traversal.error = e instanceof Error ? e.message : 'Traversal failed';
-      });
-    }
-  }
-
-  /**
-   * Opens one row of the traversal in a new tab. Each node's `expression` is
-   * ordinary Pine - the walk builds them by appending joins - so this needs
-   * no "traversal result" viewer, just a tab.
-   */
-  openTraversalNode(node: TraversalNode) {
-    this.session.globalStore?.openExpressionInNewTab?.(node.expression);
-  }
-
-  cancelTraversal() {
-    if (this.traversalSignal) this.traversalSignal.cancelled = true;
-  }
-
-  closeTraversal() {
-    this.cancelTraversal();
-    runInAction(() => {
-      this.traversal = null;
-    });
-  }
 
   openColumnPicker(
     kind: 'select' | 'where' | 'order' | 'group',
