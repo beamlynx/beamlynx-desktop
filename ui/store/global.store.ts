@@ -1311,6 +1311,33 @@ export class GlobalStore {
    * this could create, since it doesn't touch mcpEnabled or policyId. See
    * credential-store.ts's setApplyPolicyToOwnQueries.
    */
+  /**
+   * Turns destructive actions on or off for one saved connection -- what the
+   * canvas's "Delete rows..." traversal checks before it will run the script
+   * it generated. See SavedConnectionMeta.allowDestructive.
+   */
+  setAllowDestructive = async (id: string, enabled: boolean): Promise<void> => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
+    const updated = await window.beamlynxDesktop.credentials.setAllowDestructive?.(id, enabled);
+    if (!updated) return;
+    runInAction(() => {
+      this.connections = this.connections.map(c =>
+        c.id === id ? { ...c, allowDestructive: updated.allowDestructive } : c,
+      );
+    });
+  };
+
+  /**
+   * Whether the given saved connection may be written to by an in-app action
+   * that generates its own statements. False for anything unsaved, and false
+   * on web, where there is no credential store to hold the decision.
+   */
+  allowsDestructiveActions = (profileId: string | undefined): boolean => {
+    if (!profileId) return false;
+    const connections = this.connections as ConnectionInfo[];
+    return connections.find(c => c.id === profileId)?.allowDestructive === true;
+  };
+
   setApplyPolicyToOwnQueries = async (id: string, apply: boolean): Promise<void> => {
     if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
     const updated = await window.beamlynxDesktop.credentials.setApplyPolicyToOwnQueries(id, apply);

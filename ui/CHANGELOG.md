@@ -11,6 +11,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **Delete rows…** produces the same `BEGIN;` … `COMMIT;` script `delete:` produced before -- identical, byte for byte -- and stops there. It says so: nothing has been deleted. Running it is still your own step, as it always was.
 - Delete is offered only where it would be correct. Given an expression that joins back *up* (`employee | company`), the walk would empty a table the query itself depends on, and the delete would then remove nothing while reporting success. That is now caught before you can click it, and the menu entry says why instead of quietly vanishing.
 
+- **Delete rows…** can now actually run what it planned, once you have allowed it for that connection. A new **Allow destructive actions** switch in Settings → Connections is off by default and off for every connection you already had. Without it the Run button stays disabled and says why. With it on, Run asks you to confirm — naming the connection *and* its host, listing each table and its row count — before anything happens.
+- The deletes run one table at a time, deepest first, and the confirmation says so: if one fails the rest are left alone, nothing is rolled back, and re-running finishes the job. A partial run never leaves a broken reference behind, because children always go before their parents.
+
 ### Changed
 - `delete:` is gone from Pine, replaced by the canvas action above. A saved tab still ending in `delete:` has it removed when the tab is restored -- without that the tab would come back blank, since one unparseable word stops the canvas reading any of the expression.
 

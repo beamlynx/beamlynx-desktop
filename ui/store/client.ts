@@ -246,6 +246,12 @@ export type ConnectionInfo = {
   // access. See GlobalStore.setMcpEnabled and
   // beamlynx-plans/completed/2026-08-15-mcp-server-and-url-scheme.md.
   mcpEnabled?: boolean;
+  // Desktop-only: whether this connection may be written to by an action that
+  // generates the statements itself -- today only the canvas's "Delete
+  // rows..." traversal. Off by default, including for connections saved
+  // before the field existed. Unrelated to mcpEnabled/policyId: those govern
+  // what an agent may read, this governs what the owner's own app may write.
+  allowDestructive?: boolean;
   // Desktop-only: which access policy (if any) applies to this connection,
   // defaulted at connection creation (credential-store.ts's saveConnection)
   // to whichever policy exists first. Applies from any tab, not just

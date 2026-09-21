@@ -325,6 +325,60 @@ const lastJoinTarget = (ast: Ast | undefined): { table: string; schema: string |
 // The verbs
 // ---------------------------------------------------------------------------
 
+/** One node's outcome once the script has actually been run. */
+export type DeleteOutcome = { table: string; deleted: number } | { table: string; error: string };
+
+/**
+ * Runs a planned delete, one node at a time, in the order the nodes are in.
+ *
+ * Not by sending the generated script to /api/v1/sql, which is the obvious
+ * implementation and does not work: `run-sql` (pine-lang's db/exec.clj) picks
+ * SELECT-vs-action by string prefix, takes the action branch for a script
+ * starting with a comment, and hands the whole thing to `jdbc/execute!` --
+ * which prepares a statement, and PgJDBC refuses more than one command in a
+ * prepared statement. Its return shape assumes a single count too. The script
+ * fails outright rather than running non-atomically.
+ *
+ * So each node's own Pine goes down the ordinary eval path instead, as
+ * `<expr> | limit: N | delete! .<column>`. That keeps the whole thing inside
+ * the AST layer rather than reaching for raw SQL, and it lets the panel report
+ * each table as it goes.
+ *
+ * The cost, which the caller must state rather than imply: **there is no
+ * transaction across nodes.** A failure partway leaves the deeper deletes
+ * committed and the shallower ones not. For this shape that is an unfinished
+ * job rather than a corrupt one -- the order is children before parents, so a
+ * partial run never leaves a foreign key violated -- and re-running the
+ * traversal re-counts and finishes it.
+ */
+export const runDeleteScript = async (
+  client: HttpClient,
+  nodes: TraversalNode[],
+  connectionId?: string,
+  onOutcome?: (outcome: DeleteOutcome) => void,
+): Promise<DeleteOutcome[]> => {
+  const outcomes: DeleteOutcome[] = [];
+  for (const node of nodes) {
+    const expression = `${node.expression} | limit: ${node.count} | delete! .${node.column}`;
+    let outcome: DeleteOutcome;
+    try {
+      const response = await client.eval([expression], connectionId);
+      outcome = response?.error
+        ? { table: node.table, error: response.error }
+        : { table: node.table, deleted: Number(response?.result?.[1]?.[0] ?? 0) };
+    } catch (e) {
+      outcome = { table: node.table, error: e instanceof Error ? e.message : 'Failed' };
+    }
+    outcomes.push(outcome);
+    onOutcome?.(outcome);
+    // Stop at the first failure. Carrying on would try to delete a parent
+    // whose child still has rows, which fails on the foreign key anyway --
+    // and a wall of consequential errors buries the one that matters.
+    if ('error' in outcome) break;
+  }
+  return outcomes;
+};
+
 /** The `BEGIN; ... COMMIT;` script for a completed delete traversal. */
 export const buildDeleteScript = async (
   client: HttpClient,

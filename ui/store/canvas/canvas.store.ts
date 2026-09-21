@@ -35,6 +35,8 @@ import { probeBuild } from './probe';
 import {
   buildDeleteScript,
   canDeleteTraverse,
+  DeleteOutcome,
+  runDeleteScript,
   runTraversal,
   tablesInExpression,
   TraversalNode,
@@ -92,6 +94,13 @@ export type TraversalState = {
   /** The BEGIN;...COMMIT; script, for the delete verb once the walk finishes. */
   script: string | null;
   error: string | null;
+  /**
+   * Where the "do it for real" half is up to. 'idle' means the script has been
+   * generated and nothing has run -- which is where a delete traversal stops
+   * unless the person explicitly goes further.
+   */
+  run: 'idle' | 'confirming' | 'running' | 'finished';
+  outcomes: DeleteOutcome[];
 };
 
 export class CanvasStore {
@@ -1208,6 +1217,8 @@ export class CanvasStore {
         depthCapped: false,
         script: null,
         error: null,
+        run: 'idle',
+        outcomes: [],
       };
     });
 
@@ -1268,6 +1279,77 @@ export class CanvasStore {
    */
   openTraversalNode(node: TraversalNode) {
     this.session.globalStore?.openExpressionInNewTab?.(node.expression);
+  }
+
+  /**
+   * Whether this tab's connection has been opted in to destructive actions.
+   * False for an unsaved connection, and false on web, where there is no
+   * credential store to hold the decision - see
+   * SavedConnectionMeta.allowDestructive.
+   */
+  get canRunDelete(): boolean {
+    return this.session.globalStore?.allowsDestructiveActions?.(this.session.profileId) === true;
+  }
+
+  /**
+   * How the connection is named in the confirmation. Its label AND its host,
+   * because a label alone is exactly the thing someone misreads when two
+   * connections are called something similar - and "which database" is the
+   * mistake the confirmation exists to catch.
+   */
+  get connectionLabel(): string {
+    const connections = (this.session.globalStore?.connections ?? []) as {
+      id: string;
+      label?: string;
+      dbHost?: string;
+      dbName?: string;
+    }[];
+    const match = connections.find(c => c.id === this.session.profileId);
+    if (!match) return this.session.connectionId || 'this connection';
+    const where = [match.dbHost, match.dbName].filter(Boolean).join('/');
+    return where ? `${match.label ?? match.id} (${where})` : (match.label ?? match.id);
+  }
+
+  /** Opens the confirmation. Deliberately a separate step from running. */
+  requestTraversalRun() {
+    if (!this.traversal || this.traversal.verb !== 'delete' || !this.traversal.script) return;
+    if (!this.canRunDelete) return;
+    runInAction(() => {
+      if (this.traversal) this.traversal.run = 'confirming';
+    });
+  }
+
+  dismissTraversalRun() {
+    runInAction(() => {
+      if (this.traversal && this.traversal.run === 'confirming') this.traversal.run = 'idle';
+    });
+  }
+
+  /**
+   * Runs the planned deletes. Gated twice on purpose, for two different
+   * mistakes: `canRunDelete` catches the wrong *database*, decided once per
+   * connection; the confirmation catches the wrong *query*, which you only
+   * notice with the numbers in front of you.
+   */
+  async confirmTraversalRun() {
+    const traversal = this.traversal;
+    if (!traversal || traversal.run !== 'confirming' || !this.canRunDelete) return;
+    runInAction(() => {
+      traversal.run = 'running';
+      traversal.outcomes = [];
+    });
+    await runDeleteScript(
+      traversalClient,
+      traversal.nodes,
+      this.session.connectionId,
+      outcome =>
+        runInAction(() => {
+          if (this.traversal === traversal) traversal.outcomes = [...traversal.outcomes, outcome];
+        }),
+    );
+    runInAction(() => {
+      if (this.traversal === traversal) traversal.run = 'finished';
+    });
   }
 
   cancelTraversal() {
