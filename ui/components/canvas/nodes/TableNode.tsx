@@ -1,12 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { Handle, NodeProps, Position, useUpdateNodeInternals } from 'reactflow';
-import {
-  CanvasHandle,
-  CanvasTableNodeData,
-  MORE_ACTIONS_FOR_TABLE,
-  PickerState,
-} from '../../../store/canvas/canvas.model';
+import { CanvasHandle, CanvasTableNodeData, PickerState } from '../../../store/canvas/canvas.model';
 import { getNodeHeight, nodeWidth } from '../../../store/canvas/layout';
 import { useCanvasStore } from '../canvas-context';
 import { useStores } from '../../../store/store-container';
@@ -659,7 +654,7 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
         <ActionButton
           label="+"
           testId={`action-more-${data.alias}`}
-          onClick={anchor => canvasStore.openMorePicker(data.alias, MORE_ACTIONS_FOR_TABLE, false, anchor)}
+          onClick={anchor => canvasStore.openMorePicker(data.alias, false, anchor)}
           suppressed={activeOperation !== null && activeOperation !== 'more'}
         />
       </div>

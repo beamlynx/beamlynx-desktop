@@ -2,12 +2,7 @@ import { useEffect } from 'react';
 import { CanvasStore } from '../store/canvas/canvas.store';
 import { Session } from '../store/session';
 import { GlobalStore } from '../store/global.store';
-import {
-  CanvasTableNodeData,
-  MORE_ACTIONS_FOR_FRAME,
-  MORE_ACTIONS_FOR_TABLE,
-  START_NODE_ID,
-} from '../store/canvas/canvas.model';
+import { CanvasTableNodeData, START_NODE_ID } from '../store/canvas/canvas.model';
 
 interface CanvasKeybindingsProps {
   canvasStore: CanvasStore;
@@ -241,12 +236,7 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
         case '+':
           if (isStart) return;
           e.preventDefault();
-          canvasStore.openMorePicker(
-            alias,
-            isFrame ? MORE_ACTIONS_FOR_FRAME : MORE_ACTIONS_FOR_TABLE,
-            isFrame,
-            anchorFor(alias),
-          );
+          canvasStore.openMorePicker(alias, isFrame, anchorFor(alias));
           return;
         // 'x' and Delete/Backspace are the same gesture - "remove the thing
         // that's the target of a key right now" - so a person who reaches

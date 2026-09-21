@@ -137,3 +137,26 @@ test('closing a tab with no origin falls back to its left-hand neighbour', () =>
   store.closeTab(a.id);
   assert.equal(store.activeSessionId, b.id);
 });
+
+// The "+" menu and its keyboard shortcut have to offer the same thing. They
+// did not: each call site passed its own list, and `traverse` was added to
+// the button's copy only. The fix is that callers cannot pass a list at all --
+// openMorePicker derives it from isFrame -- so this asserts the shape that
+// makes drift impossible rather than re-checking the two lists match.
+const { readFileSync } = require('node:fs');
+const { join } = require('node:path');
+
+test('nothing outside the store decides what the "+" menu offers', () => {
+  const callers = [
+    'components/canvas/nodes/TableNode.tsx',
+    'components/canvas/nodes/FrameNode.tsx',
+    'hooks/useCanvasKeybindings.ts',
+  ];
+  for (const file of callers) {
+    const source = readFileSync(join(process.cwd(), file), 'utf8');
+    assert.ok(
+      !/MORE_ACTIONS_FOR_(TABLE|FRAME)/.test(source),
+      `${file} names an action list -- openMorePicker(alias, isFrame, anchor) decides that, or the two menus drift again`,
+    );
+  }
+});

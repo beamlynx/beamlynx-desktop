@@ -7,6 +7,8 @@ import {
   CanvasTableNode,
   ConfigItem,
   JoinType,
+  MORE_ACTIONS_FOR_FRAME,
+  MORE_ACTIONS_FOR_TABLE,
   MoreAction,
   OrderDirection,
   PENDING_CHECKPOINT_FRAME_ID,
@@ -1070,9 +1072,17 @@ export class CanvasStore {
    * 'join-type' rendering, the closest existing precedent for a small static
    * popover).
    */
+  /**
+   * The "+" overflow menu. What it offers is decided here, from `isFrame`
+   * alone - callers used to pass the list too, and a caller that can pass a
+   * list is a caller that can pass the wrong one. That is not hypothetical:
+   * `traverse` was added to the button's list and the keyboard shortcut kept
+   * opening a menu without it, because it had its own copy. There is nothing
+   * left to keep in step now; a new action is one edit to MORE_ACTIONS_FOR_*
+   * and every way of opening this menu has it.
+   */
   openMorePicker(
     alias: string,
-    offer: MoreAction[],
     isFrame: boolean,
     anchor: PickerAnchor = CanvasStore.defaultAnchor,
   ) {
@@ -1081,6 +1091,7 @@ export class CanvasStore {
       return;
     }
     this.focusNode(alias);
+    const offer = isFrame ? MORE_ACTIONS_FOR_FRAME : MORE_ACTIONS_FOR_TABLE;
     this.picker = { open: true, mode: 'more', alias, offer, isFrame, anchor };
   }
 
