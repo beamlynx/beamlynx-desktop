@@ -6,7 +6,13 @@ import { Session, Theme, InputMode } from './session';
 import { THEME_MODE, ThemeId } from '../styles/palette/tokens';
 import { UiFontId, CodeFontId } from '../styles/fonts';
 import { TextSize } from '../styles/text-size';
-import { RequiredVersion } from '../constants';
+import {
+  DEFAULT_NEW_LAYOUT_PANEL_HEIGHT,
+  DEFAULT_NEW_LAYOUT_PANEL_WIDTH,
+  DEFAULT_NEW_LAYOUT_PANE_HEIGHT,
+  DEFAULT_NEW_LAYOUT_PANE_WIDTH,
+  RequiredVersion,
+} from '../constants';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
 import { DevState } from './dev-state';
 import { leadingDoc } from './canvas/pine-text';
@@ -348,6 +354,42 @@ export class GlobalStore {
   // something that should vary tab to tab.
   _newLayoutPanelVisible: boolean;
 
+  /**
+   * The split sizes, in pixels. Global rather than per-tab, and held here so a
+   * tab switch cannot reset them -- see the constructor. The dividers write
+   * through these setters as they drag; persisting stays with the divider,
+   * which already owns the storage key for each (ResizableDividers.tsx).
+   */
+  _newLayoutPaneWidth: number;
+  _newLayoutPaneHeight: number;
+  _newLayoutPanelWidth: number;
+  _newLayoutPanelHeight: number;
+
+  get newLayoutPaneWidth(): number {
+    return this._newLayoutPaneWidth;
+  }
+  set newLayoutPaneWidth(value: number) {
+    this._newLayoutPaneWidth = value;
+  }
+  get newLayoutPaneHeight(): number {
+    return this._newLayoutPaneHeight;
+  }
+  set newLayoutPaneHeight(value: number) {
+    this._newLayoutPaneHeight = value;
+  }
+  get newLayoutPanelWidth(): number {
+    return this._newLayoutPanelWidth;
+  }
+  set newLayoutPanelWidth(value: number) {
+    this._newLayoutPanelWidth = value;
+  }
+  get newLayoutPanelHeight(): number {
+    return this._newLayoutPanelHeight;
+  }
+  set newLayoutPanelHeight(value: number) {
+    this._newLayoutPanelHeight = value;
+  }
+
   get newLayoutPanelVisible(): boolean {
     return this._newLayoutPanelVisible;
   }
@@ -523,6 +565,17 @@ export class GlobalStore {
       'horizontal',
     );
     this._tabOrientation = getUserPreference(STORAGE_KEYS.TAB_ORIENTATION, 'horizontal');
+    // Read here, with every other preference, rather than in the components
+    // that use them. They are global -- one panel width for the app, not one
+    // per tab -- and MUI unmounts an inactive tab's children, so a component
+    // reading them on mount re-read them on every tab switch: the layout
+    // started at its default size and moved to the saved one a commit later.
+    // Visible as the canvas resizing, the graph recentring, and even the empty
+    // results placeholder drifting, every time you changed tab.
+    this._newLayoutPaneWidth = getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANE_WIDTH, DEFAULT_NEW_LAYOUT_PANE_WIDTH);
+    this._newLayoutPaneHeight = getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANE_HEIGHT, DEFAULT_NEW_LAYOUT_PANE_HEIGHT);
+    this._newLayoutPanelWidth = getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_WIDTH, DEFAULT_NEW_LAYOUT_PANEL_WIDTH);
+    this._newLayoutPanelHeight = getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_HEIGHT, DEFAULT_NEW_LAYOUT_PANEL_HEIGHT);
     this._commandHistory = getUserPreference(STORAGE_KEYS.COMMAND_HISTORY, []);
     this.connectionColors = getUserPreference(STORAGE_KEYS.CONNECTION_COLORS, {});
     makeAutoObservable(this);
@@ -1311,33 +1364,6 @@ export class GlobalStore {
    * this could create, since it doesn't touch mcpEnabled or policyId. See
    * credential-store.ts's setApplyPolicyToOwnQueries.
    */
-  /**
-   * Turns destructive actions on or off for one saved connection -- what the
-   * canvas's "Delete rows..." traversal checks before it will run the script
-   * it generated. See SavedConnectionMeta.allowDestructive.
-   */
-  setAllowDestructive = async (id: string, enabled: boolean): Promise<void> => {
-    if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
-    const updated = await window.beamlynxDesktop.credentials.setAllowDestructive?.(id, enabled);
-    if (!updated) return;
-    runInAction(() => {
-      this.connections = this.connections.map(c =>
-        c.id === id ? { ...c, allowDestructive: updated.allowDestructive } : c,
-      );
-    });
-  };
-
-  /**
-   * Whether the given saved connection may be written to by an in-app action
-   * that generates its own statements. False for anything unsaved, and false
-   * on web, where there is no credential store to hold the decision.
-   */
-  allowsDestructiveActions = (profileId: string | undefined): boolean => {
-    if (!profileId) return false;
-    const connections = this.connections as ConnectionInfo[];
-    return connections.find(c => c.id === profileId)?.allowDestructive === true;
-  };
-
   setApplyPolicyToOwnQueries = async (id: string, apply: boolean): Promise<void> => {
     if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
     const updated = await window.beamlynxDesktop.credentials.setApplyPolicyToOwnQueries(id, apply);

@@ -471,7 +471,6 @@ const ConnectionRow = observer(
     mcpEnabled,
     policyId,
     applyPolicyToOwnQueries,
-    allowDestructive,
     isActive,
     isLive,
     switchDisabled,
@@ -482,7 +481,6 @@ const ConnectionRow = observer(
     mcpEnabled?: boolean;
     policyId?: string | null;
     applyPolicyToOwnQueries?: boolean;
-    allowDestructive?: boolean;
     isActive: boolean;
     isLive: boolean;
     switchDisabled: boolean;
@@ -947,12 +945,6 @@ const ConnectionRow = observer(
               disabled={!policyId}
             />
 
-            <ToggleRow
-              label="Allow destructive actions"
-              description="Let the canvas's “Delete rows…” actually run the deletes it plans, instead of only showing you the queries. Sensible for a local or staging database; leave it off for anything you cannot afford to lose."
-              checked={!!allowDestructive}
-              onChange={value => global.setAllowDestructive(id, value)}
-            />
 
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 0.5 }}>
               <Button
@@ -1108,7 +1100,7 @@ const ConnectionsSection = () => {
           </Typography>
         )}
         {global.connections.map(
-          ({ id, label, mcpEnabled, policyId, applyPolicyToOwnQueries, allowDestructive }) => {
+          ({ id, label, mcpEnabled, policyId, applyPolicyToOwnQueries }) => {
             const isActive = isDesktop()
               ? id === global.activeProfileId
               : id === activeSession?.connectionId;
@@ -1121,7 +1113,6 @@ const ConnectionsSection = () => {
                 mcpEnabled={mcpEnabled}
                 policyId={policyId}
                 applyPolicyToOwnQueries={applyPolicyToOwnQueries}
-                allowDestructive={allowDestructive}
                 isActive={isActive}
                 isLive={isLive}
                 switchDisabled={switchingConnection}
