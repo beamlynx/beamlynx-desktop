@@ -145,16 +145,16 @@ export const canDeleteTraverse = (ast: Ast | null | undefined): DeleteEligibilit
   if (!ast || !ast.current) return { ok: false, reason: 'Pick a table first.' };
   const joins = ast.joins ?? [];
 
-  // 1. Every join points parent -> child. JoinRelation's third element is
-  //    'has' (the `from` alias is the parent) or 'of' (it is the child) --
-  //    the same field layout.ts reads as `parentIsFrom`. An unresolved
-  //    relation (null) is disqualifying: an unknown direction is not a safe
-  //    one to assume is downward.
-  for (const [from, to, relation] of joins) {
-    if (!relation) {
+  // 1. Every join points parent -> child. A join's `parent` says which of its
+  //    two sides owns the key: 'from' means the `from` alias is the parent,
+  //    'to' means it is the child -- the same field layout.ts reads as
+  //    `parentIsFrom`. An unresolved join is disqualifying: an unknown
+  //    direction is not a safe one to assume is downward.
+  for (const { from, to, parent, resolution } of joins) {
+    if (!resolution) {
       return { ok: false, reason: `The join between ${from} and ${to} could not be resolved.` };
     }
-    if (relation[2] !== 'has') {
+    if (parent !== 'from') {
       return {
         ok: false,
         reason: `Delete needs every join to go from parent to child, and this one joins ${to} back up from ${from}.`,
@@ -172,10 +172,10 @@ export const canDeleteTraverse = (ast: Ast | null | undefined): DeleteEligibilit
   //    ast['selected-tables'], which deliberately omits the pipe's final
   //    table (see pipeline.md) and so cannot answer this.
   const lastJoin = joins[joins.length - 1];
-  if (lastJoin && lastJoin[1] !== ast.current) {
+  if (lastJoin && lastJoin.to !== ast.current) {
     return {
       ok: false,
-      reason: `Delete starts from the end of the pipe, and this expression points back at ${ast.current}. Remove the \`from:\` to delete from ${lastJoin[1]}.`,
+      reason: `Delete starts from the end of the pipe, and this expression points back at ${ast.current}. Remove the \`from:\` to delete from ${lastJoin.to}.`,
     };
   }
 

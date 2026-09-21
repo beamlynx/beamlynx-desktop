@@ -15,10 +15,27 @@ const {
   MAX_DEPTH,
 } = require('../store/canvas/traversal.ts');
 
-// A JoinRelation is [alias1, col1, direction, alias2, col2, resolution, needsCast].
-// 'has' means the `from` alias is the parent; 'of' means it is the child.
-const has = (from, to) => [from, to, [from, 'id', 'has', to, 'fk_id', 'fk', false], null];
-const of_ = (from, to) => [from, to, [from, 'fk_id', 'of', to, 'id', 'fk', false], null];
+// A join is a map (see Join in store/client.ts). `parent` names the side that
+// owns the key: 'from' means the `from` alias is the parent, 'to' means it is
+// the child.
+const has = (from, to) => ({
+  from,
+  to,
+  columns: [{ from: 'id', to: 'fk_id' }],
+  parent: 'from',
+  resolution: 'fk',
+  type: null,
+  cast: null,
+});
+const of_ = (from, to) => ({
+  from,
+  to,
+  columns: [{ from: 'fk_id', to: 'id' }],
+  parent: 'to',
+  resolution: 'fk',
+  type: null,
+  cast: null,
+});
 const ast = (current, joins, selectedTables = []) => ({
   current,
   joins,
@@ -57,8 +74,12 @@ test('canDeleteTraverse blocks when current is not the last table', () => {
 });
 
 test('canDeleteTraverse treats an unresolved join as disqualifying', () => {
-  // A null relation means the direction is unknown. Unknown is not downward.
-  const verdict = canDeleteTraverse(ast('x_1', [['c_0', 'x_1', null, null]]));
+  // A null resolution means the direction is unknown. Unknown is not downward.
+  const verdict = canDeleteTraverse(
+    ast('x_1', [
+      { from: 'c_0', to: 'x_1', columns: [], parent: 'from', resolution: null, type: null, cast: null },
+    ]),
+  );
   assert.equal(verdict.ok, false);
   assert.match(verdict.reason, /could not be resolved/);
 });

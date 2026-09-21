@@ -93,11 +93,11 @@ export type CanvasNode = CanvasTableNode | CanvasStartNode | CanvasFrameNode;
 export type CanvasEdge = Edge & {
   unresolved?: boolean;
   uncertain?: boolean;
-  /** Raw wire value from JoinTuple[3] (client.ts) - null means inner (Pine's default, no `:left`/`:right` modifier). */
+  /** Raw wire value from a join's `type` (client.ts) - null means inner (Pine's default, no `:left`/`:right` modifier). */
   joinType?: 'LEFT' | 'RIGHT' | null;
   /**
    * The alias whose own table segment carries the `:left`/`:right` modifier -
-   * always JoinTuple's literal `to-alias`, which is NOT necessarily this
+   * always the join's own literal `to` alias, which is NOT necessarily this
    * edge's rendered `target` (addJoins in layout.ts swaps source/target for
    * "belongs to" relations so the FK parent renders on the left, but the
    * modifier always lives on the table that was actually appended second in

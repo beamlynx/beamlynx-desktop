@@ -458,11 +458,15 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
     return id;
   };
 
-  for (const [fromAlias, toAlias, relation] of joins) {
-    if (!relation) continue;
+  for (const join of joins) {
+    const { from: fromAlias, to: toAlias, columns } = join;
+    // An unresolved join has no column pairs to draw from (see Join's comment
+    // in client.ts). This legacy graph has no confidence styling for
+    // committed joins to begin with, so it simply skips those.
+    if (!join.resolution || columns.length === 0) continue;
     const x = selectedNodesLookup[fromAlias];
     const y = selectedNodesLookup[toAlias];
-    const parentIsFrom = relation[2] === 'has';
+    const parentIsFrom = join.parent === 'from';
     // The "to" side of a still-typed-but-not-yet-finalized last table (see the
     // selected-tables/hints comment elsewhere in this file) has no selected
     // node yet - it only exists as a suggested candidate. The relation's real
@@ -475,13 +479,13 @@ export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = fal
     const fromAliasOf = parentIsFrom ? fromAlias : toAlias;
     const toAliasOf = parentIsFrom ? toAlias : fromAlias;
     // parentCol is always the column `from` (the parent) owns, childCol is
-    // always the column `to` (the child) owns.
-    const [, col1, , , col2] = relation;
-    // Null only on a hint-less relation (see JoinRelation's comment in
-    // client.ts) - this legacy graph has no confidence styling for committed
-    // joins to begin with, so that case renders the same plain edge as
-    // before this type was widened to admit it.
-    const [parentCol, childCol] = parentIsFrom ? [col1!, col2!] : [col2!, col1!];
+    // always the column `to` (the child) owns. A key made of several columns
+    // is named by its first pair here - this graph draws one edge per join,
+    // and the canvas (layout.ts) is where every pair gets a handle.
+    const [firstPair] = columns;
+    const [parentCol, childCol] = parentIsFrom
+      ? [firstPair.from, firstPair.to]
+      : [firstPair.to, firstPair.from];
     const sourceHandle =
       from && canHaveHandles(from)
         ? addHandle(rightHandlesByNode, from.id, parentCol, 'r', to?.id ?? toAliasOf)

@@ -95,32 +95,41 @@ export type Operation = {
 };
 export type WhereCondition = [string, string, null, string, { type: string; value: string } | null];
 
+/** One column pair of a join's ON clause, each side labelled by the alias that owns it. */
+export type JoinColumns = { from: string; to: string };
+
 /**
- * ON-clause equality: `${alias1}.${col1} = ${alias2}.${col2}`. Position 2
- * (`'has'`/`'of'`) records which side owns the FK. Position 6 is the same
- * confidence tag a `TableHint` carries (see `TableHint.resolution`) - added
- * by pine-lang so an already-committed join doesn't need a client-side
- * workaround (re-deriving it from the picker hint that produced it) to know
- * whether it's backed by a real FK.
+ * One join in the pipeline, as pine-lang describes it.
+ *
+ * `from`/`to` are the two aliases in pipeline order - the order they were
+ * typed. `columns` is every column pair of the ON clause, so a foreign key
+ * made of more than one column is simply a longer list; read it as a list,
+ * never as `columns[0]`. `parent` says which of the two sides owns the key
+ * being pointed at. `resolution` is the same confidence tag a `TableHint`
+ * carries (see `TableHint.resolution`), so an already-committed join doesn't
+ * need a client-side workaround - re-deriving it from the picker hint that
+ * produced it - to know whether it's backed by a real FK.
+ *
+ * `resolution: null` is an unresolved join: nothing connects the two tables,
+ * or an explicit join-column matched no real reference (e.g. a canvas edit
+ * retargeted this join onto a different upstream table after the one in
+ * between was deleted). `columns` is empty in that case and the SQL has no ON
+ * clause. There is exactly one spelling for it, so checking `resolution` is
+ * enough - see layout.ts's addJoins.
+ *
+ * `cast` is `'text'` when a heuristic join's two sides have different DB types
+ * (unused here - only pine-lang's own SQL generation reads it).
  */
-// col/f-col/resolution can all come back null - a "hint-less" join pine-lang
-// returns (rather than nulling the whole relation) when an explicit
-// join-column doesn't match any real reference for the resolved pair - see
-// join-helper's comment in pine-lang's src/pine/ast/table.clj. Callers must
-// treat that the same as a null relation (see layout.ts's addJoins), not as
-// a resolved-but-uncertain join. Trailing element is needs-cast? (unused
-// here - only eval.clj's SQL generation reads it).
-export type JoinRelation = [
-  string,
-  string | null,
-  'has' | 'of',
-  string,
-  string | null,
-  TableHint['resolution'] | null,
-  boolean,
-];
-/** `[from-alias, to-alias, relation, join-type]` — join-type is `'LEFT'`/`'RIGHT'`/null (inner). */
-export type JoinTuple = [string, string, JoinRelation | null, string | null];
+export type Join = {
+  from: string;
+  to: string;
+  columns: JoinColumns[];
+  parent: 'from' | 'to';
+  resolution: TableHint['resolution'] | null;
+  /** `'LEFT'`/`'RIGHT'`, or null for an inner join. */
+  type: string | null;
+  cast: string | null;
+};
 
 export type Column = { alias: string; column: string; 'column-alias': string; hidden: boolean };
 
@@ -134,7 +143,7 @@ export type PineRange = {
 export type VariableAst = {
   'selected-tables': Table[];
   tables?: Table[];
-  joins: JoinTuple[];
+  joins: Join[];
   columns: Column[];
 };
 
@@ -152,7 +161,7 @@ export type GroupColumn = { alias: string; column: string; 'operation-index'?: n
 export type Ast = {
   hints: Hints;
   'selected-tables': Table[];
-  joins: JoinTuple[];
+  joins: Join[];
   context: string;
   current: string;
   operation: Operation;
