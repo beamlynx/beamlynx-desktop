@@ -269,8 +269,6 @@ export class Session {
   querySelection: string = '';
   hints: Hints | null = null; // observable
 
-
-
   /** Graph */
   candidateIndex: number | undefined = undefined; // observable
 
@@ -328,8 +326,22 @@ export class Session {
   get accessPolicyRules(): AccessPolicyRule[] {
     const connections = this.globalStore?.connections as ConnectionInfo[] | undefined;
     const policies = this.globalStore?.accessPolicies ?? [];
-    const forMcp = this.id === this.globalStore?.mcpSessionId;
-    return effectiveAccessPolicyRules(connections?.find(c => c.id === this.profileId), policies, forMcp);
+    return effectiveAccessPolicyRules(
+      connections?.find(c => c.id === this.profileId),
+      policies,
+      this.isMcpSession,
+    );
+  }
+
+  /**
+   * Whether this is GlobalStore's dedicated MCP session -- the one tab
+   * agent-driven queries run in (GlobalStore.getOrCreateMcpSession). Derived,
+   * never stored: a flag set at construction would have to be kept in step
+   * with mcpSessionId, which is reassigned when the tab is closed and
+   * recreated. Read by accessPolicyRules above and by evaluate() below.
+   */
+  get isMcpSession(): boolean {
+    return !!this.globalStore?.mcpSessionId && this.id === this.globalStore.mcpSessionId;
   }
 
   /** Evaluation plugins */
@@ -439,13 +451,13 @@ export class Session {
         try {
           const blocks = splitExpressions(expression);
           const cursor = this.cursorPosition;
-          const activeIdx = cursor !== undefined
-            ? findActiveBlock(blocks, cursor.line)
-            : blocks.length - 1;
+          const activeIdx =
+            cursor !== undefined ? findActiveBlock(blocks, cursor.line) : blocks.length - 1;
           const activeExpressions = blocks.slice(0, activeIdx + 1).map(b => b.text);
-          const adjustedCursor = cursor && blocks[activeIdx]
-            ? { line: cursor.line - blocks[activeIdx].startLine, character: cursor.character }
-            : cursor;
+          const adjustedCursor =
+            cursor && blocks[activeIdx]
+              ? { line: cursor.line - blocks[activeIdx].startLine, character: cursor.character }
+              : cursor;
           const response = await client.build(
             activeExpressions,
             adjustedCursor,
@@ -612,16 +624,18 @@ export class Session {
     });
   }
 
-  public async prettifyExpression(expression: string, appendPipe: boolean = false): Promise<string> {
+  public async prettifyExpression(
+    expression: string,
+    appendPipe: boolean = false,
+  ): Promise<string> {
     const blocks = splitExpressions(expression);
     if (blocks.length <= 1) {
       const prettified = await client.prettify(expression, this.connectionId);
       return appendPipe ? prettified + '\n | ' : prettified;
     }
     const cursor = this.cursorPosition;
-    const activeIdx = cursor !== undefined
-      ? findActiveBlock(blocks, cursor.line)
-      : blocks.length - 1;
+    const activeIdx =
+      cursor !== undefined ? findActiveBlock(blocks, cursor.line) : blocks.length - 1;
     const activeBlock = blocks[activeIdx];
     const prettifiedBlock = await client.prettify(activeBlock.text, this.connectionId);
     const result = appendPipe ? prettifiedBlock + '\n | ' : prettifiedBlock;
@@ -681,14 +695,25 @@ export class Session {
   }
 
   public async evaluate(opts?: EvaluateOptions) {
+    // The agent's session never writes, whoever asked it to. runMcpQuery
+    // already passes allowWrites: false, so this is not what stops an agent
+    // today -- it is what stops the next caller. Binding it to the session
+    // means a future path into this tab that forgets the option inherits the
+    // safe answer instead of silently inheriting writes (allow-writes
+    // defaults to allowed server-side, for the person's own editor). It also
+    // covers the person pressing Run on the agent's own tab, where the
+    // expression on screen is the agent's, not theirs.
+    const effectiveOpts: EvaluateOptions | undefined = this.isMcpSession
+      ? { ...opts, allowWrites: false }
+      : opts;
     const { type } = this.operation;
     switch (type) {
       case 'delete':
-        return await this.plugins.delete.evaluate(opts);
+        return await this.plugins.delete.evaluate(effectiveOpts);
       case 'table':
       // intentional fall through
       default:
-        return await this.plugins.default.evaluate(opts);
+        return await this.plugins.default.evaluate(effectiveOpts);
     }
   }
 
@@ -874,4 +899,3 @@ const handleError = (response: Response): { error: string; errorType: string } =
     errorType: response['error-type'] || '',
   };
 };
-
