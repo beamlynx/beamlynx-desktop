@@ -51,7 +51,21 @@ const RightPane = observer(({ sessionId }: { sessionId: string }) => {
   }
 
   return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+    <Box
+      sx={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 0,
+        // Makes this pane a size container, so the error band can cap
+        // itself at a share of it (`cqh` in ErrorMessage.tsx) rather than a
+        // flat number of lines. With the pane dragged short, a six-line
+        // error would otherwise squeeze the grid below it down to its
+        // footer. Safe to contain: this box's height comes from the pane
+        // around it, never from what's inside it.
+        containerType: 'size',
+      }}
+    >
       {/* Always rendered, collapsed to zero height when there's no error,
           rather than mounted and unmounted on `session.error`. Auto-run
           makes a failed query an ordinary event, so this band appears and
@@ -72,7 +86,7 @@ const RightPane = observer(({ sessionId }: { sessionId: string }) => {
           transition: 'opacity var(--motion-fast) var(--motion-ease-enter)',
         }}
       >
-        <ErrorMessage />
+        <ErrorMessage sessionId={sessionId} />
       </CollapsibleHeight>
       <Box sx={{ flex: 1, minHeight: 0 }}>
         <Result sessionId={sessionId} />

@@ -11,6 +11,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Removed
 - The `BEAMLYNX_MCP_ALLOW_DELETE` environment variable. It turned off the delete check for every agent query on the machine, for as long as it was set. A machine-wide switch is the wrong shape for "I meant this one" -- a write an agent makes should be a deliberate act each time, not a mode the machine is left in.
 
+### Fixed
+- The error above the results was cut off twice over: the band was shorter than the message in it, so the last line disappeared behind the results grid, and the message itself stopped at 120 characters -- 40 on a narrow window -- with the rest only in a tooltip you had to hover for. What got lost is the part that tells you what to do, since a database error puts its detail, its hint and the position of the offending token after the opening summary. The whole message now wraps over as many lines as it needs. A very long one scrolls inside the band rather than growing without limit -- at most six lines, and fewer than that when you have dragged the results pane short, so there is always a results grid left under it.
+
 ## [0.62.0] - 2026-09-20
 ### Added
 - A tab can now explain itself. Start an expression with a comment -- either `/* ... */` across lines, or a run of `--` lines -- and the canvas shows it in its top-left corner instead of leaving it as grey text to scroll past. Write what you are looking for and why when you open a tab, and it is still there when you come back to it.
