@@ -4,6 +4,7 @@ import {
   CanvasTableNode,
   JOIN_TYPES,
   MORE_ACTIONS,
+  TRAVERSE_VERBS,
   ORDER_DIRECTIONS,
   PickerAnchor,
   PickerItem,
@@ -283,7 +284,11 @@ const Picker: React.FC = observer(() => {
   // without a tabIndex, and React only recognizes `autoFocus` on elements
   // that are).
   const focusRootAlias =
-    picker.open && (picker.mode === 'join-type' || picker.mode === 'more' || picker.mode === 'order-direction')
+    picker.open &&
+    (picker.mode === 'join-type' ||
+      picker.mode === 'more' ||
+      picker.mode === 'traverse' ||
+      picker.mode === 'order-direction')
       ? picker.alias
       : null;
   useEffect(() => {
@@ -327,6 +332,75 @@ const Picker: React.FC = observer(() => {
             </div>
           ))}
         </div>
+      </div>
+    );
+  }
+
+  // The verb menu behind "+" -> traverse. Two fixed entries, so it renders
+  // like the "+" menu itself rather than going through the list picker.
+  if (picker.mode === 'traverse') {
+    const blocked = picker.deleteBlockedReason;
+    const activate = (verb: 'count' | 'delete') => {
+      if (verb === 'delete' && blocked) return;
+      void store.startTraversal(verb);
+    };
+    return (
+      <div
+        ref={rootRef}
+        tabIndex={-1}
+        onKeyDown={e => {
+          const match = TRAVERSE_VERBS.find(v => v.key === e.key.toLowerCase());
+          if (match) {
+            e.preventDefault();
+            activate(match.verb);
+          }
+        }}
+        style={{ ...anchoredStyle(picker.anchor), padding: 8, minWidth: 190, maxHeight: 'none' }}
+        data-testid="canvas-picker"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {TRAVERSE_VERBS.map(option => {
+            const disabled = option.verb === 'delete' && !!blocked;
+            return (
+              <div
+                key={option.verb}
+                data-testid={`traverse-${option.verb}-${picker.alias}`}
+                title={disabled ? blocked ?? undefined : undefined}
+                onClick={() => activate(option.verb)}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  padding: '4px 6px',
+                  borderRadius: 3,
+                  cursor: disabled ? 'default' : 'pointer',
+                  opacity: disabled ? 0.45 : 1,
+                }}
+              >
+                <span>{option.label}</span>
+                <span style={{ opacity: 0.5 }}>{option.key}</span>
+              </div>
+            );
+          })}
+        </div>
+        {/* Shown disabled, not hidden: a missing menu entry is a mystery, a
+            disabled one with a sentence teaches why deleting along this
+            expression would be wrong. See canDeleteTraverse. */}
+        {blocked && (
+          <div
+            data-testid="traverse-delete-blocked"
+            style={{
+              marginTop: 6,
+              paddingTop: 6,
+              borderTop: '1px solid var(--canvas-node-border)',
+              fontSize: 'calc(11px * var(--text-scale, 1))',
+              color: 'var(--canvas-text-dim)',
+              maxWidth: 260,
+              lineHeight: 1.4,
+            }}
+          >
+            {blocked}
+          </div>
+        )}
       </div>
     );
   }

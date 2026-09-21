@@ -20,6 +20,7 @@ export const pickerAliasFor = (picker: PickerState): string | null => {
     picker.mode === 'where-value' ||
     picker.mode === 'join-type' ||
     picker.mode === 'more' ||
+    picker.mode === 'traverse' ||
     picker.mode === 'order-direction'
   )
     return picker.alias;
@@ -27,9 +28,9 @@ export const pickerAliasFor = (picker: PickerState): string | null => {
 };
 
 /**
- * 'more' is the "+" overflow trigger itself (order/group/path tucked behind
- * it - see TableNode's own action bar below), not a picker request kind on
- * its own; 'path' is pine-lang's `? table` search (docs/paths.md).
+ * 'more' is the "+" overflow trigger itself (order/group/path/traverse tucked
+ * behind it - see TableNode's own action bar below), not a picker request kind
+ * on its own; 'path' is pine-lang's `? table` search (docs/paths.md).
  */
 export type OperationKind = 'select' | 'join' | 'where' | 'order' | 'group' | 'path' | 'more';
 
@@ -59,6 +60,10 @@ export const activeOperationFor = (picker: PickerState, alias: string): Operatio
   // path) has been picked - dims select/where/join the same as any other
   // open picker would.
   if (picker.mode === 'more') return picker.alias === alias ? 'more' : null;
+  // The verb menu behind "+" -> traverse. Still the "+" menu as far as the
+  // action bar is concerned - it dims the same way, since traverse has no
+  // button of its own to light up.
+  if (picker.mode === 'traverse') return picker.alias === alias ? 'more' : null;
   // A per-chip direction popover (a click on an existing order chip, or the
   // keyboard config cursor) is still editing that node's order operation.
   if (picker.mode === 'order-direction') return picker.alias === alias ? 'order' : null;
@@ -649,7 +654,7 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
         <ActionButton
           label="+"
           testId={`action-more-${data.alias}`}
-          onClick={anchor => canvasStore.openMorePicker(data.alias, ['order', 'group', 'path'], false, anchor)}
+          onClick={anchor => canvasStore.openMorePicker(data.alias, ['order', 'group', 'path', 'traverse'], false, anchor)}
           suppressed={activeOperation !== null && activeOperation !== 'more'}
         />
       </div>

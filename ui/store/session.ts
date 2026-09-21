@@ -3,7 +3,6 @@ import { makeAutoObservable, reaction, runInAction } from 'mobx';
 import { TOTAL_BARS } from '../constants';
 import { DefaultPlugin } from '../plugin/default.plugin';
 import { EvaluateOptions } from '../plugin/plugin.interface';
-import { RecursiveDeletePlugin } from '../plugin/recursive-delete.plugin';
 import { formatSql } from '../utils/formatSql';
 import { CanvasStore } from './canvas/canvas.store';
 import {
@@ -127,23 +126,15 @@ const client = new HttpClient();
  *
  * The evaluation is explicit. A function is called to evaluate the expression.
  *
- * Depending on the operation type, we are using the appropriate plugin i.e.
- * default vs recursive delete.
+ * There used to be a second plugin here, picked by operation type: a `delete:`
+ * on the end of an expression routed to a routine that walked child tables and
+ * built a DELETE for each. It wanted to write to only parts of the session
+ * (the SQL panel, not the results), which a plugin returning Row[] couldn't
+ * express - so it wrote to the session directly and returned nothing.
  *
- * I would like to merge the logic for all invocations the the backend i.e.
- * build the expression, get the results, or evaluate in the recursive delete
- * mode.
- *
- * Right now, I need to keep the evaluation of recursive delete separate as it
- * lets me update parts of the session and not everything e.g. only update the
- * graph while keeping the pine expressions and the sql query the same. If I add
- * functionality for tabs within sessions, then each tab could hold a separate
- * pine expression and the related query for each data set that needs to be
- * deleted - but that requires more work to copy all the delete queries (and not
- * go throw each tab in the session and manually copy the queries).
- *
- * For now I'll keep it like this and let it percolate until I am convinced of a
- * way to refactor is in a better way.
+ * That's gone. Walking related tables is an action on the canvas now, with
+ * state of its own (store/canvas/traversal.ts), so it no longer has to pretend
+ * to be an evaluation. One plugin is left.
  */
 export class Session {
   /**
@@ -345,7 +336,7 @@ export class Session {
   }
 
   /** Evaluation plugins */
-  plugins: { delete: RecursiveDeletePlugin; default: DefaultPlugin };
+  plugins: { default: DefaultPlugin };
 
   /**
    * Lazily-created, cached CanvasStore for this session - see
@@ -357,8 +348,12 @@ export class Session {
   /** Debounced trigger for auto-run - see notifyCanvasCommit(). */
   private autoRunTrigger: () => void;
 
-  /** Global store reference for accessing theme */
-  private globalStore: any = null;
+  /**
+   * Global store reference - theme, the connection list, the MCP session id,
+   * and opening a new tab (see CanvasStore.openTraversalNode). Public because
+   * the set of things read from it has outgrown "for accessing theme".
+   */
+  globalStore: any = null;
 
   constructor(id: string, globalStore?: any) {
     this.id = `session-${id}`;
@@ -368,7 +363,6 @@ export class Session {
 
     /** Evaluation plugins */
     this.plugins = {
-      delete: new RecursiveDeletePlugin(this),
       default: new DefaultPlugin(this),
     };
 
@@ -706,15 +700,7 @@ export class Session {
     const effectiveOpts: EvaluateOptions | undefined = this.isMcpSession
       ? { ...opts, allowWrites: false }
       : opts;
-    const { type } = this.operation;
-    switch (type) {
-      case 'delete':
-        return await this.plugins.delete.evaluate(effectiveOpts);
-      case 'table':
-      // intentional fall through
-      default:
-        return await this.plugins.default.evaluate(effectiveOpts);
-    }
+    return await this.plugins.default.evaluate(effectiveOpts);
   }
 
   /**
