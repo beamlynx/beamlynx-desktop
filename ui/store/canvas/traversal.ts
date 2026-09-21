@@ -340,45 +340,42 @@ export const runTraversal = async (
 };
 
 /**
- * The table the root expression currently sits on, for labelling the root node.
+ * The column the root's own DELETE keys on.
  *
- * `column` is the one the root's own DELETE keys on, and it is hardcoded to
- * `id` -- carried forward from the routine this replaces, where the same
- * limitation lived as a FIXME. A table whose primary key is not `id` still
+ * Hardcoded, carried forward from the routine this replaces, where the same
+ * limitation lived as a FIXME: a table whose primary key is not `id` still
  * cannot be deleted through. It does not affect counting, which never uses it.
+ */
+const ROOT_COLUMN = 'id';
+
+/**
+ * The real name of the table the root expression sits on.
+ *
+ * Needs two builds, and the reason is a quirk worth stating: `selected-tables`
+ * deliberately omits the pipe's *final* table (pipeline.md), so a single-table
+ * expression like `company` reports no tables at all and there is nothing to
+ * look the current alias up in. Adding a trailing pipe makes that table no
+ * longer final, so the second build does list it -- and the first build is
+ * what says which alias to look for.
+ *
+ * The obvious shortcut, deriving the name from the alias, does not work:
+ * pine builds `c_0` from `company`, and stripping the suffix gives `c`.
  */
 const rootTableOf = async (
   client: HttpClient,
   expression: string,
   connectionId?: string,
 ): Promise<{ table: string; schema: string | null; column: string }> => {
-  const response = await client.build([expression], undefined, connectionId);
-  const ast = response?.ast;
-  const alias = ast?.current;
-  // `selected-tables` omits the pipe's final table (pipeline.md), so the
-  // current alias is usually not in it -- fall back to the last join's target
-  // table, and then to the alias itself, which is at worst a cosmetic label.
-  const fromSelected = ast?.['selected-tables']?.find(t => t.alias === alias);
-  if (fromSelected) {
-    return { table: fromSelected.table, schema: fromSelected.schema ?? null, column: 'id' };
-  }
-  const hint = lastJoinTarget(ast);
-  return { table: hint?.table ?? alias ?? 'table', schema: hint?.schema ?? null, column: 'id' };
-};
-
-const lastJoinTarget = (ast: Ast | undefined): { table: string; schema: string | null } | null => {
-  const joins = ast?.joins ?? [];
-  const last = joins[joins.length - 1];
-  if (!last) {
-    // No joins: a single-table expression. The table name is not in
-    // `selected-tables` either, so derive it from the alias, which pine-lang
-    // builds as <first letter(s)>_<index>.
-    const alias = ast?.current ?? '';
-    return alias ? { table: alias.replace(/_\d+$/, ''), schema: null } : null;
-  }
-  const hints = (ast?.hints?.table ?? []) as TableHint[];
-  const match = hints.find(h => h.table === last[1]);
-  return { table: last[1].replace(/_\d+$/, ''), schema: match?.schema ?? null };
+  const alias = (await client.build([expression], undefined, connectionId))?.ast?.current;
+  const probe = await client.build([`${expression} |`], undefined, connectionId);
+  const match = probe?.ast?.['selected-tables']?.find(t => t.alias === alias);
+  return {
+    // The alias is a poor label, but it is honest -- better than a guess that
+    // looks like a table name and is not one.
+    table: match?.table ?? alias ?? 'table',
+    schema: match?.schema ?? null,
+    column: ROOT_COLUMN,
+  };
 };
 
 // ---------------------------------------------------------------------------

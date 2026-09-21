@@ -116,11 +116,21 @@ export class CanvasStore {
   traversal: TraversalState | null = null;
 
   /**
-   * Cancellation for the in-flight walk. Identity doubles as a generation
-   * check: a late callback from a superseded walk finds this !== its own
-   * signal and drops its result instead of writing over the newer one.
+   * Cancellation for the in-flight walk. Excluded from observability below:
+   * an observable field hands back a Proxy of whatever was assigned, so the
+   * object read here would never be identical to the one handed to the walk.
+   * Nothing observes it either - it is a flag the walk polls, not state the
+   * UI renders.
    */
   private traversalSignal: { cancelled: boolean } | null = null;
+
+  /**
+   * Generation counter for traversals, so a late callback from a superseded
+   * walk can tell it has been superseded and drop its result rather than
+   * writing over the newer one. A number rather than object identity, for
+   * the reason above - same approach as pickerSeq.
+   */
+  private traversalSeq = 0;
   canvasGraph: CanvasGraph = emptyGraph;
   /** Aliases of the currently box/shift-selected table nodes - see Canvas.tsx's onSelectionChange. */
   selectedAliases: string[] = [];
@@ -549,7 +559,10 @@ export class CanvasStore {
 
   constructor(session: Session) {
     this.session = session;
-    makeAutoObservable<CanvasStore, 'session'>(this, { session: false });
+    makeAutoObservable<CanvasStore, 'session' | 'traversalSignal'>(this, {
+      session: false,
+      traversalSignal: false,
+    });
     this.recompute();
   }
 
@@ -1207,6 +1220,7 @@ export class CanvasStore {
     this.closePicker();
 
     const signal = { cancelled: false };
+    const seq = ++this.traversalSeq;
     this.traversalSignal = signal;
     runInAction(() => {
       this.traversal = {
@@ -1238,14 +1252,14 @@ export class CanvasStore {
         forDelete: verb === 'delete',
         onNode: node =>
           runInAction(() => {
-            if (this.traversal && this.traversalSignal === signal) {
+            if (this.traversal && this.traversalSeq === seq) {
               this.traversal.nodes = [...this.traversal.nodes, node];
             }
           }),
       });
       if (signal.cancelled) {
         runInAction(() => {
-          if (this.traversal && this.traversalSignal === signal) this.traversal.status = 'cancelled';
+          if (this.traversal && this.traversalSeq === seq) this.traversal.status = 'cancelled';
         });
         return;
       }
@@ -1254,7 +1268,7 @@ export class CanvasStore {
           ? await buildDeleteScript(traversalClient, result.nodes, this.session.connectionId)
           : null;
       runInAction(() => {
-        if (!this.traversal || this.traversalSignal !== signal) return;
+        if (!this.traversal || this.traversalSeq !== seq) return;
         // Replaces the streamed list rather than appending to it: onNode
         // fires as each count lands, so the panel fills in while the walk
         // runs, but the finished list is post-order - the order the DELETEs
@@ -1266,7 +1280,7 @@ export class CanvasStore {
       });
     } catch (e) {
       runInAction(() => {
-        if (!this.traversal || this.traversalSignal !== signal) return;
+        if (!this.traversal || this.traversalSeq !== seq) return;
         this.traversal.status = 'failed';
         this.traversal.error = e instanceof Error ? e.message : 'Traversal failed';
       });
