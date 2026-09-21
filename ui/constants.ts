@@ -61,6 +61,17 @@ export const VERTICAL_TAB_RAIL_WIDTH = 190;
 /* Pine Server */
 export const RequiredVersion = '0.45.0';
 
+// The oldest pine-lang that can refuse an expression which changes data --
+// `allow-writes` on /api/v1/eval, see its docs/side-effects.md. Deliberately
+// NOT RequiredVersion: that one gates the whole app (GlobalStore sets
+// requiresUpgrade from it, which replaces the UI with the upgrade screen),
+// and only the MCP path needs this. Raising RequiredVersion instead would
+// black out the app for everyone on an older server to protect a surface
+// most of them aren't using -- and pine-lang's RELEASING.md calls out that
+// exact failure, since the playground deploys its UI and its server
+// separately. MCP alone refuses to run below this; see mcp-query.ts.
+export const McpWriteRefusalMinVersion = '0.46.0';
+
 /* Layout Constants */
 // Height calculations for main content areas
 // These account for header, margins, and other UI elements

@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Security
+- An agent can no longer change your data through an operation the old check missed. MCP refused a Pine expression containing `delete!`, by looking for that word in the text. It did not look for `update!`, and it did not recognise the short forms `d!` and `u!` -- so three of the four ways to write to a database went straight through. The check now happens in the Pine server, which already knows which operations change data, so every form is covered and so is anything added later. Reads are unaffected, and so are your own queries: you can still run `delete!` and `update!` in your own tab exactly as before.
+- MCP now refuses to run anything at all against a Pine server older than 0.46.0. An older server ignores the request to refuse writes and runs them anyway, so falling back to it would be quietly less safe than the check it replaces. This applies to agent queries only -- the rest of the app still works against an older server exactly as before, and the minimum version it needs is unchanged.
+
+### Removed
+- The `BEAMLYNX_MCP_ALLOW_DELETE` environment variable. It turned off the delete check for every agent query on the machine, for as long as it was set. A machine-wide switch is the wrong shape for "I meant this one" -- a write an agent makes should be a deliberate act each time, not a mode the machine is left in.
 
 ## [0.62.0] - 2026-09-20
 ### Added

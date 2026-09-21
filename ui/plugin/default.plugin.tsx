@@ -35,6 +35,7 @@ export class DefaultPlugin implements PluginInterface {
             session.expressions,
             session.connectionId,
             session.accessPolicyRules,
+            opts?.allowWrites,
           );
 
       if (!response) {
