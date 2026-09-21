@@ -1,4 +1,4 @@
-import { Ast, HttpClient, TableHint } from '../client';
+import { Ast, HttpClient, pipesAtLineStart, TableHint } from '../client';
 import { formatSql } from '../../utils/formatSql';
 
 // Walking the tables that hang off the current one by foreign key, and doing
@@ -284,9 +284,14 @@ export const tablesInExpression = (ast: Ast | null | undefined, rootTable: strin
  */
 export const runTraversal = async (
   client: HttpClient,
-  rootExpression: string,
+  startFrom: string,
   options: WalkOptions = {},
 ): Promise<TraversalResult> => {
+  // Normalised once, here, so the root reads the same as the expressions the
+  // walk derives from it -- otherwise the first few lines keep pine-lang's own
+  // indentation and everything appended below them doesn't. Whitespace only:
+  // the expression that gets sent is the same expression.
+  const rootExpression = pipesAtLineStart(startFrom);
   const maxDepth = options.maxDepth ?? MAX_DEPTH;
   const nodes: TraversalNode[] = [];
   let depthCapped = false;
@@ -550,7 +555,7 @@ const asLines = (expression: string): string =>
     .split('|')
     .map(part => part.trim())
     .filter(Boolean)
-    .join('\n | ');
+    .join('\n| ');
 
 /**
  * A leading comment on an expression -- the tab's own note, which pine-lang

@@ -246,7 +246,8 @@ test('a generated script survives an expression that carries its own comment', a
   // And the per-statement comments still say which expression they came from,
   // one line per step.
   assert.ok(script.includes('-- public.tenant as t'));
-  assert.ok(script.includes('--  | public.user_information .tenant_id'));
+  // Pipe at the start of the line, not indented under the previous one.
+  assert.ok(script.includes('-- | public.user_information .tenant_id'));
 
   // The statements come back alongside the script, positionally aligned with
   // the nodes -- the run records them so its log says what actually ran.

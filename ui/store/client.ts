@@ -305,6 +305,22 @@ export type ConnectionsListResult = {
   connections: ConnectionInfo[];
 };
 
+/**
+ * Puts every operation of an expression at the start of its own line.
+ *
+ * Only ever rewrites the whitespace in front of a leading `|`, never anything
+ * between pipes -- so, unlike splitting on `|`, it cannot damage a string
+ * literal that happens to contain one (`where: name = 'a|b'`). pine-lang's own
+ * prettify indents its continuation lines by a space; a traversal's expressions
+ * are assembled here rather than there, and this keeps the whole expression in
+ * one style rather than the first half in pine's and the appended half in ours.
+ */
+export const pipesAtLineStart = (expression: string): string =>
+  expression
+    .split('\n')
+    .map((line, i) => (i === 0 ? line : line.replace(/^[ \t]+\|/, '|')))
+    .join('\n');
+
 export class HttpClient {
   constructor(private readonly onBuild?: (ast: Ast) => void) {}
 
@@ -526,7 +542,15 @@ export class HttpClient {
       // re-parsing `h.pine` -- store/canvas/traversal.ts keys its cycle check
       // on them, and labels each row of its panel with them.
       .map(h => ({
-        expression: `${x} ${h.pine}`,
+        // Each hop on its own line. The walk builds an expression by appending
+        // joins, and appended inline they ran onto the end of whatever the
+        // canvas had already formatted -- so a traversal five tables deep read
+        // as one long line. Pine treats a newline as whitespace, so this costs
+        // nothing but makes every expression the walk produces readable
+        // wherever it surfaces: the panel's tooltip, the comment above each
+        // generated DELETE, the log of a run, and the tab you get when you
+        // open a row.
+        expression: pipesAtLineStart(`${expression}\n| ${h.pine}`),
         column: h.column,
         // The column on THIS side of the join - which is how traversal.ts
         // tells one composite foreign key split into pieces (the pieces
@@ -545,7 +569,7 @@ export class HttpClient {
     limit: number,
     connectionId?: string,
   ): Promise<string> {
-    const x = `${expression} | limit: ${limit} | delete! .${column}`;
+    const x = `${expression}\n| limit: ${limit}\n| delete! .${column}`;
     const response = await this.build([x], undefined, connectionId);
     if (!response) {
       throw new Error('No response when trying to build the delete query');
