@@ -2,16 +2,6 @@
 
 ---
 
-## Landing changes
-
-Every change goes through a pull request, including one that is going to be merged immediately. Never commit to `main` directly.
-
-`main` is unprotected here, so nothing stops a direct push — which is exactly why it is worth stating. The PR is where the change gets explained; a commit pushed straight to the branch leaves whoever reads it next to reconstruct the reasoning from the diff. Merge it immediately if you like (`gh pr merge --merge --admin`), but open it.
-
-Merge commits, not squash or rebase, matching the existing history. Merged branches are left in place.
-
----
-
 ## Keeping This File Up to Date
 
 When working in this codebase, if you discover a new pattern, convention, architectural decision, or corrected assumption that would be useful for future interactions, **add it to this file**. This includes:
