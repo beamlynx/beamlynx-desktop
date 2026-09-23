@@ -24,6 +24,16 @@ export type TableHint = {
   // relation at all yet to describe.
   column?: string;
   'related-column'?: string;
+  // Every column pair of the relation, present only when there is more than
+  // one - i.e. a foreign key made of several columns. `column`/
+  // `related-column` above are the first of these, the pair the hint's `pine`
+  // text names; joining needs no more than that, since naming any column of a
+  // key joins on the whole key. Something that has to name the whole key
+  // rather than join on it - scoping a `delete!` to the rows this relation
+  // reaches - needs them all. pine-lang leaves it off a single-column key,
+  // where it would only repeat the two fields above across what can be
+  // thousands of hints, so read it as `columns ?? [{column, related-column}]`.
+  columns?: { column: string; 'related-column': string }[];
   parent?: boolean;
   // 'synthetic' is a made-up id=id join with no real FK behind it (today only
   // ever the same-source case - see docs/variables.md in pine-lang - but not
@@ -95,32 +105,41 @@ export type Operation = {
 };
 export type WhereCondition = [string, string, null, string, { type: string; value: string } | null];
 
+/** One column pair of a join's ON clause, each side labelled by the alias that owns it. */
+export type JoinColumns = { from: string; to: string };
+
 /**
- * ON-clause equality: `${alias1}.${col1} = ${alias2}.${col2}`. Position 2
- * (`'has'`/`'of'`) records which side owns the FK. Position 6 is the same
- * confidence tag a `TableHint` carries (see `TableHint.resolution`) - added
- * by pine-lang so an already-committed join doesn't need a client-side
- * workaround (re-deriving it from the picker hint that produced it) to know
- * whether it's backed by a real FK.
+ * One join in the pipeline, as pine-lang describes it.
+ *
+ * `from`/`to` are the two aliases in pipeline order - the order they were
+ * typed. `columns` is every column pair of the ON clause, so a foreign key
+ * made of more than one column is simply a longer list; read it as a list,
+ * never as `columns[0]`. `parent` says which of the two sides owns the key
+ * being pointed at. `resolution` is the same confidence tag a `TableHint`
+ * carries (see `TableHint.resolution`), so an already-committed join doesn't
+ * need a client-side workaround - re-deriving it from the picker hint that
+ * produced it - to know whether it's backed by a real FK.
+ *
+ * `resolution: null` is an unresolved join: nothing connects the two tables,
+ * or an explicit join-column matched no real reference (e.g. a canvas edit
+ * retargeted this join onto a different upstream table after the one in
+ * between was deleted). `columns` is empty in that case and the SQL has no ON
+ * clause. There is exactly one spelling for it, so checking `resolution` is
+ * enough - see layout.ts's addJoins.
+ *
+ * `cast` is `'text'` when a heuristic join's two sides have different DB types
+ * (unused here - only pine-lang's own SQL generation reads it).
  */
-// col/f-col/resolution can all come back null - a "hint-less" join pine-lang
-// returns (rather than nulling the whole relation) when an explicit
-// join-column doesn't match any real reference for the resolved pair - see
-// join-helper's comment in pine-lang's src/pine/ast/table.clj. Callers must
-// treat that the same as a null relation (see layout.ts's addJoins), not as
-// a resolved-but-uncertain join. Trailing element is needs-cast? (unused
-// here - only eval.clj's SQL generation reads it).
-export type JoinRelation = [
-  string,
-  string | null,
-  'has' | 'of',
-  string,
-  string | null,
-  TableHint['resolution'] | null,
-  boolean,
-];
-/** `[from-alias, to-alias, relation, join-type]` — join-type is `'LEFT'`/`'RIGHT'`/null (inner). */
-export type JoinTuple = [string, string, JoinRelation | null, string | null];
+export type Join = {
+  from: string;
+  to: string;
+  columns: JoinColumns[];
+  parent: 'from' | 'to';
+  resolution: TableHint['resolution'] | null;
+  /** `'LEFT'`/`'RIGHT'`, or null for an inner join. */
+  type: string | null;
+  cast: string | null;
+};
 
 export type Column = { alias: string; column: string; 'column-alias': string; hidden: boolean };
 
@@ -134,7 +153,7 @@ export type PineRange = {
 export type VariableAst = {
   'selected-tables': Table[];
   tables?: Table[];
-  joins: JoinTuple[];
+  joins: Join[];
   columns: Column[];
 };
 
@@ -152,7 +171,7 @@ export type GroupColumn = { alias: string; column: string; 'operation-index'?: n
 export type Ast = {
   hints: Hints;
   'selected-tables': Table[];
-  joins: JoinTuple[];
+  joins: Join[];
   context: string;
   current: string;
   operation: Operation;
@@ -320,6 +339,17 @@ export const pipesAtLineStart = (expression: string): string =>
     .split('\n')
     .map((line, i) => (i === 0 ? line : line.replace(/^[ \t]+\|/, '|')))
     .join('\n');
+
+/**
+ * The `delete!` operation scoping a delete to the given columns.
+ *
+ * More than one when the rows are identified by a foreign key made of several
+ * columns. pine-lang matches those as a row -- `WHERE (a, b) IN ( SELECT a, b
+ * ... )` -- which is the only correct thing to do: one column of such a key
+ * matches rows belonging to other records too, and says nothing about it.
+ */
+export const deleteOp = (columns: string[]): string =>
+  `delete! ${columns.map(c => `.${c}`).join(', ')}`;
 
 export class HttpClient {
   constructor(private readonly onBuild?: (ast: Ast) => void) {}
@@ -510,8 +540,7 @@ export class HttpClient {
   ): Promise<{
     expressions: {
       expression: string;
-      column: string;
-      relatedColumn: string | null;
+      columns: string[];
       table: string;
       schema: string | null;
     }[];
@@ -551,12 +580,12 @@ export class HttpClient {
         // generated DELETE, the log of a run, and the tab you get when you
         // open a row.
         expression: pipesAtLineStart(`${expression}\n| ${h.pine}`),
-        column: h.column,
-        // The column on THIS side of the join - which is how traversal.ts
-        // tells one composite foreign key split into pieces (the pieces
-        // point at different parent columns) from two genuinely separate
-        // foreign keys to the same table (both point at the same one).
-        relatedColumn: h['related-column'] ?? null,
+        // Every column on THIS side of the join, not just the first: a
+        // foreign key made of several columns needs all of them to scope a
+        // DELETE, and one of them alone removes rows belonging to other
+        // records. A single-column key carries no `columns` array (see
+        // TableHint), so fall back to the one column it does name.
+        columns: h.columns ? h.columns.map(c => c.column) : [h.column],
         table: h.table,
         schema: h.schema,
       }));
@@ -565,11 +594,11 @@ export class HttpClient {
 
   public async buildDeleteQuery(
     expression: string,
-    column: string,
+    columns: string[],
     limit: number,
     connectionId?: string,
   ): Promise<string> {
-    const x = `${expression}\n| limit: ${limit}\n| delete! .${column}`;
+    const x = `${expression}\n| limit: ${limit}\n| ${deleteOp(columns)}`;
     const response = await this.build([x], undefined, connectionId);
     if (!response) {
       throw new Error('No response when trying to build the delete query');
