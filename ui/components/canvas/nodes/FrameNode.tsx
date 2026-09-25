@@ -129,15 +129,14 @@ const FrameNode: React.FC<NodeProps<CanvasFrameNodeData>> = observer(({ id, data
           that file's comment on ActionButton for why. */}
       <div
         className="nodrag picker-trigger"
-        onMouseEnter={() => {
-          setHovered(true);
-          // Same "mouse takes over current" as TableNode.tsx's own
-          // onMouseEnter - resolvedAlias, not `id`, since `id` is only the
-          // checkpoint's real alias once it's actually been consumed (see
-          // this file's own top comment).
-          canvasStore.focusNode(resolvedAlias);
-        }}
+        // Hover only reveals the action bar; focus moves on a click. See
+        // TableNode.tsx's onMouseEnter for why hover must not move focus.
+        // resolvedAlias, not `id`, since `id` is only the checkpoint's real
+        // alias once it's actually been consumed (see this file's own top
+        // comment).
+        onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
+        onClick={() => canvasStore.focusNode(resolvedAlias)}
         style={{
           position: 'absolute',
           top: 0,

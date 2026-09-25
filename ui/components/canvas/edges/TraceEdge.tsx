@@ -105,24 +105,12 @@ const TraceEdge: React.FC<EdgeProps<TraceEdgeData>> = observer(
                 e.stopPropagation();
                 store.openJoinTypePicker(joinTargetAlias, joinType, { x: e.clientX, y: e.clientY });
               }}
-              onMouseEnter={() => {
-                setHovered(true);
-                // Same config-item cursor Shift+J/K would land this on -
-                // not focusNode, or the target's whole-node border would
-                // show alongside this icon's own halo, two things claiming
-                // to be "the selection" at once (see focusConfigItem's own
-                // comment). This icon lives in ReactFlow's separate edge-
-                // label layer, not nested inside the target node's own DOM,
-                // so it never gets the target's onMouseEnter for free.
-                if (joinTargetAlias) store.focusConfigItem(joinTargetAlias, { kind: 'join-type' });
-              }}
-              onMouseLeave={() => {
-                setHovered(false);
-                // Falls back to the target's own plain "current" border,
-                // rather than leaving the cursor stuck on an icon the mouse
-                // has actually left.
-                if (joinTargetAlias) store.focusNode(joinTargetAlias);
-              }}
+              // Hover highlights the icon locally but never moves the keyboard
+              // cursor - see TableNode.tsx's onMouseEnter for why a pointer
+              // resting on the canvas must not change which node a join
+              // attaches to.
+              onMouseEnter={() => setHovered(true)}
+              onMouseLeave={() => setHovered(false)}
               style={{
                 position: 'absolute',
                 transform: `translate(-50%, -50%) translate(${iconX}px, ${iconY}px)`,
@@ -138,8 +126,8 @@ const TraceEdge: React.FC<EdgeProps<TraceEdgeData>> = observer(
                 // background rather than reusing a chip's existing border,
                 // since the icon has no chip/border shape of its own to
                 // recolor.
-                background: isCursorTarget ? 'var(--canvas-chip-bg)' : 'transparent',
-                boxShadow: isCursorTarget ? '0 0 0 1px var(--canvas-node-border-current)' : undefined,
+                background: hovered || isCursorTarget ? 'var(--canvas-chip-bg)' : 'transparent',
+                boxShadow: hovered || isCursorTarget ? '0 0 0 1px var(--canvas-node-border-current)' : undefined,
                 pointerEvents: 'all',
                 cursor: 'pointer',
                 // The accent lives here now, not on the edge line itself
