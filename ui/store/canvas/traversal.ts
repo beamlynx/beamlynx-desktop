@@ -140,18 +140,10 @@ export type DeleteEligibility = { ok: true } | { ok: false; reason: string };
  * the pipe does the same thing: its rows go first, and the parent's subquery
  * then joins through nothing.
  *
- * The invariant is that no table the walk visits may appear *above* the root
- * in the expression -- the tables the root's rows are selected through. The
- * root's own table, and any table below it, can come up again freely: those
- * rows point at rows being deleted, so they have to go first anyway, and a
- * foreign key the walk missed makes Postgres refuse the delete rather than
- * let it match nothing. A folder's child folders are the ordinary case.
- *
- * The walk only ever descends, so the invariant holds when the root is a
- * strict descending chain with `current` at its end -- the two conditions
- * below. `runTraversal` enforces it at run time as well, since these
- * conditions are an argument about the foreign-key graph and the cost of the
- * argument being wrong is a silent wrong delete.
+ * The two checks below read Pine's own parent flag on each join. If every join in the
+ * expression goes from parent to child and the walk starts at the end, the
+ * tables above the root are all ancestors, and the walk - which follows
+ * children only - never deletes from them before the root.
  */
 export const canDeleteTraverse = (ast: Ast | null | undefined): DeleteEligibility => {
   if (!ast || !ast.current) return { ok: false, reason: 'Pick a table first.' };
@@ -198,66 +190,14 @@ export const canDeleteTraverse = (ast: Ast | null | undefined): DeleteEligibilit
 // The walk
 // ---------------------------------------------------------------------------
 
-/** Thrown when the run-time invariant behind canDeleteTraverse is violated. */
-export class TraversalRevisitError extends Error {
-  constructor(public readonly table: string) {
-    super(
-      `Stopping: the walk reached "${table}", which the expression already uses. ` +
-        `Continuing would empty a table the query itself depends on.`,
-    );
-    this.name = 'TraversalRevisitError';
-  }
-}
-
 export type WalkOptions = {
   connectionId?: string;
   maxDepth?: number;
   /** Aborts the walk between steps. */
   signal?: { cancelled: boolean };
-  /**
-   * Tables above the root in the expression - see tablesAboveRoot. The walk
-   * aborts rather than visiting one; canDeleteTraverse says what goes wrong. Passed only
-   * for the delete verb; counting re-reads nothing, so revisiting a table is
-   * merely redundant there, not wrong.
-   */
-  forbidden?: Set<string>;
-  /**
-   * Whether this walk is planning a delete. Turns on `forbidden` above, which
-   * only matters when the result will be used to remove rows. Counting stays
-   * permissive - it reads, so the worst it can do is report a number that is
-   * larger than it should be.
-   */
-  forDelete?: boolean;
   /** Called as each node's count lands, so a panel can fill in as it goes. */
   onNode?: (node: TraversalNode) => void;
 };
-
-/**
- * The key `forbidden` uses.
- *
- * The bare table name, not `schema.table`, because the two sides would not
- * agree otherwise: a child comes from a `hints.table` entry, which carries a
- * schema, while the expression's tables come from the AST, where they often do
- * not. Mixing the two forms would silently defeat the set.
- *
- * The cost is conflating same-named tables in different schemas. That lands
- * on the safe side: a delete is refused rather than a wrong one allowed.
- */
-const tableKey = (table: string): string => table.toLowerCase();
-
-/**
- * The tables the root's rows are selected through -- every table in the
- * expression except the root itself. See WalkOptions.forbidden.
- *
- * Matched on the alias, not the table name. In `folder as p | folder
- * .parent_id` the root is a folder and so is the table above it: the root's
- * own table must stay visitable (its child folders), while `p` is exactly the
- * kind of row the walk must not delete early.
- */
-export const tablesAboveRoot = (ast: Ast | null | undefined): Set<string> =>
-  new Set(
-    (ast?.['selected-tables'] ?? []).filter(t => t.alias !== ast?.current).map(t => tableKey(t.table)),
-  );
 
 /**
  * Depth-first, children before parents, pruning a branch as soon as a node has
@@ -317,15 +257,11 @@ export const runTraversal = async (
 
     for (const child of expressions) {
       if (options.signal?.cancelled) return;
-      const key = tableKey(child.table);
-      if (options.forbidden?.has(key)) throw new TraversalRevisitError(key);
-      // A table already on the path is followed, not skipped. The walk only
-      // descends, so meeting a table again is always a deeper set of rows:
-      // a folder's child folders, or `company | employee | company` through
-      // a different foreign key (employee.company_id, then company.ceo_id).
-      // Those rows point at rows being deleted and must go first. The walk
-      // ends where the counts reach zero; only a loop in the data itself
-      // runs on to maxDepth, which is reported rather than silent.
+      // Children only, never parents (see makeChildExpressions), so a table
+      // met again is always a deeper set of rows: child folders, or
+      // `company | employee | company` through a second foreign key. The walk
+      // ends where a level has no rows; only a loop in the data runs on to
+      // maxDepth, which is reported.
       await visit(child.expression, expression, child.table, child.schema, child.columns, depth + 1);
     }
 

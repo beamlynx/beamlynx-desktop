@@ -10,7 +10,6 @@ import {
   DeleteOutcome,
   runDeleteScript,
   runTraversal,
-  tablesAboveRoot,
   TraversalNode,
   TraversalState,
   traversalClient,
@@ -792,19 +791,9 @@ export class Session {
     });
 
     try {
-      // The delete verb gets the run-time backstop. The two conditions
-      // canDeleteTraverse checks are an argument about the foreign-key graph,
-      // and the cost of that argument being wrong is a delete that silently
-      // removes nothing. Counting needs no such guard - it only reads.
-      const forbidden =
-        verb === 'delete'
-          ? tablesAboveRoot(this.ast)
-          : undefined;
       const result = await runTraversal(traversalClient, rootExpression, {
         connectionId: this.connectionId,
         signal,
-        forbidden,
-        forDelete: verb === 'delete',
         onNode: node =>
           runInAction(() => {
             if (this.traversal && this.traversalSeq === seq) {
