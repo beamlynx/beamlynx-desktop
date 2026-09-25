@@ -202,6 +202,53 @@ test('planning a delete allows two separate foreign keys to the same table', asy
   );
 });
 
+// A table with a foreign key to itself lists itself as its own child. The root
+// table is always in `forbidden`, so checking that before the cycle check
+// stopped every delete from such a root. Found on
+// `tenant | company .tenantId`, where company.duplicate_id -> company.id.
+function stubClientRootedAt(table, alias, childrenByExpression) {
+  return {
+    ...stubClient(childrenByExpression),
+    build: async () => ({
+      ast: { current: alias, joins: [], 'selected-tables': [{ table, alias, schema: 'public' }] },
+    }),
+  };
+}
+
+test('planning a delete skips a table that references itself', async () => {
+  const root = 'tenant | company .tenantId';
+  const client = stubClientRootedAt('company', 'c_1', {
+    [root]: [
+      child(`${root} | company .duplicate_id`, ['duplicate_id'], 'company'),
+      child(`${root} | employee .company_id`, ['company_id'], 'employee'),
+    ],
+  });
+  const result = await runTraversal(client, root, {
+    forDelete: true,
+    forbidden: new Set(['tenant', 'company']),
+  });
+  assert.deepEqual(
+    result.nodes.map(n => n.table),
+    ['employee', 'company'],
+  );
+});
+
+test('planning a delete still stops at a table the expression uses above the root', async () => {
+  // employee -> tenant is not a cycle on the walk's path, but tenant is in
+  // the root expression. Emptying it would break the root's own join.
+  const root = 'tenant | company .tenantId';
+  const client = stubClientRootedAt('company', 'c_1', {
+    [root]: [child(`${root} | employee .company_id`, ['company_id'], 'employee')],
+    [`${root} | employee .company_id`]: [
+      child(`${root} | employee .company_id | tenant .employee_id`, ['employee_id'], 'tenant'),
+    ],
+  });
+  await assert.rejects(
+    runTraversal(client, root, { forDelete: true, forbidden: new Set(['tenant', 'company']) }),
+    /the walk reached "tenant"/,
+  );
+});
+
 test('counting walks a composite foreign key like any other', async () => {
   const client = stubClient({
     kase: [child('kase | case_ref .case_id', ['case_id', 'search_id'], 'case_ref')],

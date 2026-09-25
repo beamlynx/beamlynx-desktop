@@ -312,11 +312,17 @@ export const runTraversal = async (
     for (const child of expressions) {
       if (options.signal?.cancelled) return;
       const key = tableKey(child.table);
-      if (options.forbidden?.has(key)) throw new TraversalRevisitError(key);
       // Termination on a foreign-key cycle: this table is already an ancestor
       // of itself. Keyed on the table, not the expression, because an
       // expression grows a new alias on every hop and so never repeats.
+      //
+      // Checked before `forbidden`, which always contains the root table. A
+      // table with a foreign key to itself (`company.duplicate_id ->
+      // company.id`) lists itself as its own child, and checking `forbidden`
+      // first stopped every delete from such a root. A cycle is skipped, not
+      // visited, so it empties nothing and the invariant still holds.
       if (path.has(key)) continue;
+      if (options.forbidden?.has(key)) throw new TraversalRevisitError(key);
       await visit(
         child.expression,
         expression,
