@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Changed
+- Pine reference: the join and delete topics now describe a foreign key made of more than one column. The columns after a table **name which relationship** you mean rather than spelling out the `ON` clause, so naming one column of a key joins on all of it, and several columns can be named when one isn't enough to tell two relationships apart. `delete!` takes several columns too, which a table with no single identifying column needs. Also documents writing the pairs out yourself (`.a = .b, .c = .d`), and corrects the note about a join column that matches nothing -- the query now fails with a plain syntax error rather than `zero-length delimited identifier`. Applies once the bundled pine-lang is 0.46.0 or newer.
 
 ## [0.16.0] - 2026-09-20
 ### Added

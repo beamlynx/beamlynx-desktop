@@ -1,7 +1,8 @@
 # Join
 
 Join tables by piping them together. You do not name the join columns — Pine resolves the
-relationship between the two tables itself.
+relationship between the two tables itself, and joins on every column that relationship uses.
+Most use one column; a foreign key made of several uses all of them, in one join.
 
 Supported modifiers:
 - `:left` — keeps rows from the left table even where the right has no match
@@ -33,21 +34,31 @@ Each table joins to the one before it.
 customers | audit.order_status_changes
 ```
 
-### Say which column to join on
+### Say which relationship you mean
 
 ```
 customers | orders .customer_id
 ```
 
-Needed when two tables are related through more than one column — for example an `orders` table
-with both `customer_id` and `shipping_customer_id`. Ambiguity is the usual reason a join comes
-back wrong.
+Needed when two tables are related in more than one way — for example an `orders` table with both
+`customer_id` and `shipping_customer_id`. Ambiguity is the usual reason a join comes back wrong.
 
-Take the column from the join list that completions give you rather than guessing it. Names are
-case-sensitive, and a schema that mixes conventions (`customer_id` on one table, `customerId` on
-the next) defeats guessing about half the time. A column that does not exist is not rejected: the
-join is built with an empty one and the query fails later with `zero-length delimited identifier`,
-which says nothing about the cause.
+The columns **name the relationship**; they do not spell out the `ON` clause. Naming one column of
+a key selects that whole key, and the join still matches on all of its columns. Name more than one,
+comma-separated, when a single column belongs to two different relationships:
+
+```
+cases | case_refs .case_id, .search_id
+```
+
+Take the columns from the join list that completions give you rather than guessing them —
+completions spell out every column of a key, so what they offer is what the join will do. Names
+are case-sensitive, and a schema that mixes conventions (`customer_id` on one table, `customerId`
+on the next) defeats guessing about half the time.
+
+Columns that match no relationship are not rejected. The join is built with no `ON` clause at all
+and the query fails later with a syntax error that says nothing about the cause, so take the
+completion rather than typing from memory.
 
 ### Keep unmatched rows
 
@@ -85,6 +96,17 @@ categories as p | categories as c :parent
 
 By default Pine joins toward the table holding the foreign key (the child). `:parent` reverses
 that, joining toward the table being referenced.
+
+### Spell out the columns yourself
+
+```
+customers | orders .customer_id = .id
+customers | orders .customer_id = .id, .region = .region
+```
+
+This ignores the schema's relationships entirely and joins on exactly the pairs given. Each pair
+is `.<right table column> = .<left table column>`. Use it for a join no foreign key describes — or
+to join on only part of a key on purpose.
 
 ### Finding the join you want
 
