@@ -1,5 +1,5 @@
 {
-  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang bumped to its tagged 0.45.0 and beamlynx-ui to its tagged 0.62.0, the pair that adds tab comments (pine-lang returns a leading comment as `doc` and stops deleting it when it reformats an expression; beamlynx-ui shows and edits it on the canvas) and lets two saved connections share a host:port with different databases (pine-lang folds the database name into a connection's id).",
-  "pineLangRef": "0.45.0",
-  "beamlynxUiRef": "0.62.0"
+  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang bumped to its tagged 0.46.0 and beamlynx-ui to its tagged 0.63.0, a pair that has to move together: pine-lang now sends each join as a labelled map, which beamlynx-ui 0.63.0 reads and older UIs cannot, and beamlynx-ui adds the traversal action (count or delete the rows under a table) built on pine-lang's multi-column keys.",
+  "pineLangRef": "0.46.0",
+  "beamlynxUiRef": "0.63.0"
 }
