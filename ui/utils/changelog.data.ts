@@ -44,7 +44,7 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: "Delete rows… produces the same script delete: did, and stops there",
         description:
-          "The same BEGIN; … COMMIT; script delete: produced before -- identical, byte for byte -- and stops there. It says so: nothing has been deleted. Running it is still your own step, as it always was.",
+          "The same BEGIN; … COMMIT; script delete: produced before -- identical, byte for byte -- and stops there. Produced before -- identical, byte for byte -- and stops there. It says so: nothing has been deleted. Running it is still your own step, as it always was.",
       },
       {
         title: "Delete is offered only where it would be correct",
@@ -107,9 +107,9 @@ export const CHANGELOG: ChangelogVersion[] = [
           "Picking a verb closes the menu, and the canvas shortcuts were reading \"is a menu open?\" a moment too late -- by then it had closed, so the key counted twice. Keys pressed inside any menu now stay there.",
       },
       {
-        title: "A downloadable log of a delete run, once anything has actually run",
+        title: "Delete rows… now walks a hierarchy all the way down, such as child folders under a folder, or companies marked as duplicates of a company",
         description:
-          "Every statement sent, the rows it removed, when, and how long it took -- and, if the run stopped partway, which tables were left. Before, it stopped with \"the walk reached \"company\", which the expression already uses\". The table listed itself as one of its own children, and the check for tables the expression uses ran before the check for loops. Now such a loop is skipped, like any other loop. The rows that point back at the table aren't followed. If one of them still refers to a row you're deleting, the database refuses that delete and the run pauses there. Nothing is removed without you seeing it.",
+          "It used to stop with \"the walk reached \"company\", which the expression already uses\". The walk follows only the tables that point at the current one (the has joins), never its parents. So meeting a table again always means a deeper set of rows. It keeps going until a level has none, and deletes the deepest first. A loop in the data itself, such as two companies each marked a duplicate of the other, runs to the depth limit. A delete plan that hits the limit can't be run, because it may be missing rows.",
       },
       {
         title: "Joins on the canvas now start from the latest table unless you pick another one",
@@ -122,9 +122,9 @@ export const CHANGELOG: ChangelogVersion[] = [
           "Building an expression is not the same as committing one, and auto-run listens for the commit.",
       },
       {
-        title: "A downloadable log of a delete run, once anything has actually run",
+        title: "Hovering a row in a traversal shows its Pine expression in a themed tooltip, in the code font, with each step on its own line",
         description:
-          "Every statement sent, the rows it removed, when, and how long it took -- and, if the run stopped partway, which tables were left. It used to be the operating system's own tooltip, which ignores the theme, sets code in the interface font, and flattens the formatting.",
+          "It used to be the operating system's own tooltip, which ignores the theme, sets code in the interface font, and flattens the formatting.",
       },
       {
         title: "Every expression a traversal builds now puts each step on its own line, with the pipe at the start of it",
