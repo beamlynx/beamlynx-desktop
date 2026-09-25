@@ -4,8 +4,27 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.17.0] - 2026-09-25
+### Added
+- Walk the tables under one of yours, as a canvas action. Press `+` on a table and pick **traverse**. It follows the tables that point at it by foreign key, all the way down, including hierarchies such as child folders under a folder. It skips a branch as soon as it finds no rows (bundled beamlynx-ui 0.63.0).
+- **Count rows** lists every table it reaches with its row count, deepest first, in the results pane. Click a row to open that table's rows in a new tab (bundled beamlynx-ui 0.63.0).
+- **Delete rows…** builds the `BEGIN;` … `COMMIT;` script that empties those tables, deepest first, and stops there. Run it from the same panel after a confirmation that names the connection and its host and lists each table with its row count. It deletes one table at a time. If one fails, the run pauses there, and Resume carries on from that table. There's a copy button for the script, and a downloadable log of what ran (bundled beamlynx-ui 0.63.0).
+- Joins can name several columns: `note | note_ref .note_id, .other_id`, or `a | b .x = .p, .y = .q` to write the pairs out yourself. `delete!` takes several columns too (bundled pine-lang 0.46.0).
+
 ### Changed
-- Pine reference: the join and delete topics now describe a foreign key made of more than one column. The columns after a table **name which relationship** you mean rather than spelling out the `ON` clause, so naming one column of a key joins on all of it, and several columns can be named when one isn't enough to tell two relationships apart. `delete!` takes several columns too, which a table with no single identifying column needs. Also documents writing the pairs out yourself (`.a = .b, .c = .d`), and corrects the note about a join column that matches nothing -- the query now fails with a plain syntax error rather than `zero-length delimited identifier`. Applies once the bundled pine-lang is 0.46.0 or newer.
+- **Breaking:** a foreign key made of more than one column is now one join on all of its columns. Before, Pine joined on whichever one column you named. An expression that named a column that isn't unique on its own now returns fewer rows -- the rows it should have returned all along (bundled pine-lang 0.46.0).
+- `delete:` is gone from Pine, replaced by the traverse action. A saved tab that still ends in `delete:` has it removed when it opens (bundled beamlynx-ui 0.63.0, pine-lang 0.46.0).
+- Pine reference: the join and delete topics now describe a foreign key made of more than one column. The columns after a table **name which relationship** you mean rather than spelling out the `ON` clause, so naming one column of a key joins on all of it, and several columns can be named when one isn't enough to tell two relationships apart. `delete!` takes several columns too, which a table with no single identifying column needs. Also documents writing the pairs out yourself (`.a = .b, .c = .d`), and corrects the note about a join column that matches nothing -- the query now fails with a plain syntax error rather than `zero-length delimited identifier`.
+
+### Fixed
+- Joins on the canvas now start from the latest table unless you pick another one. Hovering over a table used to move keyboard focus to it, even with the pointer hidden while you typed, so the next `|` could join from an older table (bundled beamlynx-ui 0.63.0).
+- Ctrl+C on the canvas copies again instead of opening the comment editor (bundled beamlynx-ui 0.63.0).
+- Switching tabs no longer shifts the layout (bundled beamlynx-ui 0.63.0).
+- The error above the results is no longer cut off. The whole message wraps over as many lines as it needs, up to six before it scrolls (bundled beamlynx-ui 0.63.0).
+
+### Security
+- An agent can no longer change your data through an operation the old check missed. MCP only refused `delete!`, found by searching the text, and let `update!`, `d!` and `u!` through. The Pine server now refuses every form, and the agent's tab refuses writes even when you press Run on it yourself. Your own tabs are unchanged (bundled beamlynx-ui 0.63.0, pine-lang 0.46.0).
 
 ## [0.16.0] - 2026-09-20
 ### Added
