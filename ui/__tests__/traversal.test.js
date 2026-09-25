@@ -11,7 +11,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const {
   canDeleteTraverse,
-  tablesInExpression,
+  tablesAboveRoot,
   MAX_DEPTH,
 } = require('../store/canvas/traversal.ts');
 
@@ -89,15 +89,24 @@ test('canDeleteTraverse refuses when there is no table yet', () => {
   assert.equal(canDeleteTraverse(ast('', [])).ok, false);
 });
 
-test('tablesInExpression covers the pipe including its final table', () => {
-  // `selected-tables` deliberately omits the pipe's last table (pipeline.md),
-  // so the root table has to be added separately -- otherwise the very table
-  // being deleted from would not be in the forbidden set.
-  const keys = tablesInExpression(
-    ast('e_1', [has('c_0', 'e_1')], [{ table: 'company', alias: 'c_0', schema: 'public' }]),
-    'employee',
-  );
-  assert.deepEqual([...keys].sort(), ['company', 'employee']);
+test('tablesAboveRoot names the tables the root is selected through, not the root', () => {
+  // `company | employee`: the walk may meet employee again below itself, but
+  // never company. Whether selected-tables lists the root or not, the result
+  // is the same, because the root is matched by alias.
+  const upper = [{ table: 'company', alias: 'c_0', schema: 'public' }];
+  const root = [{ table: 'employee', alias: 'e_1', schema: 'public' }];
+  assert.deepEqual([...tablesAboveRoot(ast('e_1', [has('c_0', 'e_1')], upper))], ['company']);
+  assert.deepEqual([...tablesAboveRoot(ast('e_1', [has('c_0', 'e_1')], [...upper, ...root]))], ['company']);
+});
+
+test('tablesAboveRoot keeps a table above the root that shares its name', () => {
+  // `folder as p | folder .parent_id as f`: the root's own child folders are
+  // fair game, but `p` is a row the root is selected through.
+  const tables = [
+    { table: 'folder', alias: 'p', schema: 'public' },
+    { table: 'folder', alias: 'f', schema: 'public' },
+  ];
+  assert.deepEqual([...tablesAboveRoot(ast('f', [has('p', 'f')], tables))], ['folder']);
 });
 
 test('the depth cap is a fixed, stated number', () => {
@@ -202,40 +211,76 @@ test('planning a delete allows two separate foreign keys to the same table', asy
   );
 });
 
-// A table with a foreign key to itself lists itself as its own child. The root
-// table is always in `forbidden`, so checking that before the cycle check
-// stopped every delete from such a root. Found on
-// `tenant | company .tenantId`, where company.duplicate_id -> company.id.
-function stubClientRootedAt(table, alias, childrenByExpression) {
+// The walk only descends, so a table it meets again below itself is a deeper
+// set of rows, not a way back up. It follows them until the counts reach zero.
+function stubClientRootedAt(table, alias, childrenByExpression, countsByExpression = {}) {
   return {
     ...stubClient(childrenByExpression),
+    count: async expression => countsByExpression[expression] ?? 1,
     build: async () => ({
       ast: { current: alias, joins: [], 'selected-tables': [{ table, alias, schema: 'public' }] },
     }),
   };
 }
 
-test('planning a delete skips a table that references itself', async () => {
-  const root = 'tenant | company .tenantId';
-  const client = stubClientRootedAt('company', 'c_1', {
-    [root]: [
-      child(`${root} | company .duplicate_id`, ['duplicate_id'], 'company'),
-      child(`${root} | employee .company_id`, ['company_id'], 'employee'),
-    ],
-  });
-  const result = await runTraversal(client, root, {
-    forDelete: true,
-    forbidden: new Set(['tenant', 'company']),
-  });
+test('a table that references itself is followed down to its leaves', async () => {
+  // folder.parent_id -> folder.id: child folders, then theirs, until a level
+  // has no rows. Found on company.duplicate_id -> company.id, where the walk
+  // used to refuse ("the walk reached company").
+  const root = 'tenant | folder .tenant_id';
+  const level1 = `${root} | folder .parent_id`;
+  const level2 = `${level1} | folder .parent_id`;
+  const level3 = `${level2} | folder .parent_id`;
+  const client = stubClientRootedAt(
+    'folder',
+    'f_1',
+    { [root]: [child(level1, ['parent_id'], 'folder')], [level1]: [child(level2, ['parent_id'], 'folder')], [level2]: [child(level3, ['parent_id'], 'folder')] },
+    { [level3]: 0 },
+  );
+  const result = await runTraversal(client, root, { forDelete: true, forbidden: new Set(['tenant']) });
+  // Deepest first: the grandchildren's DELETE runs before the children's.
+  assert.deepEqual(
+    result.nodes.map(n => [n.table, n.depth]),
+    [['folder', 2], ['folder', 1], ['folder', 0]],
+  );
+  assert.equal(result.depthCapped, false);
+});
+
+test('a table reached again through a second foreign key is followed', async () => {
+  // company -> employee (employee.company_id) -> company (company.ceo_id).
+  const root = 'company';
+  const employees = 'company | employee .company_id';
+  const led = `${employees} | company .ceo_id`;
+  const client = stubClientRootedAt(
+    'company',
+    'c_0',
+    { [root]: [child(employees, ['company_id'], 'employee')], [employees]: [child(led, ['ceo_id'], 'company')] },
+    { [`${led} | employee .company_id`]: 0 },
+  );
+  const result = await runTraversal(client, root, { forDelete: true, forbidden: new Set() });
   assert.deepEqual(
     result.nodes.map(n => n.table),
-    ['employee', 'company'],
+    ['company', 'employee', 'company'],
   );
 });
 
-test('planning a delete still stops at a table the expression uses above the root', async () => {
-  // employee -> tenant is not a cycle on the walk's path, but tenant is in
-  // the root expression. Emptying it would break the root's own join.
+test('a loop in the data stops at the depth limit and says so', async () => {
+  // Two companies each marked a duplicate of the other: every level has rows.
+  const client = {
+    ...stubClientRootedAt('company', 'c_0', {}),
+    makeChildExpressions: async expression => ({
+      expressions: [child(`${expression} | company .duplicate_id`, ['duplicate_id'], 'company')],
+      ast: {},
+    }),
+  };
+  const result = await runTraversal(client, 'company', { forDelete: true, forbidden: new Set(), maxDepth: 3 });
+  assert.equal(result.depthCapped, true);
+  assert.equal(result.nodes.length, 4);
+});
+
+test('planning a delete still stops at a table above the root', async () => {
+  // employee -> tenant: tenant is what the root's companies are selected
+  // through. Emptying it first would make the root's own DELETE match nothing.
   const root = 'tenant | company .tenantId';
   const client = stubClientRootedAt('company', 'c_1', {
     [root]: [child(`${root} | employee .company_id`, ['company_id'], 'employee')],
@@ -244,7 +289,7 @@ test('planning a delete still stops at a table the expression uses above the roo
     ],
   });
   await assert.rejects(
-    runTraversal(client, root, { forDelete: true, forbidden: new Set(['tenant', 'company']) }),
+    runTraversal(client, root, { forDelete: true, forbidden: new Set(['tenant']) }),
     /the walk reached "tenant"/,
   );
 });

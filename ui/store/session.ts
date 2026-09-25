@@ -10,7 +10,7 @@ import {
   DeleteOutcome,
   runDeleteScript,
   runTraversal,
-  tablesInExpression,
+  tablesAboveRoot,
   TraversalNode,
   TraversalState,
   traversalClient,
@@ -798,7 +798,7 @@ export class Session {
       // removes nothing. Counting needs no such guard - it only reads.
       const forbidden =
         verb === 'delete'
-          ? tablesInExpression(this.ast, this.ast?.current ?? '')
+          ? tablesAboveRoot(this.ast)
           : undefined;
       const result = await runTraversal(traversalClient, rootExpression, {
         connectionId: this.connectionId,
@@ -880,6 +880,9 @@ export class Session {
   /** Opens the confirmation. Deliberately a separate step from running. */
   requestTraversalRun() {
     if (!this.traversal || this.traversal.verb !== 'delete' || !this.traversal.script) return;
+    // A walk cut off at the depth limit is an incomplete plan: the tables
+    // below the limit have rows pointing at rows it would delete.
+    if (this.traversal.depthCapped) return;
     runInAction(() => {
       if (this.traversal) this.traversal.run = 'confirming';
     });
