@@ -10,7 +10,6 @@ import {
   DeleteOutcome,
   runDeleteScript,
   runTraversal,
-  tablesInExpression,
   TraversalNode,
   TraversalState,
   traversalClient,
@@ -792,19 +791,9 @@ export class Session {
     });
 
     try {
-      // The delete verb gets the run-time backstop. The two conditions
-      // canDeleteTraverse checks are an argument about the foreign-key graph,
-      // and the cost of that argument being wrong is a delete that silently
-      // removes nothing. Counting needs no such guard - it only reads.
-      const forbidden =
-        verb === 'delete'
-          ? tablesInExpression(this.ast, this.ast?.current ?? '')
-          : undefined;
       const result = await runTraversal(traversalClient, rootExpression, {
         connectionId: this.connectionId,
         signal,
-        forbidden,
-        forDelete: verb === 'delete',
         onNode: node =>
           runInAction(() => {
             if (this.traversal && this.traversalSeq === seq) {
@@ -880,6 +869,9 @@ export class Session {
   /** Opens the confirmation. Deliberately a separate step from running. */
   requestTraversalRun() {
     if (!this.traversal || this.traversal.verb !== 'delete' || !this.traversal.script) return;
+    // A walk cut off at the depth limit is an incomplete plan: the tables
+    // below the limit have rows pointing at rows it would delete.
+    if (this.traversal.depthCapped) return;
     runInAction(() => {
       if (this.traversal) this.traversal.run = 'confirming';
     });
