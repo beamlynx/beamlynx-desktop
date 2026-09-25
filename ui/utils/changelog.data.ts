@@ -23,6 +23,168 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.63.0',
+    date: '2026-09-25',
+    added: [
+      {
+        title: "Walking the tables that hang off one of yours is now an action on the canvas",
+        description:
+          "Press + on a table, pick traverse, and choose what to do at every table it reaches by foreign key: Count rows, or Delete rows…. It follows real foreign keys, deepest first, and skips a branch as soon as it finds nothing there.",
+      },
+      {
+        title: "Count rows answers \"what is actually under this?\"",
+        description:
+          "A row per related table with its count, deepest first, shown in the results pane where every other answer shows up. Clicking any row opens that table's rows in a new tab, because every line in that list is a real query. Running a query afterwards takes the pane back, the same as running one always does.",
+      },
+      {
+        title: "The list fills in while the walk runs, and the walk can be cancelled",
+        description:
+          "A large tree no longer means staring at a frozen panel with no way out.",
+      },
+      {
+        title: "Delete rows… produces the same script delete: did, and stops there",
+        description:
+          "The same BEGIN; … COMMIT; script delete: produced before -- identical, byte for byte -- and stops there. It says so: nothing has been deleted. Running it is still your own step, as it always was.",
+      },
+      {
+        title: "Delete is offered only where it would be correct",
+        description:
+          "Given an expression that joins back up (employee | company), the walk would empty a table the query itself depends on, and the delete would then remove nothing while reporting success. That is now caught before you can click it, and the menu entry says why instead of quietly vanishing.",
+      },
+      {
+        title: "Delete rows… can now actually run what it planned, once you have allowed it for that connection",
+        description:
+          "A new Allow destructive actions switch in Settings → Connections is off by default and off for every connection you already had. Without it the Run button stays disabled and says why. With it on, Run asks you to confirm — naming the connection *and* its host, listing each table and its row count — before anything happens.",
+      },
+      {
+        title: "Deleting is refused where a table is linked by a foreign key made of more than one column",
+        description:
+          "Pine reads such a key one column pair at a time, and deleting on one column alone would also remove rows belonging to other records -- quietly, with no error. Counting still works on those tables, though its numbers are inflated by the same split. Two separate foreign keys to the same table (a message with a sender and a recipient, say) are unaffected and still delete correctly.",
+      },
+      {
+        title: "The deletes run one table at a time, deepest first, and the confirmation says so",
+        description:
+          "If one fails the rest are left alone, nothing is rolled back, and re-running finishes the job. A partial run never leaves a broken reference behind, because children always go before their parents.",
+      },
+      {
+        title: "A delete run can be paused, and picks up where it stopped",
+        description:
+          "If one table fails -- a missing grant, a constraint -- the run stops there rather than pressing on into a parent whose child still has rows. Fix the cause, press Resume, and it retries that table and continues; the tables already done are not repeated.",
+      },
+      {
+        title: "A copy button on a delete plan, the same icon and behaviour as the one on the results grid",
+      },
+      {
+        title: "A downloadable log of a delete run, once anything has actually run",
+        description:
+          "Every statement sent, the rows it removed, when, and how long it took -- and, if the run stopped partway, which tables were left. Same download icon as the results grid's export.",
+      },
+    ],
+    changed: [
+      {
+        title: "delete: is gone from Pine, replaced by the canvas action above",
+      },
+      {
+        title: "Running the deletes you planned no longer needs a setting turned on first",
+        description:
+          "Deciding what you may do to your own database is the database's job -- connect as a role without DELETE if that is what you want -- not a switch in here. The confirmation stays: it names the connection and lists what is about to go, which is about knowing what you are doing rather than being allowed to.",
+      },
+      {
+        title: "Traversals follow foreign keys up to 25 levels deep, rather than 10",
+        description:
+          "Cycles are handled separately, by tracking the tables on the path from the root, so the depth limit is only there for a schema nobody meant to walk all of -- and real ones nest further than a first guess suggests.",
+      },
+    ],
+    fixed: [
+      {
+        title: "Traversing a table linked by a foreign key made of more than one column works now, instead of refusing",
+        description:
+          "It used to stop with \"it is linked by a foreign key made of more than one column\", because the server described such a key as several unrelated single-column links and deleting on one of them at a time would also remove rows belonging to other records. The server now reports the key whole, and the generated DELETE names every one of its columns.",
+      },
+      {
+        title: "Pressing c for \"Count rows\" in the traverse menu no longer also opens the comment editor",
+        description:
+          "Picking a verb closes the menu, and the canvas shortcuts were reading \"is a menu open?\" a moment too late -- by then it had closed, so the key counted twice. Keys pressed inside any menu now stay there.",
+      },
+      {
+        title: "A downloadable log of a delete run, once anything has actually run",
+        description:
+          "Every statement sent, the rows it removed, when, and how long it took -- and, if the run stopped partway, which tables were left. Before, it stopped with \"the walk reached \"company\", which the expression already uses\". The table listed itself as one of its own children, and the check for tables the expression uses ran before the check for loops. Now such a loop is skipped, like any other loop. The rows that point back at the table aren't followed. If one of them still refers to a row you're deleting, the database refuses that delete and the run pauses there. Nothing is removed without you seeing it.",
+      },
+      {
+        title: "Joins on the canvas now start from the latest table unless you pick another one",
+        description:
+          "Before, a join sometimes started from an older table without warning. Hovering over a table moved keyboard focus to it, and the next | joined from wherever focus was. A hidden pointer counted too: the pointer is hidden while you type, and the canvas lays itself out again after each join, so an older table could end up under it. Now hovering only highlights a table. To start a join from an older table, click it or move to it with the keyboard. Editing the expression by hand also puts focus back on the latest table.",
+      },
+      {
+        title: "Opening a table from a Count rows result now runs it, instead of showing the query and the graph and waiting",
+        description:
+          "Building an expression is not the same as committing one, and auto-run listens for the commit.",
+      },
+      {
+        title: "A downloadable log of a delete run, once anything has actually run",
+        description:
+          "Every statement sent, the rows it removed, when, and how long it took -- and, if the run stopped partway, which tables were left. It used to be the operating system's own tooltip, which ignores the theme, sets code in the interface font, and flattens the formatting.",
+      },
+      {
+        title: "Every expression a traversal builds now puts each step on its own line, with the pipe at the start of it",
+        description:
+          "The walk builds these by adding joins, and they used to run onto the end of whatever the canvas had already formatted -- so a traversal a few tables deep was one long line. It shows up everywhere those expressions do: hovering a row, the comment above each generated DELETE, the log of a run, and the tab you get when you open a row.",
+      },
+      {
+        title: "A generated delete script is no longer broken by a tab that has a comment on it",
+        description:
+          "The comment was being wrapped inside another comment, and SQL comments of that kind cannot sit inside one another -- the inner one ended the outer one early and the rest of the expression spilled out as invalid SQL. Your note now appears once at the top of the script instead of above every statement.",
+      },
+      {
+        title: "Ctrl+C on the canvas copies again instead of opening the comment editor",
+        description:
+          "The canvas shortcuts are single letters and matched on the letter alone, so any of them fired with Ctrl or Cmd held -- c was the one people hit constantly, but Ctrl+V, Ctrl+A and Ctrl+F had the same collision waiting.",
+      },
+      {
+        title: "Switching tabs no longer shifts the layout",
+        description:
+          "The pane and panel sizes are yours, app-wide, but they were being re-read every time a tab was shown -- so the layout started at its default size and moved to your saved one a moment later. That was the Pine panel appearing to animate, the canvas resizing, the graph recentring, and even the empty \"Run a query to see results here\" drifting slightly, all on every tab change. A saved tab still ending in delete: has it removed when the tab is restored -- without that the tab would come back blank, since one unparseable word stops the canvas reading any of the expression.",
+      },
+      {
+        title: "The error above the results was cut off twice over",
+        description:
+          "The band was shorter than the message in it, so the last line disappeared behind the results grid, and the message itself stopped at 120 characters -- 40 on a narrow window -- with the rest only in a tooltip you had to hover for. What got lost is the part that tells you what to do, since a database error puts its detail, its hint and the position of the offending token after the opening summary. The whole message now wraps over as many lines as it needs. A very long one scrolls inside the band rather than growing without limit -- at most six lines, and fewer than that when you have dragged the results pane short, so there is always a results grid left under it.",
+      },
+    ],
+    security: [
+      {
+        title: "An agent can no longer change your data through an operation the old check missed",
+        description:
+          "MCP refused a Pine expression containing delete!, by looking for that word in the text. It did not look for update!, and it did not recognise the short forms d! and u! -- so three of the four ways to write to a database went straight through. The check now happens in the Pine server, which already knows which operations change data, so every form is covered and so is anything added later. Reads are unaffected, and so are your own queries: you can still run delete! and update! in your own tab exactly as before.",
+      },
+      {
+        title: "MCP now refuses to run anything at all against a Pine server older than 0.46.0",
+        description:
+          "An older server ignores the request to refuse writes and runs them anyway, so falling back to it would be quietly less safe than the check it replaces. This applies to agent queries only -- the rest of the app still works against an older server exactly as before, and the minimum version it needs is unchanged.",
+      },
+      {
+        title: "The agent's tab now refuses writes as a property of the tab, not of each query",
+        description:
+          "Previously the refusal was attached to each agent request, which worked but meant anything new reaching that tab in future would have had to remember it -- and the Pine server allows writes by default, so forgetting meant allowing. It also covers you pressing Run on the agent's tab yourself, where the query on screen is the agent's rather than your own. Your own tabs are unchanged.",
+      },
+    ],
+    removed: [
+      {
+        title: "The BEAMLYNX_MCP_ALLOW_DELETE environment variable",
+        description:
+          "It turned off the delete check for every agent query on the machine, for as long as it was set. A machine-wide switch is the wrong shape for \"I meant this one\" -- a write an agent makes should be a deliberate act each time, not a mode the machine is left in.",
+      },
+    ],
+    breaking: [
+      {
+        title: "Minimum required pine-lang server version raised to 0.46.0 (from 0.45.0)",
+        description:
+          "A join in the AST is now a labelled object rather than an array inside an array, so this release cannot read an older server's joins at all -- every edge on the canvas would show as unresolved. Nothing about the app changes for you; the canvas draws the same edges from a shape that says what each part is instead of one both sides had to count positions in. A foreign key made of more than one column now has somewhere to put the rest of its columns, which is what the next change needs. Connecting to an older server now shows the upgrade-required screen instead of the app.",
+      },
+    ],
+  },
+  {
     version: '0.62.0',
     date: '2026-09-20',
     added: [
@@ -2000,4 +2162,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.62.0';
+export const LATEST_VERSION = '0.63.0';

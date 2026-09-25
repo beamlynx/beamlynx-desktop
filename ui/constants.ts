@@ -59,7 +59,7 @@ export const MAX_RESULT_COLUMN_WIDTH = 400;
 export const VERTICAL_TAB_RAIL_WIDTH = 190;
 
 /* Pine Server */
-export const RequiredVersion = '0.45.0';
+export const RequiredVersion = '0.46.0';
 
 // The oldest pine-lang that can refuse an expression which changes data --
 // `allow-writes` on /api/v1/eval, see its docs/side-effects.md. Deliberately
