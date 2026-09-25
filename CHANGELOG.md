@@ -5,7 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
-## [0.17.0] - 2026-09-25
+## [0.17.0] - 2026-09-26
 ### Added
 - Walk the tables under one of yours, as a canvas action. Press `+` on a table and pick **traverse**. It follows the tables that point at it by foreign key, all the way down, including hierarchies such as child folders under a folder. It skips a branch as soon as it finds no rows (bundled beamlynx-ui 0.63.0).
 - **Count rows** lists every table it reaches with its row count, deepest first, in the results pane. Click a row to open that table's rows in a new tab (bundled beamlynx-ui 0.63.0).
