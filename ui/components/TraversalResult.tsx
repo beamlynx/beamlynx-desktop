@@ -152,6 +152,7 @@ const TraversalResult: React.FC<{ session: Session }> = observer(({ session }) =
       {depthCapped && (
         <Box sx={{ px: 1.5, py: 0.5, color: 'var(--canvas-text-dim)' }}>
           Stopped at the depth limit — there may be more tables below these.
+          {verb === 'delete' && ' The plan is incomplete, so it cannot be run.'}
         </Box>
       )}
 
@@ -253,6 +254,7 @@ const TraversalResult: React.FC<{ session: Session }> = observer(({ session }) =
                   size="small"
                   color="error"
                   data-testid="traversal-run"
+                  disabled={depthCapped}
                   // Resuming skips the confirmation: it was given for this
                   // exact set of tables, and only how far through them we are
                   // has changed.

@@ -49,15 +49,17 @@ export type TraversalStatus = 'walking' | 'done' | 'cancelled' | 'failed';
 /**
  * How deep the walk goes before stopping.
  *
- * Not really a safety limit -- cycles are already handled, by tracking the
- * tables on the path from the root -- so it is just a depth past which nobody
- * meant to keep going. Real schemas nest further than a first guess suggests,
- * so this is set well clear of them rather than tuned tight; hitting it should
- * mean something is wrong, not that the schema is ordinary.
+ * The walk's only backstop. A table that appears again below itself - a
+ * folder's child folders, or `company | employee | company` through a second
+ * foreign key - is followed, and ends on its own where the counts reach zero.
+ * Only a loop in the data itself (two companies each marked a duplicate of
+ * the other) keeps going, and this is where it stops. Real hierarchies nest
+ * further than a first guess suggests, so this is set well clear of them;
+ * hitting it should mean something is wrong, not that the data is deep.
  *
  * What matters more than the number is that hitting it is *visible*:
  * `depthCapped` below, which the panel reports, rather than a truncated tree
- * presented as a complete one.
+ * presented as a complete one. A capped delete plan cannot be run.
  */
 export const MAX_DEPTH = 25;
 
@@ -138,12 +140,10 @@ export type DeleteEligibility = { ok: true } | { ok: false; reason: string };
  * the pipe does the same thing: its rows go first, and the parent's subquery
  * then joins through nothing.
  *
- * The invariant is that no table the walk visits may appear in the root
- * expression. The walk only ever descends, so that holds exactly when the root
- * is a strict descending chain with `current` at its end -- the two conditions
- * below. `runTraversal` enforces the invariant itself at run time as well,
- * since these conditions are an argument about the foreign-key graph and the
- * cost of the argument being wrong is a silent wrong delete.
+ * The two checks below read Pine's own parent flag on each join. If every join in the
+ * expression goes from parent to child and the walk starts at the end, the
+ * tables above the root are all ancestors, and the walk - which follows
+ * children only - never deletes from them before the root.
  */
 export const canDeleteTraverse = (ast: Ast | null | undefined): DeleteEligibility => {
   if (!ast || !ast.current) return { ok: false, reason: 'Pick a table first.' };
@@ -190,59 +190,13 @@ export const canDeleteTraverse = (ast: Ast | null | undefined): DeleteEligibilit
 // The walk
 // ---------------------------------------------------------------------------
 
-/** Thrown when the run-time invariant behind canDeleteTraverse is violated. */
-export class TraversalRevisitError extends Error {
-  constructor(public readonly table: string) {
-    super(
-      `Stopping: the walk reached "${table}", which the expression already uses. ` +
-        `Continuing would empty a table the query itself depends on.`,
-    );
-    this.name = 'TraversalRevisitError';
-  }
-}
-
 export type WalkOptions = {
   connectionId?: string;
   maxDepth?: number;
   /** Aborts the walk between steps. */
   signal?: { cancelled: boolean };
-  /**
-   * Tables the root expression already uses. The walk aborts rather than
-   * visiting one -- see canDeleteTraverse for what goes wrong. Passed only
-   * for the delete verb; counting re-reads nothing, so revisiting a table is
-   * merely redundant there, not wrong.
-   */
-  forbidden?: Set<string>;
-  /**
-   * Whether this walk is planning a delete. Turns on `forbidden` above, which
-   * only matters when the result will be used to remove rows. Counting stays
-   * permissive - it reads, so the worst it can do is report a number that is
-   * larger than it should be.
-   */
-  forDelete?: boolean;
   /** Called as each node's count lands, so a panel can fill in as it goes. */
   onNode?: (node: TraversalNode) => void;
-};
-
-/**
- * The key both `visited` and `forbidden` use.
- *
- * The bare table name, not `schema.table`, because the two sides would not
- * agree otherwise: a child comes from a `hints.table` entry, which carries a
- * schema, while the root is resolved from the AST, where it often does not.
- * Mixing the two forms would silently defeat both sets.
- *
- * The cost is conflating same-named tables in different schemas. Both
- * consequences land on the safe side: `visited` would stop a branch early
- * rather than walk it twice, and `forbidden` would refuse a delete rather than
- * allow a wrong one.
- */
-const tableKey = (table: string): string => table.toLowerCase();
-
-/** Every table the root expression already uses -- see WalkOptions.forbidden. */
-export const tablesInExpression = (ast: Ast | null | undefined, rootTable: string): Set<string> => {
-  const keys = (ast?.['selected-tables'] ?? []).map(t => tableKey(t.table));
-  return new Set([...keys, tableKey(rootTable)]);
 };
 
 /**
@@ -275,14 +229,6 @@ export const runTraversal = async (
     schema: string | null,
     columns: string[],
     depth: number,
-    // Tables on the path from the root to here, for cycle termination.
-    // Scoped to the path, NOT global: a table reachable by two different
-    // routes is a diamond, not a cycle, and both routes are real.
-    // `company | project | assignment` and `company | employee | assignment`
-    // select different assignment rows and need a DELETE each -- dropping
-    // the second leaves rows behind, and the parent's own DELETE then fails
-    // on the foreign key. A global visited set silently did exactly that.
-    path: ReadonlySet<string>,
   ): Promise<void> => {
     if (options.signal?.cancelled) return;
 
@@ -311,27 +257,12 @@ export const runTraversal = async (
 
     for (const child of expressions) {
       if (options.signal?.cancelled) return;
-      const key = tableKey(child.table);
-      // Termination on a foreign-key cycle: this table is already an ancestor
-      // of itself. Keyed on the table, not the expression, because an
-      // expression grows a new alias on every hop and so never repeats.
-      //
-      // Checked before `forbidden`, which always contains the root table. A
-      // table with a foreign key to itself (`company.duplicate_id ->
-      // company.id`) lists itself as its own child, and checking `forbidden`
-      // first stopped every delete from such a root. A cycle is skipped, not
-      // visited, so it empties nothing and the invariant still holds.
-      if (path.has(key)) continue;
-      if (options.forbidden?.has(key)) throw new TraversalRevisitError(key);
-      await visit(
-        child.expression,
-        expression,
-        child.table,
-        child.schema,
-        child.columns,
-        depth + 1,
-        new Set([...Array.from(path), key]),
-      );
+      // Children only, never parents (see makeChildExpressions), so a table
+      // met again is always a deeper set of rows: child folders, or
+      // `company | employee | company` through a second foreign key. The walk
+      // ends where a level has no rows; only a loop in the data runs on to
+      // maxDepth, which is reported.
+      await visit(child.expression, expression, child.table, child.schema, child.columns, depth + 1);
     }
 
     // After its children, never before -- see the post-order note above.
@@ -339,15 +270,7 @@ export const runTraversal = async (
   };
 
   const root = await rootTableOf(client, rootExpression, options.connectionId);
-  await visit(
-    rootExpression,
-    null,
-    root.table,
-    root.schema,
-    root.columns,
-    0,
-    new Set([tableKey(root.table)]),
-  );
+  await visit(rootExpression, null, root.table, root.schema, root.columns, 0);
 
   return { nodes, depthCapped };
 };
