@@ -104,6 +104,12 @@ export class CanvasStore {
   // cursor were two separate fields that could drift out of sync with each
   // other).
   private _cursor: FocusStop | null = null;
+  // The last expression the canvas itself wrote (applyExpression/undo/redo).
+  // Any other change - typing in the editor, Result.tsx's `from:`, a restored
+  // tab - clears `_cursor`, so focus falls back to `ast.current`, the latest
+  // table. Without that, a cursor left on an older node survived hand-typed
+  // joins, and the next `|` quietly joined from the older node instead.
+  private canvasWrittenExpression: string | null = null;
   private pickerSeq = 0;
   // Shares one in-flight checkpoint-naming commit across concurrent picker
   // opens that land before an earlier one resolves - see
@@ -204,7 +210,8 @@ export class CanvasStore {
   /**
    * Lands the cursor on `alias`'s own bare stop - no config item highlighted.
    * Up/Down (focusNext/focusPrev below) and every mouse click that changes
-   * focus go through this - also spotlights `alias`'s columns in Result.tsx
+   * focus go through this - never a plain hover (see TableNode.tsx's
+   * onMouseEnter) - also spotlights `alias`'s columns in Result.tsx
    * (see `hoveredAlias`), so keyboard nav gets the same column highlight
    * hovering a node already gave mouse users.
    */
@@ -239,9 +246,9 @@ export class CanvasStore {
    * Lands the cursor directly on one specific config item (a chip, or an
    * incoming join's own icon) - the mouse's equivalent of what Left/Right
    * (configNext/configPrev) does one stop at a time. Every picker that
-   * reopens an EXISTING item (a chip's own click/hover, a join icon's own
-   * click/hover) goes through this rather than focusNode, so hovering or
-   * clicking that exact item shows the same "this one thing is selected"
+   * reopens an EXISTING item (a chip's own click, a join icon's own
+   * click) goes through this rather than focusNode, so clicking that exact
+   * item shows the same "this one thing is selected"
    * ring keyboard nav already gives it, instead of the whole node's
    * thicker border ALSO lighting up alongside it (see TableNode.tsx's own
    * `hasConfigCursor` comment for why the two are drawn as mutually
@@ -533,11 +540,21 @@ export class CanvasStore {
    * actually current the moment it subscribes, independent of that race.
    */
   start(): () => void {
-    return reaction(
+    const disposeGraph = reaction(
       () => [this.session.expression, this.session.ast] as const,
       () => this.recompute(),
       { fireImmediately: true },
     );
+    const disposeCursorReset = reaction(
+      () => this.session.expression,
+      expression => {
+        if (expression !== this.canvasWrittenExpression) this._cursor = null;
+      },
+    );
+    return () => {
+      disposeGraph();
+      disposeCursorReset();
+    };
   }
 
   private recompute() {
@@ -619,6 +636,7 @@ export class CanvasStore {
     if (expression === this.session.expression) return;
     this.undoStack.push(this.session.expression);
     this.redoStack = [];
+    this.canvasWrittenExpression = expression;
     this.session.expression = expression;
     if (!options?.skipAutoRun) this.notifyAutoRun();
   }
@@ -702,6 +720,7 @@ export class CanvasStore {
     this.closePicker();
     this.selectedAliases = [];
     this._cursor = null;
+    this.canvasWrittenExpression = previous;
     this.session.expression = previous;
     this.notifyAutoRun();
   }
@@ -713,6 +732,7 @@ export class CanvasStore {
     this.closePicker();
     this.selectedAliases = [];
     this._cursor = null;
+    this.canvasWrittenExpression = next;
     this.session.expression = next;
     this.notifyAutoRun();
   }
