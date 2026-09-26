@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.17.1] - 2026-09-26
 ### Changed
 - beamlynx has its own app icon, in the dock, taskbar, and app launcher. It used to show the stock Electron logo. The icon uses the four-bar mark from beamlynx.com.
 
