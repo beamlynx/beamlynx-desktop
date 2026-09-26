@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  beamlynx app icon. Source of truth for every rendered size in this folder:
+  run scripts/build-icons.sh after editing. The mark (four descending bars)
+  is the same one beamlynx.com uses in its navbar and favicon.
+-->
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#11243a"/>
+      <stop offset="1" stop-color="#0a1520"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6fdcff"/>
+      <stop offset="1" stop-color="#3fbfef"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Tile, inset to the 824px macOS icon grid so it sits level with other dock icons -->
+  <rect x="100" y="100" width="824" height="824" rx="184" fill="url(#tile)"/>
+
+  <!-- Frame with light corner brackets, echoing the Substack/brand logo -->
+  <rect x="164" y="164" width="696" height="696" rx="120" fill="none" stroke="#4fd1ff" stroke-opacity="0.35" stroke-width="10"/>
+  <g fill="none" stroke="#dcefff" stroke-width="14" stroke-linecap="round">
+    <path d="M164 300 V284 A120 120 0 0 1 284 164 H300"/>
+    <path d="M724 164 H740 A120 120 0 0 1 860 284 V300"/>
+    <path d="M860 724 V740 A120 120 0 0 1 740 860 H724"/>
+    <path d="M300 860 H284 A120 120 0 0 1 164 740 V724"/>
+  </g>
+
+  <!-- The mark: four descending bars -->
+  <g fill="url(#bar)">
+    <rect x="329" y="337" width="66" height="404" rx="18"/>
+    <rect x="429" y="282" width="66" height="346" rx="18"/>
+    <rect x="529" y="337" width="66" height="202" rx="18"/>
+    <rect x="629" y="392" width="66" height="86"  rx="18"/>
+  </g>
+</svg>

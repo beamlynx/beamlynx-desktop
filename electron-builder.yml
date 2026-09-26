@@ -61,7 +61,10 @@ extraResources:
   - from: resources/docs
     to: docs
 
+# App icons, rendered from icons/icon.svg by scripts/build-icons.sh.
+# Without these, every platform falls back to the stock Electron logo.
 linux:
+  icon: icons/png
   target:
     - AppImage
     - deb
@@ -81,6 +84,8 @@ appImage:
   artifactName: '${productName}.${ext}'
 
 mac:
+  # electron-builder converts this 1024px PNG to .icns at build time.
+  icon: icons/icon.png
   target:
     # electron-updater's MacUpdater hard-requires a .zip artifact to apply
     # updates -- it throws ERR_UPDATER_ZIP_FILE_NOT_FOUND if only a .dmg is
@@ -95,5 +100,6 @@ mac:
   category: public.app-category.developer-tools
 
 win:
+  icon: icons/icon.ico
   target:
     - nsis

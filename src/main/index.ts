@@ -176,6 +176,9 @@ function createWindow(): void {
     // ready to display.
     show: false,
     backgroundColor: '#1a1b26',
+    // The taskbar/window icon on Linux and Windows. macOS ignores this and
+    // uses the bundle's .icns (see electron-builder.yml).
+    icon: path.join(__dirname, '..', '..', 'assets', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'index.js'),
     },
