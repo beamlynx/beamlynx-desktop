@@ -18,7 +18,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ### Changed
 - **Breaking:** a foreign key made of more than one column is now one join on all of its columns. Before, Pine joined on whichever one column you named. An expression that named a column that isn't unique on its own now returns fewer rows -- the rows it should have returned all along (bundled pine-lang 0.46.0).
-- `delete:` is gone from Pine, replaced by the traverse action. A saved tab that still ends in `delete:` has it removed when it opens (bundled beamlynx-ui 0.63.0, pine-lang 0.46.0).
+- **Breaking:** `delete:` is gone from Pine, replaced by the traverse action. A saved tab that still ends in `delete:` has it removed when it opens (bundled beamlynx-ui 0.63.0, pine-lang 0.46.0).
 - Pine reference: the join and delete topics now describe a foreign key made of more than one column. The columns after a table **name which relationship** you mean rather than spelling out the `ON` clause, so naming one column of a key joins on all of it, and several columns can be named when one isn't enough to tell two relationships apart. `delete!` takes several columns too, which a table with no single identifying column needs. Also documents writing the pairs out yourself (`.a = .b, .c = .d`), and corrects the note about a join column that matches nothing -- the query now fails with a plain syntax error rather than `zero-length delimited identifier`.
 
 ### Fixed
