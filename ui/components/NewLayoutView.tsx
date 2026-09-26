@@ -10,7 +10,6 @@ import {
   NEW_LAYOUT_GUTTER,
 } from '../constants';
 import { usePanelPresence } from '../hooks/usePanelPresence';
-import { freezeResultsDuringMotion } from '../styles/freeze-during-motion';
 import { MOTION, motionDuration } from '../styles/motion';
 import { getUserPreference, STORAGE_KEYS } from '../store/preferences';
 import { useStores } from '../store/store-container';
@@ -334,13 +333,6 @@ const NewLayoutView: React.FC<NewLayoutViewProps> = observer(({ sessionId }) => 
   // restores Canvas's share of this pane), forces that re-fit regardless of
   // which caused it.
   const [recenterRequestCount, setRecenterRequestCount] = useState(0);
-  // Zen mode and the orientation flip both resize the results pane as
-  // drastically as anything in the app, and neither goes through
-  // usePanelPresence -- both are plain CSS transitions on elements that
-  // stay mounted. They need the same protection for the grid.
-  useEffect(() => {
-    freezeResultsDuringMotion(MOTION.enter);
-  }, [effectiveOrientation, global.isZenModeActive]);
   useEffect(() => {
     // Delayed past the transition, not fired immediately. Every one of
     // these causes changes Canvas's container size, and that change is now
@@ -360,8 +352,8 @@ const NewLayoutView: React.FC<NewLayoutViewProps> = observer(({ sessionId }) => 
     // 640px through an entire open+close of Settings. Keeping showSettings
     // here fired a real ReactFlow fitView() - measured as part of the
     // render burst on every Settings toggle - for a resize that never
-    // happened, on top of whatever DataGrid itself was already doing for
-    // the pane that actually did move.
+    // happened, on top of the results grid's own resize for the pane that
+    // actually did move.
     const timer = setTimeout(
       () => setRecenterRequestCount(c => c + 1),
       motionDuration(MOTION.enter) + 32,
@@ -466,7 +458,6 @@ const NewLayoutView: React.FC<NewLayoutViewProps> = observer(({ sessionId }) => 
           )}
 
           <Box
-            data-results-pane
             sx={{
               // Keeps the results grid's own layout work from escalating
               // into a whole-document reflow on every frame of a panel
