@@ -1,5 +1,4 @@
-import { GridColDef } from '@mui/x-data-grid';
-import { makeAutoObservable, reaction, runInAction } from 'mobx';
+import { makeAutoObservable, observable, reaction, runInAction } from 'mobx';
 import { TOTAL_BARS } from '../constants';
 import { DefaultPlugin } from '../plugin/default.plugin';
 import { EvaluateOptions } from '../plugin/plugin.interface';
@@ -116,6 +115,17 @@ export type InputMode = 'pine' | 'sql';
 
 export type Row = { [key: string]: any };
 
+/**
+ * One column of a result, as the results grid needs it. `field` is the
+ * column's index in the server's response, stringified - the key its values
+ * sit under in every Row.
+ */
+export type ResultColumn = {
+  field: string;
+  headerName: string;
+  editable: boolean;
+};
+
 export type ColumnMetadata = {
   colIndexToAliasLookup: Record<string, string>; // i.e. which table does the column belong to
   aliasToIdLookup: Record<string, string>; // i.e. what is the id column index for the table
@@ -215,7 +225,7 @@ export class Session {
 
   /** Result */
   loading: boolean = false; // observable
-  columns: GridColDef[] = [];
+  columns: ResultColumn[] = [];
   // The field name - which is the index of the column (stringified) - and the
   // value is false The id fields are hidden by default but kept in the list of
   // columns so that finding the correct id of the row being updated is possible
@@ -385,6 +395,17 @@ export class Session {
     makeAutoObservable<Session, 'traversalSignal' | 'runSignal'>(this, {
       traversalSignal: false,
       runSignal: false,
+      // A result is only ever replaced whole (plugin/default.plugin.tsx),
+      // never edited in place, so nothing needs to observe inside it. Deep
+      // observation wrapped every row of every result in a Proxy on the way
+      // in, and Result.tsx then copied them all back out with toJS - about
+      // 1.6s for 100k rows before the grid drew anything. As refs, a new
+      // result costs nothing to store and comes back as the plain arrays it
+      // went in as.
+      rows: observable.ref,
+      columns: observable.ref,
+      columnVisibilityModel: observable.ref,
+      columnMetadata: observable.ref,
     });
 
     /** Evaluation plugins */
