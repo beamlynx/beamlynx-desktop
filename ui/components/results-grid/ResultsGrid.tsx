@@ -125,8 +125,15 @@ const ResultsGrid: React.FC<ResultsGridProps> = observer(props => {
   const [dragWidths, setDragWidths] = useState<Record<string, number>>({});
 
   const [selection, setSelection] = useState<GridSelection>(NO_SELECTION);
-  // A new result: whatever was selected refers to rows that are gone.
-  useEffect(() => setSelection(NO_SELECTION), [rows]);
+  // A value just committed from the cell editor, shown in its cell until the
+  // re-run that follows every edit replaces the rows. Without it the cell
+  // flicks back to its old value for the length of that round trip.
+  const pendingEdits = useRef(new Map<string, string>());
+  // A new result: whatever was selected, or pending, refers to rows that are gone.
+  useEffect(() => {
+    setSelection(NO_SELECTION);
+    pendingEdits.current.clear();
+  }, [rows]);
 
   const gridColumns = useMemo<GridColumn[]>(
     () =>
@@ -161,7 +168,7 @@ const ResultsGrid: React.FC<ResultsGridProps> = observer(props => {
           ...(parsed !== undefined && { cursor: 'pointer' }),
         };
       }
-      const text = displayText(value);
+      const text = pendingEdits.current.get(`${row}:${column.field}`) ?? displayText(value);
       return {
         kind: GridCellKind.Text,
         data: text,
@@ -282,6 +289,8 @@ const ResultsGrid: React.FC<ResultsGridProps> = observer(props => {
     const { rows: currentRows, columns: currentColumns, onCommitEdit } = latest.current;
     const field = currentColumns[col].field;
     if (value.data === displayText(currentRows[row]?.[field])) return;
+    pendingEdits.current.set(`${row}:${field}`, value.data);
+    gridRef.current?.updateCells([{ cell: [col, row] }]);
     onCommitEdit(currentRows[row], field, value.data);
   }, []);
 
