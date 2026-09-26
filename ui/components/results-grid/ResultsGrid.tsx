@@ -66,6 +66,10 @@ const NO_SELECTION: GridSelection = {
   rows: CompactSelection.empty(),
 };
 
+const GRID_KEYBINDINGS = { paste: false, cut: false, delete: false } as const;
+const refuse = () => false as const;
+const onlySingleCellEdits = (edits: readonly unknown[]) => edits.length !== 1;
+
 const displayText = (value: unknown): string =>
   value === null || value === undefined ? '' : String(value);
 
@@ -347,6 +351,17 @@ const ResultsGrid: React.FC<ResultsGridProps> = observer(props => {
         onItemHovered={onItemHovered}
         drawHeader={drawHeader}
         provideEditor={provideEditor}
+        // An edit here is an UPDATE against the database, so the only way to
+        // make one is the cell editor, one cell at a time. Glide's defaults
+        // would also turn Delete/Backspace on a selection, cut and paste
+        // into edits - of every editable cell in the range. All three are
+        // off, and anything that still arrives as more than one cell at
+        // once is swallowed (returning true stops Glide calling
+        // onCellEdited for each).
+        keybindings={GRID_KEYBINDINGS}
+        onDelete={refuse}
+        onPaste={false}
+        onCellsEdited={onlySingleCellEdits}
         onCellEdited={onCellEdited}
         onCellClicked={onCellClicked}
         onCellContextMenu={onCellContextMenu}
