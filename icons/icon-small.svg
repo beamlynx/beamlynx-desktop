@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  beamlynx app icon, small-size variant (16-32px) without the frame,
+  which turns to noise that small. Rendered by scripts/build-icons.sh.
+-->
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#11243a"/>
+      <stop offset="1" stop-color="#0a1520"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6fdcff"/>
+      <stop offset="1" stop-color="#3fbfef"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Tile, inset to the 824px macOS icon grid so it sits level with other dock icons -->
+  <rect x="32" y="32" width="960" height="960" rx="200" fill="url(#tile)"/>
+
+
+  <!-- The mark: four descending bars -->
+  <g fill="url(#bar)" transform="translate(512 512) scale(1.4) translate(-512 -512)">
+    <rect x="329" y="337" width="66" height="404" rx="18"/>
+    <rect x="429" y="282" width="66" height="346" rx="18"/>
+    <rect x="529" y="337" width="66" height="202" rx="18"/>
+    <rect x="629" y="392" width="66" height="86"  rx="18"/>
+  </g>
+</svg>
