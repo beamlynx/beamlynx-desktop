@@ -4,8 +4,16 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- Move between result cells with the arrow keys. Select a range by dragging or with Shift, and copy it with Ctrl+C as tab-separated text that pastes into a spreadsheet.
+
 ### Changed
+- The results grid is new, and much faster. It draws only the cells in view, so a result of 100,000 rows opens and scrolls as quickly as one of 100.
+- Results are no longer split into pages of 100 rows. Every row the query returns is in one scrolling grid, with the row count underneath.
 - Results appear sooner after a run. The app used to copy every row of a result twice before showing it, which took about 1.6 seconds for 100,000 rows and about 100ms for 1,000.
+
+### Removed
+- Sorting by clicking a column header, and the column menu (sort, filter, hide columns). Sorting and filtering will come back as changes to the Pine expression, so they show up in the query. To filter on a value for now, right-click the cell and choose **Filter**.
 
 ## [0.63.0] - 2026-09-25
 ### Breaking

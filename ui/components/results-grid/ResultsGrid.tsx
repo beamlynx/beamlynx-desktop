@@ -1,0 +1,360 @@
+import {
+  CompactSelection,
+  DataEditor,
+  GridCellKind,
+  type DataEditorRef,
+  type DrawHeaderCallback,
+  type EditableGridCell,
+  type GetRowThemeCallback,
+  type GridCell,
+  type GridColumn,
+  type GridMouseEventArgs,
+  type GridSelection,
+  type Item,
+  type ProvideEditorCallback,
+  type TextCell,
+} from '@glideapps/glide-data-grid';
+import { Code } from '@mui/icons-material';
+import { IconButton, Tooltip } from '@mui/material';
+import { observer } from 'mobx-react-lite';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useStores } from '../../store/store-container';
+import type { Row } from '../../store/session';
+import { parseJsonCellValue } from '../json-cell.util';
+import { BASE_HEADER_HEIGHT, BASE_ROW_HEIGHT, resolveGridTheme, type ResolvedGridTheme } from './grid-theme';
+
+/**
+ * The results grid. A canvas grid (Glide Data Grid) behind props of our own,
+ * so nothing else in the app knows which library draws it.
+ *
+ * Why a canvas: it draws only the cells in view, so its cost does not grow
+ * with the number of rows, the number of columns or the pixel density, and
+ * a resize is one redraw rather than a React re-render of every cell. See
+ * beamlynx-plans' completed/2026-09-19-evaluate-results-grid-library.md for
+ * the measurements that chose it.
+ */
+
+export interface ResultsGridColumn {
+  /** The key this column's values sit under in every row. */
+  field: string;
+  title: string;
+  width: number;
+  /** Values are JSON: shown on one line, opened in the JSON panel on click, never edited inline. */
+  json: boolean;
+  editable: boolean;
+  /** Header background, for the per-table "Table colors" tint and the canvas hover spotlight. */
+  headerColor?: string;
+  /** This column's table is the one hovered on the canvas. */
+  spotlight?: boolean;
+}
+
+export interface ResultsGridProps {
+  columns: ResultsGridColumn[];
+  rows: Row[];
+  /** A column's width was dragged to a new size (once, at the end of the drag). */
+  onColumnResize: (field: string, width: number) => void;
+  onJsonOpen: (row: Row, field: string) => void;
+  /** Enter in the cell editor. */
+  onCommitEdit: (row: Row, field: string, value: string) => void;
+  /** The cell editor's Inspect button: show the update instead of running it. */
+  onInspectEdit: (row: Row, field: string, value: string) => void;
+  onCellContextMenu: (row: Row, field: string, x: number, y: number) => void;
+}
+
+const NO_SELECTION: GridSelection = {
+  columns: CompactSelection.empty(),
+  rows: CompactSelection.empty(),
+};
+
+const displayText = (value: unknown): string =>
+  value === null || value === undefined ? '' : String(value);
+
+// Glide renders its cell editor into an element with this id. Created once,
+// on first use, rather than asking every page to remember to include it.
+function ensurePortal() {
+  if (typeof document === 'undefined' || document.getElementById('portal')) return;
+  const el = document.createElement('div');
+  el.id = 'portal';
+  el.style.cssText = 'position: fixed; left: 0; top: 0; z-index: 9999;';
+  document.body.appendChild(el);
+}
+
+/**
+ * Canvas text cannot pick up a theme change or a web font that finishes
+ * loading later, so the theme is re-read after either: after the frame in
+ * which pages/_app.tsx writes the new CSS variables, and after the fonts
+ * settle.
+ */
+function useGridTheme(): ResolvedGridTheme | null {
+  const { global } = useStores();
+  const [resolved, setResolved] = useState<ResolvedGridTheme | null>(null);
+  const { themeId, codeFontFamily, textSize } = global;
+  useEffect(() => {
+    let cancelled = false;
+    const apply = () => {
+      if (!cancelled) setResolved(resolveGridTheme());
+    };
+    const frame = requestAnimationFrame(apply);
+    document.fonts?.ready.then(apply);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+    };
+  }, [themeId, codeFontFamily, textSize]);
+  return resolved;
+}
+
+const ResultsGrid: React.FC<ResultsGridProps> = observer(props => {
+  const { columns, rows } = props;
+  const resolved = useGridTheme();
+  const gridRef = useRef<DataEditorRef>(null);
+
+  // Callbacks read the latest props through a ref, so the memoized pieces
+  // handed to the grid below do not change identity on every render.
+  const latest = useRef(props);
+  latest.current = props;
+
+  useEffect(ensurePortal, []);
+
+  // Widths while a column is being dragged. Committed to the parent once, on
+  // release, so a drag re-renders only this component.
+  const [dragWidths, setDragWidths] = useState<Record<string, number>>({});
+
+  const [selection, setSelection] = useState<GridSelection>(NO_SELECTION);
+  // A new result: whatever was selected refers to rows that are gone.
+  useEffect(() => setSelection(NO_SELECTION), [rows]);
+
+  const gridColumns = useMemo<GridColumn[]>(
+    () =>
+      columns.map(c => ({
+        id: c.field,
+        title: c.title,
+        width: dragWidths[c.field] ?? c.width,
+        ...(c.headerColor && {
+          themeOverride: {
+            bgHeader: c.headerColor,
+            bgHeaderHovered: c.headerColor,
+            bgHeaderHasFocus: c.headerColor,
+          },
+        }),
+      })),
+    [columns, dragWidths],
+  );
+
+  const getCellContent = useCallback(
+    ([col, row]: Item): GridCell => {
+      const column = columns[col];
+      const value = rows[row]?.[column.field];
+      if (column.json) {
+        const parsed = parseJsonCellValue(value);
+        const text = parsed === undefined ? displayText(value) : JSON.stringify(parsed);
+        return {
+          kind: GridCellKind.Text,
+          data: text,
+          displayData: text,
+          allowOverlay: false,
+          readonly: true,
+          ...(parsed !== undefined && { cursor: 'pointer' }),
+        };
+      }
+      const text = displayText(value);
+      return {
+        kind: GridCellKind.Text,
+        data: text,
+        displayData: text,
+        allowOverlay: column.editable,
+        readonly: !column.editable,
+      };
+    },
+    [columns, rows],
+  );
+
+  // Row hover highlight. The hovered row lives in a ref and only the two rows
+  // that changed are redrawn, so moving the pointer never re-renders React.
+  const hoverRow = useRef<number | null>(null);
+  const getRowThemeOverride = useCallback<GetRowThemeCallback>(
+    row => (row === hoverRow.current && resolved ? { bgCell: resolved.theme.bgCellMedium } : undefined),
+    [resolved],
+  );
+  const onItemHovered = useCallback((args: GridMouseEventArgs) => {
+    const next = args.kind === 'cell' ? args.location[1] : null;
+    const prev = hoverRow.current;
+    if (next === prev) return;
+    hoverRow.current = next;
+    const damaged: { cell: Item }[] = [];
+    const count = latest.current.columns.length;
+    for (const r of [prev, next]) {
+      if (r === null) continue;
+      for (let c = 0; c < count; c++) damaged.push({ cell: [c, r] });
+    }
+    gridRef.current?.updateCells(damaged);
+  }, []);
+
+  // The hover spotlight's accent line along the top of a header, drawn over
+  // the tinted background (the old grid's inset box-shadow).
+  const drawHeader = useCallback<DrawHeaderCallback>(
+    (args, drawContent) => {
+      drawContent();
+      if (!columns[args.columnIndex]?.spotlight || !resolved) return;
+      args.ctx.fillStyle = resolved.trace;
+      args.ctx.fillRect(args.rect.x, args.rect.y, args.rect.width, 2);
+    },
+    [columns, resolved],
+  );
+
+  // The cell editor: an input plus an Inspect button that opens the update
+  // dialog instead of committing. Glide hands a custom editor only the
+  // cell's value, so which cell it is comes from the selection, which is
+  // controlled here for that reason (and has to be: passing
+  // onGridSelectionChange without gridSelection makes Glide stop tracking
+  // selection itself, which silently disables editing).
+  const selectionRef = useRef(selection);
+  selectionRef.current = selection;
+  const provideEditor = useCallback<ProvideEditorCallback<GridCell>>(cell => {
+    if (cell.kind !== GridCellKind.Text) return undefined;
+    const Editor = (editorProps: {
+      value: GridCell;
+      onChange: (value: GridCell) => void;
+      onFinishedEditing: (value?: GridCell) => void;
+    }) => {
+      const value = editorProps.value as TextCell;
+      const inspect = () => {
+        const at = selectionRef.current.current?.cell;
+        const { rows: currentRows, columns: currentColumns, onInspectEdit } = latest.current;
+        if (at) onInspectEdit(currentRows[at[1]], currentColumns[at[0]].field, value.data);
+        editorProps.onFinishedEditing(undefined);
+      };
+      return (
+        <div data-results-cell-editor style={{ display: 'flex', alignItems: 'center', minWidth: 200, gap: 4 }}>
+          <input
+            autoFocus
+            value={value.data}
+            onChange={e => editorProps.onChange({ ...value, data: e.target.value })}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                editorProps.onFinishedEditing(value);
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                editorProps.onFinishedEditing(undefined);
+              }
+            }}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              border: 'none',
+              outline: 'none',
+              background: 'transparent',
+              color: 'inherit',
+              font: 'inherit',
+            }}
+          />
+          <Tooltip title="Inspect Update (opens update modal)">
+            <IconButton
+              size="small"
+              onClick={inspect}
+              aria-label="Inspect update"
+              sx={{
+                borderRadius: '4px',
+                backgroundColor: 'var(--canvas-node-bg)',
+                border: '1px solid var(--canvas-node-border)',
+                color: 'var(--canvas-trace)',
+                '&:hover': { backgroundColor: 'var(--canvas-chip-bg)' },
+                width: 24,
+                height: 24,
+              }}
+            >
+              <Code fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </div>
+      );
+    };
+    return Editor;
+  }, []);
+
+  const onCellEdited = useCallback(([col, row]: Item, value: EditableGridCell) => {
+    if (value.kind !== GridCellKind.Text) return;
+    const { rows: currentRows, columns: currentColumns, onCommitEdit } = latest.current;
+    const field = currentColumns[col].field;
+    if (value.data === displayText(currentRows[row]?.[field])) return;
+    onCommitEdit(currentRows[row], field, value.data);
+  }, []);
+
+  const onCellClicked = useCallback(([col, row]: Item) => {
+    const { rows: currentRows, columns: currentColumns, onJsonOpen } = latest.current;
+    const column = currentColumns[col];
+    if (!column?.json) return;
+    const target = currentRows[row];
+    if (target && parseJsonCellValue(target[column.field]) !== undefined) onJsonOpen(target, column.field);
+  }, []);
+
+  const onCellContextMenu = useCallback(
+    ([col, row]: Item, event: { preventDefault: () => void; bounds: { x: number; y: number }; localEventX: number; localEventY: number }) => {
+      event.preventDefault();
+      const { rows: currentRows, columns: currentColumns, onCellContextMenu: open } = latest.current;
+      const target = currentRows[row];
+      if (!target) return;
+      open(target, currentColumns[col].field, event.bounds.x + event.localEventX, event.bounds.y + event.localEventY);
+    },
+    [],
+  );
+
+  const onColumnResize = useCallback((column: GridColumn, width: number) => {
+    setDragWidths(prev => ({ ...prev, [column.id as string]: width }));
+  }, []);
+  const onColumnResizeEnd = useCallback((column: GridColumn, width: number) => {
+    const field = column.id as string;
+    latest.current.onColumnResize(field, width);
+    setDragWidths(prev => {
+      const { [field]: _, ...rest } = prev;
+      return rest;
+    });
+  }, []);
+
+  if (!resolved) return null;
+
+  return (
+    <div
+      data-results-grid
+      data-results-grid-ready
+      style={{
+        position: 'absolute',
+        inset: 0,
+        border: '1px solid var(--canvas-node-border)',
+        borderRadius: '3px',
+        overflow: 'hidden',
+      }}
+    >
+      <DataEditor
+        ref={gridRef}
+        width="100%"
+        height="100%"
+        theme={resolved.theme}
+        columns={gridColumns}
+        rows={rows.length}
+        getCellContent={getCellContent}
+        getCellsForSelection={true}
+        rowHeight={Math.round(BASE_ROW_HEIGHT * resolved.scale)}
+        headerHeight={Math.round(BASE_HEADER_HEIGHT * resolved.scale)}
+        minColumnWidth={50}
+        maxColumnWidth={2000}
+        smoothScrollX
+        smoothScrollY
+        gridSelection={selection}
+        onGridSelectionChange={setSelection}
+        getRowThemeOverride={getRowThemeOverride}
+        onItemHovered={onItemHovered}
+        drawHeader={drawHeader}
+        provideEditor={provideEditor}
+        onCellEdited={onCellEdited}
+        onCellClicked={onCellClicked}
+        onCellContextMenu={onCellContextMenu}
+        onColumnResize={onColumnResize}
+        onColumnResizeEnd={onColumnResizeEnd}
+      />
+    </div>
+  );
+});
+
+export default ResultsGrid;
