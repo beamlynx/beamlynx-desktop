@@ -1,5 +1,5 @@
 {
-  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang bumped to its tagged 0.46.0 and beamlynx-ui to its tagged 0.63.0, a pair that has to move together: pine-lang now sends each join as a labelled map, which beamlynx-ui 0.63.0 reads and older UIs cannot, and beamlynx-ui adds the traversal action (count or delete the rows under a table) built on pine-lang's multi-column keys.",
-  "pineLangRef": "0.46.0",
-  "beamlynxUiRef": "0.63.0"
+  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang bumped to its tagged 0.47.0 and beamlynx-ui to its tagged 0.64.0, a pair that has to move together: pine-lang joins where: conditions with `or` instead of a comma, which beamlynx-ui 0.64.0's canvas filters write, and beamlynx-ui brings the canvas results grid and ships its own fonts.",
+  "pineLangRef": "0.47.0",
+  "beamlynxUiRef": "0.64.0"
 }
