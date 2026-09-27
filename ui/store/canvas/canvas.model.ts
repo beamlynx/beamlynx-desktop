@@ -142,11 +142,45 @@ export type PickerItem = {
   subLabel?: string;
 };
 
+/**
+ * One condition in the where panel. `alias` is per condition, not per panel:
+ * a hand-typed `where: c.name = 'x' or e.name = 'x'` spans two tables, and
+ * editing it from either chip must write both back as they were.
+ */
+export type WhereConditionDraft = { alias: string; column: string; operator: string; value: string };
+
+/** What the where panel is building: one condition, or several joined with `or`. */
+export type WhereDraft = {
+  conditions: WhereConditionDraft[];
+  /** Set only when reopened from an existing chip (ChipRow's onSelect) - see CanvasStore.openWhereEditor/submitWhereValue. Undefined for a brand-new condition. */
+  editIndex?: number;
+  /**
+   * The first condition's `operator` doubles as the relative-date picks -
+   * 'today' and 'in the last' are two extra entries Picker.tsx appends to
+   * the operator <select> for a brand-new, single condition on a column
+   * that looksLikeDateColumn (never while editing an existing one, and never
+   * alongside an `or` - see CanvasStore.submitWhereValue's own comment),
+   * rather than a separate mode/tab. `value` is unused for both;
+   * `rollingCount`/`rollingUnit` are unused except for 'in the last'.
+   * Always reset to '=' when the panel (re)opens - a stored condition has no
+   * record of having been built from one of these, so there's nothing to
+   * restore.
+   */
+  rollingCount: number;
+  rollingUnit: RelativeDateUnit;
+};
+
 export type PickerRequest =
   | { kind: 'table' }
   | { kind: 'join'; alias: string }
   | { kind: 'select'; alias: string }
-  | { kind: 'where'; alias: string }
+  /**
+   * `draft` is set when the list was opened from the where panel's own `or`
+   * button: the conditions entered so far, kept so that picking a column
+   * returns to the panel with that column appended as a new row, instead of
+   * starting over. See CanvasStore.addWhereOrCondition.
+   */
+  | { kind: 'where'; alias: string; draft?: WhereDraft }
   | { kind: 'order'; alias: string }
   | { kind: 'group'; alias: string }
   /** Step 1 of `? table` (docs/paths.md in pine-lang): pick a destination table - see CanvasStore.openPathPicker. */
@@ -223,27 +257,10 @@ export type PickerState =
   | {
       open: true;
       mode: 'where-value';
+      /** The node the panel was opened from, and so the node its chip belongs to. */
       alias: string;
-      column: string;
-      operator: string;
-      value: string;
       anchor: PickerAnchor;
-      /** Set only when reopened from an existing chip (ChipRow's onSelect) - see CanvasStore.openWhereEditor/submitWhereValue. Undefined for a brand-new condition. */
-      editIndex?: number;
-      /**
-       * `operator` doubles as the relative-date picks - 'today' and 'in the
-       * last' are two extra entries Picker.tsx appends to the operator
-       * <select> for a brand-new condition on a column that
-       * looksLikeDateColumn (never while editing an existing one - see
-       * CanvasStore.submitWhereValue's own comment), rather than a separate
-       * mode/tab. `value` is unused for both; `rollingCount`/`rollingUnit`
-       * are unused except for 'in the last'. Always reset to '=' when the
-       * panel (re)opens - a stored condition has no record of having been
-       * built from one of these, so there's nothing to restore.
-       */
-      rollingCount: number;
-      rollingUnit: RelativeDateUnit;
-    }
+    } & WhereDraft
   | {
       open: true;
       mode: 'join-type';

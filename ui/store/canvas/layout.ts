@@ -1,6 +1,6 @@
 import dagre from 'dagre';
 import { Position } from 'reactflow';
-import { Ast, GroupColumn, Join, OrderColumn, VariableAst } from '../client';
+import { Ast, GroupColumn, Join, OrderColumn, VariableAst, whereConditions } from '../client';
 import {
   CanvasEdge,
   CanvasFrameNode,
@@ -219,7 +219,9 @@ const deriveGraph = (
       ? [...selectedTables, inProgress]
       : selectedTables;
   const selectByAlias = byAlias((ast.columns ?? []).filter(c => !c.hidden), c => c.alias);
-  const whereByAlias = byAlias(ast.where ?? [], w => w[0]);
+  // An `or` group belongs to the table of its first condition - one chip,
+  // on one node, even when its conditions name several tables.
+  const whereByAlias = byAlias(ast.where ?? [], w => whereConditions(w)[0][0]);
   // See the `order: Column[]` comment in client.ts - the real wire shape is OrderColumn.
   const orderByAlias = byAlias((ast.order ?? []) as unknown as OrderColumn[], o => o.alias);
   const groupByAlias = byAlias((ast.group ?? []) as GroupColumn[], g => g.alias);
@@ -341,10 +343,17 @@ const deriveGraph = (
       }
       continue;
     }
-    const whereChips = (whereByAlias[t.alias] ?? []).map(([, column, , operator, val]) => {
-      const literal = val && 'value' in val ? `${val.value}` : '';
-      return `${column} ${operator} ${literal}`.trim();
-    });
+    const whereChips = (whereByAlias[t.alias] ?? []).map(entry =>
+      whereConditions(entry)
+        .map(([alias, column, , operator, val]) => {
+          const literal = val && 'value' in val ? `${val.value}` : '';
+          // Another table's column in the same group keeps its alias, so the
+          // chip doesn't read as this table's.
+          const name = alias === t.alias ? column : `${alias}.${column}`;
+          return `${name} ${operator} ${literal}`.trim();
+        })
+        .join(' or '),
+    );
     const data: CanvasTableNodeData = {
       alias: t.alias,
       table: t.table,

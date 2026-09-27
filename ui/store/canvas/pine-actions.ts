@@ -1,5 +1,5 @@
 import { Ast, TableHint } from '../client';
-import { JoinType } from './canvas.model';
+import { JoinType, WhereConditionDraft } from './canvas.model';
 import { DateBounds } from './relative-date';
 import {
   appendOwnedSegment,
@@ -90,6 +90,10 @@ export const getPinnedBase = async (
 
 /** Resolves an alias captured before `base` was computed through its rename map (see PinnedBase). */
 export const resolveAlias = (base: PinnedBase, alias: string): string => base.aliasMap.get(alias) ?? alias;
+
+/** resolveAlias for every condition of a where draft - each carries its own alias. */
+export const resolveConditionAliases = (base: PinnedBase, conditions: WhereConditionDraft[]): WhereConditionDraft[] =>
+  conditions.map(c => ({ ...c, alias: resolveAlias(base, c.alias) }));
 
 export const pickFirstTable = (hint: TableHint, alias: string): string => `${hint.pine} as ${alias}`;
 
@@ -187,22 +191,20 @@ export const splitTopLevel = (text: string): string[] => {
   return parts;
 };
 
-// Each filter is its own `where:` step rather than one growing comma list -
-// pine-lang ANDs every `where:` step together (same as it already does for
-// two different tables), so this needs nothing more than appending a new
-// segment. See appendOwnedSegment's own comment for why: a comma inside a
-// single `where:` clause is a separate, pine-lang-side parsing pitfall this
-// sidesteps entirely rather than relying on.
-export const addWhereCondition = (
-  base: PinnedBase,
-  alias: string,
-  column: string,
-  operator: string,
-  value: string,
-): string => {
-  const condition = `${alias}.${column} ${operator} ${buildWhereLiteral(value)}`;
-  return toText(appendOwnedSegment(base.segments, alias, 'where', `where: ${condition}`));
-};
+// Each filter is its own `where:` step - pine-lang ANDs every `where:` step
+// together (same as it already does for two different tables), so adding one
+// needs nothing more than appending a new segment.
+//
+// Several conditions go into ONE `where:` joined with `or` - that is the one
+// thing a separate step can't express.
+export const addWhereCondition = (base: PinnedBase, alias: string, conditions: WhereConditionDraft[]): string =>
+  toText(appendOwnedSegment(base.segments, alias, 'where', whereSegmentText(conditions)));
+
+/** `where: c.a = 1 or c.b = 'x'` - each condition qualified by its own alias. */
+export const whereSegmentText = (conditions: WhereConditionDraft[]): string =>
+  `where: ${conditions
+    .map(({ alias, column, operator, value }) => `${alias}.${column} ${operator} ${buildWhereLiteral(value)}`)
+    .join(' or ')}`;
 
 // `index` is this alias's where-conditions in pipeline order - the same
 // order `ast.where` reports them in (see layout.ts's whereChips), since a new
@@ -219,25 +221,19 @@ export const removeWhereConditionAt = (base: PinnedBase, alias: string, index: n
  * Rewrites the condition at `index` (same pipeline-order indexing as
  * removeWhereConditionAt) in place, keeping its position rather than
  * removing and re-appending it - lets a condition be edited without visibly
- * jumping to the end of its alias's chip row. `column` is passed back in
- * unchanged by every caller today (CanvasStore.openWhereEditor's picker only
- * offers operator/value to edit), but takes it explicitly rather than
- * re-reading the old segment's own column so a future column-change edit
- * needs no new plumbing here.
+ * jumping to the end of its alias's chip row. The whole segment is
+ * rewritten from `conditions`, so this also adds or removes `or` conditions.
  */
 export const updateWhereConditionAt = (
   base: PinnedBase,
   alias: string,
   index: number,
-  column: string,
-  operator: string,
-  value: string,
+  conditions: WhereConditionDraft[],
 ): string => {
   const whereSegments = base.segments.filter(s => s.owner === alias && s.kind === 'where');
   const target = whereSegments[index];
   if (!target) return toText(base.segments);
-  const condition = `${alias}.${column} ${operator} ${buildWhereLiteral(value)}`;
-  const next = base.segments.map(s => (s === target ? { ...s, text: `where: ${condition}` } : s));
+  const next = base.segments.map(s => (s === target ? { ...s, text: whereSegmentText(conditions) } : s));
   return toText(next);
 };
 

@@ -8,6 +8,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - After you edit a value, its cell glows briefly and a short message says it was saved. If it wasn't, the message says why.
 - A value that can't be edited now says why as soon as you try, instead of opening an editor. That covers a row's `id` (an update uses it to find the row), a table whose `id` isn't in the result, and values the query works out rather than reads from a table.
 - Move between result cells with the arrow keys. Select a range by dragging or with Shift, and copy it with Ctrl+C as tab-separated text that pastes into a spreadsheet.
+- A canvas filter can match either of several conditions. In the filter panel, **+ or** adds another condition; pick its column from the same list as the first. The filter is written as one `where:` joined with `or`, like `where: c.status = 'blocked' or c.status = 'active'`. It needs pine-lang 0.47.0, which added `or`.
 
 ### Changed
 - The results grid is new, and much faster. It draws only the cells in view, so scrolling stays smooth however many rows a result has. A result shows up in about half the time, and a 100,000-row result about four times sooner than before.
@@ -19,6 +20,8 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - Sorting by clicking a column header, and the column menu (sort, filter, hide columns). Sorting and filtering will come back as changes to the Pine expression, so they show up in the query. To filter on a value for now, right-click the cell and choose **Filter**.
 
 ### Fixed
+- Tab in the canvas filter panel moved focus out of the panel, usually to the Pine panel. It now moves through the panel's own fields and buttons, going to **add** right after the value, and wraps around. Escape still closes the panel. Escape in the column list opened by **+ or** goes back to the panel instead of discarding it.
+- A filter joined with `or` that was typed by hand disappeared from its table on the canvas. It now shows as one chip, and clicking it opens every condition in it for editing.
 - The app's fonts now ship inside it. The desktop app showed IBM Plex Mono, JetBrains Mono, Fira Code, Inter and IBM Plex Sans only if they were installed on your computer, and a system font otherwise. The web app downloaded them from Google Fonts. Every build now carries its own copies, and works offline.
 
 ## [0.63.0] - 2026-09-25

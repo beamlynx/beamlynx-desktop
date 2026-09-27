@@ -9,7 +9,7 @@ import {
   VariableInnerTable,
 } from '../model';
 import { NodeType } from './graph-node-type';
-import { Ast, Column, ColumnHint, Table, TableHint, VariableAst, WhereCondition } from './client';
+import { Ast, Column, ColumnHint, Table, TableHint, VariableAst, WhereCondition, whereConditions } from './client';
 import {
   effectiveHandleCount,
   getSelectedNodeHeight,
@@ -185,8 +185,8 @@ const makeColumnHintsLookup = (columns: ColumnHint[]): Record<string, string[]> 
   );
 };
 
-const makeWhereColumnsLookup = (whereConditions: WhereCondition[]): Record<string, string[]> => {
-  return whereConditions.reduce(
+const makeWhereColumnsLookup = (conditions: WhereCondition[]): Record<string, string[]> => {
+  return conditions.reduce(
     (acc, [alias, column, , operator, value]) => {
       if (!acc[alias]) {
         acc[alias] = [];
@@ -267,7 +267,7 @@ const makeSelectedNodes = (ast: Ast, sessionId: string, isDark: boolean = false)
 
   const columnsLookup = makeColumnsLookup(selectedColumns);
   const orderLookup = makeColumnsLookup(orderColumns);
-  const whereLookup = makeWhereColumnsLookup(whereColumns);
+  const whereLookup = makeWhereColumnsLookup((whereColumns ?? []).flatMap(whereConditions));
 
   const suggestedColumnsLookup = makeColumnHintsLookup(
     type === 'select' || type === 'select-partial' ? select : [],
