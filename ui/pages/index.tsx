@@ -11,7 +11,6 @@ import DeepLinkHandler from '../components/DeepLinkHandler';
 import RevealRequestHandler from '../components/RevealRequestHandler';
 import { useStores } from '../store/store-container';
 import { isDesktop, isDevelopment, isPlayground } from '../store/util';
-import { appFontVariablesClassName } from '../styles/app-font';
 
 const Home: NextPage = () => {
   const { global } = useStores();
@@ -71,17 +70,9 @@ const Home: NextPage = () => {
   }, []);
 
   const AppContent = (
-    // appFontVariablesClassName defines all four --font-* CSS custom
-    // properties (see styles/app-font.ts) on this element and everything
-    // below it - applied once, here, at the app's actual root, so every
-    // surface (results grid, editors, tabs, modals, canvas mode) has them
-    // available regardless of which subtree it lives in. Which one
-    // --canvas-font actually points to is set separately, imperatively, in
-    // pages/_app.tsx based on GlobalStore.fontFamily.
     <Container
       maxWidth={false}
       disableGutters={true}
-      className={appFontVariablesClassName}
       sx={{
         display: 'flex',
         flexDirection: 'column',

@@ -21,7 +21,6 @@ import {
   CanvasTableNodeData,
   START_NODE_ID,
 } from '../../store/canvas/canvas.model';
-import { appFontVariablesClassName } from '../../styles/app-font';
 import { useCanvasKeybindings } from '../../hooks/useCanvasKeybindings';
 import { CanvasStoreContext } from './canvas-context';
 import TableNode from './nodes/TableNode';
@@ -199,7 +198,6 @@ const Flow: React.FC<{
 
   return (
     <div
-      className={appFontVariablesClassName}
       style={{
         position: 'relative',
         width: '100%',
