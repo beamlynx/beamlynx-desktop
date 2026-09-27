@@ -69,6 +69,36 @@ interaction) with UI hot-reload. `BEAMLYNX_DEV_UI_URL` is dev-only -- a
 packaged build never sets it, so it always falls back to loading the staged
 static export (see `src/main/index.ts`).
 
+## Running next to the installed app
+
+A dev build (`npm start`) can run while the installed app is open, so you can
+compare the two. Anything run from source is treated as a dev build: the
+check is Electron's `app.isPackaged`.
+
+|                  | Installed app                  | Dev build                          |
+| ---------------- | ------------------------------ | ---------------------------------- |
+| Pine server port | 33333                          | 43333                              |
+| MCP control port | 33334                          | 43334                              |
+| Data folder      | `<appData>/beamlynx-desktop`   | `<appData>/beamlynx-desktop-dev`   |
+| MCP server name  | `beamlynx`                     | `beamlynx-dev`                     |
+
+`<appData>` is `~/.config` on Linux and `~/Library/Application Support` on
+macOS.
+
+Saved connections are the exception: both copies read and write the same
+`connections.json`, in the installed app's folder. Everything else in the
+data folder is separate. That includes localStorage, so open tabs and
+preferences don't carry over.
+
+The dev build passes its port to the server as `PINE_PORT`. A pine-server
+staged from a pine-lang older than that variable ignores it and never
+answers on 43333. If startup times out, rebuild pine-lang's app-image and
+re-run `./scripts/stage-server.sh`.
+
+To let an AI agent use the dev build, register it as its own MCP server.
+Settings > MCP in the dev build shows the exact command, under the name
+`beamlynx-dev`. Each relay only talks to its own copy of the app.
+
 ## Before cutting a release
 
 The CI workflow (`.github/workflows/ci.yml`) only builds an unpacked Linux

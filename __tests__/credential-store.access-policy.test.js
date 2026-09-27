@@ -42,7 +42,9 @@ require.cache[electronPath] = {
   filename: electronPath,
   loaded: true,
   exports: {
-    app: { getPath: () => userDataDir },
+    // connections.json lives in <appData>/<app name> (see data-dir.ts's
+    // getSharedDataDir), so both are stubbed to land it in the temp dir.
+    app: { getPath: () => path.dirname(userDataDir), getName: () => path.basename(userDataDir) },
     ipcMain: { handle: () => {} },
     safeStorage: {
       isEncryptionAvailable: () => true,

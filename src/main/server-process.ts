@@ -2,11 +2,10 @@ import { ChildProcess, spawn } from 'child_process';
 import { app } from 'electron';
 import * as fs from 'fs';
 import * as http from 'http';
-import * as net from 'net';
 import * as path from 'path';
+import { describePortInUse, isPortInUse, PINE_PORT } from './ports';
 import { getResourcesRoot } from './resources';
 
-const PINE_PORT = 33333;
 const READY_TIMEOUT_MS = 15000;
 const READY_POLL_INTERVAL_MS = 250;
 const KILL_GRACE_PERIOD_MS = 5000;
@@ -77,17 +76,6 @@ function getExpectedVersion(): string {
   return fs.readFileSync(versionFile, 'utf-8').trim();
 }
 
-function isPortInUse(port: number): Promise<boolean> {
-  return new Promise(resolve => {
-    const socket = net.createConnection({ port, host: '127.0.0.1' });
-    socket.once('connect', () => {
-      socket.destroy();
-      resolve(true);
-    });
-    socket.once('error', () => resolve(false));
-  });
-}
-
 // -main returns immediately (:join? false in pine.core), so a live process
 // tells us nothing about Jetty actually being up -- poll the API instead.
 function pollReady(port: number, timeoutMs: number): Promise<{ version: string }> {
@@ -95,7 +83,13 @@ function pollReady(port: number, timeoutMs: number): Promise<{ version: string }
   return new Promise((resolve, reject) => {
     const retryOrFail = () => {
       if (Date.now() > deadline) {
-        reject(new ServerProcessError(`pine-server did not become ready within ${timeoutMs}ms`));
+        // A dev build passes PINE_PORT=43333. A pine-server staged before
+        // pine-lang read PINE_PORT ignores it and binds 33333 instead, so
+        // this wait would time out with no hint why.
+        const hint = app.isPackaged
+          ? ''
+          : ` If the staged pine-server predates PINE_PORT support, rebuild it and re-run scripts/stage-server.sh.`;
+        reject(new ServerProcessError(`pine-server did not become ready on port ${port} within ${timeoutMs}ms.${hint}`));
         return;
       }
       setTimeout(attempt, READY_POLL_INTERVAL_MS);
@@ -139,10 +133,7 @@ export async function startServer(): Promise<ServerHandle> {
   killStaleServerIfAny();
 
   if (await isPortInUse(PINE_PORT)) {
-    throw new ServerProcessError(
-      `Port ${PINE_PORT} is already in use. If you have a "docker run ... ahmadnazir/pine" container ` +
-        `running, stop it and relaunch beamlynx-desktop.`,
-    );
+    throw new ServerProcessError(await describePortInUse(PINE_PORT));
   }
 
   // cwd no longer matters for correctness -- pine-lang loads its grammar
@@ -150,6 +141,7 @@ export async function startServer(): Promise<ServerHandle> {
   // directory is still the sensible default.
   const child = spawn(binaryPath, [], {
     cwd: path.dirname(binaryPath),
+    env: { ...process.env, PINE_PORT: String(PINE_PORT) },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   if (child.pid) {

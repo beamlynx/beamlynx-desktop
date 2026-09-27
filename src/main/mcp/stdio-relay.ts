@@ -26,7 +26,7 @@ import * as path from 'path';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { CONTROL_PLANE_PORT } from './control-plane-server';
+import { CONTROL_PLANE_PORT } from '../ports';
 import { getResourcesRoot } from '../resources';
 import { SERVER_INSTRUCTIONS } from './instructions';
 import {
@@ -102,8 +102,13 @@ function controlPlaneRequest(method: 'GET' | 'POST', path: string, body?: unknow
 // there first wins if two relay invocations race; the loser's spawn just
 // fails app.requestSingleInstanceLock() in the child and quits, same as any
 // second launch today.
+//
+// A dev build's execPath is the bare Electron binary, which needs the app
+// directory to know what to run. --launched-by-mcp tells a copy that loses
+// that race not to show its "already running" dialog.
 function launchGuiDetached(): void {
-  const child = spawn(process.execPath, [], { detached: true, stdio: 'ignore' });
+  const args = app.isPackaged ? [] : [app.getAppPath()];
+  const child = spawn(process.execPath, [...args, '--launched-by-mcp'], { detached: true, stdio: 'ignore' });
   child.unref();
 }
 

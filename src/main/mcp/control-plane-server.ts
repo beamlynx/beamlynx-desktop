@@ -10,10 +10,9 @@
 import { BrowserWindow } from 'electron';
 import * as http from 'http';
 import { getMcpAccessStatus, listMcpEnabledConnections } from '../credential-store';
+import { CONTROL_PLANE_PORT } from '../ports';
 import { runInRenderer } from './render-bridge';
 import { createRevealRequest, waitForRevealRequest } from './reveal-requests';
-
-export const CONTROL_PLANE_PORT = 33334;
 
 // How long GET /reveal/:id blocks waiting for a decision before returning
 // "still pending" -- stdio-relay.ts's controlPlaneRequest gives every call a
@@ -162,6 +161,10 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
   // Loopback only, explicitly -- this is new attack surface (a second HTTP
   // server alongside pine-lang's own, see the bind-host hardening in
   // pine-lang/src/pine/core.clj) and must never be reachable off-machine.
+  // main() checks the port is free first and explains it if not. This only
+  // catches losing a race for it in between, which would otherwise be an
+  // uncaught exception in the main process.
+  server.on('error', err => console.error('[control-plane] server error:', err));
   server.listen(CONTROL_PLANE_PORT, '127.0.0.1');
   return server;
 }

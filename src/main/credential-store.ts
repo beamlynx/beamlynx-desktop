@@ -1,12 +1,14 @@
-// Persists saved DB connection profiles to disk in userData/connections.json.
+// Persists saved DB connection profiles to disk in connections.json, in the
+// installed app's data folder (see getStorePath below).
 // Only the password is encrypted (via Electron's safeStorage, OS-keychain-backed) --
 // host/port/db/user are already visible in plaintext elsewhere (the connect form,
 // the connection label), so encrypting them too would only cost a decrypt call
 // per row for no real protection gained.
 import { randomUUID } from 'crypto';
-import { app, ipcMain, safeStorage } from 'electron';
+import { ipcMain, safeStorage } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getSharedDataDir } from './data-dir';
 
 // Mirrors pine-lang's pine.access-policy rule shape 1:1 -- these travel
 // verbatim (minus `enabled`, stripped in effectiveAccessPolicyRules -- see
@@ -194,8 +196,11 @@ export type SetConnectionPolicyResult =
   | { ok: false; reason: 'not-found' }
   | { ok: false; reason: 'mcp-requires-policy' };
 
+// Not userData: a dev build has its own data folder but shares the
+// installed app's saved connections (see data-dir.ts). Safe for two copies
+// at once, since every call reads the file fresh and writes it atomically.
 function getStorePath(): string {
-  return path.join(app.getPath('userData'), 'connections.json');
+  return path.join(getSharedDataDir(), 'connections.json');
 }
 
 function emptyStore(): StoreFile {
@@ -248,6 +253,9 @@ function readStore(): StoreFile {
 function writeStore(store: StoreFile): void {
   const storePath = getStorePath();
   const tmpPath = `${storePath}.tmp`;
+  // A dev build can run before the installed app ever has, so the shared
+  // folder may not exist yet.
+  fs.mkdirSync(path.dirname(storePath), { recursive: true });
   fs.writeFileSync(tmpPath, JSON.stringify(store, null, 2), 'utf-8');
   fs.renameSync(tmpPath, storePath);
 }
