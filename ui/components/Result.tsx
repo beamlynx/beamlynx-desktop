@@ -1,5 +1,5 @@
 import { DataGrid } from '@mui/x-data-grid';
-import { runInAction, toJS } from 'mobx';
+import { runInAction } from 'mobx';
 import { observer } from 'mobx-react-lite';
 import React, { useState, useEffect, useRef } from 'react';
 import { useStores } from '../store/store-container';
@@ -70,17 +70,11 @@ interface JsonPanelState {
 const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const { global } = useStores();
   const session = global.getSession(sessionId);
-  // Memoized against session.rows/session.columns THEMSELVES (the raw MobX
-  // observables), not against their own output - toJS() allocates a brand
-  // new array on every call, so keying a memo off its own result never
-  // skips anything. session.rows/session.columns are only ever reassigned
-  // on a fresh eval (see plugin/default.plugin.tsx) - stable in between,
-  // including across a hover change or an unrelated re-render like a panel
-  // opening elsewhere in the app. This is what makes jsonColumnFields below,
-  // and the columns/color memos further down, actually work rather than
-  // recomputing on every render regardless of their own dependency arrays.
-  const rows = React.useMemo(() => toJS(session.rows), [session.rows]);
-  const baseColumns = React.useMemo(() => toJS(session.columns), [session.columns]);
+  // Plain arrays, stable until the next eval replaces them: the session
+  // stores a result as a ref, not a deep observable (see its
+  // makeAutoObservable call). That stability is what the memos below key on.
+  const rows = session.rows;
+  const baseColumns = session.columns;
 
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
@@ -159,9 +153,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   // Second, cost: building this array runs a JSON-detection check and two
   // string-building steps per column, and MUI re-derives cell/header
   // rendering from whatever it's handed. Rebuilding it on every render this
-  // component makes - which, before rows/baseColumns were memoized above,
-  // was EVERY render, since toJS() output was its own unstable memo key -
-  // was extra work landing in the same window as whatever else triggered
+  // component makes was extra work landing in the same window as whatever else triggered
   // that render, including a panel opening elsewhere in the app.
   //
   // CellEditComponent and setJsonPanel are intentionally not in the
