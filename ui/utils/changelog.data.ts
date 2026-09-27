@@ -23,6 +23,85 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.64.0',
+    date: '2026-09-27',
+    breaking: [
+      {
+        title: "Needs pine-lang 0.47.0 or later (was 0.46.0)",
+        description:
+          "Canvas filters that match any of several conditions are written with or, which pine-lang 0.47.0 added. Connecting to an older server shows the upgrade-required screen.",
+      },
+    ],
+    added: [
+      {
+        title: "After you edit a value, its cell glows briefly and a short message says it was saved",
+        description:
+          "If it wasn't, the message says why.",
+      },
+      {
+        title: "A value that can't be edited now says why as soon as you try, instead of opening an editor",
+        description:
+          "That covers a row's id (an update uses it to find the row), a table whose id isn't in the result, and values the query works out rather than reads from a table.",
+      },
+      {
+        title: "Move between result cells with the arrow keys",
+        description:
+          "Select a range by dragging or with Shift, and copy it with Ctrl+C as tab-separated text that pastes into a spreadsheet.",
+      },
+      {
+        title: "A canvas filter can match either of several conditions",
+        description:
+          "In the filter panel, + or adds another condition; pick its column from the same list as the first. The filter is written as one where: joined with or, like where: c.status = 'blocked' or c.status = 'active'. It needs pine-lang 0.47.0, which added or.",
+      },
+    ],
+    changed: [
+      {
+        title: "The results grid is new, and much faster",
+        description:
+          "It draws only the cells in view, so scrolling stays smooth however many rows a result has. A result shows up in about half the time, and a 100,000-row result about four times sooner than before.",
+      },
+      {
+        title: "The delete script from traverse now says in its first lines how its Run button works",
+        description:
+          "Running the script yourself deletes everything in one transaction, between its BEGIN; and COMMIT;. Run doesn't send those: it deletes one table at a time, deepest first, and each table is committed as it goes.",
+      },
+      {
+        title: "Opening or closing Settings or the Pine panel beside the results is smooth now",
+        description:
+          "The results used to be swapped for a grey placeholder while the panel moved, then redrawn; now they resize along with it.",
+      },
+      {
+        title: "Results are no longer split into pages of 100 rows",
+        description:
+          "Every row the query returns is in one scrolling grid, with the row count underneath.",
+      },
+    ],
+    removed: [
+      {
+        title: "Sorting by clicking a column header, and the column menu (sort, filter, hide columns)",
+        description:
+          "Sorting and filtering will come back as changes to the Pine expression, so they show up in the query. To filter on a value for now, right-click the cell and choose Filter.",
+      },
+    ],
+    fixed: [
+      {
+        title: "Tab in the canvas filter panel moved focus out of the panel, usually to the Pine panel",
+        description:
+          "It now moves through the panel's own fields and buttons, going to add right after the value, and wraps around. Escape still closes the panel.",
+      },
+      {
+        title: "A filter typed by hand that matches any of several conditions disappeared from its table on the canvas",
+        description:
+          "It now shows as one chip, and clicking it opens every condition in it for editing.",
+      },
+      {
+        title: "The app's fonts now ship inside it",
+        description:
+          "The desktop app showed IBM Plex Mono, JetBrains Mono, Fira Code, Inter and IBM Plex Sans only if they were installed on your computer, and a system font otherwise. The web app downloaded them from Google Fonts. Every build now carries its own copies, and works offline.",
+      },
+    ],
+  },
+  {
     version: '0.63.0',
     date: '2026-09-25',
     breaking: [
@@ -2062,4 +2141,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.63.0';
+export const LATEST_VERSION = '0.64.0';

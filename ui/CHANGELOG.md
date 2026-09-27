@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.64.0] - 2026-09-27
+### Breaking
+- Needs pine-lang 0.47.0 or later (was 0.46.0). Canvas filters that match any of several conditions are written with `or`, which pine-lang 0.47.0 added. Connecting to an older server shows the upgrade-required screen.
+
 ### Added
 - After you edit a value, its cell glows briefly and a short message says it was saved. If it wasn't, the message says why.
 - A value that can't be edited now says why as soon as you try, instead of opening an editor. That covers a row's `id` (an update uses it to find the row), a table whose `id` isn't in the result, and values the query works out rather than reads from a table.
