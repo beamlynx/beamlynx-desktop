@@ -4,8 +4,29 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.18.0] - 2026-09-28
+### Added
+- After you edit a value in the results, its cell glows briefly and a short message says it was saved. If it wasn't, the message says why (bundled beamlynx-ui 0.64.0).
+- A value that can't be edited now says why as soon as you try, instead of opening an editor: a row's `id`, a table whose `id` isn't in the result, and values the query works out rather than reads from a table (bundled beamlynx-ui 0.64.0).
+- Move between result cells with the arrow keys. Select a range by dragging or with Shift, and copy it with Ctrl+C as tab-separated text that pastes into a spreadsheet (bundled beamlynx-ui 0.64.0).
+- A canvas filter can match either of several conditions. In the filter panel, **+ or** adds another condition (bundled beamlynx-ui 0.64.0, pine-lang 0.47.0).
+
 ### Changed
+- **Breaking:** conditions inside one `where:` are joined with `or`, not a comma: `where: status = 'blocked' or status = 'active'`. A comma there is now a parse error, and so is `and`. To require several conditions, chain `where:` steps: `where: status = 'active' | where: country = 'SE'` (bundled pine-lang 0.47.0).
 - The instructions and the `where` reference an AI agent reads now say how to combine conditions: `or` inside one `where:` for either, another `where:` step for both. They used to say a comma meant AND and that Pine had no `or`. Both were wrong: a comma meant OR. The reference also told agents to run a separate query per column and combine the results themselves, which is no longer needed. It goes with the bundled pine-lang change that makes a comma or `and` inside `where:` a parse error.
+- The results grid is new, and much faster. It draws only the cells in view, so scrolling stays smooth however many rows a result has. Results are no longer split into pages of 100 rows; every row is in one scrolling grid, with the row count underneath (bundled beamlynx-ui 0.64.0).
+- Opening or closing Settings or the Pine panel beside the results is smooth now, instead of swapping the results for a grey placeholder while the panel moved (bundled beamlynx-ui 0.64.0).
+- The delete script from **traverse** now says in its first lines how its Run button works: running the script yourself deletes everything in one transaction, while Run deletes one table at a time, each committed as it goes (bundled beamlynx-ui 0.64.0).
+
+### Removed
+- Sorting by clicking a column header, and the column menu (sort, filter, hide columns). Sorting and filtering will come back as changes to the Pine expression. To filter on a value for now, right-click the cell and choose **Filter** (bundled beamlynx-ui 0.64.0).
+
+### Fixed
+- The app's fonts now ship inside it. IBM Plex Mono, JetBrains Mono, Fira Code, Inter and IBM Plex Sans used to show only if they were installed on your computer, and a system font otherwise (bundled beamlynx-ui 0.64.0).
+- Tab in the canvas filter panel moved focus out of the panel. It now moves through the panel's own fields and buttons (bundled beamlynx-ui 0.64.0).
+- A filter typed by hand that matches any of several conditions disappeared from its table on the canvas. It now shows as one chip (bundled beamlynx-ui 0.64.0).
+- Hints for a condition typed after a complete one (`where: id = 1 or e.`) listed the current table's columns instead of the ones for what was being typed (bundled pine-lang 0.47.0).
 
 ## [0.17.1] - 2026-09-26
 ### Changed

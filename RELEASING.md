@@ -16,6 +16,8 @@ merging, rather than via a PR.
 
 2. **Pin `bundled-versions.json` to an exact commit SHA, not a branch name** — `git rev-parse <branch>` on each of `pine-lang` and `beamlynx-ui`. This matters: a branch pin silently bundles whatever that branch's HEAD happens to be at tag-push time, which has previously (0.1.8, 0.1.9) produced a release missing work that had already been committed to the branch but wasn't accounted for when the tag was cut. A SHA pin makes exactly what's bundled explicit and reviewable in this file's own diff. Once the pinned fixes land in a real tagged `pine-lang`/`beamlynx-ui` release, switch to that tag instead of a SHA.
 
+   The pinned UI has to ship its own fonts. CI and the release both load it in Electron from `file://`, the way the app does, and fail unless every font it lists in `BUNDLED_FONTS` (`beamlynx-ui/styles/app-font.ts`) loads. The check is `scripts/check-ui-fonts.js`. A beamlynx-ui version from before it bundled its fonts (beamlynx-ui #87) fails this check.
+
 3. Bump `package.json` → `"version": "X.Y.Z"`, then run `mise exec node@20.20.2 -- npm install --package-lock-only` (electron-builder needs a newer Node than this machine's default) to keep `package-lock.json`'s version field in sync — don't forget this, it's easy to skip since nothing else visibly breaks if you do.
 
 4. Move the `## [Unreleased]` section in `CHANGELOG.md` into a new `## [X.Y.Z] - YYYY-MM-DD` section (today's date), leaving `## [Unreleased]` empty.
