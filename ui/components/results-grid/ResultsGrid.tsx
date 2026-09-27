@@ -93,10 +93,17 @@ function ensurePortal() {
 }
 
 /**
- * Canvas text cannot pick up a theme change or a web font that finishes
- * loading later, so the theme is re-read after either: after the frame in
- * which pages/_app.tsx writes the new CSS variables, and after the fonts
- * settle.
+ * Canvas text cannot pick up a theme change or a font that finishes loading
+ * later, so the theme is re-read after either: after the frame in which
+ * pages/_app.tsx writes the new CSS variables, and again once the grid's own
+ * font is loaded.
+ *
+ * "Its own font" has to be asked for explicitly. A browser downloads a web
+ * font only when something on the page renders text in it, and a canvas
+ * doesn't count. With nothing else using the code font (the Pine panel
+ * closed, say), `document.fonts.ready` resolves with the font never
+ * requested, and the grid would draw in the fallback forever. So both
+ * weights the grid draws with (400 cells, 600 headers) are loaded by name.
  */
 function useGridTheme(): ResolvedGridTheme | null {
   const { global } = useStores();
@@ -107,8 +114,17 @@ function useGridTheme(): ResolvedGridTheme | null {
     const apply = () => {
       if (!cancelled) setResolved(resolveGridTheme());
     };
-    const frame = requestAnimationFrame(apply);
-    document.fonts?.ready.then(apply);
+    const frame = requestAnimationFrame(() => {
+      apply();
+      const { theme } = resolveGridTheme();
+      const family = theme.fontFamily;
+      if (!family || !document.fonts) return;
+      Promise.all(
+        [theme.baseFontStyle, theme.headerFontStyle].map(style =>
+          document.fonts.load(`${style} ${family}`).catch(() => []),
+        ),
+      ).then(apply);
+    });
     return () => {
       cancelled = true;
       cancelAnimationFrame(frame);
