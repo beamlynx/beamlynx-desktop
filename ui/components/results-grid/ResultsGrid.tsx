@@ -8,6 +8,7 @@ import {
   type GetRowThemeCallback,
   type GridCell,
   type GridColumn,
+  type GridKeyEventArgs,
   type GridMouseEventArgs,
   type GridSelection,
   type Item,
@@ -42,6 +43,12 @@ export interface ResultsGridColumn {
   /** Values are JSON: shown on one line, opened in the JSON panel on click, never edited inline. */
   json: boolean;
   editable: boolean;
+  /**
+   * Why this column's values can't be changed, when they can't: shown the
+   * moment someone tries (double-click, Enter or typing), instead of an
+   * editor that could only fail.
+   */
+  readOnlyReason?: string;
   /** Header background, for the per-table "Table colors" tint and the canvas hover spotlight. */
   headerColor?: string;
   /** This column's table is the one hovered on the canvas. */
@@ -59,6 +66,8 @@ export interface ResultsGridProps {
   /** The cell editor's Inspect button: show the update instead of running it. */
   onInspectEdit: (row: Row, field: string, value: string) => void;
   onCellContextMenu: (row: Row, field: string, x: number, y: number) => void;
+  /** Someone tried to edit a cell in a column with a readOnlyReason. */
+  onReadOnlyEdit: (reason: string) => void;
 }
 
 const NO_SELECTION: GridSelection = {
@@ -321,6 +330,19 @@ const ResultsGrid: React.FC<ResultsGridProps> = observer(props => {
     onCommitEdit(currentRows[row], field, value.data);
   }, []);
 
+  // An edit attempt on a column that can't be changed says why, straight
+  // away. Glide activates a cell on double-click or Enter whether or not it
+  // can open an editor; typing only reaches onKeyDown.
+  const onCellActivated = useCallback(([col]: Item) => {
+    const column = latest.current.columns[col];
+    if (column?.readOnlyReason && !column.json) latest.current.onReadOnlyEdit(column.readOnlyReason);
+  }, []);
+  const onKeyDown = useCallback((event: GridKeyEventArgs) => {
+    if (!event.location || event.ctrlKey || event.metaKey || event.altKey || event.key.length !== 1) return;
+    const column = latest.current.columns[event.location[0]];
+    if (column?.readOnlyReason && !column.json) latest.current.onReadOnlyEdit(column.readOnlyReason);
+  }, []);
+
   const onCellClicked = useCallback(([col, row]: Item) => {
     const { rows: currentRows, columns: currentColumns, onJsonOpen } = latest.current;
     const column = currentColumns[col];
@@ -401,6 +423,11 @@ const ResultsGrid: React.FC<ResultsGridProps> = observer(props => {
         onCellsEdited={onlySingleCellEdits}
         onCellEdited={onCellEdited}
         onCellClicked={onCellClicked}
+        onCellActivated={onCellActivated}
+        onKeyDown={onKeyDown}
+        // Double-click to edit, as before. Glide's default also opens the
+        // editor on a second single click of the selected cell.
+        cellActivationBehavior="double-click"
         onCellContextMenu={onCellContextMenu}
         onColumnResize={onColumnResize}
         onColumnResizeEnd={onColumnResizeEnd}

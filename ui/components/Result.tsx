@@ -29,6 +29,7 @@ import { MIN_RESULT_COLUMN_WIDTH, MAX_RESULT_COLUMN_WIDTH } from '../constants';
 import { BarChart } from './BarChart';
 import TraversalResult from './TraversalResult';
 import ResultsGrid, { type ResultsGridColumn } from './results-grid/ResultsGrid';
+import ResultNotice, { type Notice } from './results-grid/ResultNotice';
 import JsonInspectorPanel from './JsonInspectorPanel';
 import {
   columnLooksLikeJson,
@@ -127,6 +128,34 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
 
   const ast = session.response?.ast ?? null;
 
+  // The table behind an alias, for messages people read ("user.email"
+  // rather than "u_0.email"). Falls back to the alias itself.
+  const tableForAlias = (alias: string): string =>
+    ast?.['selected-tables']?.find(t => t.alias === alias)?.table ?? alias;
+
+  // Why a column's values can't be edited, if they can't. An update finds
+  // its row by that table's `id`, so it needs the id in the result, and the
+  // id itself is the one thing it can't change.
+  const readOnlyReasonFor = (field: string, headerName: string): string | undefined => {
+    const alias = colIndexToAlias[field];
+    const column = session.columnMetadata.colIndexToColumnLookup[field];
+    if (!alias || !column) {
+      return `${headerName} is worked out by the query, not stored in a table, so it can't be edited.`;
+    }
+    const table = tableForAlias(alias);
+    if (column === 'id') {
+      return `${table}.id can't be edited. It's how an update finds the row to change.`;
+    }
+    if (!session.columnMetadata.aliasToIdLookup[alias]) {
+      return `${table} values can't be edited here. The result has no ${table}.id, which an update needs to find the row.`;
+    }
+    return undefined;
+  };
+
+  // A short message in the results pane: what an edit did, or why it
+  // couldn't be made.
+  const [notice, setNotice] = useState<Notice | null>(null);
+
   // What the grid needs to know about each column. Memoized so the grid's
   // own derived state only rebuilds when a column input actually changed.
   const columns = React.useMemo<ResultsGridColumn[]>(
@@ -134,6 +163,9 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
       baseColumns.map(column => {
         const alias = colIndexToAlias[column.field] ?? '';
         const isJsonColumn = jsonColumnFields.has(column.field);
+        const readOnlyReason = column.editable
+          ? readOnlyReasonFor(column.field, column.headerName ?? column.field)
+          : 'This column is read-only.';
         // Header-only, for both kinds of color a column can carry: the
         // "Table colors" preference, and the spotlight on the table hovered
         // on the canvas. Tinting every cell read as noise across a full
@@ -156,14 +188,19 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
           json: isJsonColumn,
           // A JSON cell is edited in JsonInspectorPanel, which a click on it
           // opens already in edit mode - never inline.
-          editable: column.editable && !isJsonColumn,
+          editable: column.editable && !isJsonColumn && !readOnlyReason,
+          readOnlyReason,
           headerColor: tinted ? getColorForAlias(alias, ast, isDark) : undefined,
           spotlight,
         };
       }),
+    // readOnlyReasonFor is rebuilt every render but reads only
+    // columnMetadata and ast, both listed here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       baseColumns,
       rows,
+      session.columnMetadata,
       colIndexToAlias,
       showResultColors,
       hoveredAlias,
@@ -227,6 +264,11 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
 
   const startEditingJsonPanel = () => {
     if (!jsonPanel) return;
+    const reason = columns.find(c => c.field === jsonPanel.field)?.readOnlyReason;
+    if (reason) {
+      setNotice({ kind: 'info', text: reason });
+      return;
+    }
     setJsonPanel({ ...jsonPanel, editing: true });
   };
 
@@ -259,24 +301,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     }
     const rowId = rowData[idColumnIndex];
     const column = session.columnMetadata.colIndexToColumnLookup[jsonPanel.field];
-    try {
-      const updateExpression = await createUpdateExpression(
-        session.expression,
-        alias,
-        rowId,
-        column,
-        minified.value,
-      );
-      const vs = global.getVirtualSession();
-      runInAction(() => {
-        vs.expression = updateExpression;
-      });
-      await vs.evaluate();
-      await session.evaluate();
-    } catch (error) {
-      console.error('JSON cell update failed:', error);
-      return false;
-    }
+    if (!(await runUpdate(alias, rowId, column, minified.value))) return false;
     // Close rather than flip back to view mode: session.evaluate() just
     // rebuilt `rows`, and `_id` is a positional index re-assigned on every
     // evaluation (see default.plugin.tsx), not a stable row identity - if
@@ -403,6 +428,20 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     }
     const id = row[idColumnIndex];
     const column = session.columnMetadata.colIndexToColumnLookup[field];
+    await runUpdate(alias, id, column, value);
+  };
+
+  // Runs one update through the virtual session, says how it went, and
+  // re-runs this tab's query so the grid shows what the database now holds
+  // (including, after a failure, the value that is still there).
+  const runUpdate = async (
+    alias: string,
+    id: string | number,
+    column: string,
+    value: string,
+  ): Promise<boolean> => {
+    const target = `${tableForAlias(alias)}.${column}`;
+    let error = '';
     try {
       const updateExpression = await createUpdateExpression(
         session.expression,
@@ -416,10 +455,17 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
         vs.expression = updateExpression;
       });
       await vs.evaluate();
-      await session.evaluate();
-    } catch (error) {
-      console.error('Direct update failed:', error);
+      error = vs.error;
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e);
     }
+    setNotice(
+      error
+        ? { kind: 'error', text: `Couldn't update ${target} for id ${id}: ${error}` }
+        : { kind: 'success', text: `Updated ${target} for id ${id}.` },
+    );
+    await session.evaluate();
+    return !error;
   };
 
   const handleModalClose = () => {
@@ -560,7 +606,13 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
 
   return (
     <div
-      style={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}
+      style={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 0,
+        position: 'relative',
+      }}
     >
       {/* The following Box wrapppers were added because the grid was not
       respecting the max width. Hack taken from here:
@@ -667,7 +719,16 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
               columns={visibleColumns}
               rows={rows}
               onColumnResize={handleColumnWidthChange}
-              onJsonOpen={(row, field) => setJsonPanel({ id: row._id, field, editing: true })}
+              onJsonOpen={(row, field) =>
+                // Straight into edit mode, unless the value can't be changed:
+                // then it opens to read.
+                setJsonPanel({
+                  id: row._id,
+                  field,
+                  editing: !columns.find(c => c.field === field)?.readOnlyReason,
+                })
+              }
+              onReadOnlyEdit={reason => setNotice({ kind: 'info', text: reason })}
               onCommitEdit={commitEdit}
               onInspectEdit={inspectEdit}
               onCellContextMenu={handleCellContextMenu}
@@ -765,6 +826,8 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
         open={Boolean(updateData)}
         onClose={handleModalClose}
       />
+
+      <ResultNotice notice={notice} onClose={() => setNotice(null)} />
 
       {/* Export Modal */}
       <DownloadResultsModal
