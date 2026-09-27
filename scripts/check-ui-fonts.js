@@ -2,9 +2,11 @@
 // ship, in Electron itself, from file:// - exactly how the packaged app
 // loads it. Run after scripts/build-ui-export.sh:
 //
-//   npx electron scripts/check-ui-fonts.js [path/to/beamlynx-ui]
+//   npx electron --no-sandbox scripts/check-ui-fonts.js [path/to/beamlynx-ui]
 //
-// On Linux CI it needs a display: `xvfb-run -a npx electron ...`.
+// On Linux CI it needs a display, and --no-sandbox on the command line
+// (Electron checks its sandbox helper before any of this script runs):
+// `xvfb-run -a npx electron --no-sandbox ...`.
 //
 // The UI's own build already checks that the font files are in its output
 // (beamlynx-ui/scripts/check-bundle-assets.mjs). This checks the other half:
@@ -18,7 +20,9 @@ const path = require('path');
 
 const root = path.resolve(__dirname, '..');
 const uiIndex = path.join(root, 'resources', 'ui', 'index.html');
-const uiSource = path.resolve(process.argv[2] ?? path.join(root, '..', 'beamlynx-ui'));
+// The UI checkout: the first argument that isn't a flag or this script.
+const uiArg = process.argv.slice(1).find(a => !a.startsWith('-') && !a.endsWith('check-ui-fonts.js'));
+const uiSource = path.resolve(uiArg ?? path.join(root, '..', 'beamlynx-ui'));
 const TIMEOUT_MS = 30000;
 
 function fail(message) {
@@ -38,9 +42,8 @@ function requiredFonts() {
   }));
 }
 
-// CI containers: no sandbox, and a /dev/shm too small or locked down for
-// Chromium's shared memory.
-app.commandLine.appendSwitch('no-sandbox');
+// CI containers: a /dev/shm too small or locked down for Chromium's shared
+// memory. (--no-sandbox has to be on the command line; see above.)
 app.commandLine.appendSwitch('disable-dev-shm-usage');
 app.disableHardwareAcceleration();
 
