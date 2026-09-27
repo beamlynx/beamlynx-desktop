@@ -14,26 +14,34 @@ customers | where: first_name = 'John'
 
 String values are single-quoted. Numbers and booleans are not.
 
-### Several conditions
+### Either condition: `or`
 
 ```
-customers | where: first_name like 'John%', last_name = 'Doe'
+customers | where: status = 'blocked' or status = 'active'
+customers | where: first_name ilike '%ahmad%' or last_name ilike '%ahmad%'
+```
+
+`or` joins conditions inside one `where:`. A row is kept when any of them matches. The
+conditions can be on different columns.
+
+### Both conditions: another `where:`
+
+```
 customers | where: first_name like 'John%' | where: last_name = 'Doe'
 ```
 
-Both forms mean the same thing. Conditions always combine with AND, whether separated by a
-comma inside one `where:` or chained across several.
+Each `where:` step narrows what the one before it kept, so chained steps combine with AND.
+There is no `and` keyword.
 
-### There is no `or`
-
-Pine has no `or`. For one column, list the values instead:
+### No comma, no `and`
 
 ```
-customers | where: status in ('blocked', 'active')
+customers | where: first_name like 'John%', last_name = 'Doe'      -- parse error
+customers | where: first_name like 'John%' and last_name = 'Doe'   -- parse error
 ```
 
-For a condition spanning two different columns — "first name or last name matches" — there is
-no single expression. Query each column separately and combine the results yourself.
+Write `or` for either condition, or a second `where:` for both. `or` needs a space on each
+side.
 
 ### Is null / is not null
 

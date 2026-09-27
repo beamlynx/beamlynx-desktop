@@ -28,14 +28,18 @@ Joins are a table name plus the column to join on, not an ON clause:
 
   user | public.document .userId
 
+Inside one where:, join conditions with \`or\`. To require several, add a where: step for each:
+
+  user | where: status = 'blocked' or status = 'active'     either condition
+  user | where: status = 'active' | where: country = 'SE'    both conditions
+
 Operations: select: (s:), where: (w:), order: (o:), limit: (l:), group: (g:), count:, from: (f:)
 
 WHAT PINE DOES NOT HAVE
 
 Traps that cost the most round trips, because SQL habits reach for them first:
 
-  no \`or\` in where:   conditions always combine with AND, comma-separated or chained.
-                      For one column: \`where: status in ('blocked', 'active')\`.
+  no comma or \`and\`   between conditions in one where:. Use \`or\`, or chain another where:.
   no regex operators  no \`~\` or \`~*\`. Use \`where: first_name ilike '%jo%'\`.
   no \`>=\` or \`<=\`     only \`<\` and \`>\`.
   no table qualifiers A column is qualified by an alias, never a table name. Every table has

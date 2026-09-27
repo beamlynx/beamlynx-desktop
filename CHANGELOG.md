@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Changed
+- The instructions and the `where` reference an AI agent reads now say how to combine conditions: `or` inside one `where:` for either, another `where:` step for both. They used to say a comma meant AND and that Pine had no `or`. Both were wrong: a comma meant OR. The reference also told agents to run a separate query per column and combine the results themselves, which is no longer needed. It goes with the bundled pine-lang change that makes a comma or `and` inside `where:` a parse error.
 
 ## [0.17.1] - 2026-09-26
 ### Changed
