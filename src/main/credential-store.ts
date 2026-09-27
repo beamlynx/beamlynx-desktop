@@ -197,8 +197,9 @@ export type SetConnectionPolicyResult =
   | { ok: false; reason: 'mcp-requires-policy' };
 
 // Not userData: a dev build has its own data folder but shares the
-// installed app's saved connections (see data-dir.ts). Safe for two copies
-// at once, since every call reads the file fresh and writes it atomically.
+// installed app's saved connections (see data-dir.ts). Two copies can use it
+// at once: every call reads the file fresh, and writeStore replaces it
+// atomically. Two saves at the same instant can still lose one of them.
 function getStorePath(): string {
   return path.join(getSharedDataDir(), 'connections.json');
 }
@@ -252,7 +253,10 @@ function readStore(): StoreFile {
 // mid-write can't leave a truncated/corrupt connections.json behind.
 function writeStore(store: StoreFile): void {
   const storePath = getStorePath();
-  const tmpPath = `${storePath}.tmp`;
+  // Per process, because a dev build and the installed app can both write
+  // this file. A shared temp name could have one rename the other's
+  // half-written file into place.
+  const tmpPath = `${storePath}.${process.pid}.tmp`;
   // A dev build can run before the installed app ever has, so the shared
   // folder may not exist yet.
   fs.mkdirSync(path.dirname(storePath), { recursive: true });
