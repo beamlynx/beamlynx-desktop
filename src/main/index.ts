@@ -4,9 +4,11 @@ import * as http from 'http';
 import * as path from 'path';
 import { initAutoUpdater } from './auto-update';
 import { registerCredentialIpc } from './credential-store';
+import { useSeparateDevDataDir } from './data-dir';
 import { startControlPlaneServer } from './mcp/control-plane-server';
 import { registerRevealIpc } from './mcp/reveal-requests';
 import { startMcpRelay } from './mcp/stdio-relay';
+import { CONTROL_PLANE_PORT, describePortInUse, isPortInUse, PINE_PORT } from './ports';
 import { getResourcesRoot } from './resources';
 import { ServerHandle, startServer } from './server-process';
 
@@ -41,6 +43,8 @@ if (process.argv.includes('--app-version')) {
 // runs: it must never contend for the single-instance lock below (that's
 // the GUI's lock to hold), never create a window, and must have nothing
 // else in this module's normal startup path racing it.
+useSeparateDevDataDir();
+
 if (process.argv.includes('--mcp')) {
   startMcpRelay().catch(err => {
     console.error('[mcp] fatal error starting MCP relay:', err);
@@ -181,6 +185,10 @@ function createWindow(): void {
     icon: path.join(__dirname, '..', '..', 'assets', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'index.js'),
+      // Read by the preload, which hands it to beamlynx-ui's getBaseUrl().
+      // The dev build's server is on a different port than the installed
+      // app's (see ports.ts).
+      additionalArguments: [`--pine-server-url=http://localhost:${PINE_PORT}`],
     },
   });
 
@@ -302,6 +310,15 @@ async function main(): Promise<void> {
   registerCredentialIpc();
   registerRevealIpc();
 
+  // Checked before anything opens, so a taken port gets a plain explanation
+  // instead of an uncaught EADDRINUSE. The pine server's port is checked in
+  // startServer(), after it has reaped any server a crashed run left behind.
+  if (await isPortInUse(CONTROL_PLANE_PORT)) {
+    dialog.showErrorBox("beamlynx can't start", await describePortInUse(CONTROL_PLANE_PORT));
+    app.quit();
+    return;
+  }
+
   // Started here rather than after the server/UI are up -- it only starts
   // accepting real work once a run_query/complete_query request actually
   // arrives and finds mainWindow set (see control-plane-server.ts), so
@@ -316,7 +333,7 @@ async function main(): Promise<void> {
   try {
     serverHandle = await startServer();
   } catch (err) {
-    dialog.showErrorBox('beamlynx failed to start', err instanceof Error ? err.message : String(err));
+    dialog.showErrorBox("beamlynx can't start", err instanceof Error ? err.message : String(err));
     app.quit();
     return;
   }
@@ -366,9 +383,29 @@ function runDesktopApp(): void {
   // to this app. requestSingleInstanceLock() makes any second launch quit
   // immediately instead, and focuses the already-running window so it's not
   // just a silent no-op from the user's perspective.
+  //
+  // The running copy is told through 'second-instance' below and focuses its
+  // window. That isn't enough on its own: some desktops (Hyprland, for one)
+  // don't raise a window on focus(), so quitting silently looked like the
+  // app had failed to start. Say so instead, except when the hand-off is the
+  // point: a deep link, or the --mcp relay starting the app (see
+  // stdio-relay.ts's launchGuiDetached).
   const gotSingleInstanceLock = app.requestSingleInstanceLock();
   if (!gotSingleInstanceLock) {
-    app.quit();
+    if (findDeepLinkArg(process.argv) || process.argv.includes('--launched-by-mcp')) {
+      app.quit();
+      return;
+    }
+    app.whenReady().then(() => {
+      dialog.showMessageBoxSync({
+        type: 'info',
+        title: 'beamlynx is already running',
+        message: 'beamlynx is already open',
+        detail: 'Switch to its window to keep working.',
+        buttons: ['OK'],
+      });
+      app.quit();
+    });
     return;
   }
 
@@ -419,11 +456,15 @@ function runDesktopApp(): void {
   // alone gives it no app to load. app.getAppPath() resolves to that
   // directory in dev (and to the packaged
   // app's root when packaged, where this branch isn't taken anyway).
+  //
+  // The name differs too, so a dev build can be registered as its own MCP
+  // server next to the installed app's. Each relay talks only to its own
+  // app (see ports.ts).
   ipcMain.handle('mcp:get-setup-info', () => {
     if (app.isPackaged) {
-      return { command: process.execPath, args: ['--mcp'] };
+      return { name: 'beamlynx', command: process.execPath, args: ['--mcp'] };
     }
-    return { command: process.execPath, args: [app.getAppPath(), '--mcp'] };
+    return { name: 'beamlynx-dev', command: process.execPath, args: [app.getAppPath(), '--mcp'] };
   });
 
   // Backs the Settings About section's "App version" row -- app.getVersion()

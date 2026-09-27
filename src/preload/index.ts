@@ -1,6 +1,7 @@
 // Intentionally minimal: the UI talks to the bundled server via plain
-// fetch() against http://localhost:33333 (see beamlynx-ui/store/client.ts),
-// same as it does against a Docker-run server today. The one thing the web
+// fetch() (see beamlynx-ui/store/client.ts), same as it does against a
+// Docker-run server today. Only the server's URL comes from here, because a
+// dev build uses a different port than the installed app. The one thing the web
 // UI genuinely can't do itself is know about Electron's auto-update
 // lifecycle (see src/main/auto-update.ts) -- that's exposed here so
 // beamlynx-ui can show it in-app instead of it being silent/console-only.
@@ -40,7 +41,13 @@ type RevealOutcome =
   | { ok: true; expression: string; columns: unknown; rows: unknown }
   | { ok: false; comment?: string };
 
+// Passed by main through webPreferences.additionalArguments (see createWindow).
+const pineServerUrl = process.argv
+  .find(arg => arg.startsWith('--pine-server-url='))
+  ?.slice('--pine-server-url='.length);
+
 contextBridge.exposeInMainWorld('beamlynxDesktop', {
+  pineServerUrl,
   onUpdateStatus: (callback: (status: UpdateStatus) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, status: UpdateStatus) => callback(status);
     ipcRenderer.on('update-status', listener);
@@ -94,7 +101,7 @@ contextBridge.exposeInMainWorld('beamlynxDesktop', {
   // depending on which listener's response the main process happens to
   // receive first for a given request.
   mcp: {
-    getSetupInfo: (): Promise<{ command: string; args: string[] }> => ipcRenderer.invoke('mcp:get-setup-info'),
+    getSetupInfo: (): Promise<{ name: string; command: string; args: string[] }> => ipcRenderer.invoke('mcp:get-setup-info'),
     onQueryRequest: (handler: (request: McpQueryRequest) => Promise<unknown>) => {
       const listener = async (_event: Electron.IpcRendererEvent, request: McpQueryRequest) => {
         try {

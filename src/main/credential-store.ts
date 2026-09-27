@@ -1,12 +1,14 @@
-// Persists saved DB connection profiles to disk in userData/connections.json.
+// Persists saved DB connection profiles to disk in connections.json, in the
+// installed app's data folder (see getStorePath below).
 // Only the password is encrypted (via Electron's safeStorage, OS-keychain-backed) --
 // host/port/db/user are already visible in plaintext elsewhere (the connect form,
 // the connection label), so encrypting them too would only cost a decrypt call
 // per row for no real protection gained.
 import { randomUUID } from 'crypto';
-import { app, ipcMain, safeStorage } from 'electron';
+import { ipcMain, safeStorage } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getSharedDataDir } from './data-dir';
 
 // Mirrors pine-lang's pine.access-policy rule shape 1:1 -- these travel
 // verbatim (minus `enabled`, stripped in effectiveAccessPolicyRules -- see
@@ -194,8 +196,12 @@ export type SetConnectionPolicyResult =
   | { ok: false; reason: 'not-found' }
   | { ok: false; reason: 'mcp-requires-policy' };
 
+// Not userData: a dev build has its own data folder but shares the
+// installed app's saved connections (see data-dir.ts). Two copies can use it
+// at once: every call reads the file fresh, and writeStore replaces it
+// atomically. Two saves at the same instant can still lose one of them.
 function getStorePath(): string {
-  return path.join(app.getPath('userData'), 'connections.json');
+  return path.join(getSharedDataDir(), 'connections.json');
 }
 
 function emptyStore(): StoreFile {
@@ -247,7 +253,13 @@ function readStore(): StoreFile {
 // mid-write can't leave a truncated/corrupt connections.json behind.
 function writeStore(store: StoreFile): void {
   const storePath = getStorePath();
-  const tmpPath = `${storePath}.tmp`;
+  // Per process, because a dev build and the installed app can both write
+  // this file. A shared temp name could have one rename the other's
+  // half-written file into place.
+  const tmpPath = `${storePath}.${process.pid}.tmp`;
+  // A dev build can run before the installed app ever has, so the shared
+  // folder may not exist yet.
+  fs.mkdirSync(path.dirname(storePath), { recursive: true });
   fs.writeFileSync(tmpPath, JSON.stringify(store, null, 2), 'utf-8');
   fs.renameSync(tmpPath, storePath);
 }

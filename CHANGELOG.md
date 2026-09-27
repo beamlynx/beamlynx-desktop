@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- A dev build (`npm start`) can run next to the installed app. It uses its own ports (43333 and 43334) and its own data folder, `beamlynx-desktop-dev`, but shares the installed app's saved connections. In Settings > MCP it registers itself as `beamlynx-dev`, so an AI agent can use either copy. See DEVELOPMENT.md. The dev build needs a pine-server staged from a pine-lang that reads `PINE_PORT`. The installed app still uses 33333.
+
+### Fixed
+- Opening beamlynx while it's already open now says so. It used to quit without a word, and on some desktops, such as Hyprland, the open window didn't come forward either.
+- If a port beamlynx needs is taken, it now says what's using it: another copy of beamlynx, a Pine server started some other way, or another program. A taken MCP port (33334) used to go unhandled.
 
 ## [0.18.0] - 2026-09-28
 ### Added
