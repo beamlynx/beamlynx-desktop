@@ -12,16 +12,16 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ### Changed
 - The results grid is new, and much faster. It draws only the cells in view, so scrolling stays smooth however many rows a result has. A result shows up in about half the time, and a 100,000-row result about four times sooner than before.
+- The delete script from **traverse** now says in its first lines how its Run button works. Running the script yourself deletes everything in one transaction, between its `BEGIN;` and `COMMIT;`. Run doesn't send those: it deletes one table at a time, deepest first, and each table is committed as it goes.
 - Opening or closing Settings or the Pine panel beside the results is smooth now. The results used to be swapped for a grey placeholder while the panel moved, then redrawn; now they resize along with it.
 - Results are no longer split into pages of 100 rows. Every row the query returns is in one scrolling grid, with the row count underneath.
-- Results appear sooner after a run. The app used to copy every row of a result twice before showing it, which took about 1.6 seconds for 100,000 rows and about 100ms for 1,000.
 
 ### Removed
 - Sorting by clicking a column header, and the column menu (sort, filter, hide columns). Sorting and filtering will come back as changes to the Pine expression, so they show up in the query. To filter on a value for now, right-click the cell and choose **Filter**.
 
 ### Fixed
-- Tab in the canvas filter panel moved focus out of the panel, usually to the Pine panel. It now moves through the panel's own fields and buttons, going to **add** right after the value, and wraps around. Escape still closes the panel. Escape in the column list opened by **+ or** goes back to the panel instead of discarding it.
-- A filter joined with `or` that was typed by hand disappeared from its table on the canvas. It now shows as one chip, and clicking it opens every condition in it for editing.
+- Tab in the canvas filter panel moved focus out of the panel, usually to the Pine panel. It now moves through the panel's own fields and buttons, going to **add** right after the value, and wraps around. Escape still closes the panel.
+- A filter typed by hand that matches any of several conditions disappeared from its table on the canvas. It now shows as one chip, and clicking it opens every condition in it for editing.
 - The app's fonts now ship inside it. The desktop app showed IBM Plex Mono, JetBrains Mono, Fira Code, Inter and IBM Plex Sans only if they were installed on your computer, and a system font otherwise. The web app downloaded them from Google Fonts. Every build now carries its own copies, and works offline.
 
 ## [0.63.0] - 2026-09-25
@@ -30,11 +30,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - Needs pine-lang 0.46.0 or later (was 0.45.0). The server now describes a join in a different shape, which this release needs to draw the canvas. Connecting to an older server shows the upgrade-required screen.
 
 ### Added
-- Walk the tables under one of yours, as a canvas action. Press `+` on a table and pick **traverse**. It follows the tables that point at it by foreign key, up to 25 levels deep, including hierarchies such as child folders under a folder. It skips a branch as soon as it finds no rows. The list fills in while the walk runs, and you can cancel it.
-- **Count rows** lists every table the walk reaches with its row count, deepest first, in the results pane. Click a row to open that table's rows in a new tab.
-- **Delete rows…** builds the `BEGIN;` … `COMMIT;` script that empties those tables, deepest first. This includes tables linked by a foreign key made of more than one column. There is a copy button for the script.
-- Run that delete from the same panel. A confirmation first names the connection and its host, and lists each table with its row count. The deletes run one table at a time, children before parents, so a partial run never leaves a broken reference. If one fails, the run pauses there, and Resume carries on from that table. A downloadable log records every statement sent, the rows it removed, and how long it took.
-- Delete is offered only where it is safe. If the expression joins back up to a parent, such as `employee | company`, the menu entry says why it is unavailable. A plan that reaches the depth limit can't be run, because it may be missing rows.
+- Traverse from a table on the canvas: press `+` on it and pick **traverse**. It follows every table that points at it by foreign key, up to 25 levels deep, and offers two operations on them:
+  - **Count rows** lists each table with its row count. Click one to open its rows in a new tab.
+  - **Delete rows…** generates the delete statements, deepest table first, as a script you can copy or run from the same panel after a confirmation.
 
 ### Fixed
 - Joins on the canvas now start from the latest table unless you pick another one. Hovering over a table used to move keyboard focus to it, even with the pointer hidden while you typed, so the next `|` could join from an older table. Hovering now only highlights. To join from an older table, click it or move to it with the keyboard.

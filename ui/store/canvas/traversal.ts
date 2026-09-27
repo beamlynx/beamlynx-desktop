@@ -542,7 +542,21 @@ export const buildDeleteScript = async (
   // trailing `*/` is a syntax error on top. A line comment cannot be closed
   // early by anything the expression contains, which makes this immune rather
   // than merely escaped.
-  const parts: string[] = [asSqlComment('DELETE queries')];
+  // The header says how this differs from the panel's Run button, which sends
+  // one table's delete at a time with no transaction (see runDeleteScript).
+  // The BEGIN/COMMIT below are real when the script is run by hand; the
+  // panel never sends them.
+  const parts: string[] = [
+    asSqlComment(
+      [
+        'DELETE queries',
+        '',
+        'Run as a whole, this script deletes everything in one transaction.',
+        "The panel's Run button doesn't use it: it deletes one table at a time,",
+        'deepest first, and each table is committed as it goes.',
+      ].join('\n'),
+    ),
+  ];
 
   // The note once, at the top, rather than above every statement. Each node's
   // expression is its parent's plus one more join, so the root's note is

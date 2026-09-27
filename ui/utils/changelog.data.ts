@@ -39,29 +39,9 @@ export const CHANGELOG: ChangelogVersion[] = [
     ],
     added: [
       {
-        title: "Walk the tables under one of yours, as a canvas action",
+        title: "Traverse from a table on the canvas",
         description:
-          "Press + on a table and pick traverse. It follows the tables that point at it by foreign key, up to 25 levels deep, including hierarchies such as child folders under a folder. It skips a branch as soon as it finds no rows. The list fills in while the walk runs, and you can cancel it.",
-      },
-      {
-        title: "Count rows",
-        description:
-          "Lists every table the walk reaches with its row count, deepest first, in the results pane. Click a row to open that table's rows in a new tab.",
-      },
-      {
-        title: "Delete rows…",
-        description:
-          "Builds the BEGIN; … COMMIT; script that empties those tables, deepest first. This includes tables linked by a foreign key made of more than one column. There is a copy button for the script.",
-      },
-      {
-        title: "Run that delete from the same panel",
-        description:
-          "A confirmation first names the connection and its host, and lists each table with its row count. The deletes run one table at a time, children before parents, so a partial run never leaves a broken reference. If one fails, the run pauses there, and Resume carries on from that table. A downloadable log records every statement sent, the rows it removed, and how long it took.",
-      },
-      {
-        title: "Delete is offered only where it is safe",
-        description:
-          "If the expression joins back up to a parent, such as employee | company, the menu entry says why it is unavailable. A plan that reaches the depth limit can't be run, because it may be missing rows.",
+          "Press + on a table and pick traverse. It follows every table that points at it by foreign key, up to 25 levels deep, and offers two operations on them. Count rows lists each table with its row count; click one to open its rows in a new tab. Delete rows… generates the delete statements, deepest table first, as a script you can copy or run from the same panel after a confirmation.",
       },
     ],
     fixed: [
