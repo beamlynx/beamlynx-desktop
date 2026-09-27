@@ -1,8 +1,7 @@
 import { runInAction } from 'mobx';
 import { Column, HttpClient } from '../store/client';
-import { ColumnMetadata, Row, Session } from '../store/session';
+import { ColumnMetadata, ResultColumn, Row, Session } from '../store/session';
 import { EvaluateOptions, PluginInterface } from './plugin.interface';
-import { GridColDef } from '@mui/x-data-grid';
 
 export class DefaultPlugin implements PluginInterface {
   private readonly client: HttpClient;
@@ -75,17 +74,13 @@ export class DefaultPlugin implements PluginInterface {
       const result = [...rows];
 
       // Pine mode - full metadata support
-      const columns = response.columns.map((column, index): GridColDef => {
+      const columns = response.columns.map((column, index): ResultColumn => {
         return {
           field: index.toString(),
           headerName: column['column-alias'] || column['column'],
-          // No flex/width here - Result.tsx computes a fixed pixel width
-          // per column from a sample of the actual rows (column-width.util.ts).
-          // flex: 1 meant DataGrid recalculated every column's width across
-          // every visible row on every resize, expensive enough to stutter
-          // a panel animating at the same time.
+          // No width here - Result.tsx computes a fixed pixel width per
+          // column from a sample of the actual rows (column-width.util.ts).
           editable: true,
-          disableReorder: true,
         };
       });
 

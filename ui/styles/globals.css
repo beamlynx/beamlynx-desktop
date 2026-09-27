@@ -39,8 +39,24 @@ a {
 }
 
 /* When hovering over a data grid cell, show a pointer instead of a cursor */
-.copy-data-grid .MuiDataGrid-cell {
-  cursor: pointer;
+/* The results grid's scroller (components/results-grid/ResultsGrid.tsx):
+   themed like every other scrollable code surface (see editor-theme.ts). */
+[data-results-grid] ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+[data-results-grid] ::-webkit-scrollbar-track {
+  background: transparent;
+}
+[data-results-grid] ::-webkit-scrollbar-thumb {
+  background-color: var(--canvas-pin);
+  border-radius: 5px;
+}
+[data-results-grid] ::-webkit-scrollbar-thumb:hover {
+  background: var(--canvas-trace);
+}
+[data-results-grid] ::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 /* Text utility classes */

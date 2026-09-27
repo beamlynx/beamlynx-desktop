@@ -23,6 +23,9 @@ import '@fontsource/fira-code/400.css'
 import '@fontsource/fira-code/500.css'
 import '@fontsource/fira-code/600.css'
 import '@fontsource/fira-code/700.css'
+// The results grid's own stylesheet (its cell editor overlay and scroller).
+// Next only allows global CSS to be imported here.
+import '@glideapps/glide-data-grid/dist/index.css'
 import type { AppProps } from 'next/app'
 import { useStores } from '../store/store-container';
 import { useEffect, useMemo, useState } from 'react';

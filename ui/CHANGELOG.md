@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- After you edit a value, a message in the results pane says what was updated, or why the update failed.
+- A value that can't be edited now says why as soon as you try, instead of opening an editor. That covers a row's `id` (an update uses it to find the row), a table whose `id` isn't in the result, and values the query works out rather than reads from a table.
+- Move between result cells with the arrow keys. Select a range by dragging or with Shift, and copy it with Ctrl+C as tab-separated text that pastes into a spreadsheet.
+
+### Changed
+- The results grid is new, and much faster. It draws only the cells in view, so scrolling stays smooth however many rows a result has. A result shows up in about half the time, and a 100,000-row result about four times sooner than before.
+- Opening or closing Settings or the Pine panel beside the results is smooth now. The results used to be swapped for a grey placeholder while the panel moved, then redrawn; now they resize along with it.
+- Results are no longer split into pages of 100 rows. Every row the query returns is in one scrolling grid, with the row count underneath.
+- Results appear sooner after a run. The app used to copy every row of a result twice before showing it, which took about 1.6 seconds for 100,000 rows and about 100ms for 1,000.
+
+### Removed
+- Sorting by clicking a column header, and the column menu (sort, filter, hide columns). Sorting and filtering will come back as changes to the Pine expression, so they show up in the query. To filter on a value for now, right-click the cell and choose **Filter**.
+
 ### Fixed
 - The app's fonts now ship inside it. The desktop app showed IBM Plex Mono, JetBrains Mono, Fira Code, Inter and IBM Plex Sans only if they were installed on your computer, and a system font otherwise. The web app downloaded them from Google Fonts. Every build now carries its own copies, and works offline.
 
