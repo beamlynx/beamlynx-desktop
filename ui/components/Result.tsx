@@ -152,9 +152,16 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     return undefined;
   };
 
-  // A short message in the results pane: what an edit did, or why it
-  // couldn't be made.
+  // A short message in the results pane: that a save worked ("Saved email"),
+  // why one failed, or why a value can't be edited. Which cell was saved is
+  // shown by the cell itself (flash, below), so the message doesn't repeat
+  // it.
   const [notice, setNotice] = useState<Notice | null>(null);
+  // The cell just saved, found again in the re-run's rows: the grid glows
+  // it briefly.
+  const [flash, setFlash] = useState<{ rowIndex: number; field: string; token: number } | null>(
+    null,
+  );
 
   // What the grid needs to know about each column. Memoized so the grid's
   // own derived state only rebuilds when a column input actually changed.
@@ -431,16 +438,16 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     await runUpdate(alias, id, column, value);
   };
 
-  // Runs one update through the virtual session, says how it went, and
-  // re-runs this tab's query so the grid shows what the database now holds
-  // (including, after a failure, the value that is still there).
+  // Runs one update through the virtual session, then re-runs this tab's
+  // query so the grid shows what the database now holds (after a failure,
+  // the value that is still there). A save that worked glows in its cell and
+  // says so briefly; a failure says why.
   const runUpdate = async (
     alias: string,
     id: string | number,
     column: string,
     value: string,
   ): Promise<boolean> => {
-    const target = `${tableForAlias(alias)}.${column}`;
     let error = '';
     try {
       const updateExpression = await createUpdateExpression(
@@ -461,10 +468,23 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     }
     setNotice(
       error
-        ? { kind: 'error', text: `Couldn't update ${target} for id ${id}: ${error}` }
-        : { kind: 'success', text: `Updated ${target} for id ${id}.` },
+        ? { kind: 'error', text: `Couldn't save ${column}: ${error}` }
+        : { kind: 'success', text: `Saved ${column}` },
     );
     await session.evaluate();
+    if (!error) {
+      // Where the row and the column are now: the re-run can reorder rows,
+      // and field indices belong to one result, not the next.
+      const meta = session.columnMetadata;
+      const field = Object.keys(meta.colIndexToColumnLookup).find(
+        f => meta.colIndexToColumnLookup[f] === column && meta.colIndexToAliasLookup[f] === alias,
+      );
+      const idField = meta.aliasToIdLookup[alias];
+      const rowIndex = idField
+        ? session.rows.findIndex(row => String(row[idField]) === String(id))
+        : -1;
+      if (field && rowIndex >= 0) setFlash({ rowIndex, field, token: Date.now() });
+    }
     return !error;
   };
 
@@ -729,6 +749,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
                 })
               }
               onReadOnlyEdit={reason => setNotice({ kind: 'info', text: reason })}
+              flash={flash}
               onCommitEdit={commitEdit}
               onInspectEdit={inspectEdit}
               onCellContextMenu={handleCellContextMenu}

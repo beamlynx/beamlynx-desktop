@@ -14,7 +14,7 @@ interface ResultNoticeProps {
 
 // How long each kind stays up. An error is kept longest: it is the one
 // someone may need to read twice, or act on.
-const DURATION: Record<Notice['kind'], number> = { success: 3000, info: 4500, error: 9000 };
+const DURATION: Record<Notice['kind'], number> = { success: 2500, info: 4500, error: 9000 };
 
 const ICON: Record<Notice['kind'], React.ReactNode> = {
   success: <CheckCircleOutline fontSize="small" sx={{ color: 'var(--canvas-trace)' }} />,
@@ -51,7 +51,7 @@ const ResultNotice: React.FC<ResultNoticeProps> = ({ notice, onClose }) => (
         gap: 1,
         maxWidth: 560,
         pl: 1.25,
-        pr: 0.5,
+        pr: notice?.kind === 'success' ? 1.5 : 0.5,
         py: 0.75,
         backgroundColor: 'var(--canvas-picker-bg)',
         border: '1px solid var(--canvas-picker-border)',
@@ -65,14 +65,18 @@ const ResultNotice: React.FC<ResultNoticeProps> = ({ notice, onClose }) => (
     >
       <Box sx={{ display: 'flex', pt: '1px', flexShrink: 0 }}>{notice && ICON[notice.kind]}</Box>
       <Box sx={{ py: '1px', overflowWrap: 'anywhere' }}>{notice?.text}</Box>
-      <IconButton
-        size="small"
-        onClick={onClose}
-        aria-label="Dismiss"
-        sx={{ color: 'var(--canvas-text-dim)', p: '2px', ml: 0.5, flexShrink: 0 }}
-      >
-        <Close sx={{ fontSize: 16 }} />
-      </IconButton>
+      {/* A success message goes by itself, quickly; only a message worth
+          reading twice gets a way to dismiss it. */}
+      {notice?.kind !== 'success' && (
+        <IconButton
+          size="small"
+          onClick={onClose}
+          aria-label="Dismiss"
+          sx={{ color: 'var(--canvas-text-dim)', p: '2px', ml: 0.5, flexShrink: 0 }}
+        >
+          <Close sx={{ fontSize: 16 }} />
+        </IconButton>
+      )}
     </Box>
   </Snackbar>
 );
