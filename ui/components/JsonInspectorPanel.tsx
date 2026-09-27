@@ -29,7 +29,7 @@ interface JsonInspectorPanelProps {
 
 /**
  * The one place a JSON cell's value is viewed AND edited - opened by
- * clicking the cell (JsonCellContent), closed by its own X, Escape, or the
+ * clicking the cell in the results grid, closed by its own X, Escape, or the
  * backdrop. Earlier rounds of this feature split viewing (this panel),
  * editing (a separate CodeMirror grown into the grid row) and "inspect the
  * update query" (a Modal) into three different surfaces with three
@@ -101,7 +101,7 @@ const JsonInspectorPanel: React.FC<JsonInspectorPanelProps> = ({
   const dirtyRef = useRef(false);
   const textRef = useRef('');
   // Clicking a cell opens the panel already in edit mode (see
-  // JsonCellContent's onOpen) - handleEditStart below still seeds textRef
+  // the results grid's JSON cell click) - handleEditStart below still seeds textRef
   // for the Cancel-then-Edit-again path, but that's a click, which happens
   // in its own render after this one; the FIRST render of a freshly opened
   // panel has no button click to hang a seed off, and needs textRef ready

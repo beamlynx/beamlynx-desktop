@@ -165,8 +165,9 @@ export async function runMcpQuery(
   // resolves in -- not after returning up through McpBridge/preload.
   // Confirmed the hard way: PineTabs renders every session's own <Session>
   // (TabPanel only hides the inactive MCP tab via CSS, it doesn't unmount
-  // it), so once session.mode flips to 'result' a real MUI DataGrid mounts
-  // for it and mutates the *same* columns array object shortly after --
+  // it), so once session.mode flips to 'result' the results grid mounts
+  // for it. The old grid (MUI DataGrid) mutated the *same* columns array
+  // object shortly after --
   // JSON.stringify(session.columns) taken right here succeeds every time,
   // but the identical array read one async hop later (after React's render
   // pass has had a chance to run) fails to clone. Take the copy before

@@ -65,6 +65,11 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
       // the guard still held.
       if (target?.closest('[data-testid="canvas-picker"]')) return;
 
+      // The results grid is a <canvas>, not a text input, so the check above
+      // doesn't see it - but once it has focus, arrow keys move between its
+      // cells and typing starts editing one. Those keys are the grid's.
+      if (target?.closest('[data-results-grid]')) return;
+
       // A picker is open (insert mode) - its own keydown handlers
       // (Picker.tsx's onListKeyDown and window-level Escape listener) keep
       // exclusive control of the keyboard while it's up.

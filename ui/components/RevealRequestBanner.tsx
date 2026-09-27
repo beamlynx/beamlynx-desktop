@@ -38,13 +38,13 @@ const RevealRequestBanner = observer(({ session }: { session: SessionType }) => 
   const handleReveal = async () => {
     setBusy(true);
     try {
-      // session.rows/session.columns are the DataGrid-shaped fields
-      // (header-stripped row objects, GridColDef metadata) -- not the raw
+      // session.rows/session.columns are the grid-shaped fields
+      // (header-stripped row objects, ResultColumn metadata) -- not the raw
       // pine-lang eval response shape check_reveal's formatRows (beamlynx-
       // desktop) needs, which expects the header as row 0 of an array of
       // arrays. session.evaluate()'s own return value IS that raw shape
       // (see plugin/default.plugin.tsx -- it returns response.result
-      // before any of the DataGrid transforms run), so this re-runs
+      // before any of the grid transforms run), so this re-runs
       // whatever expression is currently in the editor (edited or not) and
       // reveals exactly what that run returns, rather than reading
       // already-transformed grid state back out.
