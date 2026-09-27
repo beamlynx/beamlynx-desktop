@@ -5,6 +5,8 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 ### Added
+- After you edit a value, a message in the results pane says what was updated, or why the update failed.
+- A value that can't be edited now says why as soon as you try, instead of opening an editor. That covers a row's `id` (an update uses it to find the row), a table whose `id` isn't in the result, and values the query works out rather than reads from a table.
 - Move between result cells with the arrow keys. Select a range by dragging or with Shift, and copy it with Ctrl+C as tab-separated text that pastes into a spreadsheet.
 
 ### Changed
