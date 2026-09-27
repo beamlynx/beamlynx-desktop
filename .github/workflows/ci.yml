@@ -82,6 +82,13 @@ jobs:
         working-directory: beamlynx-desktop
         run: npm ci
 
+      # The staged UI must load every font it ships, in Electron, from
+      # file:// - how the packaged app loads it. A UI that bundles no fonts
+      # fails too. See scripts/check-ui-fonts.js.
+      - name: Check the UI's fonts load in Electron
+        working-directory: beamlynx-desktop
+        run: xvfb-run -a npx electron --no-sandbox scripts/check-ui-fonts.js ../beamlynx-ui
+
       - name: TypeScript build
         working-directory: beamlynx-desktop
         run: npm run build

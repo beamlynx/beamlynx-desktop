@@ -83,6 +83,16 @@ jobs:
         working-directory: beamlynx-desktop
         run: ./scripts/build-ui-export.sh
 
+      # No release ships a UI that draws its fonts from whatever the user
+      # happens to have installed. See scripts/check-ui-fonts.js.
+      - name: Install beamlynx-desktop deps
+        working-directory: beamlynx-desktop
+        run: npm ci
+
+      - name: Check the UI's fonts load in Electron
+        working-directory: beamlynx-desktop
+        run: xvfb-run -a npx electron --no-sandbox scripts/check-ui-fonts.js ../beamlynx-ui
+
       - uses: actions/upload-artifact@v4
         with:
           name: ui-export
