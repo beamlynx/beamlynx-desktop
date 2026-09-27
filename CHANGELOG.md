@@ -13,9 +13,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [0.17.0] - 2026-09-26
 ### Added
-- Walk the tables under one of yours, as a canvas action. Press `+` on a table and pick **traverse**. It follows the tables that point at it by foreign key, all the way down, including hierarchies such as child folders under a folder. It skips a branch as soon as it finds no rows (bundled beamlynx-ui 0.63.0).
-- **Count rows** lists every table it reaches with its row count, deepest first, in the results pane. Click a row to open that table's rows in a new tab (bundled beamlynx-ui 0.63.0).
-- **Delete rows…** builds the `BEGIN;` … `COMMIT;` script that empties those tables, deepest first, and stops there. Run it from the same panel after a confirmation that names the connection and its host and lists each table with its row count. It deletes one table at a time. If one fails, the run pauses there, and Resume carries on from that table. There's a copy button for the script, and a downloadable log of what ran (bundled beamlynx-ui 0.63.0).
+- Traverse from a table on the canvas: press `+` on it and pick **traverse**. It follows every table that points at it by foreign key, all the way down, and offers two operations on them (bundled beamlynx-ui 0.63.0):
+  - **Count rows** lists each table with its row count. Click one to open its rows in a new tab.
+  - **Delete rows…** generates the delete statements, deepest table first, as a script you can copy or run from the same panel after a confirmation.
 - Joins can name several columns: `note | note_ref .note_id, .other_id`, or `a | b .x = .p, .y = .q` to write the pairs out yourself. `delete!` takes several columns too (bundled pine-lang 0.46.0).
 
 ### Changed
