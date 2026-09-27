@@ -52,7 +52,7 @@ const CopyBlock = ({ text }: { text: string }) => {
  * beamlynx-plans/completed/2026-08-15-mcp-server-and-url-scheme.md.
  */
 const DesktopMcpInstructions = () => {
-  const [setupInfo, setSetupInfo] = useState<{ command: string; args: string[] } | null>(null);
+  const [setupInfo, setSetupInfo] = useState<{ name: string; command: string; args: string[] } | null>(null);
   const [tab, setTab] = useState<'claude' | 'json'>('claude');
 
   useEffect(() => {
@@ -62,7 +62,7 @@ const DesktopMcpInstructions = () => {
 
   const claudeCodeCommand = setupInfo
     ? [
-        'claude mcp add beamlynx -- \\',
+        `claude mcp add ${setupInfo.name} -- \\`,
         `    "${setupInfo.command}" \\`,
         ...setupInfo.args.map((arg, i) => (i === setupInfo.args.length - 1 ? `    ${arg}` : `    ${arg} \\`)),
       ].join('\n')
@@ -70,7 +70,7 @@ const DesktopMcpInstructions = () => {
 
   const manualJson = setupInfo
     ? JSON.stringify(
-        { mcpServers: { beamlynx: { type: 'stdio', command: setupInfo.command, args: setupInfo.args } } },
+        { mcpServers: { [setupInfo.name]: { type: 'stdio', command: setupInfo.command, args: setupInfo.args } } },
         null,
         2,
       )
