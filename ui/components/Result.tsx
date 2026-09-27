@@ -12,7 +12,6 @@ import {
   MenuItem,
   ListItemIcon,
   ListItemText,
-  Skeleton,
 } from '@mui/material';
 import {
   FileDownload,
@@ -22,9 +21,6 @@ import {
 } from '@mui/icons-material';
 import UpdateModal from './UpdateModal';
 import { useRetainedValue } from '../hooks/useRetainedValue';
-import { useResultsSettling } from '../hooks/useResultsSettling';
-import { usePanelPresence } from '../hooks/usePanelPresence';
-import { MOTION } from '../styles/motion';
 import DownloadResultsModal from './DownloadResultsModal';
 import { pineEscape } from '../store/util';
 import { getColorForAlias, shouldShowTableColors } from '../store/table-colors.util';
@@ -219,15 +215,8 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   // The cell the update dialog was opened for, kept while it animates shut
   // -- see the UpdateModal render below. hooks/useRetainedValue.ts.
   const retainedUpdateData = useRetainedValue(updateData);
-  const resultsSettling = useResultsSettling();
-  // A short exit fade of its own (MOTION.fast, not the default MOTION.exit)
-  // -- freeze-during-motion.ts's own buffer already decides WHEN it's safe
-  // to reveal the grid; this only softens THAT reveal into a crossfade
-  // instead of a hard cut, so it shouldn't add a second, longer delay on
-  // top of a timing that was already tuned.
-  const settlingOverlay = usePanelPresence<HTMLDivElement>(resultsSettling, MOTION.fast, false);
   // Hidden columns stay in `columns` (updates still need their id column)
-  // but are not drawn. Shared by the grid and the settling placeholder.
+  // but are not drawn.
   const visibleColumns = React.useMemo(
     () => columns.filter(col => session.columnVisibilityModel[col.field] !== false),
     [columns, session.columnVisibilityModel],
@@ -726,15 +715,11 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
         {/* Conditional rendering: Table or Bar Chart */}
         {viewMode === 'table' ? (
           <Box sx={{ position: 'absolute', inset: 0 }}>
-            {/* Unmounted (not just hidden) while resultsSettling is true -
-                see the placeholder overlay's own comment for what that
-                buys over merely covering an unmounted grid. */}
-            {!resultsSettling && (
-              <ResultsGrid
-                columns={visibleColumns}
-                rows={rows}
-                onColumnResize={handleColumnWidthChange}
-                onJsonOpen={(row, field) =>
+            <ResultsGrid
+              columns={visibleColumns}
+              rows={rows}
+              onColumnResize={handleColumnWidthChange}
+              onJsonOpen={(row, field) =>
                 // Straight into edit mode, unless the value can't be changed:
                 // then it opens to read.
                 setJsonPanel({
@@ -744,133 +729,10 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
                 })
               }
               onReadOnlyEdit={reason => setNotice({ kind: 'info', text: reason })}
-                onCommitEdit={commitEdit}
-                onInspectEdit={inspectEdit}
-                onCellContextMenu={handleCellContextMenu}
-              />
-            )}
-            {/* EMPTY during the resize settle-work freeze-during-motion.ts
-                describes - not just covered, actually not there. Covering a
-                still-mounted grid (an earlier version of this) hides what's
-                drawn but does nothing for the cost itself: React still
-                reconciles every GridCell/GridRow and Emotion still
-                recomputes every cell's style on the SAME main thread
-                everything else runs on, so a click, a hover, anything else
-                on screen stayed blocked regardless of what was visually on
-                top of the grid - measured directly (a main-thread
-                responsiveness probe, not frame timing) at 300-400ms of
-                blocked time either way. Unmounting removes the trigger
-                instead of hiding its effect: nothing is reconciling if
-                nothing is mounted. The grid remounts once settling ends,
-                fresh, directly at its final size - a cold mount instead of
-                an old instance reconciling across a resize, which measured
-                as the cheaper of the two (see this commit's own history for
-                the comparison). Deliberately plain - no spinner or shimmer -
-                because nothing is loading, something already on screen is
-                momentarily settling into a new size. pointerEvents: 'none'
-                so it never intercepts a click meant for the grid on the way
-                out, and it's rendered on top of (not instead of) the
-                remounting grid for a brief window so the two crossfade
-                rather than the fresh mount popping in underneath it. */}
-            {settlingOverlay.mounted && (
-              <Box
-                ref={settlingOverlay.ref}
-                data-results-settling-overlay
-                sx={{
-                  position: 'absolute',
-                  inset: 0,
-                  pointerEvents: 'none',
-                  overflow: 'hidden',
-                  backgroundColor: 'var(--canvas-node-bg)',
-                  border: '1px solid var(--canvas-node-border)',
-                  borderRadius: '3px',
-                  opacity: settlingOverlay.open ? 1 : 0,
-                  transition: 'opacity var(--motion-fast) ease',
-                }}
-              >
-                {/* A shell of the real grid, not a blank card - the header
-                    row is rebuilt from the same `columns` this render
-                    already computed (same widths, same names, same table-
-                    color/hover tint), so what's on screen a moment ago is
-                    still recognizably there while the body is quiet. Row
-                    heights (40/36px) are read off the live grid rather than
-                    a MUI constant, since density is a prop we set, not a
-                    value published anywhere stable to import. */}
-                <Box sx={{ display: 'flex', height: 40, flexShrink: 0 }}>
-                  {visibleColumns.map(col => {
-                    const alias = colIndexToAlias[col.field] ?? '';
-                    const tinted = (showResultColors && alias) || (alias && alias === hoveredAlias);
-                    return (
-                      <Box
-                        key={col.field}
-                        sx={{
-                          width: col.width,
-                          flexShrink: 0,
-                          display: 'flex',
-                          alignItems: 'center',
-                          px: '10px',
-                          borderRight: '1px solid var(--canvas-node-border)',
-                          borderBottom: '1px solid var(--canvas-node-border)',
-                          backgroundColor: tinted
-                            ? getColorForAlias(alias, ast, isDark)
-                            : 'var(--canvas-chip-bg)',
-                          color: 'var(--canvas-text)',
-                          fontFamily: 'var(--code-font)',
-                          fontSize: '0.875rem',
-                          fontWeight: 600,
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                        }}
-                      >
-                        {col.title}
-                      </Box>
-                    );
-                  })}
-                </Box>
-                {/* Skeleton rows below the (real) header. Widths per cell
-                    vary a little (a seeded pattern, not random - random
-                    would reshuffle every render and read as flickering)
-                    rather than one uniform bar repeated, which is what
-                    reads as "rows of data" instead of "a striped rectangle"
-                    at a glance. Capped at 12 - this is a settle-window
-                    placeholder, not a paginated view, so it only ever needs
-                    to fill the visible card, never actually scroll. */}
-                {Array.from({ length: 12 }).map((_, rowIndex) => (
-                  <Box
-                    key={rowIndex}
-                    sx={{
-                      display: 'flex',
-                      height: 36,
-                      flexShrink: 0,
-                      borderBottom: '1px solid var(--canvas-node-border)',
-                    }}
-                  >
-                    {visibleColumns.map((col, colIndex) => (
-                      <Box
-                        key={col.field}
-                        sx={{
-                          width: col.width,
-                          flexShrink: 0,
-                          display: 'flex',
-                          alignItems: 'center',
-                          px: '10px',
-                          borderRight: '1px solid var(--canvas-node-border)',
-                        }}
-                      >
-                        <Skeleton
-                          variant="text"
-                          animation="wave"
-                          width={`${55 + ((rowIndex * 7 + colIndex * 13) % 35)}%`}
-                          height={14}
-                          sx={{ bgcolor: 'var(--canvas-chip-bg)', flexShrink: 0 }}
-                        />
-                      </Box>
-                    ))}
-                  </Box>
-                ))}
-              </Box>
-            )}
+              onCommitEdit={commitEdit}
+              onInspectEdit={inspectEdit}
+              onCellContextMenu={handleCellContextMenu}
+            />
           </Box>
         ) : (
           <Box sx={{ width: '100%', overflow: 'auto' }}>
