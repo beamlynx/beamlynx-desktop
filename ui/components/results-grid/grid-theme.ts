@@ -64,7 +64,10 @@ export function resolveGridTheme(): ResolvedGridTheme {
       textHeader: text,
       textHeaderSelected: text,
       textGroupHeader: text,
-      borderColor: border,
+      // Row lines at full strength, column lines at half: a result reads
+      // across rows, and the column lines are only there to show where a
+      // column ends (and where to drag it).
+      borderColor: withAlpha(border, 0.5),
       horizontalBorderColor: border,
       drilldownBorder: border,
       accentColor: trace,

@@ -135,6 +135,33 @@ const ResultsGrid: React.FC<ResultsGridProps> = observer(props => {
     pendingEdits.current.clear();
   }, [rows]);
 
+  // One cell is focus, not a selection: it gets the accent ring (the
+  // keyboard's cursor) but no fill. A range is a real selection, and fills.
+  const current = selection.current;
+  const isRange =
+    selection.rows.length > 0 ||
+    selection.columns.length > 0 ||
+    (!!current &&
+      (current.range.width > 1 || current.range.height > 1 || current.rangeStack.length > 0));
+  const theme = useMemo(
+    () => (resolved && !isRange ? { ...resolved.theme, accentLight: 'transparent' } : resolved?.theme),
+    [resolved, isRange],
+  );
+
+  // Leaving the grid clears its selection, so a ring never lingers on a cell
+  // you have stopped looking at. Focus moving into the cell editor (rendered
+  // in #portal, outside this element) is not leaving, and neither is the
+  // whole window losing focus: switching apps and back keeps your place.
+  const onBlur = useCallback((e: React.FocusEvent<HTMLDivElement>) => {
+    const next = e.relatedTarget as Node | null;
+    if (!next) {
+      if (!document.hasFocus()) return;
+    } else if (e.currentTarget.contains(next) || document.getElementById('portal')?.contains(next)) {
+      return;
+    }
+    setSelection(NO_SELECTION);
+  }, []);
+
   const gridColumns = useMemo<GridColumn[]>(
     () =>
       columns.map(c => ({
@@ -331,6 +358,7 @@ const ResultsGrid: React.FC<ResultsGridProps> = observer(props => {
     <div
       data-results-grid
       data-results-grid-ready
+      onBlur={onBlur}
       style={{
         position: 'absolute',
         inset: 0,
@@ -343,7 +371,7 @@ const ResultsGrid: React.FC<ResultsGridProps> = observer(props => {
         ref={gridRef}
         width="100%"
         height="100%"
-        theme={resolved.theme}
+        theme={theme}
         columns={gridColumns}
         rows={rows.length}
         getCellContent={getCellContent}
