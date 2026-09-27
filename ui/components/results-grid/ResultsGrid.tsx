@@ -22,7 +22,20 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStores } from '../../store/store-container';
 import type { Row } from '../../store/session';
 import { parseJsonCellValue } from '../json-cell.util';
-import { BASE_HEADER_HEIGHT, BASE_ROW_HEIGHT, resolveGridTheme, type ResolvedGridTheme } from './grid-theme';
+import {
+  BASE_HEADER_HEIGHT,
+  BASE_ROW_HEIGHT,
+  resolveGridTheme,
+  withAlpha,
+  type ResolvedGridTheme,
+} from './grid-theme';
+import { prefersReducedMotion } from '../../styles/motion';
+
+// The saved-cell glow: starts at this much accent and fades to nothing.
+const FLASH_ALPHA = 0.32;
+const FLASH_MS = 1600;
+// Under reduced motion it holds, unfaded, for this long instead.
+const FLASH_STILL_MS = 900;
 
 /**
  * The results grid. A canvas grid (Glide Data Grid) behind props of our own,
@@ -68,6 +81,12 @@ export interface ResultsGridProps {
   onCellContextMenu: (row: Row, field: string, x: number, y: number) => void;
   /** Someone tried to edit a cell in a column with a readOnlyReason. */
   onReadOnlyEdit: (reason: string) => void;
+  /**
+   * A cell whose value was just saved: it glows briefly in the accent color,
+   * which is the confirmation. `token` restarts the glow for a second save
+   * of the same cell.
+   */
+  flash?: { rowIndex: number; field: string; token: number } | null;
 }
 
 const NO_SELECTION: GridSelection = {
@@ -204,6 +223,56 @@ const ResultsGrid: React.FC<ResultsGridProps> = observer(props => {
     [columns, dragWidths],
   );
 
+  // The glow lives in a ref and only its one cell is redrawn each frame, so
+  // the animation never re-renders React.
+  const flashState = useRef<{ rowIndex: number; field: string; alpha: number; color: string } | null>(
+    null,
+  );
+  const { flash } = props;
+  const resolvedRef = useRef(resolved);
+  resolvedRef.current = resolved;
+  useEffect(() => {
+    const color = resolvedRef.current?.trace;
+    if (!flash || !color) return;
+    const col = latest.current.columns.findIndex(c => c.field === flash.field);
+    if (col < 0) return;
+    const cell: Item = [col, flash.rowIndex];
+    const redraw = () => gridRef.current?.updateCells([{ cell }]);
+    // The save's re-run may have moved the row: bring it into view.
+    gridRef.current?.scrollTo(col, flash.rowIndex, 'both');
+    flashState.current = { rowIndex: flash.rowIndex, field: flash.field, alpha: FLASH_ALPHA, color };
+    redraw();
+
+    let frame = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const end = () => {
+      flashState.current = null;
+      redraw();
+    };
+    if (prefersReducedMotion()) {
+      timer = setTimeout(end, FLASH_STILL_MS);
+    } else {
+      const start = performance.now();
+      const step = (now: number) => {
+        const t = Math.min(1, (now - start) / FLASH_MS);
+        // Ease out: most of the fade happens late, so the glow is seen.
+        const remaining = 1 - t * t * t;
+        if (t >= 1 || !flashState.current) return end();
+        flashState.current.alpha = FLASH_ALPHA * remaining;
+        redraw();
+        frame = requestAnimationFrame(step);
+      };
+      frame = requestAnimationFrame(step);
+    }
+    return () => {
+      cancelAnimationFrame(frame);
+      if (timer) clearTimeout(timer);
+      flashState.current = null;
+    };
+    // Keyed on the token: a new save restarts it, a re-render doesn't.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flash?.token]);
+
   const getCellContent = useCallback(
     ([col, row]: Item): GridCell => {
       const column = columns[col];
@@ -221,12 +290,16 @@ const ResultsGrid: React.FC<ResultsGridProps> = observer(props => {
         };
       }
       const text = pendingEdits.current.get(`${row}:${column.field}`) ?? displayText(value);
+      const glow = flashState.current;
       return {
         kind: GridCellKind.Text,
         data: text,
         displayData: text,
         allowOverlay: column.editable,
         readonly: !column.editable,
+        ...(glow && glow.rowIndex === row && glow.field === column.field && glow.alpha > 0 && {
+          themeOverride: { bgCell: withAlpha(glow.color, glow.alpha) },
+        }),
       };
     },
     [columns, rows],
