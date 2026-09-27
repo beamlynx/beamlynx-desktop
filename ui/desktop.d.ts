@@ -122,6 +122,10 @@ type GetConnectionResult =
   | { ok: false; error: 'decryption-failed'; profile: SavedConnectionMeta };
 
 interface BeamlynxDesktopApi {
+  // Where this app's bundled pine server listens, e.g. http://localhost:33333.
+  // The dev build uses a different port than the installed app, so both can
+  // run at once (see beamlynx-desktop's src/main/ports.ts).
+  pineServerUrl: string;
   onUpdateStatus: (callback: (status: DesktopUpdateStatus) => void) => () => void;
   restartToUpdate: () => void;
   // Backs the Settings About section's "App version" row -- reads the
@@ -166,7 +170,9 @@ interface BeamlynxDesktopApi {
     // (e.g. `claude mcp add beamlynx -- <command> <args>`). Resolved at call
     // time, not baked in statically -- the executable path varies by install
     // location and packaging format (.app bundle vs. deb-installed binary).
-    getSetupInfo: () => Promise<{ command: string; args: string[] }>;
+    // `name` is the server name to register it under: "beamlynx", or
+    // "beamlynx-dev" for a dev build, so both can be registered side by side.
+    getSetupInfo: () => Promise<{ name: string; command: string; args: string[] }>;
     onQueryRequest: (handler: (request: McpQueryRequest) => Promise<unknown>) => () => void;
   };
   // request_reveal/check_reveal's renderer half -- see

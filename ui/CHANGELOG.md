@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Changed
+- Inside beamlynx-desktop, the app now asks the desktop app which port its Pine server is on instead of assuming 33333. The desktop dev build uses a different port, so it can run next to the installed app. The browser and playground are unchanged.
+- In the desktop dev build, the MCP setup instructions register the server as `beamlynx-dev`, so it can sit next to the installed app's `beamlynx` entry.
 
 ## [0.64.0] - 2026-09-27
 ### Breaking

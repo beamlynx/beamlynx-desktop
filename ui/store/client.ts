@@ -1,11 +1,15 @@
 import { isPlayground } from './util';
 
-// Also correct for the beamlynx-desktop static export loaded via file://:
-// window.location.hostname is '' there, so isPlayground() already returns
-// false and this falls through to localhost:33333 -- which is exactly the
-// bundled local pine-server. Don't "fix" the empty-hostname case without
-// checking this.
+// Inside beamlynx-desktop, the desktop app says where its bundled server
+// listens. Its dev build uses a different port than the installed app, so
+// both can run at once.
+//
+// Everywhere else: note the static export loaded via file:// has
+// window.location.hostname '', so isPlayground() returns false there too.
+// Don't "fix" the empty-hostname case without checking this.
 const getBaseUrl = () => {
+  const desktopUrl = typeof window !== 'undefined' ? window.beamlynxDesktop?.pineServerUrl : undefined;
+  if (desktopUrl) return desktopUrl;
   return isPlayground() ? 'https://api.playground.beamlynx.com' : 'http://localhost:33333';
 };
 
