@@ -8,7 +8,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - Move between result cells with the arrow keys. Select a range by dragging or with Shift, and copy it with Ctrl+C as tab-separated text that pastes into a spreadsheet.
 
 ### Changed
-- The results grid is new, and much faster. It draws only the cells in view, so a result of 100,000 rows opens and scrolls as quickly as one of 100.
+- The results grid is new, and much faster. It draws only the cells in view, so scrolling stays smooth however many rows a result has. A result shows up in about half the time, and a 100,000-row result about four times sooner than before.
 - Results are no longer split into pages of 100 rows. Every row the query returns is in one scrolling grid, with the row count underneath.
 - Results appear sooner after a run. The app used to copy every row of a result twice before showing it, which took about 1.6 seconds for 100,000 rows and about 100ms for 1,000.
 
