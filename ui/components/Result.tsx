@@ -411,7 +411,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     if (alias && dbColumn) {
       await session
         .getCanvasStore()
-        .commitWhere(alias, dbColumn, '=', String(contextMenu.cellValue));
+        .commitWhere(alias, [{ alias, column: dbColumn, operator: '=', value: String(contextMenu.cellValue) }]);
     } else {
       console.error('Missing alias/column metadata for filter action:', {
         fieldIndex: contextMenu.fieldIndex,

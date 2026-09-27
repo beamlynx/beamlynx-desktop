@@ -105,6 +105,16 @@ export type Operation = {
 };
 export type WhereCondition = [string, string, null, string, { type: string; value: string } | null];
 
+/**
+ * One entry of `ast.where`. Entries are ANDed. An `or` group is the
+ * conditions of one `where:` joined with `or` (`where: a = 1 or b = 2`).
+ */
+export type WhereEntry = WhereCondition | { or: WhereCondition[] };
+
+/** The conditions of one `ast.where` entry: one, or every member of an `or` group. */
+export const whereConditions = (entry: WhereEntry): WhereCondition[] =>
+  Array.isArray(entry) ? [entry] : entry.or;
+
 /** One column pair of a join's ON clause, each side labelled by the alias that owns it. */
 export type JoinColumns = { from: string; to: string };
 
@@ -181,7 +191,7 @@ export type Ast = {
   // makeColumnsLookup(orderColumns: Column[]) only ever reads `.alias`/`.column`
   // and is out of scope to touch; canvas mode casts to OrderColumn[] where it needs `direction`.
   order: Column[];
-  where: WhereCondition[];
+  where: WhereEntry[];
   group?: GroupColumn[];
   prettified: string;
   ranges: PineRange[];

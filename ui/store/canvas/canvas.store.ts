@@ -1,5 +1,5 @@
 import { makeAutoObservable, reaction, runInAction } from 'mobx';
-import { PathHint, TableHint } from '../client';
+import { PathHint, TableHint, whereConditions } from '../client';
 import { Session } from '../session';
 import {
   CanvasFrameNode,
@@ -20,6 +20,8 @@ import {
   START_NODE_ID,
   WHERE_ROLLING_OPERATOR,
   WHERE_TODAY_OPERATOR,
+  WhereConditionDraft,
+  WhereDraft,
 } from './canvas.model';
 import { buildCanvasGraph } from './layout';
 import {
@@ -826,6 +828,21 @@ export class CanvasStore {
     this.picker = { open: false };
   }
 
+  /**
+   * Escape, or the list's own cancel. A column list opened from the where
+   * panel's `or` button goes back to that panel with nothing lost - backing
+   * out of choosing a column shouldn't throw away the conditions already
+   * entered. Anything else closes.
+   */
+  dismissPicker() {
+    const p = this.picker;
+    if (p.open && p.mode === 'list' && p.request.kind === 'where' && p.request.draft) {
+      this.picker = { open: true, mode: 'where-value', alias: p.request.alias, anchor: p.anchor, ...p.request.draft };
+      return;
+    }
+    this.closePicker();
+  }
+
   setPickerFilter(filter: string) {
     if (this.picker.open && this.picker.mode === 'list') {
       this.picker = { ...this.picker, filter };
@@ -1351,19 +1368,23 @@ export class CanvasStore {
     });
   }
 
-  /** Column chosen from the where picker's list - switch to entering an operator/value, same anchor. */
-  beginWhereValue(alias: string, column: string) {
+  /**
+   * Column chosen from the where picker's list - switch to entering an
+   * operator/value, same anchor. With a `draft` (the list was opened from the
+   * panel's own `or` button), the column becomes one more row of it rather
+   * than a fresh panel.
+   */
+  beginWhereValue(alias: string, column: string, draft?: WhereDraft) {
     const anchor = this.picker.open ? this.picker.anchor : CanvasStore.defaultAnchor;
+    const condition: WhereConditionDraft = { alias, column, operator: '=', value: '' };
     this.picker = {
       open: true,
       mode: 'where-value',
       alias,
-      column,
-      operator: '=',
-      value: '',
       anchor,
-      rollingCount: 1,
-      rollingUnit: 'day',
+      ...(draft
+        ? { ...draft, conditions: [...draft.conditions, condition] }
+        : { conditions: [condition], rollingCount: 1, rollingUnit: 'day' }),
     };
   }
 
@@ -1371,39 +1392,47 @@ export class CanvasStore {
    * Reopens the where-value panel for an EXISTING condition (a chip's own
    * click, or configNext/openConfigCursor's keyboard equivalent), prefilled
    * from `ast.where` - structured data already, so no re-parsing of the
-   * derived `whereChips` display string (`"id = 1"`) is needed. `index` is
-   * the same pipeline-order indexing removeWhereConditionAt/
-   * updateWhereConditionAt use. No-op if the index doesn't currently exist
-   * (e.g. a stale click racing a commit that just removed it).
+   * derived `whereChips` display string (`"id = 1"`) is needed. An `or`
+   * group opens with one row per condition. `index` is the same
+   * pipeline-order indexing removeWhereConditionAt/updateWhereConditionAt
+   * use. No-op if the index doesn't currently exist (e.g. a stale click
+   * racing a commit that just removed it).
    */
   openWhereEditor(alias: string, index: number, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
-    const condition = (this.session.ast?.where ?? []).filter(w => w[0] === alias)[index];
-    if (!condition) return;
-    const [, column, , operator, val] = condition;
-    const value = val && 'value' in val ? String(val.value) : '';
-    // ast.where operators come back SQL-cased (e.g. "ILIKE") from pine-lang; Pine syntax is lowercase-only.
-    const pineOperator = operator.toLowerCase();
+    const entry = (this.session.ast?.where ?? []).filter(w => whereConditions(w)[0][0] === alias)[index];
+    if (!entry) return;
+    const conditions = whereConditions(entry).map(([conditionAlias, column, , operator, val]) => ({
+      alias: conditionAlias,
+      column,
+      // ast.where operators come back SQL-cased (e.g. "ILIKE") from pine-lang; Pine syntax is lowercase-only.
+      operator: operator.toLowerCase(),
+      value: val && 'value' in val ? String(val.value) : '',
+    }));
     this.focusConfigItem(alias, { kind: 'where', index });
     this.picker = {
       open: true,
       mode: 'where-value',
       alias,
-      column,
-      operator: pineOperator,
-      value,
       anchor,
+      conditions,
       editIndex: index,
       rollingCount: 1,
       rollingUnit: 'day',
     };
   }
 
-  setWhereOperator(operator: string) {
-    if (this.picker.open && this.picker.mode === 'where-value') this.picker = { ...this.picker, operator };
+  private updateWhereRow(row: number, change: Partial<WhereConditionDraft>) {
+    if (!this.picker.open || this.picker.mode !== 'where-value') return;
+    const conditions = this.picker.conditions.map((c, i) => (i === row ? { ...c, ...change } : c));
+    this.picker = { ...this.picker, conditions };
   }
 
-  setWhereValue(value: string) {
-    if (this.picker.open && this.picker.mode === 'where-value') this.picker = { ...this.picker, value };
+  setWhereOperator(row: number, operator: string) {
+    this.updateWhereRow(row, { operator });
+  }
+
+  setWhereValue(row: number, value: string) {
+    this.updateWhereRow(row, { value });
   }
 
   setWhereRolling(rollingCount: number, rollingUnit: RelativeDateUnit) {
@@ -1411,46 +1440,79 @@ export class CanvasStore {
   }
 
   /**
-   * `operator` doubles as the two relative-date picks (WHERE_TODAY_OPERATOR/
-   * WHERE_ROLLING_OPERATOR - see PickerState's own comment), so this is the
-   * one submit path for the where-value panel regardless of which the
-   * dropdown holds. Both relative picks always ADD a new pair of `where:`
-   * conditions rather than editing in place - Picker.tsx only offers them
-   * for a brand-new condition (editIndex undefined), and this bails out too
-   * as a second guard, since merging one back into a single existing
-   * condition would need updateWhereConditionAt to grow a second segment
-   * mid-commit, not worth it for what's meant to stay a quick-add shortcut.
+   * The panel's `or` button: pick the next condition's column from the same
+   * column list a new filter starts from, then come back to the panel with
+   * it appended (see beginWhereValue's `draft`). The list is searchable,
+   * which a column dropdown inside the panel would not be.
+   */
+  addWhereOrCondition() {
+    if (!this.picker.open || this.picker.mode !== 'where-value') return;
+    const { alias, anchor, conditions, editIndex, rollingCount, rollingUnit } = this.picker;
+    const draft: WhereDraft = { conditions, editIndex, rollingCount, rollingUnit };
+    const request: PickerRequest = { kind: 'where', alias, draft };
+    void this.openListPicker(request, anchor, async () => {
+      const ast = await probeBuild(this.buildProbeExpression(request), this.session.connectionId);
+      if (!ast) throw new Error('Failed to build column suggestions');
+      return { groups: [{ label: '', items: ast.hints.where.map(h => ({ id: h.column, label: h.column, value: h.column })) }] };
+    });
+  }
+
+  /** Drops one row of an `or`. The last row can't be dropped - that is what the panel's own remove/cancel are for. */
+  removeWhereRow(row: number) {
+    if (!this.picker.open || this.picker.mode !== 'where-value' || this.picker.conditions.length < 2) return;
+    this.picker = { ...this.picker, conditions: this.picker.conditions.filter((_, i) => i !== row) };
+  }
+
+  /**
+   * The first condition's `operator` doubles as the two relative-date picks
+   * (WHERE_TODAY_OPERATOR/WHERE_ROLLING_OPERATOR - see WhereDraft's own
+   * comment), so this is the one submit path for the where-value panel
+   * regardless of which the dropdown holds. Both relative picks always ADD a
+   * new pair of `where:` conditions rather than editing in place -
+   * Picker.tsx only offers them for a brand-new, single condition, and this
+   * bails out too as a second guard. They are two ANDed steps (a lower and
+   * an upper bound), so they can't be one member of an `or` either.
    */
   async submitWhereValue() {
     if (!this.picker.open || this.picker.mode !== 'where-value') return;
-    const { alias, column, operator, value, editIndex, rollingCount, rollingUnit } = this.picker;
-    if (operator === WHERE_TODAY_OPERATOR || operator === WHERE_ROLLING_OPERATOR) {
-      if (editIndex !== undefined) return;
+    const { alias, conditions, editIndex, rollingCount, rollingUnit } = this.picker;
+    const [first] = conditions;
+    if (first.operator === WHERE_TODAY_OPERATOR || first.operator === WHERE_ROLLING_OPERATOR) {
+      if (editIndex !== undefined || conditions.length > 1) return;
       const bounds = computeDateBounds(
-        operator === WHERE_TODAY_OPERATOR ? { kind: 'today' } : { kind: 'rolling', count: rollingCount, unit: rollingUnit },
+        first.operator === WHERE_TODAY_OPERATOR ? { kind: 'today' } : { kind: 'rolling', count: rollingCount, unit: rollingUnit },
       );
       await this.commit(base =>
-        actions.addRelativeDateWhereCondition(base, actions.resolveAlias(base, alias), column, bounds),
+        actions.addRelativeDateWhereCondition(base, actions.resolveAlias(base, first.alias), first.column, bounds),
       );
       this.closePicker();
       return;
     }
-    if (!value.trim()) return;
+    // Every row needs a value - a half-filled `or` would drop the empty one silently.
+    if (conditions.some(c => !c.value.trim())) return;
+    const trimmed = conditions.map(c => ({ ...c, value: c.value.trim() }));
     if (editIndex !== undefined) {
-      await this.commitWhereUpdate(alias, editIndex, column, operator, value.trim());
+      await this.commitWhereUpdate(alias, editIndex, trimmed);
     } else {
-      await this.commitWhere(alias, column, operator, value.trim());
+      await this.commitWhere(alias, trimmed);
     }
   }
 
-  async commitWhere(alias: string, column: string, operator: string, value: string) {
-    await this.commit(base => actions.addWhereCondition(base, actions.resolveAlias(base, alias), column, operator, value));
+  async commitWhere(alias: string, conditions: WhereConditionDraft[]) {
+    await this.commit(base =>
+      actions.addWhereCondition(base, actions.resolveAlias(base, alias), actions.resolveConditionAliases(base, conditions)),
+    );
     this.closePicker();
   }
 
-  async commitWhereUpdate(alias: string, index: number, column: string, operator: string, value: string) {
+  async commitWhereUpdate(alias: string, index: number, conditions: WhereConditionDraft[]) {
     await this.commit(base =>
-      actions.updateWhereConditionAt(base, actions.resolveAlias(base, alias), index, column, operator, value),
+      actions.updateWhereConditionAt(
+        base,
+        actions.resolveAlias(base, alias),
+        index,
+        actions.resolveConditionAliases(base, conditions),
+      ),
     );
     this.closePicker();
   }

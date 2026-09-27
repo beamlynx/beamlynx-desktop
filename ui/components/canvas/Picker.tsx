@@ -78,6 +78,35 @@ const inputStyle: React.CSSProperties = {
   padding: '3px 6px',
 };
 
+// A panel action: a real <button> so it takes focus, drawn as the plain text
+// link the panels have always used.
+const actionStyle: React.CSSProperties = {
+  font: 'inherit',
+  background: 'none',
+  border: 'none',
+  padding: 0,
+  cursor: 'pointer',
+  color: 'inherit',
+};
+
+/**
+ * Tab and Shift+Tab move through the panel's own controls in `data-tab-order`
+ * order and wrap, instead of leaving the panel for whatever is next on the
+ * page (the Pine panel, typically). The panel is a popover: what a keyboard
+ * user wants from Tab is the next thing in it, and Escape is the way out.
+ */
+const cycleTabOrder = (e: React.KeyboardEvent<HTMLElement>) => {
+  if (e.key !== 'Tab') return;
+  const order = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[data-tab-order]')).sort(
+    (a, b) => Number(a.dataset.tabOrder) - Number(b.dataset.tabOrder),
+  );
+  if (order.length === 0) return;
+  e.preventDefault();
+  const at = order.indexOf(document.activeElement as HTMLElement);
+  const next = at === -1 ? 0 : (at + (e.shiftKey ? -1 : 1) + order.length) % order.length;
+  order[next].focus();
+};
+
 // `fixed` (viewport-relative, not flow-canvas-relative) so the anchor's raw
 // clientX/clientY - captured at the action button's click - can be used
 // directly with no coordinate conversion. Clamped so a picker opened near an
@@ -243,7 +272,7 @@ const Picker: React.FC = observer(() => {
   useEffect(() => {
     if (!picker.open) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') store.closePicker();
+      if (e.key === 'Escape') store.dismissPicker();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -569,102 +598,157 @@ const Picker: React.FC = observer(() => {
   }
 
   if (picker.mode === 'where-value') {
-    const node = store.canvasGraph.nodes.find(
-      (n): n is CanvasTableNode => n.id === picker.alias && n.type === 'table-node',
-    );
+    const tableOf = (alias: string) =>
+      store.canvasGraph.nodes.find((n): n is CanvasTableNode => n.id === alias && n.type === 'table-node')?.data
+        .table ?? alias;
+    const single = picker.conditions.length === 1;
+    const [first] = picker.conditions;
+    const relative = first.operator === WHERE_TODAY_OPERATOR || first.operator === WHERE_ROLLING_OPERATOR;
+    const onValueKeyDown = (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') void store.submitWhereValue();
+    };
     return (
       <div
         ref={rootRef}
         style={{ ...anchoredStyle(picker.anchor), padding: 8 }}
         data-testid="canvas-picker"
+        onKeyDown={cycleTabOrder}
       >
-        <div
-          title={`${node?.data.table ?? picker.alias}.${picker.column}`}
-          style={{
-            marginBottom: 6,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {node?.data.table ?? picker.alias}.{picker.column}
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {/* Autofocused, not the value input below -- picking the
-              comparison (=, !=, ...) is the first decision here, and it's
-              a <select> a keyboard user can immediately arrow through.
-              For a brand-new condition on a date-shaped column, two extra
-              entries (today / in the last) turn the row after this one into
-              a relative-date builder instead of a plain value input - see
-              CanvasStore.submitWhereValue's own comment for why these live
-              on the operator itself rather than a separate mode. */}
-          <select
-            autoFocus
-            value={picker.operator}
-            onChange={e => store.setWhereOperator(e.target.value)}
-            style={{ ...inputStyle, paddingRight: 4 }}
-          >
-            {WHERE_OPERATORS.map(op => (
-              <option key={op} value={op}>
-                {op}
-              </option>
-            ))}
-            {picker.editIndex === undefined && looksLikeDateColumn(picker.column) && (
-              <>
-                <option value={WHERE_TODAY_OPERATOR}>{WHERE_TODAY_OPERATOR}</option>
-                <option value={WHERE_ROLLING_OPERATOR}>{WHERE_ROLLING_OPERATOR}</option>
-              </>
-            )}
-          </select>
-          {picker.operator === WHERE_TODAY_OPERATOR ? null : picker.operator === WHERE_ROLLING_OPERATOR ? (
-            <>
-              <input
-                type="number"
-                min={1}
-                value={picker.rollingCount}
-                onChange={e => store.setWhereRolling(Math.max(1, Number(e.target.value) || 1), picker.rollingUnit)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') void store.submitWhereValue();
+        {picker.conditions.map((condition, row) => {
+          const name = `${tableOf(condition.alias)}.${condition.column}`;
+          return (
+            <React.Fragment key={row}>
+              {row > 0 && <div style={{ margin: '6px 0', opacity: 0.6 }}>or</div>}
+              <div
+                title={name}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  marginBottom: 6,
+                  gap: 6,
                 }}
-                style={{ ...inputStyle, width: 44 }}
-              />
-              <select
-                value={picker.rollingUnit}
-                onChange={e => store.setWhereRolling(picker.rollingCount, e.target.value as RelativeDateUnit)}
-                style={{ ...inputStyle, flex: 1, minWidth: 0 }}
               >
-                {RELATIVE_DATE_UNITS.map(u => (
-                  <option key={u.value} value={u.value}>
-                    {pluralize(picker.rollingCount, u.label)}
-                  </option>
-                ))}
-              </select>
-            </>
-          ) : (
-            <input
-              value={picker.value}
-              onChange={e => store.setWhereValue(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter') void store.submitWhereValue();
-              }}
-              style={{ ...inputStyle, flex: 1, minWidth: 0 }}
-            />
-          )}
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 6 }}>
-          <span style={{ cursor: 'pointer', opacity: 0.7 }} onClick={() => store.closePicker()}>
-            cancel
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+                {!single && (
+                  <button
+                    type="button"
+                    data-tab-order={1004 + row}
+                    aria-label={`Remove ${name}`}
+                    onClick={() => store.removeWhereRow(row)}
+                    style={{ ...actionStyle, opacity: 0.7 }}
+                  >
+                    &times;
+                  </button>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {/* Autofocused on the newest row, not the value input --
+                    picking the comparison (=, !=, ...) is the first decision
+                    here, and it's a <select> a keyboard user can immediately
+                    arrow through. For a brand-new, single condition on a
+                    date-shaped column, two extra entries (today / in the
+                    last) turn the row after this one into a relative-date
+                    builder instead of a plain value input - see
+                    CanvasStore.submitWhereValue's own comment for why these
+                    live on the operator itself rather than a separate mode. */}
+                <select
+                  autoFocus={row === picker.conditions.length - 1}
+                  data-tab-order={10 + row * 10}
+                  value={condition.operator}
+                  onChange={e => store.setWhereOperator(row, e.target.value)}
+                  style={{ ...inputStyle, paddingRight: 4 }}
+                >
+                  {WHERE_OPERATORS.map(op => (
+                    <option key={op} value={op}>
+                      {op}
+                    </option>
+                  ))}
+                  {single && picker.editIndex === undefined && looksLikeDateColumn(condition.column) && (
+                    <>
+                      <option value={WHERE_TODAY_OPERATOR}>{WHERE_TODAY_OPERATOR}</option>
+                      <option value={WHERE_ROLLING_OPERATOR}>{WHERE_ROLLING_OPERATOR}</option>
+                    </>
+                  )}
+                </select>
+                {condition.operator === WHERE_TODAY_OPERATOR ? null : condition.operator === WHERE_ROLLING_OPERATOR ? (
+                  <>
+                    <input
+                      type="number"
+                      min={1}
+                      data-tab-order={11}
+                      value={picker.rollingCount}
+                      onChange={e =>
+                        store.setWhereRolling(Math.max(1, Number(e.target.value) || 1), picker.rollingUnit)
+                      }
+                      onKeyDown={onValueKeyDown}
+                      style={{ ...inputStyle, width: 44 }}
+                    />
+                    <select
+                      data-tab-order={12}
+                      value={picker.rollingUnit}
+                      onChange={e => store.setWhereRolling(picker.rollingCount, e.target.value as RelativeDateUnit)}
+                      style={{ ...inputStyle, flex: 1, minWidth: 0 }}
+                    >
+                      {RELATIVE_DATE_UNITS.map(u => (
+                        <option key={u.value} value={u.value}>
+                          {pluralize(picker.rollingCount, u.label)}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                ) : (
+                  <input
+                    data-tab-order={11 + row * 10}
+                    value={condition.value}
+                    onChange={e => store.setWhereValue(row, e.target.value)}
+                    onKeyDown={onValueKeyDown}
+                    style={{ ...inputStyle, flex: 1, minWidth: 0 }}
+                  />
+                )}
+              </div>
+            </React.Fragment>
+          );
+        })}
+        {/* Real buttons, so they take focus. Tab order is set by
+            data-tab-order (see cycleTabOrder), not by position: the primary
+            action comes straight after the last value, while the row reads
+            left to right the way it always has. */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, marginTop: 6 }}>
+          <span>
+            {!relative && (
+              <button
+                type="button"
+                data-tab-order={1001}
+                title="Match this condition or another one"
+                onClick={() => store.addWhereOrCondition()}
+                style={{ ...actionStyle, color: 'var(--canvas-trace)' }}
+              >
+                + or
+              </button>
+            )}
           </span>
-          {picker.editIndex !== undefined && (
-            <span
-              style={{ cursor: 'pointer', color: 'var(--canvas-warn)' }}
-              onClick={() => void store.removeWhereAndClose(picker.alias, picker.editIndex as number)}
+          <span style={{ display: 'flex', gap: 6 }}>
+            <button type="button" data-tab-order={1002} onClick={() => store.closePicker()} style={{ ...actionStyle, opacity: 0.7 }}>
+              cancel
+            </button>
+            {picker.editIndex !== undefined && (
+              <button
+                type="button"
+                data-tab-order={1003}
+                onClick={() => void store.removeWhereAndClose(picker.alias, picker.editIndex as number)}
+                style={{ ...actionStyle, color: 'var(--canvas-warn)' }}
+              >
+                remove
+              </button>
+            )}
+            <button
+              type="button"
+              data-tab-order={1000}
+              onClick={() => void store.submitWhereValue()}
+              style={{ ...actionStyle, color: 'var(--canvas-trace)' }}
             >
-              remove
-            </span>
-          )}
-          <span style={{ cursor: 'pointer', color: 'var(--canvas-trace)' }} onClick={() => void store.submitWhereValue()}>
-            {picker.editIndex !== undefined ? 'update' : 'add'}
+              {picker.editIndex !== undefined ? 'update' : 'add'}
+            </button>
           </span>
         </div>
       </div>
@@ -694,7 +778,7 @@ const Picker: React.FC = observer(() => {
         store.setPickerFilter('');
         return;
       case 'where':
-        store.beginWhereValue(request.alias, item.value);
+        store.beginWhereValue(request.alias, item.value, request.draft);
         return;
       // Step 1: `item.value` here is a bare table name (not h.pine - see
       // openPathPicker), naming the destination for step 2 to search
@@ -758,7 +842,7 @@ const Picker: React.FC = observer(() => {
         />
         <span
           style={{ cursor: 'pointer', opacity: 0.7, marginLeft: 6 }}
-          onClick={() => store.closePicker()}
+          onClick={() => store.dismissPicker()}
         >
           &times;
         </span>
