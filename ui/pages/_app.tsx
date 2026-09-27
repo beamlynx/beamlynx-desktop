@@ -1,4 +1,28 @@
 import '../styles/globals.css'
+// The app's fonts, bundled: their @font-face rules and files come from the
+// @fontsource packages, so no build and no page ever fetches a font from the
+// network. Keep in step with BUNDLED_FONTS in styles/app-font.ts, which the
+// build check (scripts/check-bundle-assets.mjs) verifies against the output.
+import '@fontsource/inter/400.css'
+import '@fontsource/inter/500.css'
+import '@fontsource/inter/600.css'
+import '@fontsource/inter/700.css'
+import '@fontsource/ibm-plex-sans/400.css'
+import '@fontsource/ibm-plex-sans/500.css'
+import '@fontsource/ibm-plex-sans/600.css'
+import '@fontsource/ibm-plex-sans/700.css'
+import '@fontsource/ibm-plex-mono/400.css'
+import '@fontsource/ibm-plex-mono/500.css'
+import '@fontsource/ibm-plex-mono/600.css'
+import '@fontsource/ibm-plex-mono/700.css'
+import '@fontsource/jetbrains-mono/400.css'
+import '@fontsource/jetbrains-mono/500.css'
+import '@fontsource/jetbrains-mono/600.css'
+import '@fontsource/jetbrains-mono/700.css'
+import '@fontsource/fira-code/400.css'
+import '@fontsource/fira-code/500.css'
+import '@fontsource/fira-code/600.css'
+import '@fontsource/fira-code/700.css'
 // The results grid's own stylesheet (its cell editor overlay and scroller).
 // Next only allows global CSS to be imported here.
 import '@glideapps/glide-data-grid/dist/index.css'

@@ -1,6 +1,19 @@
-const path = require('path');
 
 const isDesktop = process.env.NEXT_DESKTOP === '1';
+
+// Walks Next's webpack rules and sets the publicPath of the loader that
+// extracts CSS into files (mini-css-extract-plugin's).
+function setCssExtractPublicPath(rules, publicPath) {
+  for (const rule of rules ?? []) {
+    if (!rule || typeof rule !== 'object') continue;
+    if (typeof rule.loader === 'string' && rule.loader.includes('mini-css-extract-plugin')) {
+      rule.options = { ...rule.options, publicPath };
+    }
+    setCssExtractPublicPath(rule.oneOf, publicPath);
+    setCssExtractPublicPath(rule.rules, publicPath);
+    if (Array.isArray(rule.use)) setCssExtractPublicPath(rule.use, publicPath);
+  }
+}
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -17,20 +30,15 @@ const nextConfig = {
   // routes) 404 under file://. Gated behind an env flag so the hosted build
   // is unaffected.
   ...(isDesktop ? { output: 'export', assetPrefix: './', trailingSlash: true } : {}),
-  // next/font (styles/app-font.ts) validates this same relative assetPrefix
-  // at build time and fails the whole build the moment webpack parses it --
-  // swap in the desktop-safe stand-in (styles/app-font.desktop.ts) before
-  // webpack ever gets there, rather than trying to branch inside app-font.ts
-  // itself (next/font requires its call to be an unconditional, static
-  // `const` at module scope -- a runtime/conditional check inside that file
-  // doesn't stop its compiler plugin from still parsing and rejecting it).
+  // CSS asset URLs (the bundled fonts' files) have to be relative to the
+  // CSS file itself under file://. Next writes them as
+  // `${assetPrefix}/_next/...`, which with a relative assetPrefix resolves
+  // against the stylesheet's folder (_next/static/css/) and misses. `../../`
+  // from there is _next/, where the files are.
   ...(isDesktop
     ? {
         webpack: config => {
-          config.resolve.alias[path.resolve(__dirname, 'styles/app-font')] = path.resolve(
-            __dirname,
-            'styles/app-font.desktop.ts',
-          );
+          setCssExtractPublicPath(config.module.rules, '../../');
           return config;
         },
       }

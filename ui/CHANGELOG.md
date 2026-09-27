@@ -18,6 +18,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Removed
 - Sorting by clicking a column header, and the column menu (sort, filter, hide columns). Sorting and filtering will come back as changes to the Pine expression, so they show up in the query. To filter on a value for now, right-click the cell and choose **Filter**.
 
+### Fixed
+- The app's fonts now ship inside it. The desktop app showed IBM Plex Mono, JetBrains Mono, Fira Code, Inter and IBM Plex Sans only if they were installed on your computer, and a system font otherwise. The web app downloaded them from Google Fonts. Every build now carries its own copies, and works offline.
+
 ## [0.63.0] - 2026-09-25
 ### Breaking
 - `delete:` is gone from Pine. Use the traverse action below instead. A saved tab that still ends in `delete:` has it removed when the tab opens, so the tab doesn't come back blank.
