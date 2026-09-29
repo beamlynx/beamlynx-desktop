@@ -12,3 +12,12 @@ export function getResourcesRoot(): string {
   }
   return path.join(__dirname, '..', '..', 'resources');
 }
+
+// The file to run to start this app again. Usually process.execPath, but not
+// for an AppImage: that runs from a temporary mount (/tmp/.mount_<random>/)
+// which gets a new name on every launch and disappears when the process
+// that mounted it exits. The AppImage runtime puts the real file's path in
+// $APPIMAGE.
+export function getLaunchPath(): string {
+  return process.env.APPIMAGE || process.execPath;
+}

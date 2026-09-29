@@ -10,6 +10,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Fixed
 - Opening beamlynx while it's already open now says so. It used to quit without a word, and on some desktops, such as Hyprland, the open window didn't come forward either.
 - If a port beamlynx needs is taken, it now says what's using it: another copy of beamlynx, a Pine server started some other way, or another program. A taken MCP port (33334) used to go unhandled.
+- On Linux, the AppImage's MCP setup instructions pointed at a temporary folder (`/tmp/.mount_…`) that gets a new name on every launch, so the registration broke after the app was closed. They now point at the AppImage file itself. The MCP relay also starts the app from that file, so the app no longer depends on the relay's own temporary folder, which is removed when the relay exits.
 
 ## [0.18.0] - 2026-09-28
 ### Added
