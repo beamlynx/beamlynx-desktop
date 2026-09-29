@@ -9,7 +9,7 @@ import { startControlPlaneServer } from './mcp/control-plane-server';
 import { registerRevealIpc } from './mcp/reveal-requests';
 import { startMcpRelay } from './mcp/stdio-relay';
 import { CONTROL_PLANE_PORT, describePortInUse, isPortInUse, PINE_PORT } from './ports';
-import { getResourcesRoot } from './resources';
+import { getLaunchPath, getResourcesRoot } from './resources';
 import { ServerHandle, startServer } from './server-process';
 
 let mainWindow: BrowserWindow | null = null;
@@ -447,8 +447,8 @@ function runDesktopApp(): void {
   // baked into any static instructions text.
   //
   // Packaged vs. dev mode need different args, not just a different path:
-  // in a packaged build, process.execPath is the final, single-purpose
-  // binary, so `<path> --mcp` alone is a complete invocation. In dev mode
+  // in a packaged build, the app's own binary (getLaunchPath(), which also
+  // handles an AppImage) is a complete invocation with just `--mcp`. In dev mode
   // (`npm run start` -> `electron .`), process.execPath is the raw Electron
   // binary from node_modules. Electron needs an app directory argument to
   // know which package.json's `main` to load -- without one, it never
@@ -462,7 +462,7 @@ function runDesktopApp(): void {
   // app (see ports.ts).
   ipcMain.handle('mcp:get-setup-info', () => {
     if (app.isPackaged) {
-      return { name: 'beamlynx', command: process.execPath, args: ['--mcp'] };
+      return { name: 'beamlynx', command: getLaunchPath(), args: ['--mcp'] };
     }
     return { name: 'beamlynx-dev', command: process.execPath, args: [app.getAppPath(), '--mcp'] };
   });

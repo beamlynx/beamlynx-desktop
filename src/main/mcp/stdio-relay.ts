@@ -27,7 +27,7 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CONTROL_PLANE_PORT } from '../ports';
-import { getResourcesRoot } from '../resources';
+import { getLaunchPath, getResourcesRoot } from '../resources';
 import { SERVER_INSTRUCTIONS } from './instructions';
 import {
   formatCompletion,
@@ -104,11 +104,13 @@ function controlPlaneRequest(method: 'GET' | 'POST', path: string, body?: unknow
 // second launch today.
 //
 // A dev build's execPath is the bare Electron binary, which needs the app
-// directory to know what to run. --launched-by-mcp tells a copy that loses
+// directory to know what to run. An AppImage must be started from the file
+// itself (getLaunchPath): started from this relay's temporary mount, the GUI
+// would die when the relay exits and the mount goes away. --launched-by-mcp tells a copy that loses
 // that race not to show its "already running" dialog.
 function launchGuiDetached(): void {
   const args = app.isPackaged ? [] : [app.getAppPath()];
-  const child = spawn(process.execPath, [...args, '--launched-by-mcp'], { detached: true, stdio: 'ignore' });
+  const child = spawn(getLaunchPath(), [...args, '--launched-by-mcp'], { detached: true, stdio: 'ignore' });
   child.unref();
 }
 
