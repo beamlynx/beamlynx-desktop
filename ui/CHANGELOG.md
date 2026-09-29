@@ -5,6 +5,8 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 ### Changed
+- A dev copy shows an amber **DEV** chip in the header, in place of the grey "[Development]" text. It also shows in a desktop dev build (beamlynx-desktop's `npm start`), which had no label at all, so it can't be mistaken for the installed app when both are open. Hover it to see which kind of dev copy it is.
+### Changed
 - Inside beamlynx-desktop, the app now asks the desktop app which port its Pine server is on instead of assuming 33333. The desktop dev build uses a different port, so it can run next to the installed app. The browser and playground are unchanged.
 - In the desktop dev build, the MCP setup instructions register the server as `beamlynx-dev`, so it can sit next to the installed app's `beamlynx` entry.
 

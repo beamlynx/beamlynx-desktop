@@ -21,6 +21,7 @@ import SettingsButton from './SettingsButton';
 import SettingsDock from './settings/SettingsDock';
 import McpActivityButton from './McpActivityButton';
 import CollapsibleHeight from './CollapsibleHeight';
+import DevModeChip from './DevModeChip';
 import { useGlobalKeybindings } from '../hooks/useGlobalKeybindings';
 import { useFocusedPanelTracking } from '../hooks/useFocusedPanelTracking';
 import { useSettingsKeybindings } from '../hooks/useSettingsKeybindings';
@@ -129,15 +130,14 @@ const AppView = observer(() => {
   // Clerk (see AGENTS.md), so rendering it there would break, not just show
   // an unwanted label - but the desktop build no longer needs its own badge
   // to say so, hence rendering nothing rather than an empty caption.
-  const UserContent =
-    isDevelopment() || isPlayground() ? (
-      <Typography variant="caption" color="gray">
-        {isDevelopment() ? '[Development]' : ''}
-        {isPlayground() ? '[Playground]' : ''}
-      </Typography>
-    ) : isDesktop() ? null : (
-      <UserBox />
-    );
+  // A dev copy shows DevModeChip instead, in the header below.
+  const UserContent = isPlayground() ? (
+    <Typography variant="caption" color="gray">
+      [Playground]
+    </Typography>
+  ) : isDevelopment() || isDesktop() ? null : (
+    <UserBox />
+  );
 
   if (global.connecting)
     return (
@@ -267,6 +267,7 @@ const AppView = observer(() => {
                   [{global.version}]
                 </Typography>
               )}
+              <DevModeChip />
               {UserContent}
               <NotificationBell hasUnreadUpdates={hasUnreadUpdates} onClick={handleOpenChangelog} />
               <McpActivityButton />
