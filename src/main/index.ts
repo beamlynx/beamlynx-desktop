@@ -188,7 +188,12 @@ function createWindow(): void {
       // Read by the preload, which hands it to beamlynx-ui's getBaseUrl().
       // The dev build's server is on a different port than the installed
       // app's (see ports.ts).
-      additionalArguments: [`--pine-server-url=http://localhost:${PINE_PORT}`],
+      // --dev-build shows beamlynx-ui's DEV chip, so this copy can't be
+      // mistaken for the installed app when both are open.
+      additionalArguments: [
+        `--pine-server-url=http://localhost:${PINE_PORT}`,
+        ...(app.isPackaged ? [] : ['--dev-build']),
+      ],
     },
   });
 
