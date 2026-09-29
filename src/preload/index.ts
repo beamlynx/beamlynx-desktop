@@ -48,6 +48,7 @@ const pineServerUrl = process.argv
 
 contextBridge.exposeInMainWorld('beamlynxDesktop', {
   pineServerUrl,
+  isDevBuild: process.argv.includes('--dev-build'),
   onUpdateStatus: (callback: (status: UpdateStatus) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, status: UpdateStatus) => callback(status);
     ipcRenderer.on('update-status', listener);
