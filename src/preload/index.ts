@@ -6,6 +6,7 @@
 // lifecycle (see src/main/auto-update.ts) -- that's exposed here so
 // beamlynx-ui can show it in-app instead of it being silent/console-only.
 import { contextBridge, ipcRenderer } from 'electron';
+import type { AppDbStatus } from '../main/app-db';
 import type { UpdateStatus } from '../main/auto-update';
 import type {
   AccessPolicy,
@@ -56,6 +57,19 @@ contextBridge.exposeInMainWorld('beamlynxDesktop', {
   },
   restartToUpdate: () => ipcRenderer.send('restart-to-update'),
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:get-version'),
+  // The app's own data in SQLite (src/main/app-db.ts). Preference values are
+  // the JSON text the renderer would otherwise put in localStorage.
+  appDb: {
+    status: (): Promise<AppDbStatus> => ipcRenderer.invoke('app-db:status'),
+    loadPreferences: (): Promise<Record<string, string>> => ipcRenderer.invoke('app-db:load-preferences'),
+    setPreferences: (changes: Record<string, string | null>): Promise<void> =>
+      ipcRenderer.invoke('app-db:set-preferences', changes),
+    getColumnWidths: (connection: string): Promise<Record<string, number>> =>
+      ipcRenderer.invoke('app-db:get-column-widths', connection),
+    setColumnWidths: (connection: string, changes: Record<string, number | null>): Promise<void> =>
+      ipcRenderer.invoke('app-db:set-column-widths', connection, changes),
+    markImportedFromLocalStorage: (): Promise<void> => ipcRenderer.invoke('app-db:mark-imported-from-local-storage'),
+  },
   credentials: {
     status: (): Promise<CredentialsStatus> => ipcRenderer.invoke('credentials:status'),
     list: (): Promise<SavedConnectionMeta[]> => ipcRenderer.invoke('credentials:list'),

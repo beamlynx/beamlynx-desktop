@@ -10,6 +10,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - Building beamlynx-desktop needs Node 22 or later. See DEVELOPMENT.md.
 
 ### Added
+- beamlynx has a SQLite file for its own data, `beamlynx.db` in its data folder. Nothing uses it yet. A later beamlynx-ui release moves settings, open tabs and column widths into it, and saved recipes will live there too. If the file is ever unreadable, beamlynx moves it aside to `beamlynx.db.bad` and starts with empty settings.
 - A dev build (`npm start`) shows an amber **DEV** chip in the header, so it can't be mistaken for the installed app when both are open (with beamlynx-ui's matching change).
 - A dev build (`npm start`) can run next to the installed app. It uses its own ports (43333 and 43334) and its own data folder, `beamlynx-desktop-dev`, but shares the installed app's saved connections. In Settings > MCP it registers itself as `beamlynx-dev`, so an AI agent can use either copy. See DEVELOPMENT.md. The dev build needs a pine-server staged from a pine-lang that reads `PINE_PORT`. The installed app still uses 33333.
 

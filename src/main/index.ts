@@ -3,6 +3,7 @@ import { autoUpdater } from 'electron-updater';
 import * as http from 'http';
 import * as path from 'path';
 import { initAutoUpdater } from './auto-update';
+import { closeAppDb, registerAppDbIpc } from './app-db-ipc';
 import { registerCredentialIpc } from './credential-store';
 import { useSeparateDevDataDir } from './data-dir';
 import { startControlPlaneServer } from './mcp/control-plane-server';
@@ -314,6 +315,7 @@ async function main(): Promise<void> {
   Menu.setApplicationMenu(buildMenu());
   registerCredentialIpc();
   registerRevealIpc();
+  registerAppDbIpc();
 
   // Checked before anything opens, so a taken port gets a plain explanation
   // instead of an uncaught EADDRINUSE. The pine server's port is checked in
@@ -487,6 +489,7 @@ function runDesktopApp(): void {
   ipcMain.on('restart-to-update', async () => {
     quitting = true;
     await flushRendererStorage();
+    closeAppDb();
     if (serverHandle) {
       await serverHandle.stop();
     }
@@ -505,6 +508,7 @@ function runDesktopApp(): void {
     event.preventDefault();
     controlPlaneServer?.close();
     await flushRendererStorage();
+    closeAppDb();
     await serverHandle.stop();
     app.quit();
   });
