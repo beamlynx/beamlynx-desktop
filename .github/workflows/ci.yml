@@ -56,7 +56,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Build pine-lang app-image
         working-directory: pine-lang
@@ -96,3 +96,7 @@ jobs:
       - name: electron-builder config sanity check (unpacked dir, no installer)
         working-directory: beamlynx-desktop
         run: npx electron-builder --linux dir --config electron-builder.yml
+
+      - name: Check built-in SQLite in the packaged app
+        working-directory: beamlynx-desktop
+        run: ./scripts/check-builtin-sqlite.sh

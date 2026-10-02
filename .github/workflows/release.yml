@@ -73,7 +73,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Install beamlynx-ui deps
         working-directory: beamlynx-ui
@@ -169,7 +169,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Install beamlynx-desktop deps
         shell: bash
@@ -251,6 +251,11 @@ jobs:
           APPLE_API_ISSUER_IN: ${{ secrets.APPLE_API_ISSUER }}
           WIN_CSC_LINK_IN: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD_IN: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
+      - name: Check built-in SQLite in the packaged app
+        shell: bash
+        working-directory: beamlynx-desktop
+        run: ./scripts/check-builtin-sqlite.sh
 
       - uses: actions/upload-artifact@v4
         with:

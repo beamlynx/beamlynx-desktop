@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Changed
+- **Breaking:** beamlynx now runs on Electron 44 (Chromium 152, Node 24), up from Electron 31, which no longer gets security fixes. It needs macOS 13 or later. macOS 11 and 12 are no longer supported.
+- Electron 44 includes SQLite. beamlynx will use it to keep its own data, such as settings and saved recipes. A new release check confirms it works in the packaged app on Linux, macOS and Windows.
+- Building beamlynx-desktop needs Node 22 or later. See DEVELOPMENT.md.
+
 ### Added
 - A dev build (`npm start`) shows an amber **DEV** chip in the header, so it can't be mistaken for the installed app when both are open (with beamlynx-ui's matching change).
 - A dev build (`npm start`) can run next to the installed app. It uses its own ports (43333 and 43334) and its own data folder, `beamlynx-desktop-dev`, but shares the installed app's saved connections. In Settings > MCP it registers itself as `beamlynx-dev`, so an AI agent can use either copy. See DEVELOPMENT.md. The dev build needs a pine-server staged from a pine-lang that reads `PINE_PORT`. The installed app still uses 33333.
