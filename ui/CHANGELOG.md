@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Breaking
+- Ctrl+S no longer downloads the tab as a `.pine` file. Nothing in beamlynx opened those files. Ctrl+S now saves a recipe (see below). In the browser, where there are no recipes, Ctrl+S does nothing.
+
+### Added
+- **Save a query as a recipe with Ctrl+S** (desktop app 0.19 or later). It saves the block under the cursor, plus any block above it that the query uses through a named result. A comment at the top of the block becomes the recipe's title and explanation. Click a value in the query, like `'Acme'`, to make it a variable that is filled in each time; what you typed is kept as its example. Recipes are offered on every database.
+- **Use a recipe with Ctrl+O.** Find it by any word in its title, explanation or query, and press Enter. Its query goes into the tab as ordinary text with the example values filled in, and the first value is selected so you can type over it. In Vim mode the cursor goes to the start of the value instead. Nothing runs until you press Ctrl+Enter. A recipe can be deleted from the same list; editing comes later.
 ### Changed
 - A dev copy shows an amber **DEV** chip in the header, in place of the grey "[Development]" text. It also shows in a desktop dev build (beamlynx-desktop's `npm start`), which had no label at all, so it can't be mistaken for the installed app when both are open. Hover it to see which kind of dev copy it is.
 ### Changed
