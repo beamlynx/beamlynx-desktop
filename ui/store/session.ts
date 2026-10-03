@@ -97,7 +97,7 @@ export function splitExpressions(text: string): ExpressionBlock[] {
   return blocks;
 }
 
-function findActiveBlock(blocks: ExpressionBlock[], cursorLine: number): number {
+export function findActiveBlock(blocks: ExpressionBlock[], cursorLine: number): number {
   for (let i = blocks.length - 1; i >= 0; i--) {
     if (blocks[i].startLine <= cursorLine) return i;
   }
@@ -1042,6 +1042,20 @@ export class Session {
 
   public setQuerySelection(text: string) {
     this.querySelection = text;
+  }
+
+  /**
+   * A selection for the editor to apply the next time it takes this
+   * session's expression, as offsets into the new text. Set together with
+   * `expression` when a recipe is used, so its first value is selected (or,
+   * in Vim mode, the cursor sits on it). PineInput clears it once applied.
+   */
+  pendingSelection: { anchor: number; head: number } | null = null;
+
+  public setExpressionWithSelection(expression: string, selection: { anchor: number; head: number } | null) {
+    this.pendingSelection = selection;
+    this.expression = expression;
+    this.textInputFocused = true;
   }
 
   public updateCursorPosition(line: number, character: number) {

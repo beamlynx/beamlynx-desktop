@@ -14,7 +14,8 @@ import { getUserPreference, STORAGE_KEYS } from '../store/preferences';
 import AnalysisModal from './AnalysisModal';
 import ChangelogModal from './ChangelogModal';
 import CommandPalette from './CommandPalette';
-import SavePineModal from './SavePineModal';
+import RecipePickerModal from './recipes/RecipePickerModal';
+import SaveRecipeModal from './recipes/SaveRecipeModal';
 import ChangeConnectionModal from './ChangeConnectionModal';
 import NotificationBell from './NotificationBell';
 import SettingsButton from './SettingsButton';
@@ -175,7 +176,8 @@ const AppView = observer(() => {
       <AnalysisModal />
       <ChangelogModal open={global.showChangelog} onClose={handleCloseChangelog} />
       <CommandPalette />
-      <SavePineModal />
+      <SaveRecipeModal />
+      <RecipePickerModal />
       <ChangeConnectionModal />
       {/* Hidden entirely in Zen mode, not just visually de-emphasized -- Zen
           mode's whole point is a graph-only view, and every one of these

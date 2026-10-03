@@ -3,6 +3,7 @@
 // `typeof window !== 'undefined' && window.beamlynxDesktop` before use, since
 // isDesktop() (store/util.ts) can be true in a plain browser dev-server run
 // (NEXT_PUBLIC_DESKTOP=1 without Electron) where this doesn't exist.
+import type { Recipe, SaveRecipeInput } from './utils/recipes';
 import type { AccessPolicy, AccessPolicyRule } from './store/client';
 
 type DesktopUpdateStatus =
@@ -138,6 +139,15 @@ interface BeamlynxDesktopApi {
   // (GlobalStore.version) -- three separate things that happen to often
   // move together but aren't the same number.
   getAppVersion: () => Promise<string>;
+  // Saved recipes. Matches beamlynx-desktop's src/preload/index.ts. Optional
+  // because a desktop app older than 0.19 doesn't have them.
+  recipes?: {
+    list: () => Promise<Recipe[]>;
+    find: (text: string) => Promise<Recipe[]>;
+    get: (id: string) => Promise<Recipe | null>;
+    save: (input: SaveRecipeInput, connectionId?: string) => Promise<Recipe>;
+    delete: (id: string) => Promise<boolean>;
+  };
   credentials: {
     status: () => Promise<CredentialsStatus>;
     list: () => Promise<SavedConnectionMeta[]>;

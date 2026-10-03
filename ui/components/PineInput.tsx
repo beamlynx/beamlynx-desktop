@@ -81,7 +81,23 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
     if (session.expression !== lastValueRef.current) {
       updateEditorValue(session.expression);
     }
-  }, [session.expression, updateEditorValue]);
+    // A recipe was just put into this tab (see Session.pendingSelection):
+    // select its first value, after the replace above moved the cursor to
+    // the end. In Vim mode a selection would start visual mode, so the cursor
+    // goes to the start of the value instead.
+    const pending = session.pendingSelection;
+    const view = inputRef.current?.view;
+    if (pending && view) {
+      const max = view.state.doc.length;
+      const anchor = Math.min(pending.anchor, max);
+      const head = global.vimMode ? anchor : Math.min(pending.head, max);
+      view.dispatch({ selection: { anchor, head }, scrollIntoView: true });
+      view.focus();
+      runInAction(() => {
+        session.pendingSelection = null;
+      });
+    }
+  }, [session.expression, session.pendingSelection, updateEditorValue, session, global]);
 
   useEffect(() => {
     if (session.textInputFocused) {
@@ -408,6 +424,19 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
         session.blurTextInput();
       }}
       onChange={handleChange}
+      // Ctrl+O opens the recipe picker. Caught on the editor's container,
+      // before the editor sees the key: Vim reads Ctrl+O as "jump back" (normal
+      // mode) or "run one normal command" (insert mode) and handles it ahead
+      // of any keymap, and a key the editor handles never reaches the
+      // document, where useGlobalKeybindings binds use-recipe for focus
+      // outside the editor.
+      onKeyDownCapture={(e: React.KeyboardEvent) => {
+        if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'o') return;
+        if (typeof window === 'undefined' || !window.beamlynxDesktop?.recipes) return;
+        e.preventDefault();
+        e.stopPropagation();
+        global.executeCommand('use-recipe');
+      }}
       indentWithTab={false}
       basicSetup={{
         tabSize: 2,

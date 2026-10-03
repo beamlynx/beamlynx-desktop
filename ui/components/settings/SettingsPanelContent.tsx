@@ -71,7 +71,7 @@ const SettingsPanelContent = () => {
     <ThemeProvider theme={settingsTheme}>
       <Box sx={{ position: 'relative', height: '100%', display: 'flex', overflow: 'hidden' }}>
         {/* Modal's backdrop-click/Escape close isn't discoverable on its own
-            -- SavePineModal.tsx already established this exact affordance
+            -- the app's other modals already established this exact affordance
             (top-right IconButton + Close icon) for the app's other modals,
             so this matches rather than invents a new convention. tabIndex={-1}
             (mouse-only, like Input.tsx's PINE/SQL toggle) -- it's the first
