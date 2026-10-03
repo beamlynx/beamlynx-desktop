@@ -1,12 +1,14 @@
 // The app's own data, in one SQLite file: settings, open tabs, column widths,
-// and later saved recipes. See
-// beamlynx-plans/pending/2026-09-27-app-storage-in-sqlite.md.
+// and saved recipes. See
+// beamlynx-plans/pending/2026-09-27-app-storage-in-sqlite.md and
+// beamlynx-plans/pending/2026-10-01-recipes-shared-database-knowledge.md.
 //
 // This file has no Electron import, so the tests can run it on plain Node.
 // app-db-ipc.ts decides where the file lives and exposes it to the renderer.
 //
 // What never goes in here: result rows from the user's databases, and saved
 // connections (those stay in connections.json, see credential-store.ts).
+import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import { DatabaseSync } from 'node:sqlite';
 
@@ -35,6 +37,29 @@ const MIGRATIONS: string[] = [
     value TEXT NOT NULL
   );
   `,
+  `
+  CREATE TABLE recipe (
+    id           TEXT PRIMARY KEY,
+    database_key TEXT NOT NULL,              -- see databaseKeyOf
+    title        TEXT NOT NULL,
+    explanation  TEXT NOT NULL DEFAULT '',
+    expression   TEXT NOT NULL,              -- Pine, with $name where a value goes
+    inputs       TEXT NOT NULL DEFAULT '[]', -- JSON: RecipeInputDef[]
+    author       TEXT NOT NULL,              -- the person who answers for it
+    source       TEXT NOT NULL,              -- 'person' or 'agent'
+    agent        TEXT,                       -- which agent, when source is 'agent'
+    visibility   TEXT NOT NULL DEFAULT 'private',
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL
+  );
+  CREATE INDEX recipe_by_database ON recipe (database_key, updated_at);
+  -- A saved connection that reaches a database under another address, such
+  -- as an SSH tunnel on localhost, linked to the database it really is.
+  CREATE TABLE database_link (
+    connection_id TEXT PRIMARY KEY,
+    database_key  TEXT NOT NULL
+  );
+  `,
 ];
 
 // Past this many remembered column widths, the least recently used go.
@@ -42,6 +67,109 @@ export const COLUMN_WIDTH_CAP = 5000;
 
 const MAX_KEY_LENGTH = 512;
 const MAX_VALUE_LENGTH = 5_000_000;
+
+// ---------- recipes ----------
+
+// A value in a recipe's expression that is filled in each time it is used,
+// written $name in the expression.
+export type RecipeInputDef = {
+  name: string;
+  example: string;
+  kind: 'string' | 'number';
+  // The column it filters, such as 'company.name', when known.
+  column?: string;
+};
+
+export type Recipe = {
+  id: string;
+  databaseKey: string;
+  title: string;
+  explanation: string;
+  expression: string;
+  inputs: RecipeInputDef[];
+  author: string;
+  source: 'person' | 'agent';
+  agent: string | null;
+  visibility: 'private';
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type SaveRecipeInput = {
+  // Present to update an existing recipe, absent to create one.
+  id?: string;
+  databaseKey: string;
+  title: string;
+  explanation?: string;
+  expression: string;
+  inputs?: RecipeInputDef[];
+  // Only used when creating. Editing never changes who made a recipe.
+  author?: string;
+  source?: 'person' | 'agent';
+  agent?: string | null;
+};
+
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+const DEFAULT_PORTS: Record<string, string> = { postgres: '5432', mysql: '3306' };
+
+// Which database a saved connection points at, as a string such as
+// 'postgres://localhost:5432/shop'. Recipes belong to a database, not to a
+// login, so the user name is left out: two logins to the same database see
+// the same recipes. 127.0.0.1 and ::1 count as localhost, so the same local
+// database saved two ways is still one database.
+export function databaseKeyOf(c: { dbType?: string; dbHost: string; dbPort: string; dbName: string }): string {
+  const type = c.dbType || 'postgres';
+  const rawHost = c.dbHost.trim().toLowerCase();
+  const host = LOCAL_HOSTS.has(rawHost) ? 'localhost' : rawHost;
+  const port = c.dbPort.trim() || DEFAULT_PORTS[type] || '';
+  return `${type}://${host}:${port}/${c.dbName.trim()}`;
+}
+
+const INPUT_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const MAX_TITLE = 200;
+const MAX_EXPLANATION = 20_000;
+const MAX_EXPRESSION = 50_000;
+const MAX_INPUTS = 50;
+
+function checkRecipe(input: SaveRecipeInput): void {
+  if (typeof input.databaseKey !== 'string' || !input.databaseKey || input.databaseKey.length > MAX_KEY_LENGTH) {
+    throw new Error('Invalid database');
+  }
+  if (typeof input.title !== 'string' || !input.title.trim() || input.title.length > MAX_TITLE) {
+    throw new Error('A recipe needs a title of up to 200 characters');
+  }
+  if (input.explanation !== undefined && (typeof input.explanation !== 'string' || input.explanation.length > MAX_EXPLANATION)) {
+    throw new Error('Invalid explanation');
+  }
+  if (typeof input.expression !== 'string' || input.expression.length > MAX_EXPRESSION) {
+    throw new Error('Invalid expression');
+  }
+  const inputs = input.inputs ?? [];
+  if (!Array.isArray(inputs) || inputs.length > MAX_INPUTS) throw new Error('Invalid inputs');
+  const names = new Set<string>();
+  for (const i of inputs) {
+    if (!i || typeof i.name !== 'string' || !INPUT_NAME.test(i.name)) throw new Error(`Invalid input name: ${i?.name}`);
+    if (names.has(i.name)) throw new Error(`Input ${i.name} appears twice`);
+    names.add(i.name);
+    if (typeof i.example !== 'string' || i.example.length > 1000) throw new Error(`Invalid example for ${i.name}`);
+    if (i.kind !== 'string' && i.kind !== 'number') throw new Error(`Invalid kind for ${i.name}`);
+    if (i.column !== undefined && (typeof i.column !== 'string' || i.column.length > MAX_KEY_LENGTH)) {
+      throw new Error(`Invalid column for ${i.name}`);
+    }
+  }
+  if (input.source !== undefined && input.source !== 'person' && input.source !== 'agent') throw new Error('Invalid source');
+}
+
+type RecipeRow = {
+  id: string; database_key: string; title: string; explanation: string; expression: string; inputs: string;
+  author: string; source: 'person' | 'agent'; agent: string | null; visibility: 'private';
+  created_at: number; updated_at: number;
+};
+const toRecipe = (r: RecipeRow): Recipe => ({
+  id: r.id, databaseKey: r.database_key, title: r.title, explanation: r.explanation, expression: r.expression,
+  inputs: JSON.parse(r.inputs), author: r.author, source: r.source, agent: r.agent, visibility: r.visibility,
+  createdAt: r.created_at, updatedAt: r.updated_at,
+});
 
 export type AppDbStatus = {
   // True when the file was unreadable and was moved aside to <file>.bad, so
@@ -62,6 +190,22 @@ export type AppDb = {
   // A null width forgets the column. Prunes past COLUMN_WIDTH_CAP.
   setColumnWidths(connection: string, changes: Record<string, number | null>): void;
   markImportedFromLocalStorage(): void;
+
+  // Recipes for one database, most recently changed first.
+  listRecipes(databaseKey: string): Recipe[];
+  // Loose search: every word must appear in the title, explanation or query.
+  findRecipes(databaseKey: string, text: string): Recipe[];
+  getRecipe(id: string): Recipe | null;
+  // Creates the recipe when input.id is absent, otherwise updates its title,
+  // explanation, expression and inputs. Returns the stored recipe.
+  saveRecipe(input: SaveRecipeInput): Recipe;
+  deleteRecipe(id: string): boolean;
+  countRecipes(databaseKey: string): number;
+
+  // The database a saved connection is linked to, if it was linked by hand.
+  getDatabaseLink(connectionId: string): string | null;
+  // Links a saved connection to a database; null removes the link.
+  setDatabaseLink(connectionId: string, databaseKey: string | null): void;
   close(): void;
 };
 
@@ -71,7 +215,11 @@ export function openAppDb(file: string, now: () => number = Date.now): AppDb {
   try {
     db = openAndCheck(file);
   } catch (e) {
-    console.error(`[app-db] ${file} could not be opened, moving it aside and starting empty:`, e);
+    // Only a file SQLite says is damaged is moved aside. Anything else, such
+    // as a lock held by another copy of the app, is not a reason to set the
+    // user's recipes aside, so it fails the open instead.
+    if (!isDamaged(e)) throw e;
+    console.error(`[app-db] ${file} is damaged, moving it aside and starting empty:`, e);
     moveAside(file);
     wasReset = true;
     db = openAndCheck(file);
@@ -93,6 +241,23 @@ export function openAppDb(file: string, now: () => number = Date.now): AppDb {
   );
   const deleteWidth = db.prepare('DELETE FROM column_width WHERE connection = ? AND column_key = ?');
   const countWidths = db.prepare('SELECT COUNT(*) AS n FROM column_width');
+  const recipesFor = db.prepare('SELECT * FROM recipe WHERE database_key = ? ORDER BY updated_at DESC');
+  const recipeById = db.prepare('SELECT * FROM recipe WHERE id = ?');
+  const insertRecipe = db.prepare(
+    'INSERT INTO recipe (id, database_key, title, explanation, expression, inputs, author, source, agent, created_at, updated_at) ' +
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  );
+  const updateRecipe = db.prepare(
+    'UPDATE recipe SET title = ?, explanation = ?, expression = ?, inputs = ?, updated_at = ? WHERE id = ?',
+  );
+  const removeRecipe = db.prepare('DELETE FROM recipe WHERE id = ?');
+  const countFor = db.prepare('SELECT COUNT(*) AS n FROM recipe WHERE database_key = ?');
+  const linkFor = db.prepare('SELECT database_key FROM database_link WHERE connection_id = ?');
+  const upsertLink = db.prepare(
+    'INSERT INTO database_link (connection_id, database_key) VALUES (?, ?) ' +
+      'ON CONFLICT (connection_id) DO UPDATE SET database_key = excluded.database_key',
+  );
+  const removeLink = db.prepare('DELETE FROM database_link WHERE connection_id = ?');
   const pruneWidths = db.prepare(
     'DELETE FROM column_width WHERE rowid IN (SELECT rowid FROM column_width ORDER BY used_at ASC LIMIT ?)',
   );
@@ -168,19 +333,115 @@ export function openAppDb(file: string, now: () => number = Date.now): AppDb {
       setMeta.run('importedFromLocalStorage', String(now()));
     },
 
+    listRecipes: databaseKey => {
+      checkKey(databaseKey);
+      return (recipesFor.all(databaseKey) as RecipeRow[]).map(toRecipe);
+    },
+
+    findRecipes: (databaseKey, text) => {
+      checkKey(databaseKey);
+      const words = String(text ?? '').toLowerCase().split(/\s+/).filter(Boolean).slice(0, 10);
+      const all = (recipesFor.all(databaseKey) as RecipeRow[]).map(toRecipe);
+      if (!words.length) return all;
+      return all.filter(r => {
+        const hay = `${r.title} ${r.explanation} ${r.expression}`.toLowerCase();
+        return words.every(w => hay.includes(w));
+      });
+    },
+
+    getRecipe: id => {
+      if (typeof id !== 'string') return null;
+      const row = recipeById.get(id) as RecipeRow | undefined;
+      return row ? toRecipe(row) : null;
+    },
+
+    saveRecipe: input => {
+      checkRecipe(input);
+      const at = now();
+      const inputs = JSON.stringify(input.inputs ?? []);
+      const explanation = input.explanation ?? '';
+      if (input.id) {
+        const existing = recipeById.get(input.id) as RecipeRow | undefined;
+        if (!existing) throw new Error('That recipe no longer exists');
+        updateRecipe.run(input.title.trim(), explanation, input.expression, inputs, at, input.id);
+        return toRecipe(recipeById.get(input.id) as RecipeRow);
+      }
+      const id = randomUUID();
+      const source = input.source ?? 'person';
+      insertRecipe.run(
+        id, input.databaseKey, input.title.trim(), explanation, input.expression, inputs,
+        input.author ?? 'local', source, source === 'agent' ? (input.agent ?? 'An agent') : null, at, at,
+      );
+      return toRecipe(recipeById.get(id) as RecipeRow);
+    },
+
+    deleteRecipe: id => typeof id === 'string' && Number(removeRecipe.run(id).changes) > 0,
+
+    countRecipes: databaseKey => {
+      checkKey(databaseKey);
+      return (countFor.get(databaseKey) as { n: number }).n;
+    },
+
+    getDatabaseLink: connectionId => {
+      checkKey(connectionId);
+      return (linkFor.get(connectionId) as { database_key: string } | undefined)?.database_key ?? null;
+    },
+
+    setDatabaseLink: (connectionId, databaseKey) => {
+      checkKey(connectionId);
+      if (databaseKey === null) { removeLink.run(connectionId); return; }
+      checkKey(databaseKey);
+      upsertLink.run(connectionId, databaseKey);
+    },
+
     close: () => db.close(),
   };
+}
+
+class DamagedFileError extends Error {}
+
+// SQLITE_CORRUPT (11) and SQLITE_NOTADB (26), or a failed quick_check.
+function isDamaged(e: unknown): boolean {
+  if (e instanceof DamagedFileError) return true;
+  const code = (e as { errcode?: number } | null)?.errcode;
+  return typeof code === 'number' && [11, 26].includes(code & 0xff);
+}
+
+// SQLITE_BUSY (5) and SQLITE_LOCKED (6).
+function isBusy(e: unknown): boolean {
+  const code = (e as { errcode?: number } | null)?.errcode;
+  return typeof code === 'number' && [5, 6].includes(code & 0xff);
+}
+
+const sleepSync = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+// Switching a new file to WAL needs an exclusive lock, and SQLite does not
+// wait for one here when another copy of the app is switching the same new
+// file at that moment (it fails at once to avoid a deadlock). This only
+// happens the first time the file is set up, so a short retry is enough.
+function enableWal(db: DatabaseSync): void {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      db.exec('PRAGMA journal_mode = WAL');
+      return;
+    } catch (e) {
+      if (!isBusy(e) || attempt >= 80) throw e;
+      sleepSync(25);
+    }
+  }
 }
 
 function openAndCheck(file: string): DatabaseSync {
   const db = new DatabaseSync(file);
   try {
-    // WAL: a read never waits on a write. busy_timeout covers the moment two
-    // copies of the app (or the app and a future reader) both write.
-    db.exec('PRAGMA journal_mode = WAL');
-    db.exec('PRAGMA busy_timeout = 2000');
+    // busy_timeout first: two copies of the app share this file, and every
+    // step below can briefly find it locked by the other. Without it,
+    // switching to WAL on a new file failed with "database is locked".
+    db.exec('PRAGMA busy_timeout = 5000');
+    // WAL: a read never waits on a write.
+    enableWal(db);
     const check = db.prepare('PRAGMA quick_check').get() as { quick_check: string } | undefined;
-    if (check?.quick_check !== 'ok') throw new Error(`quick_check: ${check?.quick_check}`);
+    if (check?.quick_check !== 'ok') throw new DamagedFileError(`quick_check: ${check?.quick_check}`);
     return db;
   } catch (e) {
     db.close();
@@ -188,16 +449,24 @@ function openAndCheck(file: string): DatabaseSync {
   }
 }
 
+// Two copies of the app (the installed one and a dev build) share this file
+// and may start at the same moment. Each migration reads the version inside
+// its own write transaction, so the second copy waits for the first and then
+// finds nothing left to do, instead of creating the same tables twice.
 function migrate(db: DatabaseSync): void {
-  const { user_version: version } = db.prepare('PRAGMA user_version').get() as { user_version: number };
-  // A newer build migrated this file. Its extra tables are left alone, and
-  // this build keeps using the ones it knows.
-  if (version >= MIGRATIONS.length) return;
-  for (let i = version; i < MIGRATIONS.length; i++) {
+  const versionNow = () => (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
+  for (;;) {
     db.exec('BEGIN IMMEDIATE');
     try {
-      db.exec(MIGRATIONS[i]);
-      db.exec(`PRAGMA user_version = ${i + 1}`);
+      const version = versionNow();
+      // Done, or a newer build migrated this file. Its extra tables are left
+      // alone, and this build keeps using the ones it knows.
+      if (version >= MIGRATIONS.length) {
+        db.exec('COMMIT');
+        return;
+      }
+      db.exec(MIGRATIONS[version]);
+      db.exec(`PRAGMA user_version = ${version + 1}`);
       db.exec('COMMIT');
     } catch (e) {
       db.exec('ROLLBACK');
@@ -206,8 +475,8 @@ function migrate(db: DatabaseSync): void {
   }
 }
 
-// Everything in the file is a preference, so losing it is an annoyance, not
-// data loss. The old file is kept as <file>.bad in case someone wants to look.
+// The old file is never deleted. It is kept as <file>.bad, so recipes in it
+// can still be recovered, and the app says once that it started over.
 function moveAside(file: string): void {
   for (const suffix of ['', '-wal', '-shm']) {
     const from = file + suffix;
