@@ -26,6 +26,7 @@ type McpQueryRequest = {
   kind: 'eval' | 'build';
   profileId: string;
   expression: string;
+  variables?: Record<string, unknown>;
 };
 
 // Matches beamlynx-ui's desktop.d.ts RevealRequest/RevealOutcome -- see

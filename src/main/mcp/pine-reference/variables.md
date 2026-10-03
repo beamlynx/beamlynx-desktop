@@ -1,80 +1,55 @@
 # Variables
 
-Name an intermediate result and use it as a table in later expressions. Variables let you build up queries in readable steps, and let one expression reuse the result of another.
+A `$name` in an expression stands for a value you pass separately, in run_query's `variables` argument. The expression stays the same and only the value changes, so you can reuse one expression (a saved recipe, say) for different companies, tenants or dates. A value is always treated as a value: whatever it contains, it can't change what the expression does.
 
-**Operation(s):** `|= name`
+**Syntax:** `$name` wherever a value goes: after `=`, `!=`, `>`, `<`, `like`, `ilike` and their `not` forms, as the list after `in` or `not in`, and in `update!`. Names use letters, digits and underscores.
 
-**Syntax:**
-```
-<expression> |= <name> [| more operations...]
-```
+**Passing values:** run_query's `variables` maps each name, without the `$`, to its value: a string, a number or a boolean. A variable used with `in` takes a list.
 
 ## Examples
 
-### Name a result and reuse it
+### One value
 
 ```
-company | where: active = true |= active_companies
-
-active_companies | employee
+company | where: name = $company_name
 ```
 
-Assign the filtered company result to active_companies, then use it as a table in the next expression.
+With `variables: {"company_name": "Acme"}`, this finds the company named Acme, exactly as if `'Acme'` were written in the expression.
 
-### Mid-pipeline assign
-
-```
-company |= all_companies | where: active = true
-```
-
-Place |= anywhere in the pipe chain. The snapshot is taken at that point — all_companies is the full unfiltered company set, while the current expression still returns only active companies.
-
-### Reference variable columns
+### A list, for in
 
 ```
-company |= c | employee | s: id, c.id
+request | where: tenant_id in $tenant_ids | where: status = 'failed'
 ```
 
-After |= c, use c as a column qualifier in the same expression. c.id refers to the company table's id column.
+With `variables: {"tenant_ids": [17, 23]}`, this finds the failed requests of those two tenants.
 
-### Chain multiple steps
-
-```
-company | where: active = true |= active_companies
-
-active_companies | l: 10 |= small_active
-
-small_active
-```
-
-Each expression builds on the previous. Separate expressions with a blank line.
-
-### Only explicitly selected id columns stay joinable
+### Several values
 
 ```
-company | select: id, name |= x
-
-x | employee
+request | where: status = $status | where: created_at > $since
 ```
 
-Once a variable is used, its underlying tables are no longer visible — only its own output columns are. A table stays a valid join source through the variable only if its id was explicitly selected. select: name alone (no id) would make x unjoinable to anything.
+With `variables: {"status": "failed", "since": "2026-09-01"}`. A value is read the way its column needs it: `"2026-09-01"` is a date for a date column.
 
-### Automatic checkpoints after group: or limit:
-
-```
-company | limit: 10 | employee
-```
-
-group: and limit: produce a final, bounded result. Piping into another table after one of them automatically takes an unnamed checkpoint first, so the join applies on top of the limited or grouped result instead of corrupting it. Name that checkpoint yourself with |= placed right after the group:/limit: step.
-
-### Combine multiple aggregates per row
+### With a named result
 
 ```
-customers as c | orders .customer_id | group: c.id, c.email | select: id, count as order_count | order: count desc |= x
+company | where: name = $company_name |= acme
 
-customers as c | audit.order_status_changes .customer_id | group: c.id, c.email | select: id, count as status_change_count |= y
-
-customers | select: email | x | select: order_count | y | select: status_change_count
+acme | employee .company_id
 ```
 
-x and y each aggregate a different related table down to one row per customer, exposing just their own count column. The final expression starts from customers again and joins both variables in, producing one row per customer with email, order_count, and status_change_count side by side — without repeating the customers join in each branch.
+A variable can be used in any block, including one that defines a named result (see the `named-results` topic).
+
+## What can go wrong
+
+- **A value is missing.** Running stops before anything reaches the database and names each `$name` without a value. Pass it in `variables`.
+- **A list where one value goes**, or one value after `in`: the error says which. Use `in $name` for a list.
+- **An empty list** isn't allowed after `in`.
+- **`null`** isn't a value. To match nulls, write `is null` in the expression.
+- **After `is`**, a variable isn't allowed: `is` only takes `null`.
+
+## Not yet
+
+A variable can't stand for another expression's result. Run the first expression, then pass the values it returned as a list.

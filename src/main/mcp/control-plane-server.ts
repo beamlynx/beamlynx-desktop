@@ -93,7 +93,7 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
       // this handler and hang in readJsonBody.
       if (req.method === 'POST' && (req.url === '/query' || req.url === '/explain')) {
         const body = await readJsonBody(req);
-        const { profileId, expression } = body ?? {};
+        const { profileId, expression, variables } = body ?? {};
         if (!profileId || typeof expression !== 'string') {
           return sendJson(res, 400, { error: 'profileId and expression are required' });
         }
@@ -105,7 +105,14 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
         }
 
         const kind = req.url === '/explain' ? 'build' : 'eval';
-        const result = await runInRenderer(mainWindow, { kind, profileId, expression });
+        // Values for the expression's $variables (run_query's `variables`).
+        // Only an object is passed on; pine-lang checks each value.
+        const result = await runInRenderer(mainWindow, {
+          kind,
+          profileId,
+          expression,
+          variables: variables && typeof variables === 'object' && !Array.isArray(variables) ? variables : undefined,
+        });
         return sendJson(res, 200, { result });
       }
 

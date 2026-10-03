@@ -33,4 +33,4 @@ customers | limit: 10 | orders
 
 `limit:` produces a final, bounded result. Joining another table after one wraps the limited
 result first, so the join applies on top of those 10 rows rather than being applied before the
-cap. See the `variables` topic.
+cap. See the `named-results` topic.

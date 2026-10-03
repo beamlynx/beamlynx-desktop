@@ -190,6 +190,11 @@ async function build(profileId: string, expression: string): Promise<BuildRespon
   return result ?? {};
 }
 
+// A $variable's value, as pine-lang's `variables` field takes it.
+const variableScalar = z.union([z.string(), z.number(), z.boolean()]);
+type VariableScalar = string | number | boolean;
+type VariableValue = VariableScalar | VariableScalar[];
+
 async function registerTools(server: McpServer): Promise<void> {
   server.registerTool(
     'list_connections',
@@ -270,16 +275,33 @@ async function registerTools(server: McpServer): Promise<void> {
         'guessing at table or column names. Results are capped by the server at 250 rows. ' +
         'Lead the expression with a `/* ... */` comment saying what you are looking for and why -- the tab ' +
         'this opens renders it as a note above the query, which is how the user sees your reasoning rather ' +
-        'than just rows.',
+        'than just rows. ' +
+        'If the expression contains `$name` variables, pass their values in `variables`; they are bound as ' +
+        'values, never pasted into the query (see get_pine_doc "variables").',
       inputSchema: {
         connection_id: z.string().describe('A connection id from list_connections'),
         expression: z.string().describe('The Pine expression to run'),
+        variables: z
+          .record(z.string(), z.union([variableScalar, z.array(variableScalar)]))
+          .optional()
+          .describe(
+            'Values for the $variables in the expression, by name without the $: {"company_name": "Acme", ' +
+              '"tenant_ids": [17, 23]}. A list is for a variable used with `in`.',
+          ),
       },
     },
-    async ({ connection_id, expression }: { connection_id: string; expression: string }) => {
+    async ({
+      connection_id,
+      expression,
+      variables,
+    }: {
+      connection_id: string;
+      expression: string;
+      variables?: Record<string, VariableValue>;
+    }) => {
       try {
         await ensureGuiRunning();
-        const { result } = await controlPlaneRequest('POST', '/query', { profileId: connection_id, expression });
+        const { result } = await controlPlaneRequest('POST', '/query', { profileId: connection_id, expression, variables });
         return textResult(formatRows(result ?? {}));
       } catch (e) {
         return errorResult(e instanceof Error ? e.message : String(e));
