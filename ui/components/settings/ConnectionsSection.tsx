@@ -23,7 +23,7 @@ import { observer } from 'mobx-react-lite';
 import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react';
 import { useStores } from '../../store/store-container';
 import { CONNECTION_COLOR_PALETTE, isDesktop, isPlayground } from '../../store/util';
-import { DecryptionFailedError } from '../../store/global.store';
+import type { GlobalStore } from '../../store/global.store';
 import { buildConnectionString, parseConnectionString } from '../../utils/connectionString';
 import ToggleRow from './ToggleRow';
 
@@ -83,14 +83,21 @@ const SecurityNotice = ({ persistenceAvailable }: { persistenceAvailable?: boole
 
 /**
  * Add-a-connection form -- was the entirety of pages/settings.tsx, now the
- * "add" sub-view of the Connections settings section. Auto-opens (see
- * ConnectionsSection below) when global.reconnectHint is set -- a saved
- * profile's password failed to decrypt (see DecryptionFailedError) and the
- * user needs to re-enter just the password, not retype the whole form.
+ * "add" sub-view of the Connections settings section. ConnectionsSection
+ * below opens it with `reconnectHint` when a saved profile's password failed
+ * to decrypt (see DecryptionFailedError), so the user only re-enters the
+ * password instead of retyping the whole form.
  */
-const AddConnectionForm = ({ onDone }: { onDone: () => void }) => {
+type ReconnectHint = NonNullable<GlobalStore['reconnectHint']>;
+
+const AddConnectionForm = ({
+  onDone,
+  reconnectHint,
+}: {
+  onDone: () => void;
+  reconnectHint: ReconnectHint | null;
+}) => {
   const { global } = useStores();
-  const [reconnectHint] = useState(() => global.consumeReconnectHint());
   const [dbType, setDbType] = useState<DbTypeValue>(reconnectHint?.dbType ?? 'postgres');
   const [dbHost, setDbHost] = useState(reconnectHint?.dbHost ?? '');
   const [dbPort, setDbPort] = useState(reconnectHint?.dbPort ?? DB_TYPES[0].defaultPort);
@@ -1020,9 +1027,25 @@ const ConnectionRow = observer(
  */
 const ConnectionsSection = () => {
   const { global } = useStores();
-  const [adding, setAdding] = useState(
-    () => !!global.reconnectHint || global.consumeSettingsConnectionsAdding(),
-  );
+  // The add form, when it's open. `key` remounts the form for every new
+  // request, so a second request, or a new reconnect hint, starts it fresh.
+  const [form, setForm] = useState<{ key: number; hint: ReconnectHint | null } | null>(null);
+  const openForm = (hint: ReconnectHint | null) =>
+    setForm(prev => ({ key: (prev?.key ?? 0) + 1, hint }));
+
+  // "New Database Connection" and a saved password that won't unlock both
+  // ask for the form through the store. This section is usually mounted
+  // already when they do: Settings prewarms it while the app is idle and
+  // keeps it mounted after closing (see SettingsDock.tsx). Reading the
+  // request only on mount lost it, and the list showed instead. So watch
+  // for it, every time.
+  const addRequested = global.settingsConnectionsAdding || !!global.reconnectHint;
+  useEffect(() => {
+    if (!addRequested) return;
+    const hint = global.consumeReconnectHint();
+    global.consumeSettingsConnectionsAdding();
+    setForm(prev => ({ key: (prev?.key ?? 0) + 1, hint }));
+  }, [addRequested, global]);
   const [switchingConnection, setSwitchingConnection] = useState(false);
 
   const activeSession = global.sessions[global.activeSessionId];
@@ -1037,10 +1060,10 @@ const ConnectionsSection = () => {
       setSwitchingConnection(true);
       try {
         await global.connectToSavedProfile(id);
-      } catch (e) {
-        if (e instanceof DecryptionFailedError) {
-          setAdding(true);
-        }
+      } catch {
+        // A DecryptionFailedError sets global.reconnectHint, which opens the
+        // add form through the effect above. Other failures are reported
+        // through global.connectionError.
       } finally {
         setSwitchingConnection(false);
       }
@@ -1063,7 +1086,7 @@ const ConnectionsSection = () => {
     borderBottom: '1px solid var(--border-color)',
   };
 
-  if (adding) {
+  if (form) {
     return (
       <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         <Typography variant="h6" component="h2" sx={headerSx}>
@@ -1074,7 +1097,7 @@ const ConnectionsSection = () => {
             it fills, it must not scroll itself or the footer would scroll
             away again. */}
         <Box sx={{ flex: 1, minHeight: 0 }}>
-          <AddConnectionForm onDone={() => setAdding(false)} />
+          <AddConnectionForm key={form.key} reconnectHint={form.hint} onDone={() => setForm(null)} />
         </Box>
       </Box>
     );
@@ -1125,7 +1148,7 @@ const ConnectionsSection = () => {
 
       <Button
         variant="outlined"
-        onClick={() => setAdding(true)}
+        onClick={() => openForm(null)}
         sx={{
           flexShrink: 0,
           mt: 2,

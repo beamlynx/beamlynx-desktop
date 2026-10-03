@@ -15,10 +15,10 @@ const REMOVE_CONFIRM_TIMEOUT_MS = 3000;
  * selects which one applies to it (Database Connections section's own
  * per-row picker), or none.
  *
- * MCP access isn't reachable for ANY connection unless at least one module
- * in at least one policy here is on -- see GlobalStore.setMcpEnabled's
- * refusal path and ConnectionsSection's disabled MCP toggle when nothing
- * anywhere is enabled.
+ * Each connection is checked on its own: MCP access can only be turned on
+ * when that connection's policy is "None" (unrestricted) or has at least one
+ * active module. See GlobalStore.setMcpEnabled's refusal path and
+ * ConnectionsSection's disabled MCP toggle.
  */
 const MODULES: {
   type: 'column-type' | 'foreign-key' | 'column-name';
@@ -114,8 +114,9 @@ const AccessPolicySection = () => {
       </Typography>
 
       <Typography variant="body2" sx={{ flexShrink: 0, color: 'var(--canvas-text-dim)', mb: 2 }}>
-        Columns are masked unless a rule below allows them. Pick a policy per connection under Database Connections.
-        MCP needs at least one active rule somewhere to turn on.
+        Columns are masked unless a rule below allows them. Pick a policy for each connection under Database
+        Connections. MCP access can only be turned on for a connection whose policy has an active rule, or that has
+        no policy.
       </Typography>
 
       <Box sx={{ flex: 1, minHeight: 0, display: 'flex', gap: 3 }}>
