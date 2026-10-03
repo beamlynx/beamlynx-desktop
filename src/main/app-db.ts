@@ -80,9 +80,14 @@ export type RecipeInputDef = {
   column?: string;
 };
 
+// Recipes are global: every recipe is offered on every database. A local,
+// staging and production database usually share one schema, and a recipe
+// describes the schema, not the server. savedFrom only records where it was
+// saved, as context. (Stored in the database_key column, which was written
+// when recipes were per database; '' means unknown.)
 export type Recipe = {
   id: string;
-  databaseKey: string;
+  savedFrom: string | null;
   title: string;
   explanation: string;
   expression: string;
@@ -98,7 +103,9 @@ export type Recipe = {
 export type SaveRecipeInput = {
   // Present to update an existing recipe, absent to create one.
   id?: string;
-  databaseKey: string;
+  // The database it was saved from, from databaseKeyOf. Only used when
+  // creating.
+  savedFrom?: string | null;
   title: string;
   explanation?: string;
   expression: string;
@@ -113,10 +120,13 @@ const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 const DEFAULT_PORTS: Record<string, string> = { postgres: '5432', mysql: '3306' };
 
 // Which database a saved connection points at, as a string such as
-// 'postgres://localhost:5432/shop'. Recipes belong to a database, not to a
-// login, so the user name is left out: two logins to the same database see
-// the same recipes. 127.0.0.1 and ::1 count as localhost, so the same local
-// database saved two ways is still one database.
+// 'postgres://localhost:5432/shop', recorded as a recipe's savedFrom. The
+// user name is left out, and 127.0.0.1 and ::1 count as localhost, so the
+// same database saved two ways reads the same.
+//
+// Migration 2 also created a database_link table and an index by database,
+// from when recipes were per database. Nothing uses them now. They stay
+// because migrations are only ever appended, never edited.
 export function databaseKeyOf(c: { dbType?: string; dbHost: string; dbPort: string; dbName: string }): string {
   const type = c.dbType || 'postgres';
   const rawHost = c.dbHost.trim().toLowerCase();
@@ -132,7 +142,7 @@ const MAX_EXPRESSION = 50_000;
 const MAX_INPUTS = 50;
 
 function checkRecipe(input: SaveRecipeInput): void {
-  if (typeof input.databaseKey !== 'string' || !input.databaseKey || input.databaseKey.length > MAX_KEY_LENGTH) {
+  if (input.savedFrom != null && (typeof input.savedFrom !== 'string' || input.savedFrom.length > MAX_KEY_LENGTH)) {
     throw new Error('Invalid database');
   }
   if (typeof input.title !== 'string' || !input.title.trim() || input.title.length > MAX_TITLE) {
@@ -166,7 +176,7 @@ type RecipeRow = {
   created_at: number; updated_at: number;
 };
 const toRecipe = (r: RecipeRow): Recipe => ({
-  id: r.id, databaseKey: r.database_key, title: r.title, explanation: r.explanation, expression: r.expression,
+  id: r.id, savedFrom: r.database_key || null, title: r.title, explanation: r.explanation, expression: r.expression,
   inputs: JSON.parse(r.inputs), author: r.author, source: r.source, agent: r.agent, visibility: r.visibility,
   createdAt: r.created_at, updatedAt: r.updated_at,
 });
@@ -191,21 +201,16 @@ export type AppDb = {
   setColumnWidths(connection: string, changes: Record<string, number | null>): void;
   markImportedFromLocalStorage(): void;
 
-  // Recipes for one database, most recently changed first.
-  listRecipes(databaseKey: string): Recipe[];
+  // Every recipe, most recently changed first.
+  listRecipes(): Recipe[];
   // Loose search: every word must appear in the title, explanation or query.
-  findRecipes(databaseKey: string, text: string): Recipe[];
+  findRecipes(text: string): Recipe[];
   getRecipe(id: string): Recipe | null;
   // Creates the recipe when input.id is absent, otherwise updates its title,
   // explanation, expression and inputs. Returns the stored recipe.
   saveRecipe(input: SaveRecipeInput): Recipe;
   deleteRecipe(id: string): boolean;
-  countRecipes(databaseKey: string): number;
-
-  // The database a saved connection is linked to, if it was linked by hand.
-  getDatabaseLink(connectionId: string): string | null;
-  // Links a saved connection to a database; null removes the link.
-  setDatabaseLink(connectionId: string, databaseKey: string | null): void;
+  countRecipes(): number;
   close(): void;
 };
 
@@ -241,7 +246,7 @@ export function openAppDb(file: string, now: () => number = Date.now): AppDb {
   );
   const deleteWidth = db.prepare('DELETE FROM column_width WHERE connection = ? AND column_key = ?');
   const countWidths = db.prepare('SELECT COUNT(*) AS n FROM column_width');
-  const recipesFor = db.prepare('SELECT * FROM recipe WHERE database_key = ? ORDER BY updated_at DESC');
+  const allRecipes = db.prepare('SELECT * FROM recipe ORDER BY updated_at DESC');
   const recipeById = db.prepare('SELECT * FROM recipe WHERE id = ?');
   const insertRecipe = db.prepare(
     'INSERT INTO recipe (id, database_key, title, explanation, expression, inputs, author, source, agent, created_at, updated_at) ' +
@@ -251,13 +256,7 @@ export function openAppDb(file: string, now: () => number = Date.now): AppDb {
     'UPDATE recipe SET title = ?, explanation = ?, expression = ?, inputs = ?, updated_at = ? WHERE id = ?',
   );
   const removeRecipe = db.prepare('DELETE FROM recipe WHERE id = ?');
-  const countFor = db.prepare('SELECT COUNT(*) AS n FROM recipe WHERE database_key = ?');
-  const linkFor = db.prepare('SELECT database_key FROM database_link WHERE connection_id = ?');
-  const upsertLink = db.prepare(
-    'INSERT INTO database_link (connection_id, database_key) VALUES (?, ?) ' +
-      'ON CONFLICT (connection_id) DO UPDATE SET database_key = excluded.database_key',
-  );
-  const removeLink = db.prepare('DELETE FROM database_link WHERE connection_id = ?');
+  const countAll = db.prepare('SELECT COUNT(*) AS n FROM recipe');
   const pruneWidths = db.prepare(
     'DELETE FROM column_width WHERE rowid IN (SELECT rowid FROM column_width ORDER BY used_at ASC LIMIT ?)',
   );
@@ -333,15 +332,11 @@ export function openAppDb(file: string, now: () => number = Date.now): AppDb {
       setMeta.run('importedFromLocalStorage', String(now()));
     },
 
-    listRecipes: databaseKey => {
-      checkKey(databaseKey);
-      return (recipesFor.all(databaseKey) as RecipeRow[]).map(toRecipe);
-    },
+    listRecipes: () => (allRecipes.all() as RecipeRow[]).map(toRecipe),
 
-    findRecipes: (databaseKey, text) => {
-      checkKey(databaseKey);
+    findRecipes: text => {
       const words = String(text ?? '').toLowerCase().split(/\s+/).filter(Boolean).slice(0, 10);
-      const all = (recipesFor.all(databaseKey) as RecipeRow[]).map(toRecipe);
+      const all = (allRecipes.all() as RecipeRow[]).map(toRecipe);
       if (!words.length) return all;
       return all.filter(r => {
         const hay = `${r.title} ${r.explanation} ${r.expression}`.toLowerCase();
@@ -369,7 +364,7 @@ export function openAppDb(file: string, now: () => number = Date.now): AppDb {
       const id = randomUUID();
       const source = input.source ?? 'person';
       insertRecipe.run(
-        id, input.databaseKey, input.title.trim(), explanation, input.expression, inputs,
+        id, input.savedFrom ?? '', input.title.trim(), explanation, input.expression, inputs,
         input.author ?? 'local', source, source === 'agent' ? (input.agent ?? 'An agent') : null, at, at,
       );
       return toRecipe(recipeById.get(id) as RecipeRow);
@@ -377,22 +372,7 @@ export function openAppDb(file: string, now: () => number = Date.now): AppDb {
 
     deleteRecipe: id => typeof id === 'string' && Number(removeRecipe.run(id).changes) > 0,
 
-    countRecipes: databaseKey => {
-      checkKey(databaseKey);
-      return (countFor.get(databaseKey) as { n: number }).n;
-    },
-
-    getDatabaseLink: connectionId => {
-      checkKey(connectionId);
-      return (linkFor.get(connectionId) as { database_key: string } | undefined)?.database_key ?? null;
-    },
-
-    setDatabaseLink: (connectionId, databaseKey) => {
-      checkKey(connectionId);
-      if (databaseKey === null) { removeLink.run(connectionId); return; }
-      checkKey(databaseKey);
-      upsertLink.run(connectionId, databaseKey);
-    },
+    countRecipes: () => (countAll.get() as { n: number }).n,
 
     close: () => db.close(),
   };
