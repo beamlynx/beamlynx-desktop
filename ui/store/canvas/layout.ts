@@ -346,7 +346,9 @@ const deriveGraph = (
     const whereChips = (whereByAlias[t.alias] ?? []).map(entry =>
       whereConditions(entry)
         .map(([alias, column, , operator, val]) => {
-          const literal = val && 'value' in val ? `${val.value}` : '';
+          // A $variable shows as `$name`: the tab builds without its value.
+          const literal =
+            val && 'value' in val ? (val.type === 'variable' ? `$${val.value}` : `${val.value}`) : '';
           // Another table's column in the same group keeps its alias, so the
           // chip doesn't read as this table's.
           const name = alias === t.alias ? column : `${alias}.${column}`;

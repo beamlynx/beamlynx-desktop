@@ -1,6 +1,8 @@
 import { GlobalStore } from '../store/global.store';
 import { Row, Session } from '../store/session';
 
+import type { VariableValue } from '../store/client';
+
 export type EvaluateOptions = {
   // A canvas-triggered auto-run's source of truth is always
   // `session.expression` (Pine), never the SQL panel's text - it's just a
@@ -24,6 +26,11 @@ export type EvaluateOptions = {
   // and set there unconditionally, not as a policy decision this plugin
   // makes. Absent everywhere else, so the person's own Run is unaffected.
   allowWrites?: boolean;
+
+  // Values for the expression's $variables, sent as pine-lang's `variables`
+  // field. Set by the MCP path with the values an agent passed; everywhere
+  // else the run uses the tab's own (Session.variablesForEval).
+  variables?: Record<string, VariableValue>;
 };
 
 export interface PluginInterface {

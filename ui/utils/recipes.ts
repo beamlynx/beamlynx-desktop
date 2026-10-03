@@ -6,12 +6,10 @@
 //   - which blocks of a tab Ctrl+S saves, and a title for them,
 //   - which values in a query can become variables, and turning them into
 //     $name (not used by the app yet: the groundwork for making any value in
-//     the editor a variable, which the Pine panel then fills in when it runs),
-//   - filling $name back in when a recipe is used.
+//     the editor a variable).
 //
-// Using a recipe is a macro: it puts the query into the tab as plain text,
-// with the example values in place. So nothing here needs pine-lang to
-// understand $name.
+// A recipe's $variables go into the tab as written; the Variables strip
+// holds their values, and pine-lang binds them when the query runs.
 //
 // See beamlynx-plans/pending/2026-10-01-recipes-shared-database-knowledge.md.
 import { leadingDoc } from '../store/canvas/pine-text';
@@ -290,38 +288,6 @@ export function applyVariables(
 }
 
 const exampleOf = (l: Literal) => (l.kind === 'string' ? l.raw.slice(1, -1) : l.raw);
-
-// ---------------------------------------------------------------------------
-// Using a recipe
-// ---------------------------------------------------------------------------
-
-/**
- * The recipe's query with each `$name` replaced by its example value, as the
- * plain text that goes into a tab. Also returns where the first filled-in
- * value sits (inside its quotes), so the editor can select it for typing over.
- */
-export function fillRecipe(
-  expression: string,
-  inputs: RecipeInputDef[],
-): { text: string; firstValue: { from: number; to: number } | null } {
-  const byName = new Map(inputs.map(i => [i.name, i]));
-  let firstValue: { from: number; to: number } | null = null;
-  let text = '';
-  let last = 0;
-  for (const m of Array.from(expression.matchAll(/\$([A-Za-z_][A-Za-z0-9_]*)/g))) {
-    const input = byName.get(m[1]);
-    if (!input) continue;
-    text += expression.slice(last, m.index);
-    const value = input.kind === 'number' ? input.example : `'${input.example}'`;
-    if (!firstValue) {
-      const from = text.length + (input.kind === 'number' ? 0 : 1);
-      firstValue = { from, to: from + input.example.length };
-    }
-    text += value;
-    last = m.index! + m[0].length;
-  }
-  return { text: text + expression.slice(last), firstValue };
-}
 
 /**
  * A one-line summary of a recipe for lists: the first line of its query's top

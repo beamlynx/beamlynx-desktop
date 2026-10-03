@@ -1,9 +1,10 @@
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { Box, Typography } from '@mui/material';
+import { runInAction } from 'mobx';
 import { observer } from 'mobx-react-lite';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useStores } from '../../store/store-container';
-import { fillRecipe, recipeSummary, type Recipe } from '../../utils/recipes';
+import { recipeSummary, type Recipe } from '../../utils/recipes';
 import ModalSurface from '../ModalSurface';
 
 /**
@@ -78,12 +79,16 @@ const RecipePickerModal = observer(() => {
     if (!session) return;
     const existing = session.expression.replace(/\s+$/, '');
     const prefix = existing ? `${existing}\n\n` : '';
-    const { text, firstValue } = fillRecipe(r.expression, r.inputs);
-    const full = prefix + text;
-    const selection = firstValue
-      ? { anchor: prefix.length + firstValue.from, head: prefix.length + firstValue.to }
-      : { anchor: full.length, head: full.length };
-    session.setExpressionWithSelection(full, selection);
+    const full = prefix + r.expression;
+    // The query goes in as written, $variables and all, and the Variables
+    // strip is filled with the recipe's examples: change a value there and
+    // run, without touching the query.
+    runInAction(() => {
+      for (const input of r.inputs) {
+        if (!(session.variableValues[input.name] ?? '').trim()) session.setVariableValue(input.name, input.example);
+      }
+    });
+    session.setExpressionWithSelection(full, { anchor: full.length, head: full.length });
     close();
   };
 
@@ -244,10 +249,10 @@ const RecipePickerModal = observer(() => {
                   Saved from {recipe.savedFrom}
                 </Typography>
               )}
-              {/* Only recipes saved before variables moved to the editor have inputs. */}
+              {/* Its $variables' saved values, which go into the Variables strip. */}
               {recipe.inputs.length > 0 && (
                 <Typography variant="caption" sx={{ color: dim }}>
-                  Goes into your tab with {recipe.inputs.map(v => `${v.example} for $${v.name}`).join(', ')}.
+                  Fills in {recipe.inputs.map(v => `$${v.name} with ${v.example || 'nothing'}`).join(', ')}.
                 </Typography>
               )}
               {recipe.explanation && (

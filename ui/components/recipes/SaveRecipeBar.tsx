@@ -12,9 +12,8 @@ import { draftFromTab } from '../../utils/recipes';
  * is: its comments are the recipe's explanation. No dialog, so the query and
  * canvas stay in view.
  *
- * Variables aren't chosen here. They'll come from the editor itself, where
- * any value can be made a variable (see utils/recipes.ts), and a query saved
- * with them keeps them.
+ * Variables aren't chosen here: a query saved with $variables keeps them,
+ * and what's in the Variables strip is saved as their examples.
  */
 const SaveRecipeBar = observer(({ session }: { session: Session }) => {
   const { global } = useStores();
@@ -59,7 +58,15 @@ const SaveRecipeBar = observer(({ session }: { session: Session }) => {
     setSaving(true);
     setError('');
     try {
-      const saved = await api.save({ title: title.trim(), expression: draft.expression }, session.profileId || undefined);
+      // The query's $variables are saved with what's in the Variables strip
+      // now, as their examples: using the recipe fills the strip with them.
+      const inputs = (session.variablesReport?.used ?? [])
+        .filter(name => new RegExp(`\\$${name}(?![A-Za-z0-9_])`).test(draft.expression))
+        .map(name => ({ name, example: (session.variableValues[name] ?? '').trim(), kind: 'string' as const }));
+      const saved = await api.save(
+        { title: title.trim(), expression: draft.expression, inputs },
+        session.profileId || undefined,
+      );
       runInAction(() => {
         session.message = `Saved recipe "${saved.title}". Press Ctrl+O to use it.`;
       });

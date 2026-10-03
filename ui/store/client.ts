@@ -40,7 +40,7 @@ export type TableHint = {
   columns?: { column: string; 'related-column': string }[];
   parent?: boolean;
   // 'synthetic' is a made-up id=id join with no real FK behind it (today only
-  // ever the same-source case - see docs/variables.md in pine-lang - but not
+  // ever the same-source case - see docs/named-results.md in pine-lang - but not
   // inherently variable-specific; a future self-join between two real tables
   // would use the same tag). 'manual' (explicit `.col1 = .col2`) is never
   // emitted by hints today - that syntax bypasses the reference map entirely,
@@ -204,6 +204,16 @@ export type Ast = {
   assign?: string;
 };
 
+// A $variable's value as pine-lang takes it: a string, number or boolean, or a
+// list of them for `in $name`. See pine-lang's docs/variables.md.
+export type VariableScalar = string | number | boolean;
+export type VariableValue = VariableScalar | VariableScalar[];
+
+// What /build reports about an expression's $variables: every one used, those
+// with no value in that request, and those used with `in`, which take a list.
+// The app builds without values, so `unbound` is everything there.
+export type VariablesReport = { used: string[]; unbound: string[]; lists: string[] };
+
 export type Response = {
   'connection-id': string;
   version: string;
@@ -212,6 +222,10 @@ export type Response = {
   // build
   ast: Ast;
   query: string;
+  // Absent against a server older than $variables.
+  variables?: VariablesReport;
+  // eval refused for a missing value: the names of the variables without one.
+  unbound?: string[];
   // This tab's doc comment: the comment at the top of the *first* expression
   // sent, cleaned for display (delimiters, per-line markers and shared
   // indentation removed). Null/absent when there isn't one, and absent
@@ -480,12 +494,19 @@ export class HttpClient {
     // treats the field's absence as "writes allowed", which is what the
     // person's own editor needs.
     allowWrites?: boolean,
+    // Values for the expressions' $variables. Sent only when there are some,
+    // so an expression without variables is the request it always was.
+    variables?: Record<string, VariableValue>,
   ): Promise<Response> {
     const body: {
       expressions: string[];
       'access-policy'?: AccessPolicyRule[];
       'allow-writes'?: boolean;
+      variables?: Record<string, { value: VariableValue }>;
     } = { expressions };
+    if (variables && Object.keys(variables).length) {
+      body.variables = Object.fromEntries(Object.entries(variables).map(([name, value]) => [name, { value }]));
+    }
     if (accessPolicyRules?.length) {
       body['access-policy'] = accessPolicyRules;
     }

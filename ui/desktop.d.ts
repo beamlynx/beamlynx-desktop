@@ -70,6 +70,9 @@ type McpQueryRequest = {
   kind: 'eval' | 'build';
   profileId: string;
   expression: string;
+  // Values for the expression's $variables, as the agent passed them to
+  // run_query. Absent from a desktop app older than variables.
+  variables?: Record<string, import('./store/client').VariableValue>;
 };
 
 type McpQueryResult =
