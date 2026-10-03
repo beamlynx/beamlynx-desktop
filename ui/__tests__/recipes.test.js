@@ -88,3 +88,11 @@ test('a block that uses a named result from a block above brings that block alon
   assert.equal(d.expression, "company | where: active = true |= active_companies\n\nactive_companies\n | user .company_id\n | where: role = 'admin'");
   assert.deepEqual(d.includedNames, ['active_companies']);
 });
+
+test('a recipe summary is the first line of its explanation, or of its top comment', () => {
+  const { recipeSummary } = require('../utils/recipes.ts');
+  assert.equal(recipeSummary({ expression: '-- Requests belong to tenants.\n-- More.\ncompany', explanation: '' }), 'Requests belong to tenants.');
+  assert.equal(recipeSummary({ expression: '/* Admins. */\nuser', explanation: '' }), 'Admins.');
+  assert.equal(recipeSummary({ expression: 'user', explanation: 'From an agent.\nSecond line.' }), 'From an agent.');
+  assert.equal(recipeSummary({ expression: 'user', explanation: '' }), '');
+});
