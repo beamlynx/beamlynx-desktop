@@ -531,9 +531,11 @@ export class GlobalStore {
   showChangelog = false;
 
   // Save-as-file modal (Ctrl/Cmd+S)
-  // Ctrl+S's "Save as recipe" sheet and Ctrl+O's recipe picker
-  // (components/recipes/). Desktop only: recipes are stored by the desktop app.
+  // Ctrl+S's "Save as recipe" bar above the active tab, and Ctrl+O's recipe
+  // picker (components/recipes/). Desktop only: recipes are stored by the
+  // desktop app.
   showSaveRecipe = false;
+  saveRecipeRequestCount = 0;
   showRecipePicker = false;
 
   // See PendingConnectionSwitch.
@@ -2214,6 +2216,9 @@ export class GlobalStore {
 
   setShowSaveRecipe = (show: boolean) => {
     this.showSaveRecipe = show;
+    // Counted, so Ctrl+S while the bar is already open (focus back in the
+    // editor, say) still takes you to its title.
+    if (show) this.saveRecipeRequestCount++;
   };
 
   setShowRecipePicker = (show: boolean) => {

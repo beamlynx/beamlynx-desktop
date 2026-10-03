@@ -3,10 +3,11 @@
 // module is the text side, kept free of React and MobX so the tests can run
 // it directly:
 //
-//   - which blocks of a tab Ctrl+S saves, and the doc comment above them,
-//   - which values in a query can become variables,
-//   - turning chosen values into $name, and filling $name back in when a
-//     recipe is used.
+//   - which blocks of a tab Ctrl+S saves, and a title for them,
+//   - which values in a query can become variables, and turning them into
+//     $name (not used by the app yet: the groundwork for making any value in
+//     the editor a variable, which the Pine panel then fills in when it runs),
+//   - filling $name back in when a recipe is used.
 //
 // Using a recipe is a macro: it puts the query into the tab as plain text,
 // with the example values in place. So nothing here needs pine-lang to
@@ -124,12 +125,13 @@ export function docText(rawComment: string): string {
 }
 
 export type SaveDraft = {
-  /** The query to save: the block under the cursor, plus any block above it that it needs. */
+  /**
+   * The query to save: the block under the cursor, plus any block above it
+   * that it needs. Comments are kept: they are the recipe's explanation.
+   */
   expression: string;
-  /** From the first line of the block's doc comment, if it has one. */
+  /** A title to offer: the first line of the block's doc comment, or else of its query. */
   title: string;
-  /** The rest of the doc comment. */
-  explanation: string;
   /** Named results (`|= name`) defined in blocks above that the query uses, so they're saved too. */
   includedNames: string[];
 };
@@ -138,8 +140,8 @@ export type SaveDraft = {
  * What Ctrl+S saves from a tab. The block under the cursor is the query that
  * runs, but running it also sends every block above it (session.ts), so a
  * block can use a named result defined further up. Those blocks are included
- * too, or the recipe wouldn't run on its own. The block's doc comment becomes
- * the title and explanation and is left out of the query.
+ * too, or the recipe wouldn't run on its own. Comments stay in the query,
+ * because they are what explains it.
  */
 export function draftFromTab(text: string, cursorLine: number | undefined): SaveDraft | null {
   const blocks = splitExpressions(text);
@@ -161,21 +163,22 @@ export function draftFromTab(text: string, cursorLine: number | undefined): Save
     }
   }
 
-  const doc = leadingDoc(blocks[active].text);
-  const body = (b: { text: string }, i: number) =>
-    i === active ? b.text.slice(b.text.indexOf(doc) + doc.length).replace(/^\s*\n/, '').trim() : b.text.trim();
   const ordered = Array.from(take).sort((a, b) => a - b);
-  const expression = ordered.map(i => body(blocks[i], i)).filter(Boolean).join('\n\n');
+  const expression = ordered.map(i => blocks[i].text.trim()).filter(Boolean).join('\n\n');
   if (!expression) return null;
 
-  const [first = '', ...rest] = doc ? docText(doc).split('\n') : [];
+  const doc = leadingDoc(blocks[active].text);
+  const firstQueryLine =
+    blocks[active].text.slice(blocks[active].text.indexOf(doc) + doc.length).split('\n').map(l => l.trim()).find(Boolean) ?? '';
+  const titleSource = doc ? docText(doc).split('\n')[0] : firstQueryLine;
   return {
     expression,
-    title: first.replace(/\.\s*$/, '').trim(),
-    explanation: rest.join('\n').trim(),
+    title: shorten(titleSource.replace(/\.\s*$/, '').trim(), 80),
     includedNames: ordered.filter(i => i !== active).flatMap(i => definedNames(mask(blocks[i].text))),
   };
 }
+
+const shorten = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text);
 
 // ---------------------------------------------------------------------------
 // Values that can become variables

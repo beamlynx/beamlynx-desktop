@@ -69,15 +69,16 @@ test('filling a recipe puts the examples back and points at the first value', ()
   assert.deepEqual(fillRecipe('company', []), { text: 'company', firstValue: null });
 });
 
-test('Ctrl+S takes the block under the cursor, and its doc comment becomes the title and explanation', () => {
+test('Ctrl+S takes the block under the cursor, keeps its comments, and offers a title', () => {
   const tab = "user | limit: 5\n\n-- Failed requests for a company.\n-- Requests belong to tenants.\ncompany | where: name = 'Acme'";
   const d = draftFromTab(tab, 4);
-  assert.equal(d.expression, "company | where: name = 'Acme'");
+  assert.equal(d.expression, "-- Failed requests for a company.\n-- Requests belong to tenants.\ncompany | where: name = 'Acme'");
   assert.equal(d.title, 'Failed requests for a company');
-  assert.equal(d.explanation, 'Requests belong to tenants.');
   assert.deepEqual(d.includedNames, []);
   assert.equal(draftFromTab(tab, 0).expression, 'user | limit: 5');
+  assert.equal(draftFromTab(tab, 0).title, 'user | limit: 5');
   assert.equal(draftFromTab('/* Admins. */\nuser', 0).title, 'Admins');
+  assert.equal(draftFromTab('x'.repeat(100), 0).title.length, 80);
   assert.equal(draftFromTab('   ', 0), null);
 });
 
