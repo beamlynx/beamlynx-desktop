@@ -52,4 +52,4 @@ customers as c | orders .customer_id | group: c.email => count | select: email, 
 
 `group:` produces a final, bounded result. Joining another table after one wraps the grouped
 result first, so the join applies on top of the groups instead of changing what was counted. See
-the `variables` topic for combining several aggregates on one row.
+the `named-results` topic for combining several aggregates on one row.

@@ -18,6 +18,8 @@ export type McpQueryRequestPayload = {
   kind: 'eval' | 'build';
   profileId: string;
   expression: string;
+  // Values for the expression's $variables, from run_query.
+  variables?: Record<string, unknown>;
 };
 
 type PendingEntry = {
