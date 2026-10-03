@@ -23,6 +23,8 @@ import {
   HttpClient,
   Operation,
   Response,
+  VariablesReport,
+  VariableValue,
 } from './client';
 import { generateGraph, getCandidateIndex, Graph } from './graph.util';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
@@ -283,6 +285,40 @@ export class Session {
    * to return one.
    */
   doc: string = ''; // observable
+
+  /**
+   * $variables (pine-lang's docs/variables.md). The tab is built without
+   * values, so hints, the canvas and the SQL preview show `$name`; it runs
+   * with them. variableValues is what's typed in the Variables strip, kept
+   * per tab and saved with it: a list (for `in $name`) is typed comma-
+   * separated. variablesReport is the latest successful build's report of
+   * which variables the tab uses, kept across failed builds the way doc is.
+   */
+  variableValues: Record<string, string> = {};
+  variablesReport: VariablesReport | null = null;
+
+  public setVariableValue(name: string, value: string) {
+    this.variableValues[name] = value;
+  }
+
+  /**
+   * The values to send with a run: one per variable the tab uses that has
+   * something typed. A list variable's text is split on commas. A variable
+   * with nothing typed is left out, so pine-lang names it as missing.
+   */
+  public variablesForEval(): Record<string, VariableValue> {
+    const report = this.variablesReport;
+    if (!report) return {};
+    const values: Record<string, VariableValue> = {};
+    for (const name of report.used) {
+      const text = (this.variableValues[name] ?? '').trim();
+      if (!text) continue;
+      values[name] = report.lists.includes(name)
+        ? text.split(',').map(v => v.trim()).filter(Boolean)
+        : text;
+    }
+    return values;
+  }
   query: string = '';
   /** Currently selected text in the SQL editor, if any. Running a query while text is
    * selected runs only the selection instead of the full query. */
@@ -557,6 +593,7 @@ export class Session {
           // would carry neither `error` nor `doc` and would otherwise blank
           // the block on every run.
           if (!response.error && response.ast) {
+            this.variablesReport = response.variables ?? null;
             this.doc = response.doc ?? '';
           }
 

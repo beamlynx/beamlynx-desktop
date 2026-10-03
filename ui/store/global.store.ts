@@ -1,6 +1,6 @@
 import { makeAutoObservable, reaction, runInAction } from 'mobx';
 import { lt } from 'semver';
-import { AccessPolicy, AccessPolicyRule, HttpClient, ConnectionInfo, effectiveAccessPolicyRules } from './client';
+import { AccessPolicy, AccessPolicyRule, HttpClient, ConnectionInfo, effectiveAccessPolicyRules, VariableValue } from './client';
 import type { CredentialsStatus, RevealOutcome } from '../desktop';
 import { Session, Theme, InputMode } from './session';
 import { THEME_MODE, ThemeId } from '../styles/palette/tokens';
@@ -36,6 +36,9 @@ type PersistedSession = {
   inputMode: InputMode;
   connectionId: string;
   profileId: string;
+  // What's typed in the tab's Variables strip ($variables). Absent in tabs
+  // saved before variables existed.
+  variables?: Record<string, string>;
 };
 
 type PersistedSessionsState = {
@@ -645,6 +648,7 @@ export class GlobalStore {
           inputMode: session.inputMode,
           connectionId: session.connectionId,
           profileId: session.profileId,
+          variables: { ...session.variableValues },
         };
       }),
       activeIndex: Math.max(ids.indexOf(this.activeSessionId), 0),
@@ -673,6 +677,11 @@ export class GlobalStore {
         session.inputMode = persistedSession.inputMode === 'sql' ? 'sql' : 'pine';
         session.connectionId = persistedSession.connectionId ?? '';
         session.profileId = persistedSession.profileId ?? '';
+        if (persistedSession.variables && typeof persistedSession.variables === 'object') {
+          session.variableValues = Object.fromEntries(
+            Object.entries(persistedSession.variables).filter(([, v]) => typeof v === 'string'),
+          );
+        }
       });
       // `new Session()` (inside createSessionUsingId, just above) wires up its
       // own expression -> build reaction *while this whole forEach is still
@@ -1261,7 +1270,7 @@ export class GlobalStore {
    * human's active tab. See store/mcp-query.ts for the safety rules this
    * enforces (no raw SQL, no delete!, connection-id always explicit).
    */
-  runMcpQuery = async (args: { profileId: string; expression: string }) => {
+  runMcpQuery = async (args: { profileId: string; expression: string; variables?: Record<string, VariableValue> }) => {
     const result = await runMcpQueryImpl(this.mcpQueryDeps(), args);
     // Flag McpActivityButton's badge regardless of `result.error` -- a
     // failed MCP query is still activity worth surfacing, not something to

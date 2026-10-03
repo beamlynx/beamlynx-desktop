@@ -40,6 +40,7 @@ export class DefaultPlugin implements PluginInterface {
             session.connectionId,
             session.accessPolicyRules,
             opts?.allowWrites,
+            opts?.variables ?? session.variablesForEval(),
           );
 
       if (!response) {

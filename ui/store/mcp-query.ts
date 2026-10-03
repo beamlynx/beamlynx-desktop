@@ -37,7 +37,7 @@
 // pine.access-policy for what the rules actually do server-side.
 import { lt } from 'semver';
 import { McpWriteRefusalMinVersion } from '../constants';
-import { AccessPolicyRule, HttpClient } from './client';
+import { AccessPolicyRule, HttpClient, VariableValue } from './client';
 import type { Session } from './session';
 
 export type ConnectionParams = {
@@ -139,7 +139,11 @@ function toPlainJson<T>(value: T): T {
 
 export async function runMcpQuery(
   deps: McpQueryDeps,
-  { profileId, expression }: { profileId: string; expression: string },
+  {
+    profileId,
+    expression,
+    variables,
+  }: { profileId: string; expression: string; variables?: Record<string, VariableValue> },
 ): Promise<{ tabId: string; columns: unknown; rows: unknown; error: string }> {
   assertServerSupportsWriteRefusal(deps.getServerVersion());
   const connectionId = await ensureConnection(deps, profileId);
@@ -160,7 +164,11 @@ export async function runMcpQuery(
   // sent verbatim.
   // allowWrites: false unconditionally -- this is the whole guard, so it is
   // set here rather than derived from anything the agent sent.
-  const rows = await session.evaluate({ applyServerPrettified: true, allowWrites: false });
+  // variables: the values the agent passed for the expression's $variables,
+  // bound by pine-lang as SQL parameters like any literal. Never the MCP
+  // tab's own Variables strip: the agent's run is fully described by what it
+  // sent.
+  const rows = await session.evaluate({ applyServerPrettified: true, allowWrites: false, variables: variables ?? {} });
   // Snapshot to plain JSON synchronously, in the same tick evaluate()
   // resolves in -- not after returning up through McpBridge/preload.
   // Confirmed the hard way: PineTabs renders every session's own <Session>

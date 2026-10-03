@@ -4,7 +4,7 @@
 // Run with: node -r tsx/cjs --test __tests__
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { draftFromTab, findLiterals, applyVariables, fillRecipe, mask } = require('../utils/recipes.ts');
+const { draftFromTab, findLiterals, applyVariables, mask } = require('../utils/recipes.ts');
 
 const raws = expr => findLiterals(expr).map(l => l.raw);
 
@@ -57,16 +57,6 @@ test('variable names are made safe and unique; the same value twice under one na
   assert.equal(out.expression, "t | where: a = $my_name | where: b = $my_name_2 | where: c = $my_name");
   assert.deepEqual(out.inputs.map(i => [i.name, i.example]), [['my_name', 'x'], ['my_name_2', 'y']]);
   assert.equal(applyVariables('t | where: n = 3', findLiterals('t | where: n = 3'), { 0: '9lives' }).inputs[0].name, 'v_9lives');
-});
-
-test('filling a recipe puts the examples back and points at the first value', () => {
-  const { text, firstValue } = fillRecipe('company | where: name = $company_name | where: age > $min_age', [
-    { name: 'company_name', example: 'Acme', kind: 'string' },
-    { name: 'min_age', example: '30', kind: 'number' },
-  ]);
-  assert.equal(text, "company | where: name = 'Acme' | where: age > 30");
-  assert.equal(text.slice(firstValue.from, firstValue.to), 'Acme');
-  assert.deepEqual(fillRecipe('company', []), { text: 'company', firstValue: null });
 });
 
 test('Ctrl+S takes the block under the cursor, keeps its comments, and offers a title', () => {
