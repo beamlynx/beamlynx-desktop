@@ -116,7 +116,8 @@ const AccessPolicySection = () => {
       <Typography variant="body2" sx={{ flexShrink: 0, color: 'var(--canvas-text-dim)', mb: 2 }}>
         Columns are masked unless a rule below allows them. Pick a policy for each connection under Database
         Connections. MCP access can only be turned on for a connection whose policy has an active rule, or that has
-        no policy.
+        no policy. A masked column can still be used in a query&apos;s conditions, so a query can test a guess about
+        its values, for example by counting the rows that match.
       </Typography>
 
       <Box sx={{ flex: 1, minHeight: 0, display: 'flex', gap: 3 }}>
