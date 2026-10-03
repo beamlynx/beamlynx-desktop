@@ -34,6 +34,11 @@ Needed for: the startup sequence in `src/main/index.ts`, the native `Menu`
 (`buildMenu()`), the bundled-server process handling
 (`src/main/server-process.ts`), or anything in `electron-builder.yml`.
 
+You need Node 22 or later (`.nvmrc` says which). Electron 44 can't
+install itself with Node 20. Since Electron 42, `npm install` no longer
+downloads the Electron binary. The first `npm start` downloads it, or run
+`npx install-electron --no` to get it up front.
+
 One-time (or after a `pine-lang`/`beamlynx-ui` pull), stage both bundled
 pieces:
 
