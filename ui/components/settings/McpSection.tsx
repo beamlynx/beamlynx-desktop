@@ -103,7 +103,7 @@ const DesktopMcpInstructions = () => {
       </Box>
 
       <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0, display: 'block', mt: 2 }}>
-        Then toggle &quot;Enable for MCP access&quot; on a connection under Connections to let it be used.
+        Then turn on &quot;MCP access&quot; for a connection under Database Connections to let it be used.
       </Typography>
     </Box>
   );
