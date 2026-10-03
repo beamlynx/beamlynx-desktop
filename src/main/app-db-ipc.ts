@@ -36,12 +36,11 @@ export function closeAppDb(): void {
   appDb = null;
 }
 
-// Which database a saved connection reaches: its own address, unless the
-// user linked it to another one (an SSH tunnel to a remote database, say).
-export function databaseKeyForConnection(connectionId: string): string {
+// Which database a saved connection points at, recorded on a recipe as where
+// it was saved from.
+function databaseKeyForConnection(connectionId: string): string | null {
   const meta = listConnections().find(c => c.id === connectionId);
-  if (!meta) throw new Error('That saved connection no longer exists');
-  return getAppDb().getDatabaseLink(connectionId) ?? databaseKeyOf(meta);
+  return meta ? databaseKeyOf(meta) : null;
 }
 
 type SaveRecipeFromApp = {
@@ -68,29 +67,20 @@ export function registerAppDbIpc(): void {
   );
   ipcMain.handle('app-db:mark-imported-from-local-storage', () => getAppDb().markImportedFromLocalStorage());
 
-  // Recipes. The renderer names a saved connection; the main process works
-  // out which database that is, so the renderer can't file a recipe under a
-  // database it didn't pick.
-  ipcMain.handle('recipes:database-key', (_event, connectionId: string) => databaseKeyForConnection(connectionId));
-  ipcMain.handle('recipes:list', (_event, connectionId: string) =>
-    getAppDb().listRecipes(databaseKeyForConnection(connectionId)),
-  );
-  ipcMain.handle('recipes:find', (_event, connectionId: string, text: string) =>
-    getAppDb().findRecipes(databaseKeyForConnection(connectionId), text),
-  );
+  // Recipes are global: every recipe is offered on every database (see
+  // app-db.ts). Saved from the app, so the person is the author and the
+  // source. The connection, when given, is recorded as where it was saved.
+  ipcMain.handle('recipes:list', () => getAppDb().listRecipes());
+  ipcMain.handle('recipes:find', (_event, text: string) => getAppDb().findRecipes(text));
   ipcMain.handle('recipes:get', (_event, id: string) => getAppDb().getRecipe(id));
-  // Saved from the app, so the person is the author and the source.
-  ipcMain.handle('recipes:save', (_event, connectionId: string, input: SaveRecipeFromApp) => {
-    const databaseKey = databaseKeyForConnection(connectionId);
-    if (input.id) {
-      const existing = getAppDb().getRecipe(input.id);
-      if (!existing || existing.databaseKey !== databaseKey) throw new Error('That recipe belongs to another database');
-    }
-    return getAppDb().saveRecipe({ ...input, databaseKey, author: 'local', source: 'person', agent: null });
-  });
+  ipcMain.handle('recipes:save', (_event, input: SaveRecipeFromApp, connectionId?: string) =>
+    getAppDb().saveRecipe({
+      ...input,
+      savedFrom: !input.id && connectionId ? databaseKeyForConnection(connectionId) : null,
+      author: 'local',
+      source: 'person',
+      agent: null,
+    }),
+  );
   ipcMain.handle('recipes:delete', (_event, id: string) => getAppDb().deleteRecipe(id));
-  ipcMain.handle('recipes:link-connection', (_event, connectionId: string, databaseKey: string | null) => {
-    if (!listConnections().some(c => c.id === connectionId)) throw new Error('That saved connection no longer exists');
-    getAppDb().setDatabaseLink(connectionId, databaseKey);
-  });
 }

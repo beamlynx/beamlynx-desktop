@@ -70,21 +70,18 @@ contextBridge.exposeInMainWorld('beamlynxDesktop', {
       ipcRenderer.invoke('app-db:set-column-widths', connection, changes),
     markImportedFromLocalStorage: (): Promise<void> => ipcRenderer.invoke('app-db:mark-imported-from-local-storage'),
   },
-  // Saved recipes (src/main/app-db.ts). They belong to a database, and the
-  // main process works out which one from the saved connection passed in.
+  // Saved recipes (src/main/app-db.ts). They are global: every recipe is
+  // offered on every database. Pass the current connection when saving a
+  // new one, to record where it was saved from.
   recipes: {
-    databaseKey: (connectionId: string): Promise<string> => ipcRenderer.invoke('recipes:database-key', connectionId),
-    list: (connectionId: string): Promise<Recipe[]> => ipcRenderer.invoke('recipes:list', connectionId),
-    find: (connectionId: string, text: string): Promise<Recipe[]> =>
-      ipcRenderer.invoke('recipes:find', connectionId, text),
+    list: (): Promise<Recipe[]> => ipcRenderer.invoke('recipes:list'),
+    find: (text: string): Promise<Recipe[]> => ipcRenderer.invoke('recipes:find', text),
     get: (id: string): Promise<Recipe | null> => ipcRenderer.invoke('recipes:get', id),
     save: (
-      connectionId: string,
       input: { id?: string; title: string; explanation?: string; expression: string; inputs?: RecipeInputDef[] },
-    ): Promise<Recipe> => ipcRenderer.invoke('recipes:save', connectionId, input),
+      connectionId?: string,
+    ): Promise<Recipe> => ipcRenderer.invoke('recipes:save', input, connectionId),
     delete: (id: string): Promise<boolean> => ipcRenderer.invoke('recipes:delete', id),
-    linkConnection: (connectionId: string, databaseKey: string | null): Promise<void> =>
-      ipcRenderer.invoke('recipes:link-connection', connectionId, databaseKey),
   },
   credentials: {
     status: (): Promise<CredentialsStatus> => ipcRenderer.invoke('credentials:status'),

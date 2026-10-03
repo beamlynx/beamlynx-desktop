@@ -127,7 +127,7 @@ test('a database key leaves out the login and treats 127.0.0.1 as localhost', ()
 });
 
 const recipeInput = (over = {}) => ({
-  databaseKey: 'postgres://localhost:5432/shop',
+  savedFrom: 'postgres://staging.example.internal:5432/shop',
   title: 'Failed requests for a company',
   explanation: 'Requests belong to tenants, not companies.',
   expression: "company | where: name = $company_name | tenant .company_id | request .tenant_id | where: status = 'failed'",
@@ -135,33 +135,35 @@ const recipeInput = (over = {}) => ({
   ...over,
 });
 
-test('a recipe is saved, listed per database, and survives reopening', () => {
+test('recipes are global: every recipe is listed, whichever database it was saved from', () => {
   let t = 0;
   let db = openAppDb(file, () => ++t);
-  const saved = db.saveRecipe(recipeInput());
-  assert.match(saved.id, /^[0-9a-f-]{36}$/);
-  assert.equal(saved.source, 'person');
-  assert.equal(saved.author, 'local');
-  assert.equal(saved.visibility, 'private');
-  db.saveRecipe(recipeInput({ databaseKey: 'postgres://db.example.internal:5432/shop', title: 'Elsewhere' }));
+  const staging = db.saveRecipe(recipeInput());
+  const unknown = db.saveRecipe(recipeInput({ savedFrom: undefined, title: 'From nowhere in particular' }));
+  assert.match(staging.id, /^[0-9a-f-]{36}$/);
+  assert.equal(staging.savedFrom, 'postgres://staging.example.internal:5432/shop');
+  assert.equal(unknown.savedFrom, null);
+  assert.equal(staging.source, 'person');
+  assert.equal(staging.author, 'local');
+  assert.equal(staging.visibility, 'private');
   db.close();
 
   db = openAppDb(file);
-  const list = db.listRecipes('postgres://localhost:5432/shop');
-  assert.equal(list.length, 1);
-  assert.deepEqual(list[0], saved);
-  assert.equal(db.countRecipes('postgres://db.example.internal:5432/shop'), 1);
+  assert.deepEqual(db.listRecipes().map(r => r.title), ['From nowhere in particular', 'Failed requests for a company']);
+  assert.deepEqual(db.getRecipe(staging.id), staging);
+  assert.equal(db.countRecipes(), 2);
   db.close();
 });
 
-test('updating a recipe keeps who made it and when', () => {
+test('updating a recipe keeps who made it, when, and where it was saved from', () => {
   let t = 0;
   const db = openAppDb(file, () => ++t);
   const made = db.saveRecipe(recipeInput({ source: 'agent', agent: 'Claude Code 2.4.1', author: 'local' }));
-  const edited = db.saveRecipe({ id: made.id, databaseKey: made.databaseKey, title: 'Failed requests', expression: made.expression, inputs: made.inputs });
+  const edited = db.saveRecipe({ id: made.id, savedFrom: 'postgres://elsewhere:5432/x', title: 'Failed requests', expression: made.expression, inputs: made.inputs });
   assert.equal(edited.title, 'Failed requests');
   assert.equal(edited.source, 'agent');
   assert.equal(edited.agent, 'Claude Code 2.4.1');
+  assert.equal(edited.savedFrom, made.savedFrom);
   assert.equal(edited.createdAt, made.createdAt);
   assert.ok(edited.updatedAt > made.updatedAt);
   assert.throws(() => db.saveRecipe({ ...recipeInput(), id: 'not-a-recipe' }), /no longer exists/);
@@ -176,7 +178,7 @@ test('a recipe with a bad title, input name or duplicate input is refused', () =
     inputs: [{ name: 'a', example: '', kind: 'string' }, { name: 'a', example: '', kind: 'string' }],
   })), /twice/);
   assert.throws(() => db.saveRecipe(recipeInput({ inputs: [{ name: 'a', example: '', kind: 'date' }] })), /kind/);
-  assert.equal(db.countRecipes('postgres://localhost:5432/shop'), 0);
+  assert.equal(db.countRecipes(), 0);
   db.close();
 });
 
@@ -184,11 +186,10 @@ test('finding recipes needs every word, and an empty search lists them all', () 
   const db = openAppDb(file);
   db.saveRecipe(recipeInput());
   db.saveRecipe(recipeInput({ title: 'Admins of a company', explanation: '', expression: "user | where: role = 'admin'", inputs: [] }));
-  const key = 'postgres://localhost:5432/shop';
-  assert.deepEqual(db.findRecipes(key, 'FAILED company').map(r => r.title), ['Failed requests for a company']);
-  assert.deepEqual(db.findRecipes(key, 'company').length, 2);
-  assert.deepEqual(db.findRecipes(key, 'admin tenant'), []);
-  assert.equal(db.findRecipes(key, '').length, 2);
+  assert.deepEqual(db.findRecipes('FAILED company').map(r => r.title), ['Failed requests for a company']);
+  assert.equal(db.findRecipes('company').length, 2);
+  assert.deepEqual(db.findRecipes('admin tenant'), []);
+  assert.equal(db.findRecipes('').length, 2);
   db.close();
 });
 
@@ -203,16 +204,6 @@ test('deleting a recipe removes only that one', () => {
   db.close();
 });
 
-test('a saved connection can be linked to another database, and unlinked', () => {
-  const db = openAppDb(file);
-  assert.equal(db.getDatabaseLink('conn-1'), null);
-  db.setDatabaseLink('conn-1', 'postgres://db.example.internal:5432/shop');
-  assert.equal(db.getDatabaseLink('conn-1'), 'postgres://db.example.internal:5432/shop');
-  db.setDatabaseLink('conn-1', null);
-  assert.equal(db.getDatabaseLink('conn-1'), null);
-  db.close();
-});
-
 test('a file from the first version gains the recipe tables and keeps its settings', () => {
   const raw = new DatabaseSync(file);
   raw.exec(`CREATE TABLE preference (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL);
@@ -224,7 +215,7 @@ test('a file from the first version gains the recipe tables and keeps its settin
   const db = openAppDb(file);
   assert.deepEqual(db.loadPreferences(), { 'pine-theme': '"sepia"' });
   db.saveRecipe(recipeInput());
-  assert.equal(db.countRecipes('postgres://localhost:5432/shop'), 1);
+  assert.equal(db.countRecipes(), 1);
   db.close();
 });
 
