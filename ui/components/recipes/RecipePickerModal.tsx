@@ -233,6 +233,23 @@ const RecipePickerModal = observer(() => {
           </Box>
           {recipe && (
             <Box sx={{ overflow: 'auto', p: 2, display: 'grid', gap: 1.5, alignContent: 'start' }}>
+              {/* Context, not something to act on: one dim line at the top, so
+                  it never needs scrolling to, cut short if the address is long. */}
+              {recipe.savedFrom && (
+                <Typography
+                  variant="caption"
+                  title={`Saved from ${recipe.savedFrom}`}
+                  sx={{ color: dim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                >
+                  Saved from {recipe.savedFrom}
+                </Typography>
+              )}
+              {/* Only recipes saved before variables moved to the editor have inputs. */}
+              {recipe.inputs.length > 0 && (
+                <Typography variant="caption" sx={{ color: dim }}>
+                  Goes into your tab with {recipe.inputs.map(v => `${v.example} for $${v.name}`).join(', ')}.
+                </Typography>
+              )}
               {recipe.explanation && (
                 <Typography variant="body2" sx={{ color: 'var(--text-color)', whiteSpace: 'pre-wrap' }}>
                   {recipe.explanation}
@@ -254,14 +271,6 @@ const RecipePickerModal = observer(() => {
               >
                 {recipe.expression}
               </Box>
-              {(recipe.inputs.length > 0 || recipe.savedFrom) && (
-                <Typography variant="caption" sx={{ color: dim }}>
-                  {/* Only recipes saved before variables moved to the editor have inputs. */}
-                  {recipe.inputs.length > 0 &&
-                    `Goes into your tab with ${recipe.inputs.map(v => `${v.example} for $${v.name}`).join(', ')}. `}
-                  {recipe.savedFrom ? `Saved from ${recipe.savedFrom}.` : ''}
-                </Typography>
-              )}
             </Box>
           )}
         </Box>
