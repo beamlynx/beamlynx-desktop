@@ -4,6 +4,7 @@ import { useStores } from '../store/store-container';
 import CollapsibleHeight from './CollapsibleHeight';
 import NewLayoutView from './NewLayoutView';
 import RevealRequestBanner from './RevealRequestBanner';
+import SaveRecipeBar from './recipes/SaveRecipeBar';
 
 interface SessionProps {
   sessionId: string;
@@ -40,6 +41,10 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
           flexDirection must stay 'column': a bare display:'flex' defaults to
           row, which would hand NewLayoutView a horizontal main axis instead
           of the vertical one it's built for. */}
+      {/* Ctrl+S: the title bar for saving the query as a recipe. Above the
+          tab rather than in a dialog, so the query stays in view while it's
+          named. Only on the active tab. */}
+      {global.showSaveRecipe && sessionId === global.activeSessionId && <SaveRecipeBar session={session} />}
       <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0 }}>
         <NewLayoutView sessionId={sessionId} />
       </Box>
