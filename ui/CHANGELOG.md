@@ -16,6 +16,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - Inside beamlynx-desktop, the app now asks the desktop app which port its Pine server is on instead of assuming 33333. The desktop dev build uses a different port, so it can run next to the installed app. The browser and playground are unchanged.
 - In the desktop dev build, the MCP setup instructions register the server as `beamlynx-dev`, so it can sit next to the installed app's `beamlynx` entry.
 ### Fixed
+- Keys pressed in a dialog, such as the Ctrl+O recipe picker or the command palette, no longer reach the canvas behind it. Clicking a dialog's text and then pressing Backspace, Delete or `x` used to delete the selected item in your tab.
 - **New Database Connection** in the command palette opens the add form again. It used to open Settings on the list of connections instead, because that section was already loaded in the background. The same fix covers a saved password that can't be unlocked: the form now opens filled in every time, not only the first time.
 - The Access Policy section said agent (MCP) access needs an active rule in some policy. The rule is per connection: MCP access can be turned on for a connection whose own policy has an active rule, or that has no policy.
 - The MCP section's setup steps named a toggle and a section that no longer exist. They now say to turn on **MCP access** under **Database Connections**.

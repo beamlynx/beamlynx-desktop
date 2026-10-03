@@ -65,6 +65,13 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
       // the guard still held.
       if (target?.closest('[data-testid="canvas-picker"]')) return;
 
+      // A dialog (the Ctrl+O recipe picker, Save as recipe, the command
+      // palette, ...) sits on top of the canvas, so nothing typed inside it
+      // is for the canvas. Clicking a dialog's text that isn't an input, then
+      // pressing Backspace, used to fall through to the bindings below and
+      // delete the selected item in the tab behind it.
+      if (target?.closest('.MuiModal-root, [role="dialog"]')) return;
+
       // The results grid is a <canvas>, not a text input, so the check above
       // doesn't see it - but once it has focus, arrow keys move between its
       // cells and typing starts editing one. Those keys are the grid's.
