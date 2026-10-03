@@ -322,3 +322,15 @@ export function fillRecipe(
   }
   return { text: text + expression.slice(last), firstValue };
 }
+
+/**
+ * A one-line summary of a recipe for lists: the first line of its query's top
+ * comment, or of its explanation if it has one (recipes saved by an agent, or
+ * before comments became the explanation).
+ */
+export function recipeSummary(r: { expression: string; explanation?: string }): string {
+  const fromExplanation = (r.explanation ?? '').split('\n').map(l => l.trim()).find(Boolean);
+  if (fromExplanation) return fromExplanation;
+  const doc = leadingDoc(r.expression);
+  return doc ? docText(doc).split('\n')[0].trim() : '';
+}

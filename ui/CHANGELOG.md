@@ -9,7 +9,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ### Added
 - **Save a query as a recipe with Ctrl+S** (desktop app 0.19 or later). A bar above the tab asks for a title, offering the first line of the query's top comment. Enter saves, Esc cancels. It saves the block under the cursor, plus any block above it that the query uses through a named result. Comments are saved with the query: they are the recipe's explanation. Recipes are offered on every database.
-- **Use a recipe with Ctrl+O.** Find it by any word in its title, explanation or query, and press Enter. Its query, comments included, goes into the tab as ordinary text. Nothing runs until you press Ctrl+Enter. A recipe can be deleted from the same list; editing comes later.
+- **Use a recipe with Ctrl+O.** Find it by any word in its title, comments or query, then click it or press Enter. Its query, comments included, goes into the tab as ordinary text. Nothing runs until you press Ctrl+Enter. Hover a recipe to see its query. Delete one with the trash icon on its row: click once, then again within 3 seconds. Editing comes later.
 ### Changed
 - A dev copy shows an amber **DEV** chip in the header, in place of the grey "[Development]" text. It also shows in a desktop dev build (beamlynx-desktop's `npm start`), which had no label at all, so it can't be mistaken for the installed app when both are open. Hover it to see which kind of dev copy it is.
 ### Changed

@@ -1,8 +1,9 @@
-import { Box, Button, Typography } from '@mui/material';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import { Box, Typography } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useStores } from '../../store/store-container';
-import { fillRecipe, type Recipe } from '../../utils/recipes';
+import { fillRecipe, recipeSummary, type Recipe } from '../../utils/recipes';
 import ModalSurface from '../ModalSurface';
 
 /**
@@ -11,9 +12,14 @@ import ModalSurface from '../ModalSurface';
  * filled in, and the first value is selected so it can be typed over. From
  * then on it's an ordinary query; nothing marks it as a recipe.
  *
- * Recipes are edited later, in the Settings redesign. Until then, Delete is
- * here, so a wrong recipe can be removed and saved again.
+ * Clicking a recipe (or Enter) uses it; hovering or the arrow keys show its
+ * query on the right. Each row has a delete icon, confirmed by a second click
+ * within 3 seconds, the same as a database connection's. Recipes are edited
+ * later, in the Settings redesign; until then a wrong one can be deleted and
+ * saved again.
  */
+const DELETE_CONFIRM_TIMEOUT_MS = 3000;
+
 const RecipePickerModal = observer(() => {
   const { global } = useStores();
   const open = global.showRecipePicker;
@@ -21,7 +27,8 @@ const RecipePickerModal = observer(() => {
   const [recipes, setRecipes] = useState<Recipe[] | null>(null);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(0);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [error, setError] = useState('');
   const listRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -30,7 +37,7 @@ const RecipePickerModal = observer(() => {
     if (!open) return;
     setQuery('');
     setSelected(0);
-    setConfirmDelete(false);
+    setConfirmingId(null);
     setError('');
     setRecipes(null);
     // The modal moves focus to its own surface when it opens, which beats
@@ -52,7 +59,9 @@ const RecipePickerModal = observer(() => {
   const index = Math.min(selected, Math.max(0, matches.length - 1));
   const recipe = matches[index];
 
-  useEffect(() => setConfirmDelete(false), [recipe?.id]);
+  useEffect(() => () => {
+    if (confirmTimer.current) clearTimeout(confirmTimer.current);
+  }, []);
   useEffect(() => {
     listRef.current?.querySelector<HTMLElement>(`[data-index="${index}"]`)?.scrollIntoView({ block: 'nearest' });
   }, [index]);
@@ -78,13 +87,20 @@ const RecipePickerModal = observer(() => {
     close();
   };
 
-  const remove = async () => {
+  // First click arms it, a second within 3 seconds deletes.
+  const onDeleteClick = async (r: Recipe) => {
+    if (confirmTimer.current) clearTimeout(confirmTimer.current);
+    if (confirmingId !== r.id) {
+      setConfirmingId(r.id);
+      confirmTimer.current = setTimeout(() => setConfirmingId(null), DELETE_CONFIRM_TIMEOUT_MS);
+      return;
+    }
+    setConfirmingId(null);
     const api = window.beamlynxDesktop?.recipes;
-    if (!recipe || !api) return;
+    if (!api) return;
     try {
-      await api.delete(recipe.id);
-      setRecipes(rs => (rs ?? []).filter(x => x.id !== recipe.id));
-      setConfirmDelete(false);
+      await api.delete(r.id);
+      setRecipes(rs => (rs ?? []).filter(x => x.id !== r.id));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -97,7 +113,7 @@ const RecipePickerModal = observer(() => {
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setSelected(Math.max(0, index - 1));
-    } else if (e.key === 'Enter' && !confirmDelete) {
+    } else if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'BUTTON') {
       e.preventDefault();
       use(recipe);
     }
@@ -110,6 +126,10 @@ const RecipePickerModal = observer(() => {
       open={open}
       onClose={close}
       align="top"
+      // Not flush with the top like the command palette, which drops down
+      // from the header's search box. Anchored by its top edge rather than
+      // centered, so it doesn't jump as the list filters.
+      sx={{ paddingTop: '12vh' }}
       surfaceSx={{ width: 860, maxWidth: 'calc(100vw - 32px)', p: 0, overflow: 'hidden' }}
       onKeyDown={onKeyDown}
       aria-labelledby="recipe-picker-title"
@@ -160,9 +180,13 @@ const RecipePickerModal = observer(() => {
                 data-index={i}
                 role="option"
                 aria-selected={i === index}
-                onClick={() => setSelected(i)}
-                onDoubleClick={() => use(r)}
+                title="Use in this tab"
+                onClick={() => use(r)}
+                onMouseEnter={() => setSelected(i)}
                 sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
                   px: 2,
                   py: 1,
                   cursor: 'pointer',
@@ -170,13 +194,40 @@ const RecipePickerModal = observer(() => {
                   backgroundColor: i === index ? 'var(--node-candidate-bg)' : 'transparent',
                 }}
               >
-                <Typography variant="body2" sx={{ color: 'var(--text-color)', fontWeight: 500 }}>
-                  {r.title}
-                </Typography>
-                <Typography variant="caption" sx={{ color: dim }}>
-                  {r.inputs.length ? r.inputs.map(v => `$${v.name}`).join(', ') : 'No variables'}
-                  {r.source === 'agent' ? `   Saved by ${r.agent ?? 'an agent'}` : ''}
-                </Typography>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography variant="body2" sx={{ color: 'var(--text-color)', fontWeight: 500 }}>
+                    {r.title}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: confirmingId === r.id ? 'var(--text-warning-color)' : dim }}>
+                    {confirmingId === r.id
+                      ? 'Click again to delete'
+                      : [recipeSummary(r), r.source === 'agent' ? `Saved by ${r.agent ?? 'an agent'}` : '']
+                          .filter(Boolean)
+                          .join('. ')}
+                  </Typography>
+                </Box>
+                <Box
+                  component="button"
+                  type="button"
+                  aria-label={confirmingId === r.id ? `Click again to delete ${r.title}` : `Delete ${r.title}`}
+                  title={confirmingId === r.id ? 'Click again to delete' : 'Delete recipe'}
+                  onClick={(e: React.MouseEvent) => {
+                    e.stopPropagation();
+                    void onDeleteClick(r);
+                  }}
+                  sx={{
+                    display: 'inline-flex',
+                    border: 0,
+                    background: 'transparent',
+                    p: 0.5,
+                    cursor: 'pointer',
+                    color: confirmingId === r.id ? 'var(--text-warning-color)' : 'var(--text-color)',
+                    opacity: confirmingId === r.id ? 1 : 0.35,
+                    '&:hover, &:focus-visible': { opacity: 0.9 },
+                  }}
+                >
+                  <DeleteOutlineIcon sx={{ fontSize: 16 }} />
+                </Box>
               </Box>
             ))}
           </Box>
@@ -203,38 +254,13 @@ const RecipePickerModal = observer(() => {
               >
                 {recipe.expression}
               </Box>
-              <Typography variant="caption" sx={{ color: dim }}>
-                {recipe.inputs.length
-                  ? `Goes into your tab with ${recipe.inputs.map(v => `${v.example} for $${v.name}`).join(', ')}.`
-                  : 'Goes into your tab as it is.'}
-                {recipe.savedFrom ? ` Saved from ${recipe.savedFrom}.` : ''}
-              </Typography>
-              {confirmDelete ? (
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, border: '1px solid var(--text-warning-color)', borderRadius: 1, p: 1 }}>
-                  <Typography variant="body2" sx={{ color: 'var(--text-color)', flex: 1, minWidth: 160 }}>
-                    Delete &quot;{recipe.title}&quot;? This can&apos;t be undone.
-                  </Typography>
-                  <Button size="small" onClick={() => setConfirmDelete(false)} sx={{ color: 'var(--text-color)' }}>
-                    Cancel
-                  </Button>
-                  <Button size="small" variant="contained" onClick={() => void remove()} sx={{ bgcolor: 'var(--text-warning-color)', color: 'var(--background-color)', '&:hover': { bgcolor: 'var(--text-warning-color)' } }}>
-                    Delete recipe
-                  </Button>
-                </Box>
-              ) : (
-                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                  <Button
-                    variant="contained"
-                    onClick={() => use(recipe)}
-                    sx={{ bgcolor: 'var(--primary-color)', color: 'var(--primary-text-color)', '&:hover': { bgcolor: 'var(--primary-color-hover)' } }}
-                  >
-                    Use in this tab
-                  </Button>
-                  <Box sx={{ flex: 1 }} />
-                  <Button size="small" onClick={() => setConfirmDelete(true)} sx={{ color: 'var(--text-warning-color)' }}>
-                    Delete
-                  </Button>
-                </Box>
+              {(recipe.inputs.length > 0 || recipe.savedFrom) && (
+                <Typography variant="caption" sx={{ color: dim }}>
+                  {/* Only recipes saved before variables moved to the editor have inputs. */}
+                  {recipe.inputs.length > 0 &&
+                    `Goes into your tab with ${recipe.inputs.map(v => `${v.example} for $${v.name}`).join(', ')}. `}
+                  {recipe.savedFrom ? `Saved from ${recipe.savedFrom}.` : ''}
+                </Typography>
               )}
             </Box>
           )}
@@ -242,7 +268,7 @@ const RecipePickerModal = observer(() => {
       )}
       <Box sx={{ borderTop: '1px solid var(--border-color)', px: 2, py: 1 }}>
         <Typography variant="caption" sx={{ color: dim }}>
-          Enter uses the selected recipe. Arrow keys move. Esc closes.
+          Click a recipe or press Enter to use it. Arrow keys move. Esc closes.
         </Typography>
       </Box>
     </ModalSurface>
