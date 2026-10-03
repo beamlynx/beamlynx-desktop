@@ -6,7 +6,7 @@
 // lifecycle (see src/main/auto-update.ts) -- that's exposed here so
 // beamlynx-ui can show it in-app instead of it being silent/console-only.
 import { contextBridge, ipcRenderer } from 'electron';
-import type { AppDbStatus } from '../main/app-db';
+import type { AppDbStatus, Recipe, RecipeInputDef } from '../main/app-db';
 import type { UpdateStatus } from '../main/auto-update';
 import type {
   AccessPolicy,
@@ -69,6 +69,22 @@ contextBridge.exposeInMainWorld('beamlynxDesktop', {
     setColumnWidths: (connection: string, changes: Record<string, number | null>): Promise<void> =>
       ipcRenderer.invoke('app-db:set-column-widths', connection, changes),
     markImportedFromLocalStorage: (): Promise<void> => ipcRenderer.invoke('app-db:mark-imported-from-local-storage'),
+  },
+  // Saved recipes (src/main/app-db.ts). They belong to a database, and the
+  // main process works out which one from the saved connection passed in.
+  recipes: {
+    databaseKey: (connectionId: string): Promise<string> => ipcRenderer.invoke('recipes:database-key', connectionId),
+    list: (connectionId: string): Promise<Recipe[]> => ipcRenderer.invoke('recipes:list', connectionId),
+    find: (connectionId: string, text: string): Promise<Recipe[]> =>
+      ipcRenderer.invoke('recipes:find', connectionId, text),
+    get: (id: string): Promise<Recipe | null> => ipcRenderer.invoke('recipes:get', id),
+    save: (
+      connectionId: string,
+      input: { id?: string; title: string; explanation?: string; expression: string; inputs?: RecipeInputDef[] },
+    ): Promise<Recipe> => ipcRenderer.invoke('recipes:save', connectionId, input),
+    delete: (id: string): Promise<boolean> => ipcRenderer.invoke('recipes:delete', id),
+    linkConnection: (connectionId: string, databaseKey: string | null): Promise<void> =>
+      ipcRenderer.invoke('recipes:link-connection', connectionId, databaseKey),
   },
   credentials: {
     status: (): Promise<CredentialsStatus> => ipcRenderer.invoke('credentials:status'),
