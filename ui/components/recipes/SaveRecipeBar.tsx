@@ -12,8 +12,8 @@ import { draftFromTab } from '../../utils/recipes';
  * is: its comments are the recipe's explanation. No dialog, so the query and
  * canvas stay in view.
  *
- * Variables aren't chosen here: a query saved with $variables keeps them,
- * and what's in the Variables strip is saved as their examples.
+ * A query's $variables travel as text: the values blocks that set them are
+ * saved with it (see draftFromTab).
  */
 const SaveRecipeBar = observer(({ session }: { session: Session }) => {
   const { global } = useStores();
@@ -58,15 +58,7 @@ const SaveRecipeBar = observer(({ session }: { session: Session }) => {
     setSaving(true);
     setError('');
     try {
-      // The query's $variables are saved with what's in the Variables strip
-      // now, as their examples: using the recipe fills the strip with them.
-      const inputs = (session.variablesReport?.used ?? [])
-        .filter(name => new RegExp(`\\$${name}(?![A-Za-z0-9_])`).test(draft.expression))
-        .map(name => ({ name, example: (session.variableValues[name] ?? '').trim(), kind: 'string' as const }));
-      const saved = await api.save(
-        { title: title.trim(), expression: draft.expression, inputs },
-        session.profileId || undefined,
-      );
+      const saved = await api.save({ title: title.trim(), expression: draft.expression }, session.profileId || undefined);
       runInAction(() => {
         session.message = `Saved recipe "${saved.title}". Press Ctrl+O to use it.`;
       });
@@ -97,7 +89,7 @@ const SaveRecipeBar = observer(({ session }: { session: Session }) => {
     ? 'There is no query to save. Write one first.'
     : error ||
       (draft.includedNames.length
-        ? `Saves the query under the cursor, with the block above that defines ${draft.includedNames.join(', ')}. Comments are saved with it.`
+        ? `Saves the query under the cursor, with the blocks it uses (${draft.includedNames.join(', ')}). Comments are saved with it.`
         : 'Saves the query under the cursor. Comments are saved with it.');
 
   return (

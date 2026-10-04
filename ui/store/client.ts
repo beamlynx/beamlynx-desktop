@@ -210,9 +210,14 @@ export type VariableScalar = string | number | boolean;
 export type VariableValue = VariableScalar | VariableScalar[];
 
 // What /build reports about an expression's $variables: every one used, those
-// with no value in that request, and those used with `in`, which take a list.
-// The app builds without values, so `unbound` is everything there.
-export type VariablesReport = { used: string[]; unbound: string[]; lists: string[] };
+// with no value, those used with `in` (which take a list), and the values
+// written in the tab's values blocks.
+export type VariablesReport = {
+  used: string[];
+  unbound: string[];
+  lists: string[];
+  values?: Record<string, VariableValue>;
+};
 
 export type Response = {
   'connection-id': string;

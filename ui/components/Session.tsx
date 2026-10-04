@@ -5,7 +5,6 @@ import CollapsibleHeight from './CollapsibleHeight';
 import NewLayoutView from './NewLayoutView';
 import RevealRequestBanner from './RevealRequestBanner';
 import SaveRecipeBar from './recipes/SaveRecipeBar';
-import VariablesStrip from './VariablesStrip';
 
 interface SessionProps {
   sessionId: string;
@@ -46,7 +45,6 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
           tab rather than in a dialog, so the query stays in view while it's
           named. Only on the active tab. */}
       {global.showSaveRecipe && sessionId === global.activeSessionId && <SaveRecipeBar session={session} />}
-      <VariablesStrip session={session} />
       <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0 }}>
         <NewLayoutView sessionId={sessionId} />
       </Box>

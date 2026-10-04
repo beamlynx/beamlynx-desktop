@@ -40,7 +40,9 @@ export class DefaultPlugin implements PluginInterface {
             session.connectionId,
             session.accessPolicyRules,
             opts?.allowWrites,
-            opts?.variables ?? session.variablesForEval(),
+            // Only the MCP path passes values here; a tab's own values are
+            // written in its values blocks, which pine-lang reads.
+            opts?.variables,
           );
 
       if (!response) {

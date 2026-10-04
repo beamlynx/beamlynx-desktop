@@ -24,87 +24,22 @@ import {
   Operation,
   Response,
   VariablesReport,
-  VariableValue,
 } from './client';
 import { generateGraph, getCandidateIndex, Graph } from './graph.util';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
 import { debounce } from './util';
 
-type ExpressionBlock = { text: string; startLine: number };
-
-/**
- * Whether `line` leaves a block comment open behind it, given it
- * started `open`. Naive: it doesn't know about `/*` inside a string literal.
- * That costs nothing here - the worst case is a blank line not ending a
- * block, and the block boundary a user actually meant is the next one.
- */
-function blockCommentOpenAfter(line: string, open: boolean): boolean {
-  let i = 0;
-  while (i < line.length) {
-    if (open) {
-      const close = line.indexOf('*/', i);
-      if (close === -1) return true;
-      open = false;
-      i = close + 2;
-    } else {
-      const start = line.indexOf('/*', i);
-      if (start === -1) return false;
-      open = true;
-      i = start + 2;
-    }
-  }
-  return open;
-}
-
-/**
- * Split the editor text into blank-line-separated expression blocks.
- *
- * A blank line inside an open block comment is not a boundary. A doc comment
- * at the top of a tab is exactly the place someone writes a paragraph break
- * (see pine-lang's docs/comments.md), and splitting there would hand the
- * server an unterminated comment as block 0 and the comment's own tail as
- * block 1 - a parse error out of text that is perfectly valid Pine.
- *
- * Exported only so __tests__/expression-blocks.test.js can cover that rule
- * directly; nothing outside this module uses it.
- */
-export function splitExpressions(text: string): ExpressionBlock[] {
-  const lines = text.split('\n');
-  const blocks: ExpressionBlock[] = [];
-  let current: string[] = [];
-  let currentStart = 0;
-  let inBlockComment = false;
-
-  for (let i = 0; i <= lines.length; i++) {
-    const line = lines[i];
-    if (i < lines.length) {
-      const wasOpen = inBlockComment;
-      inBlockComment = blockCommentOpenAfter(line, inBlockComment);
-      if (wasOpen && line.trim() === '') {
-        if (current.length === 0) currentStart = i;
-        current.push(line);
-        continue;
-      }
-    }
-    if (i === lines.length || line.trim() === '') {
-      const joined = current.join('\n').trim();
-      if (joined) blocks.push({ text: joined, startLine: currentStart });
-      current = [];
-      currentStart = i + 1;
-    } else {
-      if (current.length === 0) currentStart = i;
-      current.push(line);
-    }
-  }
-  return blocks;
-}
-
-export function findActiveBlock(blocks: ExpressionBlock[], cursorLine: number): number {
-  for (let i = blocks.length - 1; i >= 0; i--) {
-    if (blocks[i].startLine <= cursorLine) return i;
-  }
-  return blocks.length - 1;
-}
+// The editor text split into blocks, and which block is the query a build
+// works on: in store/blocks.ts, a module with no imports, so the canvas and
+// values-block helpers can use them without importing this store.
+import {
+  blocksForBuild,
+  findActiveBlock,
+  findActiveQueryBlock,
+  isValuesBlock,
+  splitExpressions,
+} from './blocks';
+export { blocksForBuild, findActiveBlock, findActiveQueryBlock, isValuesBlock, splitExpressions };
 
 // Canvas is not a distinct mode here - it's the only renderer 'graph' has
 // (the classic node-graph widget, GraphBox, was removed). See
@@ -287,38 +222,12 @@ export class Session {
   doc: string = ''; // observable
 
   /**
-   * $variables (pine-lang's docs/variables.md). The tab is built without
-   * values, so hints, the canvas and the SQL preview show `$name`; it runs
-   * with them. variableValues is what's typed in the Variables strip, kept
-   * per tab and saved with it: a list (for `in $name`) is typed comma-
-   * separated. variablesReport is the latest successful build's report of
-   * which variables the tab uses, kept across failed builds the way doc is.
+   * $variables (pine-lang's docs/variables.md): the latest successful build's
+   * report of which variables the tab uses, which are used with `in`, and the
+   * values written in its values blocks. Kept across failed builds the way
+   * doc is. The canvas's Variables list reads it.
    */
-  variableValues: Record<string, string> = {};
   variablesReport: VariablesReport | null = null;
-
-  public setVariableValue(name: string, value: string) {
-    this.variableValues[name] = value;
-  }
-
-  /**
-   * The values to send with a run: one per variable the tab uses that has
-   * something typed. A list variable's text is split on commas. A variable
-   * with nothing typed is left out, so pine-lang names it as missing.
-   */
-  public variablesForEval(): Record<string, VariableValue> {
-    const report = this.variablesReport;
-    if (!report) return {};
-    const values: Record<string, VariableValue> = {};
-    for (const name of report.used) {
-      const text = (this.variableValues[name] ?? '').trim();
-      if (!text) continue;
-      values[name] = report.lists.includes(name)
-        ? text.split(',').map(v => v.trim()).filter(Boolean)
-        : text;
-    }
-    return values;
-  }
   query: string = '';
   /** Currently selected text in the SQL editor, if any. Running a query while text is
    * selected runs only the selection instead of the full query. */
@@ -528,9 +437,8 @@ export class Session {
         try {
           const blocks = splitExpressions(expression);
           const cursor = this.cursorPosition;
-          const activeIdx =
-            cursor !== undefined ? findActiveBlock(blocks, cursor.line) : blocks.length - 1;
-          const activeExpressions = blocks.slice(0, activeIdx + 1).map(b => b.text);
+          const activeIdx = findActiveQueryBlock(blocks, cursor?.line);
+          const activeExpressions = blocksForBuild(blocks, activeIdx);
           const adjustedCursor =
             cursor && blocks[activeIdx]
               ? { line: cursor.line - blocks[activeIdx].startLine, character: cursor.character }
@@ -712,8 +620,7 @@ export class Session {
       return appendPipe ? prettified + '\n | ' : prettified;
     }
     const cursor = this.cursorPosition;
-    const activeIdx =
-      cursor !== undefined ? findActiveBlock(blocks, cursor.line) : blocks.length - 1;
+    const activeIdx = findActiveQueryBlock(blocks, cursor?.line);
     const activeBlock = blocks[activeIdx];
     const prettifiedBlock = await client.prettify(activeBlock.text, this.connectionId);
     const result = appendPipe ? prettifiedBlock + '\n | ' : prettifiedBlock;

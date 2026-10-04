@@ -35,11 +35,11 @@ import {
   withDoc,
 } from './pine-text';
 import * as actions from './pine-actions';
+import { joinQuery, literalFor, setValue, splitQuery } from '../values-blocks';
 import { probeBuild } from './probe';
 import { canDeleteTraverse } from './traversal';
 import { computeDateBounds } from './relative-date';
 
-const hasMultipleBlocks = (expression: string): boolean => /\n\s*\n/.test(expression.trim());
 
 /** Identifies a picker request for the "already open for this" check below - table has no alias to key on. */
 const requestKey = (r: PickerRequest): string =>
@@ -503,7 +503,7 @@ export class CanvasStore {
    */
   resolveFrameAlias(frameId: string): string {
     if (frameId !== PENDING_CHECKPOINT_FRAME_ID) return frameId;
-    const segments = segmentsFromAst(this.session.expression, this.session.ast) ?? [];
+    const segments = segmentsFromAst(this.queryText, this.session.ast) ?? [];
     return currentCheckpointName(segments) ?? frameId;
   }
 
@@ -560,12 +560,15 @@ export class CanvasStore {
   }
 
   private recompute() {
-    const { expression, ast } = this.session;
-    const singleBlock = !hasMultipleBlocks(expression);
-    if (!singleBlock) {
+    const { ast } = this.session;
+    // The canvas shows one query block, with any values blocks above it
+    // (store/values-blocks.ts). Anything else gets the banner.
+    const parts = splitQuery(this.session.expression);
+    if (!parts) {
       this.canvasGraph = { ...this.canvasGraph, singleBlock: false };
       return;
     }
+    const expression = parts.query;
     if (expression.trim() === '') {
       // A brand-new session has never run a build (session.ast starts null
       // and there's no fireImmediately reaction to populate it for an empty
@@ -603,6 +606,30 @@ export class CanvasStore {
     }
   }
 
+  /**
+   * The tab's query block: the text every gesture, probe and range offset
+   * works on. The same as session.expression unless the tab has values blocks
+   * above the query (store/values-blocks.ts), which the canvas never edits as
+   * part of a gesture.
+   */
+  get queryText(): string {
+    return splitQuery(this.session.expression)?.query ?? this.session.expression;
+  }
+
+  /**
+   * Set a $variable's value, typed in the canvas's Variables list, by
+   * rewriting (or adding) its `$name = value` line. Undoable like a gesture.
+   * Throws with a message for a value Pine can't hold.
+   */
+  setVariableValue(name: string, typed: string, list: boolean) {
+    const next = setValue(this.session.expression, name, literalFor(typed, list));
+    if (next === this.session.expression) return;
+    this.undoStack.push(this.session.expression);
+    this.redoStack = [];
+    this.canvasWrittenExpression = next;
+    this.session.expression = next;
+  }
+
   setNodePosition(id: string, position: { x: number; y: number }) {
     this.positions[id] = position;
   }
@@ -627,10 +654,11 @@ export class CanvasStore {
     // setDoc opts out: it is the one write whose whole purpose is to change
     // (or clear) the doc, so re-attaching the old one would make deleting a
     // comment impossible.
-    const expression =
-      options?.preserveDoc === false
-        ? rawExpression
-        : withDoc(this.session.expression, rawExpression);
+    // A gesture rewrites the query block only (see queryText); the values
+    // blocks above it are put back in front, untouched.
+    const parts = splitQuery(this.session.expression) ?? { prefix: '', query: this.session.expression };
+    const query = options?.preserveDoc === false ? rawExpression : withDoc(parts.query, rawExpression);
+    const expression = joinQuery(parts.prefix, query);
     // A no-op gesture (e.g. deleteNode/setLimit returning the same text)
     // shouldn't push a snapshot that's identical to what undo would already
     // land on - it would just be a wasted step, never a wrong one, but it's
@@ -687,7 +715,7 @@ export class CanvasStore {
    */
   setDoc(text: string) {
     this.docEditing = false;
-    this.applyExpression(replaceDoc(this.session.expression, text), {
+    this.applyExpression(replaceDoc(this.queryText, text), {
       skipAutoRun: true,
       preserveDoc: false,
     });
@@ -740,7 +768,7 @@ export class CanvasStore {
   }
 
   private async pinnedBase(): Promise<actions.PinnedBase | null> {
-    const expression = this.session.expression;
+    const expression = this.queryText;
     // Not `this.session.ast` - it's kept up to date by the session's own,
     // separately-debounced build and can still describe the *previous*
     // expression for a moment right after a commit applies a new one (e.g.
@@ -854,7 +882,7 @@ export class CanvasStore {
 
   private buildProbeExpression(request: PickerRequest): string {
     if (request.kind === 'table') return '';
-    const segments = segmentsFromAst(this.session.expression, this.session.ast) ?? [];
+    const segments = segmentsFromAst(this.queryText, this.session.ast) ?? [];
     // Targeting the checkpoint itself (the frame's own select/where/order -
     // see openCheckpointPicker) is the one case that needs the checkpoint
     // KEPT in the probe base, not stripped - `from: <checkpointName>` only
@@ -885,7 +913,7 @@ export class CanvasStore {
     if (request.kind === 'group') {
       relevant = relevant.filter(s => !(s.owner === request.alias && s.kind === 'select'));
     }
-    const base = (relevant.length ? toText(relevant) : this.session.expression).replace(/\|\s*$/, '').trimEnd();
+    const base = (relevant.length ? toText(relevant) : this.queryText).replace(/\|\s*$/, '').trimEnd();
     const current = this.session.ast?.current;
     const focusPrefix = request.alias !== current ? `${base} | from: ${request.alias}` : base;
     // Step 2 of the path picker (a specific destination already chosen) -
@@ -1660,9 +1688,9 @@ export class CanvasStore {
    * waste; this one specific caller does, so it pays for its own fix.
    */
   private async syncAstToExpression(): Promise<void> {
-    const expression = this.session.expression;
+    const expression = this.queryText;
     const ast = await probeBuild(expression, this.session.connectionId);
-    if (ast && this.session.expression === expression) {
+    if (ast && this.queryText === expression) {
       runInAction(() => {
         this.session.ast = ast;
       });
@@ -1713,7 +1741,7 @@ export class CanvasStore {
    * (see toggleSelectColumn etc.) - this only covers opening the picker.
    */
   async openCheckpointPicker(kind: 'select' | 'where' | 'order' | 'join' | 'path', anchor: PickerAnchor) {
-    const segments = segmentsFromAst(this.session.expression, this.session.ast) ?? [];
+    const segments = segmentsFromAst(this.queryText, this.session.ast) ?? [];
     const name = currentCheckpointName(segments) ?? (await this.ensureCheckpointPinnedShared());
     if (!name) return;
     if (kind === 'join') {

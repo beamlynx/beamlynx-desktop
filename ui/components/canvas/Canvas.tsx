@@ -31,6 +31,7 @@ import Picker from './Picker';
 import MultiSelectToolbar from './MultiSelectToolbar';
 import CanvasToolbar, { CanvasModeIndicator, CanvasToolbarExtraAction } from './CanvasToolbar';
 import PineDoc from '../PineDoc';
+import CanvasVariables from './CanvasVariables';
 
 const nodeTypes: NodeTypes = {
   'table-node': TableNode,
@@ -206,7 +207,7 @@ const Flow: React.FC<{
       }}
     >
       {!canvasGraph.singleBlock && (
-        <Banner>Canvas mode only supports a single expression block</Banner>
+        <Banner>The canvas shows one query, with any values blocks above it</Banner>
       )}
       {canvasGraph.singleBlock && !canvasGraph.parsing && canvasStore.isConnecting && (
         <Banner variant="info">Connecting…</Banner>
@@ -220,6 +221,7 @@ const Flow: React.FC<{
           that is exactly when knowing what the query was meant to do is
           worth most. */}
       <PineDoc canvasStore={canvasStore} />
+      <CanvasVariables canvasStore={canvasStore} />
       <div
         style={{
           width: '100%',
