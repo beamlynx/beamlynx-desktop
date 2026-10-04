@@ -34,6 +34,7 @@ import { debounce } from './util';
 // values-block helpers can use them without importing this store.
 import {
   blocksForBuild,
+  cursorForBuild,
   findActiveBlock,
   findActiveQueryBlock,
   isValuesBlock,
@@ -439,10 +440,7 @@ export class Session {
           const cursor = this.cursorPosition;
           const activeIdx = findActiveQueryBlock(blocks, cursor?.line);
           const activeExpressions = blocksForBuild(blocks, activeIdx);
-          const adjustedCursor =
-            cursor && blocks[activeIdx]
-              ? { line: cursor.line - blocks[activeIdx].startLine, character: cursor.character }
-              : cursor;
+          const adjustedCursor = cursorForBuild(blocks, activeIdx, cursor);
           const response = await client.build(
             activeExpressions,
             adjustedCursor,
