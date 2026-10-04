@@ -80,3 +80,13 @@ customers | select: email | x | select: order_count | y | select: status_change_
 ```
 
 x and y each aggregate a different related table down to one row per customer, exposing just their own count column. The final expression starts from customers again and joins both named results in, producing one row per customer with email, order_count, and status_change_count side by side — without repeating the customers join in each branch.
+
+### Use a one-column named result after in
+
+```
+company | where: name = 'Acme' | employee .company_id | s: id |= acme_emps
+
+employee | where: id in acme_emps
+```
+
+`id in acme_emps` matches the ids acme_emps returns, however many. The named result must select exactly one column (here `s: id`); selecting every column or several is an error that names them. `not in` works too. After `=`, a bare name means a column, so use `in`.
