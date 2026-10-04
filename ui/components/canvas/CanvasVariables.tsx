@@ -9,7 +9,25 @@ import { displayValue } from '../../store/values-blocks';
  * place; Enter writes it into the text (a `$name = value` line, see
  * store/values-blocks.ts), so the Pine panel and the canvas never disagree.
  * The Pine panel needs nothing like this: there, the values block is the text.
+ *
+ * The list has a fixed width, and a value and its edit box share one box
+ * model (`valueBox`), so clicking a value doesn't resize or shift anything.
  */
+// What a value and its edit box have in common: the same space in the row and
+// the same border and padding, so one replaces the other without a shift.
+const valueBox: React.CSSProperties = {
+  font: 'inherit',
+  lineHeight: 1.5,
+  height: '1.5em',
+  boxSizing: 'content-box',
+  border: '1px solid transparent',
+  borderRadius: 4,
+  padding: '0 4px',
+  margin: 0,
+  flex: 1,
+  minWidth: 0,
+};
+
 const CanvasVariables = observer(({ canvasStore }: { canvasStore: CanvasStore }) => {
   const report = canvasStore.session.variablesReport;
   const [editing, setEditing] = useState<string | null>(null);
@@ -41,7 +59,8 @@ const CanvasVariables = observer(({ canvasStore }: { canvasStore: CanvasStore })
         top: 48,
         right: 8,
         zIndex: 14,
-        maxWidth: 'min(320px, calc(100% - 16px))',
+        width: 'min(280px, calc(100% - 16px))',
+        boxSizing: 'border-box',
         background: 'var(--canvas-node-bg)',
         border: '1px solid var(--canvas-node-border)',
         borderRadius: 6,
@@ -57,8 +76,8 @@ const CanvasVariables = observer(({ canvasStore }: { canvasStore: CanvasStore })
         const list = report.lists.includes(name);
         const has = report.values && name in report.values;
         return (
-          <div key={name} style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
-            <span style={{ color: 'var(--notification-color)' }}>${name}</span>
+          <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+            <span style={{ color: 'var(--notification-color)', flexShrink: 0 }}>${name}</span>
             <span style={{ color: 'var(--canvas-text-dim)' }}>=</span>
             {editing === name ? (
               <input
@@ -73,15 +92,12 @@ const CanvasVariables = observer(({ canvasStore }: { canvasStore: CanvasStore })
                   if (e.key === 'Escape') setEditing(null);
                 }}
                 onBlur={() => setEditing(null)}
+                size={1}
                 style={{
-                  font: 'inherit',
+                  ...valueBox,
                   color: 'var(--canvas-text)',
                   background: 'var(--canvas-bg)',
-                  border: '1px solid var(--canvas-node-border-current)',
-                  borderRadius: 4,
-                  padding: '0 4px',
-                  minWidth: 0,
-                  flex: 1,
+                  borderColor: 'var(--canvas-node-border-current)',
                 }}
               />
             ) : (
@@ -90,10 +106,8 @@ const CanvasVariables = observer(({ canvasStore }: { canvasStore: CanvasStore })
                 title="Set the value"
                 onClick={() => start(name)}
                 style={{
-                  font: 'inherit',
+                  ...valueBox,
                   background: 'transparent',
-                  border: 0,
-                  padding: 0,
                   cursor: 'pointer',
                   textAlign: 'left',
                   overflow: 'hidden',

@@ -20,6 +20,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - Inside beamlynx-desktop, the app now asks the desktop app which port its Pine server is on instead of assuming 33333. The desktop dev build uses a different port, so it can run next to the installed app. The browser and playground are unchanged.
 - In the desktop dev build, the MCP setup instructions register the server as `beamlynx-dev`, so it can sit next to the installed app's `beamlynx` entry.
 ### Fixed
+- Clicking a value in the canvas's Variables list no longer changes the list's width. The list has a fixed width, and the edit box takes the value's exact place.
 - With the cursor in a values block, the canvas said "Not parsing" and the query had no SQL preview, though the text was valid. The build sent the server a cursor position above the query it was building, and the server failed on it. The cursor is now left out in that case.
 - The Access Policy section now says that a masked column can still be used in a query's conditions, so a query can test a guess about its values, for example by counting matching rows. That has always been true; it wasn't written down.
 - Keys pressed in a dialog, such as the Ctrl+O recipe picker or the command palette, no longer reach the canvas behind it. Clicking a dialog's text and then pressing Backspace, Delete or `x` used to delete the selected item in your tab.
