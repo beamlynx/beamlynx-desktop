@@ -7,6 +7,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { splitExpressions } = require('../store/session.ts');
 const { leadingDoc, withDoc } = require('../store/canvas/pine-text.ts');
+const { cursorForBuild, findActiveQueryBlock } = require('../store/blocks.ts');
 
 const texts = blocks => blocks.map(b => b.text);
 
@@ -124,4 +125,18 @@ test('replaceDoc: round-trips through leadingDoc', () => {
 
 test('replaceDoc: a comment with no query yet is still valid Pine', () => {
   assert.equal(replaceDoc('', 'thinking out loud'), '/* thinking out loud */');
+});
+
+test('cursorForBuild: a cursor in a values block above the query is not sent', () => {
+  const blocks = splitExpressions("$s = 'asdf'\n\npublic.tenant as t\n | where: t.id = $s");
+  const cursor = { line: 0, character: 11 };
+  const active = findActiveQueryBlock(blocks, cursor.line);
+  assert.equal(active, 1);
+  assert.equal(cursorForBuild(blocks, active, cursor), undefined);
+});
+
+test('cursorForBuild: a cursor in the query is made relative to its block', () => {
+  const blocks = splitExpressions("$s = 'asdf'\n\npublic.tenant as t\n | where: t.id = $s");
+  const cursor = { line: 3, character: 19 };
+  assert.deepEqual(cursorForBuild(blocks, findActiveQueryBlock(blocks, cursor.line), cursor), { line: 1, character: 19 });
 });

@@ -104,6 +104,23 @@ export function blocksForBuild(blocks: ExpressionBlock[], activeIdx: number): st
   ];
 }
 
+/**
+ * The cursor as the server sees it: its position within the block being
+ * built, or none when it is above that block. That happens with the cursor in
+ * a values block, which builds the query below it. A position before the
+ * block's first line would make the server fail the build.
+ */
+export function cursorForBuild<C extends { line: number }>(
+  blocks: ExpressionBlock[],
+  activeIdx: number,
+  cursor: C | undefined,
+): C | undefined {
+  const block = blocks[activeIdx];
+  if (!cursor || !block) return cursor;
+  if (cursor.line < block.startLine) return undefined;
+  return { ...cursor, line: cursor.line - block.startLine };
+}
+
 export function findActiveBlock(blocks: ExpressionBlock[], cursorLine: number): number {
   for (let i = blocks.length - 1; i >= 0; i--) {
     if (blocks[i].startLine <= cursorLine) return i;
