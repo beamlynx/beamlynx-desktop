@@ -28,8 +28,8 @@ export type EvaluateOptions = {
   allowWrites?: boolean;
 
   // Values for the expression's $variables, sent as pine-lang's `variables`
-  // field. Set by the MCP path with the values an agent passed; everywhere
-  // else the run uses the tab's own (Session.variablesForEval).
+  // field, overriding any written in its values blocks. Set only by the MCP
+  // path, with the values an agent passed.
   variables?: Record<string, VariableValue>;
 };
 

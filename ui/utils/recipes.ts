@@ -13,7 +13,7 @@
 //
 // See beamlynx-plans/pending/2026-10-01-recipes-shared-database-knowledge.md.
 import { leadingDoc } from '../store/canvas/pine-text';
-import { findActiveBlock, splitExpressions } from '../store/session';
+import { findActiveQueryBlock, isValuesBlock, splitExpressions } from '../store/blocks';
 
 export type RecipeInputDef = {
   name: string;
@@ -130,7 +130,10 @@ export type SaveDraft = {
   expression: string;
   /** A title to offer: the first line of the block's doc comment, or else of its query. */
   title: string;
-  /** Named results (`|= name`) defined in blocks above that the query uses, so they're saved too. */
+  /**
+   * What else is saved with the query: named results (`|= name`) defined in
+   * blocks above that it uses, and `$variables` whose values blocks it uses.
+   */
   includedNames: string[];
 };
 
@@ -144,7 +147,8 @@ export type SaveDraft = {
 export function draftFromTab(text: string, cursorLine: number | undefined): SaveDraft | null {
   const blocks = splitExpressions(text);
   if (!blocks.length) return null;
-  const active = cursorLine === undefined ? blocks.length - 1 : Math.max(0, findActiveBlock(blocks, cursorLine));
+  const active = Math.max(0, findActiveQueryBlock(blocks, cursorLine));
+  if (isValuesBlock(blocks[active].text)) return null;
 
   const take = new Set([active]);
   let grew = true;
@@ -161,6 +165,22 @@ export function draftFromTab(text: string, cursorLine: number | undefined): Save
     }
   }
 
+  // The values blocks that set any $variable the saved blocks use, wherever
+  // they are in the tab: a value applies to the whole tab.
+  const usedVariables = new Set(
+    Array.from(take).flatMap(i => Array.from(mask(blocks[i].text).matchAll(/\$([A-Za-z_][A-Za-z0-9_]*)/g)).map(m => m[1])),
+  );
+  const valueNames: string[] = [];
+  blocks.forEach((b, i) => {
+    if (!isValuesBlock(b.text)) return;
+    const defined = Array.from(b.text.matchAll(/^\s*\$([A-Za-z_][A-Za-z0-9_]*)\s*=/gm)).map(m => m[1]);
+    const used = defined.filter(n => usedVariables.has(n));
+    if (used.length) {
+      take.add(i);
+      valueNames.push(...used.map(n => `$${n}`));
+    }
+  });
+
   const ordered = Array.from(take).sort((a, b) => a - b);
   const expression = ordered.map(i => blocks[i].text.trim()).filter(Boolean).join('\n\n');
   if (!expression) return null;
@@ -172,7 +192,10 @@ export function draftFromTab(text: string, cursorLine: number | undefined): Save
   return {
     expression,
     title: shorten(titleSource.replace(/\.\s*$/, '').trim(), 80),
-    includedNames: ordered.filter(i => i !== active).flatMap(i => definedNames(mask(blocks[i].text))),
+    includedNames: [
+      ...ordered.filter(i => i !== active && !isValuesBlock(blocks[i].text)).flatMap(i => definedNames(mask(blocks[i].text))),
+      ...valueNames,
+    ],
   };
 }
 
@@ -299,4 +322,16 @@ export function recipeSummary(r: { expression: string; explanation?: string }): 
   if (fromExplanation) return fromExplanation;
   const doc = leadingDoc(r.expression);
   return doc ? docText(doc).split('\n')[0].trim() : '';
+}
+
+/**
+ * The text a recipe puts into a tab. Recipes saved with the old dialog
+ * (before values were written in the text) carry their values as `inputs`;
+ * they go in as a values block above the query.
+ */
+export function recipeText(r: { expression: string; inputs: RecipeInputDef[] }): string {
+  const lines = r.inputs
+    .filter(i => i.example !== '')
+    .map(i => `$${i.name} = ${i.kind === 'number' ? i.example : `'${i.example.replace(/'/g, '')}'`}`);
+  return lines.length ? `${lines.join('\n')}\n\n${r.expression}` : r.expression;
 }

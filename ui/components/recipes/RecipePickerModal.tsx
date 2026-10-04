@@ -1,10 +1,9 @@
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { Box, Typography } from '@mui/material';
-import { runInAction } from 'mobx';
 import { observer } from 'mobx-react-lite';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useStores } from '../../store/store-container';
-import { recipeSummary, type Recipe } from '../../utils/recipes';
+import { recipeSummary, recipeText, type Recipe } from '../../utils/recipes';
 import ModalSurface from '../ModalSurface';
 
 /**
@@ -79,15 +78,7 @@ const RecipePickerModal = observer(() => {
     if (!session) return;
     const existing = session.expression.replace(/\s+$/, '');
     const prefix = existing ? `${existing}\n\n` : '';
-    const full = prefix + r.expression;
-    // The query goes in as written, $variables and all, and the Variables
-    // strip is filled with the recipe's examples: change a value there and
-    // run, without touching the query.
-    runInAction(() => {
-      for (const input of r.inputs) {
-        if (!(session.variableValues[input.name] ?? '').trim()) session.setVariableValue(input.name, input.example);
-      }
-    });
+    const full = prefix + recipeText(r);
     session.setExpressionWithSelection(full, { anchor: full.length, head: full.length });
     close();
   };
@@ -249,10 +240,11 @@ const RecipePickerModal = observer(() => {
                   Saved from {recipe.savedFrom}
                 </Typography>
               )}
-              {/* Its $variables' saved values, which go into the Variables strip. */}
+              {/* Recipes saved with the old dialog keep their values as a list;
+                  they go in as a values block above the query. */}
               {recipe.inputs.length > 0 && (
                 <Typography variant="caption" sx={{ color: dim }}>
-                  Fills in {recipe.inputs.map(v => `$${v.name} with ${v.example || 'nothing'}`).join(', ')}.
+                  Sets {recipe.inputs.map(v => `$${v.name} to ${v.example || 'nothing'}`).join(', ')}.
                 </Typography>
               )}
               {recipe.explanation && (

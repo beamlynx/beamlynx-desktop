@@ -36,9 +36,6 @@ type PersistedSession = {
   inputMode: InputMode;
   connectionId: string;
   profileId: string;
-  // What's typed in the tab's Variables strip ($variables). Absent in tabs
-  // saved before variables existed.
-  variables?: Record<string, string>;
 };
 
 type PersistedSessionsState = {
@@ -648,7 +645,6 @@ export class GlobalStore {
           inputMode: session.inputMode,
           connectionId: session.connectionId,
           profileId: session.profileId,
-          variables: { ...session.variableValues },
         };
       }),
       activeIndex: Math.max(ids.indexOf(this.activeSessionId), 0),
@@ -677,11 +673,6 @@ export class GlobalStore {
         session.inputMode = persistedSession.inputMode === 'sql' ? 'sql' : 'pine';
         session.connectionId = persistedSession.connectionId ?? '';
         session.profileId = persistedSession.profileId ?? '';
-        if (persistedSession.variables && typeof persistedSession.variables === 'object') {
-          session.variableValues = Object.fromEntries(
-            Object.entries(persistedSession.variables).filter(([, v]) => typeof v === 'string'),
-          );
-        }
       });
       // `new Session()` (inside createSessionUsingId, just above) wires up its
       // own expression -> build reaction *while this whole forEach is still

@@ -86,3 +86,40 @@ test('a recipe summary is the first line of its explanation, or of its top comme
   assert.equal(recipeSummary({ expression: 'user', explanation: 'From an agent.\nSecond line.' }), 'From an agent.');
   assert.equal(recipeSummary({ expression: 'user', explanation: '' }), '');
 });
+
+test('Ctrl+S brings along the values blocks for the variables the query uses', () => {
+  const { draftFromTab } = require('../utils/recipes.ts');
+  const tab = "$company = 'Acme'\n$unused = 1\n\n$status = 'failed'\n\nrequest | where: status = $status";
+  const d = draftFromTab(tab, 5);
+  assert.equal(d.expression, "$status = 'failed'\n\nrequest | where: status = $status");
+  assert.deepEqual(d.includedNames, ['$status']);
+  // The cursor in a values block saves the query below it.
+  assert.equal(draftFromTab(tab, 0).expression, d.expression);
+  assert.equal(draftFromTab("$a = 1", 0), null);
+});
+
+test('an old recipe with inputs goes in with a values block above it', () => {
+  const { recipeText } = require('../utils/recipes.ts');
+  assert.equal(
+    recipeText({ expression: 'company | where: name = $n | where: id = $id', inputs: [{ name: 'n', example: 'Acme', kind: 'string' }, { name: 'id', example: '7', kind: 'number' }] }),
+    "$n = 'Acme'\n$id = 7\n\ncompany | where: name = $n | where: id = $id",
+  );
+  assert.equal(recipeText({ expression: 'company', inputs: [] }), 'company');
+});
+
+test('values-blocks: split, write a literal, and set a value in the text', () => {
+  const { splitQuery, literalFor, setValue, isValuesBlock } = require('../store/values-blocks.ts');
+  assert.ok(isValuesBlock("-- note\n$a = 1"));
+  assert.ok(!isValuesBlock('company'));
+  assert.deepEqual(splitQuery("$a = 1\n\ncompany | where: id = $a"), { prefix: '$a = 1\n\n', query: 'company | where: id = $a' });
+  assert.deepEqual(splitQuery('company'), { prefix: '', query: 'company' });
+  assert.equal(splitQuery('company\n\n$a = 1'), null, 'a values block after the query');
+  assert.equal(splitQuery('company\n\nuser'), null, 'two query blocks');
+  assert.equal(literalFor('Acme', false), "'Acme'");
+  assert.equal(literalFor('42', false), '42');
+  assert.equal(literalFor('a, 7', true), "('a', 7)");
+  assert.throws(() => literalFor("O'Brien", false), /single quote/);
+  assert.equal(setValue("$a = 1\n\ncompany", 'a', '2'), "$a = 2\n\ncompany");
+  assert.equal(setValue("$a = 1\n\ncompany | where: x = $b", 'b', "'x'"), "$a = 1\n$b = 'x'\n\ncompany | where: x = $b");
+  assert.equal(setValue('company | where: x = $b', 'b', "'x'"), "$b = 'x'\n\ncompany | where: x = $b");
+});
