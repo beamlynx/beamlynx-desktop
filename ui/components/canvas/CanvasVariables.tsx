@@ -10,12 +10,13 @@ import { displayValue } from '../../store/values-blocks';
  * store/values-blocks.ts), so the Pine panel and the canvas never disagree.
  * The Pine panel needs nothing like this: there, the values block is the text.
  *
- * The list has a fixed width, and a value and its edit box share one box
- * model (`valueBox`), so clicking a value doesn't resize or shift anything.
+ * The list is as wide as its values. A value and its edit box have the same
+ * width, border and padding (`valueBox`), so clicking a value doesn't resize
+ * or shift anything. Only typing a longer value widens it.
  */
-// What a value and its edit box have in common: the same space in the row and
-// the same border and padding, so one replaces the other without a shift.
-const valueBox: React.CSSProperties = {
+// A value is as wide as its text, in the monospace code font, with room for
+// "no value" and the caret.
+const valueBox = (text: string): React.CSSProperties => ({
   font: 'inherit',
   lineHeight: 1.5,
   height: '1.5em',
@@ -24,9 +25,10 @@ const valueBox: React.CSSProperties = {
   borderRadius: 4,
   padding: '0 4px',
   margin: 0,
-  flex: 1,
-  minWidth: 0,
-};
+  width: `${Math.max(text.length, 'no value'.length) + 1}ch`,
+  maxWidth: '32ch',
+  flex: 'none',
+});
 
 const CanvasVariables = observer(({ canvasStore }: { canvasStore: CanvasStore }) => {
   const report = canvasStore.session.variablesReport;
@@ -59,7 +61,7 @@ const CanvasVariables = observer(({ canvasStore }: { canvasStore: CanvasStore })
         top: 48,
         right: 8,
         zIndex: 14,
-        width: 'min(280px, calc(100% - 16px))',
+        maxWidth: 'calc(100% - 16px)',
         boxSizing: 'border-box',
         background: 'var(--canvas-node-bg)',
         border: '1px solid var(--canvas-node-border)',
@@ -94,7 +96,7 @@ const CanvasVariables = observer(({ canvasStore }: { canvasStore: CanvasStore })
                 onBlur={() => setEditing(null)}
                 size={1}
                 style={{
-                  ...valueBox,
+                  ...valueBox(draft),
                   color: 'var(--canvas-text)',
                   background: 'var(--canvas-bg)',
                   borderColor: 'var(--canvas-node-border-current)',
@@ -106,7 +108,7 @@ const CanvasVariables = observer(({ canvasStore }: { canvasStore: CanvasStore })
                 title="Set the value"
                 onClick={() => start(name)}
                 style={{
-                  ...valueBox,
+                  ...valueBox(has ? displayValue(report.values?.[name]) : ''),
                   background: 'transparent',
                   cursor: 'pointer',
                   textAlign: 'left',
