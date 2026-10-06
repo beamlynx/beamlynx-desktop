@@ -4,7 +4,10 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.65.0] - 2026-10-06
 ### Breaking
+- Needs pine-lang 0.48.0 or later (was 0.47.0). Values blocks and named results after `in` need it. Connecting to an older server shows the upgrade-required screen.
 - Ctrl+S no longer downloads the tab as a `.pine` file. Nothing in beamlynx opened those files. Ctrl+S now saves a recipe (see below). In the browser, where there are no recipes, Ctrl+S does nothing.
 
 ### Added
@@ -18,7 +21,6 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - Vercel no longer deploys this repo. `vercel.json` turns off deployments for every branch, including `main` and `release/**`. The last deployed version stays online until the Vercel project is removed.
 - The hosted web app builds on Node.js 24. Vercel stopped building with Node.js 20, so every deployment since 2026-10-03 had failed. `package.json` now sets `engines.node` to `24.x`, which overrides the Vercel project's setting, and `.nvmrc` says 24. `npm test` works on Node.js 22 and later again: it passes the test files, not the folder.
 - A dev copy shows an amber **DEV** chip in the header, in place of the grey "[Development]" text. It also shows in a desktop dev build (beamlynx-desktop's `npm start`), which had no label at all, so it can't be mistaken for the installed app when both are open. Hover it to see which kind of dev copy it is.
-### Changed
 - Inside beamlynx-desktop, the app now asks the desktop app which port its Pine server is on instead of assuming 33333. The desktop dev build uses a different port, so it can run next to the installed app. The browser and playground are unchanged.
 - In the desktop dev build, the MCP setup instructions register the server as `beamlynx-dev`, so it can sit next to the installed app's `beamlynx` entry.
 ### Fixed
