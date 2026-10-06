@@ -23,6 +23,102 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.65.0',
+    date: '2026-10-06',
+    breaking: [
+      {
+        title: "Needs pine-lang 0.48.0 or later (was 0.47.0)",
+        description:
+          "Values blocks and named results after in need it. Connecting to an older server shows the upgrade-required screen.",
+      },
+      {
+        title: "Ctrl+S no longer downloads the tab as a .pine file",
+        description:
+          "Nothing in beamlynx opened those files. Ctrl+S now saves a recipe (see below). In the browser, where there are no recipes, Ctrl+S does nothing.",
+      },
+    ],
+    added: [
+      {
+        title: "Variables",
+        description:
+          "Write $name in a query where a value goes, and set it in a values block of its own above the query: $company_name = 'Acme', or a list for in, $statuses = ('failed', 'stuck'). A values block holds one or more $name = value lines, so the query and its values are all in the Pine text. Pressing Ctrl+Enter with the cursor in a values block runs the query below it. On the canvas, a Variables list shows each $name the query uses and its value, or \"no value\"; click a value to change it, which rewrites its line in the text. Condition chips show $name. Needs pine-lang with values blocks (0.48 or later).",
+      },
+      {
+        title: "One query's result in another: a named result that selects one column can be used after in, like employee | where: id in acme_emps (pine-lang 0.48 or later)",
+      },
+      {
+        title: "A recipe keeps its $variables and their values: saving one includes the values blocks the query uses, placed above the query, and using it puts them in with the query",
+      },
+      {
+        title: "An AI agent can pass values for $variables to run_query, overriding those written in the text (with beamlynx-desktop's matching change)",
+        description:
+          "The agent's tab shows the values it used in a values block above the query, so the run can be repeated.",
+      },
+      {
+        title: "Save a query as a recipe with Ctrl+S (desktop app 0.19 or later)",
+        description:
+          "A bar above the tab asks for a title, offering the first line of the query's top comment. Enter saves, Esc cancels. It saves the block under the cursor, plus any block above it that the query uses through a named result. Comments are saved with the query: they are the recipe's explanation. Recipes are offered on every database.",
+      },
+      {
+        title: "Use a recipe with Ctrl+O",
+        description:
+          "Find it by any word in its title, comments or query, then click it or press Enter. Its query, comments included, goes into the tab as ordinary text. Nothing runs until you press Ctrl+Enter. Hover a recipe to see its query. Delete one with the trash icon on its row: click once, then again within 3 seconds. Editing comes later.",
+      },
+    ],
+    changed: [
+      {
+        title: "Vercel no longer deploys this repo",
+        description:
+          "vercel.json turns off deployments for every branch, including main and release/**. The last deployed version stays online until the Vercel project is removed.",
+      },
+      {
+        title: "The hosted web app builds on Node.js 24",
+        description:
+          "Vercel stopped building with Node.js 20, so every deployment since 2026-10-03 had failed. package.json now sets engines.node to 24.x, which overrides the Vercel project's setting, and .nvmrc says 24. npm test works on Node.js 22 and later again: it passes the test files, not the folder.",
+      },
+      {
+        title: "A dev copy shows an amber DEV chip in the header, in place of the grey \"[Development]\" text",
+        description:
+          "It also shows in a desktop dev build (beamlynx-desktop's npm start), which had no label at all, so it can't be mistaken for the installed app when both are open. Hover it to see which kind of dev copy it is.",
+      },
+      {
+        title: "Inside beamlynx-desktop, the app now asks the desktop app which port its Pine server is on instead of assuming 33333",
+        description:
+          "The desktop dev build uses a different port, so it can run next to the installed app. The browser and playground are unchanged.",
+      },
+      {
+        title: "In the desktop dev build, the MCP setup instructions register the server as beamlynx-dev, so it can sit next to the installed app's beamlynx entry",
+      },
+    ],
+    fixed: [
+      {
+        title: "The Access Policy section now says that a masked column can still be used in a query's conditions, so a query can test a guess about its values, for example by counting matching rows",
+        description:
+          "That has always been true; it wasn't written down.",
+      },
+      {
+        title: "Keys pressed in a dialog, such as the Ctrl+O recipe picker or the command palette, no longer reach the canvas behind it",
+        description:
+          "Clicking a dialog's text and then pressing Backspace, Delete or x used to delete the selected item in your tab.",
+      },
+      {
+        title: "New Database Connection in the command palette opens the add form again",
+        description:
+          "It used to open Settings on the list of connections instead, because that section was already loaded in the background. The same fix covers a saved password that can't be unlocked: the form now opens filled in every time, not only the first time.",
+      },
+      {
+        title: "The Access Policy section said agent (MCP) access needs an active rule in some policy",
+        description:
+          "The rule is per connection: MCP access can be turned on for a connection whose own policy has an active rule, or that has no policy.",
+      },
+      {
+        title: "The MCP section's setup steps named a toggle and a section that no longer exist",
+        description:
+          "They now say to turn on MCP access under Database Connections.",
+      },
+    ],
+  },
+  {
     version: '0.64.0',
     date: '2026-09-27',
     breaking: [
@@ -2141,4 +2237,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.64.0';
+export const LATEST_VERSION = '0.65.0';
