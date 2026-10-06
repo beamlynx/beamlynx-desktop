@@ -2,11 +2,11 @@
 
 A `$name` in an expression stands for a value set separately: in a values block of its own above the query, or in run_query's `variables` argument. The query stays the same and only the value changes, so one query (a saved recipe, say) works for different companies, tenants or dates. A value is always treated as a value: whatever it contains, it can't change what the query does.
 
-**Syntax:** `$name` wherever a value goes: after `=`, `!=`, `>`, `<`, `like`, `ilike` and their `not` forms, as the list after `in` or `not in`, and in `update!`. Names use letters, digits and underscores.
+**Syntax:** `$name` wherever a value goes: after `=`, `!=`, `>`, `<`, `like`, `ilike` and their `not` forms, and as the list after `in` or `not in`. A name uses letters, digits and underscores, and doesn't start with a digit.
 
-**Values blocks:** a block of only `$name = value` lines, separated from the query by a blank line, sets values for the query. A value is written like a literal (`'text'`, a number, `true`) or as a list in brackets (`('a', 'b')`). A query in the same block as values is an error: put a blank line between them.
+**Values blocks:** a block of only `$name = value` lines, separated from the query by a blank line, sets values for the query. A value is written like a literal (`'text'`, a number, `true`) or as a list in parentheses (`('a', 'b')`), not square brackets. A string here can't contain a `'`; pass a value like that in `variables` instead. A query in the same block as values is an error: put a blank line between them.
 
-**Passing values:** run_query's `variables` maps each name, without the `$`, to its value: a string, a number or a boolean, or a list for `in`. A value passed this way overrides one written in a values block.
+**Passing values:** run_query's `variables` maps each name, without the `$`, to its value: a string, a number or a boolean, or a JSON array for `in`. A value passed this way overrides one written in a values block. Pass an id larger than 2^53 as a string: a larger JSON number arrives rounded. request_reveal and open_in_desktop take no `variables`, so for those, write the values in a values block.
 
 ## Examples
 
