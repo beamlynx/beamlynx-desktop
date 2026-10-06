@@ -4,19 +4,29 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.19.0] - 2026-10-06
 ### Changed
+- **Breaking:** Ctrl+S no longer downloads the tab as a `.pine` file. It saves a recipe instead (bundled beamlynx-ui 0.65.0).
 - **Breaking:** beamlynx now runs on Electron 44 (Chromium 152, Node 24), up from Electron 31, which no longer gets security fixes. It needs macOS 13 or later. macOS 11 and 12 are no longer supported.
 - Electron 44 includes SQLite. beamlynx will use it to keep its own data, such as settings and saved recipes. A new release check confirms it works in the packaged app on Linux, macOS and Windows.
 - Building beamlynx-desktop needs Node 22 or later. See DEVELOPMENT.md.
 
 ### Added
+- **Variables.** Write `$name` in a query where a value goes, and set it in a values block of its own above the query: `$company_name = 'Acme'`, or a list for `in`, `$statuses = ('failed', 'stuck')`. On the canvas, a Variables list shows each `$name` the query uses and its value; click a value to change it (bundled beamlynx-ui 0.65.0, pine-lang 0.48.0).
+- **Save a query as a recipe with Ctrl+S.** A bar above the tab asks for a title. It saves the query with its comments and the values blocks it uses (bundled beamlynx-ui 0.65.0).
+- **Use a recipe with Ctrl+O.** Find it by any word in its title, comments or query, then click it or press Enter to put it in the tab. Delete one with the trash icon on its row (bundled beamlynx-ui 0.65.0).
+- **One query's result in another:** a named result that selects one column can be used after `in`, like `employee | where: id in acme_emps` (bundled pine-lang 0.48.0).
 - The Pine reference agents read now teaches values blocks (`$name = value` lines above the query, which `run_query`'s `variables` overrides) and using a one-column named result after `in`. Needs a bundled pine-lang with both.
 - An AI agent can pass values for `$variables` to `run_query`, as `variables: {"company_name": "Acme", "tenant_ids": [17, 23]}`. pine-lang binds each as a value, never pasted into the query. A name must be a valid `$name`. An integer larger than 2^53 is refused, because JSON has already rounded it; pass a large id as a string. `request_reveal` and `open_in_desktop` take no `variables`, so their description tells the agent to write the values in a values block. The Pine reference agents read has a new `variables` topic, and what it used to call variables (`|= name`) is now the `named-results` topic. Needs a bundled pine-lang with variables.
-- beamlynx has a SQLite file for its own data, `beamlynx.db`, in the same folder as saved connections. A dev build and the installed app share it. It can store recipes: saved Pine queries, with values you fill in each time. Recipes are offered on every database, because a local, staging and production database usually share one schema. Each recipe remembers which database it was saved from. Nothing in the app saves recipes yet; beamlynx-ui adds that next. Settings, open tabs and column widths move into the file in a later release. If the file is ever damaged, beamlynx keeps it as `beamlynx.db.bad` and starts with an empty one. A file that is only busy, because the other copy of the app has it open, is never treated as damaged.
+- beamlynx has a SQLite file for its own data, `beamlynx.db`, in the same folder as saved connections. A dev build and the installed app share it. It can store recipes: saved Pine queries, with values you fill in each time. Recipes are offered on every database, because a local, staging and production database usually share one schema. Each recipe remembers which database it was saved from. Settings, open tabs and column widths move into the file in a later release. If the file is ever damaged, beamlynx keeps it as `beamlynx.db.bad` and starts with an empty one. A file that is only busy, because the other copy of the app has it open, is never treated as damaged.
 - A dev build (`npm start`) shows an amber **DEV** chip in the header, so it can't be mistaken for the installed app when both are open (with beamlynx-ui's matching change).
 - A dev build (`npm start`) can run next to the installed app. It uses its own ports (43333 and 43334) and its own data folder, `beamlynx-desktop-dev`, but shares the installed app's saved connections. In Settings > MCP it registers itself as `beamlynx-dev`, so an AI agent can use either copy. See DEVELOPMENT.md. The dev build needs a pine-server staged from a pine-lang that reads `PINE_PORT`. The installed app still uses 33333.
 
 ### Fixed
+- Keys pressed in a dialog, such as the Ctrl+O recipe picker or the command palette, no longer reach the canvas behind it. Clicking a dialog's text and then pressing Backspace, Delete or `x` used to delete the selected item in your tab (bundled beamlynx-ui 0.65.0).
+- **New Database Connection** in the command palette opens the add form again, instead of Settings on the list of connections (bundled beamlynx-ui 0.65.0).
+- A cast after an `in` list, as in `where: name in ('a') ::text`, was read as one more value, so the query matched `'text'` too. It now applies to the column (bundled pine-lang 0.48.0).
 - Opening beamlynx while it's already open now says so. It used to quit without a word, and on some desktops, such as Hyprland, the open window didn't come forward either.
 - If a port beamlynx needs is taken, it now says what's using it: another copy of beamlynx, a Pine server started some other way, or another program. A taken MCP port (33334) used to go unhandled.
 - On Linux, the AppImage's MCP setup instructions pointed at a temporary folder (`/tmp/.mount_…`) that gets a new name on every launch, so the registration broke after the app was closed. They now point at the AppImage file itself. The MCP relay also starts the app from that file, so the app no longer depends on the relay's own temporary folder, which is removed when the relay exits.
