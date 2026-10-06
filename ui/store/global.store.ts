@@ -16,6 +16,7 @@ import {
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
 import { DevState } from './dev-state';
 import { leadingDoc } from './canvas/pine-text';
+import { isValuesBlock, splitExpressions } from './blocks';
 import { getCommandById } from '../utils/commands';
 import { CONNECTION_COLOR_PALETTE, isDesktop, isPlayground } from './util';
 import {
@@ -2150,7 +2151,10 @@ export class GlobalStore {
     // not the query - naming the tab from it produced things like "Checki..."
     // off the second sentence, since the split on '.' below lands inside the
     // comment's own punctuation. Name the tab from the Pine itself.
-    const source = session.expression.slice(leadingDoc(session.expression).length).trim();
+    // A values block (`$name = ...`) isn't the query either: name the tab
+    // from the first block that is.
+    const query = splitExpressions(session.expression).find(b => !isValuesBlock(b.text))?.text ?? session.expression;
+    const source = query.slice(leadingDoc(query).length).trim();
     const length = source.length;
     const maxLength = 10;
 

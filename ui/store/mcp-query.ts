@@ -39,6 +39,7 @@ import { lt } from 'semver';
 import { McpWriteRefusalMinVersion } from '../constants';
 import { AccessPolicyRule, HttpClient, VariableValue } from './client';
 import type { Session } from './session';
+import { restoreValues } from './values-blocks';
 
 export type ConnectionParams = {
   dbHost: string;
@@ -184,6 +185,10 @@ export async function runMcpQuery(
   const columns = toPlainJson(session.columns);
   const plainRows = toPlainJson(rows);
   const error = session.error;
+  // Write the values this run used back into the tab, above the query, so
+  // the person can see them and run it again.
+  const shown = restoreValues(session.expression, expression, variables ?? {});
+  if (shown !== session.expression) session.expression = shown;
   return { tabId, columns, rows: plainRows, error };
 }
 

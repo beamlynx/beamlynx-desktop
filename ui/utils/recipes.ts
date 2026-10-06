@@ -181,7 +181,11 @@ export function draftFromTab(text: string, cursorLine: number | undefined): Save
     }
   });
 
-  const ordered = Array.from(take).sort((a, b) => a - b);
+  // Values first, then the queries in tab order: a recipe reads top-down,
+  // and its values are what someone changes before running it.
+  const ordered = Array.from(take).sort(
+    (a, b) => Number(!isValuesBlock(blocks[a].text)) - Number(!isValuesBlock(blocks[b].text)) || a - b,
+  );
   const expression = ordered.map(i => blocks[i].text.trim()).filter(Boolean).join('\n\n');
   if (!expression) return null;
 
@@ -320,7 +324,10 @@ const exampleOf = (l: Literal) => (l.kind === 'string' ? l.raw.slice(1, -1) : l.
 export function recipeSummary(r: { expression: string; explanation?: string }): string {
   const fromExplanation = (r.explanation ?? '').split('\n').map(l => l.trim()).find(Boolean);
   if (fromExplanation) return fromExplanation;
-  const doc = leadingDoc(r.expression);
+  // A recipe can start with its values block, so its comment is at the top
+  // of its first query block.
+  const firstQuery = splitExpressions(r.expression).find(b => !isValuesBlock(b.text))?.text ?? r.expression;
+  const doc = leadingDoc(firstQuery) || leadingDoc(r.expression);
   return doc ? docText(doc).split('\n')[0].trim() : '';
 }
 

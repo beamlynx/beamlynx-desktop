@@ -8,9 +8,9 @@ export type ExpressionBlock = { text: string; startLine: number };
 
 /**
  * Whether `line` leaves a block comment open behind it, given it
- * started `open`. Naive: it doesn't know about `/*` inside a string literal.
- * That costs nothing here - the worst case is a blank line not ending a
- * block, and the block boundary a user actually meant is the next one.
+ * started `open`. A `/*` inside a string literal (`'image/*'`) or after a
+ * `--` line comment opens nothing, as in pine-lang's grammar. A string can't
+ * span lines in Pine, so one left unclosed ends with the line.
  */
 function blockCommentOpenAfter(line: string, open: boolean): boolean {
   let i = 0;
@@ -20,11 +20,17 @@ function blockCommentOpenAfter(line: string, open: boolean): boolean {
       if (close === -1) return true;
       open = false;
       i = close + 2;
-    } else {
-      const start = line.indexOf('/*', i);
-      if (start === -1) return false;
+    } else if (line[i] === "'") {
+      const close = line.indexOf("'", i + 1);
+      if (close === -1) return false;
+      i = close + 1;
+    } else if (line.startsWith('--', i)) {
+      return false;
+    } else if (line.startsWith('/*', i)) {
       open = true;
-      i = start + 2;
+      i += 2;
+    } else {
+      i++;
     }
   }
   return open;
@@ -76,8 +82,14 @@ export function splitExpressions(text: string): ExpressionBlock[] {
 /**
  * Whether a block is a values block (`$name = value` lines only, see
  * store/values-blocks.ts): its first character after comments is `$`.
+ *
+ * The leading comments are stripped first and the `$` checked after, like
+ * pine-lang's `values-block?`. Testing both in one pattern let the pattern
+ * stop part-way through a comment to reach a `$` in it, so a query whose
+ * comment mentioned `US$` read as a values block.
  */
-export const isValuesBlock = (text: string): boolean => /^(?:\s|--[^\n]*|\/\*[\s\S]*?\*\/)*\$/.test(text);
+export const isValuesBlock = (text: string): boolean =>
+  text.replace(/^(?:\s|--[^\n]*|\/\*[\s\S]*?\*\/)*/, '').startsWith('$');
 
 /**
  * The block a build works on: the one under the cursor, unless that's a

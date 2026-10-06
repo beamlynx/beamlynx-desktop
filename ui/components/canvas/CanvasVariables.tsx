@@ -1,7 +1,7 @@
 import { observer } from 'mobx-react-lite';
 import React, { useState } from 'react';
 import type { CanvasStore } from '../../store/canvas/canvas.store';
-import { displayValue } from '../../store/values-blocks';
+import { displayValue, isStringValue } from '../../store/values-blocks';
 
 /**
  * The tab's $variables, on the canvas: each name the query uses, with the
@@ -43,10 +43,21 @@ const CanvasVariables = observer(({ canvasStore }: { canvasStore: CanvasStore })
     setDraft(displayValue(report.values?.[name]));
     setError('');
   };
+  const stop = () => {
+    setEditing(null);
+    setError('');
+  };
   const commit = (name: string) => {
+    const current = report.values?.[name];
+    // Unchanged: write nothing. Writing it back could change its type, or
+    // round a large number that only survives as text.
+    if (report.values && name in report.values && draft.trim() === displayValue(current)) {
+      stop();
+      return;
+    }
     try {
-      canvasStore.setVariableValue(name, draft, report.lists.includes(name));
-      setEditing(null);
+      canvasStore.setVariableValue(name, draft, report.lists.includes(name), { string: isStringValue(current) });
+      stop();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -91,9 +102,9 @@ const CanvasVariables = observer(({ canvasStore }: { canvasStore: CanvasStore })
                 onKeyDown={e => {
                   e.stopPropagation();
                   if (e.key === 'Enter') commit(name);
-                  if (e.key === 'Escape') setEditing(null);
+                  if (e.key === 'Escape') stop();
                 }}
-                onBlur={() => setEditing(null)}
+                onBlur={stop}
                 size={1}
                 style={{
                   ...valueBox(draft),
