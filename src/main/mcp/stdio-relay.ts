@@ -191,7 +191,6 @@ async function build(profileId: string, expression: string): Promise<BuildRespon
   return result ?? {};
 }
 
-
 async function registerTools(server: McpServer): Promise<void> {
   server.registerTool(
     'list_connections',
