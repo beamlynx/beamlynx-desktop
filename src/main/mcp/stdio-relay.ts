@@ -29,6 +29,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CONTROL_PLANE_PORT } from '../ports';
 import { getLaunchPath, getResourcesRoot } from '../resources';
 import { SERVER_INSTRUCTIONS } from './instructions';
+import { MAX_LIST_ITEMS, MAX_STRING_LENGTH, MAX_VARIABLES, variablesSchema, type VariableValue } from './variables-schema';
 import {
   formatCompletion,
   formatConnections,
@@ -190,11 +191,6 @@ async function build(profileId: string, expression: string): Promise<BuildRespon
   return result ?? {};
 }
 
-// A $variable's value, as pine-lang's `variables` field takes it.
-const variableScalar = z.union([z.string(), z.number(), z.boolean()]);
-type VariableScalar = string | number | boolean;
-type VariableValue = VariableScalar | VariableScalar[];
-
 async function registerTools(server: McpServer): Promise<void> {
   server.registerTool(
     'list_connections',
@@ -281,12 +277,14 @@ async function registerTools(server: McpServer): Promise<void> {
       inputSchema: {
         connection_id: z.string().describe('A connection id from list_connections'),
         expression: z.string().describe('The Pine expression to run'),
-        variables: z
-          .record(z.string(), z.union([variableScalar, z.array(variableScalar)]))
+        variables: variablesSchema
           .optional()
           .describe(
             'Values for the $variables in the expression, by name without the $: {"company_name": "Acme", ' +
-              '"tenant_ids": [17, 23]}. A list is for a variable used with `in`.',
+              '"tenant_ids": [17, 23]}. A list is for a variable used with `in`. Pass an id larger than ' +
+              '9007199254740991 (2^53 - 1) as a string, since a larger JSON number arrives rounded. ' +
+              `At most ${MAX_VARIABLES} variables, ${MAX_LIST_ITEMS} values in a list and ` +
+              `${MAX_STRING_LENGTH} characters in a string.`,
           ),
       },
     },
@@ -352,7 +350,12 @@ async function registerTools(server: McpServer): Promise<void> {
         'responded yet. Call check_reveal with that id to wait for what they decide.',
       inputSchema: {
         connection_id: z.string().describe('A connection id from list_connections'),
-        expression: z.string().describe('The Pine expression whose real results you want to see'),
+        expression: z
+          .string()
+          .describe(
+            'The Pine expression whose real results you want to see. This tool takes no `variables`: write any ' +
+              '$variable\'s value in a values block above the query (`$name = \'value\'`, then a blank line).',
+          ),
         reason: z
           .string()
           .optional()
@@ -401,7 +404,12 @@ async function registerTools(server: McpServer): Promise<void> {
         'Use this to hand the user something to inspect visually, in addition to or instead of running it yourself.',
       inputSchema: {
         connection_id: z.string().describe('A connection id from list_connections'),
-        expression: z.string().describe('The Pine expression the link should open'),
+        expression: z
+          .string()
+          .describe(
+            'The Pine expression the link should open. This tool takes no `variables`: write any $variable\'s ' +
+              'value in a values block above the query (`$name = \'value\'`, then a blank line).',
+          ),
       },
     },
     async ({ connection_id, expression }: { connection_id: string; expression: string }) => {
