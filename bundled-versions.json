@@ -1,5 +1,5 @@
 {
-  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang bumped to its tagged 0.47.0 and beamlynx-ui to its tagged 0.64.0, a pair that has to move together: pine-lang joins where: conditions with `or` instead of a comma, which beamlynx-ui 0.64.0's canvas filters write, and beamlynx-ui brings the canvas results grid and ships its own fonts.",
-  "pineLangRef": "0.47.0",
-  "beamlynxUiRef": "0.64.0"
+  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang bumped to its tagged 0.48.1 and beamlynx-ui to its tagged 0.65.0, a pair that has to move together: beamlynx-ui 0.65.0 needs pine-lang 0.48 for $variables and values blocks, and brings recipes (Ctrl+S, Ctrl+O) that this app stores. 0.48.1, not 0.48.0: 0.48.0's jar doesn't build.",
+  "pineLangRef": "0.48.1",
+  "beamlynxUiRef": "0.65.0"
 }
