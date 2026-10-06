@@ -621,13 +621,15 @@ export class CanvasStore {
    * rewriting (or adding) its `$name = value` line. Undoable like a gesture.
    * Throws with a message for a value Pine can't hold.
    */
-  setVariableValue(name: string, typed: string, list: boolean) {
-    const next = setValue(this.session.expression, name, literalFor(typed, list));
+  setVariableValue(name: string, typed: string, list: boolean, opts: { string?: boolean } = {}) {
+    const next = setValue(this.session.expression, name, literalFor(typed, list, opts));
     if (next === this.session.expression) return;
     this.undoStack.push(this.session.expression);
     this.redoStack = [];
     this.canvasWrittenExpression = next;
     this.session.expression = next;
+    // A new value changes the results, like any gesture does.
+    this.notifyAutoRun();
   }
 
   setNodePosition(id: string, position: { x: number; y: number }) {
