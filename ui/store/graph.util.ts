@@ -9,7 +9,7 @@ import {
   VariableInnerTable,
 } from '../model';
 import { NodeType } from './graph-node-type';
-import { Ast, Column, ColumnHint, Table, TableHint, VariableAst, WhereCondition, whereConditions } from './client';
+import { Ast, Column, ColumnHint, Table, TableHint, NamedResultAst, WhereCondition, whereConditions } from './client';
 import {
   effectiveHandleCount,
   getSelectedNodeHeight,
@@ -203,7 +203,7 @@ const makeWhereColumnsLookup = (conditions: WhereCondition[]): Record<string, st
 
 const makeVariableNodes = (
   outerSelectedTables: Table[],
-  variables: Record<string, VariableAst>,
+  variables: Record<string, NamedResultAst>,
   sessionId: string,
   isDark: boolean,
 ): {
@@ -320,7 +320,7 @@ const makeSuggestedNodes = (ast: Ast, sessionId: string, isDark: boolean = false
 
 export const generateGraph = (ast: Ast, sessionId: string, isDark: boolean = false): Graph => {
   const { 'selected-tables': selectedTables, joins, context } = ast;
-  const variables = ast.variables ?? {};
+  const variables = ast['named-results'] ?? {};
   const pendingAssignments = ast['pending-assignments'] ?? {};
 
   const graph: Graph = {

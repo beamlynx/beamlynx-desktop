@@ -3,7 +3,7 @@ import { Box, Typography } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useStores } from '../../store/store-container';
-import { recipeSummary, recipeText, type Recipe } from '../../utils/recipes';
+import { recipeSummary, recipeText, textToInsert, type Recipe } from '../../utils/recipes';
 import ModalSurface from '../ModalSurface';
 
 /**
@@ -78,7 +78,7 @@ const RecipePickerModal = observer(() => {
     if (!session) return;
     const existing = session.expression.replace(/\s+$/, '');
     const prefix = existing ? `${existing}\n\n` : '';
-    const full = prefix + recipeText(r);
+    const full = prefix + textToInsert(existing, recipeText(r));
     session.setExpressionWithSelection(full, { anchor: full.length, head: full.length });
     close();
   };

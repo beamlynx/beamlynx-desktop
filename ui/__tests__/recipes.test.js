@@ -123,3 +123,22 @@ test('values-blocks: split, write a literal, and set a value in the text', () =>
   assert.equal(setValue("$a = 1\n\ncompany | where: x = $b", 'b', "'x'"), "$a = 1\n$b = 'x'\n\ncompany | where: x = $b");
   assert.equal(setValue('company | where: x = $b', 'b', "'x'"), "$b = 'x'\n\ncompany | where: x = $b");
 });
+
+const { textToInsert } = require('../utils/recipes.ts');
+
+test("inserting a recipe keeps the tab's value for a $name the tab already sets", () => {
+  const tab = "$x = 'Acme'\n\ncompany | where: name = $x";
+  const recipe = "$x = 'Globex'\n$y = 5\n\nemployee | where: id = $y";
+  assert.equal(textToInsert(tab, recipe), "$y = 5\n\nemployee | where: id = $y");
+});
+
+test('inserting the same recipe twice adds no second copy of its values', () => {
+  const recipe = "-- the company\n$x = 'Acme'\n\ncompany | where: name = $x";
+  const once = recipe;
+  assert.equal(textToInsert(once, recipe), 'company | where: name = $x');
+});
+
+test('a tab without values gets the recipe as it is', () => {
+  const recipe = "$x = 'Acme'\n\ncompany | where: name = $x";
+  assert.equal(textToInsert('user | count:', recipe), recipe);
+});
