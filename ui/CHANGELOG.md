@@ -12,6 +12,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - Using a recipe (Ctrl+O) in a tab that already sets one of its `$variables` changed that tab's results. The recipe's values block came last, and the last value wins across the whole tab. The tab's value is now kept, and the recipe's assignment of that name is left out. Using the same recipe twice no longer adds its values twice.
 - Approving a reveal request is disabled while the expression has been edited but not run, so the agent never receives rows the owner didn't look at. If the run fails, the banner shows why instead of doing nothing.
 - When the Pine server is running but refuses the app's requests, the connection indicator says so and suggests restarting, instead of 'No connection to Pine server'.
+- Editing a cell to a value with an apostrophe, like O'Brien, saved it as O_Brien. A row whose text id contained an apostrophe couldn't be edited at all. The value is now written with the apostrophe doubled, which Pine reads as one apostrophe. Needs pine-lang after 0.48.1.
 
 ### Security
 - The desktop app no longer writes the database password to the developer console when it connects to a saved connection. Other connection details are logged only in development builds.

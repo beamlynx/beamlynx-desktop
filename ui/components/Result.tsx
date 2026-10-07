@@ -22,7 +22,7 @@ import {
 import UpdateModal from './UpdateModal';
 import { useRetainedValue } from '../hooks/useRetainedValue';
 import DownloadResultsModal from './DownloadResultsModal';
-import { pineEscape } from '../store/util';
+import { pineString } from '../store/util';
 import { getColorForAlias, shouldShowTableColors } from '../store/table-colors.util';
 import { estimateColumnWidth } from './column-width.util';
 import { MIN_RESULT_COLUMN_WIDTH, MAX_RESULT_COLUMN_WIDTH } from '../constants';
@@ -518,9 +518,9 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     await vs.prettify();
     await vs.pipeAndUpdateExpression(`from: ${alias}`);
     await vs.pipeAndUpdateExpression(
-      `where: id = ${Number.isInteger(id) ? parseInt(id as string, 10) : `'${pineEscape(id as string)}'`}`,
+      `where: id = ${Number.isInteger(id) ? parseInt(id as string, 10) : pineString(String(id))}`,
     );
-    await vs.pipeAndUpdateExpression(`update! ${column} = '${pineEscape(value)}'`);
+    await vs.pipeAndUpdateExpression(`update! ${column} = ${pineString(value)}`);
 
     return vs.expression;
   };
