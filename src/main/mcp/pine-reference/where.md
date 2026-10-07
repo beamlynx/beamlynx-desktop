@@ -12,7 +12,8 @@ Keeps only the rows matching a condition.
 customers | where: first_name = 'John'
 ```
 
-String values are single-quoted. Numbers and booleans are not.
+String values are single-quoted. Numbers and booleans are not. An apostrophe inside a string is
+written twice: `'O''Brien'`.
 
 ### Either condition: `or`
 
@@ -70,7 +71,11 @@ An unquoted name on the right is read as a column, not a string.
 ```
 customers | where: age > 30
 customers | where: created_at < '2024-01-01'
+customers | where: created_at > '2024-01-01 09:30'
 ```
+
+A date is `'YYYY-MM-DD'`, optionally followed by a time, `HH:MM` or `HH:MM:SS`. A date that doesn't
+exist, like `'2024-02-31'`, is an error.
 
 `=`, `!=`, `<`, `>`, `is`, `is not`, `in`, `not in`, `like`, `not like`, `ilike`, `not ilike`.
 There is no `>=` and no `<=` — widen the bound instead.
@@ -109,3 +114,10 @@ customers | where: id = '42' ::text
 The cast goes at the end of the condition and applies to the column, not the value. Only
 `::text` and `::uuid` exist. Reach for this when a column's stored type does not match the
 literal you are comparing it against.
+
+## On a connection with an access policy
+
+A column the policy hides comes back as `xxxxx`. It also can't be used in `where:`, `order:` or
+`group:`: such a query is refused, since filtering on a hidden value would reveal it through the
+rows that match. Filter on the `id`, or on a column the policy shows. A table the connection
+hasn't indexed yet is refused too, until the owner refreshes its schema.

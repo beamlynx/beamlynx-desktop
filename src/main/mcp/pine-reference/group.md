@@ -10,9 +10,8 @@ table_name | group: column_name => count
 ```
 
 `count` takes no colon here. That is the opposite of the standalone `count:` operation, which
-does — see the `count` topic. `count` is also the only aggregate worth writing: the parser
-accepts `sum`, `avg`, `min`, `max` and `string_agg`, but they take no column argument and all
-come back as a constant.
+does — see the `count` topic. `count` is the only aggregate: `sum`, `avg`, `min`, `max` and
+`string_agg` are parse errors. A grouped query returns at most 10 000 groups.
 
 ## Examples
 
