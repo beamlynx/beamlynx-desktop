@@ -8,6 +8,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - The canvas reads named results from `/build`'s `named-results`, which pine-lang renamed from `variables`. With an older pine-lang, the canvas no longer recognises a named result used as a table. Needs pine-lang after 0.48.1; the next release raises `RequiredVersion`.
 - A `beamlynx://run` link opens a tab with the expression but no longer runs it. A banner names the connection it would run on. Check both and press Run. Any web page or message can carry such a link, and the browser's prompt doesn't show what it would do.
 
+### Removed
+- Sign-in with Clerk on the hosted web build, and the middleware that enforced it. The desktop app never had sign-in, and the web build is no longer deployed. The middleware also skipped sign-in for any hostname containing 'playground', and logged every request's hostname.
+- The unused `marked` library.
+
 ### Fixed
 - Using a recipe (Ctrl+O) in a tab that already sets one of its `$variables` changed that tab's results. The recipe's values block came last, and the last value wins across the whole tab. The tab's value is now kept, and the recipe's assignment of that name is left out. Using the same recipe twice no longer adds its values twice.
 - Approving a reveal request is disabled while the expression has been edited but not run, so the agent never receives rows the owner didn't look at. If the run fails, the banner shows why instead of doing nothing.
@@ -28,6 +32,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - An expression an AI agent asks to reveal can no longer change data. The review tab runs it read-only, and a reveal request whose expression would change data is declined automatically, with a comment saying why. Before, `user | delete!` sent as a reveal request deleted the rows the moment it arrived.
 - In the desktop app, every request to the bundled query server carries the secret the app makes at each launch, so no other program or web page can use the server. Needs beamlynx-desktop with launch tokens (after 0.19.0) and pine-lang after 0.48.1.
 - CSV export and copy neutralise a value a spreadsheet would run as a formula (one starting with =, +, -, @, a tab or a carriage return) by prefixing an apostrophe. A value with a carriage return is quoted. JSON values are written as JSON, not [object Object].
+- Updated Next.js from 13.5.6 to 15.5.27, past every published Next.js advisory, including the middleware bypass (CVE-2025-29927). PostCSS, nanoid, source-map-js and yaml are lifted to fixed versions. `npm audit --omit=dev` reports no vulnerabilities. The lockfile is back in step with package.json.
 
 ## [0.65.0] - 2026-10-06
 ### Breaking

@@ -6,8 +6,7 @@ import PineTabs from './PineTabs';
 import { UpgradeRequired } from './docs/UpgradeRequired';
 import ActiveConnection from './ActiveConnection';
 import Message from './Message';
-import UserBox from './UserBox';
-import { isDesktop, isDevelopment, isPlayground } from '../store/util';
+import { isDesktop, isPlayground } from '../store/util';
 import { useState, useEffect, useCallback } from 'react';
 import { getUserPreference, STORAGE_KEYS } from '../store/preferences';
 
@@ -125,19 +124,13 @@ const AppView = observer(() => {
     return null;
   }
 
-  // Define UserContent inside the component so it can access the state.
-  // isDesktop() still has to gate out UserBox below - desktop ships without
-  // Clerk (see AGENTS.md), so rendering it there would break, not just show
-  // an unwanted label - but the desktop build no longer needs its own badge
-  // to say so, hence rendering nothing rather than an empty caption.
-  // A dev copy shows DevModeChip instead, in the header below.
+  // The playground marks itself; nothing else shows a user area. A dev copy
+  // shows DevModeChip instead, in the header below.
   const UserContent = isPlayground() ? (
     <Typography variant="caption" color="gray">
       [Playground]
     </Typography>
-  ) : isDevelopment() || isDesktop() ? null : (
-    <UserBox />
-  );
+  ) : null;
 
   if (global.connecting)
     return (

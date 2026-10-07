@@ -1,7 +1,6 @@
-import { ClerkProvider } from '@clerk/nextjs';
 import Container from '@mui/material/Container';
 import type { NextPage } from 'next';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { reaction, runInAction } from 'mobx';
 import AppView from '../components/AppView';
 import DesktopUpdateBanner from '../components/DesktopUpdateBanner';
@@ -10,15 +9,13 @@ import McpBridge from '../components/McpBridge';
 import DeepLinkHandler from '../components/DeepLinkHandler';
 import RevealRequestHandler from '../components/RevealRequestHandler';
 import { useStores } from '../store/store-container';
-import { isDesktop, isDevelopment, isPlayground } from '../store/util';
+import { isDesktop } from '../store/util';
 
 const Home: NextPage = () => {
   const { global } = useStores();
-  const [mounted, setMounted] = useState(false);
 
   // Load Connection details
   useEffect(() => {
-    setMounted(true);
     let pollingInterval: NodeJS.Timeout | null = null;
 
     const startPolling = () => {
@@ -88,16 +85,7 @@ const Home: NextPage = () => {
     </Container>
   );
 
-  // Prevent hydration mismatch by ensuring consistent rendering
-  if (!mounted) {
-    return AppContent;
-  }
-
-  return isDevelopment() || isPlayground() || isDesktop() ? (
-    AppContent
-  ) : (
-    <ClerkProvider>{AppContent}</ClerkProvider>
-  );
+  return AppContent;
 };
 
 export default Home;
