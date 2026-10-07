@@ -1073,6 +1073,10 @@ const ConnectionsSection = () => {
     setSwitchingConnection(true);
     try {
       await global.selectConnection(id);
+    } catch (e) {
+      // selectConnection has already shown why; this only stops the
+      // rejection from going unhandled.
+      console.error('[connections] switching failed ->', e);
     } finally {
       setSwitchingConnection(false);
     }

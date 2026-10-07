@@ -63,6 +63,16 @@ export const offsetFromPosition = (
 // means such a segment won't render as an editable where-chip. Canvas-
 // generated Pine always writes the explicit prefix, so this only affects
 // hand-typed expressions using the terse bare-condition form.
+/**
+ * Whether an expression may change data: any pipeline step that starts with
+ * delete!, d!, update! or u!. Errs towards yes, since a `|` inside a string
+ * can look like a step; the only cost of a false yes is that auto-run waits
+ * for Run. pine-lang's own check (effects/any-writes?) is the authority when
+ * the expression is evaluated.
+ */
+export const mayChangeData = (expression: string): boolean =>
+  /(^|\|)\s*(delete!|d!|update!|u!)/i.test(expression);
+
 const classifyKind = (text: string): SegmentKind => {
   if (/^(select:|s:)/i.test(text)) return 'select';
   if (/^(where:|w:)/i.test(text)) return 'where';

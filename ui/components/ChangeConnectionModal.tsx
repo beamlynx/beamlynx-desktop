@@ -31,6 +31,8 @@ const ChangeConnectionModal = observer(() => {
     setSwitching(true);
     try {
       await global.confirmPendingConnectionSwitch();
+    } catch (e) {
+      console.error('[connections] switching failed ->', e);
     } finally {
       setSwitching(false);
     }

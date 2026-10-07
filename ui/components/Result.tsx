@@ -1,6 +1,6 @@
 import { runInAction } from 'mobx';
 import { observer } from 'mobx-react-lite';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useStores } from '../store/store-container';
 import type { Row } from '../store/session';
 import {
@@ -330,21 +330,24 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   // Track data structure changes to reset view mode
   const prevDataSignature = useRef<string>('');
 
-  // Check if data is suitable for bar chart visualization
-  const isBarChartSuitable = () => {
-    // Check: exactly 2 columns (excluding _id)
+  // Whether the data has a bar chart's shape: two columns, the second one
+  // numeric. Computed once per result rather than on every render, since it
+  // scans every row. An empty string or Infinity is not a number to chart:
+  // Number('') is 0 and Number('Infinity') isn't NaN, so both used to pass.
+  const barChartShape = useMemo(() => {
     const visibleColumns = columns.filter(col => col.field !== '_id');
-    if (visibleColumns.length !== 2) return false;
-
-    // Check: second column has numeric values
+    if (visibleColumns.length !== 2 || rows.length === 0) return false;
     const secondColField = visibleColumns[1].field;
-    if (rows.length === 0) return false;
-
     return rows.every(row => {
       const value = row[secondColField];
-      return value !== null && value !== undefined && !isNaN(Number(value));
+      return value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
     });
-  };
+  }, [columns, rows]);
+  // One bar, tooltip and label per row: past a couple of thousand the tab
+  // stops responding, so the chart is offered only below that.
+  const MAX_CHART_ROWS = 2000;
+  const barChartTooLarge = rows.length > MAX_CHART_ROWS;
+  const isBarChartSuitable = () => barChartShape && !barChartTooLarge;
 
   // Reset view mode to table only when data becomes unsuitable for bar chart
   useEffect(() => {
@@ -456,6 +459,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
         id,
         column,
         value,
+        { requireOneRow: true },
       );
       const vs = global.getVirtualSession();
       runInAction(() => {
@@ -500,6 +504,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     id: string | number,
     column: string,
     value: string,
+    { requireOneRow = false }: { requireOneRow?: boolean } = {},
   ) => {
     const vs = global.getVirtualSession();
 
@@ -520,6 +525,19 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     await vs.pipeAndUpdateExpression(
       `where: id = ${Number.isInteger(id) ? parseInt(id as string, 10) : pineString(String(id))}`,
     );
+    // Enter in a cell saves without a dialog, so check first that the save
+    // changes exactly the row on screen. `id` is not unique in every table,
+    // and an update! scoped by a duplicated id would change all of them.
+    if (requireOneRow) {
+      const matching = await vs.countRows();
+      if (matching !== 1) {
+        throw new Error(
+          matching === 0
+            ? 'the row is no longer there'
+            : `this would change ${matching} rows, not one, because they share id ${String(id)}`,
+        );
+      }
+    }
     await vs.pipeAndUpdateExpression(`update! ${column} = ${pineString(value)}`);
 
     return vs.expression;
@@ -706,6 +724,15 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
         </Tooltip>
 
         {/* Bar Chart Toggle Button */}
+        {barChartShape && barChartTooLarge && (
+          <Tooltip title={`Too many rows to chart (over ${MAX_CHART_ROWS.toLocaleString()})`}>
+            <span style={{ position: 'absolute', top: 4, right: 92, zIndex: 1000 }}>
+              <IconButton disabled size="small" aria-label="Bar chart unavailable for this many rows">
+                <BarChartIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+        )}
         {isBarChartSuitable() && (
           <Tooltip title={viewMode === 'table' ? 'View as Bar Chart' : 'View as Table'}>
             <IconButton

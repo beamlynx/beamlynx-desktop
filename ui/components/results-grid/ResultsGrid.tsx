@@ -98,8 +98,10 @@ const GRID_KEYBINDINGS = { paste: false, cut: false, delete: false } as const;
 const refuse = () => false as const;
 const onlySingleCellEdits = (edits: readonly unknown[]) => edits.length !== 1;
 
+// Objects (a JSON column the sampler didn't recognise, say because its first
+// rows were null) as JSON, not "[object Object]".
 const displayText = (value: unknown): string =>
-  value === null || value === undefined ? '' : String(value);
+  value === null || value === undefined ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value);
 
 // Glide renders its cell editor into an element with this id. Created once,
 // on first use, rather than asking every page to remember to include it.
