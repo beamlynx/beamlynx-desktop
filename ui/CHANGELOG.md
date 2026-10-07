@@ -10,6 +10,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Fixed
 - Using a recipe (Ctrl+O) in a tab that already sets one of its `$variables` changed that tab's results. The recipe's values block came last, and the last value wins across the whole tab. The tab's value is now kept, and the recipe's assignment of that name is left out. Using the same recipe twice no longer adds its values twice.
 
+### Security
+- The desktop app no longer writes the database password to the developer console when it connects to a saved connection. Other connection details are logged only in development builds.
+
 ## [0.65.0] - 2026-10-06
 ### Breaking
 - Needs pine-lang 0.48.0 or later (was 0.47.0). Values blocks and named results after `in` need it. Connecting to an older server shows the upgrade-required screen.

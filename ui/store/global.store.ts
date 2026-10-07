@@ -18,7 +18,7 @@ import { DevState } from './dev-state';
 import { leadingDoc } from './canvas/pine-text';
 import { isValuesBlock, splitExpressions } from './blocks';
 import { getCommandById } from '../utils/commands';
-import { CONNECTION_COLOR_PALETTE, isDesktop, isPlayground } from './util';
+import { CONNECTION_COLOR_PALETTE, isDesktop, isDevelopment, isPlayground } from './util';
 import {
   runMcpQuery as runMcpQueryImpl,
   explainMcpQuery as explainMcpQueryImpl,
@@ -788,7 +788,7 @@ export class GlobalStore {
     );
     if (isDesktop() && typeof window !== 'undefined' && window.beamlynxDesktop) {
       const profiles = await window.beamlynxDesktop.credentials.list();
-      console.log('[credentials] refreshConnections (desktop): profiles ->', profiles);
+      if (isDevelopment()) console.log('[credentials] refreshConnections (desktop): profiles ->', profiles);
       runInAction(() => {
         this.connections = profiles.map(p => ({
           id: p.id,
@@ -924,7 +924,7 @@ export class GlobalStore {
       return;
     }
     const status = await window.beamlynxDesktop.credentials.status();
-    console.log('[credentials] loadCredentialsStatus ->', status);
+    if (isDevelopment()) console.log('[credentials] loadCredentialsStatus ->', status);
     runInAction(() => {
       this.credentialsStatus = status;
     });
@@ -1169,7 +1169,10 @@ export class GlobalStore {
       throw new Error('Saved connections are only available in desktop mode');
     }
     const result = await window.beamlynxDesktop.credentials.get(profileId);
-    console.log('[credentials] getSavedProfileCredentials: get result ->', result);
+    // Never log `result` itself: on success it holds the decrypted password.
+    if (isDevelopment()) {
+      console.log('[credentials] getSavedProfileCredentials: ok ->', result.ok, 'profile ->', 'profile' in result ? result.profile.id : undefined);
+    }
     if (!result.ok) {
       if (result.error === 'decryption-failed') {
         const { dbHost, dbPort, dbName, dbUser, dbType } = result.profile;
@@ -1601,7 +1604,7 @@ export class GlobalStore {
     if (!knownProfileId && isDesktop() && typeof window !== 'undefined' && window.beamlynxDesktop) {
       try {
         const saveResult = await window.beamlynxDesktop.credentials.save(params);
-        console.log('[credentials] connect: save result ->', saveResult);
+        if (isDevelopment()) console.log('[credentials] connect: save result ->', saveResult);
         profileId = saveResult.persisted ? saveResult.profile.id : '';
       } catch (e) {
         console.error('[credentials] connect: credentials.save threw ->', e);
