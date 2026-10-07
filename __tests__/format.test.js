@@ -520,3 +520,12 @@ test('formatRevealStatus does not call a re-prettified expression an edit', () =
 test('formatRevealStatus reports an unknown request id rather than throwing', () => {
   assert.match(formatRevealStatus({}), /No such reveal request/);
 });
+
+test('a cell longer than MAX_CELL_CHARS is cut, saying how much was left out', () => {
+  const { formatRows, MAX_CELL_CHARS } = require('../dist/main/mcp/format.js');
+  const long = 'x'.repeat(MAX_CELL_CHARS + 500);
+  const text = formatRows({ rows: [['id', 'body'], [1, long], [2, 'short']], columns: [] });
+  assert.ok(!text.includes(long));
+  assert.match(text, /… \(500 more characters\)/);
+  assert.match(text, /"short"/);
+});

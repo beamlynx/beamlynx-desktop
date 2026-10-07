@@ -100,7 +100,10 @@ function configureLinuxPasswordStore(): void {
   if (process.platform !== 'linux') return;
   const desktop = `${process.env.XDG_CURRENT_DESKTOP ?? ''} ${process.env.DESKTOP_SESSION ?? ''}`.toLowerCase();
   const isKde = desktop.includes('kde') || !!process.env.KDE_SESSION_VERSION;
-  app.commandLine.appendSwitch('password-store', isKde ? 'kwallet6' : 'gnome-libsecret');
+  // Plasma 5 runs KWallet 5; forcing kwallet6 there left safeStorage with no
+  // backend, so saving a connection was refused with no hint why.
+  const kwallet = process.env.KDE_SESSION_VERSION === '5' ? 'kwallet5' : 'kwallet6';
+  app.commandLine.appendSwitch('password-store', isKde ? kwallet : 'gnome-libsecret');
 }
 
 // Windows/Linux: no menu bar at all. It only ever duplicated beamlynx-ui's
@@ -339,6 +342,36 @@ function loadRealUi(): void {
   }
 }
 
+// When the bundled server stops on its own, offer to start it again. Every
+// query failed until the app was quit and reopened before. The restart keeps
+// this launch's token, so the window's UI can keep talking to it; its
+// database connections are gone and reconnect as tabs are used.
+function watchServer(handle: ServerHandle): void {
+  handle.onUnexpectedExit(async ({ code, signal, stderrTail }) => {
+    if (quitting) return;
+    const { response } = await dialog.showMessageBox({
+      type: 'error',
+      title: 'The pine server stopped',
+      message: 'The pine server stopped unexpectedly.',
+      detail: `Exit code: ${code}, signal: ${signal}\n\n${stderrTail.trim().slice(-2000) || '(nothing was printed)'}`,
+      buttons: ['Restart server', 'Quit beamlynx'],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (response !== 0) {
+      app.quit();
+      return;
+    }
+    try {
+      serverHandle = await startServer(pineToken);
+      watchServer(serverHandle);
+    } catch (err) {
+      dialog.showErrorBox("The pine server couldn't be restarted", err instanceof Error ? err.message : String(err));
+      app.quit();
+    }
+  });
+}
+
 async function main(): Promise<void> {
   Menu.setApplicationMenu(buildMenu());
   registerCredentialIpc();
@@ -381,13 +414,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  serverHandle.onUnexpectedExit(({ code, signal, stderrTail }) => {
-    if (quitting) return;
-    dialog.showErrorBox(
-      'The pine server stopped unexpectedly',
-      `Exit code: ${code}, signal: ${signal}\n\n${stderrTail || '(no stderr output captured)'}`,
-    );
-  });
+  watchServer(serverHandle);
 
   loadRealUi();
   if (mainWindow) {
@@ -409,7 +436,15 @@ function runDesktopApp(): void {
   // the Linux/deb case (the only Linux target this handles registration
   // for -- see electron-builder.yml) instead delivers the URL via argv,
   // handled below.
-  app.setAsDefaultProtocolClient('beamlynx');
+  // A dev build runs as the bare Electron binary, which needs the app's
+  // directory to know what to run. Registered without it, beamlynx:// links
+  // on a developer's machine opened an empty Electron instead of the
+  // installed app.
+  if (app.isPackaged) {
+    app.setAsDefaultProtocolClient('beamlynx');
+  } else {
+    app.setAsDefaultProtocolClient('beamlynx', process.execPath, [app.getAppPath()]);
+  }
   app.on('open-url', (event, url) => {
     event.preventDefault();
     handleDeepLink(url);

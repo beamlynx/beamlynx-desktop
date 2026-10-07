@@ -260,8 +260,15 @@ function writeStore(store: StoreFile): void {
   // A dev build can run before the installed app ever has, so the shared
   // folder may not exist yet.
   fs.mkdirSync(path.dirname(storePath), { recursive: true });
-  fs.writeFileSync(tmpPath, JSON.stringify(store, null, 2), 'utf-8');
+  // Readable only by this user: it lists every saved database with its
+  // host, name and user (the password itself is encrypted).
+  fs.writeFileSync(tmpPath, JSON.stringify(store, null, 2), { encoding: 'utf-8', mode: 0o600 });
   fs.renameSync(tmpPath, storePath);
+  try {
+    fs.chmodSync(storePath, 0o600);
+  } catch {
+    // Not supported on every file system; the file is still written.
+  }
 }
 
 function toMeta(record: StoredConnectionRecord): SavedConnectionMeta {

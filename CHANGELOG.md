@@ -6,15 +6,22 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ## [Unreleased]
 ### Changed
 - Links the app opens in your browser must be `http`, `https` or `mailto`. Anything else is refused.
+- Results sent to an AI agent cut any cell longer than 2 000 characters, saying how much was left out, so one large text or JSON column can't flood the agent's context.
 
 ### Fixed
 - If the AI-agent control port can't start, the app now says so instead of failing silently, and agents then get a clear error.
+- When the bundled query server fails to start, the error says why, with what it printed, as soon as it stops. It used to wait 15 seconds and report only that it 'did not become ready'. A server binary that can't be started at all no longer crashes the app.
+- If the query server stops while the app is open, the app offers to restart it. Every query failed until the app was reopened before.
+- At start-up the app stops a server left behind by a crashed run only if that process is still a pine server. The process number it remembered could belong to an unrelated program after a reboot.
+- KDE Plasma 5 can save connections again. The app asked for KWallet 6, which Plasma 5 doesn't have, so saving was refused with no explanation.
+- A development build registers `beamlynx://` links for itself, not for a bare Electron. The app data file failing to open is logged once, with the reason, instead of on every call.
 
 ### Security
 - A `beamlynx://` link is ignored unless it is a `beamlynx://run` link. With the bundled beamlynx-ui after 0.65.0, a run link opens a tab with its expression but doesn't run it.
 - Other programs on the computer, and web pages open in the browser, could use the bundled query server and the AI-agent control port. Both now require a secret the app creates at each launch. The query server's goes to it as `PINE_TOKEN` and to the app's own UI. The control port's is written to `control-plane.json` in the app's data folder, readable only by you, where `beamlynx --mcp` reads it. The control port also refuses any request from a web page. Needs pine-lang and beamlynx-ui after this release's pinned versions (pine-lang 0.48.1, beamlynx-ui 0.65.0); the next release pins them together.
 - An AI agent can no longer ask to reveal an expression that changes data. The app builds the expression first and refuses the request unless pine-lang reports it as read-only. At most three reveal requests per connection can wait at once.
 - The bundled server always listens on 127.0.0.1, even if `PINE_HOST` is set in your environment.
+- The saved-connections file is readable only by you. It lists every saved database with its host, name and user; the passwords in it were already encrypted.
 
 ## [0.19.0] - 2026-10-06
 ### Changed

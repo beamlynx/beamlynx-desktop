@@ -3,6 +3,7 @@ import { app } from 'electron';
 import * as fs from 'fs';
 import * as http from 'http';
 import * as path from 'path';
+import { isPineServerProcess, waitForReadyOrExit } from './child-watch';
 import { describePortInUse, isPortInUse, PINE_PORT } from './ports';
 import { getResourcesRoot } from './resources';
 
@@ -25,6 +26,9 @@ function killStaleServerIfAny(): void {
   const pid = parseInt(fs.readFileSync(pidFile, 'utf-8').trim(), 10);
   fs.rmSync(pidFile, { force: true });
   if (!pid || Number.isNaN(pid)) return;
+  // The PID may have been reused by an unrelated process since (a reboot,
+  // or a long time), so only kill it if it is still a pine server.
+  if (!isPineServerProcess(pid)) return;
   try {
     process.kill(pid, 'SIGKILL');
   } catch {
@@ -194,6 +198,14 @@ export async function startServer(token: string): Promise<ServerHandle> {
     stderrTail = keepTail(stderrTail, chunk);
   });
 
+  // Always listened for: a spawn failure (EACCES, a missing loader) is
+  // emitted as 'error', and with no listener Node turns it into an uncaught
+  // exception in the main process. waitForReadyOrExit reports it during
+  // start-up; this keeps it in the output for anything later.
+  child.on('error', err => {
+    stderrTail = keepTail(stderrTail, `\n[spawn error] ${err.message}\n`);
+  });
+
   child.on('exit', (code, signal) => {
     if (!stopping) {
       unexpectedExitCb?.({ code, signal, stderrTail });
@@ -224,7 +236,11 @@ export async function startServer(token: string): Promise<ServerHandle> {
 
   try {
     const expectedVersion = getExpectedVersion();
-    const { version } = await pollReady(PINE_PORT, token, READY_TIMEOUT_MS);
+    const { version } = await waitForReadyOrExit(
+      child,
+      pollReady(PINE_PORT, token, READY_TIMEOUT_MS),
+      () => stderrTail,
+    );
     if (version !== expectedVersion) {
       await stop();
       // A build-integrity tripwire, not something a correctly assembled
