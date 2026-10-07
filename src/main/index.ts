@@ -12,6 +12,7 @@ import { startMcpRelay } from './mcp/stdio-relay';
 import { CONTROL_PLANE_PORT, describePortInUse, isPortInUse, PINE_PORT } from './ports';
 import { getLaunchPath, getResourcesRoot } from './resources';
 import { ServerHandle, startServer } from './server-process';
+import { DeepLinkParams, parseDeepLink } from './deep-link';
 
 let mainWindow: BrowserWindow | null = null;
 let serverHandle: ServerHandle | null = null;
@@ -62,21 +63,8 @@ if (process.argv.includes('--mcp')) {
 // once the renderer signals it has mounted (see the 'renderer:ready' IPC
 // handler in runDesktopApp below), rather than dropping a cold-start click
 // silently.
-let pendingDeepLink: { connection?: string; expression?: string } | null = null;
+let pendingDeepLink: DeepLinkParams | null = null;
 let rendererReady = false;
-
-function parseDeepLink(url: string): { connection?: string; expression?: string } | null {
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== 'beamlynx:') return null;
-    return {
-      connection: parsed.searchParams.get('connection') ?? undefined,
-      expression: parsed.searchParams.get('expression') ?? undefined,
-    };
-  } catch {
-    return null;
-  }
-}
 
 function handleDeepLink(url: string): void {
   const params = parseDeepLink(url);
