@@ -7,6 +7,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Changed
 - Links the app opens in your browser must be `http`, `https` or `mailto`. Anything else is refused.
 - Results sent to an AI agent cut any cell longer than 2 000 characters, saying how much was left out, so one large text or JSON column can't flood the agent's context.
+- The Pine reference AI agents read (`get_pine_doc`) matches the bundled pine-lang after its next release. A string can hold an apostrophe written twice. Date-time literals work. `limit:` takes 0 to 10 000. `count` is the only aggregate. `delete!` needs a `where:` or `limit:`. Under an access policy, hidden columns can't be filtered, sorted or grouped on, and unindexed tables are refused.
 
 ### Fixed
 - If the AI-agent control port can't start, the app now says so instead of failing silently, and agents then get a clear error.

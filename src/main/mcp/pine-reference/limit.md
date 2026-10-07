@@ -17,6 +17,8 @@ table_name | limit: number
 customers | limit: 10
 ```
 
+`limit:` takes 0 to 10 000. Without one, a query returns at most 250 rows.
+
 ### After filtering and sorting
 
 ```

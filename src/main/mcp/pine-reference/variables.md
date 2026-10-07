@@ -4,7 +4,7 @@ A `$name` in an expression stands for a value set separately: in a values block 
 
 **Syntax:** `$name` wherever a value goes: after `=`, `!=`, `>`, `<`, `like`, `ilike` and their `not` forms, and as the list after `in` or `not in`. A name uses letters, digits and underscores, and doesn't start with a digit.
 
-**Values blocks:** a block of only `$name = value` lines, separated from the query by a blank line, sets values for the query. A value is written like a literal (`'text'`, a number, `true`) or as a list in parentheses (`('a', 'b')`), not square brackets. A string here can't contain a `'`; pass a value like that in `variables` instead. A query in the same block as values is an error: put a blank line between them.
+**Values blocks:** a block of only `$name = value` lines, separated from the query by a blank line, sets values for the query. A value is written like a literal (`'text'`, a number, `true`) or as a list in parentheses (`('a', 'b')`), not square brackets. An apostrophe inside a string is written twice: `'O''Brien'`. A query in the same block as values is an error: put a blank line between them.
 
 **Passing values:** run_query's `variables` maps each name, without the `$`, to its value: a string, a number or a boolean, or a JSON array for `in`. A value passed this way overrides one written in a values block. Pass an id larger than 2^53 as a string: a larger JSON number arrives rounded. request_reveal and open_in_desktop take no `variables`, so for those, write the values in a values block.
 
