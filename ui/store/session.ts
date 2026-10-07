@@ -2,6 +2,8 @@ import { makeAutoObservable, observable, reaction, runInAction } from 'mobx';
 import { TOTAL_BARS } from '../constants';
 import { DefaultPlugin } from '../plugin/default.plugin';
 import { EvaluateOptions } from '../plugin/plugin.interface';
+import { csvCell } from '../utils/csv';
+import { mayChangeData } from './canvas/pine-text';
 import { formatSql } from '../utils/formatSql';
 import { CanvasStore } from './canvas/canvas.store';
 import {
@@ -400,6 +402,15 @@ export class Session {
         this.autoRunTrigger();
         return;
       }
+      // Never run an expression that changes data on its own. A where chip
+      // added to narrow an update! would otherwise run it 150 ms later,
+      // without anyone pressing Run.
+      if (mayChangeData(this.expression)) {
+        runInAction(() => {
+          this.message = 'Auto-run skipped: this expression changes data. Press Run to run it.';
+        });
+        return;
+      }
       // A canvas commit's source of truth is always session.expression
       // (Pine), never the SQL panel's text - forcePine runs that regardless
       // of session.inputMode, instead of silently no-oping (or, worse,
@@ -663,6 +674,27 @@ export class Session {
     this.expression = this.expression + string;
   }
 
+  /**
+   * How many rows this tab's expression matches, counted by the server with
+   * `| count:` on its last block. Never writes. Used before saving a cell
+   * edit, so a save that would change more than one row is refused.
+   */
+  public async countRows(): Promise<number> {
+    const blocks = this.expressions;
+    if (blocks.length === 0) return 0;
+    const last = blocks.length - 1;
+    const response = await client.eval(
+      [...blocks.slice(0, last), `${blocks[last]} | count:`],
+      this.connectionId,
+      this.accessPolicyRules,
+      false,
+    );
+    if (response.error) throw new Error(response.error);
+    const count = Number(response.result?.[1]?.[0]);
+    if (!Number.isFinite(count)) throw new Error("Couldn't count the matching rows");
+    return count;
+  }
+
   public async pipeAndUpdateExpression(pine: string, overwriteLastOperation: boolean = false) {
     const expression = await this.pipeExpression(pine, overwriteLastOperation);
     runInAction(() => {
@@ -829,12 +861,6 @@ export class Session {
   }
 
   /**
-   * Whether this tab's connection has been opted in to destructive actions.
-   * False for an unsaved connection, and false on web, where there is no
-   * credential store to hold the decision - see
-   * SavedConnectionMeta.allowDestructive.
-   */
-  /**
    * How the connection is named in the confirmation. Its label AND its host,
    * because a label alone is exactly what gets misread when two connections
    * are named something similar -- and "which database am I pointed at" is
@@ -871,10 +897,9 @@ export class Session {
   }
 
   /**
-   * Runs the planned deletes. Gated twice on purpose, for two different
-   * mistakes: `canRunDelete` catches the wrong *database*, decided once per
-   * connection; the confirmation catches the wrong *query*, which you only
-   * notice with the numbers in front of you.
+   * Runs the planned deletes, after the confirmation: it names the
+   * connection with its host and lists every table and count, so the wrong
+   * query or the wrong database shows up with the numbers in front of you.
    */
   async confirmTraversalRun() {
     const traversal = this.traversal;
@@ -1111,21 +1136,7 @@ export class Session {
       headers.join(','),
       ...this.rows.map(row =>
         visibleColumns
-          .map(col => {
-            const value = row[col.field];
-            if (value === null || value === undefined) {
-              return '';
-            }
-            const stringValue = String(value);
-            if (
-              stringValue.includes(',') ||
-              stringValue.includes('"') ||
-              stringValue.includes('\n')
-            ) {
-              return `"${stringValue.replace(/"/g, '""')}"`;
-            }
-            return stringValue;
-          })
+          .map(col => csvCell(row[col.field]))
           .join(','),
       ),
     ];

@@ -435,7 +435,8 @@ export class HttpClient {
     const res = await this.baseGet<{ 'connection-count': number; time: string }>(
       'connection/stats',
     );
-    if (!res) {
+    // No numbers when nothing is selected (pine-lang answers with an error).
+    if (!res || typeof res['connection-count'] !== 'number') {
       return;
     }
     return {
@@ -606,7 +607,12 @@ export class HttpClient {
     if (response.error) {
       throw new Error(response.error);
     }
-    return response.result[1][0] as number;
+    // A header with no row means nothing was counted.
+    const count = Number(response.result?.[1]?.[0]);
+    if (!Number.isFinite(count)) {
+      throw new Error("Couldn't count the matching rows");
+    }
+    return count;
   }
 
   public async makeChildExpressions(

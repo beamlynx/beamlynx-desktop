@@ -38,7 +38,13 @@ const UpdateModal: React.FC<UpdateModalProps> = observer(
     const onRun = async () => {
       try {
         // Execute the update query
-        const [messageRow, countRow] = await vs.evaluate();
+        const rows = await vs.evaluate();
+        // evaluate() returns [] on failure and puts the reason in vs.error.
+        if (vs.error || rows.length < 2) {
+          setTitle(`❌ ${vs.error || 'Update execution failed'}`);
+          return;
+        }
+        const [messageRow, countRow] = rows;
         const message = messageRow[0];
         const count = countRow[0];
         setTitle(`✅ ${message}: ${count}`);

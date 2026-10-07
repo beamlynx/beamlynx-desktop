@@ -16,11 +16,18 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - A stored preference the app no longer understands, or browser storage that is blocked, could leave a blank page or an 'Application error' at start-up. An unknown theme, font or text size, a non-version 'last read' marker, and a damaged list of saved tabs each did it. Every preference is now checked, an unusable one falls back to its default, and damaged saved tabs are skipped.
 - An unexpected error while drawing the app shows a page with Reload and 'Reset preferences and reload' buttons instead of a blank window. Resetting keeps your open tabs.
 - A Pine server whose version isn't a plain x.y.z, such as `dev` or `0.48`, showed as 'No connection to Pine server'. It now connects. The upgrade-required screen also clears once the server is upgraded, instead of staying until a reload.
+- Auto-run on the canvas no longer runs an expression that changes data. Adding a where chip to narrow an `update!` used to run the update 150 ms later. Such an expression now waits for Run, and the tab says why.
+- Pressing Enter in a cell checks that exactly one row matches before saving. A table where `id` isn't unique used to have every row with that id changed. The save is refused, saying how many rows it would change.
+- A `?query=` share link containing `%`, such as `like '%a%'`, was silently ignored. It opens now.
+- The bar chart is offered only up to 2 000 rows; past that, its button is disabled with a tooltip. A large result used to freeze the tab. Empty strings and Infinity no longer count as numbers to chart.
+- A tab whose saved connection was deleted showed a 'Failed to reconnect' alert on every switch to it. It now forgets the connection once and asks you to pick one.
+- The Inspect dialog's Run shows why an update failed instead of 'Update execution failed'. JSON values that the grid didn't recognise as JSON show as JSON instead of [object Object]. The connection monitor no longer logs an error every second while the server is down.
 
 ### Security
 - The desktop app no longer writes the database password to the developer console when it connects to a saved connection. Other connection details are logged only in development builds.
 - An expression an AI agent asks to reveal can no longer change data. The review tab runs it read-only, and a reveal request whose expression would change data is declined automatically, with a comment saying why. Before, `user | delete!` sent as a reveal request deleted the rows the moment it arrived.
 - In the desktop app, every request to the bundled query server carries the secret the app makes at each launch, so no other program or web page can use the server. Needs beamlynx-desktop with launch tokens (after 0.19.0) and pine-lang after 0.48.1.
+- CSV export and copy neutralise a value a spreadsheet would run as a formula (one starting with =, +, -, @, a tab or a carriage return) by prefixing an apostrophe. A value with a carriage return is quoted. JSON values are written as JSON, not [object Object].
 
 ## [0.65.0] - 2026-10-06
 ### Breaking

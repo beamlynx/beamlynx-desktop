@@ -61,6 +61,13 @@ type PersistedSessionsState = {
 // (e.g. connections.json copied onto a different machine/user -- safeStorage
 // keys are OS/user/machine-scoped) -- distinguishable so the UI can offer to
 // re-enter the password instead of showing a generic connect failure.
+export class SavedConnectionNotFoundError extends Error {
+  constructor() {
+    super('Saved connection not found');
+    this.name = 'SavedConnectionNotFoundError';
+  }
+}
+
 export class DecryptionFailedError extends Error {
   constructor() {
     super('Failed to decrypt the saved password for this connection');
@@ -1029,7 +1036,7 @@ export class GlobalStore {
     try {
       const analyseParam = urlParams.get('analyse');
       if (analyseParam) {
-        this.analysisInitialValue = decodeURIComponent(analyseParam);
+        this.analysisInitialValue = analyseParam;
         this.setShowAnalysis(true);
         urlParams.delete('analyse');
         hasChanges = true;
@@ -1045,7 +1052,9 @@ export class GlobalStore {
         const session = this.getSession(this.activeSessionId);
         if (session) {
           runInAction(() => {
-            session.expression = decodeURIComponent(queryParam);
+            // Already decoded by URLSearchParams. Decoding again broke any
+            // query containing %, like `like '%a%'`.
+            session.expression = queryParam;
           });
           await session.prettify();
         }
@@ -1247,7 +1256,7 @@ export class GlobalStore {
         });
         throw new DecryptionFailedError();
       }
-      throw new Error('Saved connection not found');
+      throw new SavedConnectionNotFoundError();
     }
     const { profile, dbPassword } = result;
     return {
@@ -1823,6 +1832,17 @@ export class GlobalStore {
       // succeeded, so lastHintsCursorPosition was never set.
       session.requestHints();
     } catch (e) {
+      if (e instanceof SavedConnectionNotFoundError) {
+        // The tab points at a saved connection that was deleted. Forget it
+        // once, rather than failing (and showing an alert) on every switch
+        // to this tab.
+        runInAction(() => {
+          session.profileId = '';
+          session.connectionId = '';
+          session.message = 'This tab’s saved connection no longer exists. Pick a connection.';
+        });
+        return;
+      }
       const message = (e as Error)?.message ?? 'Unknown error';
       console.error(`[credentials] ensureSessionConnected(${sessionId}): failed ->`, e);
       runInAction(() => {

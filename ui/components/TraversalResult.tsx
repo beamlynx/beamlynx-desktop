@@ -290,10 +290,9 @@ const TraversalResult: React.FC<{ session: Session }> = observer(({ session }) =
         </>
       )}
 
-      {/* The confirmation. The connection flag catches the wrong database,
-          decided once per connection; this catches the wrong query, which you
-          only notice with the numbers in front of you -- so it names the
-          connection AND lists what is about to go. */}
+      {/* The confirmation. It catches the wrong query or the wrong
+          database, which you only notice with the numbers in front of you --
+          so it names the connection AND lists what is about to go. */}
       {run === 'confirming' && (
         <Box
           data-testid="traversal-confirm"
