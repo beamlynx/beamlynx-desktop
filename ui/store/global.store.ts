@@ -1,6 +1,6 @@
 import { makeAutoObservable, reaction, runInAction } from 'mobx';
 import { lt } from 'semver';
-import { AccessPolicy, AccessPolicyRule, HttpClient, ConnectionInfo, effectiveAccessPolicyRules, VariableValue } from './client';
+import { AccessPolicy, AccessPolicyRule, HttpClient, ConnectionInfo, effectiveAccessPolicyRules, ServerRejectedError, VariableValue } from './client';
 import type { CredentialsStatus, RevealOutcome } from '../desktop';
 import { Session, Theme, InputMode } from './session';
 import { THEME_MODE, ThemeId } from '../styles/palette/tokens';
@@ -180,6 +180,13 @@ export class GlobalStore {
   // in desktop mode lists saved *profiles* regardless of whether they're
   // currently live -- see refreshConnections.
   liveConnectionIds: string[] = [];
+
+  /**
+   * True when the Pine server answered but refused this app (HTTP 401: a
+   * launch token this app didn't send). Shown instead of "No connection",
+   * which would send the person looking for a server that is running.
+   */
+  serverRejected: boolean = false;
 
   get pineConnected() {
     return DevState.pineConnected ?? !!this.version;
@@ -2055,6 +2062,9 @@ export class GlobalStore {
   loadConnectionMetadata = async () => {
     try {
       const response = await client.get('connection');
+      runInAction(() => {
+        this.serverRejected = false;
+      });
       if (!response?.result) {
         runInAction(() => {
           this.connection = '';
@@ -2117,6 +2127,7 @@ export class GlobalStore {
       runInAction(() => {
         this.connection = '';
         this.version = undefined;
+        this.serverRejected = e instanceof ServerRejectedError;
       });
     }
     return this.connection;
