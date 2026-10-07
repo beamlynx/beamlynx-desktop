@@ -389,3 +389,56 @@ test('a completed delete log does not claim anything is outstanding', () => {
   assert.match(log, /Outcome {7}completed/);
   assert.ok(!log.includes('Not deleted'));
 });
+
+// pine-lang accepts `limit:` up to 10 000. A traversal node with more rows is
+// deleted in batches, never more than the rows counted when it was planned.
+const { runDeleteScript, MAX_DELETE_BATCH } = require('../store/canvas/traversal.ts');
+
+const batchClient = rowsInTable => {
+  const sent = [];
+  let left = rowsInTable;
+  return {
+    sent,
+    eval: async ([expression]) => {
+      sent.push(expression);
+      const limit = Number(/limit: (\d+)/.exec(expression)[1]);
+      const removed = Math.min(limit, left);
+      left -= removed;
+      return { result: [['Rows deleted'], [removed]] };
+    },
+  };
+};
+
+test('a node with more rows than limit: allows is deleted in batches', async () => {
+  const client = batchClient(25000);
+  const [outcome] = await runDeleteScript(client, [{ ...node('company | employee', 'employee'), columns: ['id'], count: 25000 }], ['q']);
+  assert.deepEqual(
+    client.sent.map(e => /limit: (\d+)/.exec(e)[1]),
+    [String(MAX_DELETE_BATCH), String(MAX_DELETE_BATCH), '5000'],
+  );
+  assert.equal(outcome.deleted, 25000);
+  assert.equal(outcome.error, undefined);
+});
+
+test('batching stops when a batch removes fewer rows than it asked for', async () => {
+  // Counted 25 000, but only 12 000 are left by the time it runs.
+  const client = batchClient(12000);
+  const [outcome] = await runDeleteScript(client, [{ ...node('company | employee', 'employee'), columns: ['id'], count: 25000 }], ['q']);
+  assert.equal(client.sent.length, 2);
+  assert.equal(outcome.deleted, 12000);
+});
+
+test('a small node is still one statement', async () => {
+  const client = batchClient(3);
+  const [outcome] = await runDeleteScript(client, [{ ...node('company | employee', 'employee'), columns: ['id'], count: 3 }], ['q']);
+  assert.deepEqual(client.sent, ['company | employee | limit: 3 | delete! .id']);
+  assert.equal(outcome.deleted, 3);
+});
+
+test('the hand-run script stays within the cap and says to repeat a big statement', async () => {
+  const limits = [];
+  const client = { buildDeleteQuery: async (_e, _c, limit) => (limits.push(limit), 'DELETE FROM x WHERE 1=1') };
+  const { script } = await buildDeleteScript(client, [{ ...node('company | employee', 'employee'), columns: ['id'], count: 25000 }]);
+  assert.deepEqual(limits, [MAX_DELETE_BATCH]);
+  assert.match(script, /25000 rows: this statement removes at most 10000 at a time/);
+});

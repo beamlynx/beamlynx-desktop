@@ -26,6 +26,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - The bar chart is offered only up to 2 000 rows; past that, its button is disabled with a tooltip. A large result used to freeze the tab. Empty strings and Infinity no longer count as numbers to chart.
 - A tab whose saved connection was deleted showed a 'Failed to reconnect' alert on every switch to it. It now forgets the connection once and asks you to pick one.
 - The Inspect dialog's Run shows why an update failed instead of 'Update execution failed'. JSON values that the grid didn't recognise as JSON show as JSON instead of [object Object]. The connection monitor no longer logs an error every second while the server is down.
+- Deleting through a traversal removes a table with more than 10 000 matching rows in batches of 10 000. pine-lang after 0.48.1 accepts `limit:` up to 10 000, so one statement for such a table would fail partway through the run. Each table still loses no more rows than were counted in the plan. The copyable SQL script uses the same 10 000 limit and says to repeat a statement that has more rows.
 
 ### Security
 - The desktop app no longer writes the database password to the developer console when it connects to a saved connection. Other connection details are logged only in development builds.
