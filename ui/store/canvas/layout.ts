@@ -1,6 +1,6 @@
 import dagre from 'dagre';
 import { Position } from 'reactflow';
-import { Ast, GroupColumn, Join, OrderColumn, VariableAst, whereConditions } from '../client';
+import { Ast, GroupColumn, Join, OrderColumn, NamedResultAst, whereConditions } from '../client';
 import {
   CanvasEdge,
   CanvasFrameNode,
@@ -192,7 +192,7 @@ const addJoins = (
 type CanvasTableRef = { schema: string | null; table: string; alias: string };
 
 /**
- * A selected-tables entry whose `.table` matches a key in `ast.variables`
+ * A selected-tables entry whose `.table` matches a key in `ast['named-results']`
  * (assigned in an earlier expression) or `ast['pending-assignments']`
  * (sealed within this one) is a checkpoint's CTE, not a real table -
  * `seal-as-cte` (pine-lang's ast/main.clj) injects the checkpoint's own name
@@ -200,8 +200,8 @@ type CanvasTableRef = { schema: string | null; table: string; alias: string };
  * `.table` is exactly the same alias the rest of this expression (joins,
  * select/where/order) already addresses it by.
  */
-const checkpointFor = (ast: Ast, tableName: string): VariableAst | undefined =>
-  ast.variables?.[tableName] ?? ast['pending-assignments']?.[tableName];
+const checkpointFor = (ast: Ast, tableName: string): NamedResultAst | undefined =>
+  ast['named-results']?.[tableName] ?? ast['pending-assignments']?.[tableName];
 
 /** A checkpoint that has replaced a selected-tables slot - its inner tables render as their own nodes, wrapped in a frame (see makeFrameNode). */
 export type FrameSpec = { id: string; memberIds: string[]; leftHandles: CanvasHandle[]; rightHandles: CanvasHandle[] };
@@ -269,7 +269,7 @@ const deriveGraph = (
       );
       addJoins(checkpoint.joins ?? [], handles, edges, name => !!checkpointFor(ast, name));
       // checkpoint.columns tells us what each inner alias contributed to
-      // the sealed output - but VariableAst has no equivalent of ast.where/
+      // the sealed output - but NamedResultAst has no equivalent of ast.where/
       // ast.order/ast.group, so where/order chips and the select-vs-group
       // distinction are genuinely unrecoverable once sealed. Shown under
       // "sel" only, not split - an honest simplification, not a bug to

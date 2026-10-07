@@ -111,15 +111,19 @@ function valueEnd(text: string, i: number): number {
 }
 
 /**
- * Every `$name = value` in the tab's values blocks, as offsets into the
- * text: where the value starts and ends. A value that's missing (`$x =` at
+ * Every `$name = value` in the tab's values blocks (every name when `name`
+ * is null), as offsets into the text: where the `$` is, and where the
+ * value starts and ends. A value that's missing (`$x =` at
  * the end of a line) is an empty span. Query blocks and comments are never
  * read, so a `$x =` there is never rewritten.
  */
-function assignments(expression: string, name: string): { start: number; end: number }[] {
+function assignments(
+  expression: string,
+  name: string | null,
+): { name: string; at: number; start: number; end: number }[] {
   const lineStarts = [0];
   for (let i = 0; i < expression.length; i++) if (expression[i] === '\n') lineStarts.push(i + 1);
-  const found: { start: number; end: number }[] = [];
+  const found: { name: string; at: number; start: number; end: number }[] = [];
   for (const block of splitExpressions(expression)) {
     if (!isValuesBlock(block.text)) continue;
     const from = expression.indexOf(block.text, lineStarts[block.startLine]);
@@ -138,7 +142,7 @@ function assignments(expression: string, name: string): { start: number; end: nu
       const start = skipSpace(expression, i + m[0].length, false);
       const atEndOfLine = start >= to || expression[start] === '\n' || expression.startsWith('--', start);
       const end = atEndOfLine ? start : valueEnd(expression, start);
-      if (m[1] === name) found.push({ start, end });
+      if (name === null || m[1] === name) found.push({ name: m[1], at: i, start, end });
       i = Math.max(end, i + m[0].length);
     }
   }
@@ -197,6 +201,30 @@ export function restoreValues(shown: string, sent: string, variables: Record<str
   for (const [name, value] of Object.entries(variables)) {
     const literal = literalOfValue(value);
     if (literal !== null) text = setValue(text, name, literal);
+  }
+  return text;
+}
+
+/** Every `$name` the tab's values blocks set. */
+export const valueNames = (expression: string): Set<string> =>
+  new Set(assignments(expression, null).map(a => a.name));
+
+/**
+ * The text without its `$name = value` assignments for these names. A line
+ * that held only the assignment (and maybe a comment after it) goes
+ * entirely.
+ */
+export function withoutValues(expression: string, names: Set<string>): string {
+  let text = expression;
+  for (const a of assignments(expression, null).reverse()) {
+    if (!names.has(a.name)) continue;
+    const lineStart = text.lastIndexOf('\n', a.at - 1) + 1;
+    const nl = text.indexOf('\n', a.end);
+    const lineEnd = nl === -1 ? text.length : nl;
+    const alone = !text.slice(lineStart, a.at).trim() && /^\s*(--.*)?$/.test(text.slice(a.end, lineEnd));
+    text = alone
+      ? text.slice(0, lineStart) + text.slice(nl === -1 ? lineEnd : lineEnd + 1)
+      : text.slice(0, a.at) + text.slice(a.end);
   }
   return text;
 }

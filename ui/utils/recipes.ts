@@ -14,6 +14,7 @@
 // See beamlynx-plans/pending/2026-10-01-recipes-shared-database-knowledge.md.
 import { leadingDoc } from '../store/canvas/pine-text';
 import { findActiveQueryBlock, isValuesBlock, splitExpressions } from '../store/blocks';
+import { valueNames, withoutValues } from '../store/values-blocks';
 
 export type RecipeInputDef = {
   name: string;
@@ -336,6 +337,23 @@ export function recipeSummary(r: { expression: string; explanation?: string }): 
  * (before values were written in the text) carry their values as `inputs`;
  * they go in as a values block above the query.
  */
+/**
+ * What a recipe adds to a tab that already has `existing` in it. Values apply
+ * to the whole tab, and a later values block wins, so the recipe's own value
+ * for a `$name` the tab already sets would quietly change the results of the
+ * queries already there. The tab's value is kept: the recipe's assignment of
+ * that name is left out, and a values block with nothing else in it goes too.
+ * Inserting the same recipe twice adds no second copy of its values.
+ */
+export function textToInsert(existing: string, recipe: string): string {
+  const taken = valueNames(existing);
+  if (!taken.size) return recipe;
+  return splitExpressions(recipe)
+    .map(b => (isValuesBlock(b.text) ? withoutValues(b.text, taken).trim() : b.text))
+    .filter(t => t.replace(/--[^\n]*|\/\*[\s\S]*?\*\//g, '').trim() !== '')
+    .join('\n\n');
+}
+
 export function recipeText(r: { expression: string; inputs: RecipeInputDef[] }): string {
   const lines = r.inputs
     .filter(i => i.example !== '')

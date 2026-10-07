@@ -164,7 +164,8 @@ export type PineRange = {
   end: { line: number; character: number };
 };
 
-export type VariableAst = {
+/** A named result (`|= name`) as /build's AST describes it. */
+export type NamedResultAst = {
   'selected-tables': Table[];
   tables?: Table[];
   joins: Join[];
@@ -199,8 +200,8 @@ export type Ast = {
   group?: GroupColumn[];
   prettified: string;
   ranges: PineRange[];
-  variables?: Record<string, VariableAst>;
-  'pending-assignments'?: Record<string, VariableAst>;
+  'named-results'?: Record<string, NamedResultAst>;
+  'pending-assignments'?: Record<string, NamedResultAst>;
   assign?: string;
 };
 
