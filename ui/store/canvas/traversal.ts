@@ -374,6 +374,12 @@ export type DeleteProgress = { from: number };
  * partial run never leaves a foreign key violated -- and re-running the
  * traversal re-counts and finishes it.
  */
+/**
+ * The largest `limit:` pine-lang accepts (its parser's max-limit). A node
+ * with more rows than this is deleted in batches of this size.
+ */
+export const MAX_DELETE_BATCH = 10000;
+
 export const runDeleteScript = async (
   client: HttpClient,
   nodes: TraversalNode[],
@@ -392,17 +398,35 @@ export const runDeleteScript = async (
   const outcomes: DeleteOutcome[] = [];
   for (const [offset, node] of Array.from(nodes.slice(from).entries())) {
     if (signal?.cancelled) break;
-    const expression = `${node.expression} | limit: ${node.count} | ${deleteOp(node.columns)}`;
+    // In batches of at most MAX_DELETE_BATCH, which pine-lang's `limit:`
+    // accepts at most. Never more than the rows counted when the plan was
+    // made, and done when a batch removes fewer than it asked for.
+    const firstBatch = Math.min(node.count, MAX_DELETE_BATCH);
+    const expression = `${node.expression} | limit: ${firstBatch} | ${deleteOp(node.columns)}`;
     const startedAt = Date.now();
     let result: { deleted?: number; error?: string };
-    try {
-      const response = await client.eval([expression], connectionId);
-      result = response?.error
-        ? { error: response.error }
-        : { deleted: Number(response?.result?.[1]?.[0] ?? 0) };
-    } catch (e) {
-      result = { error: e instanceof Error ? e.message : 'Failed' };
-    }
+    let deleted = 0;
+    let remaining = node.count;
+    let error: string | undefined;
+    do {
+      const batch = Math.min(remaining, MAX_DELETE_BATCH);
+      const batchExpression = `${node.expression} | limit: ${batch} | ${deleteOp(node.columns)}`;
+      let removed = 0;
+      try {
+        const response = await client.eval([batchExpression], connectionId);
+        if (response?.error) {
+          error = response.error;
+        } else {
+          removed = Number(response?.result?.[1]?.[0] ?? 0);
+        }
+      } catch (e) {
+        error = e instanceof Error ? e.message : 'Failed';
+      }
+      deleted += removed;
+      remaining -= removed;
+      if (error || removed < batch) break;
+    } while (remaining > 0);
+    result = error ? { error, ...(deleted ? { deleted } : {}) } : { deleted };
     const outcome: DeleteOutcome = {
       table: node.table,
       expression,
@@ -566,14 +590,24 @@ export const buildDeleteScript = async (
 
   parts.push('BEGIN;');
   for (const node of nodes) {
+    // pine-lang's limit: stops at MAX_DELETE_BATCH. Past that the statement
+    // removes one batch, and says so: run by hand, it has to be repeated.
     const query = await client.buildDeleteQuery(
       node.expression,
       node.columns,
-      node.count,
+      Math.min(node.count, MAX_DELETE_BATCH),
       connectionId,
     );
     queries.push(query);
     parts.push(asSqlComment(asLines(withoutLeadingComment(node.expression))));
+    if (node.count > MAX_DELETE_BATCH) {
+      parts.push(
+        asSqlComment(
+          `${node.count} rows: this statement removes at most ${MAX_DELETE_BATCH} at a time. ` +
+            `Run it again until it removes fewer.`,
+        ),
+      );
+    }
     parts.push(query);
   }
   parts.push('COMMIT;');
