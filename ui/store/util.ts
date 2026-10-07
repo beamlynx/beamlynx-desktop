@@ -84,14 +84,15 @@ export const isDesktop = () => {
 };
 
 /**
- * Escapes a string for use in a SQL query
+ * A Pine string literal holding exactly `x`: wrapped in single quotes, with
+ * each apostrophe inside doubled, as in SQL ('O''Brien'). Pine has no other
+ * escapes, so this is complete: nothing in `x` can end the literal early.
  *
- * TODO: I am replacing the single quote with an underscore but a more robust
- * solution is needed.
+ * Needs a pine-lang that reads '' inside a string (after 0.48.1). The
+ * function this replaced turned every apostrophe into an underscore, so a
+ * cell edited to O'Brien was saved as O_Brien.
  */
-export const pineEscape = (x: string) => {
-  return x.replace(/'/g, "_");
-};
+export const pineString = (x: string): string => `'${x.replace(/'/g, "''")}'`;
 
 export const CONNECTION_COLOR_PALETTE = [
   '#4ade80', // green

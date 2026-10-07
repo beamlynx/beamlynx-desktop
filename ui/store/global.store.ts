@@ -18,7 +18,7 @@ import { DevState } from './dev-state';
 import { leadingDoc } from './canvas/pine-text';
 import { isValuesBlock, splitExpressions } from './blocks';
 import { getCommandById } from '../utils/commands';
-import { CONNECTION_COLOR_PALETTE, isDesktop, isDevelopment, isPlayground } from './util';
+import { CONNECTION_COLOR_PALETTE, isDesktop, isDevelopment, isPlayground, pineString } from './util';
 import {
   runMcpQuery as runMcpQueryImpl,
   explainMcpQuery as explainMcpQueryImpl,
@@ -2147,7 +2147,7 @@ export class GlobalStore {
   setCopiedMessage = (sessionId: string, v: string, quote = false) => {
     const session = this.getSession(sessionId);
     if (quote) {
-      v = `'${v.replace(/'/g, "'")}'`;
+      v = pineString(v);
     }
     if (v.length > 120) {
       v = v.substring(0, 120) + '...';
