@@ -68,7 +68,7 @@ const RecipePickerModal = observer(() => {
 
   const close = () => global.setShowRecipePicker(false);
 
-  const use = (r: Recipe | undefined) => {
+  const applyRecipe = (r: Recipe | undefined) => {
     if (!r) return;
     // The Agent and Needs approval tabs belong to the agent, and the next
     // agent query overwrites them, so a recipe goes into a new tab instead.
@@ -111,7 +111,7 @@ const RecipePickerModal = observer(() => {
       setSelected(Math.max(0, index - 1));
     } else if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'BUTTON') {
       e.preventDefault();
-      use(recipe);
+      applyRecipe(recipe);
     }
   };
 
@@ -177,7 +177,7 @@ const RecipePickerModal = observer(() => {
                 role="option"
                 aria-selected={i === index}
                 title="Use in this tab"
-                onClick={() => use(r)}
+                onClick={() => applyRecipe(r)}
                 onMouseEnter={() => setSelected(i)}
                 sx={{
                   display: 'flex',

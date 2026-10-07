@@ -74,8 +74,7 @@ export const isDevelopment = () => {
 // beamlynx-desktop/scripts/build-ui-export.sh, which sets NEXT_PUBLIC_DESKTOP
 // alongside next.config.js's NEXT_DESKTOP). The server URL doesn't depend on
 // this flag -- getBaseUrl() in client.ts asks the desktop bridge directly --
-// so this is only for gating things that assume a hosted context, like Clerk
-// auth in pages/index.tsx.
+// so this is only for gating things that assume a hosted context.
 export const isDesktop = () => {
   if (DevState.desktop !== undefined) {
     return DevState.desktop;

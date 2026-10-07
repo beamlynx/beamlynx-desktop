@@ -497,8 +497,6 @@ export class GlobalStore {
   }
 
   // User
-  email = '';
-  domain = '';
 
   // Which panel (New Layout only) most recently held real DOM focus --
   // 'graph' | 'settings' | 'input' | null (null = nothing panel-specific
@@ -2211,13 +2209,6 @@ export class GlobalStore {
 
   getRequiresUpgrade = () => {
     return DevState.requiresUpgrade ?? this.requiresUpgrade;
-  };
-
-  setEmail = (email: string) => {
-    if (!email) return;
-    this.email = email;
-    const [, domain] = email?.split('@');
-    this.domain = domain;
   };
 
   setCopiedMessage = (sessionId: string, v: string, quote = false) => {
