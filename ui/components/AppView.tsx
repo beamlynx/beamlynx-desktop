@@ -26,7 +26,7 @@ import { useGlobalKeybindings } from '../hooks/useGlobalKeybindings';
 import { useFocusedPanelTracking } from '../hooks/useFocusedPanelTracking';
 import { useSettingsKeybindings } from '../hooks/useSettingsKeybindings';
 import { LATEST_VERSION } from '../utils/changelog.data';
-import { compare } from 'semver';
+import { compare, valid } from 'semver';
 import { getKeybindingDisplayForCommand } from '../utils/keybindings';
 
 // The hosted playground's backend has been intentionally shut down (not a
@@ -105,7 +105,7 @@ const AppView = observer(() => {
     setMounted(true);
 
     // Check for unread updates
-    const lastReadVersion = getUserPreference(STORAGE_KEYS.LAST_READ_VERSION, '0.0.0');
+    const lastReadVersion = getUserPreference(STORAGE_KEYS.LAST_READ_VERSION, '0.0.0', v => typeof v === 'string' && valid(v) !== null);
     const hasUpdates = compare(LATEST_VERSION, lastReadVersion) > 0;
     setHasUnreadUpdates(hasUpdates);
   }, []);

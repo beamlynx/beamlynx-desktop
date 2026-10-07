@@ -13,6 +13,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - Approving a reveal request is disabled while the expression has been edited but not run, so the agent never receives rows the owner didn't look at. If the run fails, the banner shows why instead of doing nothing.
 - When the Pine server is running but refuses the app's requests, the connection indicator says so and suggests restarting, instead of 'No connection to Pine server'.
 - Editing a cell to a value with an apostrophe, like O'Brien, saved it as O_Brien. A row whose text id contained an apostrophe couldn't be edited at all. The value is now written with the apostrophe doubled, which Pine reads as one apostrophe. Needs pine-lang after 0.48.1.
+- A stored preference the app no longer understands, or browser storage that is blocked, could leave a blank page or an 'Application error' at start-up. An unknown theme, font or text size, a non-version 'last read' marker, and a damaged list of saved tabs each did it. Every preference is now checked, an unusable one falls back to its default, and damaged saved tabs are skipped.
+- An unexpected error while drawing the app shows a page with Reload and 'Reset preferences and reload' buttons instead of a blank window. Resetting keeps your open tabs.
+- A Pine server whose version isn't a plain x.y.z, such as `dev` or `0.48`, showed as 'No connection to Pine server'. It now connects. The upgrade-required screen also clears once the server is upgraded, instead of staying until a reload.
 
 ### Security
 - The desktop app no longer writes the database password to the developer console when it connects to a saved connection. Other connection details are logged only in development builds.

@@ -34,6 +34,7 @@ import { ThemeProvider, CssBaseline } from '@mui/material';
 import { createAppTheme } from '../styles/theme';
 import { TEXT_SIZE_SCALE } from '../styles/text-size';
 import { UI_FONT_FAMILIES, CODE_FONT_FAMILIES } from '../styles/app-font';
+import AppErrorBoundary from '../components/AppErrorBoundary';
 
 const MyApp = observer(({ Component, pageProps }: AppProps) => {
   const { global } = useStores();
@@ -93,7 +94,9 @@ const MyApp = observer(({ Component, pageProps }: AppProps) => {
   return (
     <ThemeProvider theme={themeToRender}>
       <CssBaseline />
-      <Component {...pageProps} />
+      <AppErrorBoundary>
+        <Component {...pageProps} />
+      </AppErrorBoundary>
     </ThemeProvider>
   );
 });

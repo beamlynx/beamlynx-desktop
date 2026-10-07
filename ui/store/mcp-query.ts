@@ -36,6 +36,7 @@
 // calls client.build() with no Session involved. See pine-lang's
 // pine.access-policy for what the rules actually do server-side.
 import { lt } from 'semver';
+import { normalizeServerVersion } from '../utils/version';
 import { McpWriteRefusalMinVersion } from '../constants';
 import { AccessPolicyRule, HttpClient, VariableValue } from './client';
 import type { Session } from './session';
@@ -87,7 +88,9 @@ export type McpQueryDeps = {
 // server is upgraded is the right blast radius; the person's own app going
 // dark is not.
 function assertServerSupportsWriteRefusal(serverVersion: string | undefined): void {
-  if (!serverVersion || lt(serverVersion, McpWriteRefusalMinVersion)) {
+  // Fails closed: a version that can't be read is treated as too old.
+  const comparable = normalizeServerVersion(serverVersion);
+  if (!comparable || lt(comparable, McpWriteRefusalMinVersion)) {
     throw new Error(
       `Refusing to run a Pine expression from the MCP server: pine-lang ${serverVersion ?? '(unknown)'} ` +
         `cannot refuse expressions that change data. Upgrade to ${McpWriteRefusalMinVersion} or newer.`,

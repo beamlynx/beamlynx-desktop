@@ -8,7 +8,7 @@ import {
   LATEST_VERSION,
 } from '../utils/changelog.data';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from '../store/preferences';
-import { compare } from 'semver';
+import { compare, valid } from 'semver';
 
 // Helper function to format relative dates
 const getRelativeDate = (dateString: string): string => {
@@ -46,7 +46,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ open, onClose }) => {
 
   useEffect(() => {
     if (open) {
-      const stored = getUserPreference(STORAGE_KEYS.LAST_READ_VERSION, '0.30.0');
+      const stored = getUserPreference(STORAGE_KEYS.LAST_READ_VERSION, '0.30.0', v => typeof v === 'string' && valid(v) !== null);
       setLastReadVersion(stored);
 
       // Determine which tab to show by default

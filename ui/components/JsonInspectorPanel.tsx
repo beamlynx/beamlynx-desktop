@@ -8,7 +8,7 @@ import CodeMirror from '@uiw/react-codemirror';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_JSON_PANEL_WIDTH, MIN_JSON_PANEL_WIDTH } from '../constants';
 import { useResizeDrag } from '../hooks/useResizeDrag';
-import { getUserPreference, STORAGE_KEYS } from '../store/preferences';
+import { getUserPreference, isFiniteNumber, STORAGE_KEYS } from '../store/preferences';
 import { useStores } from '../store/store-container';
 import { editorChrome, editorDarkSyntax } from './editor-theme';
 import { prettyJson } from './json-cell.util';
@@ -75,7 +75,7 @@ const JsonInspectorPanel: React.FC<JsonInspectorPanelProps> = ({
   // width is instead loaded in the mount effect below, same as Settings'.
   const [width, setWidth] = useState(DEFAULT_JSON_PANEL_WIDTH);
   useEffect(() => {
-    setWidth(getUserPreference(STORAGE_KEYS.JSON_PANEL_WIDTH, DEFAULT_JSON_PANEL_WIDTH));
+    setWidth(getUserPreference(STORAGE_KEYS.JSON_PANEL_WIDTH, DEFAULT_JSON_PANEL_WIDTH, isFiniteNumber));
   }, []);
   // invert: true - the divider sits at the panel's LEFT edge, but the panel
   // itself is anchored to the viewport's right edge (Drawer anchor="right")
