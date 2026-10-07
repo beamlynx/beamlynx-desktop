@@ -78,7 +78,7 @@ function getExpectedVersion(): string {
 
 // -main returns immediately (:join? false in pine.core), so a live process
 // tells us nothing about Jetty actually being up -- poll the API instead.
-function pollReady(port: number, timeoutMs: number): Promise<{ version: string }> {
+function pollReady(port: number, token: string, timeoutMs: number): Promise<{ version: string }> {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve, reject) => {
     const retryOrFail = () => {
@@ -96,7 +96,13 @@ function pollReady(port: number, timeoutMs: number): Promise<{ version: string }
     };
     const attempt = () => {
       const req = http.get(
-        { host: '127.0.0.1', port, path: '/api/v1/connections', timeout: 1000 },
+        {
+          host: '127.0.0.1',
+          port,
+          path: '/api/v1/connections',
+          timeout: 1000,
+          headers: { Authorization: `Bearer ${token}` },
+        },
         res => {
           let body = '';
           res.on('data', chunk => (body += chunk));
@@ -124,7 +130,9 @@ function pollReady(port: number, timeoutMs: number): Promise<{ version: string }
   });
 }
 
-export async function startServer(): Promise<ServerHandle> {
+// `token` is this launch's pine-server token (launch-secrets.ts). The server
+// refuses every request without it.
+export async function startServer(token: string): Promise<ServerHandle> {
   const binaryPath = getServerBinaryPath();
   if (!fs.existsSync(binaryPath)) {
     throw new ServerProcessError(`Bundled pine-server binary not found at ${binaryPath}`);
@@ -141,7 +149,10 @@ export async function startServer(): Promise<ServerHandle> {
   // directory is still the sensible default.
   const child = spawn(binaryPath, [], {
     cwd: path.dirname(binaryPath),
-    env: { ...process.env, PINE_PORT: String(PINE_PORT) },
+    // PINE_HOST is set explicitly: a PINE_HOST=0.0.0.0 left in the person's
+    // own environment (from running the Docker image, say) would otherwise
+    // put the bundled server on every network interface.
+    env: { ...process.env, PINE_PORT: String(PINE_PORT), PINE_HOST: '127.0.0.1', PINE_TOKEN: token },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   if (child.pid) {
@@ -213,7 +224,7 @@ export async function startServer(): Promise<ServerHandle> {
 
   try {
     const expectedVersion = getExpectedVersion();
-    const { version } = await pollReady(PINE_PORT, READY_TIMEOUT_MS);
+    const { version } = await pollReady(PINE_PORT, token, READY_TIMEOUT_MS);
     if (version !== expectedVersion) {
       await stop();
       // A build-integrity tripwire, not something a correctly assembled

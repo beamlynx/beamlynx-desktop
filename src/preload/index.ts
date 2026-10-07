@@ -47,9 +47,15 @@ type RevealOutcome =
 const pineServerUrl = process.argv
   .find(arg => arg.startsWith('--pine-server-url='))
   ?.slice('--pine-server-url='.length);
+// The bundled server's launch token, sent by beamlynx-ui as
+// `Authorization: Bearer` on every request (main's launch-secrets.ts).
+const pineServerToken = process.argv
+  .find(arg => arg.startsWith('--pine-server-token='))
+  ?.slice('--pine-server-token='.length);
 
 contextBridge.exposeInMainWorld('beamlynxDesktop', {
   pineServerUrl,
+  pineServerToken,
   isDevBuild: process.argv.includes('--dev-build'),
   onUpdateStatus: (callback: (status: UpdateStatus) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, status: UpdateStatus) => callback(status);

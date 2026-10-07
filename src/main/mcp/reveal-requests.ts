@@ -66,6 +66,15 @@ export function createRevealRequest(profileId: string, expression: string, reaso
   return request;
 }
 
+/** How many reveal requests for this connection are still waiting on the owner. */
+export function countPendingRevealRequests(profileId: string): number {
+  let count = 0;
+  for (const request of requests.values()) {
+    if (request.profileId === profileId && request.status === 'pending') count++;
+  }
+  return count;
+}
+
 export function getRevealRequest(id: string): RevealRequest | undefined {
   return requests.get(id);
 }

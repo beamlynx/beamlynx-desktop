@@ -7,12 +7,19 @@
 // through the renderer, so MCP-driven queries land in a real, visible tab
 // instead of a parallel headless path. See
 // beamlynx-plans/completed/2026-08-15-mcp-server-and-url-scheme.md.
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, dialog } from 'electron';
 import * as http from 'http';
 import { getMcpAccessStatus, listMcpEnabledConnections } from '../credential-store';
-import { CONTROL_PLANE_PORT } from '../ports';
+import { authorizeControlPlaneRequest } from './control-plane-auth';
 import { runInRenderer } from './render-bridge';
-import { createRevealRequest, waitForRevealRequest } from './reveal-requests';
+import { countPendingRevealRequests, createRevealRequest, waitForRevealRequest } from './reveal-requests';
+
+// Enough for any expression and its variables. Nothing an MCP client sends
+// legitimately comes close.
+const MAX_BODY_BYTES = 1024 * 1024;
+
+// An agent in a loop could otherwise open a new pinned tab per call.
+const MAX_PENDING_REVEALS_PER_CONNECTION = 3;
 
 // How long GET /reveal/:id blocks waiting for a decision before returning
 // "still pending" -- stdio-relay.ts's controlPlaneRequest gives every call a
@@ -24,12 +31,39 @@ const REVEAL_LONG_POLL_TIMEOUT_MS = 25000;
 
 type StartControlPlaneServerOptions = {
   getMainWindow: () => BrowserWindow | null;
+  // Required as `Authorization: Bearer <token>` on every request. The
+  // --mcp relay reads it from control-plane.json (launch-secrets.ts).
+  token: string;
+  port: number;
 };
+
+class HttpError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
 
 function readJsonBody(req: http.IncomingMessage): Promise<any> {
   return new Promise((resolve, reject) => {
+    // JSON only. A web page can send a text/plain or form POST here without
+    // the browser asking first; refusing anything else closes that door.
+    const contentType = String(req.headers['content-type'] ?? '').split(';')[0].trim();
+    if (contentType !== 'application/json') {
+      reject(new HttpError(415, 'Content-Type must be application/json'));
+      req.resume();
+      return;
+    }
     let data = '';
-    req.on('data', chunk => (data += chunk));
+    req.on('data', chunk => {
+      data += chunk;
+      if (data.length > MAX_BODY_BYTES) {
+        reject(new HttpError(413, 'Request body larger than 1 MB'));
+        req.destroy();
+      }
+    });
     req.on('end', () => {
       if (!data) return resolve({});
       try {
@@ -84,6 +118,11 @@ function assertWhitelisted(profileId: string): void {
 export function startControlPlaneServer(options: StartControlPlaneServerOptions): http.Server {
   const server = http.createServer(async (req, res) => {
     try {
+      const refusal = authorizeControlPlaneRequest(req.headers, options.token);
+      if (refusal) {
+        return sendJson(res, refusal.status, { error: refusal.error });
+      }
+
       if (req.method === 'GET' && req.url === '/connections') {
         return sendJson(res, 200, { connections: listMcpEnabledConnections() });
       }
@@ -135,6 +174,30 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
           return sendJson(res, 503, { error: 'The beamlynx window is not available yet' });
         }
 
+        if (countPendingRevealRequests(profileId) >= MAX_PENDING_REVEALS_PER_CONNECTION) {
+          return sendJson(res, 429, {
+            error: `There are already ${MAX_PENDING_REVEALS_PER_CONNECTION} reveal requests waiting for this connection. Wait for the user to answer them.`,
+          });
+        }
+
+        // A reveal is read-only. Build the expression first and refuse one
+        // that changes data, so the owner is never asked to approve a write.
+        // Fails closed: only a build that succeeded and says writes: false
+        // passes. An older pine-lang that doesn't report `writes` is refused
+        // too, rather than trusted.
+        const built = (await runInRenderer(mainWindow, { kind: 'build', profileId, expression })) as
+          | { error?: string; writes?: boolean }
+          | undefined;
+        if (!built || built.error || built.writes !== false) {
+          return sendJson(res, 400, {
+            error: built?.error
+              ? `Couldn't check this expression: ${built.error}`
+              : built?.writes
+                ? 'Refusing to reveal an expression that changes data. Reveal requests are read-only.'
+                : "Couldn't confirm this expression is read-only, so it wasn't sent for review.",
+          });
+        }
+
         const request = createRevealRequest(profileId, expression, typeof reason === 'string' ? reason : undefined);
         // Fire-and-forget: RevealRequestHandler.tsx (beamlynx-ui) opens a
         // real tab for the owner to review. Nothing here awaits that --
@@ -161,7 +224,7 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
 
       sendJson(res, 404, { error: 'Not found' });
     } catch (e) {
-      sendJson(res, 400, { error: e instanceof Error ? e.message : String(e) });
+      sendJson(res, e instanceof HttpError ? e.status : 400, { error: e instanceof Error ? e.message : String(e) });
     }
   });
 
@@ -171,7 +234,14 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
   // main() checks the port is free first and explains it if not. This only
   // catches losing a race for it in between, which would otherwise be an
   // uncaught exception in the main process.
-  server.on('error', err => console.error('[control-plane] server error:', err));
-  server.listen(CONTROL_PLANE_PORT, '127.0.0.1');
+  server.on('error', err => {
+    console.error('[control-plane] server error:', err);
+    dialog.showErrorBox(
+      'AI agent access is unavailable',
+      `beamlynx couldn't start the local server AI agents connect through (port ${options.port}): ${err.message}\n\n` +
+        'Everything else works. Close other copies of beamlynx and open it again to use agents.',
+    );
+  });
+  server.listen(options.port, '127.0.0.1');
   return server;
 }

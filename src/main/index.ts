@@ -13,6 +13,7 @@ import { CONTROL_PLANE_PORT, describePortInUse, isPortInUse, PINE_PORT } from '.
 import { getLaunchPath, getResourcesRoot } from './resources';
 import { ServerHandle, startServer } from './server-process';
 import { DeepLinkParams, parseDeepLink } from './deep-link';
+import { generateToken, removeControlPlaneInfo, writeControlPlaneInfo } from './launch-secrets';
 
 let mainWindow: BrowserWindow | null = null;
 let serverHandle: ServerHandle | null = null;
@@ -64,6 +65,10 @@ if (process.argv.includes('--mcp')) {
 // handler in runDesktopApp below), rather than dropping a cold-start click
 // silently.
 let pendingDeepLink: DeepLinkParams | null = null;
+
+// Fresh for every launch of the GUI app. See launch-secrets.ts.
+const pineToken = generateToken();
+const controlPlaneToken = generateToken();
 let rendererReady = false;
 
 function handleDeepLink(url: string): void {
@@ -156,6 +161,23 @@ function buildMenu(): Menu | null {
   return Menu.buildFromTemplate(template);
 }
 
+// Hands a link to the OS's default handler only for web and mail links.
+// shell.openExternal opens whatever the OS associates with a scheme, which
+// includes local files and installer-style protocol handlers.
+const EXTERNAL_PROTOCOLS = new Set(['https:', 'http:', 'mailto:']);
+
+function openExternalIfSafe(url: string): void {
+  try {
+    if (EXTERNAL_PROTOCOLS.has(new URL(url).protocol)) {
+      void shell.openExternal(url);
+      return;
+    }
+  } catch {
+    // not a URL
+  }
+  console.warn('[navigation] refused to open external link:', url);
+}
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -179,8 +201,12 @@ function createWindow(): void {
       // app's (see ports.ts).
       // --dev-build shows beamlynx-ui's DEV chip, so this copy can't be
       // mistaken for the installed app when both are open.
+      // --pine-server-token is the launch token the bundled server requires
+      // on every request (launch-secrets.ts); the preload hands it to
+      // beamlynx-ui, which sends it as `Authorization: Bearer`.
       additionalArguments: [
         `--pine-server-url=http://localhost:${PINE_PORT}`,
+        `--pine-server-token=${pineToken}`,
         ...(app.isPackaged ? [] : ['--dev-build']),
       ],
     },
@@ -195,7 +221,7 @@ function createWindow(): void {
   // opening in the user's actual browser -- Electron's default for
   // target="_blank"/window.open with no handler.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    openExternalIfSafe(url);
     return { action: 'deny' };
   });
   // No menu bar on any platform (see buildMenu's own doc comment), so there's
@@ -231,12 +257,26 @@ function createWindow(): void {
     // `next dev` server (BEAMLYNX_DEV_UI_URL, see loadRealUi() below) hot
     // reloading itself. Everything else is an outbound link -- the app has
     // no legitimate reason to navigate its own window anywhere else.
-    const target = new URL(url);
+    //
+    // A URL that doesn't parse is refused: the check runs before anything
+    // can throw, so a throw can't let the navigation through.
+    let target: URL;
+    try {
+      target = new URL(url);
+    } catch {
+      event.preventDefault();
+      return;
+    }
     if (target.protocol === 'file:') return;
-    const current = new URL(mainWindow?.webContents.getURL() ?? '');
-    if (target.origin === current.origin) return;
+    let currentOrigin: string | undefined;
+    try {
+      currentOrigin = new URL(mainWindow?.webContents.getURL() ?? '').origin;
+    } catch {
+      currentOrigin = undefined;
+    }
+    if (currentOrigin && target.origin === currentOrigin) return;
     event.preventDefault();
-    shell.openExternal(url);
+    openExternalIfSafe(url);
   });
 
   // Shown immediately, before the server is up -- see loadRealUi() below for
@@ -318,7 +358,15 @@ async function main(): Promise<void> {
   // accepting real work once a run_query/complete_query request actually
   // arrives and finds mainWindow set (see control-plane-server.ts), so
   // there's no ordering requirement with startServer()/loadRealUi() below.
-  controlPlaneServer = startControlPlaneServer({ getMainWindow: () => mainWindow });
+  //
+  // Written before the server listens, so the --mcp relay never finds the
+  // port open with no token (or a previous launch's token) to send.
+  writeControlPlaneInfo(app.getPath('userData'), { port: CONTROL_PLANE_PORT, token: controlPlaneToken });
+  controlPlaneServer = startControlPlaneServer({
+    getMainWindow: () => mainWindow,
+    token: controlPlaneToken,
+    port: CONTROL_PLANE_PORT,
+  });
 
   // Show the window (with a loading splash) immediately instead of waiting
   // on startServer() (JVM boot + port-readiness polling, up to ~15s) --
@@ -326,7 +374,7 @@ async function main(): Promise<void> {
   createWindow();
 
   try {
-    serverHandle = await startServer();
+    serverHandle = await startServer(pineToken);
   } catch (err) {
     dialog.showErrorBox("beamlynx can't start", err instanceof Error ? err.message : String(err));
     app.quit();
@@ -495,6 +543,7 @@ function runDesktopApp(): void {
     quitting = true;
     event.preventDefault();
     controlPlaneServer?.close();
+    removeControlPlaneInfo(app.getPath('userData'));
     await flushRendererStorage();
     closeAppDb();
     await serverHandle.stop();

@@ -26,6 +26,7 @@ import * as path from 'path';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { readControlPlaneInfo } from '../launch-secrets';
 import { CONTROL_PLANE_PORT } from '../ports';
 import { getLaunchPath, getResourcesRoot } from '../resources';
 import { SERVER_INSTRUCTIONS } from './instructions';
@@ -54,18 +55,37 @@ function isControlPlaneUp(): Promise<boolean> {
   });
 }
 
+// The token the running app wrote for its control plane (launch-secrets.ts).
+// Read on every request, not once: the app makes a new one each launch, and
+// it may have restarted since this relay started.
+function controlPlaneToken(): string {
+  const info = readControlPlaneInfo(app.getPath('userData'));
+  if (!info) {
+    throw new Error('The beamlynx app is running but has not published its control-plane token. Restart beamlynx.');
+  }
+  return info.token;
+}
+
 function controlPlaneRequest(method: 'GET' | 'POST', path: string, body?: unknown): Promise<any> {
   return new Promise((resolve, reject) => {
     const payload = body !== undefined ? JSON.stringify(body) : undefined;
+    let token: string;
+    try {
+      token = controlPlaneToken();
+    } catch (e) {
+      reject(e);
+      return;
+    }
     const req = http.request(
       {
         host: '127.0.0.1',
         port: CONTROL_PLANE_PORT,
         path,
         method,
-        headers: payload
-          ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
-          : undefined,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(payload ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) } : {}),
+        },
         timeout: 35000,
       },
       res => {

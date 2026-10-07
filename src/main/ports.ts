@@ -26,7 +26,10 @@ function isPineServer(port: number): Promise<boolean> {
       res.on('data', chunk => (body += chunk));
       res.on('end', () => {
         try {
-          resolve(Boolean(JSON.parse(body)?.result?.version));
+          const parsed = JSON.parse(body);
+          // A pine server started with a launch token (another copy of
+          // beamlynx) refuses this request, but says so in its own words.
+          resolve(Boolean(parsed?.result?.version) || parsed?.['error-type'] === 'unauthorized');
         } catch {
           resolve(false);
         }
