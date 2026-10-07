@@ -17,6 +17,9 @@ import { listConnections } from './credential-store';
 import { getSharedDataDir } from './data-dir';
 
 let appDb: AppDb | null = null;
+// Why the last open failed, logged once rather than on every call that
+// needs the database (a locked or read-only file, a full disk).
+let openFailure: string | null = null;
 
 export function getAppDbPath(): string {
   return path.join(getSharedDataDir(), 'beamlynx.db');
@@ -25,7 +28,17 @@ export function getAppDbPath(): string {
 // Opened on first use, so a launch that never touches it pays nothing.
 export function getAppDb(): AppDb {
   if (!appDb) {
-    appDb = openAppDb(getAppDbPath());
+    try {
+      appDb = openAppDb(getAppDbPath());
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : String(e);
+      if (reason !== openFailure) {
+        openFailure = reason;
+        console.error(`[app-db] couldn't open ${getAppDbPath()}: ${reason}`);
+      }
+      throw new Error(`beamlynx couldn't open its data file (${getAppDbPath()}): ${reason}`);
+    }
+    openFailure = null;
     console.log(`[app-db] opened ${getAppDbPath()}`);
   }
   return appDb;

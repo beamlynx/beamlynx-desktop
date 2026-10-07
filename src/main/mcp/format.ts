@@ -408,6 +408,16 @@ export function explainEvalError(errorText: string): string {
  * purpose -- cell values can contain `|` and newlines, which would make a
  * pipe-delimited table ambiguous to parse back.
  */
+// A cell longer than this is cut, so one big text or JSON column can't flood
+// the agent's context. 250 rows of a large JSON column used to be megabytes.
+export const MAX_CELL_CHARS = 2000;
+
+function truncateCell(value: unknown): unknown {
+  const text = typeof value === 'string' ? value : value !== null && typeof value === 'object' ? JSON.stringify(value) : null;
+  if (text === null || text.length <= MAX_CELL_CHARS) return value;
+  return `${text.slice(0, MAX_CELL_CHARS)}… (${text.length - MAX_CELL_CHARS} more characters)`;
+}
+
 export function formatRows(response: EvalResponse): string {
   if (response.error) {
     return explainEvalError(response.error);
@@ -437,7 +447,7 @@ export function formatRows(response: EvalResponse): string {
     // collide with.
     if (hiddenNames.has(String(name)) || /^__.+__.+$/.test(String(name))) hidden.add(i);
   });
-  const visible = (row: unknown[]) => row.filter((_, i) => !hidden.has(i));
+  const visible = (row: unknown[]) => row.filter((_, i) => !hidden.has(i)).map(truncateCell);
   const lines = [header, ...data].map(row => JSON.stringify(visible(row)));
 
   return [`${data.length} row${data.length === 1 ? '' : 's'}`, '', ...lines].join('\n');
