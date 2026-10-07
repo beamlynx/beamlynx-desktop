@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Security
+- A `beamlynx://` link is ignored unless it is a `beamlynx://run` link. With the bundled beamlynx-ui after 0.65.0, a run link opens a tab with its expression but doesn't run it.
 
 ## [0.19.0] - 2026-10-06
 ### Changed
