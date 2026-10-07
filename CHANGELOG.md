@@ -4,8 +4,17 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Changed
+- Links the app opens in your browser must be `http`, `https` or `mailto`. Anything else is refused.
+
+### Fixed
+- If the AI-agent control port can't start, the app now says so instead of failing silently, and agents then get a clear error.
+
 ### Security
 - A `beamlynx://` link is ignored unless it is a `beamlynx://run` link. With the bundled beamlynx-ui after 0.65.0, a run link opens a tab with its expression but doesn't run it.
+- Other programs on the computer, and web pages open in the browser, could use the bundled query server and the AI-agent control port. Both now require a secret the app creates at each launch. The query server's goes to it as `PINE_TOKEN` and to the app's own UI. The control port's is written to `control-plane.json` in the app's data folder, readable only by you, where `beamlynx --mcp` reads it. The control port also refuses any request from a web page. Needs pine-lang and beamlynx-ui after this release's pinned versions (pine-lang 0.48.1, beamlynx-ui 0.65.0); the next release pins them together.
+- An AI agent can no longer ask to reveal an expression that changes data. The app builds the expression first and refuses the request unless pine-lang reports it as read-only. At most three reveal requests per connection can wait at once.
+- The bundled server always listens on 127.0.0.1, even if `PINE_HOST` is set in your environment.
 
 ## [0.19.0] - 2026-10-06
 ### Changed
