@@ -130,6 +130,9 @@ interface BeamlynxDesktopApi {
   // The dev build uses a different port than the installed app, so both can
   // run at once (see beamlynx-desktop's src/main/ports.ts).
   pineServerUrl: string;
+  // The bundled server's launch token, sent as `Authorization: Bearer` on
+  // every request (beamlynx-desktop's launch-secrets.ts).
+  pineServerToken?: string;
   // True when running from source (beamlynx-desktop's `npm start`), not an
   // installed app. Shows the DEV chip in the header (DevModeChip.tsx).
   isDevBuild: boolean;

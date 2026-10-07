@@ -385,6 +385,28 @@ export const pipesAtLineStart = (expression: string): string =>
 export const deleteOp = (columns: string[]): string =>
   `delete! ${columns.map(c => `.${c}`).join(', ')}`;
 
+/**
+ * The server answered 401: it requires a launch token this app didn't send.
+ * beamlynx-desktop gives its bundled server a fresh token each launch and
+ * hands the same token to this UI (authHeaders below), so this means the UI
+ * and the server came from different launches, or the UI is too old for the
+ * server.
+ */
+export class ServerRejectedError extends Error {
+  constructor() {
+    super("The Pine server refused this app's requests: it requires a launch token this app didn't send. Restart beamlynx.");
+    this.name = 'ServerRejectedError';
+  }
+}
+
+// The desktop app's launch token for its bundled server, when there is one.
+// Every request carries it; the server refuses requests without it, so no
+// other program or web page can use the server.
+export const authHeaders = (): Record<string, string> => {
+  const token = typeof window !== 'undefined' ? window.beamlynxDesktop?.pineServerToken : undefined;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
 export class HttpClient {
   constructor(private readonly onBuild?: (ast: Ast) => void) {}
 
@@ -393,8 +415,12 @@ export class HttpClient {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
+        ...authHeaders(),
       },
     });
+    if (res.status === 401) {
+      throw new ServerRejectedError();
+    }
     if (!res.ok) {
       return;
     }
@@ -446,9 +472,13 @@ export class HttpClient {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...authHeaders(),
       },
       body: JSON.stringify(body),
     });
+    if (res.status === 401) {
+      throw new ServerRejectedError();
+    }
     if (!res.ok) {
       throw new Error(await this.describeFailure(res));
     }
@@ -460,8 +490,12 @@ export class HttpClient {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
+        ...authHeaders(),
       },
     });
+    if (res.status === 401) {
+      throw new ServerRejectedError();
+    }
     if (!res.ok) {
       throw new Error(await this.describeFailure(res));
     }

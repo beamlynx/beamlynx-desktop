@@ -43,7 +43,11 @@ const ActiveConnection = () => {
         ? truncatedLabel
         : `${truncatedLabel} (not connected)`;
 
-  const displayText = global.pineConnected ? displayName : '🔌 No connection to Pine server!';
+  const displayText = global.pineConnected
+    ? displayName
+    : global.serverRejected
+      ? '🔒 The Pine server refused this app. Restart beamlynx.'
+      : '🔌 No connection to Pine server!';
 
   // Reconnect is only meaningful once the DB actually comes back up -- an
   // assigned connection whose pool died (or never got established because
