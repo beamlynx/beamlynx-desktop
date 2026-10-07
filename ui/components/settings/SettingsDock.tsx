@@ -3,7 +3,7 @@ import { observer } from 'mobx-react-lite';
 import { useEffect, useRef, useState } from 'react';
 import { DEFAULT_SETTINGS_PANEL_WIDTH, NEW_LAYOUT_GUTTER } from '../../constants';
 import { usePanelPresence } from '../../hooks/usePanelPresence';
-import { getUserPreference, STORAGE_KEYS } from '../../store/preferences';
+import { getUserPreference, isFiniteNumber, STORAGE_KEYS } from '../../store/preferences';
 import { useStores } from '../../store/store-container';
 import { NewLayoutSettingsPanelDivider } from '../ResizableDividers';
 import SettingsDockedPanel from './SettingsDockedPanel';
@@ -31,7 +31,7 @@ const SettingsDock = observer(() => {
   const settings = usePanelPresence<HTMLDivElement>(global.showSettings);
 
   useEffect(() => {
-    setWidth(getUserPreference(STORAGE_KEYS.SETTINGS_PANEL_WIDTH, DEFAULT_SETTINGS_PANEL_WIDTH));
+    setWidth(getUserPreference(STORAGE_KEYS.SETTINGS_PANEL_WIDTH, DEFAULT_SETTINGS_PANEL_WIDTH, isFiniteNumber));
   }, []);
 
   // Builds Settings' contents once the app has gone quiet, so the FIRST

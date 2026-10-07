@@ -30,23 +30,87 @@ export const STORAGE_KEYS = {
   TAB_ORIENTATION: 'pine-tab-orientation',
 } as const;
 
-export const getUserPreference = (key: string, defaultValue: any) => {
+/** Whether a stored value is usable. A value that isn't falls back to the default. */
+export type PreferenceCheck = (value: unknown) => boolean;
+
+export const oneOf =
+  (values: readonly unknown[]): PreferenceCheck =>
+  value =>
+    values.includes(value);
+export const isBoolean: PreferenceCheck = value => typeof value === 'boolean';
+export const isFiniteNumber: PreferenceCheck = value => typeof value === 'number' && Number.isFinite(value);
+export const isStringArray: PreferenceCheck = value =>
+  Array.isArray(value) && value.every(item => typeof item === 'string');
+export const isStringRecord: PreferenceCheck = value =>
+  typeof value === 'object' &&
+  value !== null &&
+  !Array.isArray(value) &&
+  Object.values(value).every(item => typeof item === 'string');
+
+let warnedStorageUnavailable = false;
+const warnStorageUnavailable = (error: unknown) => {
+  if (warnedStorageUnavailable) return;
+  warnedStorageUnavailable = true;
+  console.warn('Browser storage is unavailable; preferences will not be kept.', error);
+};
+
+/**
+ * A stored preference, or `defaultValue` when there is none, it isn't JSON,
+ * it fails `isValid`, or storage can't be read at all.
+ *
+ * A value from an older version of the app, or one edited by hand, used to
+ * reach the code as is. An unknown theme id threw while rendering, and a
+ * blocked localStorage threw while the store was being created. Either one
+ * left a blank page. Pass `isValid` for anything that is used as a lookup
+ * key or has a fixed type.
+ */
+export const getUserPreference = <T>(key: string, defaultValue: T, isValid?: PreferenceCheck): T => {
   if (typeof window === 'undefined') {
-    console.log(`Using default value ${defaultValue} for preference ${key}`);
     return defaultValue;
   }
 
-  const stored = localStorage.getItem(key);
+  let stored: string | null;
+  try {
+    stored = localStorage.getItem(key);
+  } catch (error) {
+    // Blocked storage (privacy settings, a sandboxed frame) throws SecurityError.
+    warnStorageUnavailable(error);
+    return defaultValue;
+  }
   if (!stored) return defaultValue;
 
+  let value: unknown;
   try {
-    return JSON.parse(stored);
+    value = JSON.parse(stored);
   } catch {
     return defaultValue;
   }
+  if (isValid && !isValid(value)) {
+    console.warn(`Ignoring stored preference ${key}: unexpected value`, value);
+    return defaultValue;
+  }
+  return value as T;
 };
 
 export const setUserPreference = (key: string, value: any) => {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(key, JSON.stringify(value));
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    // Blocked storage, or the quota is full. The preference is lost; the
+    // app keeps working.
+    warnStorageUnavailable(error);
+  }
+};
+
+/** Removes every stored preference except the open tabs. Used by AppErrorBoundary. */
+export const resetPreferences = () => {
+  for (const key of Object.values(STORAGE_KEYS)) {
+    if (key === STORAGE_KEYS.SESSIONS) continue;
+    try {
+      localStorage.removeItem(key);
+    } catch (error) {
+      warnStorageUnavailable(error);
+    }
+  }
 };

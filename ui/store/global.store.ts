@@ -13,11 +13,24 @@ import {
   DEFAULT_NEW_LAYOUT_PANE_WIDTH,
   RequiredVersion,
 } from '../constants';
-import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
+import {
+  getUserPreference,
+  isBoolean,
+  isFiniteNumber,
+  isStringArray,
+  isStringRecord,
+  oneOf,
+  setUserPreference,
+  STORAGE_KEYS,
+} from './preferences';
+import { THEMES } from '../styles/palette/themes';
+import { CODE_FONTS, UI_FONTS } from '../styles/fonts';
+import { TEXT_SIZE_SCALE } from '../styles/text-size';
 import { DevState } from './dev-state';
 import { leadingDoc } from './canvas/pine-text';
 import { isValuesBlock, splitExpressions } from './blocks';
 import { getCommandById } from '../utils/commands';
+import { normalizeServerVersion } from '../utils/version';
 import { CONNECTION_COLOR_PALETTE, isDesktop, isDevelopment, isPlayground, pineString } from './util';
 import {
   runMcpQuery as runMcpQueryImpl,
@@ -120,7 +133,20 @@ export class GlobalStore {
   connecting = false;
   connection = '';
   version: string | undefined = undefined;
-  requiresUpgrade = false;
+  /**
+   * Whether the connected pine-lang is older than this UI needs. Derived from
+   * `version`, so it follows the server: it used to be a flag that was set
+   * once and never cleared.
+   *
+   * Compared on a normalised copy. semver.lt throws on a version like `dev`
+   * or `0.48`, and that throw used to land in loadConnectionMetadata's
+   * catch, showing a running server as "No connection". A version that
+   * can't be read doesn't block the app.
+   */
+  get requiresUpgrade(): boolean {
+    const comparable = normalizeServerVersion(this.version);
+    return comparable !== null && lt(comparable, RequiredVersion);
+  }
   connectionColors: Record<string, string> = {};
   connections: ConnectionInfo[] = [];
   // False until refreshConnections' first successful run. A session's
@@ -565,19 +591,36 @@ export class GlobalStore {
   }
 
   constructor() {
-    this._themeId = getUserPreference(STORAGE_KEYS.THEME, 'dark');
-    this._uiFontFamily = getUserPreference(STORAGE_KEYS.UI_FONT_FAMILY, 'system');
-    this._codeFontFamily = getUserPreference(STORAGE_KEYS.CODE_FONT_FAMILY, 'plex-mono');
-    this._textSize = getUserPreference(STORAGE_KEYS.TEXT_SIZE, 'medium');
-    this._vimModeEnabled = getUserPreference(STORAGE_KEYS.VIM_MODE, false);
-    this._pineTableColorsEnabled = getUserPreference(STORAGE_KEYS.PINE_TABLE_COLORS, false);
-    this._autoRunEnabled = getUserPreference(STORAGE_KEYS.AUTO_RUN_ENABLED, true);
-    this._newLayoutPanelVisible = getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_VISIBLE, false);
-    this._newLayoutOrientation = getUserPreference(
+    // Every value is checked against what the app accepts today: a theme or
+    // font from an older version, or a hand-edited value, falls back to the
+    // default instead of breaking the first render.
+    const orientations = ['horizontal', 'vertical'] as const;
+    this._themeId = getUserPreference<ThemeId>(STORAGE_KEYS.THEME, 'dark', oneOf(Object.keys(THEMES)));
+    this._uiFontFamily = getUserPreference<UiFontId>(
+      STORAGE_KEYS.UI_FONT_FAMILY,
+      'system',
+      oneOf(UI_FONTS.map(f => f.id)),
+    );
+    this._codeFontFamily = getUserPreference<CodeFontId>(
+      STORAGE_KEYS.CODE_FONT_FAMILY,
+      'plex-mono',
+      oneOf(CODE_FONTS.map(f => f.id)),
+    );
+    this._textSize = getUserPreference<TextSize>(STORAGE_KEYS.TEXT_SIZE, 'medium', oneOf(Object.keys(TEXT_SIZE_SCALE)));
+    this._vimModeEnabled = getUserPreference(STORAGE_KEYS.VIM_MODE, false, isBoolean);
+    this._pineTableColorsEnabled = getUserPreference(STORAGE_KEYS.PINE_TABLE_COLORS, false, isBoolean);
+    this._autoRunEnabled = getUserPreference(STORAGE_KEYS.AUTO_RUN_ENABLED, true, isBoolean);
+    this._newLayoutPanelVisible = getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_VISIBLE, false, isBoolean);
+    this._newLayoutOrientation = getUserPreference<'horizontal' | 'vertical'>(
       STORAGE_KEYS.NEW_LAYOUT_ORIENTATION,
       'horizontal',
+      oneOf(orientations),
     );
-    this._tabOrientation = getUserPreference(STORAGE_KEYS.TAB_ORIENTATION, 'horizontal');
+    this._tabOrientation = getUserPreference<TabOrientation>(
+      STORAGE_KEYS.TAB_ORIENTATION,
+      'horizontal',
+      oneOf(orientations),
+    );
     // Read here, with every other preference, rather than in the components
     // that use them. They are global -- one panel width for the app, not one
     // per tab -- and MUI unmounts an inactive tab's children, so a component
@@ -585,18 +628,23 @@ export class GlobalStore {
     // started at its default size and moved to the saved one a commit later.
     // Visible as the canvas resizing, the graph recentring, and even the empty
     // results placeholder drifting, every time you changed tab.
-    this._newLayoutPaneWidth = getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANE_WIDTH, DEFAULT_NEW_LAYOUT_PANE_WIDTH);
-    this._newLayoutPaneHeight = getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANE_HEIGHT, DEFAULT_NEW_LAYOUT_PANE_HEIGHT);
-    this._newLayoutPanelWidth = getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_WIDTH, DEFAULT_NEW_LAYOUT_PANEL_WIDTH);
-    this._newLayoutPanelHeight = getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_HEIGHT, DEFAULT_NEW_LAYOUT_PANEL_HEIGHT);
-    this._commandHistory = getUserPreference(STORAGE_KEYS.COMMAND_HISTORY, []);
-    this.connectionColors = getUserPreference(STORAGE_KEYS.CONNECTION_COLORS, {});
+    this._newLayoutPaneWidth = getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANE_WIDTH, DEFAULT_NEW_LAYOUT_PANE_WIDTH, isFiniteNumber);
+    this._newLayoutPaneHeight = getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANE_HEIGHT, DEFAULT_NEW_LAYOUT_PANE_HEIGHT, isFiniteNumber);
+    this._newLayoutPanelWidth = getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_WIDTH, DEFAULT_NEW_LAYOUT_PANEL_WIDTH, isFiniteNumber);
+    this._newLayoutPanelHeight = getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_HEIGHT, DEFAULT_NEW_LAYOUT_PANEL_HEIGHT, isFiniteNumber);
+    this._commandHistory = getUserPreference<string[]>(STORAGE_KEYS.COMMAND_HISTORY, [], isStringArray);
+    this.connectionColors = getUserPreference<Record<string, string>>(STORAGE_KEYS.CONNECTION_COLORS, {}, isStringRecord);
     makeAutoObservable(this);
 
     // Restore tabs/sessions from a previous visit, if any were saved.
     // getUserPreference safely no-ops (returns the default) during SSR, so
     // this always falls through to a single fresh session there.
-    const restored = this.restoreSessions();
+    let restored = false;
+    try {
+      restored = this.restoreSessions();
+    } catch (e) {
+      console.error('Could not restore the previous tabs; starting fresh ->', e);
+    }
     if (!restored) {
       const initSession = new Session('0', this);
       this.sessions[initSession.id] = initSession;
@@ -669,18 +717,28 @@ export class GlobalStore {
       STORAGE_KEYS.SESSIONS,
       null,
     ) as PersistedSessionsState | null;
-    if (!persisted || !Array.isArray(persisted.sessions) || persisted.sessions.length === 0) {
+    if (!persisted || typeof persisted !== 'object' || !Array.isArray(persisted.sessions)) {
+      return false;
+    }
+    // A tab saved by an older version, or a damaged entry, is skipped rather
+    // than allowed to throw here: this runs while the store is being created,
+    // so a throw left a blank page.
+    const usable = persisted.sessions.filter(
+      (s): s is PersistedSession =>
+        typeof s === 'object' && s !== null && (s.expression === undefined || typeof s.expression === 'string'),
+    );
+    if (usable.length === 0) {
       return false;
     }
 
-    persisted.sessions.forEach((persistedSession, index) => {
+    usable.forEach((persistedSession, index) => {
       const session = this.createSessionUsingId(String(index));
       const expression = stripRemovedDeleteOperation(persistedSession.expression ?? '');
       runInAction(() => {
         session.expression = expression;
         session.inputMode = persistedSession.inputMode === 'sql' ? 'sql' : 'pine';
-        session.connectionId = persistedSession.connectionId ?? '';
-        session.profileId = persistedSession.profileId ?? '';
+        session.connectionId = typeof persistedSession.connectionId === 'string' ? persistedSession.connectionId : '';
+        session.profileId = typeof persistedSession.profileId === 'string' ? persistedSession.profileId : '';
       });
       // `new Session()` (inside createSessionUsingId, just above) wires up its
       // own expression -> build reaction *while this whole forEach is still
@@ -721,7 +779,8 @@ export class GlobalStore {
     });
 
     const ids = Object.keys(this.sessions);
-    this.activeSessionId = ids[persisted.activeIndex] ?? ids[0];
+    const activeIndex = typeof persisted.activeIndex === 'number' ? persisted.activeIndex : 0;
+    this.activeSessionId = ids[activeIndex] ?? ids[0];
     return true;
   };
 
@@ -2115,9 +2174,6 @@ export class GlobalStore {
           }
         }
 
-        if (lt(this.version, RequiredVersion)) {
-          this.requiresUpgrade = true;
-        }
       });
 
       await this.refreshConnections();
