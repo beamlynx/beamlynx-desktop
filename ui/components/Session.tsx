@@ -3,6 +3,7 @@ import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
 import CollapsibleHeight from './CollapsibleHeight';
 import NewLayoutView from './NewLayoutView';
+import LinkOpenedBanner from './LinkOpenedBanner';
 import RevealRequestBanner from './RevealRequestBanner';
 import SaveRecipeBar from './recipes/SaveRecipeBar';
 
@@ -33,6 +34,8 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
       >
         <RevealRequestBanner session={session} />
       </CollapsibleHeight>
+      {/* A beamlynx://run link put an expression here without running it. */}
+      <LinkOpenedBanner session={session} />
       {/* Same flex-column/flex:1/minHeight:0 combination PineTabs' TabPanel
           already gives this component directly -- kept identical here so
           NewLayoutView (which already relies on that exact parent shape for

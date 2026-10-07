@@ -68,7 +68,23 @@ const RevealRequestHandler = () => {
         session.profileId = request.profileId;
         session.expression = request.expression;
       });
-      session.evaluate().catch(e => console.error('[reveal-request] evaluate failed ->', e));
+      // Runs read-only: a reveal tab is an agent's tab (Session.isAgentSession),
+      // so evaluate() sends allow-writes: false. An expression that would
+      // change data is refused by pine-lang before it runs, and the request
+      // is declined here, so the owner is never asked to approve a write.
+      try {
+        await session.evaluate();
+      } catch (e) {
+        console.error('[reveal-request] evaluate failed ->', e);
+        return;
+      }
+      if (session.evalErrorType === 'write-refused') {
+        global.finishRevealSession(session.id);
+        await global.resolveRevealRequest(request.id, {
+          ok: false,
+          comment: 'Refused: the expression changes data. Reveal requests are read-only.',
+        });
+      }
     });
   }, [global]);
 

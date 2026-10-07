@@ -154,6 +154,15 @@ export class Session {
   /** The agent-supplied reason for the request_reveal call this tab is reviewing, if any. */
   revealReason?: string;
 
+  /**
+   * Set when a beamlynx://run link opened this tab (DeepLinkHandler.tsx).
+   * The link's expression is put in the editor but not run: anyone can write
+   * such a link, so the person checks the expression and the connection and
+   * presses Run themselves. Shows LinkOpenedBanner until dismissed or until
+   * the first run that succeeds. Not persisted.
+   */
+  openedFromLink: boolean = false;
+
   /** Database connection monitoring */
   monitor: boolean = false;
   connectionCountLogs: { time: string; count: number }[] = [];
@@ -210,6 +219,12 @@ export class Session {
   connection: string = '-';
   error: string = '';
   errorType: string = '';
+  /**
+   * pine-lang's `error-type` from the last /eval, when it failed (for
+   * example "write-refused"). Kept apart from errorType, which the build
+   * reaction sets and which decides how a build error is shown.
+   */
+  evalErrorType: string = '';
 
   /** Ast */
   operation: Operation = { type: 'table' };
@@ -308,6 +323,15 @@ export class Session {
    */
   get isMcpSession(): boolean {
     return !!this.globalStore?.mcpSessionId && this.id === this.globalStore.mcpSessionId;
+  }
+
+  /**
+   * True for a tab whose expression came from an AI agent: the MCP tab, or a
+   * tab opened to review a request_reveal call. evaluate() never lets such a
+   * tab change data, whoever presses Run.
+   */
+  get isAgentSession(): boolean {
+    return agentSessionNeverWrites(this);
   }
 
   /** Evaluation plugins */
@@ -935,18 +959,29 @@ export class Session {
   }
 
   public async evaluate(opts?: EvaluateOptions) {
-    // The agent's session never writes, whoever asked it to. runMcpQuery
-    // already passes allowWrites: false, so this is not what stops an agent
-    // today -- it is what stops the next caller. Binding it to the session
-    // means a future path into this tab that forgets the option inherits the
-    // safe answer instead of silently inheriting writes (allow-writes
-    // defaults to allowed server-side, for the person's own editor). It also
-    // covers the person pressing Run on the agent's own tab, where the
-    // expression on screen is the agent's, not theirs.
-    const effectiveOpts: EvaluateOptions | undefined = this.isMcpSession
+    // An agent's tab never writes, whoever asked it to. runMcpQuery already
+    // passes allowWrites: false, so for the MCP tab this is not what stops an
+    // agent today -- it is what stops the next caller. Binding it to the
+    // session means a future path into this tab that forgets the option
+    // inherits the safe answer instead of silently inheriting writes
+    // (allow-writes defaults to allowed server-side, for the person's own
+    // editor). It also covers the person pressing Run on an agent's tab,
+    // where the expression on screen is the agent's, not theirs.
+    //
+    // A reveal-review tab is an agent's tab too: RevealRequestHandler runs
+    // the agent's expression the moment the request arrives, so the owner
+    // can see the data before deciding. Without this, `user | delete!` sent
+    // as a reveal request deleted rows before anyone was asked.
+    const effectiveOpts: EvaluateOptions | undefined = this.isAgentSession
       ? { ...opts, allowWrites: false }
       : opts;
-    return await this.plugins.default.evaluate(effectiveOpts);
+    const result = await this.plugins.default.evaluate(effectiveOpts);
+    if (this.openedFromLink && !this.error) {
+      runInAction(() => {
+        this.openedFromLink = false;
+      });
+    }
+    return result;
   }
 
   /**
@@ -1138,6 +1173,16 @@ const handleOperation = (response: Response): Operation => {
   }
   return response.ast.operation;
 };
+
+/**
+ * Whether a session's expression came from an AI agent, so it must never
+ * change data: the dedicated MCP tab, or a tab reviewing a request_reveal
+ * call. Exported for tests.
+ */
+export const agentSessionNeverWrites = (session: {
+  isMcpSession: boolean;
+  pendingRevealRequestId?: string;
+}): boolean => session.isMcpSession || !!session.pendingRevealRequestId;
 
 const handleError = (response: Response): { error: string; errorType: string } => {
   return {

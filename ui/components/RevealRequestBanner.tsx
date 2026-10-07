@@ -29,6 +29,7 @@ const RevealRequestBanner = observer(({ session }: { session: SessionType }) => 
   const [declining, setDeclining] = useState(false);
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState(false);
+  const [revealError, setRevealError] = useState('');
 
   const requestId = session.pendingRevealRequestId;
   if (!requestId) return null;
@@ -48,8 +49,13 @@ const RevealRequestBanner = observer(({ session }: { session: SessionType }) => 
       // whatever expression is currently in the editor (edited or not) and
       // reveals exactly what that run returns, rather than reading
       // already-transformed grid state back out.
-      const rawRows = await session.evaluate({ applyServerPrettified: true });
+      // allowWrites: false is also forced by Session.evaluate for this tab
+      // (isAgentSession); passed here as well so this call is read-only on
+      // its own terms.
+      setRevealError('');
+      const rawRows = await session.evaluate({ applyServerPrettified: true, allowWrites: false });
       if (session.error) {
+        setRevealError(session.error);
         setBusy(false);
         return;
       }
@@ -80,6 +86,10 @@ const RevealRequestBanner = observer(({ session }: { session: SessionType }) => 
       throw e;
     }
   };
+
+  // Approve sends a fresh run of the editor's text. If that text was edited
+  // and not run yet, the agent would get rows the owner never looked at.
+  const notRunYet = session.expression !== session.expressionAtLastEval;
 
   const connectionLabel = global.getConnectionLabel(session.connectionId);
   const connectionColor = global.getConnectionColor(session.connectionId);
@@ -166,14 +176,26 @@ const RevealRequestBanner = observer(({ session }: { session: SessionType }) => 
             sx={{
               flex: 1,
               minWidth: 0,
-              color: session.revealReason ? 'var(--text-color)' : 'var(--canvas-text-dim)',
+              color: revealError
+                ? 'error.main'
+                : session.revealReason
+                  ? 'var(--text-color)'
+                  : 'var(--canvas-text-dim)',
             }}
           >
-            {session.revealReason ? `“${session.revealReason}”` : 'No reason given.'}
+            {revealError
+              ? `Couldn't reveal: ${revealError}`
+              : session.revealReason
+                ? `“${session.revealReason}”`
+                : 'No reason given.'}
           </Typography>
-          <Button size="small" variant="contained" disabled={busy} onClick={handleReveal}>
-            Approve
-          </Button>
+          <Tooltip title={notRunYet ? 'Run the expression before revealing it' : ''}>
+            <span>
+              <Button size="small" variant="contained" disabled={busy || notRunYet} onClick={handleReveal}>
+                Approve
+              </Button>
+            </span>
+          </Tooltip>
           <Button size="small" color="error" disabled={busy} onClick={() => setDeclining(true)}>
             Decline...
           </Button>
