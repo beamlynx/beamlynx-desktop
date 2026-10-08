@@ -17,6 +17,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - The unused `marked` library.
 
 ### Fixed
+- Pressing Tab right after an alias and a dot, as in `s: t.`, offered nothing. The editor took the dot for the word being typed, and no column contains a dot. It now offers the alias's columns and inserts the chosen one after the dot. Choosing a table after a schema prefix, as in `public.te`, replaces the whole prefix instead of repeating the schema.
 - Using a recipe (Ctrl+O) in a tab that already sets one of its `$variables` changed that tab's results. The recipe's values block came last, and the last value wins across the whole tab. The tab's value is now kept, and the recipe's assignment of that name is left out. Using the same recipe twice no longer adds its values twice.
 - Approving a reveal request is disabled while the expression has been edited but not run, so the agent never receives rows the owner didn't look at. If the run fails, the banner shows why instead of doing nothing.
 - When the Pine server is running but refuses the app's requests, the connection indicator says so and suggests restarting, instead of 'No connection to Pine server'.
