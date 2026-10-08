@@ -49,9 +49,14 @@ interface ContextMenuState {
   fieldIndex: string;
 }
 
+/** The value of one primary key column in the row being edited. */
+interface KeyValue {
+  column: string;
+  value: string | number;
+}
+
 interface UpdateData {
   column: string;
-  id: string | number;
   value: string;
   alias: string;
   updateExpression: string;
@@ -134,22 +139,41 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     ast?.['selected-tables']?.find(t => t.alias === alias)?.table ?? alias;
 
   // Why a column's values can't be edited, if they can't. An update finds
-  // its row by that table's `id`, so it needs the id in the result, and the
-  // id itself is the one thing it can't change.
+  // its row by that table's primary key, so the table needs one, and the key
+  // itself is the one thing it can't change.
   const readOnlyReasonFor = (field: string, headerName: string): string | undefined => {
     const alias = colIndexToAlias[field];
     const column = session.columnMetadata.colIndexToColumnLookup[field];
     if (!alias || !column) {
       return `${headerName} is worked out by the query, not stored in a table, so it can't be edited.`;
     }
+    // A query that ends on a bare table doesn't list it in selected-tables,
+    // and an alias like `le_0` means nothing to the reader.
     const table = tableForAlias(alias);
-    if (column === 'id') {
-      return `${table}.id can't be edited. It's how an update finds the row to change.`;
+    const known = table !== alias;
+    const key = session.columnMetadata.aliasToKeyLookup[alias];
+    if (!key?.length) {
+      return known
+        ? `${table} values can't be edited here. ${table} has no primary key, so an update can't tell its rows apart.`
+        : `These values can't be edited here. Their table has no primary key, so an update can't tell its rows apart.`;
     }
-    if (!session.columnMetadata.aliasToIdLookup[alias]) {
-      return `${table} values can't be edited here. The result has no ${table}.id, which an update needs to find the row.`;
+    if (key.some(k => k.column === column)) {
+      return `${known ? `${table}.` : ''}${column} can't be edited. It's part of the primary key, which is how an update finds the row to change.`;
     }
     return undefined;
+  };
+
+  // The primary key of the record a cell belongs to, read from its row. A
+  // string saying why not, when the row has no such record: an outer join
+  // that found nothing for that table leaves its key empty.
+  const rowKey = (row: Row, alias: string): KeyValue[] | string => {
+    const key = session.columnMetadata.aliasToKeyLookup[alias];
+    if (!key?.length) return `${tableForAlias(alias)} has no primary key`;
+    const values = key.map(k => ({ column: k.column, value: row[k.field] }));
+    if (values.some(v => v.value === null || v.value === undefined)) {
+      return `this row has no ${tableForAlias(alias)} record`;
+    }
+    return values as KeyValue[];
   };
 
   // A short message in the results pane: that a save worked ("Saved email"),
@@ -296,19 +320,18 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     const minified = minifyJsonText(text);
     if (!minified.ok) return false;
     const alias = session.columnMetadata.colIndexToAliasLookup[jsonPanel.field];
-    const idColumnIndex = session.columnMetadata.aliasToIdLookup[alias];
-    if (!idColumnIndex) {
-      console.error('No id column index found for alias:', alias);
-      return false;
-    }
     const rowData = rows.find(row => row._id === jsonPanel.id);
     if (!rowData) {
       console.error('Row data not found for id:', jsonPanel.id);
       return false;
     }
-    const rowId = rowData[idColumnIndex];
     const column = session.columnMetadata.colIndexToColumnLookup[jsonPanel.field];
-    if (!(await runUpdate(alias, rowId, column, minified.value))) return false;
+    const key = rowKey(rowData, alias);
+    if (typeof key === 'string') {
+      setNotice({ kind: 'error', text: `Couldn't save ${column}: ${key}` });
+      return false;
+    }
+    if (!(await runUpdate(alias, key, column, minified.value))) return false;
     // Close rather than flip back to view mode: session.evaluate() just
     // rebuilt `rows`, and `_id` is a positional index re-assigned on every
     // evaluation (see default.plugin.tsx), not a stable row identity - if
@@ -429,16 +452,15 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   // dialog. The dialog is for the editor's Inspect button (inspectEdit).
   const commitEdit = async (row: Row, field: string, value: string) => {
     // The field is the column's index, stringified; the alias says which
-    // table it came from, and so which id column identifies the row.
+    // table it came from, and so which key columns identify the row.
     const alias = session.columnMetadata.colIndexToAliasLookup[field];
-    const idColumnIndex = session.columnMetadata.aliasToIdLookup[alias];
-    if (!idColumnIndex) {
-      console.error('No id column index found for alias:', alias);
+    const column = session.columnMetadata.colIndexToColumnLookup[field];
+    const key = rowKey(row, alias);
+    if (typeof key === 'string') {
+      setNotice({ kind: 'error', text: `Couldn't save ${column}: ${key}` });
       return;
     }
-    const id = row[idColumnIndex];
-    const column = session.columnMetadata.colIndexToColumnLookup[field];
-    await runUpdate(alias, id, column, value);
+    await runUpdate(alias, key, column, value);
   };
 
   // Runs one update through the virtual session, then re-runs this tab's
@@ -447,7 +469,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   // says so briefly; a failure says why.
   const runUpdate = async (
     alias: string,
-    id: string | number,
+    key: KeyValue[],
     column: string,
     value: string,
   ): Promise<boolean> => {
@@ -456,10 +478,10 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
       const updateExpression = await createUpdateExpression(
         session.expression,
         alias,
-        id,
+        key,
         column,
         value,
-        { requireOneRow: true },
+        { requireRow: true },
       );
       const vs = global.getVirtualSession();
       runInAction(() => {
@@ -483,9 +505,13 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
       const field = Object.keys(meta.colIndexToColumnLookup).find(
         f => meta.colIndexToColumnLookup[f] === column && meta.colIndexToAliasLookup[f] === alias,
       );
-      const idField = meta.aliasToIdLookup[alias];
-      const rowIndex = idField
-        ? session.rows.findIndex(row => String(row[idField]) === String(id))
+      const keyFields = meta.aliasToKeyLookup[alias] ?? [];
+      const rowIndex = keyFields.length
+        ? session.rows.findIndex(row =>
+            keyFields.every(
+              k => String(row[k.field]) === String(key.find(v => v.column === k.column)?.value),
+            ),
+          )
         : -1;
       if (field && rowIndex >= 0) setFlash({ rowIndex, field, token: Date.now() });
     }
@@ -501,10 +527,10 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const createUpdateExpression = async (
     baseExpression: string,
     alias: string,
-    id: string | number,
+    key: KeyValue[],
     column: string,
     value: string,
-    { requireOneRow = false }: { requireOneRow?: boolean } = {},
+    { requireRow = false }: { requireRow?: boolean } = {},
   ) => {
     const vs = global.getVirtualSession();
 
@@ -522,20 +548,21 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     });
     await vs.prettify();
     await vs.pipeAndUpdateExpression(`from: ${alias}`);
-    await vs.pipeAndUpdateExpression(
-      `where: id = ${Number.isInteger(id) ? parseInt(id as string, 10) : pineString(String(id))}`,
-    );
-    // Enter in a cell saves without a dialog, so check first that the save
-    // changes exactly the row on screen. `id` is not unique in every table,
-    // and an update! scoped by a duplicated id would change all of them.
-    if (requireOneRow) {
+    // One where: step per key column. Separate steps combine with AND;
+    // inside one where:, conditions can only be joined with `or`.
+    for (const { column: keyColumn, value: keyValue } of key) {
+      await vs.pipeAndUpdateExpression(
+        `where: ${keyColumn} = ${Number.isInteger(keyValue) ? String(keyValue) : pineString(String(keyValue))}`,
+      );
+    }
+    // Enter in a cell saves without a dialog, so check first that the row
+    // is still there. The primary key names exactly one record, so the
+    // update can't change more than that one. The count can still be above
+    // one: in `employee | document`, an employee appears once per document.
+    if (requireRow) {
       const matching = await vs.countRows();
-      if (matching !== 1) {
-        throw new Error(
-          matching === 0
-            ? 'the row is no longer there'
-            : `this would change ${matching} rows, not one, because they share id ${String(id)}`,
-        );
+      if (matching === 0) {
+        throw new Error('the row is no longer there');
       }
     }
     await vs.pipeAndUpdateExpression(`update! ${column} = ${pineString(value)}`);
@@ -551,47 +578,45 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     const minified = minifyJsonText(text);
     if (!minified.ok) return;
     const alias = session.columnMetadata.colIndexToAliasLookup[field];
-    const idColumnIndex = session.columnMetadata.aliasToIdLookup[alias];
-    if (!idColumnIndex) {
-      console.error('No id column index found for alias:', alias);
-      return;
-    }
     const rowData = rows.find(row => row._id === id);
     if (!rowData) {
       console.error('Row data not found for id:', id);
       return;
     }
-    const rowId = rowData[idColumnIndex];
     const column = session.columnMetadata.colIndexToColumnLookup[field];
+    const key = rowKey(rowData, alias);
+    if (typeof key === 'string') {
+      setNotice({ kind: 'error', text: `Can't edit ${column}: ${key}` });
+      return;
+    }
     const updateExpression = await createUpdateExpression(
       session.expression,
       alias,
-      rowId,
+      key,
       column,
       minified.value,
     );
-    setUpdateData({ column, id: rowId, value: minified.value, alias, updateExpression });
+    setUpdateData({ column, value: minified.value, alias, updateExpression });
   };
 
   // The cell editor's Inspect button: build the update and show it in
   // UpdateModal instead of running it.
   const inspectEdit = async (row: Row, field: string, value: string) => {
     const alias = session.columnMetadata.colIndexToAliasLookup[field];
-    const idColumnIndex = session.columnMetadata.aliasToIdLookup[alias];
-    if (!idColumnIndex) {
-      console.error('No id column index found for alias:', alias);
+    const column = session.columnMetadata.colIndexToColumnLookup[field];
+    const key = rowKey(row, alias);
+    if (typeof key === 'string') {
+      setNotice({ kind: 'error', text: `Can't edit ${column}: ${key}` });
       return;
     }
-    const rowId = row[idColumnIndex];
-    const column = session.columnMetadata.colIndexToColumnLookup[field];
     const updateExpression = await createUpdateExpression(
       session.expression,
       alias,
-      rowId,
+      key,
       column,
       value,
     );
-    setUpdateData({ column, id: rowId, value, alias, updateExpression });
+    setUpdateData({ column, value, alias, updateExpression });
   };
 
   const exportToCSV = () => {

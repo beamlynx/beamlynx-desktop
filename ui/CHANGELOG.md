@@ -5,6 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 ### Changed
+- **Breaking:** a cell edit finds its row by the table's primary key, not by a column called `id`. Tables keyed on another column, or on several columns, can now be edited from the grid. Tables and views without a primary key can't be edited, even when they have an `id` column, and the grid says why. Primary key columns can't be edited. Needs pine-lang after 0.48.1, which marks each primary key column in the result; the next release raises `RequiredVersion`.
 - The canvas reads named results from `/build`'s `named-results`, which pine-lang renamed from `variables`. With an older pine-lang, the canvas no longer recognises a named result used as a table. Needs pine-lang after 0.48.1; the next release raises `RequiredVersion`.
 - A `beamlynx://run` link opens a tab with the expression but no longer runs it. A banner names the connection it would run on. Check both and press Run. Any web page or message can carry such a link, and the browser's prompt doesn't show what it would do.
 
@@ -21,7 +22,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - An unexpected error while drawing the app shows a page with Reload and 'Reset preferences and reload' buttons instead of a blank window. Resetting keeps your open tabs.
 - A Pine server whose version isn't a plain x.y.z, such as `dev` or `0.48`, showed as 'No connection to Pine server'. It now connects. The upgrade-required screen also clears once the server is upgraded, instead of staying until a reload.
 - Auto-run on the canvas no longer runs an expression that changes data. Adding a where chip to narrow an `update!` used to run the update 150 ms later. Such an expression now waits for Run, and the tab says why.
-- Pressing Enter in a cell checks that exactly one row matches before saving. A table where `id` isn't unique used to have every row with that id changed. The save is refused, saying how many rows it would change.
+- Pressing Enter in a cell checks that the row is still there before saving. If it isn't, the save is refused and says so.
 - A `?query=` share link containing `%`, such as `like '%a%'`, was silently ignored. It opens now.
 - The bar chart is offered only up to 2 000 rows; past that, its button is disabled with a tooltip. A large result used to freeze the tab. Empty strings and Infinity no longer count as numbers to chart.
 - A tab whose saved connection was deleted showed a 'Failed to reconnect' alert on every switch to it. It now forgets the connection once and asks you to pick one.

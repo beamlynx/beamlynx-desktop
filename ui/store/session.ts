@@ -66,9 +66,14 @@ export type ResultColumn = {
   editable: boolean;
 };
 
+/** One column of a table's primary key, and the field its value is under in each row. */
+export type KeyColumn = { column: string; field: string };
+
 export type ColumnMetadata = {
   colIndexToAliasLookup: Record<string, string>; // i.e. which table does the column belong to
-  aliasToIdLookup: Record<string, string>; // i.e. what is the id column index for the table
+  // The primary key columns of each table, in key order. A table without a
+  // primary key has no entry, and its values can't be edited.
+  aliasToKeyLookup: Record<string, KeyColumn[]>;
   colIndexToColumnLookup: Record<string, string>; // i.e. what is the column name for the column index
 };
 
@@ -181,7 +186,7 @@ export class Session {
   columnVisibilityModel: Record<string, boolean> = {};
   columnMetadata: ColumnMetadata = {
     colIndexToAliasLookup: {},
-    aliasToIdLookup: {},
+    aliasToKeyLookup: {},
     colIndexToColumnLookup: {},
   };
   rows: Row[] = [];
@@ -683,8 +688,11 @@ export class Session {
     const blocks = this.expressions;
     if (blocks.length === 0) return 0;
     const last = blocks.length - 1;
+    // A built-up expression ends in ` | `, ready for the next step
+    // (pipeExpression). Left in, `| count:` would follow an empty step.
+    const lastBlock = blocks[last].replace(/[\s|]+$/, '');
     const response = await client.eval(
-      [...blocks.slice(0, last), `${blocks[last]} | count:`],
+      [...blocks.slice(0, last), `${lastBlock} | count:`],
       this.connectionId,
       this.accessPolicyRules,
       false,
