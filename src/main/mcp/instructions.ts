@@ -35,6 +35,10 @@ Inside one where:, join conditions with \`or\`. To require several, add a where:
 
 Operations: select: (s:), where: (w:), order: (o:), limit: (l:), group: (g:), count:, from: (f:)
 
+A key inside a JSON column is a dotted path, used like a column (get_pine_doc "json"):
+
+  customer | where: data.address.country = 'SE' | select: data.plan, data.tags[0]
+
 WHAT PINE DOES NOT HAVE
 
 Traps that cost the most round trips, because SQL habits reach for them first:
