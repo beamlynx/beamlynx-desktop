@@ -9,7 +9,18 @@ import {
   VariableInnerTable,
 } from '../model';
 import { NodeType } from './graph-node-type';
-import { Ast, Column, ColumnHint, Table, TableHint, NamedResultAst, WhereCondition, whereConditions } from './client';
+import {
+  Ast,
+  Column,
+  ColumnHint,
+  columnName,
+  Table,
+  TableHint,
+  NamedResultAst,
+  WhereCondition,
+  whereConditions,
+  whereLiteral,
+} from './client';
 import {
   effectiveHandleCount,
   getSelectedNodeHeight,
@@ -187,13 +198,12 @@ const makeColumnHintsLookup = (columns: ColumnHint[]): Record<string, string[]> 
 
 const makeWhereColumnsLookup = (conditions: WhereCondition[]): Record<string, string[]> => {
   return conditions.reduce(
-    (acc, { alias, column, operator, value }) => {
+    (acc, { alias, column, path, operator, value }) => {
       if (!acc[alias]) {
         acc[alias] = [];
       }
       // For display purposes, we'll show the column with its condition
-      const valueText = value && value.value ? value.value : '';
-      const displayText = `${column} ${operator} ${valueText}`;
+      const displayText = `${columnName(column, path)} ${operator} ${whereLiteral(value)}`;
       acc[alias].push(displayText);
       return acc;
     },

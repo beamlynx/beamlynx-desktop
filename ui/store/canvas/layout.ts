@@ -1,6 +1,15 @@
 import dagre from 'dagre';
 import { Position } from 'reactflow';
-import { Ast, GroupColumn, Join, OrderColumn, NamedResultAst, whereConditions } from '../client';
+import {
+  Ast,
+  columnName,
+  GroupColumn,
+  Join,
+  OrderColumn,
+  NamedResultAst,
+  whereConditions,
+  whereLiteral,
+} from '../client';
 import {
   CanvasEdge,
   CanvasFrameNode,
@@ -236,7 +245,7 @@ const deriveGraph = (
   // already shown under "group" for that same alias, full stop.
   const groupedColumnNamesByAlias: Record<string, Set<string>> = {};
   for (const [alias, cols] of Object.entries(groupByAlias)) {
-    groupedColumnNamesByAlias[alias] = new Set(cols.map(g => g.column));
+    groupedColumnNamesByAlias[alias] = new Set(cols.map(g => columnName(g.column, g.path)));
   }
 
   const handles: HandleMaps = { left: {}, right: {} };
@@ -345,13 +354,12 @@ const deriveGraph = (
     }
     const whereChips = (whereByAlias[t.alias] ?? []).map(entry =>
       whereConditions(entry)
-        .map(({ alias, column, operator, value: val }) => {
+        .map(({ alias, column, path, operator, value: val }) => {
           // A $variable shows as `$name`: the tab builds without its value.
-          const literal =
-            val && 'value' in val ? (val.type === 'variable' ? `$${val.value}` : `${val.value}`) : '';
+          const literal = whereLiteral(val);
           // Another table's column in the same group keeps its alias, so the
           // chip doesn't read as this table's.
-          const name = alias === t.alias ? column : `${alias}.${column}`;
+          const name = alias === t.alias ? columnName(column, path) : `${alias}.${columnName(column, path)}`;
           return `${name} ${operator} ${literal}`.trim();
         })
         .join(' or '),
@@ -368,11 +376,11 @@ const deriveGraph = (
       // gated `false` above - a separate, harder problem.
       removable: true,
       selectColumns: (selectByAlias[t.alias] ?? [])
-        .map(c => c.column)
+        .map(c => columnName(c.column, c.path))
         .filter(column => !groupedColumnNamesByAlias[t.alias]?.has(column)),
       whereChips,
-      orderChips: (orderByAlias[t.alias] ?? []).map(o => `${o.column} ${o.direction}`),
-      groupChips: (groupByAlias[t.alias] ?? []).map(g => g.column),
+      orderChips: (orderByAlias[t.alias] ?? []).map(o => `${columnName(o.column, o.path)} ${o.direction}`),
+      groupChips: (groupByAlias[t.alias] ?? []).map(g => columnName(g.column, g.path)),
       leftHandles: toHandles(handles.left[t.alias]),
       rightHandles: toHandles(handles.right[t.alias]),
     };

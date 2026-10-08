@@ -107,14 +107,56 @@ export type Operation = {
   // layout.ts), so this is intentionally loose rather than a full union.
   value?: unknown;
 };
+/** One step of a path into a JSON column: a key, or an array index. */
+export type JsonPathStep = string | number;
+
+/**
+ * A column as Pine writes it: `data`, or `data.address.city` for a key inside
+ * a JSON column. Keys that aren't Pine names are quoted, `data.'home address'`,
+ * and indexes are bracketed, `data.tags[0]`. Mirrors pine-lang's
+ * pine.ast.path/path-text, which names a path column the same way.
+ */
+export const columnName = (column: string, path?: JsonPathStep[] | null): string =>
+  (path ?? []).reduce<string>(
+    (name, step) =>
+      typeof step === 'number'
+        ? `${name}[${step}]`
+        : /^[A-Za-z_][A-Za-z0-9_-]*$/.test(step)
+          ? `${name}.${step}`
+          : `${name}.'${step.replace(/'/g, "''")}'`,
+    column,
+  );
+
 /** One condition of a `where:`, as pine-lang reports it in `ast.where`. */
 export type WhereCondition = {
   alias: string;
   column: string;
+  // Set when the condition is on a key inside a JSON column.
+  path?: JsonPathStep[];
   cast: string | null;
   // SQL-cased, e.g. "ILIKE".
   operator: string;
-  value: { type: string; value: string } | null;
+  // A literal compared with a JSON key arrives as JSON text, with its
+  // 'json-type': `'SE'` is `"SE"`. See whereLiteral.
+  value: { type: string; value: string; 'json-type'?: string } | null;
+};
+
+/**
+ * A condition's value as Pine shows it: a $variable as `$name`, and a
+ * literal pine-lang turned into JSON for a JSON key decoded back, so
+ * `data.country = 'SE'` reads `SE`, not `"SE"`.
+ */
+export const whereLiteral = (value: WhereCondition['value']): string => {
+  if (!value || !('value' in value)) return '';
+  if (value.type === 'variable') return `$${value.value}`;
+  if (value['json-type']) {
+    try {
+      return String(JSON.parse(value.value));
+    } catch {
+      return value.value;
+    }
+  }
+  return `${value.value}`;
 };
 
 /**
@@ -171,6 +213,10 @@ export type Column = {
   // A primary key column pine-lang added so a row can be edited. One per key
   // column of each table; a table without a primary key has none.
   'auto-id'?: boolean;
+  // A key inside a JSON column. Computed by the query, so it can't be edited.
+  path?: JsonPathStep[];
+  // A date bucket, `created_at => month`. Computed too.
+  'col-fn'?: string;
 };
 
 /** Range returned by the build endpoint mapping segments to table aliases */
@@ -192,12 +238,13 @@ export type NamedResultAst = {
 export type OrderColumn = {
   alias: string;
   column: string;
+  path?: JsonPathStep[];
   direction: 'ASC' | 'DESC';
   'operation-index'?: number;
 };
 
 /** A group-by entry (pine-lang's ast/group.clj) - alias/column only, no aggregation info canvas mode needs. */
-export type GroupColumn = { alias: string; column: string; 'operation-index'?: number };
+export type GroupColumn = { alias: string; column: string; path?: JsonPathStep[]; 'operation-index'?: number };
 
 export type Ast = {
   hints: Hints;

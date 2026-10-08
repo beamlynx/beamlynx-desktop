@@ -158,10 +158,18 @@ export const getSelectColumns = (base: PinnedBase, alias: string): string[] => {
   const existing = base.segments.find(s => s.owner === alias && s.kind === 'select');
   if (!existing) return [];
   const body = existing.text.replace(/^(select:|s:)\s*/i, '');
-  return splitTopLevel(body).map(part => {
-    const dot = part.lastIndexOf('.');
-    return dot >= 0 ? part.slice(dot + 1) : part;
-  });
+  return splitTopLevel(body).map(part => columnAfterAlias(part, alias));
+};
+
+/**
+ * `c_0.data.plan` -> `data.plan`: the column, and any path into its JSON
+ * value, without the owning alias. Text the canvas wrote always starts with
+ * the alias. Otherwise the part after the last dot is taken, as before.
+ */
+const columnAfterAlias = (part: string, alias: string): string => {
+  if (part.startsWith(`${alias}.`)) return part.slice(alias.length + 1);
+  const dot = part.lastIndexOf('.');
+  return dot >= 0 ? part.slice(dot + 1) : part;
 };
 
 const buildWhereLiteral = (value: string): string => {
@@ -278,8 +286,7 @@ export const getOrderColumns = (base: PinnedBase, alias: string): string[] => {
   const body = existing.text.replace(/^(order:|o:)\s*/i, '');
   return splitTopLevel(body).map(part => {
     const withoutDirection = part.replace(/\s+(asc|desc)$/i, '');
-    const dot = withoutDirection.lastIndexOf('.');
-    return dot >= 0 ? withoutDirection.slice(dot + 1) : withoutDirection;
+    return columnAfterAlias(withoutDirection, alias);
   });
 };
 

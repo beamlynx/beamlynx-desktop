@@ -5,6 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 ### Added
+- **JSON paths on the canvas.** A key inside a JSON column, like `data.address.city`, shows as that name on the select, where, order and group chips. Editing a where chip writes the path back, and a value compared with a key reads `SE`, not `"SE"`. Needs pine-lang after 0.48.1; the next release raises `RequiredVersion`.
 - **Stop a running query.** While a query runs, Run becomes Stop. Escape in the Pine or SQL editor does the same when no completion list is open. With Vim mode on, Escape may stay with Vim; use the button. The database stops the statement, a write is rolled back, and the results pane says "Query stopped." The command palette has Stop Query too. Needs pine-lang after 0.48.1; the next release raises `RequiredVersion`.
 
 ### Changed
@@ -18,6 +19,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - The unused `marked` library.
 
 ### Fixed
+- A result column worked out by the query, a key inside a JSON column (`data.plan`) or a date bucket (`created_at => month`), could be edited in the grid or the JSON inspector. Saving wrote the value into the whole stored column: `2024-01` into `created_at`, or `Berlin` over the whole `data` value. These columns are now read-only, and say why.
 - Pressing Tab right after an alias and a dot, as in `s: t.`, offered nothing. The editor took the dot for the word being typed, and no column contains a dot. It now offers the alias's columns and inserts the chosen one after the dot. Choosing a table after a schema prefix, as in `public.te`, replaces the whole prefix instead of repeating the schema.
 - Using a recipe (Ctrl+O) in a tab that already sets one of its `$variables` changed that tab's results. The recipe's values block came last, and the last value wins across the whole tab. The tab's value is now kept, and the recipe's assignment of that name is left out. Using the same recipe twice no longer adds its values twice.
 - Approving a reveal request is disabled while the expression has been edited but not run, so the agent never receives rows the owner didn't look at. If the run fails, the banner shows why instead of doing nothing.

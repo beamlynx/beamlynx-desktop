@@ -1,5 +1,5 @@
 import { makeAutoObservable, reaction, runInAction } from 'mobx';
-import { PathHint, TableHint, whereConditions } from '../client';
+import { columnName, PathHint, TableHint, whereConditions, whereLiteral } from '../client';
 import { Session } from '../session';
 import {
   CanvasFrameNode,
@@ -1431,12 +1431,13 @@ export class CanvasStore {
   openWhereEditor(alias: string, index: number, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
     const entry = (this.session.ast?.where ?? []).filter(w => whereConditions(w)[0].alias === alias)[index];
     if (!entry) return;
-    const conditions = whereConditions(entry).map(({ alias: conditionAlias, column, operator, value: val }) => ({
+    const conditions = whereConditions(entry).map(({ alias: conditionAlias, column, path, operator, value: val }) => ({
       alias: conditionAlias,
-      column,
+      // A key inside a JSON column is written back as its path: data.address.city.
+      column: columnName(column, path),
       // ast.where operators come back SQL-cased (e.g. "ILIKE") from pine-lang; Pine syntax is lowercase-only.
       operator: operator.toLowerCase(),
-      value: val && 'value' in val ? String(val.value) : '',
+      value: val && 'value' in val ? (val['json-type'] ? whereLiteral(val) : String(val.value)) : '',
     }));
     this.focusConfigItem(alias, { kind: 'where', index });
     this.picker = {

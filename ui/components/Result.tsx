@@ -326,6 +326,8 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
       return false;
     }
     const column = session.columnMetadata.colIndexToColumnLookup[jsonPanel.field];
+    // A computed column names no table column; nothing to save it to.
+    if (!column) return false;
     const key = rowKey(rowData, alias);
     if (typeof key === 'string') {
       setNotice({ kind: 'error', text: `Couldn't save ${column}: ${key}` });
@@ -455,6 +457,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     // table it came from, and so which key columns identify the row.
     const alias = session.columnMetadata.colIndexToAliasLookup[field];
     const column = session.columnMetadata.colIndexToColumnLookup[field];
+    if (!column) return;
     const key = rowKey(row, alias);
     if (typeof key === 'string') {
       setNotice({ kind: 'error', text: `Couldn't save ${column}: ${key}` });
