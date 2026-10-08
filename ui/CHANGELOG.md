@@ -5,7 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 ### Added
-- **Stop a running query.** While a query runs, Run becomes Stop. Escape in the Pine or SQL editor does the same, after closing the completion list or leaving Vim's insert mode. The database stops the statement, a write is rolled back, and the results pane says "Query stopped." The command palette has Stop Query too. Needs pine-lang after 0.48.1; the next release raises `RequiredVersion`.
+- **Stop a running query.** While a query runs, Run becomes Stop. Escape in the Pine or SQL editor does the same when no completion list is open. With Vim mode on, Escape may stay with Vim; use the button. The database stops the statement, a write is rolled back, and the results pane says "Query stopped." The command palette has Stop Query too. Needs pine-lang after 0.48.1; the next release raises `RequiredVersion`.
 
 ### Changed
 - **Breaking:** a cell edit finds its row by the table's primary key, not by a column called `id`. Tables keyed on another column, or on several columns, can now be edited from the grid. Tables and views without a primary key can't be edited, even when they have an `id` column, and the grid says why. Primary key columns can't be edited. Needs pine-lang after 0.48.1, which marks each primary key column in the result; the next release raises `RequiredVersion`.
