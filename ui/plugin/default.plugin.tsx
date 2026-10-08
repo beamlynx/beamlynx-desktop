@@ -103,7 +103,13 @@ export class DefaultPlugin implements PluginInterface {
       const columnMetadata = response.columns.reduce<ColumnMetadata>(
         (acc, column, index) => {
           acc.colIndexToAliasLookup[index.toString()] = column['alias'];
-          acc.colIndexToColumnLookup[index.toString()] = column['column'];
+          // A key inside a JSON column (`data.plan`) or a date bucket
+          // (`created_at => month`) is worked out by the query. Saving it to
+          // `data` or `created_at` would overwrite the whole stored value, so
+          // it names no table column and the grid treats it as read-only.
+          if (!column['path'] && !column['col-fn']) {
+            acc.colIndexToColumnLookup[index.toString()] = column['column'];
+          }
           // The hidden key columns pine-lang adds, not any column called
           // `id`: a row is found by its table's primary key.
           if (!column['auto-id']) {
