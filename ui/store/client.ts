@@ -155,7 +155,15 @@ export type Join = {
   cast: string | null;
 };
 
-export type Column = { alias: string; column: string; 'column-alias': string; hidden: boolean };
+export type Column = {
+  alias: string;
+  column: string;
+  'column-alias': string;
+  hidden: boolean;
+  // A primary key column pine-lang added so a row can be edited. One per key
+  // column of each table; a table without a primary key has none.
+  'auto-id'?: boolean;
+};
 
 /** Range returned by the build endpoint mapping segments to table aliases */
 export type PineRange = {

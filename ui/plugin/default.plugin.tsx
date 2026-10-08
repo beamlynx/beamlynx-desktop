@@ -93,13 +93,18 @@ export class DefaultPlugin implements PluginInterface {
         (acc, column, index) => {
           acc.colIndexToAliasLookup[index.toString()] = column['alias'];
           acc.colIndexToColumnLookup[index.toString()] = column['column'];
-          if (column.column !== 'id') {
+          // The hidden key columns pine-lang adds, not any column called
+          // `id`: a row is found by its table's primary key.
+          if (!column['auto-id']) {
             return acc;
           }
-          acc.aliasToIdLookup[column['alias']] = index.toString();
+          (acc.aliasToKeyLookup[column['alias']] ??= []).push({
+            column: column['column'],
+            field: index.toString(),
+          });
           return acc;
         },
-        { colIndexToAliasLookup: {}, aliasToIdLookup: {}, colIndexToColumnLookup: {} },
+        { colIndexToAliasLookup: {}, aliasToKeyLookup: {}, colIndexToColumnLookup: {} },
       );
 
       const columnVisibilityModel = response.columns.reduce(

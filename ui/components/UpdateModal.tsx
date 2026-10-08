@@ -10,7 +10,6 @@ import { useStores } from '../store/store-container';
 
 interface UpdateData {
   column: string;
-  id: string | number;
   value: string;
   alias: string;
   updateExpression: string;
