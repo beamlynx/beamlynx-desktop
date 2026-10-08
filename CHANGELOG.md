@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- A `json` topic in the Pine reference AI agents read (`get_pine_doc`), and a line about it in the instructions every session starts with. It covers keys inside a JSON column, like `customer | where: data.country = 'SE' | select: data.address.city`. Needs the bundled pine-lang to include JSON paths (pine-lang #107), which the next release pins.
+
 ### Changed
 - Links the app opens in your browser must be `http`, `https` or `mailto`. Anything else is refused.
 - Results sent to an AI agent cut any cell longer than 2 000 characters, saying how much was left out, so one large text or JSON column can't flood the agent's context.
