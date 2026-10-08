@@ -107,7 +107,15 @@ export type Operation = {
   // layout.ts), so this is intentionally loose rather than a full union.
   value?: unknown;
 };
-export type WhereCondition = [string, string, null, string, { type: string; value: string } | null];
+/** One condition of a `where:`, as pine-lang reports it in `ast.where`. */
+export type WhereCondition = {
+  alias: string;
+  column: string;
+  cast: string | null;
+  // SQL-cased, e.g. "ILIKE".
+  operator: string;
+  value: { type: string; value: string } | null;
+};
 
 /**
  * One entry of `ast.where`. Entries are ANDed. An `or` group is the
@@ -117,7 +125,7 @@ export type WhereEntry = WhereCondition | { or: WhereCondition[] };
 
 /** The conditions of one `ast.where` entry: one, or every member of an `or` group. */
 export const whereConditions = (entry: WhereEntry): WhereCondition[] =>
-  Array.isArray(entry) ? [entry] : entry.or;
+  'or' in entry ? entry.or : [entry];
 
 /** One column pair of a join's ON clause, each side labelled by the alias that owns it. */
 export type JoinColumns = { from: string; to: string };

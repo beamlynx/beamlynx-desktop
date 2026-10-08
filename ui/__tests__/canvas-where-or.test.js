@@ -58,8 +58,8 @@ test('updating a condition in place can grow it into an or, keeping its position
 });
 
 test('whereConditions reads a plain condition and an or group alike', () => {
-  const a = ['c', 'id', null, '=', { type: 'number', value: '1' }];
-  const b = ['c', 'id', null, '=', { type: 'number', value: '2' }];
+  const a = { alias: 'c', column: 'id', cast: null, operator: '=', value: { type: 'number', value: '1' } };
+  const b = { alias: 'c', column: 'id', cast: null, operator: '=', value: { type: 'number', value: '2' } };
   assert.deepEqual(whereConditions(a), [a]);
   assert.deepEqual(whereConditions({ or: [a, b] }), [a, b]);
 });
@@ -73,11 +73,11 @@ test('an or group is one chip, on the table of its first condition', () => {
     columns: [],
     joins: [],
     where: [
-      ['c', 'country', null, '=', { type: 'string', value: 'SE' }],
+      { alias: 'c', column: 'country', cast: null, operator: '=', value: { type: 'string', value: 'SE' } },
       {
         or: [
-          ['c', 'name', null, 'ILIKE', { type: 'string', value: '%a%' }],
-          ['e', 'name', null, 'ILIKE', { type: 'string', value: '%a%' }],
+          { alias: 'c', column: 'name', cast: null, operator: 'ILIKE', value: { type: 'string', value: '%a%' } },
+          { alias: 'e', column: 'name', cast: null, operator: 'ILIKE', value: { type: 'string', value: '%a%' } },
         ],
       },
     ],

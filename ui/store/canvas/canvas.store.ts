@@ -1429,9 +1429,9 @@ export class CanvasStore {
    * racing a commit that just removed it).
    */
   openWhereEditor(alias: string, index: number, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
-    const entry = (this.session.ast?.where ?? []).filter(w => whereConditions(w)[0][0] === alias)[index];
+    const entry = (this.session.ast?.where ?? []).filter(w => whereConditions(w)[0].alias === alias)[index];
     if (!entry) return;
-    const conditions = whereConditions(entry).map(([conditionAlias, column, , operator, val]) => ({
+    const conditions = whereConditions(entry).map(({ alias: conditionAlias, column, operator, value: val }) => ({
       alias: conditionAlias,
       column,
       // ast.where operators come back SQL-cased (e.g. "ILIKE") from pine-lang; Pine syntax is lowercase-only.

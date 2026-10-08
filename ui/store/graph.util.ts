@@ -187,7 +187,7 @@ const makeColumnHintsLookup = (columns: ColumnHint[]): Record<string, string[]> 
 
 const makeWhereColumnsLookup = (conditions: WhereCondition[]): Record<string, string[]> => {
   return conditions.reduce(
-    (acc, [alias, column, , operator, value]) => {
+    (acc, { alias, column, operator, value }) => {
       if (!acc[alias]) {
         acc[alias] = [];
       }

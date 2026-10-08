@@ -221,7 +221,7 @@ const deriveGraph = (
   const selectByAlias = byAlias((ast.columns ?? []).filter(c => !c.hidden), c => c.alias);
   // An `or` group belongs to the table of its first condition - one chip,
   // on one node, even when its conditions name several tables.
-  const whereByAlias = byAlias(ast.where ?? [], w => whereConditions(w)[0][0]);
+  const whereByAlias = byAlias(ast.where ?? [], w => whereConditions(w)[0].alias);
   // See the `order: Column[]` comment in client.ts - the real wire shape is OrderColumn.
   const orderByAlias = byAlias((ast.order ?? []) as unknown as OrderColumn[], o => o.alias);
   const groupByAlias = byAlias((ast.group ?? []) as GroupColumn[], g => g.alias);
@@ -345,7 +345,7 @@ const deriveGraph = (
     }
     const whereChips = (whereByAlias[t.alias] ?? []).map(entry =>
       whereConditions(entry)
-        .map(([alias, column, , operator, val]) => {
+        .map(({ alias, column, operator, value: val }) => {
           // A $variable shows as `$name`: the tab builds without its value.
           const literal =
             val && 'value' in val ? (val.type === 'variable' ? `$${val.value}` : `${val.value}`) : '';
