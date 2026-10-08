@@ -179,6 +179,9 @@ export class Session {
 
   /** Result */
   loading: boolean = false; // observable
+  // The id of the query running now, which Stop sends to the server. Null
+  // when nothing that can be stopped is running.
+  runId: string | null = null;
   columns: ResultColumn[] = [];
   // The field name - which is the index of the column (stringified) - and the
   // value is false The id fields are hidden by default but kept in the list of
@@ -989,6 +992,23 @@ export class Session {
     runInAction(() => {
       this.traversal = null;
     });
+  }
+
+  /**
+   * Stops the query this tab is running. The server stops the statement in
+   * the database, and a write is rolled back. The run itself then ends with
+   * "Query stopped.".
+   */
+  public async stop() {
+    const runId = this.runId;
+    if (!runId) return;
+    try {
+      await client.cancel(runId);
+    } catch (e) {
+      runInAction(() => {
+        this.error = `Couldn't stop the query: ${e instanceof Error ? e.message : String(e)}`;
+      });
+    }
   }
 
   public async evaluate(opts?: EvaluateOptions) {

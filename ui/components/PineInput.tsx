@@ -356,6 +356,23 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
       exts.push(Prec.high(vim()));
     }
 
+    // Escape stops a running query. Lowest precedence, so closing the
+    // completion list or leaving Vim's insert mode comes first.
+    exts.push(
+      Prec.lowest(
+        keymap.of([
+          {
+            key: 'Escape',
+            run: () => {
+              if (!session.loading || !session.runId) return false;
+              session.stop();
+              return true;
+            },
+          },
+        ]),
+      ),
+    );
+
     return exts;
     // global.vimMode is listed deliberately, not redundantly: session itself is a stable
     // reference for this component's lifetime (each tab is keyed by sessionId), so depending

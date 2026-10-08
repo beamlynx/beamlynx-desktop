@@ -143,6 +143,22 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true 
     extensions.push(Prec.high(vim()));
   }
 
+  // Escape stops a running query, as in the Pine editor (PineInput.tsx).
+  extensions.push(
+    Prec.lowest(
+      keymap.of([
+        {
+          key: 'Escape',
+          run: () => {
+            if (!session.loading || !session.runId) return false;
+            session.stop();
+            return true;
+          },
+        },
+      ]),
+    ),
+  );
+
   return (
     <CodeMirror
       ref={inputRef}

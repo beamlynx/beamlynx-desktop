@@ -144,6 +144,13 @@ const COMMANDS: Command[] = [
     isEnabled: (_global, session) => !!(session.expression || session.query) && !session.loading,
   },
   {
+    id: 'stop-query',
+    label: 'Stop Query',
+    category: 'Query',
+    handler: (_global, session) => session.stop(),
+    isEnabled: (_global, session) => session.loading && !!session.runId,
+  },
+  {
     id: 'copy-pine-expression',
     label: 'Copy Pine Expression',
     category: 'Query',

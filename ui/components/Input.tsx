@@ -1,7 +1,7 @@
 import { observer } from 'mobx-react-lite';
 import React, { useMemo } from 'react';
 import { Box, ToggleButton, ToggleButtonGroup, Button } from '@mui/material';
-import { PlayArrow, Loop } from '@mui/icons-material';
+import { PlayArrow, Loop, Stop } from '@mui/icons-material';
 import PineInput from './PineInput';
 import SqlInput from './SqlInput';
 import { Session } from '../store/session';
@@ -27,16 +27,24 @@ export const RunButton: React.FC<{ session: Session; onRun?: () => void | Promis
     // Get the run-query command to check if it's enabled
     const runQueryCommand = useMemo(() => getCommandById('run-query'), []);
 
-    const isDisabled = runQueryCommand ? !runQueryCommand.isEnabled(global, session) : false;
+    // While a query runs, the button stops it instead. A run that can't be
+    // stopped (one started before this tab had a run id) keeps the button
+    // disabled, as before.
+    const stoppable = session.loading && !!session.runId;
+    const isDisabled = stoppable
+      ? false
+      : runQueryCommand
+        ? !runQueryCommand.isEnabled(global, session)
+        : false;
 
     return (
       <Button
         variant="contained"
-        onClick={onRun || (() => session.evaluate())}
+        onClick={stoppable ? () => session.stop() : onRun || (() => session.evaluate())}
         disabled={isDisabled}
-        startIcon={session.loading ? <Loop /> : <PlayArrow />}
+        startIcon={stoppable ? <Stop /> : session.loading ? <Loop /> : <PlayArrow />}
         size="small"
-        title={tooltip}
+        title={stoppable ? 'Stop (Esc)' : tooltip}
         sx={{
           backgroundColor: 'var(--primary-color)',
           color: 'var(--primary-text-color)',
@@ -54,7 +62,7 @@ export const RunButton: React.FC<{ session: Session; onRun?: () => void | Promis
           fontFamily: 'var(--canvas-font)',
         }}
       >
-        Run
+        {stoppable ? 'Stop' : 'Run'}
       </Button>
     );
   },

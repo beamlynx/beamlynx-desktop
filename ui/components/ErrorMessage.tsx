@@ -17,9 +17,10 @@ interface ErrorMessageProps {
  * scrolls inside a capped band instead, so it can never push the results
  * grid down the page.
  *
- * A parse error is the one message shown without the 🚨: it comes back
- * with a caret line pointing at the offending character, and a prefix
- * would shift the text out from under it.
+ * A parse error is shown without the 🚨: it comes back with a caret line
+ * pointing at the offending character, and a prefix would shift the text
+ * out from under it. A query stopped on purpose ("Query stopped.") is shown
+ * without it too, and not in the error colour.
  */
 const ErrorMessage = observer(({ sessionId }: ErrorMessageProps) => {
   const { global } = useStores();
@@ -30,6 +31,8 @@ const ErrorMessage = observer(({ sessionId }: ErrorMessageProps) => {
   }
 
   const isParseError = session.errorType === 'parse';
+  // Stopped with Stop or Escape: what the person asked for, not a failure.
+  const isStopped = session.evalErrorType === 'cancelled';
 
   // Padding, not margin. The band's height is measured from this subtree
   // (CollapsibleHeight -> useCollapseHeight), and a margin here collapses
@@ -78,10 +81,10 @@ const ErrorMessage = observer(({ sessionId }: ErrorMessageProps) => {
           '&::-webkit-scrollbar-thumb:hover': {
             background: 'var(--text-color)',
           },
-          color: 'error.main',
+          color: isStopped ? 'text.secondary' : 'error.main',
         }}
       >
-        {isParseError ? session.error : `🚨 ${session.error}`}
+        {isParseError || isStopped ? session.error : `🚨 ${session.error}`}
       </Typography>
     </Box>
   );
