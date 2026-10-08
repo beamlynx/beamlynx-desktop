@@ -3,6 +3,11 @@ import { Column, HttpClient } from '../store/client';
 import { ColumnMetadata, ResultColumn, Row, Session } from '../store/session';
 import { EvaluateOptions, PluginInterface } from './plugin.interface';
 
+// A fresh id for each run. pine-lang keeps a stop for an id it hasn't seen
+// yet, so an id is never reused.
+const newRunId = (): string =>
+  globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
 export class DefaultPlugin implements PluginInterface {
   private readonly client: HttpClient;
   constructor(private session: Session) {
@@ -26,6 +31,11 @@ export class DefaultPlugin implements PluginInterface {
     // In SQL mode, running with text selected runs only the selection.
     const sqlQuery = session.querySelection.trim() || session.query;
     const runsSql = session.inputMode === 'sql' && !opts?.forcePine;
+    // Names this run so Stop can cancel it on the server.
+    const runId = newRunId();
+    runInAction(() => {
+      session.runId = runId;
+    });
 
     try {
       // Use SQL endpoint if in SQL mode, otherwise use Pine eval endpoint.
@@ -35,7 +45,7 @@ export class DefaultPlugin implements PluginInterface {
       // below, since none of them run on a thrown exception -- leaving the
       // loading spinner stuck on indefinitely with no error shown.
       const response = runsSql
-        ? await this.client.sql(sqlQuery, session.connectionId)
+        ? await this.client.sql(sqlQuery, session.connectionId, runId)
         : await this.client.eval(
             session.expressions,
             session.connectionId,
@@ -44,6 +54,7 @@ export class DefaultPlugin implements PluginInterface {
             // Only the MCP path passes values here; a tab's own values are
             // written in its values blocks, which pine-lang reads.
             opts?.variables,
+            runId,
           );
 
       if (!response) {
@@ -147,6 +158,7 @@ export class DefaultPlugin implements PluginInterface {
     } finally {
       runInAction(() => {
         session.loading = false;
+        if (session.runId === runId) session.runId = null;
       });
     }
   }

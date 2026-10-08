@@ -546,13 +546,20 @@ export class HttpClient {
     // Values for the expressions' $variables. Sent only when there are some,
     // so an expression without variables is the request it always was.
     variables?: Record<string, VariableValue>,
+    // Names this run, so cancel() can stop it. A run without one can't be
+    // stopped.
+    runId?: string,
   ): Promise<Response> {
     const body: {
       expressions: string[];
       'access-policy'?: AccessPolicyRule[];
       'allow-writes'?: boolean;
       variables?: Record<string, { value: VariableValue }>;
+      'run-id'?: string;
     } = { expressions };
+    if (runId) {
+      body['run-id'] = runId;
+    }
     if (variables && Object.keys(variables).length) {
       body.variables = Object.fromEntries(Object.entries(variables).map(([name, value]) => [name, { value }]));
     }
@@ -569,15 +576,23 @@ export class HttpClient {
     return response;
   }
 
-  public async sql(query: string, connectionId?: string): Promise<Response> {
+  public async sql(query: string, connectionId?: string, runId?: string): Promise<Response> {
     const response = await this.post(
       'sql',
-      this.withConnectionId({ query: query.trim() }, connectionId),
+      this.withConnectionId({ query: query.trim(), ...(runId ? { 'run-id': runId } : {}) }, connectionId),
     );
     if (!response) {
       throw new Error('No response when trying to execute SQL');
     }
     return response;
+  }
+
+  /**
+   * Stops the run started with this id. The database stops the statement,
+   * and the run answers with error-type "cancelled". A write is rolled back.
+   */
+  public async cancel(runId: string): Promise<void> {
+    await this.post('cancel', { 'run-id': runId });
   }
 
   public async build(
