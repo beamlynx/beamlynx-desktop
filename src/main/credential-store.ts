@@ -5,7 +5,7 @@
 // the connection label), so encrypting them too would only cost a decrypt call
 // per row for no real protection gained.
 import { randomUUID } from 'crypto';
-import { ipcMain, safeStorage } from 'electron';
+import { BrowserWindow, dialog, ipcMain, safeStorage } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getSharedDataDir } from './data-dir';
@@ -86,6 +86,11 @@ function makeDefaultPolicy(rules: AccessPolicyModule[] = DEFAULT_ACCESS_POLICY):
   return { id: randomUUID(), name: 'Default', rules };
 }
 
+// 'sqlite' is a local file: its dbName is the file's absolute path, and its
+// dbHost, dbPort, dbUser and password are all empty. It has no secret to
+// protect, so a saved SQLite profile never touches the OS credential store.
+export type DbType = 'postgres' | 'mysql' | 'sqlite';
+
 export type SavedConnectionMeta = {
   id: string;
   label: string;
@@ -100,7 +105,7 @@ export type SavedConnectionMeta = {
   // "SSL connection" error on relaunch: it silently defaulted back to
   // postgres and tried to speak the Postgres wire protocol to a MySQL
   // server, which happens to fail in an SSL-negotiation-shaped way.
-  dbType: 'postgres' | 'mysql';
+  dbType: DbType;
   createdAt: string;
   lastUsedAt: string;
   // Off by default -- this is the access-control lever for the MCP server
@@ -160,7 +165,7 @@ export type SaveConnectionInput = {
   // beamlynx-ui's own client.ts default, so a caller that predates dbType
   // (there's no other one today, but keeps this consistent with
   // SavedConnectionMeta) behaves exactly as it always did.
-  dbType?: 'postgres' | 'mysql';
+  dbType?: DbType;
   // Optional; falls back to makeLabel's derived `user@host:port/db` when
   // blank or omitted. Only used for a brand-new record -- an upsert onto an
   // existing one (see saveConnection below) keeps that record's own label,
@@ -288,7 +293,13 @@ function toMeta(record: StoredConnectionRecord): SavedConnectionMeta {
   return { ...meta, mcpEnabled, policyId, applyPolicyToOwnQueries, dbType };
 }
 
-function makeLabel(input: Pick<SaveConnectionInput, 'dbUser' | 'dbHost' | 'dbPort' | 'dbName'>): string {
+function makeLabel(
+  input: Pick<SaveConnectionInput, 'dbUser' | 'dbHost' | 'dbPort' | 'dbName' | 'dbType'>,
+): string {
+  // A file has no user or server: it is named by its file name.
+  if (input.dbType === 'sqlite') {
+    return path.basename(input.dbName);
+  }
   return `${input.dbUser}@${input.dbHost}:${input.dbPort}/${input.dbName}`;
 }
 
@@ -331,13 +342,18 @@ export function saveConnection(input: SaveConnectionInput): SaveConnectionResult
   console.log(
     `[credentials] saveConnection called for ${input.dbUser}@${input.dbHost}:${input.dbPort}/${input.dbName}`,
   );
-  if (!getCredentialsStatus().persistenceAvailable) {
+  const dbType = input.dbType ?? 'postgres';
+  // SQLite has no password, so there is nothing to encrypt, and a profile
+  // can be saved even where the OS credential store is unavailable.
+  const needsCredentialStore = dbType !== 'sqlite';
+  if (needsCredentialStore && !getCredentialsStatus().persistenceAvailable) {
     console.log('[credentials] saveConnection: persistence unavailable, not writing to disk');
     return { persisted: false };
   }
 
-  const dbPasswordEncrypted = safeStorage.encryptString(input.dbPassword).toString('base64');
-  const dbType = input.dbType ?? 'postgres';
+  const dbPasswordEncrypted = needsCredentialStore
+    ? safeStorage.encryptString(input.dbPassword).toString('base64')
+    : '';
   const now = new Date().toISOString();
 
   const store = readStore();
@@ -357,7 +373,7 @@ export function saveConnection(input: SaveConnectionInput): SaveConnectionResult
   } else {
     record = {
       id: randomUUID(),
-      label: input.label?.trim() || makeLabel(input),
+      label: input.label?.trim() || makeLabel({ ...input, dbType }),
       dbHost: input.dbHost,
       dbPort: input.dbPort,
       dbName: input.dbName,
@@ -389,6 +405,12 @@ export function getConnection(id: string): GetConnectionResult {
   const record = store.connections.find(c => c.id === id);
   if (!record) {
     return { ok: false, error: 'not-found' };
+  }
+
+  // Nothing was encrypted, so there is nothing to decrypt (an empty string
+  // is not valid ciphertext, and would read as a decryption failure).
+  if (record.dbType === 'sqlite') {
+    return { ok: true, profile: toMeta(record), dbPassword: '' };
   }
 
   try {
@@ -620,6 +642,19 @@ export function registerCredentialIpc(): void {
   console.log(`[credentials] registerCredentialIpc: store path = ${getStorePath()}`);
   ipcMain.handle('credentials:status', () => getCredentialsStatus());
   ipcMain.handle('credentials:list', () => listConnections());
+  ipcMain.handle('credentials:pick-sqlite-file', async event => {
+    const options: Electron.OpenDialogOptions = {
+      title: 'Choose a SQLite database',
+      properties: ['openFile'],
+      filters: [
+        { name: 'SQLite databases', extensions: ['db', 'sqlite', 'sqlite3', 'db3'] },
+        { name: 'All files', extensions: ['*'] },
+      ],
+    };
+    const parent = BrowserWindow.fromWebContents(event.sender);
+    const result = parent ? await dialog.showOpenDialog(parent, options) : await dialog.showOpenDialog(options);
+    return result.canceled ? null : (result.filePaths[0] ?? null);
+  });
   ipcMain.handle('credentials:save', (_event, input: SaveConnectionInput) => saveConnection(input));
   ipcMain.handle('credentials:get', (_event, id: string) => {
     console.log(`[credentials] getConnection called for id=${id}`);

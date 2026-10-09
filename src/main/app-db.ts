@@ -129,6 +129,10 @@ const DEFAULT_PORTS: Record<string, string> = { postgres: '5432', mysql: '3306' 
 // because migrations are only ever appended, never edited.
 export function databaseKeyOf(c: { dbType?: string; dbHost: string; dbPort: string; dbName: string }): string {
   const type = c.dbType || 'postgres';
+  // A SQLite database is a file: its key is its path, with no host or port.
+  if (type === 'sqlite') {
+    return `sqlite://${c.dbName.trim()}`;
+  }
   const rawHost = c.dbHost.trim().toLowerCase();
   const host = LOCAL_HOSTS.has(rawHost) ? 'localhost' : rawHost;
   const port = c.dbPort.trim() || DEFAULT_PORTS[type] || '';

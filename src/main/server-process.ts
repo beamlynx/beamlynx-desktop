@@ -156,7 +156,17 @@ export async function startServer(token: string): Promise<ServerHandle> {
     // PINE_HOST is set explicitly: a PINE_HOST=0.0.0.0 left in the person's
     // own environment (from running the Docker image, say) would otherwise
     // put the bundled server on every network interface.
-    env: { ...process.env, PINE_PORT: String(PINE_PORT), PINE_HOST: '127.0.0.1', PINE_TOKEN: token },
+    // PINE_SQLITE lets this server open a SQLite file by path. That is only
+    // safe because the server runs as the person's own process, bound to
+    // 127.0.0.1 and behind the launch token; pine-lang refuses SQLite
+    // connections unless it is set.
+    env: {
+      ...process.env,
+      PINE_PORT: String(PINE_PORT),
+      PINE_HOST: '127.0.0.1',
+      PINE_TOKEN: token,
+      PINE_SQLITE: '1',
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   if (child.pid) {
