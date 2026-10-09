@@ -83,3 +83,39 @@ test('build -> parse round-trips every field', () => {
   const parsed = parseConnectionString(buildConnectionString(fields));
   assert.deepEqual(parsed, fields);
 });
+
+const sqliteFields = dbName => ({
+  dbType: 'sqlite',
+  dbHost: '',
+  dbPort: '',
+  dbName,
+  dbUser: '',
+  dbPassword: '',
+});
+
+test('sqlite: a connection string carries only the file path', () => {
+  assert.equal(buildConnectionString(sqliteFields('/Users/me/app.db')), 'sqlite:///Users/me/app.db');
+  assert.deepEqual(parseConnectionString('sqlite:///Users/me/app.db'), sqliteFields('/Users/me/app.db'));
+});
+
+test('sqlite: spaces and other characters in a path are percent-encoded and round-trip', () => {
+  const path = '/Users/me/My Data/a#b?c.db';
+  const s = buildConnectionString(sqliteFields(path));
+  assert.equal(s, 'sqlite:///Users/me/My%20Data/a%23b%3Fc.db');
+  assert.deepEqual(parseConnectionString(s), sqliteFields(path));
+});
+
+test('sqlite: a Windows path keeps its drive letter and loses the extra slash', () => {
+  const s = buildConnectionString(sqliteFields('C:\\Users\\me\\app.db'));
+  assert.equal(s, 'sqlite:///C:/Users/me/app.db');
+  assert.deepEqual(parseConnectionString(s), sqliteFields('C:/Users/me/app.db'));
+});
+
+test('sqlite: a connection string with no file path is refused', () => {
+  assert.throws(() => parseConnectionString('sqlite://'), /path of the database file/);
+  assert.throws(() => parseConnectionString('sqlite:///'), /path of the database file/);
+});
+
+test('an unsupported scheme names all three supported ones', () => {
+  assert.throws(() => parseConnectionString('oracle://u:p@h:1521/d'), /postgresql:\/\/, mysql:\/\/ or sqlite:\/\//);
+});

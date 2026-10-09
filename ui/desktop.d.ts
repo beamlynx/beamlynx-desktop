@@ -5,6 +5,7 @@
 // (NEXT_PUBLIC_DESKTOP=1 without Electron) where this doesn't exist.
 import type { Recipe, SaveRecipeInput } from './utils/recipes';
 import type { AccessPolicy, AccessPolicyRule } from './store/client';
+import type { DbType } from './utils/dbType';
 
 type DesktopUpdateStatus =
   | { state: 'checking' }
@@ -24,7 +25,7 @@ type SavedConnectionMeta = {
   // Defaults to 'postgres' for connections saved before this field existed
   // (credential-store.ts's toMeta) -- matches client.ts's own createConnection
   // default, so an old saved profile still reconnects exactly as before.
-  dbType: 'postgres' | 'mysql';
+  dbType: DbType;
   createdAt: string;
   lastUsedAt: string;
   // MCP always uses this connection's own assigned policy whenever this is
@@ -112,7 +113,9 @@ type SaveConnectionInput = {
   dbUser: string;
   dbPassword: string;
   // Optional; defaults to 'postgres' (credential-store.ts's saveConnection).
-  dbType?: 'postgres' | 'mysql';
+  // For 'sqlite', dbName is the database file's absolute path and the host,
+  // port, user and password are empty.
+  dbType?: DbType;
   // Optional; falls back to a derived `user@host:port/db` label when blank
   // or omitted.
   label?: string;
@@ -164,6 +167,10 @@ interface BeamlynxDesktopApi {
     setConnectionPolicy: (id: string, policyId: string | null) => Promise<SetConnectionPolicyResult>;
     setApplyPolicyToOwnQueries: (id: string, apply: boolean) => Promise<SavedConnectionMeta | null>;
     rename: (id: string, label: string) => Promise<SavedConnectionMeta | null>;
+    // Opens the OS file chooser for a SQLite database; resolves with the
+    // chosen absolute path, or null if the user cancels. Absent in a desktop
+    // build that predates SQLite, so callers hide their Browse button then.
+    pickSqliteFile?: () => Promise<string | null>;
   };
   // Named, user-creatable access policies -- each connection independently
   // selects which one applies (credentials.setConnectionPolicy above), or

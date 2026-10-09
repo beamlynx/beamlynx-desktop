@@ -2,6 +2,7 @@ import { makeAutoObservable, reaction, runInAction } from 'mobx';
 import { lt } from 'semver';
 import { AccessPolicy, AccessPolicyRule, HttpClient, ConnectionInfo, effectiveAccessPolicyRules, ServerRejectedError, VariableValue } from './client';
 import type { CredentialsStatus, RevealOutcome } from '../desktop';
+import type { DbType } from '../utils/dbType';
 import { Session, Theme, InputMode } from './session';
 import { THEME_MODE, ThemeId } from '../styles/palette/tokens';
 import { UiFontId, CodeFontId } from '../styles/fonts';
@@ -82,11 +83,10 @@ type ConnectionParams = {
   dbName: string;
   dbUser: string;
   dbPassword: string;
-  // Defaults to 'postgres' (see client.createConnection) when omitted --
-  // every caller that reconstructs this from a saved profile or MCP
-  // credentials doesn't carry a db type yet (beamlynx-desktop's
-  // SavedConnectionMeta has no such field), only the "add connection" form.
-  dbType?: 'postgres' | 'mysql';
+  // Defaults to 'postgres' (see client.createConnection) when omitted.
+  // For 'sqlite', dbName is the database file's absolute path and the host,
+  // port, user and password are empty strings.
+  dbType?: DbType;
   // Desktop-only (see credentials.save) -- pine-lang itself has no concept of
   // a custom label, so this is ignored on the plain HTTP createConnection call.
   label?: string;
@@ -195,6 +195,12 @@ export class GlobalStore {
   // every MCP query doesn't spin up a fresh Hikari pool. See
   // store/mcp-query.ts's ensureConnection.
   private mcpConnectionsByProfile: Record<string, string> = {};
+  // Pine's id for each saved profile that has been connected this session.
+  // For a Postgres or MySQL profile pine's id is `host:port:dbname`, which
+  // can be worked out from the profile alone (see resolveConnectionEntry). A
+  // SQLite profile's can't: pine names it from a hash of the file's resolved
+  // path, so the id pine returned when connecting is kept here instead.
+  pineIdByProfile: Record<string, string> = {};
   // Set by connectToSavedProfile on a decryption failure, so the settings
   // form can pre-fill the (still-plaintext) host/port/db/user and prompt the
   // user to just re-enter the password, instead of retyping everything.
@@ -203,7 +209,7 @@ export class GlobalStore {
     dbPort: string;
     dbName: string;
     dbUser: string;
-    dbType: 'postgres' | 'mysql';
+    dbType: DbType;
   } | null = null;
 
   // Pine's own ids that are actually live (a pool exists) *right now* --
@@ -805,12 +811,41 @@ export class GlobalStore {
   // the first match, same as it always has for any other ambiguity here.
   private resolveConnectionEntry = (connectionId: string): ConnectionInfo | undefined => {
     if (!connectionId) return undefined;
-    return this.connections.find(
-      c =>
-        c.id === connectionId ||
-        (c.dbHost && c.dbPort && c.dbName && `${c.dbHost}:${c.dbPort}:${c.dbName}` === connectionId) ||
-        (c.dbHost && c.dbPort && `${c.dbHost}:${c.dbPort}` === connectionId),
+    return (
+      this.connections.find(
+        c =>
+          c.id === connectionId ||
+          (c.dbHost && c.dbPort && c.dbName && `${c.dbHost}:${c.dbPort}:${c.dbName}` === connectionId) ||
+          (c.dbHost && c.dbPort && `${c.dbHost}:${c.dbPort}` === connectionId),
+      ) ?? this.connections.find(c => c.id === this.profileIdForPineId(connectionId))
     );
+  };
+
+  // The saved profile behind a pine connection id that can't be derived from
+  // the profile (a SQLite file, see pineIdByProfile): the profile connected
+  // this session, or else the one a tab restored from a previous session
+  // remembers (a tab keeps its profileId).
+  private profileIdForPineId = (pineId: string): string | undefined =>
+    Object.entries(this.pineIdByProfile).find(([, id]) => id === pineId)?.[0] ??
+    Object.values(this.sessions).find(s => s.connectionId === pineId && s.profileId)?.profileId;
+
+  private rememberPineId = (profileId: string, pineId: string) => {
+    if (profileId && pineId && this.pineIdByProfile[profileId] !== pineId) {
+      this.pineIdByProfile = { ...this.pineIdByProfile, [profileId]: pineId };
+    }
+  };
+
+  // Pine's own id for a saved profile, to close or reindex its pool. In
+  // desktop mode `id` is the saved profile's id, not pine's.
+  private pineIdForProfile = (id: string, useDesktop: boolean): string => {
+    const known = this.pineIdByProfile[id];
+    if (known) return known;
+    const conn = this.connections.find(c => c.id === id);
+    // Derived the same way pine derives it for a server database
+    // (pine.db.connections/make-connection-id).
+    return useDesktop && conn?.dbHost && conn?.dbPort && conn?.dbName
+      ? `${conn.dbHost}:${conn.dbPort}:${conn.dbName}`
+      : id;
   };
 
   getConnectionColor = (connectionId: string): string => {
@@ -1541,15 +1576,7 @@ export class GlobalStore {
     }
     const desktopApi = typeof window !== 'undefined' ? window.beamlynxDesktop : undefined;
     const useDesktop = isDesktop() && !!desktopApi;
-    const conn = this.connections.find(c => c.id === id);
-    // In desktop mode, `id` is the saved profile's id, not pine's -- derive
-    // pine's own id (host:port:dbname) the same way pine derives it itself
-    // (pine.db.connections/make-connection-id) so the close attempt targets
-    // the right pool.
-    const pineId =
-      useDesktop && conn?.dbHost && conn?.dbPort && conn?.dbName
-        ? `${conn.dbHost}:${conn.dbPort}:${conn.dbName}`
-        : id;
+    const pineId = this.pineIdForProfile(id, useDesktop);
     console.log(
       `[credentials] deleteConnection: id=${id} useDesktop=${useDesktop} pineId=${pineId}`,
     );
@@ -1576,6 +1603,8 @@ export class GlobalStore {
       // (see its getter) -- clearing it below, in the same sweep as every
       // other session, is enough; no separate field to reset here.
       this.liveConnectionIds = this.liveConnectionIds.filter(c => c !== id && c !== pineId);
+      const { [id]: _forgotten, ...stillConnected } = this.pineIdByProfile;
+      this.pineIdByProfile = stillConnected;
       Object.values(this.sessions).forEach(session => {
         if (session.connectionId === id || session.connectionId === pineId) {
           session.connectionId = '';
@@ -1599,14 +1628,7 @@ export class GlobalStore {
    * until this is called (or the server restarts).
    */
   reindexConnection = async (id: string): Promise<void> => {
-    const useDesktop = isDesktop();
-    const conn = this.connections.find(c => c.id === id);
-    // Same id resolution as deleteConnection: in desktop mode `id` is the
-    // saved profile's id, not pine's own (host:port:dbname) id.
-    const pineId =
-      useDesktop && conn?.dbHost && conn?.dbPort && conn?.dbName
-        ? `${conn.dbHost}:${conn.dbPort}:${conn.dbName}`
-        : id;
+    const pineId = this.pineIdForProfile(id, isDesktop());
     try {
       await client.reindexConnection(pineId);
     } catch (e) {
@@ -1690,6 +1712,7 @@ export class GlobalStore {
       this.version = version ?? '0.0.0';
       this.assignConnectionColor(id);
       this.liveConnectionIds = Array.from(new Set([...this.liveConnectionIds, id]));
+      this.rememberPineId(profileId, id);
 
       const activeSession = this.sessions[this.activeSessionId];
       if (activeSession) {
@@ -1803,6 +1826,7 @@ export class GlobalStore {
         ({ id, version } = await this.establishConnection(params));
         runInAction(() => {
           session.profileId = profileId;
+          this.rememberPineId(profileId, id);
         });
       } else {
         ({ id, version } = await client.useConnection(session.connectionId));

@@ -40,6 +40,7 @@ import { normalizeServerVersion } from '../utils/version';
 import { McpWriteRefusalMinVersion } from '../constants';
 import { AccessPolicyRule, HttpClient, VariableValue } from './client';
 import type { Session } from './session';
+import type { DbType } from '../utils/dbType';
 import { restoreValues } from './values-blocks';
 
 export type ConnectionParams = {
@@ -48,6 +49,7 @@ export type ConnectionParams = {
   dbName: string;
   dbUser: string;
   dbPassword: string;
+  dbType?: DbType;
 };
 
 export type McpQueryDeps = {
