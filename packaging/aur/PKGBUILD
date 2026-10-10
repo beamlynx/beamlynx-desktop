@@ -1,0 +1,64 @@
+# Draft PKGBUILD for AUR package `beamlynx-desktop-bin`.
+# NOT submitted to the AUR yet -- see packaging/README.md for the manual,
+# account-gated steps (AUR account + SSH key, `.SRCINFO`, first `git push`).
+#
+# Repackages the .deb release asset rather than building from source: the
+# deb already ships electron-builder's FHS layout (/opt/beamlynx binary,
+# .desktop file, hicolor icons, apparmor profile), originally verified by
+# extracting beamlynx-0.1.5.deb from the 0.1.5 GitHub release; layout is
+# unchanged as of 0.1.15. `-bin` suffix is the required AUR convention for
+# a prebuilt-binary package.
+pkgname=beamlynx-desktop-bin
+pkgver=0.1.15
+pkgrel=1
+pkgdesc="Desktop app bundling the pine-lang server and beamlynx-ui UI, no Docker required"
+arch=('x86_64')
+url="https://github.com/beamlynx/beamlynx-desktop"
+license=('LICENSE')
+install="${pkgname}.install"
+provides=('beamlynx-desktop')
+conflicts=('beamlynx-desktop')
+# Debian deps (control file of the 0.1.5 .deb) mapped to Arch package names.
+# libappindicator3-1 is a Recommends upstream (tray icon on some DEs), not a
+# hard Depends -- kept optional here for the same reason.
+depends=(
+  'gtk3'
+  'libnotify'
+  'nss'
+  'libxss'
+  'libxtst'
+  'xdg-utils'
+  'at-spi2-core'
+  'util-linux-libs'
+  'libsecret'
+)
+optdepends=(
+  'libayatana-appindicator: tray icon support'
+)
+# electron-builder's `dlopen`-based deps (libGLESv2.so etc.) ship inside
+# /opt/beamlynx alongside the binary, same as upstream's deb -- not linked
+# against the system, so no extra Depends needed for those.
+options=('!strip')  # stripping Electron's prebuilt binaries is pointless and can break them
+source=("https://github.com/beamlynx/beamlynx-desktop/releases/download/${pkgver}/beamlynx-${pkgver}.deb")
+sha256sums=('3d56a8ddf050b6e99265a55031ce6a6336d784a584d82750c59bffa6b754dd68')
+
+package() {
+  # bsdtar handles both the outer ar(1) .deb container and the inner
+  # data.tar.xz in one step; equivalent to `ar x` + `tar xf data.tar.xz`.
+  bsdtar -xf "${srcdir}/beamlynx-${pkgver}.deb" -C "${srcdir}" data.tar.xz
+  bsdtar -xf "${srcdir}/data.tar.xz" -C "${pkgdir}"
+
+  # The deb creates this symlink from postinst; on Arch it has to be a
+  # tracked file laid down in package() instead -- files created by an
+  # .install script aren't owned by the package and won't be cleaned up on
+  # removal/upgrade.
+  install -d "${pkgdir}/usr/bin"
+  ln -s /opt/beamlynx/beamlynx-desktop "${pkgdir}/usr/bin/beamlynx-desktop"
+
+  # Deb's postinst decides the chrome-sandbox setuid bit at install time
+  # based on the target machine's userns support; that's a kernel property
+  # of the machine the package lands on, not of the build, so the actual
+  # chmod happens in beamlynx-desktop-bin.install instead. This is just a
+  # safe baseline in case the .install hook doesn't run for some reason.
+  chmod 0755 "${pkgdir}/opt/beamlynx/chrome-sandbox"
+}
