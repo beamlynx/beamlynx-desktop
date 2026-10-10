@@ -1,10 +1,12 @@
+import type { DbType } from './dbType';
+
 export type ParsedConnectionString = {
   dbHost: string;
   dbPort: string;
   dbName: string;
   dbUser: string;
   dbPassword: string;
-  dbType: 'postgres' | 'mysql';
+  dbType: DbType;
 };
 
 const safeDecode = (value: string): string => {
@@ -15,16 +17,28 @@ const safeDecode = (value: string): string => {
   }
 };
 
-const SCHEMES: Record<string, { dbType: 'postgres' | 'mysql'; defaultPort: string }> = {
+const SCHEMES: Record<string, { dbType: DbType; defaultPort: string }> = {
   'postgres:': { dbType: 'postgres', defaultPort: '5432' },
   'postgresql:': { dbType: 'postgres', defaultPort: '5432' },
   'mysql:': { dbType: 'mysql', defaultPort: '3306' },
+  'sqlite:': { dbType: 'sqlite', defaultPort: '' },
 };
 
 /**
- * Parses a Postgres or MySQL connection string, e.g.
+ * `sqlite:///Users/me/app.db` carries the file's absolute path. A Windows path
+ * arrives as `sqlite:///C:/Users/me/app.db`, whose pathname has a slash before
+ * the drive letter that isn't part of the path.
+ */
+function sqliteFilePath(pathname: string): string {
+  const path = safeDecode(pathname);
+  return /^\/[A-Za-z]:[\\/]/.test(path) ? path.slice(1) : path;
+}
+
+/**
+ * Parses a Postgres, MySQL or SQLite connection string, e.g.
  * postgresql://user:password@host:5432/database
  * mysql://user:password@host:3306/database
+ * sqlite:///absolute/path/to/file.db
  */
 export function parseConnectionString(connectionString: string): ParsedConnectionString {
   let url: URL;
@@ -33,13 +47,21 @@ export function parseConnectionString(connectionString: string): ParsedConnectio
   } catch {
     throw new Error(
       'Invalid connection string. Expected format: postgresql://user:password@host:port/database ' +
-        'or mysql://user:password@host:port/database'
+        'mysql://user:password@host:port/database or sqlite:///path/to/file.db'
     );
   }
 
   const scheme = SCHEMES[url.protocol];
   if (!scheme) {
-    throw new Error('Only postgresql:// or mysql:// connection strings are supported.');
+    throw new Error('Only postgresql://, mysql:// or sqlite:// connection strings are supported.');
+  }
+
+  if (scheme.dbType === 'sqlite') {
+    const dbName = sqliteFilePath(url.pathname);
+    if (!dbName.replace(/^\//, '')) {
+      throw new Error('Connection string must include the path of the database file.');
+    }
+    return { dbHost: '', dbPort: '', dbName, dbUser: '', dbPassword: '', dbType: 'sqlite' };
   }
 
   const dbName = url.pathname.replace(/^\//, '');
@@ -57,9 +79,10 @@ export function parseConnectionString(connectionString: string): ParsedConnectio
   };
 }
 
-const SCHEME_FOR_TYPE: Record<ParsedConnectionString['dbType'], string> = {
+const SCHEME_FOR_TYPE: Record<DbType, string> = {
   postgres: 'postgresql',
   mysql: 'mysql',
+  sqlite: 'sqlite',
 };
 
 /**
@@ -81,6 +104,15 @@ export function buildConnectionString(fields: {
   dbPassword: string;
 }): string {
   const scheme = SCHEME_FOR_TYPE[fields.dbType];
+  if (fields.dbType === 'sqlite') {
+    // Percent-encode each segment (a space in a folder name), not the slashes.
+    // `C:\Users\me\app.db` becomes `/C:/Users/me/app.db`.
+    const path = fields.dbName.replace(/\\/g, '/').replace(/^(?!\/)/, '/');
+    const segments = path
+      .split('/')
+      .map((segment, i) => (i === 1 && /^[A-Za-z]:$/.test(segment) ? segment : encodeURIComponent(segment)));
+    return `${scheme}://${segments.join('/')}`;
+  }
   const auth = fields.dbUser
     ? `${encodeURIComponent(fields.dbUser)}${fields.dbPassword ? `:${encodeURIComponent(fields.dbPassword)}` : ''}@`
     : '';

@@ -32,6 +32,9 @@ const REMOVE_CONFIRM_TIMEOUT_MS = 3000;
 const DB_TYPES = [
   { value: 'postgres', label: 'PostgreSQL', defaultPort: '5432' },
   { value: 'mysql', label: 'MySQL', defaultPort: '3306' },
+  // A local file: no server, so no port, user or password. Desktop only --
+  // pine-lang refuses it from any server beamlynx-desktop didn't start.
+  { value: 'sqlite', label: 'SQLite', defaultPort: '' },
 ] as const;
 type DbTypeValue = (typeof DB_TYPES)[number]['value'];
 
@@ -120,9 +123,33 @@ const AddConnectionForm = ({
   const [connecting, setConnecting] = useState(false);
   const [connected, setConnected] = useState(false);
 
+  const isSqlite = dbType === 'sqlite';
+  const dbTypeOptions = isDesktop() ? DB_TYPES : DB_TYPES.filter(t => t.value !== 'sqlite');
+  // A desktop build that predates SQLite has no file chooser; the path can
+  // still be typed.
+  const canBrowse = typeof window !== 'undefined' && !!window.beamlynxDesktop?.credentials.pickSqliteFile;
+
   const handleDbTypeChange = (value: DbTypeValue) => {
     setDbType(value);
     setDbPort(DB_TYPES.find(t => t.value === value)?.defaultPort ?? '');
+    if (isSqlite || value === 'sqlite') {
+      // `Database name` is a file path for SQLite: one is never a valid name
+      // for a server database, nor the other way round.
+      setDbName('');
+    }
+    if (value === 'sqlite') {
+      setDbHost('');
+      setDbUser('');
+      setDbPassword('');
+    }
+  };
+
+  const handleBrowse = async () => {
+    const path = await window.beamlynxDesktop?.credentials.pickSqliteFile?.();
+    if (path) {
+      setDbName(path);
+      setError('');
+    }
   };
 
   const handleConnectionStringChange = (value: string) => {
@@ -176,11 +203,11 @@ const AddConnectionForm = ({
     try {
       setConnecting(true);
       const connectionId = await global.connect({
-        dbHost,
-        dbPort,
-        dbName,
-        dbUser,
-        dbPassword,
+        dbHost: isSqlite ? '' : dbHost,
+        dbPort: isSqlite ? '' : dbPort,
+        dbName: isSqlite ? dbName.trim() : dbName,
+        dbUser: isSqlite ? '' : dbUser,
+        dbPassword: isSqlite ? '' : dbPassword,
         dbType,
         label: label.trim() || undefined,
       });
@@ -267,7 +294,9 @@ const AddConnectionForm = ({
             name="label"
             autoComplete="off"
             placeholder="e.g. Production orders"
-            helperText="Optional -- defaults to the username@host:port/database if left blank."
+            helperText={`Optional -- defaults to ${
+              isSqlite ? 'the file name' : 'the username@host:port/database'
+            } if left blank.`}
             value={label}
             onChange={e => setLabel(e.target.value)}
             disabled={connected}
@@ -294,12 +323,46 @@ const AddConnectionForm = ({
               disabled={connected}
               sx={fieldSx}
             >
-              {DB_TYPES.map(({ value, label }) => (
+              {dbTypeOptions.map(({ value, label }) => (
                 <MenuItem key={value} value={value}>
                   {label}
                 </MenuItem>
               ))}
             </TextField>
+            {isSqlite ? (
+              <TextField
+                fullWidth
+                margin="dense"
+                label="Database file"
+                id="db-file"
+                name="database-file"
+                autoComplete="off"
+                placeholder="/path/to/database.db"
+                helperText="The absolute path of an existing SQLite file on this computer."
+                value={dbName}
+                onChange={e => setDbName(e.target.value)}
+                disabled={connected}
+                slotProps={{
+                  input: {
+                    endAdornment: canBrowse ? (
+                      <InputAdornment position="end">
+                        <Button
+                          type="button"
+                          size="small"
+                          onClick={handleBrowse}
+                          disabled={connected}
+                          sx={{ color: 'var(--primary-color)' }}
+                        >
+                          Browse…
+                        </Button>
+                      </InputAdornment>
+                    ) : undefined,
+                  },
+                }}
+                sx={fieldSx}
+              />
+            ) : (
+              <>
             <TextField
               fullWidth
               margin="dense"
@@ -361,6 +424,8 @@ const AddConnectionForm = ({
               disabled={connected}
               sx={fieldSx}
             />
+              </>
+            )}
           </>
         ) : (
           <TextField
@@ -371,7 +436,9 @@ const AddConnectionForm = ({
             name="connection-string"
             type={showConnectionString ? 'text' : 'password'}
             autoComplete="current-password"
-            placeholder="postgresql://user:password@host:5432/database or mysql://user:password@host:3306/database"
+            placeholder={`postgresql://user:password@host:5432/database or mysql://user:password@host:3306/database${
+              isDesktop() ? ' or sqlite:///path/to/file.db' : ''
+            }`}
             value={connectionString}
             onChange={e => handleConnectionStringChange(e.target.value)}
             disabled={connected}
@@ -432,7 +499,7 @@ const AddConnectionForm = ({
         <Button
           type="submit"
           variant="contained"
-          disabled={!!connected || connecting}
+          disabled={!!connected || connecting || (isSqlite && !dbName.trim())}
           sx={{
             backgroundColor: 'var(--primary-color)',
             color: 'var(--primary-text-color)',

@@ -1,4 +1,5 @@
 import { isPlayground } from './util';
+import type { DbType } from '../utils/dbType';
 
 // Inside beamlynx-desktop, the desktop app says where its bundled server
 // listens. Its dev build uses a different port than the installed app, so
@@ -771,7 +772,7 @@ export class HttpClient {
     dbName: string;
     dbUser: string;
     dbPassword: string;
-    dbType?: 'postgres' | 'mysql';
+    dbType?: DbType;
   }): Promise<string> {
     type ServerConnectionParams = {
       host: string;
