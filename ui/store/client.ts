@@ -218,6 +218,9 @@ export type Column = {
   path?: JsonPathStep[];
   // A date bucket, `created_at => month`. Computed too.
   'col-fn'?: string;
+  // A hidden column holding the JSON type of a path column's value in each
+  // row, named after that column's 'column-alias'.
+  'json-type-of'?: string;
 };
 
 /** Range returned by the build endpoint mapping segments to table aliases */
@@ -292,6 +295,9 @@ export type Response = {
   // build
   ast: Ast;
   query: string;
+  // The same SQL without the hidden columns pine-lang adds for the results
+  // grid. Absent from a server older than JSON key edits.
+  'query-without-hidden'?: string;
   // Absent against a server older than $variables.
   variables?: VariablesReport;
   // eval refused for a missing value: the names of the variables without one.

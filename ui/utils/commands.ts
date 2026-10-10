@@ -253,6 +253,13 @@ const COMMANDS: Command[] = [
     handler: global => global.togglePineTableColors(),
     isEnabled: ALWAYS_ENABLED,
   },
+  {
+    id: 'toggle-hidden-sql-columns',
+    label: 'Toggle Hidden Columns in SQL',
+    category: 'Preferences',
+    handler: global => global.toggleShowHiddenSqlColumns(),
+    isEnabled: ALWAYS_ENABLED,
+  },
 
   // Experimental Category
   {

@@ -23,6 +23,7 @@ import {
   effectiveAccessPolicyRules,
   Hints,
   HttpClient,
+  JsonPathStep,
   Operation,
   Response,
   VariablesReport,
@@ -75,7 +76,14 @@ export type ColumnMetadata = {
   // primary key has no entry, and its values can't be edited.
   aliasToKeyLookup: Record<string, KeyColumn[]>;
   colIndexToColumnLookup: Record<string, string>; // i.e. what is the column name for the column index
+  // A key inside a JSON column (`companies[0].id`): the column, the path, and
+  // the field of the hidden column holding each row's JSON type. Only for a
+  // table whose rows can be edited; pine-lang sends no type otherwise.
+  colIndexToPathLookup: Record<string, JsonPathTarget>;
 };
+
+/** Where an edit of a JSON path cell is written. */
+export type JsonPathTarget = { column: string; path: JsonPathStep[]; typeField: string };
 
 const client = new HttpClient();
 
@@ -191,6 +199,7 @@ export class Session {
     colIndexToAliasLookup: {},
     aliasToKeyLookup: {},
     colIndexToColumnLookup: {},
+    colIndexToPathLookup: {},
   };
   rows: Row[] = [];
 
@@ -255,6 +264,10 @@ export class Session {
    */
   variablesReport: VariablesReport | null = null;
   query: string = '';
+  // The last build's SQL, with and without the hidden columns. `query` is
+  // one of them until it is edited by hand in SQL mode.
+  builtQuery: string = '';
+  builtQueryWithoutHidden: string = '';
   /** Currently selected text in the SQL editor, if any. Running a query while text is
    * selected runs only the selection instead of the full query. */
   querySelection: string = '';
@@ -387,6 +400,15 @@ export class Session {
       columnVisibilityModel: observable.ref,
       columnMetadata: observable.ref,
     });
+
+    // Turning the hidden columns on or off swaps the SQL shown, unless it was
+    // edited by hand since the last build.
+    reaction(
+      () => !!this.globalStore?.showHiddenSqlColumns,
+      show => {
+        if (this.query === this.shownBuiltQuery(!show)) this.query = this.shownBuiltQuery(show);
+      },
+    );
 
     /** Evaluation plugins */
     this.plugins = {
@@ -552,8 +574,14 @@ export class Session {
             this.doc = response.doc ?? '';
           }
 
-          // query
-          this.query = formatSql(response.query);
+          // query: what the SQL panel shows. With or without the hidden
+          // columns, as the preference says; both are kept, so turning it
+          // doesn't need another build.
+          this.builtQuery = formatSql(response.query);
+          this.builtQueryWithoutHidden = response['query-without-hidden']
+            ? formatSql(response['query-without-hidden'])
+            : this.builtQuery;
+          this.query = this.shownBuiltQuery(!!this.globalStore?.showHiddenSqlColumns);
 
           // operation
           this.operation = handleOperation(response);
@@ -1140,6 +1168,10 @@ export class Session {
         });
       }, autoClearMs);
     }
+  }
+
+  shownBuiltQuery(showHidden: boolean): string {
+    return showHidden ? this.builtQuery : this.builtQueryWithoutHidden;
   }
 
   /**

@@ -1,7 +1,7 @@
 import { observer } from 'mobx-react-lite';
 import React, { useMemo } from 'react';
-import { Box, ToggleButton, ToggleButtonGroup, Button } from '@mui/material';
-import { PlayArrow, Loop, Stop } from '@mui/icons-material';
+import { Box, ToggleButton, ToggleButtonGroup, Button, IconButton, Tooltip } from '@mui/material';
+import { PlayArrow, Loop, Stop, Visibility, VisibilityOff } from '@mui/icons-material';
 import PineInput from './PineInput';
 import SqlInput from './SqlInput';
 import { Session } from '../store/session';
@@ -68,6 +68,42 @@ export const RunButton: React.FC<{ session: Session; onRun?: () => void | Promis
   },
 );
 
+/**
+ * Shows or hides, in the SQL, the columns pine-lang adds so results can be
+ * edited. The same preference as the switch in Settings > Preferences.
+ */
+const HiddenColumnsToggle: React.FC = observer(() => {
+  const { global } = useStores();
+  const shown = global.showHiddenSqlColumns;
+  return (
+    <Tooltip
+      title={
+        shown
+          ? 'Hide the columns beamlynx adds so results can be edited'
+          : 'Show the columns beamlynx adds so results can be edited'
+      }
+    >
+      <IconButton
+        size="small"
+        tabIndex={-1}
+        aria-label={shown ? 'Hide hidden columns' : 'Show hidden columns'}
+        aria-pressed={shown}
+        onClick={() => global.toggleShowHiddenSqlColumns()}
+        sx={{
+          color: shown ? 'var(--primary-color)' : 'var(--text-color)',
+          backgroundColor: 'var(--background-color)',
+          border: '1px solid var(--border-color)',
+          borderRadius: '4px',
+          height: '30px',
+          width: '30px',
+        }}
+      >
+        {shown ? <Visibility fontSize="small" /> : <VisibilityOff fontSize="small" />}
+      </IconButton>
+    </Tooltip>
+  );
+});
+
 const Input: React.FC<InputProps> = observer(({ session, onRun, autoFocus = true }) => {
   const handleInputModeChange = (
     event: React.MouseEvent<HTMLElement>,
@@ -119,6 +155,7 @@ const Input: React.FC<InputProps> = observer(({ session, onRun, autoFocus = true
             gap: 0.5,
           }}
         >
+          {session.inputMode === 'sql' && <HiddenColumnsToggle />}
           {/* Input mode toggle. Tab skips both buttons (see each
               ToggleButton's own tabIndex={-1} below) and lands straight in
               the editor instead -- confirmed live that Tab used to stop on

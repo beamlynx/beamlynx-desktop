@@ -367,6 +367,24 @@ export class GlobalStore {
     setUserPreference(STORAGE_KEYS.PINE_TABLE_COLORS, value);
   }
 
+  // Whether the SQL panel shows the hidden columns pine-lang adds so results
+  // can be edited: each table's key, each JSON value's type. They are
+  // fetched either way. Off by default: they make the SQL longer to read.
+  _showHiddenSqlColumns: boolean;
+
+  get showHiddenSqlColumns(): boolean {
+    return this._showHiddenSqlColumns;
+  }
+
+  set showHiddenSqlColumns(value: boolean) {
+    this._showHiddenSqlColumns = value;
+    setUserPreference(STORAGE_KEYS.SHOW_HIDDEN_SQL_COLUMNS, value);
+  }
+
+  public toggleShowHiddenSqlColumns() {
+    this.showHiddenSqlColumns = !this.showHiddenSqlColumns;
+  }
+
   // Auto-run - whenever a canvas gesture commits a new, backend-confirmed-
   // valid expression, run it immediately instead of waiting for an explicit
   // Run. Global (like theme), not per-session.
@@ -621,6 +639,7 @@ export class GlobalStore {
     this._vimModeEnabled = getUserPreference(STORAGE_KEYS.VIM_MODE, false, isBoolean);
     this._pineTableColorsEnabled = getUserPreference(STORAGE_KEYS.PINE_TABLE_COLORS, false, isBoolean);
     this._autoRunEnabled = getUserPreference(STORAGE_KEYS.AUTO_RUN_ENABLED, true, isBoolean);
+    this._showHiddenSqlColumns = getUserPreference(STORAGE_KEYS.SHOW_HIDDEN_SQL_COLUMNS, false, isBoolean);
     this._newLayoutPanelVisible = getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_VISIBLE, false, isBoolean);
     this._newLayoutOrientation = getUserPreference<'horizontal' | 'vertical'>(
       STORAGE_KEYS.NEW_LAYOUT_ORIENTATION,
