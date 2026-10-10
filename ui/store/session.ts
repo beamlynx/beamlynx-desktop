@@ -492,7 +492,13 @@ export class Session {
           );
           runInAction(() => {
             this.response = response;
-            this.lastHintsCursorPosition = cursor;
+            // A build refused because the tab's connection isn't back yet
+            // built nothing. Recording its cursor would make requestHints
+            // skip the rebuild that runs once the connection is up, and the
+            // refusal would stay on screen.
+            if (response?.['error-type'] !== 'no-connection') {
+              this.lastHintsCursorPosition = cursor;
+            }
           });
         } catch (e) {
           runInAction(() => {
