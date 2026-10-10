@@ -23,6 +23,8 @@ import UpdateModal from './UpdateModal';
 import { useRetainedValue } from '../hooks/useRetainedValue';
 import DownloadResultsModal from './DownloadResultsModal';
 import { pineString } from '../store/util';
+import { columnName, type JsonPathStep } from '../store/client';
+import { jsonCellReadOnlyReason, jsonEditLiteral } from '../store/json-edit.util';
 import { getColorForAlias, shouldShowTableColors } from '../store/table-colors.util';
 import { estimateColumnWidth } from './column-width.util';
 import { MIN_RESULT_COLUMN_WIDTH, MAX_RESULT_COLUMN_WIDTH } from '../constants';
@@ -53,6 +55,18 @@ interface ContextMenuState {
 interface KeyValue {
   column: string;
   value: string | number;
+}
+
+/** What saving one cell writes, and where. */
+interface EditTarget {
+  alias: string;
+  /** How the cell's column is named in messages: `email`, `companies[0].id`. */
+  name: string;
+  column: string;
+  /** Set for a key inside a JSON column. */
+  path?: JsonPathStep[];
+  /** The `update!` assignment: `email = 'a@b.c'`. */
+  assignment: string;
 }
 
 interface UpdateData {
@@ -143,7 +157,8 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   // itself is the one thing it can't change.
   const readOnlyReasonFor = (field: string, headerName: string): string | undefined => {
     const alias = colIndexToAlias[field];
-    const column = session.columnMetadata.colIndexToColumnLookup[field];
+    const pathTarget = session.columnMetadata.colIndexToPathLookup[field];
+    const column = session.columnMetadata.colIndexToColumnLookup[field] ?? pathTarget?.column;
     if (!alias || !column) {
       return `${headerName} is worked out by the query, not stored in a table, so it can't be edited.`;
     }
@@ -157,10 +172,20 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
         ? `${table} values can't be edited here. ${table} has no primary key, so an update can't tell its rows apart.`
         : `These values can't be edited here. Their table has no primary key, so an update can't tell its rows apart.`;
     }
-    if (key.some(k => k.column === column)) {
+    if (!pathTarget && key.some(k => k.column === column)) {
       return `${known ? `${table}.` : ''}${column} can't be edited. It's part of the primary key, which is how an update finds the row to change.`;
     }
     return undefined;
+  };
+
+  // Why one cell of a JSON path column can't be edited: its key is missing in
+  // that row, or it holds an object or an array. Read from the row's hidden
+  // JSON type, so it differs from row to row.
+  const cellReadOnlyReasonFor = (field: string): ((row: Row) => string | undefined) | undefined => {
+    const target = session.columnMetadata.colIndexToPathLookup[field];
+    if (!target) return undefined;
+    const name = columnName(target.column, target.path);
+    return row => jsonCellReadOnlyReason(name, row[target.typeField]);
   };
 
   // The primary key of the record a cell belongs to, read from its row. A
@@ -221,6 +246,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
           // opens already in edit mode - never inline.
           editable: column.editable && !isJsonColumn && !readOnlyReason,
           readOnlyReason,
+          cellReadOnlyReason: readOnlyReason ? undefined : cellReadOnlyReasonFor(column.field),
           headerColor: tinted ? getColorForAlias(alias, ast, isDark) : undefined,
           spotlight,
         };
@@ -264,8 +290,12 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const jsonPanelAlias = jsonPanel
     ? session.columnMetadata.colIndexToAliasLookup[jsonPanel.field]
     : '';
+  // A key inside a JSON column, or a computed column, names no table column:
+  // the panel is titled with the column's own header, `companies[0]`.
   const jsonPanelColumn = jsonPanel
-    ? session.columnMetadata.colIndexToColumnLookup[jsonPanel.field]
+    ? (session.columnMetadata.colIndexToColumnLookup[jsonPanel.field] ??
+      columns.find(c => c.field === jsonPanel.field)?.title ??
+      '')
     : '';
 
   const closeJsonPanel = () => setJsonPanel(null);
@@ -293,9 +323,19 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     });
   };
 
+  // Why one cell can't be edited: its column's reason, or, in a JSON path
+  // column, this row's.
+  const readOnlyReasonOfCell = (field: string, row: Row | undefined): string | undefined => {
+    const column = columns.find(c => c.field === field);
+    return column?.readOnlyReason ?? (row ? column?.cellReadOnlyReason?.(row) : undefined);
+  };
+
   const startEditingJsonPanel = () => {
     if (!jsonPanel) return;
-    const reason = columns.find(c => c.field === jsonPanel.field)?.readOnlyReason;
+    const reason = readOnlyReasonOfCell(
+      jsonPanel.field,
+      rows.find(row => row._id === jsonPanel.id),
+    );
     if (reason) {
       setNotice({ kind: 'info', text: reason });
       return;
@@ -325,15 +365,22 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
       console.error('Row data not found for id:', jsonPanel.id);
       return false;
     }
-    const column = session.columnMetadata.colIndexToColumnLookup[jsonPanel.field];
+    // A key inside a JSON column whose value is a string of JSON text: saved
+    // as that string, the type it had. One holding an object or array never
+    // gets here; its panel is read-only.
+    const target = editTarget(rowData, jsonPanel.field, minified.value);
     // A computed column names no table column; nothing to save it to.
-    if (!column) return false;
-    const key = rowKey(rowData, alias);
-    if (typeof key === 'string') {
-      setNotice({ kind: 'error', text: `Couldn't save ${column}: ${key}` });
+    if (!target) return false;
+    if ('error' in target) {
+      setNotice({ kind: 'error', text: `Couldn't save ${target.name}: ${target.error}` });
       return false;
     }
-    if (!(await runUpdate(alias, key, column, minified.value))) return false;
+    const key = rowKey(rowData, alias);
+    if (typeof key === 'string') {
+      setNotice({ kind: 'error', text: `Couldn't save ${target.name}: ${key}` });
+      return false;
+    }
+    if (!(await runUpdate(target, key))) return false;
     // Close rather than flip back to view mode: session.evaluate() just
     // rebuilt `rows`, and `_id` is a positional index re-assigned on every
     // evaluation (see default.plugin.tsx), not a stable row identity - if
@@ -450,40 +497,73 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     handleContextMenuClose();
   };
 
-  // Enter in a cell's editor: run the update straight away, without the
-  // dialog. The dialog is for the editor's Inspect button (inspectEdit).
-  const commitEdit = async (row: Row, field: string, value: string) => {
+  // What an edit of one cell writes: `email = 'a@b.c'` for a column, or
+  // `dp.companies[0].id = 7` for a key inside a JSON column, written as the
+  // type the value had. Or why it can't be written. Null for a computed
+  // column, which names nothing to write to.
+  const editTarget = (
+    row: Row,
+    field: string,
+    value: string,
+  ): EditTarget | { name: string; error: string } | null => {
     // The field is the column's index, stringified; the alias says which
     // table it came from, and so which key columns identify the row.
     const alias = session.columnMetadata.colIndexToAliasLookup[field];
+    const pathTarget = session.columnMetadata.colIndexToPathLookup[field];
+    if (pathTarget) {
+      const name = columnName(pathTarget.column, pathTarget.path);
+      const type = row[pathTarget.typeField];
+      const reason = jsonCellReadOnlyReason(name, type);
+      if (reason) return { name, error: reason };
+      const literal = jsonEditLiteral(name, type, value);
+      if ('error' in literal) return { name, error: literal.error };
+      // Qualified by the alias: after `from: dp`, `dp.companies` can only
+      // mean that table's column, whatever else is called `companies`.
+      return {
+        alias,
+        name,
+        column: pathTarget.column,
+        path: pathTarget.path,
+        assignment: `${alias}.${name} = ${literal.literal}`,
+      };
+    }
     const column = session.columnMetadata.colIndexToColumnLookup[field];
-    if (!column) return;
-    const key = rowKey(row, alias);
-    if (typeof key === 'string') {
-      setNotice({ kind: 'error', text: `Couldn't save ${column}: ${key}` });
+    if (!column) return null;
+    return { alias, name: column, column, assignment: `${column} = ${pineString(value)}` };
+  };
+
+  // Enter in a cell's editor: run the update straight away, without the
+  // dialog. The dialog is for the editor's Inspect button (inspectEdit).
+  const commitEdit = async (row: Row, field: string, value: string) => {
+    const target = editTarget(row, field, value);
+    if (!target) return;
+    if ('error' in target) {
+      setNotice({ kind: 'error', text: `Couldn't save ${target.name}: ${target.error}` });
+      // The grid shows the typed text until the next result arrives.
+      await session.evaluate();
       return;
     }
-    await runUpdate(alias, key, column, value);
+    const key = rowKey(row, target.alias);
+    if (typeof key === 'string') {
+      setNotice({ kind: 'error', text: `Couldn't save ${target.name}: ${key}` });
+      return;
+    }
+    await runUpdate(target, key);
   };
 
   // Runs one update through the virtual session, then re-runs this tab's
   // query so the grid shows what the database now holds (after a failure,
   // the value that is still there). A save that worked glows in its cell and
   // says so briefly; a failure says why.
-  const runUpdate = async (
-    alias: string,
-    key: KeyValue[],
-    column: string,
-    value: string,
-  ): Promise<boolean> => {
+  const runUpdate = async (target: EditTarget, key: KeyValue[]): Promise<boolean> => {
+    const { alias, name, column, path } = target;
     let error = '';
     try {
       const updateExpression = await createUpdateExpression(
         session.expression,
         alias,
         key,
-        column,
-        value,
+        target.assignment,
         { requireRow: true },
       );
       const vs = global.getVirtualSession();
@@ -497,17 +577,22 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     }
     setNotice(
       error
-        ? { kind: 'error', text: `Couldn't save ${column}: ${error}` }
-        : { kind: 'success', text: `Saved ${column}` },
+        ? { kind: 'error', text: `Couldn't save ${name}: ${error}` }
+        : { kind: 'success', text: `Saved ${name}` },
     );
     await session.evaluate();
     if (!error) {
       // Where the row and the column are now: the re-run can reorder rows,
       // and field indices belong to one result, not the next.
       const meta = session.columnMetadata;
-      const field = Object.keys(meta.colIndexToColumnLookup).find(
-        f => meta.colIndexToColumnLookup[f] === column && meta.colIndexToAliasLookup[f] === alias,
-      );
+      const samePath = (p: JsonPathStep[]) => JSON.stringify(p) === JSON.stringify(path);
+      const field = Object.keys(meta.colIndexToAliasLookup).find(f => {
+        if (meta.colIndexToAliasLookup[f] !== alias) return false;
+        const pathTarget = meta.colIndexToPathLookup[f];
+        return path
+          ? !!pathTarget && pathTarget.column === column && samePath(pathTarget.path)
+          : meta.colIndexToColumnLookup[f] === column;
+      });
       const keyFields = meta.aliasToKeyLookup[alias] ?? [];
       const rowIndex = keyFields.length
         ? session.rows.findIndex(row =>
@@ -531,8 +616,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     baseExpression: string,
     alias: string,
     key: KeyValue[],
-    column: string,
-    value: string,
+    assignment: string,
     { requireRow = false }: { requireRow?: boolean } = {},
   ) => {
     const vs = global.getVirtualSession();
@@ -568,7 +652,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
         throw new Error('the row is no longer there');
       }
     }
-    await vs.pipeAndUpdateExpression(`update! ${column} = ${pineString(value)}`);
+    await vs.pipeAndUpdateExpression(`update! ${assignment}`);
 
     return vs.expression;
   };
@@ -580,46 +664,35 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const openJsonInspect = async (id: string | number, field: string, text: string) => {
     const minified = minifyJsonText(text);
     if (!minified.ok) return;
-    const alias = session.columnMetadata.colIndexToAliasLookup[field];
     const rowData = rows.find(row => row._id === id);
     if (!rowData) {
       console.error('Row data not found for id:', id);
       return;
     }
-    const column = session.columnMetadata.colIndexToColumnLookup[field];
-    const key = rowKey(rowData, alias);
-    if (typeof key === 'string') {
-      setNotice({ kind: 'error', text: `Can't edit ${column}: ${key}` });
-      return;
-    }
-    const updateExpression = await createUpdateExpression(
-      session.expression,
-      alias,
-      key,
-      column,
-      minified.value,
-    );
-    setUpdateData({ column, value: minified.value, alias, updateExpression });
+    await inspectEdit(rowData, field, minified.value);
   };
 
   // The cell editor's Inspect button: build the update and show it in
   // UpdateModal instead of running it.
   const inspectEdit = async (row: Row, field: string, value: string) => {
-    const alias = session.columnMetadata.colIndexToAliasLookup[field];
-    const column = session.columnMetadata.colIndexToColumnLookup[field];
-    const key = rowKey(row, alias);
+    const target = editTarget(row, field, value);
+    if (!target) return;
+    if ('error' in target) {
+      setNotice({ kind: 'error', text: `Can't edit ${target.name}: ${target.error}` });
+      return;
+    }
+    const key = rowKey(row, target.alias);
     if (typeof key === 'string') {
-      setNotice({ kind: 'error', text: `Can't edit ${column}: ${key}` });
+      setNotice({ kind: 'error', text: `Can't edit ${target.name}: ${key}` });
       return;
     }
     const updateExpression = await createUpdateExpression(
       session.expression,
-      alias,
+      target.alias,
       key,
-      column,
-      value,
+      target.assignment,
     );
-    setUpdateData({ column, value, alias, updateExpression });
+    setUpdateData({ column: target.name, value, alias: target.alias, updateExpression });
   };
 
   const exportToCSV = () => {
@@ -800,7 +873,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
                 setJsonPanel({
                   id: row._id,
                   field,
-                  editing: !columns.find(c => c.field === field)?.readOnlyReason,
+                  editing: !readOnlyReasonOfCell(field, row),
                 })
               }
               onReadOnlyEdit={reason => setNotice({ kind: 'info', text: reason })}

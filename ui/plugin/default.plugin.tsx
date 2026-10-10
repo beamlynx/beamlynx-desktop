@@ -106,7 +106,8 @@ export class DefaultPlugin implements PluginInterface {
           // A key inside a JSON column (`data.plan`) or a date bucket
           // (`created_at => month`) is worked out by the query. Saving it to
           // `data` or `created_at` would overwrite the whole stored value, so
-          // it names no table column and the grid treats it as read-only.
+          // it names no table column here. A key is written through
+          // colIndexToPathLookup below; a date bucket can't be edited.
           if (!column['path'] && !column['col-fn']) {
             acc.colIndexToColumnLookup[index.toString()] = column['column'];
           }
@@ -121,8 +122,30 @@ export class DefaultPlugin implements PluginInterface {
           });
           return acc;
         },
-        { colIndexToAliasLookup: {}, aliasToKeyLookup: {}, colIndexToColumnLookup: {} },
+        {
+          colIndexToAliasLookup: {},
+          aliasToKeyLookup: {},
+          colIndexToColumnLookup: {},
+          colIndexToPathLookup: {},
+        },
       );
+      // A path column whose table can be edited has a hidden type column,
+      // named after it. Together they say where an edit goes and what type
+      // to write it as. Kept apart from colIndexToColumnLookup, which means
+      // the whole column (a filter on `companies`, not on a key inside it).
+      response.columns.forEach((column, index) => {
+        const of = column['json-type-of'];
+        if (!of) return;
+        const pathIndex = response.columns.findIndex(
+          c => c.path && c.alias === column.alias && c['column-alias'] === of,
+        );
+        if (pathIndex < 0) return;
+        columnMetadata.colIndexToPathLookup[pathIndex.toString()] = {
+          column: column.column,
+          path: column.path ?? [],
+          typeField: index.toString(),
+        };
+      });
 
       const columnVisibilityModel = response.columns.reduce(
         (acc, column, index) => {

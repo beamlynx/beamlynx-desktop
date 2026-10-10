@@ -62,6 +62,12 @@ export interface ResultsGridColumn {
    * editor that could only fail.
    */
   readOnlyReason?: string;
+  /**
+   * Why one cell can't be changed, when that depends on its row: a key
+   * inside a JSON column can be missing in one row and hold an object in
+   * another.
+   */
+  cellReadOnlyReason?: (row: Row) => string | undefined;
   /** Header background, for the per-table "Table colors" tint and the canvas hover spotlight. */
   headerColor?: string;
   /** This column's table is the one hovered on the canvas. */
@@ -293,12 +299,13 @@ const ResultsGrid: React.FC<ResultsGridProps> = observer(props => {
       }
       const text = pendingEdits.current.get(`${row}:${column.field}`) ?? displayText(value);
       const glow = flashState.current;
+      const editable = column.editable && !(rows[row] && column.cellReadOnlyReason?.(rows[row]));
       return {
         kind: GridCellKind.Text,
         data: text,
         displayData: text,
-        allowOverlay: column.editable,
-        readonly: !column.editable,
+        allowOverlay: editable,
+        readonly: !editable,
         ...(glow && glow.rowIndex === row && glow.field === column.field && glow.alpha > 0 && {
           themeOverride: { bgCell: withAlpha(glow.color, glow.alpha) },
         }),
@@ -424,14 +431,22 @@ const ResultsGrid: React.FC<ResultsGridProps> = observer(props => {
   // An edit attempt on a column that can't be changed says why, straight
   // away. Glide activates a cell on double-click or Enter whether or not it
   // can open an editor; typing only reaches onKeyDown.
-  const onCellActivated = useCallback(([col]: Item) => {
+  const reasonFor = ([col, row]: Item): string | undefined => {
     const column = latest.current.columns[col];
-    if (column?.readOnlyReason && !column.json) latest.current.onReadOnlyEdit(column.readOnlyReason);
+    if (!column || column.json) return undefined;
+    const target = latest.current.rows[row];
+    return column.readOnlyReason ?? (target ? column.cellReadOnlyReason?.(target) : undefined);
+  };
+  const onCellActivated = useCallback((item: Item) => {
+    const reason = reasonFor(item);
+    if (reason) latest.current.onReadOnlyEdit(reason);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const onKeyDown = useCallback((event: GridKeyEventArgs) => {
     if (!event.location || event.ctrlKey || event.metaKey || event.altKey || event.key.length !== 1) return;
-    const column = latest.current.columns[event.location[0]];
-    if (column?.readOnlyReason && !column.json) latest.current.onReadOnlyEdit(column.readOnlyReason);
+    const reason = reasonFor(event.location);
+    if (reason) latest.current.onReadOnlyEdit(reason);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const onCellClicked = useCallback(([col, row]: Item) => {
