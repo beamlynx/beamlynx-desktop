@@ -2,7 +2,7 @@
 
 A key inside a `json` or `jsonb` column, used like a column.
 
-**Operation(s):** any that takes a column: `select:`, `where:`, `order:`, `group:`
+**Operation(s):** any that takes a column: `select:`, `where:`, `order:`, `group:`, `update!`
 
 ## Examples
 
@@ -63,6 +63,17 @@ customer | select: data.'home address', data.'it''s'
 `[0]` is the first element. Quote a key that has spaces or other characters, and write an
 apostrophe inside it twice. A key with `-` needs no quotes: `data.first-name`.
 
+### Change one value
+
+```
+customer | where: id = 7 | update! data.plan = 'pro', data.seats = 12
+```
+
+Only the value at that key changes; the rest of the JSON stays as it was. The value decides its
+kind, as in `where:`: `'12'` is text, `12` a number, `true` a boolean, `null` a JSON null. A
+missing key is added, but the object or array it goes into must already be there: a row where
+it isn't is left unchanged and isn't counted as updated.
+
 ### Through a table's alias
 
 ```
@@ -77,7 +88,9 @@ column.
 ## What doesn't work
 
 - **No `->` or `->>`.** Use dots.
-- **Read only.** `update!` can't write into a key.
+- **No object or array as a value.** `update!` writes text, numbers, booleans and `null` into a
+  key, not `{...}` or `[...]`.
+- **A key or its whole column, not both.** `update! data = '{}', data.plan = 'pro'` is refused.
 - **A key is compared with a value, not with another column.** `where: data.plan = other_column`
   is refused.
 - **No `=> month` on a key.** Its value is text, not a date.

@@ -13,7 +13,7 @@ customers | where: first_name = 'John'
 ```
 
 String values are single-quoted. Numbers and booleans are not. An apostrophe inside a string is
-written twice: `'O''Brien'`.
+written twice: `'O''Brien'`. A number can be negative or have a decimal part: `balance < -10.5`.
 
 ### Either condition: `or`
 
