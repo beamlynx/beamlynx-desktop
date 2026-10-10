@@ -124,6 +124,8 @@ test('a database key leaves out the login and treats 127.0.0.1 as localhost', ()
   assert.equal(a, b);
   assert.equal(databaseKeyOf({ dbHost: 'db.example.internal', dbPort: '', dbName: 'shop' }), 'postgres://db.example.internal:5432/shop');
   assert.equal(databaseKeyOf({ dbType: 'mysql', dbHost: 'localhost', dbPort: '', dbName: 'billing' }), 'mysql://localhost:3306/billing');
+  // A SQLite file is its path: no host or port, and so no default port either.
+  assert.equal(databaseKeyOf({ dbType: 'sqlite', dbHost: '', dbPort: '', dbName: '/Users/me/shop.db' }), 'sqlite:///Users/me/shop.db');
 });
 
 const recipeInput = (over = {}) => ({
