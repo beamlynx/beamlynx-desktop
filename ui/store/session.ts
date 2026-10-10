@@ -1195,7 +1195,11 @@ export class Session {
    * Mirrors Result.tsx's exportToCSV so the toolbar button and the copy-result command agree.
    */
   getResultClipboardText(): string {
-    const visibleColumns = this.columns.filter(col => col.field !== '_id');
+    // Not the hidden columns pine-lang adds for editing (each table's key,
+    // each JSON value's type): they aren't part of the result anyone sees.
+    const visibleColumns = this.columns.filter(
+      col => col.field !== '_id' && this.columnVisibilityModel[col.field] !== false,
+    );
     const headers = visibleColumns.map(col => col.headerName || col.field);
 
     const csvRows = [

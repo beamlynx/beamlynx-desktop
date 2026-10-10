@@ -365,15 +365,21 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
       console.error('Row data not found for id:', jsonPanel.id);
       return false;
     }
-    const column = session.columnMetadata.colIndexToColumnLookup[jsonPanel.field];
+    // A key inside a JSON column whose value is a string of JSON text: saved
+    // as that string, the type it had. One holding an object or array never
+    // gets here; its panel is read-only.
+    const target = editTarget(rowData, jsonPanel.field, minified.value);
     // A computed column names no table column; nothing to save it to.
-    if (!column) return false;
-    const key = rowKey(rowData, alias);
-    if (typeof key === 'string') {
-      setNotice({ kind: 'error', text: `Couldn't save ${column}: ${key}` });
+    if (!target) return false;
+    if ('error' in target) {
+      setNotice({ kind: 'error', text: `Couldn't save ${target.name}: ${target.error}` });
       return false;
     }
-    const target = { alias, name: column, column, assignment: `${column} = ${pineString(minified.value)}` };
+    const key = rowKey(rowData, alias);
+    if (typeof key === 'string') {
+      setNotice({ kind: 'error', text: `Couldn't save ${target.name}: ${key}` });
+      return false;
+    }
     if (!(await runUpdate(target, key))) return false;
     // Close rather than flip back to view mode: session.evaluate() just
     // rebuilt `rows`, and `_id` is a positional index re-assigned on every
@@ -658,25 +664,12 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const openJsonInspect = async (id: string | number, field: string, text: string) => {
     const minified = minifyJsonText(text);
     if (!minified.ok) return;
-    const alias = session.columnMetadata.colIndexToAliasLookup[field];
     const rowData = rows.find(row => row._id === id);
     if (!rowData) {
       console.error('Row data not found for id:', id);
       return;
     }
-    const column = session.columnMetadata.colIndexToColumnLookup[field];
-    const key = rowKey(rowData, alias);
-    if (typeof key === 'string') {
-      setNotice({ kind: 'error', text: `Can't edit ${column}: ${key}` });
-      return;
-    }
-    const updateExpression = await createUpdateExpression(
-      session.expression,
-      alias,
-      key,
-      `${column} = ${pineString(minified.value)}`,
-    );
-    setUpdateData({ column, value: minified.value, alias, updateExpression });
+    await inspectEdit(rowData, field, minified.value);
   };
 
   // The cell editor's Inspect button: build the update and show it in

@@ -24,6 +24,14 @@ export const jsonCellReadOnlyReason = (name: string, type: unknown): string | un
   return undefined;
 };
 
+/** What a boolean cell accepts, and the Pine literal for it. */
+const BOOLEAN_TEXT = new Map([
+  ['true', 'true'],
+  ['false', 'false'],
+  ['1', 'true'],
+  ['0', 'false'],
+]);
+
 /** A number as Pine writes it: whole or decimal, optionally negative. */
 const PINE_NUMBER = /^-?[0-9]+(\.[0-9]+)?$/;
 
@@ -45,9 +53,11 @@ export const jsonEditLiteral = (
         : { error: `${name} holds a number, and ${JSON.stringify(text)} isn't one.` };
     }
     case 'boolean': {
+      // SQLite shows a JSON true or false as 1 or 0, so those are read too.
       const trimmed = text.trim().toLowerCase();
-      return trimmed === 'true' || trimmed === 'false'
-        ? { literal: trimmed }
+      const literal = BOOLEAN_TEXT.get(trimmed);
+      return literal
+        ? { literal }
         : { error: `${name} holds true or false, and ${JSON.stringify(text)} is neither.` };
     }
     default:

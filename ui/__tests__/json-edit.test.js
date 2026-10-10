@@ -29,6 +29,9 @@ test('an edit keeps the type the value had', () => {
   assert.deepEqual(jsonEditLiteral('n', 'number', '-1.25'), { literal: '-1.25' });
   assert.deepEqual(jsonEditLiteral('n', 'boolean', 'TRUE'), { literal: 'true' });
   assert.deepEqual(jsonEditLiteral('n', 'boolean', 'false'), { literal: 'false' });
+  // SQLite shows a JSON boolean as 1 or 0.
+  assert.deepEqual(jsonEditLiteral('n', 'boolean', '1'), { literal: 'true' });
+  assert.deepEqual(jsonEditLiteral('n', 'boolean', '0'), { literal: 'false' });
 });
 
 test('a JSON null takes what is typed as a string', () => {
