@@ -6,6 +6,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ## [Unreleased]
 ### Added
 - A `json` topic in the Pine reference AI agents read (`get_pine_doc`), and a line about it in the instructions every session starts with. It covers keys inside a JSON column, like `customer | where: data.country = 'SE' | select: data.address.city`. Needs the bundled pine-lang to include JSON paths (pine-lang #107), which the next release pins.
+- The Pine reference AI agents read says how to write into a key with `update!` (`update! data.plan = 'pro'`), and that a number can be negative or have a decimal part. Needs the bundled pine-lang to include pine-lang #109 and #110, which the next release pins.
 - **SQLite.** Connect to a SQLite database file: choose SQLite as the database type and pick the file with **Browse…**. A saved SQLite connection holds only the file's path, so it needs no password and is saved even on a computer with no secure credential storage. The bundled server is started with `PINE_SQLITE=1`, which lets it open files by path. Needs the pine-lang and beamlynx-ui releases that add SQLite.
 
 ### Changed
