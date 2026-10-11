@@ -451,8 +451,8 @@ function openAndCheck(file: string): DatabaseSync {
   }
 }
 
-// Two copies of the app (the installed one and a dev build) share this file
-// and may start at the same moment. Each migration reads the version inside
+// Two processes may open this file at the same moment, for example a second
+// launch before the single-instance lock turns it away. Each migration reads the version inside
 // its own write transaction, so the second copy waits for the first and then
 // finds nothing left to do, instead of creating the same tables twice.
 function migrate(db: DatabaseSync): void {
