@@ -56,8 +56,8 @@ export default class AppErrorBoundary extends Component<Props, State> {
             Reload
           </Button>
           <Button
-            onClick={() => {
-              resetPreferences();
+            onClick={async () => {
+              await resetPreferences();
               window.location.reload();
             }}
           >
