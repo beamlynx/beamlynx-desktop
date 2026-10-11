@@ -56,6 +56,7 @@ customers | where: created_at is not null
 ```
 categories | where: name in ('Electronics', 'Computers')
 categories | where: name not in ('Electronics', 'Computers')
+orders | where: id in (17, 42, 108)
 ```
 
 ### Compare two columns
@@ -70,6 +71,7 @@ An unquoted name on the right is read as a column, not a string.
 
 ```
 customers | where: age > 30
+customers | where: age >= 18
 customers | where: created_at < '2024-01-01'
 customers | where: created_at > '2024-01-01 09:30'
 ```
@@ -77,8 +79,7 @@ customers | where: created_at > '2024-01-01 09:30'
 A date is `'YYYY-MM-DD'`, optionally followed by a time, `HH:MM` or `HH:MM:SS`. A date that doesn't
 exist, like `'2024-02-31'`, is an error.
 
-`=`, `!=`, `<`, `>`, `is`, `is not`, `in`, `not in`, `like`, `not like`, `ilike`, `not ilike`.
-There is no `>=` and no `<=` — widen the bound instead.
+`=`, `!=`, `<`, `>`, `<=`, `>=`, `is`, `is not`, `in`, `not in`, `like`, `not like`, `ilike`, `not ilike`.
 
 ### Pattern matching
 
