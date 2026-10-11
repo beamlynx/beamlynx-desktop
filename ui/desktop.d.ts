@@ -101,6 +101,16 @@ type RevealOutcome =
   | { ok: true; expression: string; columns: unknown; rows: unknown }
   | { ok: false; comment?: string };
 
+// Matches beamlynx-desktop's StartupState (src/main/app-db.ts). Not ok when
+// the file couldn't be opened; preferences then stay in localStorage.
+type AppDbStartupState =
+  | {
+      ok: true;
+      preferences: Record<string, string>;
+      status: { wasReset: boolean; importedFromLocalStorage: boolean };
+    }
+  | { ok: false; reason: string };
+
 type CredentialsStatus = {
   persistenceAvailable: boolean;
   linuxBackend?: string;
@@ -156,6 +166,17 @@ interface BeamlynxDesktopApi {
     get: (id: string) => Promise<Recipe | null>;
     save: (input: SaveRecipeInput, connectionId?: string) => Promise<Recipe>;
     delete: (id: string) => Promise<boolean>;
+  };
+  // The app's own SQLite file, where preferences live on desktop
+  // (store/preferences.ts). Values are the JSON text localStorage would
+  // hold. Optional because older desktop apps lack it, and loadStartupState
+  // is newer still.
+  appDb?: {
+    // Blocks while the main process reads the file. Called once, at startup.
+    loadStartupState?: () => AppDbStartupState;
+    // A null value deletes the key. All changes in one call are one write.
+    setPreferences: (changes: Record<string, string | null>) => Promise<void>;
+    markImportedFromLocalStorage: () => Promise<void>;
   };
   credentials: {
     status: () => Promise<CredentialsStatus>;
@@ -230,6 +251,8 @@ export type {
   SavedConnectionMeta,
   SetMcpEnabledResult,
   SetConnectionPolicyResult,
+  BeamlynxDesktopApi,
+  AppDbStartupState,
   CredentialsStatus,
   SaveConnectionInput,
   SaveConnectionResult,
