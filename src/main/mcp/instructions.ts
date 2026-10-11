@@ -45,7 +45,6 @@ Traps that cost the most round trips, because SQL habits reach for them first:
 
   no comma or \`and\`   between conditions in one where:. Use \`or\`, or chain another where:.
   no regex operators  no \`~\` or \`~*\`. Use \`where: first_name ilike '%jo%'\`.
-  no \`>=\` or \`<=\`     only \`<\` and \`>\`.
   no table qualifiers A column is qualified by an alias, never a table name. Every table has
                       one: \`u_0\` unless you name it yourself with \`public.user as u\`. Both
                       are typeable; \`user.email\` is not.
