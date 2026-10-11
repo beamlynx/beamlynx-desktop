@@ -60,7 +60,7 @@ const warnStorageUnavailable = (error: unknown) => {
 
 /**
  * On desktop, preferences live in the app's SQLite file (beamlynx-desktop's
- * app-db.ts), shared by the installed app and a dev build. Stores read them
+ * app-db.ts). A dev build has a file of its own. Stores read them
  * synchronously while they are built, so the first read loads every
  * preference in one blocking call into `cache`, and every read after that
  * comes from it. Writes update the cache at once and reach the file in
@@ -92,9 +92,8 @@ const getDesktopPreferences = (): DesktopPreferences | null => {
   if (desktopPreferences !== undefined) return desktopPreferences;
   desktopPreferences = null;
 
-  const desktop = window.beamlynxDesktop;
-  const appDb = desktop?.appDb;
-  if (!desktop || !appDb?.loadStartupState) return null;
+  const appDb = window.beamlynxDesktop?.appDb;
+  if (!appDb?.loadStartupState) return null;
   let state: AppDbStartupState;
   try {
     state = appDb.loadStartupState();
@@ -102,8 +101,9 @@ const getDesktopPreferences = (): DesktopPreferences | null => {
     console.warn('Could not load preferences from the app data file; using browser storage.', error);
     return null;
   }
-  if (!state.ok) {
-    console.warn(`Could not load preferences from the app data file; using browser storage. ${state.reason}`);
+  // No reply at all comes from a main process without the handler.
+  if (!state?.ok) {
+    console.warn(`Could not load preferences from the app data file; using browser storage. ${state?.reason ?? ''}`);
     return null;
   }
 
@@ -113,7 +113,7 @@ const getDesktopPreferences = (): DesktopPreferences | null => {
     pending: new Map(),
     flushTimer: null,
   };
-  if (!state.status.importedFromLocalStorage) importFromLocalStorage(prefs, desktop.isDevBuild);
+  if (!state.status.importedFromLocalStorage) importFromLocalStorage(prefs);
   window.addEventListener('pagehide', () => void flushPreferences());
   desktopPreferences = prefs;
   return prefs;
@@ -122,13 +122,8 @@ const getDesktopPreferences = (): DesktopPreferences | null => {
 /**
  * Brings the settings from before SQLite into the file, once per file. Only
  * keys the file doesn't have yet are taken, so nothing in it is overwritten.
- *
- * A dev build has its own localStorage, apart from the installed app's, but
- * shares the file. If it imported, it would mark the file done with its own
- * settings, and the installed app would never bring in the real ones. So a
- * dev build only shows its old settings, without writing them or the marker.
  */
-const importFromLocalStorage = (prefs: DesktopPreferences, isDevBuild: boolean) => {
+const importFromLocalStorage = (prefs: DesktopPreferences) => {
   const changes: Record<string, string> = {};
   for (const key of Object.values(STORAGE_KEYS)) {
     if (prefs.cache.has(key)) continue;
@@ -142,7 +137,6 @@ const importFromLocalStorage = (prefs: DesktopPreferences, isDevBuild: boolean) 
     prefs.cache.set(key, stored);
     changes[key] = stored;
   }
-  if (isDevBuild) return;
   // The marker goes in only after the values are safely written.
   prefs.appDb
     .setPreferences(changes)

@@ -95,13 +95,12 @@ test('isFiniteNumber rejects NaN and Infinity', () => {
 
 // A stand-in for beamlynx-desktop's appDb: the file is `file`, and every
 // call to it is recorded in `calls`.
-function fakeDesktop({ file = {}, imported = false, ok = true, isDevBuild = false } = {}) {
+function fakeDesktop({ file = {}, imported = false, ok = true } = {}) {
   const calls = [];
   return {
     calls,
     file,
     api: {
-      isDevBuild,
       appDb: {
         loadStartupState: () => {
           calls.push(['load']);
@@ -162,15 +161,6 @@ test('the first desktop launch imports localStorage, keeps what the file has, th
     },
     { desktop: d.api },
   );
-});
-
-test('a dev build shows its old localStorage settings but neither writes them nor marks the import', async () => {
-  const d = fakeDesktop({ isDevBuild: true });
-  await withStorage({ [STORAGE_KEYS.THEME]: '"light"' }, async () => {
-    assert.equal(getUserPreference(STORAGE_KEYS.THEME, 'dark'), 'light');
-    await settle();
-    assert.deepEqual(d.calls, [['load']]);
-  }, { desktop: d.api });
 });
 
 test('when the app data file will not open, localStorage is used', () => {
