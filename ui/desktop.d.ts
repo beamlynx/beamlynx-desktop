@@ -177,6 +177,11 @@ interface BeamlynxDesktopApi {
     // A null value deletes the key. All changes in one call are one write.
     setPreferences: (changes: Record<string, string | null>) => Promise<void>;
     markImportedFromLocalStorage: () => Promise<void>;
+    // Remembered column widths for one connection, keyed as
+    // store/column-widths.ts's columnWidthKey names them.
+    getColumnWidths?: (connection: string) => Promise<Record<string, number>>;
+    // A null width forgets the column. The file drops the oldest past a limit.
+    setColumnWidths?: (connection: string, changes: Record<string, number | null>) => Promise<void>;
   };
   credentials: {
     status: () => Promise<CredentialsStatus>;

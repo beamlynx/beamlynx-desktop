@@ -27,6 +27,7 @@ import { columnName, type JsonPathStep } from '../store/client';
 import { jsonCellReadOnlyReason, jsonEditLiteral } from '../store/json-edit.util';
 import { getColorForAlias, shouldShowTableColors } from '../store/table-colors.util';
 import { estimateColumnWidth } from './column-width.util';
+import { columnWidthKey, loadColumnWidths, saveColumnWidth } from '../store/column-widths';
 import { MIN_RESULT_COLUMN_WIDTH, MAX_RESULT_COLUMN_WIDTH } from '../constants';
 import { BarChart } from './BarChart';
 import TraversalResult from './TraversalResult';
@@ -141,11 +142,32 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   useEffect(() => {
     setResizedColumnWidths({});
   }, [session.columns]);
-  const handleColumnWidthChange = (field: string, width: number) => {
-    setResizedColumnWidths(prev => ({ ...prev, [field]: width }));
-  };
 
   const ast = session.response?.ast ?? null;
+
+  // Widths dragged earlier for this connection, by table and heading rather
+  // than position, so they apply again in the next result (desktop only).
+  const connectionId = session.connectionId;
+  const [savedColumnWidths, setSavedColumnWidths] = useState<Record<string, number>>({});
+  useEffect(() => {
+    let current = true;
+    setSavedColumnWidths({});
+    loadColumnWidths(connectionId).then(widths => {
+      if (current) setSavedColumnWidths({ ...widths });
+    });
+    return () => {
+      current = false;
+    };
+  }, [connectionId]);
+  const widthKeyFor = (field: string, heading: string) =>
+    columnWidthKey(ast, colIndexToAlias[field] ?? '', heading);
+  const handleColumnWidthChange = (field: string, width: number) => {
+    setResizedColumnWidths(prev => ({ ...prev, [field]: width }));
+    const column = baseColumns.find(c => c.field === field);
+    const key = widthKeyFor(field, column?.headerName ?? field);
+    saveColumnWidth(connectionId, key, width);
+    setSavedColumnWidths(prev => ({ ...prev, [key]: Math.round(width) }));
+  };
 
   // The table behind an alias, for messages people read ("user.email"
   // rather than "u_0.email"). Falls back to the alias itself.
@@ -236,6 +258,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
           // A fixed width, not flex - see column-width.util.ts.
           width:
             resizedColumnWidths[column.field] ??
+            savedColumnWidths[widthKeyFor(column.field, column.headerName ?? column.field)] ??
             estimateColumnWidth(rows, column.field, column.headerName ?? column.field, {
               min: MIN_RESULT_COLUMN_WIDTH,
               max: MAX_RESULT_COLUMN_WIDTH,
@@ -263,6 +286,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
       hoveredAlias,
       jsonColumnFields,
       resizedColumnWidths,
+      savedColumnWidths,
       ast,
       isDark,
     ],
