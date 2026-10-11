@@ -218,6 +218,24 @@ export type AppDb = {
   close(): void;
 };
 
+// What the renderer needs before it builds its stores: every preference,
+// and whether the old localStorage values were already imported. It reads
+// preferences synchronously, so this is loaded in one blocking call at
+// startup. Never throws: when the file can't be opened (locked, read-only,
+// a full disk) the renderer is told so and keeps using localStorage.
+export type StartupState =
+  | { ok: true; preferences: Record<string, string>; status: AppDbStatus }
+  | { ok: false; reason: string };
+
+export function loadStartupState(getDb: () => AppDb): StartupState {
+  try {
+    const db = getDb();
+    return { ok: true, preferences: db.loadPreferences(), status: db.status() };
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 export function openAppDb(file: string, now: () => number = Date.now): AppDb {
   let wasReset = false;
   let db: DatabaseSync;

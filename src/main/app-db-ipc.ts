@@ -12,7 +12,7 @@
 // WebSQL's).
 import { ipcMain } from 'electron';
 import * as path from 'path';
-import { AppDb, databaseKeyOf, openAppDb, type RecipeInputDef } from './app-db';
+import { AppDb, databaseKeyOf, loadStartupState, openAppDb, type RecipeInputDef } from './app-db';
 import { listConnections } from './credential-store';
 import { getSharedDataDir } from './data-dir';
 
@@ -65,6 +65,12 @@ type SaveRecipeFromApp = {
 };
 
 export function registerAppDbIpc(): void {
+  // Synchronous on purpose: the preload calls it once, before the page's
+  // scripts run, so the UI's stores can read preferences synchronously.
+  // returnValue must always be set, or the renderer blocks for good.
+  ipcMain.on('app-db:load-startup-state', event => {
+    event.returnValue = loadStartupState(getAppDb);
+  });
   ipcMain.handle('app-db:status', () => getAppDb().status());
   ipcMain.handle('app-db:load-preferences', () => getAppDb().loadPreferences());
   ipcMain.handle('app-db:set-preferences', (_event, changes: Record<string, string | null>) =>
