@@ -1,20 +1,19 @@
-// Puts the app's SQLite file (app-db.ts) in the shared data folder, next to
-// connections.json, and exposes it to the renderer.
+// Puts the app's SQLite file (app-db.ts) in this copy's own data folder and
+// exposes it to the renderer.
 //
-// Shared, not per copy: a dev build has its own data folder (data-dir.ts),
-// but recipes are the user's own knowledge, like saved connections, so the
-// installed app and a dev build see the same ones. That is safe because
-// migrations only ever add tables and columns (see app-db.ts), so an older
-// installed app keeps working on a file a newer dev build migrated.
+// Per copy, not shared: a dev build (data-dir.ts) has its own file, so
+// experiments there, including new migrations, never touch the installed
+// app's settings and recipes. The installed app's file changes only through
+// the migrations a release brings. Saved connections are the exception and
+// stay shared (credential-store.ts).
 //
 // The file is not named or placed under a `databases` folder on purpose:
 // Electron 32 and later delete <userData>/databases on startup (it was
 // WebSQL's).
-import { ipcMain } from 'electron';
+import { app, ipcMain } from 'electron';
 import * as path from 'path';
-import { AppDb, databaseKeyOf, openAppDb, type RecipeInputDef } from './app-db';
+import { AppDb, databaseKeyOf, loadStartupState, openAppDb, type RecipeInputDef } from './app-db';
 import { listConnections } from './credential-store';
-import { getSharedDataDir } from './data-dir';
 
 let appDb: AppDb | null = null;
 // Why the last open failed, logged once rather than on every call that
@@ -22,7 +21,7 @@ let appDb: AppDb | null = null;
 let openFailure: string | null = null;
 
 export function getAppDbPath(): string {
-  return path.join(getSharedDataDir(), 'beamlynx.db');
+  return path.join(app.getPath('userData'), 'beamlynx.db');
 }
 
 // Opened on first use, so a launch that never touches it pays nothing.
@@ -65,6 +64,12 @@ type SaveRecipeFromApp = {
 };
 
 export function registerAppDbIpc(): void {
+  // Synchronous on purpose: the preload calls it once, before the page's
+  // scripts run, so the UI's stores can read preferences synchronously.
+  // returnValue must always be set, or the renderer blocks for good.
+  ipcMain.on('app-db:load-startup-state', event => {
+    event.returnValue = loadStartupState(getAppDb);
+  });
   ipcMain.handle('app-db:status', () => getAppDb().status());
   ipcMain.handle('app-db:load-preferences', () => getAppDb().loadPreferences());
   ipcMain.handle('app-db:set-preferences', (_event, changes: Record<string, string | null>) =>

@@ -10,7 +10,7 @@ const { DatabaseSync } = require('node:sqlite');
 
 const DIST = path.join(__dirname, '..', 'dist', 'main', 'app-db.js');
 assert.ok(fs.existsSync(DIST), 'dist/main/app-db.js is missing -- run `npm run build` first (npm test does).');
-const { openAppDb, COLUMN_WIDTH_CAP } = require(DIST);
+const { openAppDb, loadStartupState, COLUMN_WIDTH_CAP } = require(DIST);
 
 let dir;
 let file;
@@ -229,4 +229,23 @@ test('two copies can have the file open at once', () => {
   b.setPreferences({ x: '1' });
   assert.deepEqual(a.loadPreferences(), { x: '1' });
   a.close(); b.close();
+});
+
+test('the startup state carries every preference and the import marker', () => {
+  const db = openAppDb(file);
+  db.setPreferences({ 'pine-theme': '"sepia"' });
+  db.markImportedFromLocalStorage();
+  assert.deepEqual(loadStartupState(() => db), {
+    ok: true,
+    preferences: { 'pine-theme': '"sepia"' },
+    status: { wasReset: false, importedFromLocalStorage: true },
+  });
+  db.close();
+});
+
+test('a file that cannot be opened gives a failed startup state, not an exception', () => {
+  const state = loadStartupState(() => {
+    throw new Error('database is locked');
+  });
+  assert.deepEqual(state, { ok: false, reason: 'database is locked' });
 });

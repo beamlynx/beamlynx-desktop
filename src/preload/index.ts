@@ -6,7 +6,7 @@
 // lifecycle (see src/main/auto-update.ts) -- that's exposed here so
 // beamlynx-ui can show it in-app instead of it being silent/console-only.
 import { contextBridge, ipcRenderer } from 'electron';
-import type { AppDbStatus, Recipe, RecipeInputDef } from '../main/app-db';
+import type { AppDbStatus, Recipe, RecipeInputDef, StartupState } from '../main/app-db';
 import type { UpdateStatus } from '../main/auto-update';
 import type {
   AccessPolicy,
@@ -67,6 +67,8 @@ contextBridge.exposeInMainWorld('beamlynxDesktop', {
   // The app's own data in SQLite (src/main/app-db.ts). Preference values are
   // the JSON text the renderer would otherwise put in localStorage.
   appDb: {
+    // Blocks while the main process reads the file. Called once, at startup.
+    loadStartupState: (): StartupState => ipcRenderer.sendSync('app-db:load-startup-state'),
     status: (): Promise<AppDbStatus> => ipcRenderer.invoke('app-db:status'),
     loadPreferences: (): Promise<Record<string, string>> => ipcRenderer.invoke('app-db:load-preferences'),
     setPreferences: (changes: Record<string, string | null>): Promise<void> =>
