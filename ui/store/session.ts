@@ -57,6 +57,14 @@ export type Theme = 'light' | 'dark';
 export type InputMode = 'pine' | 'sql';
 
 /** Where converting the SQL panel's text to Pine stands. */
+/**
+ * How long SQL that is merely unfinished ("The SQL ends before the
+ * statement does.") stays quiet before the status line says so. It is true
+ * at every pause while typing, so it is shown only when the text stays that
+ * way. A refusal (OFFSET, a function) is shown at once.
+ */
+export const SQL_UNFINISHED_QUIET_MS = 1500;
+
 export type SqlConversion = {
   status: 'idle' | 'converting' | 'converted' | 'failed';
   /** Why it failed, from pine-lang: "Line 3: OFFSET isn't in Pine." */
@@ -1215,7 +1223,9 @@ export class Session {
       this.sqlConversion = { status: 'idle', message: '', warnings: [] };
       return;
     }
-    this.sqlConversion = { status: 'converting', message: '', warnings: [] };
+    // Keep what the line says until the answer arrives, so it doesn't blink
+    // out and back on every keystroke.
+    this.sqlConversion = { ...this.sqlConversion, status: 'converting' };
     let result: SqlToPineResponse;
     try {
       result = await client.sqlToPine(sql, this.connectionId);
@@ -1232,11 +1242,24 @@ export class Session {
         this.sqlTranslatedExpression = this.expression;
         this.sqlConversion = { status: 'converted', message: '', warnings: result.warnings ?? [] };
       } else {
-        this.sqlConversion = {
+        const failed: SqlConversion = {
           status: 'failed',
           message: result.error || 'The SQL could not be converted.',
           warnings: [],
         };
+        if (result['error-type'] !== 'sql-parse-error') {
+          this.sqlConversion = failed;
+          return;
+        }
+        // Unfinished SQL: say nothing yet, and say it only if the text is
+        // still this when the pause is over.
+        this.sqlConversion = { status: 'converting', message: '', warnings: [] };
+        setTimeout(() => {
+          if (seq !== this.sqlConversionSeq) return;
+          runInAction(() => {
+            this.sqlConversion = failed;
+          });
+        }, SQL_UNFINISHED_QUIET_MS);
       }
     });
   }

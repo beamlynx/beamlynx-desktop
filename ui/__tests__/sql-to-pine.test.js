@@ -32,7 +32,10 @@ function newSession() {
 }
 
 test('a converted SQL replaces the Pine, keeps its values blocks, and runs nothing', async () => {
-  const { calls, restore } = stubFetch(() => ({ expression: 'company\n | where: id = 1', warnings: ['w'] }));
+  const { calls, restore } = stubFetch(() => ({
+    expression: 'company\n | where: id = 1',
+    warnings: ['w'],
+  }));
   try {
     const session = newSession();
     session.expression = "$n = 'x'\n\nuser";
@@ -71,12 +74,19 @@ test("a build of the converted Pine doesn't overwrite the SQL the user typed", a
 });
 
 test('a burst of SQL typing is one undo step', async () => {
-  const { restore } = stubFetch(sql => ({ expression: `t | where: x = '${sql.slice(-3)}'`, warnings: [] }));
+  const { restore } = stubFetch(sql => ({
+    expression: `t | where: x = '${sql.slice(-3)}'`,
+    warnings: [],
+  }));
   try {
     const session = newSession();
     const canvas = session.getCanvasStore();
     session.expression = 'original';
-    for (const sql of ['select * from t where x = 1', 'select * from t where x = 12', 'select * from t where x = 123']) {
+    for (const sql of [
+      'select * from t where x = 1',
+      'select * from t where x = 12',
+      'select * from t where x = 123',
+    ]) {
       session.query = sql;
       await session.convertSql();
     }
@@ -121,7 +131,10 @@ test('undo and redo end a burst, even when they land on the last translation', a
 });
 
 test("a translation that changes nothing doesn't start a burst", async () => {
-  const { restore } = stubFetch(sql => ({ expression: sql === 'same' ? 'current' : 'changed', warnings: [] }));
+  const { restore } = stubFetch(sql => ({
+    expression: sql === 'same' ? 'current' : 'changed',
+    warnings: [],
+  }));
   try {
     const session = newSession();
     const canvas = session.getCanvasStore();
@@ -142,7 +155,9 @@ test("a slow answer about older SQL doesn't replace a newer one", async () => {
   let releaseFirst;
   const first = new Promise(r => (releaseFirst = r));
   const { restore } = stubFetch(sql =>
-    sql === 'old' ? first.then(() => ({ expression: 'old_table', warnings: [] })) : { expression: 'new_table', warnings: [] },
+    sql === 'old'
+      ? first.then(() => ({ expression: 'old_table', warnings: [] }))
+      : { expression: 'new_table', warnings: [] },
   );
   try {
     const session = newSession();
@@ -159,22 +174,109 @@ test("a slow answer about older SQL doesn't replace a newer one", async () => {
 });
 
 test("SQL that doesn't convert leaves the Pine and says why", async () => {
-  const { restore } = stubFetch(() => ({ error: "Line 1: OFFSET isn't in Pine.", 'error-type': 'sql-unsupported' }));
+  const { restore } = stubFetch(() => ({
+    error: "Line 1: OFFSET isn't in Pine.",
+    'error-type': 'sql-unsupported',
+  }));
   try {
     const session = newSession();
     session.expression = 'company';
     session.query = 'select * from company offset 5';
     await session.convertSql();
     assert.equal(session.expression, 'company');
-    assert.deepEqual(session.sqlConversion, { status: 'failed', message: "Line 1: OFFSET isn't in Pine.", warnings: [] });
+    assert.deepEqual(session.sqlConversion, {
+      status: 'failed',
+      message: "Line 1: OFFSET isn't in Pine.",
+      warnings: [],
+    });
   } finally {
     restore();
   }
 });
 
+test('unfinished SQL stays quiet through a pause, and is said only if the text stays that way', async () => {
+  const { SQL_UNFINISHED_QUIET_MS } = require('../store/session.ts');
+  const unfinished = {
+    error: 'Line 1: The SQL ends before the statement does.',
+    'error-type': 'sql-parse-error',
+  };
+  const { restore } = stubFetch(sql =>
+    sql === 'select * from' ? unfinished : { expression: 'company', warnings: [] },
+  );
+  try {
+    const session = newSession();
+    session.query = 'select * from';
+    await session.convertSql();
+    assert.equal(session.sqlConversion.message, '');
+    await wait(SQL_UNFINISHED_QUIET_MS + 100);
+    assert.equal(session.sqlConversion.message, unfinished.error);
+
+    // Typing on before the pause is over: the message never shows.
+    session.query = 'select * from';
+    await session.convertSql();
+    session.query = 'select * from company';
+    await session.convertSql();
+    await wait(SQL_UNFINISHED_QUIET_MS + 100);
+    assert.deepEqual(session.sqlConversion, { status: 'converted', message: '', warnings: [] });
+  } finally {
+    restore();
+  }
+});
+
+test('while converting, the line keeps saying what it said', async () => {
+  let answer;
+  const { restore } = stubFetch(() => new Promise(r => (answer = r)));
+  try {
+    const session = newSession();
+    session.sqlConversion = {
+      status: 'failed',
+      message: "Line 1: OFFSET isn't in Pine.",
+      warnings: [],
+    };
+    session.query = 'select * from company offset 5 ';
+    const pending = session.convertSql();
+    assert.deepEqual(session.sqlConversion, {
+      status: 'converting',
+      message: "Line 1: OFFSET isn't in Pine.",
+      warnings: [],
+    });
+    answer({ expression: 'company', warnings: [] });
+    await pending;
+  } finally {
+    restore();
+  }
+});
+
+test('the status line speaks only when the canvas and the SQL disagree', () => {
+  const { sqlConversionLines } = require('../utils/sqlConversionStatus.ts');
+  assert.deepEqual(sqlConversionLines({ status: 'converted', message: '', warnings: [] }), []);
+  assert.deepEqual(sqlConversionLines({ status: 'converting', message: '', warnings: [] }), []);
+  assert.deepEqual(
+    sqlConversionLines({
+      status: 'converted',
+      message: '',
+      warnings: ['Pine names the count column `count`.'],
+    }),
+    ['Pine names the count column `count`.'],
+  );
+  assert.deepEqual(
+    sqlConversionLines({
+      status: 'failed',
+      message: "Line 3: OFFSET isn't in Pine.",
+      warnings: [],
+    }),
+    ["The canvas isn't showing this query. Line 3: OFFSET isn't in Pine."],
+  );
+});
+
 test('a server without the endpoint says it is too old', async () => {
   const original = global.fetch;
-  global.fetch = async () => ({ ok: false, status: 404, statusText: 'Not Found', json: async () => ({}) });
+  global.fetch = async () => ({
+    ok: false,
+    status: 404,
+    statusText: 'Not Found',
+    json: async () => ({}),
+  });
   try {
     const session = newSession();
     session.query = 'select * from t';

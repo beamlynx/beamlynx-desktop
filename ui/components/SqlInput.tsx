@@ -17,6 +17,7 @@ import { Box } from '@mui/material';
 import { useStores } from '../store/store-container';
 import { editorChrome, editorDarkSyntax } from './editor-theme';
 import { sqlCompletionConfig } from '../utils/sqlCompletion';
+import { sqlConversionLines } from '../utils/sqlConversionStatus';
 
 interface SqlInputProps {
   session: Session;
@@ -249,28 +250,33 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true 
  * source. Nothing while the editor hasn't been typed in.
  */
 const SqlConversionStatus: React.FC<{ session: Session }> = observer(({ session }) => {
-  const { status, message, warnings } = session.sqlConversion;
-  if (status === 'idle') return null;
-  const lines =
-    status === 'converting'
-      ? ['Converting to Pine…']
-      : status === 'converted'
-        ? ['Converted to Pine.', ...warnings]
-        : [`Not converted. ${message}`, 'The canvas shows the last query that converted.'];
+  const { status, message } = session.sqlConversion;
+  const lines = status === 'idle' ? [] : sqlConversionLines(session.sqlConversion);
+  // Rendered empty rather than unmounted: a screen reader announces changes
+  // to a status region that is already there.
   return (
     <Box
       role="status"
       sx={{
         flexShrink: 0,
-        px: 1.5,
-        py: 0.5,
-        borderTop: '1px solid var(--divider-color)',
+        pl: 1.5,
+        // Clears the Run button, which floats over the panel's bottom-right
+        // corner (Input.tsx), so a long message wraps before it instead of
+        // running underneath.
+        pr: '112px',
+        py: lines.length ? 0.5 : 0,
+        borderTop: lines.length ? '1px solid var(--divider-color)' : 'none',
         fontFamily: 'var(--canvas-font)',
         fontSize: '12px',
         lineHeight: 1.5,
         whiteSpace: 'pre-wrap',
-        color:
-          status === 'failed' ? 'var(--text-warning-color)' : 'var(--node-secondary-text-color)',
+        // Not the warning colour: it is red in every theme, and red is for
+        // a query that can't run (the band above the results). This SQL can.
+        // The amber the canvas uses for what it can't resolve marks the line
+        // instead, as a bar: as text it is too faint for 12px in the light
+        // themes.
+        color: message ? 'var(--text-color)' : 'var(--node-secondary-text-color)',
+        borderLeft: message ? '2px solid var(--canvas-trace-unresolved)' : 'none',
       }}
     >
       {lines.map((line, i) => (
