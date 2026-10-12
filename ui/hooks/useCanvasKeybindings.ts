@@ -115,12 +115,12 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
 
       const alias = canvasStore.focusedAlias;
       const isStart = alias === START_NODE_ID;
-      // A frame/checkpoint node is a valid focus target (CanvasStore.
-      // orderedFocusTargets interleaves it by memberOrder) but its
-      // operations go through openCheckpointPicker, not openColumnPicker/
-      // openJoinPicker directly - see FrameNode.tsx's own action bar, which
-      // calls the same store method.
-      const isFrame = canvasStore.canvasGraph.nodes.find(n => n.id === alias)?.type === 'frame-node';
+      // A checkpoint's node is focused like a table, but its operations go
+      // through openCheckpointPicker, not openColumnPicker/openJoinPicker
+      // directly - the same store method its own action bar calls
+      // (TableNode.tsx).
+      const focused = canvasStore.canvasGraph.nodes.find(n => n.id === alias);
+      const isCheckpoint = focused?.type === 'table-node' && !!(focused.data as CanvasTableNodeData).checkpoint;
 
       // Synthesized anchor: there's no click event to read a position from
       // when a picker is opened by keyboard - use the focused node's own
@@ -216,8 +216,8 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
           e.preventDefault();
           if (isStart) {
             canvasStore.openTablePicker(anchorFor(alias));
-          } else if (isFrame) {
-            void canvasStore.openCheckpointPicker('join', anchorFor(alias));
+          } else if (isCheckpoint) {
+            void canvasStore.openCheckpointPicker(alias, 'join', anchorFor(alias));
           } else {
             canvasStore.openJoinPicker(alias, anchorFor(alias));
           }
@@ -225,27 +225,26 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
         case 's':
           if (isStart) return;
           e.preventDefault();
-          if (isFrame) void canvasStore.openCheckpointPicker('select', anchorFor(alias));
+          if (isCheckpoint) void canvasStore.openCheckpointPicker(alias, 'select', anchorFor(alias));
           else canvasStore.openColumnPicker('select', alias, anchorFor(alias));
           return;
         case 'w':
           if (isStart) return;
           e.preventDefault();
-          if (isFrame) void canvasStore.openCheckpointPicker('where', anchorFor(alias));
+          if (isCheckpoint) void canvasStore.openCheckpointPicker(alias, 'where', anchorFor(alias));
           else canvasStore.openColumnPicker('where', alias, anchorFor(alias));
           return;
         case 'o':
           if (isStart) return;
           e.preventDefault();
-          if (isFrame) void canvasStore.openCheckpointPicker('order', anchorFor(alias));
+          if (isCheckpoint) void canvasStore.openCheckpointPicker(alias, 'order', anchorFor(alias));
           else canvasStore.openColumnPicker('order', alias, anchorFor(alias));
           return;
         case 'g':
           // Not offered for a checkpoint's own sealed output - grouping an
           // already-grouped result is a different semantic question,
-          // deliberately left unimplemented (see FrameNode.tsx's own doc
-          // comment on `openAction`'s kind union, which excludes 'group').
-          if (isStart || isFrame) return;
+          // deliberately left unimplemented.
+          if (isStart || isCheckpoint) return;
           e.preventDefault();
           canvasStore.openColumnPicker('group', alias, anchorFor(alias));
           return;
@@ -256,14 +255,13 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
           // real join does - see ast/table.clj's resolve-table).
           if (isStart) return;
           e.preventDefault();
-          if (isFrame) void canvasStore.openCheckpointPicker('path', anchorFor(alias));
+          if (isCheckpoint) void canvasStore.openCheckpointPicker(alias, 'path', anchorFor(alias));
           else canvasStore.openPathPicker(alias, anchorFor(alias));
           return;
         case 'l':
-          // Offered on a checkpoint too, like 'p' - `limit:` is pipeline-wide
-          // regardless of which node the gesture is opened from (see
-          // CanvasStore.openLimitEditor), so unlike 'g' there's no "does this
-          // even make sense here" question for a frame.
+          // Offered on a checkpoint's node too, like 'p': it limits the
+          // sealed result (see CanvasStore.openLimitEditor). The checkpoint's
+          // own limit is changed from its divider's label.
           if (isStart) return;
           e.preventDefault();
           canvasStore.openLimitEditor(alias, anchorFor(alias));
@@ -271,13 +269,12 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
         // The "+" overflow itself - o/g/l/p above already jump straight to
         // their target, so this exists for someone who wants to see what's
         // behind the button rather than recall the individual letter.
-        // Mirrors TableNode.tsx's/FrameNode.tsx's own "+" button onClick
-        // exactly, including which actions each offers (no 'group' on a
-        // frame - see FrameNode.tsx's own doc comment).
+        // Mirrors TableNode.tsx's own "+" button onClick exactly, including
+        // which actions each offers (no 'group' on a checkpoint's node).
         case '+':
           if (isStart) return;
           e.preventDefault();
-          canvasStore.openMorePicker(alias, isFrame, anchorFor(alias));
+          canvasStore.openMorePicker(alias, isCheckpoint, anchorFor(alias));
           return;
         // 'x' and Delete/Backspace are the same gesture - "remove the thing
         // that's the target of a key right now" - so a person who reaches
@@ -295,13 +292,9 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
             void canvasStore.removeConfigCursor();
             return;
           }
-          if (isFrame) {
-            // Cancels the container itself - removes the whole
-            // group:/limit:/name run, leaving its member tables as plain
-            // nodes again (canvasStore.deleteCheckpoint, mirroring
-            // deleteNode below for a single table). Not the same as
-            // removing one of the tables it wraps, which stays a per-table
-            // gesture (canvas.model.ts's `removable` comment).
+          if (isCheckpoint) {
+            // Removes the checkpoint itself, as the × on its divider does
+            // (canvasStore.deleteCheckpoint). The tables it sealed stay.
             e.preventDefault();
             void canvasStore.deleteCheckpoint(alias);
             return;

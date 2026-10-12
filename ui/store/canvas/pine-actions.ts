@@ -4,13 +4,16 @@ import { DateBounds } from './relative-date';
 import {
   appendOwnedSegment,
   appendTableSegment,
+  AUTO_CHECKPOINT_NAME,
   ensureExplicitAliases,
   ensureExplicitCheckpointName,
+  isCheckpointOp,
   isRemovableNode,
   removeNode,
   Segment,
   segmentsFromAst,
-  splitAtCheckpoint,
+  stageEnd,
+  stageLimitIndex,
   toText,
   upsertOwnedSegment,
 } from './pine-text';
@@ -25,25 +28,22 @@ import { probeBuild } from './probe';
  * renamed by ensureExplicitAliases as part of computing this very base. See
  * resolveAlias below and canvas.store.ts's commit* methods.
  *
- * `checkpointName` is the trailing checkpoint's pinned name (see
- * ensureExplicitCheckpointName), or null if the pipeline doesn't currently
- * end in one. Unlike aliasMap, there's no rename map for it - a checkpoint
- * name, once pinned, is never renamed by a later gesture the way an
- * auto-generated table alias is.
+ * Checkpoints need no rename map: pinning writes down the name pine-lang
+ * already reports for each one (see ensureExplicitCheckpointName), so a
+ * checkpoint's name is the same before and after.
  */
 export type PinnedBase = {
   expression: string;
   ast: Ast;
   segments: Segment[];
   aliasMap: Map<string, string>;
-  checkpointName: string | null;
 };
 
 /**
  * Every gesture starts from a pinned base: if the current expression has any
  * table lacking an explicit alias, pin it first (see pine-text.ts's
- * ensureExplicitAliases), then do the same for a trailing checkpoint lacking
- * an explicit `|= name` (ensureExplicitCheckpointName) - each pinning step
+ * ensureExplicitAliases), then do the same for every checkpoint lacking an
+ * explicit `|= name` (ensureExplicitCheckpointName) - each pinning step
  * that actually changes the text is followed by a re-build, so the working
  * ast always matches the pinned text before computing the actual gesture. A
  * no-op (extra segmentation passes only, no network calls) once everything
@@ -84,7 +84,6 @@ export const getPinnedBase = async (
     ast: curAst!,
     segments,
     aliasMap: aliasPin.aliasMap,
-    checkpointName: namePin.name,
   };
 };
 
@@ -98,12 +97,12 @@ export const resolveConditionAliases = (base: PinnedBase, conditions: WhereCondi
 export const pickFirstTable = (hint: TableHint, alias: string): string => `${hint.pine} as ${alias}`;
 
 export const join = (base: PinnedBase, hint: TableHint, alias: string, fromAlias?: string): string => {
-  // The join targets the checkpoint's own sealed output when the focus
-  // (an explicit fromAlias, or - when omitted, meaning "join off whatever's
-  // already current" - base.ast.current) is the checkpoint's pinned name.
-  // See appendTableSegment's targetsCheckpoint param for what that changes.
-  const targetsCheckpoint = base.checkpointName !== null && (fromAlias ?? base.ast.current) === base.checkpointName;
-  return toText(appendTableSegment(base.segments, hint.pine, alias, fromAlias, targetsCheckpoint));
+  // The new table goes into the stage of the node it joins from: an explicit
+  // fromAlias, or - when omitted, meaning "join off whatever's already
+  // current" - base.ast.current. A checkpoint's name works the same way, and
+  // joins onto its sealed result. See appendTableSegment.
+  const source = fromAlias ?? base.ast.current;
+  return toText(appendTableSegment(base.segments, hint.pine, alias, fromAlias, source));
 };
 
 // Matches a table segment's own `:left`/`:right` modifier (pine.bnf's
@@ -321,99 +320,118 @@ export const deleteNode = (base: PinnedBase, alias: string): string | null =>
   isRemovableNode(base.segments, alias) ? toText(removeNode(base.segments, alias)) : null;
 
 /**
- * Removes the trailing checkpoint entirely - every group:/limit: segment
- * plus its own `|= name` assign (splitAtCheckpoint's `checkpointRun`) - and
- * nothing else, so the tables it wrapped remain in the pipeline as plain,
- * ungrouped/unlimited nodes. The "cancel the container" counterpart to
- * deleteNode above: that removes a table, this removes the wrapper around
- * one or more tables. Returns the same text unchanged (a no-op, not an
- * error) if there's no trailing checkpoint to remove.
+ * Removes the checkpoint named `name`: its group:/limit:, its `= name`, and
+ * every step that works on its sealed result (the select/where/order its
+ * node carries, and any `from: name`). Tables joined after it stay, and now
+ * join from the table before the checkpoint, as if it had never been there.
+ * Returns the text unchanged if no segment belongs to `name`.
  */
-export const deleteCheckpoint = (base: PinnedBase): string => {
-  const { before } = splitAtCheckpoint(base.segments);
-  return toText(before);
-};
+export const deleteCheckpoint = (base: PinnedBase, name: string): string =>
+  toText(
+    base.segments.filter(s => {
+      if (s.kind === 'from') return !new RegExp(`^(?:from:|f:)\\s*${name}\\b`, 'i').test(s.text);
+      return s.owner !== name;
+    }),
+  );
 
 /**
- * `limit:` is unowned (applies to the whole pipeline, not one table) - at
- * most one such segment. Replaces an existing one IN PLACE rather than
- * stripping and re-appending at the very end: once a checkpoint is pinned,
- * its `|= name` assign sits immediately after `limit:` (ensureExplicit
- * CheckpointName) - appending past the end would push the (regenerated)
- * `limit:` past that assign, which orphans it outside splitAtCheckpoint's
- * view of the checkpoint run. currentCheckpointName then reports "unnamed"
- * again, and the next recompute pins a second, duplicate `|= name` - the
- * exact live bug this fixes (confirmed: changing the limit value on an
- * already-named checkpoint kept adding another `|= <same name>`). Appending
- * at the end remains correct only for the very first `limit:` a pipeline
- * gets, when nothing (a name or otherwise) exists after it yet.
- */
-/**
- * The segments without `kind` (a checkpoint's limit: or group:), and without
- * the checkpoint's name when that leaves it nothing to name.
+ * The segments without the checkpoint op at `index`, and without the
+ * checkpoint's `= name` when that leaves it nothing to name.
  *
- * Every gesture pins a trailing checkpoint's name first (`|= agg`, see
+ * Every gesture pins a checkpoint's name first (`|= result_1`, see
  * getPinnedBase), so removing its only limit: or group: used to leave
- * `company as c | = agg` behind. The name goes too, but only when the canvas
- * made it up (agg, agg2, ...) and nothing comes after it. A name someone wrote,
- * or one that later steps use, stays.
+ * `company as c | = result_1` behind. The name goes too, but only when it is
+ * pine-lang's auto name (result_1, ...) and nothing comes after it. A name
+ * someone wrote, or one later steps use, stays. So does a name right after
+ * another group:/limit: (`group: ... | limit: 5 | = x` without its limit
+ * still names the group).
  */
-const withoutCheckpointOp = (segments: Segment[], kind: 'limit' | 'group'): Segment[] => {
-  const rest = segments.filter(s => s.kind !== kind);
-  const last = rest[rest.length - 1];
-  const stillACheckpoint = rest.some(s => s.kind === 'group' || s.kind === 'limit');
-  if (last?.kind === 'assign' && !stillACheckpoint && /^=\s*agg\d*$/.test(last.text.trim())) return rest.slice(0, -1);
+const withoutCheckpointOp = (segments: Segment[], index: number): Segment[] => {
+  const rest = [...segments.slice(0, index), ...segments.slice(index + 1)];
+  const next = rest[index];
+  const isLast = index === rest.length - 1;
+  const namesAnother = index > 0 && isCheckpointOp(rest[index - 1]);
+  if (next?.kind === 'assign' && isLast && !namesAnother && AUTO_CHECKPOINT_NAME.test(next.text.replace(/^=\s*/, '').trim())) {
+    return rest.slice(0, -1);
+  }
   return rest;
 };
 
-export const setLimit = (base: PinnedBase, value: number | null): string => {
-  const existingIndex = base.segments.findIndex(s => s.kind === 'limit');
-  if (value === null) return toText(withoutCheckpointOp(base.segments, 'limit'));
-  const newSegment: Segment = { text: `limit: ${value}`, start: -1, end: -1, kind: 'limit', owner: null };
-  if (existingIndex < 0) return toText([...base.segments, newSegment]);
-  const next = [...base.segments];
-  next[existingIndex] = newSegment;
-  return toText(next);
+/** `limit: 9` from `limit: 5` or `l: 5 per c.id`, keeping whatever follows the number - `per ...` above all. */
+const withLimitValue = (text: string, value: number): string => {
+  const rest = text.replace(/^(?:limit:|l:)\s*\d+/i, '');
+  return `limit: ${value}${rest}`;
 };
 
 /**
- * `group:` is unowned like `limit:` (applies once across the whole pipeline,
- * not per table) but unlike every other clause here, more than one table can
- * contribute to it - "company -> tenant, grouped by both tenant_id and
+ * Sets, changes or (with null) removes a limit.
+ *
+ * - `checkpoint` names the checkpoint whose own limit: is changed - the
+ *   divider's label.
+ * - Otherwise `alias` picks the limit: that ends `alias`'s stage (see
+ *   stageLimitIndex). A new one goes at the end of that stage.
+ * - With neither, the first limit: anywhere, or a new one at the end - the
+ *   multi-select toolbar's pipeline-wide limit.
+ *
+ * Changing a limit rewrites only its number, in place, so `per ...` and the
+ * checkpoint's `= name` right after it stay where they are.
+ */
+export const setLimit = (base: PinnedBase, value: number | null, alias?: string, checkpoint?: string): string => {
+  const index = checkpoint
+    ? base.segments.findIndex(s => s.kind === 'limit' && s.owner === checkpoint)
+    : stageLimitIndex(base.segments, alias);
+  if (value === null) return index < 0 ? toText(base.segments) : toText(withoutCheckpointOp(base.segments, index));
+  if (index >= 0) {
+    const next = [...base.segments];
+    next[index] = { ...next[index], text: withLimitValue(next[index].text, value) };
+    return toText(next);
+  }
+  const at = alias === undefined ? base.segments.length : stageEnd(base.segments, alias);
+  const newSegment: Segment = { text: `limit: ${value}`, start: -1, end: -1, kind: 'limit', owner: null };
+  return toText([...base.segments.slice(0, at), newSegment, ...base.segments.slice(at)]);
+};
+
+/**
+ * `group:` applies to a whole stage, not one table, and more than one table
+ * can contribute to it - "company -> tenant, grouped by both tenant_id and
  * company_id" is one shared `group: t.tenant_id, c.company_id` segment, not
- * two. getGroupColumns/setGroupColumns read and rewrite only `alias`'s own
+ * two. It is the checkpoint that ends `alias`'s stage, when that is a group.
+ * getGroupColumns/setGroupColumns read and rewrite only `alias`'s own
  * qualified entries within that one list, leaving every other alias's
  * columns untouched - so there's no need to track "where" a given alias's
  * contribution lives; it's re-derived from the segment's own text every time.
  */
+const stageGroupIndex = (segments: Segment[], alias: string): number => {
+  const end = stageEnd(segments, alias);
+  return segments[end]?.kind === 'group' ? end : -1;
+};
+
 export const getGroupColumns = (base: PinnedBase, alias: string): string[] => {
-  const existing = base.segments.find(s => s.kind === 'group');
-  if (!existing) return [];
-  const body = existing.text.replace(/^(group:|g:)\s*/i, '');
+  const index = stageGroupIndex(base.segments, alias);
+  if (index < 0) return [];
+  const body = base.segments[index].text.replace(/^(group:|g:)\s*/i, '');
   return splitTopLevel(body)
     .filter(part => part.startsWith(`${alias}.`))
     .map(part => part.slice(alias.length + 1));
 };
 
-// Replaces an existing group: segment IN PLACE rather than stripping and
-// re-appending at the very end - see setLimit's own comment just above for
-// why: once a checkpoint is pinned, its `|= name` assign sits immediately
-// after group:, and appending past the end would orphan that assign outside
-// splitAtCheckpoint's view of the checkpoint run, causing a duplicate name
-// to be pinned on every subsequent group-column change (confirmed live).
-// Appending at the end remains correct only for the very first group:
-// segment a pipeline gets, when nothing runs after it yet.
+// Replaces an existing group: segment IN PLACE rather than re-appending it,
+// so the checkpoint's `= name` right after it stays attached to it. A new
+// group: goes at the end of `alias`'s stage.
 export const setGroupColumns = (base: PinnedBase, alias: string, columns: string[]): string => {
-  const existingIndex = base.segments.findIndex(s => s.kind === 'group');
-  const existing = existingIndex >= 0 ? base.segments[existingIndex] : undefined;
+  const index = stageGroupIndex(base.segments, alias);
+  const existing = index >= 0 ? base.segments[index] : undefined;
   const priorAll = existing ? splitTopLevel(existing.text.replace(/^(group:|g:)\s*/i, '')) : [];
   const others = priorAll.filter(part => !part.startsWith(`${alias}.`));
   const mine = columns.map(c => `${alias}.${c}`);
   const nextAll = [...others, ...mine];
-  if (nextAll.length === 0) return toText(withoutCheckpointOp(base.segments, 'group'));
+  if (nextAll.length === 0) return index < 0 ? toText(base.segments) : toText(withoutCheckpointOp(base.segments, index));
+  if (index >= 0) {
+    const next = [...base.segments];
+    next[index] = { ...next[index], text: `group: ${nextAll.join(', ')}` };
+    return toText(next);
+  }
+  const at = stageEnd(base.segments, alias);
   const newSegment: Segment = { text: `group: ${nextAll.join(', ')}`, start: -1, end: -1, kind: 'group', owner: null };
-  if (existingIndex < 0) return toText([...base.segments, newSegment]);
-  const next = [...base.segments];
-  next[existingIndex] = newSegment;
-  return toText(next);
+  return toText([...base.segments.slice(0, at), newSegment, ...base.segments.slice(at)]);
 };

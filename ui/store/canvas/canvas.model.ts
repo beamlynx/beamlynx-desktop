@@ -15,23 +15,6 @@ import { Edge, Node } from 'reactflow';
  */
 export const START_NODE_ID = '__canvas_start__';
 
-/**
- * Render id for the trailing group:/limit: checkpoint's frame while it's
- * still the pipeline's tail (layout.ts's makeFrameNode/buildCanvasGraph) -
- * distinct from a *consumed* checkpoint's frame, whose id is its own real
- * pinned name. This placeholder can outlive pinning itself: eager
- * background pinning (CanvasStore.ensureCheckpointPinnedShared) often gives
- * the checkpoint a real name well before anything is built on top of it, so
- * "pending" here means "still the tail", not "still unnamed". Any code
- * comparing this id against something keyed by the checkpoint's real
- * alias - CanvasStore.picker's `request.alias` in particular - must resolve
- * through CanvasStore.resolveFrameAlias first, or the comparison silently
- * never matches (confirmed live: the frame's insert-mode decluttering never
- * engaged, because its own placeholder id never equals the real pinned name
- * `openCheckpointPicker` opens the picker under).
- */
-export const PENDING_CHECKPOINT_FRAME_ID = '__checkpoint_frame__';
-
 export type CanvasHandle = { id: string; column: string; connectedNodeId: string };
 
 export type CanvasTableNodeData = {
@@ -47,49 +30,39 @@ export type CanvasTableNodeData = {
   groupChips: string[]; // this alias's own contribution to the one shared group: segment
   leftHandles: CanvasHandle[];
   rightHandles: CanvasHandle[];
+  /**
+   * Set when this node is a checkpoint's sealed result rather than a table:
+   * the node below a checkpoint's divider, named after the checkpoint
+   * (`alias` and `table` are both its name, exactly as pine-lang reports
+   * it). It lists the result's columns, and its actions work on the sealed
+   * result - see CanvasStore.openCheckpointPicker.
+   */
+  checkpoint?: { columns: string[] };
 };
 
 // eslint-disable-next-line @typescript-eslint/ban-types
 export type CanvasStartNodeData = {};
 
 /**
- * Background decoration for a pipeline that currently ends in an unconsumed
- * group:/limit: checkpoint, or for a checkpoint that HAS been composed on
- * top of, whose inner tables render as their own normal table nodes rather
- * than a collapsed summary (an earlier design that collapsed them was
- * explicitly rejected - see the plan doc's container-node follow-up pass) -
- * drawn behind whichever nodes it wraps (see layout.ts's makeFrameNode), not
- * a replacement for them. `width`/`height` are precomputed from those
- * nodes' laid-out positions, since a plain node has no way to size itself
- * from its siblings. Border plus an action bar operating on the
- * checkpoint's sealed output once pinned - see CanvasStore.
- * ensureCheckpointPinned/openCheckpointPicker.
- *
- * `leftHandles`/`rightHandles` are only non-empty for a *named* checkpoint
- * that something has actually joined onto or from - the frame's node id is
- * the checkpoint's own pinned name in that case (see layout.ts's
- * deriveGraph/makeFrameNode), which is exactly the alias `ast.joins`
- * already addresses it by, so a join onto the sealed output attaches to
- * the frame itself rather than dangling with nowhere to render.
+ * The dashed line a checkpoint draws across the canvas, below the stage it
+ * seals and above the node named after it (see layout.ts's
+ * buildCanvasGraph). Not a pipeline slot: it isn't focusable or selectable,
+ * and only its label and remove button take clicks.
  */
-export type CanvasFrameNodeData = {
+export type CanvasDividerNodeData = {
+  /** The checkpoint's name - the id of the node below the line. */
+  name: string;
+  /** What the checkpoint does, e.g. `limit 1 per c.id` or `group t.title → count`. */
+  label: string;
+  /** Set for a limit: the label then opens the limit editor for this checkpoint. */
+  limit?: number;
   width: number;
-  height: number;
-  leftHandles: CanvasHandle[];
-  rightHandles: CanvasHandle[];
-  /**
-   * The highest `data.order` among this frame's own member tables - lets
-   * CanvasStore.orderedFocusTargets slot the frame into the same single
-   * keyboard-navigable sequence as table nodes, immediately after the last
-   * table it wraps (see that getter's `memberOrder + 0.5` sort key).
-   */
-  memberOrder: number;
 };
 
 export type CanvasTableNode = Node<CanvasTableNodeData>;
 export type CanvasStartNode = Node<CanvasStartNodeData>;
-export type CanvasFrameNode = Node<CanvasFrameNodeData>;
-export type CanvasNode = CanvasTableNode | CanvasStartNode | CanvasFrameNode;
+export type CanvasDividerNode = Node<CanvasDividerNodeData>;
+export type CanvasNode = CanvasTableNode | CanvasStartNode | CanvasDividerNode;
 export type CanvasEdge = Edge & {
   unresolved?: boolean;
   uncertain?: boolean;
@@ -282,17 +255,19 @@ export type PickerState =
       open: true;
       mode: 'more';
       alias: string;
-      /** Which overflow actions to offer - group is never offered on a checkpoint frame (see FrameNode.tsx). */
+      /** Which overflow actions to offer - group is never offered on a checkpoint's node. */
       offer: MoreAction[];
-      /** Whether `alias` names a checkpoint frame rather than a plain table - decides join-type routing (openCheckpointPicker vs the direct open*Picker methods). */
-      isFrame: boolean;
+      /** Whether `alias` names a checkpoint's node rather than a plain table - decides routing (openCheckpointPicker vs the direct open*Picker methods). */
+      isCheckpoint: boolean;
       anchor: PickerAnchor;
     }
   | {
       open: true;
       mode: 'limit-value';
-      /** The node the gesture was opened from - `limit:` itself is pipeline-wide, not owned by this alias (see pine-actions.ts's setLimit). */
+      /** The node the gesture was opened from. The limit changed is the one ending this node's stage (see pine-actions.ts's setLimit). */
       alias: string;
+      /** Set when opened from a checkpoint's divider label: the limit changed is that checkpoint's own. */
+      checkpoint?: string;
       /** The pipeline's existing limit, if any - null shows no "clear" action (see Picker.tsx). Unlike `value` below, never changed after the picker opens. */
       current: number | null;
       /** The input's live text, seeded from `current` (CanvasStore.openLimitEditor) - a string, not a number, so a mid-edit empty/partial value doesn't need its own placeholder state. */
@@ -316,7 +291,7 @@ export type PickerState =
       anchor: PickerAnchor;
     };
 
-/** The actions tucked behind a node's "+" overflow trigger - see TableNode.tsx/FrameNode.tsx. */
+/** The actions tucked behind a node's "+" overflow trigger - see TableNode.tsx. */
 export type MoreAction = 'order' | 'group' | 'path' | 'limit' | 'traverse';
 export const MORE_ACTIONS: { action: MoreAction; label: string; key: string }[] = [
   { action: 'order', label: 'order', key: 'o' },
@@ -328,18 +303,18 @@ export const MORE_ACTIONS: { action: MoreAction; label: string; key: string }[] 
 
 /**
  * What the "+" menu offers, by node kind. Defined once because it is read from
- * three places - TableNode's button, FrameNode's button, and the keyboard
- * shortcut in useCanvasKeybindings - and three hand-maintained copies drift:
+ * several places - TableNode's button for a table and for a checkpoint, and
+ * the keyboard shortcut in useCanvasKeybindings - and hand-maintained copies drift:
  * `traverse` was added to the button's list and the keyboard opened a menu
  * without it.
  *
- * A checkpoint frame gets less: `group` would re-group an already-grouped
+ * A checkpoint's node gets less: `group` would re-group an already-grouped
  * result, and `traverse` would have to follow a foreign key out of a CTE's
  * sealed output, which is not a thing.
  */
 export const MORE_ACTIONS_FOR_TABLE: MoreAction[] = ['order', 'group', 'limit', 'path', 'traverse'];
-// `limit:` is pipeline-wide, so a checkpoint is as good a place to set it from.
-export const MORE_ACTIONS_FOR_FRAME: MoreAction[] = ['order', 'limit', 'path'];
+// `limit` on a checkpoint's node limits its sealed result.
+export const MORE_ACTIONS_FOR_CHECKPOINT: MoreAction[] = ['order', 'limit', 'path'];
 
 /** What a traversal does at each table it reaches - see store/canvas/traversal.ts. */
 export const TRAVERSE_VERBS: { verb: 'count' | 'delete'; label: string; key: string }[] = [

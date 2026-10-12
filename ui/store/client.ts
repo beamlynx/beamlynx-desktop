@@ -236,6 +236,38 @@ export type NamedResultAst = {
   tables?: Table[];
   joins: Join[];
   columns: Column[];
+  // The stage's own filters, for a checkpoint's snapshot - the canvas shows
+  // them as chips on the tables the checkpoint sealed. Absent from a server
+  // older than ast.checkpoints.
+  where?: WhereEntry[];
+  order?: OrderColumn[];
+  group?: GroupColumn[];
+};
+
+/** A column a checkpoint names: one after `per`, or one it groups by. */
+export type CheckpointColumn = { alias: string; column: string; path?: JsonPathStep[]; 'column-alias'?: string };
+
+/**
+ * One checkpoint - a group:/limit: whose result is sealed into a CTE - as
+ * pine-lang's /build reports it in `ast.checkpoints`, in pipe order. See
+ * pine-lang's docs/checkpoints.md ("What /build reports").
+ */
+export type Checkpoint = {
+  /** The CTE's name: the `|= name`, or the auto name (`result_1`, ...). Shown as is. */
+  name: string;
+  /** false only for a checkpoint still pending at the end of the expression; `name` is the one sealing it gives it. */
+  sealed: boolean;
+  /** The operation index of its group:/limit: step - the same index as `ast.ranges`. */
+  index: number;
+  kind: 'limit' | 'group';
+  limit?: number;
+  per?: CheckpointColumn[];
+  group?: CheckpointColumn[];
+  aggregates?: string[];
+  /** The aliases of the tables it seals, in pipe order. A later checkpoint lists the earlier one's name. */
+  tables: string[];
+  /** The names of the columns its result has. */
+  columns: string[];
 };
 
 /** An order-by entry - distinct from Column: no `column-alias`/`hidden`, but carries direction. */
@@ -270,6 +302,8 @@ export type Ast = {
   'named-results'?: Record<string, NamedResultAst>;
   'pending-assignments'?: Record<string, NamedResultAst>;
   assign?: string;
+  // Absent from a server older than this field.
+  checkpoints?: Checkpoint[];
 };
 
 // A $variable's value as pine-lang takes it: a string, number or boolean, or a

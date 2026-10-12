@@ -15,7 +15,7 @@ import { observer } from 'mobx-react-lite';
 import { useStores } from '../../store/store-container';
 import { CanvasStore } from '../../store/canvas/canvas.store';
 import {
-  CanvasFrameNodeData,
+  CanvasDividerNodeData,
   CanvasNode,
   CanvasStartNodeData,
   CanvasTableNodeData,
@@ -25,7 +25,7 @@ import { useCanvasKeybindings } from '../../hooks/useCanvasKeybindings';
 import { CanvasStoreContext } from './canvas-context';
 import TableNode from './nodes/TableNode';
 import StartNode from './nodes/StartNode';
-import FrameNode from './nodes/FrameNode';
+import CheckpointDividerNode from './nodes/CheckpointDividerNode';
 import TraceEdge from './edges/TraceEdge';
 import Picker from './Picker';
 import MultiSelectToolbar from './MultiSelectToolbar';
@@ -36,7 +36,7 @@ import CanvasVariables from './CanvasVariables';
 const nodeTypes: NodeTypes = {
   'table-node': TableNode,
   'start-node': StartNode,
-  'frame-node': FrameNode,
+  'checkpoint-divider': CheckpointDividerNode,
 };
 
 const edgeTypes = { trace: TraceEdge };
@@ -105,7 +105,7 @@ const Flow: React.FC<{
   // actually changes, mirroring Graph.box.tsx's layoutedNodes -> setNodes
   // pattern exactly.
   const [nodes, setNodes, onNodesChange] = useNodesState<
-    CanvasTableNodeData | CanvasStartNodeData | CanvasFrameNodeData
+    CanvasTableNodeData | CanvasStartNodeData | CanvasDividerNodeData
   >([]);
 
   useEffect(() => {
@@ -131,7 +131,11 @@ const Flow: React.FC<{
   // "select/interact with a node").
   const onSelectionChange = useCallback(
     ({ nodes }: { nodes: Node[] }) => {
-      canvasStore.setSelectedAliases(nodes.filter(n => n.type === 'table-node').map(n => n.id));
+      // A checkpoint's node isn't a table: the multi-select toolbar's bulk
+      // actions don't apply to it.
+      canvasStore.setSelectedAliases(
+        nodes.filter(n => n.type === 'table-node' && !(n.data as CanvasTableNodeData).checkpoint).map(n => n.id),
+      );
     },
     [canvasStore],
   );

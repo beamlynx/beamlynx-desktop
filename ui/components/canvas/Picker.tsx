@@ -339,7 +339,7 @@ const Picker: React.FC = observer(() => {
             // See the traverse menu below: only on a match, so Escape still
             // reaches the window-level listener.
             e.stopPropagation();
-            store.activateMoreAction(picker.alias, match.action, picker.isFrame, picker.anchor);
+            store.activateMoreAction(picker.alias, match.action, picker.isCheckpoint, picker.anchor);
           }
         }}
         style={{ ...anchoredStyle(picker.anchor), padding: 8, minWidth: 140, maxHeight: 'none' }}
@@ -350,7 +350,7 @@ const Picker: React.FC = observer(() => {
             <div
               key={option.action}
               data-testid={`more-${option.action}-${picker.alias}`}
-              onClick={() => store.activateMoreAction(picker.alias, option.action, picker.isFrame, picker.anchor)}
+              onClick={() => store.activateMoreAction(picker.alias, option.action, picker.isCheckpoint, picker.anchor)}
               style={{
                 display: 'flex',
                 justifyContent: 'space-between',

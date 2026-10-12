@@ -2,17 +2,16 @@ import React, { useEffect, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { Handle, NodeProps, Position, useUpdateNodeInternals } from 'reactflow';
 import { CanvasHandle, CanvasTableNodeData, PickerState } from '../../../store/canvas/canvas.model';
-import { getNodeHeight, nodeWidth } from '../../../store/canvas/layout';
+import { checkpointRows, getNodeHeight, nodeWidth } from '../../../store/canvas/layout';
 import { useCanvasStore } from '../canvas-context';
 import { useStores } from '../../../store/store-container';
 import { NOTCHED_NODE_THEMES } from '../../../styles/palette/themes';
 
 /**
  * The alias a currently-open picker is targeting, regardless of its mode -
- * null if closed or table-picker. Exported for FrameNode.tsx's own
- * `engaged` check - a checkpoint's picker (opened via openCheckpointPicker)
- * still ends up as a normal `PickerState` keyed by the checkpoint's pinned
- * name, exactly like any table's.
+ * null if closed or table-picker. A checkpoint's picker (opened via
+ * openCheckpointPicker) is keyed by the checkpoint's name, which is also
+ * its node's alias, so this works for it unchanged.
  */
 export const pickerAliasFor = (picker: PickerState): string | null => {
   if (!picker.open) return null;
@@ -45,12 +44,10 @@ export type OperationKind = 'select' | 'join' | 'where' | 'order' | 'group' | 'p
  * all four: once you're inside e.g. "select", seeing "where"/"join"/"+"
  * alongside it is just noise you can't act on right now (a picker being open
  * already means we're in insert mode - see CanvasStore.mode - where none of
- * those other letters do anything). Exported for FrameNode.tsx to apply the
- * same decluttering to a checkpoint's own action bar - `openCheckpointPicker`
- * (canvas.store.ts) ultimately calls `openColumnPicker`/`openJoinPicker`/
- * `openPathPicker` with the checkpoint's pinned name, which is exactly the
- * FrameNode's own `id` (see that file's own doc comment), so this same
- * alias-keyed check works unchanged for it.
+ * those other letters do anything). A checkpoint's node works the same way:
+ * `openCheckpointPicker` (canvas.store.ts) ultimately calls
+ * `openColumnPicker`/`openJoinPicker`/`openPathPicker` with the checkpoint's
+ * name, which is the node's own alias.
  */
 export const activeOperationFor = (picker: PickerState, alias: string): OperationKind | null => {
   if (!picker.open) return null;
@@ -95,25 +92,27 @@ const headerHeight = 48;
 // Square, not round - a join column is a "pin" on the component package, and
 // pins are square in this system (see the notch/badge below); a round dot
 // here would read as a different kind of thing from everything else.
-// Exported so FrameNode.tsx can render join handles for a checkpoint the
-// same way - the checkpoint's own name is a real alias joins address it by
-// (see layout.ts's deriveGraph/makeFrameNode), so its handles should look
-// identical to any table's.
-export const RelationDots = ({
+// `rowOf` places each handle on a given row instead of stacking them in
+// order: a checkpoint's node lists its columns, and a join's handle sits on
+// the row of the column it uses, with no label of its own.
+const RelationDots = ({
   handles,
   type,
   position,
+  rowOf,
 }: {
   handles: CanvasHandle[];
   type: 'target' | 'source';
   position: Position;
+  rowOf?: (column: string) => number;
 }) => {
   if (handles.length === 0) return null;
   const labelSide: React.CSSProperties = position === Position.Left ? { left: 8 } : { right: 8 };
   return (
     <>
       {handles.map((h, i) => {
-        const top = headerHeight + (i + 0.5) * handleRowHeight;
+        const row = rowOf ? Math.max(rowOf(h.column), 0) : i;
+        const top = headerHeight + (row + 0.5) * handleRowHeight;
         return (
           <React.Fragment key={h.id}>
             <Handle
@@ -122,7 +121,7 @@ export const RelationDots = ({
               id={h.id}
               style={{ width: 6, height: 6, borderRadius: 1, background: 'var(--canvas-pin)', top }}
             />
-            {h.column && (
+            {h.column && !rowOf && (
               <div
                 title={h.column}
                 style={{
@@ -170,11 +169,6 @@ export const RelationDots = ({
 // different node's picker") isn't preempted by the outside-click handler
 // closing things first. Defined on the component so every call site gets
 // it - a per-call-site className is one more place to forget it.
-// Exported so FrameNode.tsx can render the same action bar look for a
-// checkpoint's own select/where/order actions - both are ultimately "a set
-// of actions attached to something occupying a pipeline slot" (a table or a
-// sealed checkpoint), so they should look identical, not like two different
-// button systems.
 export const ActionButton = ({
   label,
   onClick,
@@ -211,8 +205,7 @@ export const ActionButton = ({
   emphasizeIndex?: number;
   /**
    * True for every operation except the one whose picker is currently open
-   * (see TableNode's `activeOperation`/`operations` and FrameNode's mirror
-   * of the same). Dims via opacity only - the button stays in the DOM at
+   * (see TableNode's `activeOperation`/`operations`). Dims via opacity only - the button stays in the DOM at
    * its normal place in the row rather than being removed, which is the
    * whole point: removing the other four and letting the row re-center
    * around the one survivor was the first version of this, and it moved
@@ -290,19 +283,28 @@ export const ActionDivider = () => (
 // focus), so it doesn't need its own attention-grabbing treatment on top of
 // that - a quiet × reads as "close", not an alarm. Sits inside the card's
 // own top-right corner (not straddling the border) so it doesn't compete
-// with the notch/pin system that lives right at the edges. Exported so
-// FrameNode.tsx can offer the same "cancel this" affordance for a
-// checkpoint - removing a container is the same kind of one-off destructive
-// action as removing a table, so it should look identical, not like a
-// second delete-button system.
-export const DeleteButton = ({ onClick, testId }: { onClick: () => void; testId?: string }) => (
+// with the notch/pin system that lives right at the edges. Exported for a
+// checkpoint's divider, whose × removes the checkpoint - the same kind of
+// one-off destructive action, so it looks the same. `style` overrides the
+// corner placement there.
+export const DeleteButton = ({
+  onClick,
+  testId,
+  title = 'Remove node',
+  style,
+}: {
+  onClick: () => void;
+  testId?: string;
+  title?: string;
+  style?: React.CSSProperties;
+}) => (
   <div
     data-testid={testId}
     onClick={e => {
       e.stopPropagation();
       onClick();
     }}
-    title="Remove node"
+    title={title}
     style={{
       position: 'absolute',
       top: 6,
@@ -319,6 +321,7 @@ export const DeleteButton = ({ onClick, testId }: { onClick: () => void; testId?
       fontSize: 'calc(11px * var(--text-scale, 1))',
       lineHeight: 1,
       color: 'var(--canvas-text-dim)',
+      ...style,
     }}
   >
     &times;
@@ -532,6 +535,14 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
   // their own bare-letter shortcut (o/g/p, see useCanvasKeybindings.ts) or a
   // click through "+" - nothing about them actually moved, only which ones
   // get a standing button.
+  // A checkpoint's node works on the sealed result: its actions go through
+  // openCheckpointPicker, which first writes the checkpoint's name into the
+  // text if it isn't there yet (see CanvasStore.ensureCheckpointPinned).
+  const checkpoint = data.checkpoint;
+  const openAction = (kind: 'select' | 'where') => (anchor: { x: number; y: number }) =>
+    checkpoint
+      ? void canvasStore.openCheckpointPicker(data.alias, kind, anchor)
+      : canvasStore.openColumnPicker(kind, data.alias, anchor);
   const operations: {
     kind: OperationKind;
     label: string;
@@ -542,13 +553,13 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
     {
       kind: 'select',
       label: 'select',
-      onClick: anchor => canvasStore.openColumnPicker('select', data.alias, anchor),
+      onClick: openAction('select'),
       emphasize: showKeyHints,
     },
     {
       kind: 'where',
       label: 'where',
-      onClick: anchor => canvasStore.openColumnPicker('where', data.alias, anchor),
+      onClick: openAction('where'),
       emphasize: showKeyHints,
     },
     {
@@ -559,7 +570,10 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
       // inserting the very first table - but `i` isn't join's first letter,
       // it's its third ("j-o-I-n"), so this needs an explicit index rather
       // than ActionButton's default.
-      onClick: anchor => canvasStore.openJoinPicker(data.alias, anchor),
+      onClick: anchor =>
+        checkpoint
+          ? void canvasStore.openCheckpointPicker(data.alias, 'join', anchor)
+          : canvasStore.openJoinPicker(data.alias, anchor),
       emphasize: showKeyHints,
       emphasizeIndex: 2,
     },
@@ -573,6 +587,11 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
   // open (see `engaged` above), so there's no "dim the rest" state to
   // compute for that case - it's just not shown at all.
   const activeOperation = activeOperationFor(canvasStore.picker, data.alias);
+  // True while this checkpoint's first action waits for its name to be
+  // written into the text - see CanvasStore.checkpointPinning.
+  const pinning = !!checkpoint && canvasStore.checkpointPinning === data.alias;
+  const rows = checkpoint ? checkpointRows(data) : null;
+  const rowOf = rows ? (column: string) => rows.columns.indexOf(column) : undefined;
 
   return (
     <div
@@ -640,7 +659,12 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
           transition: 'opacity 0.1s ease-in-out',
         }}
       >
-        {operations.map((op, i) => (
+        {pinning && (
+          <div data-testid={`checkpoint-pinning-${data.alias}`} style={{ opacity: 0.7, fontSize: 'calc(10px * var(--text-scale, 1))' }}>
+            loading...
+          </div>
+        )}
+        {!pinning && operations.map((op, i) => (
           <React.Fragment key={op.kind}>
             {i > 0 && <ActionDivider />}
             <ActionButton
@@ -653,18 +677,20 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
             />
           </React.Fragment>
         ))}
-        <ActionDivider />
+        {!pinning && <ActionDivider />}
         {/* order/group/path/limit, tucked behind one trigger - see the
             `operations` comment above for why. No own keyboard letter of its
             own (o/g/p/l still work directly on this node regardless of
             whether this menu is ever opened - see useCanvasKeybindings.ts),
             so unlike the three above this never renders emphasized. */}
-        <ActionButton
-          label="+"
-          testId={`action-more-${data.alias}`}
-          onClick={anchor => canvasStore.openMorePicker(data.alias, false, anchor)}
-          suppressed={activeOperation !== null && activeOperation !== 'more'}
-        />
+        {!pinning && (
+          <ActionButton
+            label="+"
+            testId={`action-more-${data.alias}`}
+            onClick={anchor => canvasStore.openMorePicker(data.alias, !!checkpoint, anchor)}
+            suppressed={activeOperation !== null && activeOperation !== 'more'}
+          />
+        )}
       </div>
 
       {/* Identity - the outer wrapper here is the positioning context for the
@@ -690,9 +716,11 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
             // node at the same time"). Only one thing shows as current at
             // once: the specific config item while there is one, the whole
             // node otherwise.
+            // A checkpoint's node has a dashed border, like the divider above
+            // it: it is a sealed result, not a table.
             border: isFocusTarget && !hasConfigCursor
-              ? '3px solid var(--canvas-node-border-current)'
-              : '1.5px solid var(--canvas-node-border)',
+              ? `3px ${checkpoint ? 'dashed' : 'solid'} var(--canvas-node-border-current)`
+              : `1.5px ${checkpoint ? 'dashed' : 'solid'} var(--canvas-node-border)`,
             background: isFocusTarget && !hasConfigCursor ? 'var(--canvas-node-bg-current)' : 'var(--canvas-node-bg)',
             borderRadius: hasNotch ? '3px' : '8px',
             clipPath: hasNotch ? cardClipPath : undefined,
@@ -712,20 +740,61 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
             >
               {data.table}
             </span>
-            <span
+            {/* A checkpoint's node is named once: its name is its alias. */}
+            {!checkpoint && (
+              <span
+                style={{
+                  flexShrink: 0,
+                  fontSize: 'calc(11px * var(--text-scale, 1))',
+                  fontFamily: 'var(--canvas-font)',
+                  color: 'var(--canvas-text-dim)',
+                }}
+              >
+                ({data.alias})
+              </span>
+            )}
+          </div>
+
+          {/* The sealed result's columns, one per row - the same rows its
+              join handles sit on (see RelationDots' rowOf). */}
+          {rows && (
+            <div
+              data-testid={`checkpoint-columns-${data.alias}`}
               style={{
-                flexShrink: 0,
-                fontSize: 'calc(11px * var(--text-scale, 1))',
+                position: 'absolute',
+                top: headerHeight,
+                left: 14,
+                right: 14,
+                fontSize: 'calc(10px * var(--text-scale, 1))',
                 fontFamily: 'var(--canvas-font)',
                 color: 'var(--canvas-text-dim)',
               }}
             >
-              ({data.alias})
-            </span>
-          </div>
+              {rows.columns.map(column => (
+                <div
+                  key={column}
+                  title={column}
+                  style={{
+                    height: handleRowHeight,
+                    lineHeight: `${handleRowHeight}px`,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {column}
+                </div>
+              ))}
+              {rows.hidden > 0 && (
+                <div style={{ height: handleRowHeight, lineHeight: `${handleRowHeight}px`, opacity: 0.7 }}>
+                  … {rows.hidden} more
+                </div>
+              )}
+            </div>
+          )}
 
-          <RelationDots handles={data.leftHandles} type="target" position={Position.Left} />
-          <RelationDots handles={data.rightHandles} type="source" position={Position.Right} />
+          <RelationDots handles={data.leftHandles} type="target" position={Position.Left} rowOf={rowOf} />
+          <RelationDots handles={data.rightHandles} type="source" position={Position.Right} rowOf={rowOf} />
           {/* Default (unnamed) handles - every other handle on this node is
               named (`l:column`/`r:column`, from an actually-resolved join's
               columns). An edge with no column info to name a handle after -

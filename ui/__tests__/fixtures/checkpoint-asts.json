@@ -1,0 +1,426 @@
+{
+ "company as c | employee as e .company_id | limit: 10 | = result_1 | document as d | limit: 5": {
+  "where": [],
+  "selected-tables": [
+   {
+    "schema": null,
+    "table": "result_1",
+    "alias": "result_1"
+   },
+   {
+    "schema": null,
+    "table": "document",
+    "alias": "d"
+   }
+  ],
+  "group": [],
+  "columns": [
+   {
+    "column": "id",
+    "alias": "d",
+    "column-alias": "__d__id",
+    "hidden": true,
+    "auto-id": true,
+    "operation-index": 6
+   }
+  ],
+  "operation": {
+   "type": "limit",
+   "value": 5
+  },
+  "joins": [
+   {
+    "from": "result_1",
+    "to": "d",
+    "parent": "from",
+    "columns": [
+     {
+      "from": "id",
+      "to": "employee_id"
+     }
+    ],
+    "resolution": "fk",
+    "cast": null,
+    "type": null
+   }
+  ],
+  "checkpoints": [
+   {
+    "name": "result_1",
+    "sealed": true,
+    "index": 2,
+    "kind": "limit",
+    "tables": [
+     "c",
+     "e"
+    ],
+    "columns": [
+     "id",
+     "company_id",
+     "reports_to"
+    ],
+    "limit": 10
+   },
+   {
+    "name": "result_2",
+    "sealed": false,
+    "index": 5,
+    "kind": "limit",
+    "tables": [
+     "result_1",
+     "d"
+    ],
+    "columns": [
+     "id",
+     "employee_id",
+     "created_by",
+     "company_id"
+    ],
+    "limit": 5
+   }
+  ],
+  "pending-assignments": {
+   "result_1": {
+    "tables": [
+     {
+      "schema": null,
+      "table": "company",
+      "alias": "c"
+     },
+     {
+      "schema": null,
+      "table": "employee",
+      "alias": "e"
+     }
+    ],
+    "selected-tables": [],
+    "joins": [
+     {
+      "from": "c",
+      "to": "e",
+      "parent": "from",
+      "columns": [
+       {
+        "from": "id",
+        "to": "company_id"
+       }
+      ],
+      "resolution": "fk",
+      "cast": null,
+      "type": null
+     }
+    ],
+    "columns": [],
+    "where": [],
+    "order": [],
+    "group": []
+   }
+  },
+  "current": "d",
+  "order": [],
+  "ranges": [
+   {
+    "alias": null,
+    "start": {
+     "line": 0,
+     "character": 0
+    },
+    "end": {
+     "line": 0,
+     "character": 12
+    }
+   },
+   {
+    "alias": null,
+    "start": {
+     "line": 0,
+     "character": 15
+    },
+    "end": {
+     "line": 0,
+     "character": 40
+    }
+   },
+   {
+    "alias": null,
+    "start": {
+     "line": 0,
+     "character": 43
+    },
+    "end": {
+     "line": 0,
+     "character": 52
+    }
+   },
+   {
+    "alias": null,
+    "start": {
+     "line": 0,
+     "character": 55
+    },
+    "end": {
+     "line": 0,
+     "character": 65
+    }
+   },
+   {
+    "alias": "d",
+    "start": {
+     "line": 0,
+     "character": 68
+    },
+    "end": {
+     "line": 0,
+     "character": 81
+    }
+   },
+   {
+    "alias": "d",
+    "start": {
+     "line": 0,
+     "character": 84
+    },
+    "end": {
+     "line": 0,
+     "character": 92
+    }
+   }
+  ]
+ },
+ "company as c | where: id = 1 | limit: 10 | where: result_1.id = 2": {
+  "where": [
+   {
+    "alias": "result_1",
+    "column": "id",
+    "cast": null,
+    "operator": "=",
+    "value": {
+     "type": "number",
+     "value": 2
+    }
+   }
+  ],
+  "selected-tables": [
+   {
+    "schema": null,
+    "table": "result_1",
+    "alias": "result_1"
+   }
+  ],
+  "group": [],
+  "columns": [],
+  "operation": {
+   "type": "where",
+   "value": [
+    {
+     "type": "column",
+     "value": [
+      "result_1",
+      "id",
+      null
+     ]
+    },
+    "=",
+    {
+     "type": "number",
+     "value": 2
+    }
+   ]
+  },
+  "joins": [],
+  "checkpoints": [
+   {
+    "name": "result_1",
+    "sealed": true,
+    "index": 2,
+    "kind": "limit",
+    "tables": [
+     "c"
+    ],
+    "columns": [
+     "id",
+     "created_at"
+    ],
+    "limit": 10
+   }
+  ],
+  "pending-assignments": {
+   "result_1": {
+    "tables": [
+     {
+      "schema": null,
+      "table": "company",
+      "alias": "c"
+     }
+    ],
+    "selected-tables": [],
+    "joins": [],
+    "columns": [],
+    "where": [
+     {
+      "alias": "c",
+      "column": "id",
+      "cast": null,
+      "operator": "=",
+      "value": {
+       "type": "number",
+       "value": 1
+      }
+     }
+    ],
+    "order": [],
+    "group": []
+   }
+  },
+  "current": "result_1",
+  "order": [],
+  "ranges": [
+   {
+    "alias": null,
+    "start": {
+     "line": 0,
+     "character": 0
+    },
+    "end": {
+     "line": 0,
+     "character": 12
+    }
+   },
+   {
+    "alias": null,
+    "start": {
+     "line": 0,
+     "character": 15
+    },
+    "end": {
+     "line": 0,
+     "character": 28
+    }
+   },
+   {
+    "alias": null,
+    "start": {
+     "line": 0,
+     "character": 31
+    },
+    "end": {
+     "line": 0,
+     "character": 40
+    }
+   },
+   {
+    "alias": "result_1",
+    "start": {
+     "line": 0,
+     "character": 43
+    },
+    "end": {
+     "line": 0,
+     "character": 65
+    }
+   }
+  ]
+ },
+ "company as c | group: c.name": {
+  "where": [],
+  "selected-tables": [
+   {
+    "schema": null,
+    "table": "company",
+    "alias": "c"
+   }
+  ],
+  "group": [
+   {
+    "column": "name",
+    "alias": "c",
+    "operation-index": 1,
+    "source": {
+     "table": "company",
+     "schema": null
+    }
+   }
+  ],
+  "columns": [
+   {
+    "column": "name",
+    "alias": "c",
+    "operation-index": 1,
+    "source": {
+     "table": "company",
+     "schema": null
+    }
+   },
+   {
+    "symbol": "COUNT(1)",
+    "column-alias": "count"
+   }
+  ],
+  "operation": {
+   "type": "group",
+   "value": {
+    "columns": [
+     {
+      "column": "name",
+      "alias": "c"
+     }
+    ],
+    "functions": [
+     "count"
+    ]
+   }
+  },
+  "joins": [],
+  "checkpoints": [
+   {
+    "name": "result_1",
+    "sealed": false,
+    "index": 1,
+    "kind": "group",
+    "tables": [
+     "c"
+    ],
+    "columns": [
+     "name",
+     "count"
+    ],
+    "group": [
+     {
+      "alias": "c",
+      "column": "name"
+     }
+    ],
+    "aggregates": [
+     "count"
+    ]
+   }
+  ],
+  "pending-assignments": {},
+  "current": "c",
+  "order": [],
+  "ranges": [
+   {
+    "alias": "c",
+    "start": {
+     "line": 0,
+     "character": 0
+    },
+    "end": {
+     "line": 0,
+     "character": 12
+    }
+   },
+   {
+    "alias": "c",
+    "start": {
+     "line": 0,
+     "character": 15
+    },
+    "end": {
+     "line": 0,
+     "character": 28
+    }
+   }
+  ]
+ }
+}
