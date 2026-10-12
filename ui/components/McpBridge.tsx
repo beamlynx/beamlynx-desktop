@@ -24,11 +24,12 @@ const McpBridge = () => {
     // registered. See preload/index.ts's onQueryRequest for what that
     // caused in practice.
     return window.beamlynxDesktop.mcp.onQueryRequest(async (request: McpQueryRequest) => {
-      const { kind, profileId, expression, variables } = request;
+      const { kind, profileId, expression, sql, variables } = request;
       if (kind === 'build') {
         return global.explainMcpQuery({ profileId, expression });
       }
-      return global.runMcpQuery({ profileId, expression, variables });
+      // sql: run_query's SQL, which runMcpQuery converts to Pine and never runs.
+      return global.runMcpQuery({ profileId, expression, sql, variables });
     });
   }, [global]);
 

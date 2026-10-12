@@ -20,6 +20,12 @@
 // credential-store.ts), so a human's own tab on that connection is
 // redacted exactly like the MCP tab is.
 //
+// An agent may send SQL to run_query, but SQL never runs: runMcpQuery
+// converts it to Pine with pine-lang's /sql-to-pine (client.sqlToPine) and
+// runs the Pine, down the same path as any agent expression. So the
+// choke point above still sees every query. See
+// beamlynx-plans/pending/2026-10-12-agents-run-sql-as-pine.md.
+//
 // resolveAccessPolicyRules always re-reads connections.json fresh (via
 // GlobalStore.refreshConnections/refreshAccessPolicies) before resolving
 // the policy, rather than trusting the in-memory snapshot -- that snapshot
@@ -143,14 +149,45 @@ function toPlainJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
 }
 
+// An agent's SQL as Pine, or why it doesn't convert. Always with the MCP
+// connection's id: without one pine-lang falls back to the person's
+// selected connection, and would spell names from a database the agent may
+// not be allowed to use. Nothing runs here.
+async function sqlAsPine(
+  client: HttpClient,
+  sql: string,
+  connectionId: string,
+): Promise<{ expression: string; warnings: string[] } | { error: string }> {
+  let result;
+  try {
+    result = await client.sqlToPine(sql, connectionId);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    return {
+      error: /^404\b/.test(message) ? 'This pine-lang is too old to convert SQL. Write the query in Pine.' : message,
+    };
+  }
+  if (result.error || result.expression === undefined) {
+    return { error: `The SQL didn't convert to Pine, so nothing ran. ${result.error ?? ''}`.trim() };
+  }
+  // A leading /* ... */ says what the query is for. The tab shows it as a
+  // note above the query, so keep it on the Pine.
+  const note = sql.match(/^\s*(\/\*[\s\S]*?\*\/)/)?.[1];
+  return {
+    expression: note ? `${note}\n${result.expression}` : result.expression,
+    warnings: result.warnings ?? [],
+  };
+}
+
 export async function runMcpQuery(
   deps: McpQueryDeps,
   {
     profileId,
-    expression,
+    expression: given,
+    sql,
     variables,
-  }: { profileId: string; expression: string; variables?: Record<string, VariableValue> },
-): Promise<{ tabId: string; columns: unknown; rows: unknown; error: string }> {
+  }: { profileId: string; expression: string; sql?: string; variables?: Record<string, VariableValue> },
+): Promise<{ tabId: string; columns: unknown; rows: unknown; error: string; pine?: string; warnings?: string[] }> {
   assertServerSupportsWriteRefusal(deps.getServerVersion());
   const connectionId = await ensureConnection(deps, profileId);
   // Refreshes GlobalStore.connections as a side effect (see this file's top
@@ -158,6 +195,16 @@ export async function runMcpQuery(
   // which is derived from that same connection list, so it must be current
   // by the time evaluate() runs, not whatever it happened to be at app boot.
   await deps.resolveAccessPolicyRules(profileId);
+  // From here on only Pine exists. The SQL never enters the session: not
+  // as session.query, and not through the SQL panel's convertSql.
+  let expression = given;
+  let warnings: string[] = [];
+  if (sql !== undefined) {
+    const converted = await sqlAsPine(deps.client, sql, connectionId);
+    if ('error' in converted) return { tabId: '', columns: [], rows: [], error: converted.error };
+    expression = converted.expression;
+    warnings = converted.warnings;
+  }
   const session = deps.getOrCreateMcpSession();
   session.connectionId = connectionId;
   session.profileId = profileId;
@@ -194,7 +241,9 @@ export async function runMcpQuery(
   // the person can see them and run it again.
   const shown = restoreValues(session.expression, expression, variables ?? {});
   if (shown !== session.expression) session.expression = shown;
-  return { tabId, columns, rows: plainRows, error };
+  // The Pine that ran, for an agent that sent SQL: it is how it learns Pine.
+  const converted = sql !== undefined ? { pine: expression, warnings } : {};
+  return { tabId, columns, rows: plainRows, error, ...converted };
 }
 
 export async function explainMcpQuery(

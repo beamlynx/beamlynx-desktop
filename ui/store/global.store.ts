@@ -1392,7 +1392,12 @@ export class GlobalStore {
    * human's active tab. See store/mcp-query.ts for the safety rules this
    * enforces (no raw SQL, no delete!, connection-id always explicit).
    */
-  runMcpQuery = async (args: { profileId: string; expression: string; variables?: Record<string, VariableValue> }) => {
+  runMcpQuery = async (args: {
+    profileId: string;
+    expression: string;
+    sql?: string;
+    variables?: Record<string, VariableValue>;
+  }) => {
     const result = await runMcpQueryImpl(this.mcpQueryDeps(), args);
     // Flag McpActivityButton's badge regardless of `result.error` -- a
     // failed MCP query is still activity worth surfacing, not something to

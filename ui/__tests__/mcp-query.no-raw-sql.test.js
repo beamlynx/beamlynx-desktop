@@ -50,15 +50,27 @@ test('mcp-query.ts never calls client.sql (raw SQL execution)', () => {
   );
 });
 
-test('mcp-query.ts never converts SQL to Pine', () => {
+// An agent's SQL is converted to Pine and only the Pine runs
+// (beamlynx-plans/pending/2026-10-12-agents-run-sql-as-pine.md). It must not
+// go through the SQL panel's path: convertSql/sqlEdited write the SQL into
+// session.query and the canvas's undo stack, and a session holding SQL is
+// one inputMode flip away from running it.
+test('mcp-query.ts converts SQL only through client.sqlToPine, never the SQL panel', () => {
   assert.ok(
-    !/\b(sqlToPine|convertSql|sqlEdited)\b/.test(MCP_QUERY_SOURCE),
-    'store/mcp-query.ts must never reach SQL-to-Pine conversion -- agents write Pine, and no SQL text reaches ' +
-      'pine-lang from the MCP surface, in either direction.',
+    /\bclient\.sqlToPine\s*\(/.test(MCP_QUERY_SOURCE),
+    'expected the conversion to call client.sqlToPine',
+  );
+  assert.ok(
+    !/\b(convertSql|sqlEdited)\b/.test(MCP_QUERY_SOURCE),
+    "store/mcp-query.ts must not use the SQL panel's conversion (convertSql/sqlEdited).",
+  );
+  assert.ok(
+    !/\.query\s*=[^=]/.test(MCP_QUERY_SOURCE),
+    'store/mcp-query.ts must never put SQL into a session (session.query = ...).',
   );
 });
 
-test('mcp-query.ts only drives pine-lang through connections/eval/build', () => {
+test('mcp-query.ts only drives pine-lang through connections/eval/build/sql-to-pine', () => {
   // The only HttpClient methods this file is allowed to call at all.
   const clientCallPattern = /\bclient\.(\w+)\s*\(/g;
   const found = new Set();
@@ -66,12 +78,14 @@ test('mcp-query.ts only drives pine-lang through connections/eval/build', () => 
   while ((match = clientCallPattern.exec(MCP_QUERY_SOURCE))) {
     found.add(match[1]);
   }
-  const disallowed = [...found].filter(name => !['createConnection', 'build'].includes(name));
+  const disallowed = [...found].filter(
+    name => !['createConnection', 'build', 'sqlToPine'].includes(name),
+  );
   assert.deepEqual(
     disallowed,
     [],
     `store/mcp-query.ts calls client.${disallowed.join(', client.')}(), which isn't in the allowed set ` +
-      `(createConnection, build). Session.evaluate() (not a direct client call) handles eval.`,
+      `(createConnection, build, sqlToPine). Session.evaluate() (not a direct client call) handles eval.`,
   );
 });
 
@@ -386,4 +400,96 @@ test('the MCP session forces allowWrites: false even when the caller omits it', 
   // tab is the point, not a threat.
   await humanSession.evaluate();
   assert.equal(seen[2]?.allowWrites, undefined);
+});
+
+// SQL from an agent: converted with the MCP connection's id, then run as
+// Pine down the usual path, with writes refused. A real HttpClient with
+// fetch stubbed, so the request pine-lang would get is what is checked.
+function stubFetch(answer) {
+  const requests = [];
+  const original = global.fetch;
+  global.fetch = async (url, options) => {
+    const body = JSON.parse(options.body);
+    requests.push({ path: url.split('/api/v1/')[1], body });
+    return { ok: true, status: 200, json: async () => answer(body) };
+  };
+  return { requests, restore: () => (global.fetch = original) };
+}
+
+test('runMcpQuery runs SQL as Pine: converted with the connection id, evaluated with writes refused', async () => {
+  const { HttpClient } = require('../store/client.ts');
+  const { requests, restore } = stubFetch(() => ({
+    expression: 'company\n | where: id = $id',
+    warnings: ['w'],
+  }));
+  try {
+    const { deps, session, calls, evaluateOpts } = makeFakeDeps();
+    deps.client = Object.assign(new HttpClient(), {
+      createConnection: deps.client.createConnection,
+    });
+    const result = await runMcpQuery(deps, {
+      profileId: 'p1',
+      expression: '',
+      sql: '/* Why */ select * from company where id = $id',
+      variables: { id: 1 },
+    });
+    assert.deepEqual(requests, [
+      {
+        path: 'sql-to-pine',
+        body: {
+          query: '/* Why */ select * from company where id = $id',
+          'connection-id': 'conn-1',
+        },
+      },
+    ]);
+    assert.deepEqual(calls, [
+      'client.createConnection',
+      'resolveAccessPolicyRules',
+      'session.evaluate',
+    ]);
+    assert.equal(evaluateOpts[0].allowWrites, false);
+    assert.deepEqual(evaluateOpts[0].variables, { id: 1 });
+    assert.equal(session.inputMode, 'pine');
+    assert.equal(session.query, undefined);
+    assert.equal(result.pine, '/* Why */\ncompany\n | where: id = $id');
+    assert.deepEqual(result.warnings, ['w']);
+  } finally {
+    restore();
+  }
+});
+
+test('runMcpQuery runs nothing when the SQL does not convert', async () => {
+  const { HttpClient } = require('../store/client.ts');
+  const { requests, restore } = stubFetch(() => ({
+    error: "Line 1: OFFSET isn't in Pine.",
+    'error-type': 'sql-unsupported',
+  }));
+  try {
+    const { deps, calls } = makeFakeDeps();
+    deps.client = Object.assign(new HttpClient(), {
+      createConnection: deps.client.createConnection,
+    });
+    const result = await runMcpQuery(deps, {
+      profileId: 'p1',
+      expression: '',
+      sql: 'select * from t offset 5',
+    });
+    assert.equal(
+      result.error,
+      "The SQL didn't convert to Pine, so nothing ran. Line 1: OFFSET isn't in Pine.",
+    );
+    assert.ok(!calls.includes('session.evaluate'));
+    assert.deepEqual(
+      requests.map(r => r.path),
+      ['sql-to-pine'],
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('an expression run carries no pine/warnings fields', async () => {
+  const { deps } = makeFakeDeps();
+  const result = await runMcpQuery(deps, { profileId: 'p1', expression: 'company' });
+  assert.ok(!('pine' in result));
 });
