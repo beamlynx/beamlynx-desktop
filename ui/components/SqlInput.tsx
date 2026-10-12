@@ -18,6 +18,7 @@ import { useStores } from '../store/store-container';
 import { editorChrome, editorDarkSyntax } from './editor-theme';
 import { sqlCompletionConfig } from '../utils/sqlCompletion';
 import { sqlConversionLines } from '../utils/sqlConversionStatus';
+import { sqlJoinSource } from '../utils/sqlJoinCompletion';
 
 interface SqlInputProps {
   session: Session;
@@ -112,6 +113,12 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true 
   }, [session, connectionId, schemaVersion]);
   const sqlSchema = session.sqlSchema;
   const sqlConfig = useMemo(() => sqlCompletionConfig(sqlSchema), [sqlSchema]);
+  // SQL with the schema's names, and after JOIN, the joins Pine knows.
+  const sqlLanguage = useMemo(() => {
+    const language = sql(sqlConfig);
+    const joins = sqlJoinSource((query, cursor) => session.sqlJoinHints(query, cursor));
+    return [language, language.language.data.of({ autocomplete: joins })];
+  }, [sqlConfig, session]);
 
   const selectionUpdateExtension = useMemo(() => {
     return EditorView.updateListener.of(update => {
@@ -126,7 +133,7 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true 
   const extensions = useMemo(() => {
     const extensions = [
       EditorView.lineWrapping,
-      sql(sqlConfig),
+      sqlLanguage,
       // Hints open on request, as in the Pine panel (pine-autocomplete.ts):
       // Tab or Ctrl/Cmd-Space, never while typing.
       autocompletion({ activateOnTyping: false, closeOnBlur: true, selectOnOpen: true }),
@@ -202,7 +209,7 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true 
       ),
     );
     return extensions;
-  }, [isDark, vimMode, sqlConfig, selectionUpdateExtension, session]);
+  }, [isDark, vimMode, sqlLanguage, selectionUpdateExtension, session]);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
