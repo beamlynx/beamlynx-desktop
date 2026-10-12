@@ -187,7 +187,7 @@ The current mode is always visible bottom-left of the canvas
 (`CanvasModeIndicator`, in `CanvasToolbar.tsx`) — "normal" or "insert", plus,
 in normal mode, `c` (write the canvas comment, canvas-wide, always first)
 followed by the exact letters armed for whichever node is currently focused
-(e.g. `c s w o g i x` for a table with something to delete, `c s w o l p + i x`
+(e.g. `c s w o g i x` for a table with something to delete, `c s w o l p + i e x`
 for a checkpoint's node, `c i` for the empty-canvas start node). This legend is
 what makes the shortcuts discoverable without memorizing them up front.
 
@@ -213,6 +213,7 @@ pipeline is a single strict sequence, not a 2D graph to roam.
 | `w` | Open the where-condition picker |
 | `o` | Open the order-by picker |
 | `g` | Open the group-by picker (not offered on a checkpoint node — grouping an already-grouped result is a different question, not implemented) |
+| `e` | On a checkpoint's node: expand or collapse what it seals (the same as the toggle on its pill) |
 | `x` | Delete the focused node — a table if `removable`, or, on a checkpoint's node, the checkpoint (as the × on its divider does; the tables it sealed stay) |
 | `u` | Undo the last canvas gesture |
 | `c` | Write (or edit) the comment at the top of the expression — see "The comment" below |
@@ -378,15 +379,29 @@ The canvas draws the pipeline as stages stacked top to bottom
 
 - Within a stage, tables keep the left-to-right layout, each drawn once.
 - Each checkpoint is a dashed divider across the canvas, below the stage it
-  seals (`nodes/CheckpointDividerNode.tsx`). Its label says what it does:
-  `limit 10`, `limit 1 per c.id`, `group t.title → count`. A limit's label
-  opens the limit editor for that checkpoint's own number; `per` is kept. The
-  × removes the checkpoint.
+  seals (`nodes/CheckpointDividerNode.tsx`). On the line, centred above the
+  checkpoint's node, is a pill: the expand toggle, the label (`limit 10`,
+  `limit 1 per c.id`, `group t.title → count`) and ×. A limit's label opens
+  the limit editor for that checkpoint's own number; `per` is kept. The ×
+  removes the checkpoint. A short dashed connector runs from the pill's
+  bottom edge to the node's box.
 - Below the divider is a node named after the checkpoint, exactly as pine-lang
-  reports it. It is a `TableNode` with `data.checkpoint` set: it lists the
-  sealed result's columns, carries the chips of the steps after the
-  checkpoint, and its actions go through `openCheckpointPicker`. Tables
-  joined after the checkpoint are in its stage, with an edge from it.
+  reports it. It is drawn like any table node (`TableNode` with
+  `data.checkpoint` set): chips for the steps after the checkpoint, join
+  handles, the action bar. Its actions go through `openCheckpointPicker`.
+  Tables joined after the checkpoint are in its stage, with an edge from it.
+- **One nested query is expanded at a time** (`CanvasStore.expandedNested`,
+  UI-only, not saved). Checkpoints form a chain - each one's node sits in
+  the stage the next one seals - so expanding one draws every stage from the
+  one it seals down to the last. The checkpoints above it are collapsed:
+  their node and pill are drawn (the pill on a short stub of line), their
+  stage isn't. By default the checkpoint feeding the last stage is
+  expanded. The pill's toggle and `e` expand or collapse; collapsing hands
+  the expansion to the next checkpoint down, or to none for the last.
+  Keyboard focus only visits drawn nodes.
+- **After a gesture adds a checkpoint**, focus moves to its node, and it is
+  expanded - as focus follows a newly joined table
+  (`CanvasStore.runCommit`, via `layout.ts`'s `newCheckpointName`).
 
 A sealed checkpoint's stage is drawn from its snapshot in
 `ast['pending-assignments'][name]`, which carries its tables, joins, columns,

@@ -34,29 +34,46 @@ export type CanvasTableNodeData = {
    * Set when this node is a checkpoint's sealed result rather than a table:
    * the node below a checkpoint's divider, named after the checkpoint
    * (`alias` and `table` are both its name, exactly as pine-lang reports
-   * it). It lists the result's columns, and its actions work on the sealed
-   * result - see CanvasStore.openCheckpointPicker.
+   * it). It is drawn like any table; its actions work on the sealed result -
+   * see CanvasStore.openCheckpointPicker.
+   *
+   * `expanded`: whether the stage it seals is drawn above it (see layout.ts's
+   * buildCanvasGraph - one checkpoint is expanded at a time). Its divider,
+   * with the label, × and expand toggle, is a separate node above it.
    */
-  checkpoint?: { columns: string[] };
+  checkpoint?: { expanded: boolean };
 };
 
 // eslint-disable-next-line @typescript-eslint/ban-types
 export type CanvasStartNodeData = {};
 
 /**
- * The dashed line a checkpoint draws across the canvas, below the stage it
- * seals and above the node named after it (see layout.ts's
- * buildCanvasGraph). Not a pipeline slot: it isn't focusable or selectable,
- * and only its label and remove button take clicks.
+ * The divider above a nested query's node: a node whose body - what it
+ * stands for - can be drawn above the line. Today the only kind is a
+ * checkpoint, labelled by its operation; a named result from an earlier
+ * block is meant to be the next (`kind` tells them apart).
+ *
+ * For a checkpoint (see layout.ts's buildCanvasGraph): a dashed line
+ * with a pill on it, centred above the checkpoint's node, and a connector
+ * from the pill down to the node. Across the canvas when the checkpoint is
+ * expanded (the stage it seals is drawn above); a short stub when
+ * collapsed. Not a pipeline slot: it isn't focusable or selectable, and only
+ * the pill takes clicks.
  */
 export type CanvasDividerNodeData = {
-  /** The checkpoint's name - the id of the node below the line. */
+  kind: 'checkpoint';
+  /** The nested query's name - the id of the node below the line. */
   name: string;
   /** What the checkpoint does, e.g. `limit 1 per c.id` or `group t.title → count`. */
   label: string;
   /** Set for a limit: the label then opens the limit editor for this checkpoint. */
   limit?: number;
   width: number;
+  /** The pill's centre, from the divider's left edge: the node's centre. */
+  pillX: number;
+  expanded: boolean;
+  /** The connector's length, from the pill's bottom edge to the node's box. */
+  connector: number;
 };
 
 export type CanvasTableNode = Node<CanvasTableNodeData>;

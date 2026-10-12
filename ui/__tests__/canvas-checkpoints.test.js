@@ -4,7 +4,11 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const asts = require('./fixtures/checkpoint-asts.json');
-const { buildCanvasGraph, checkpointLabel } = require('../store/canvas/layout.ts');
+const {
+  buildCanvasGraph,
+  checkpointLabel,
+  newCheckpointName,
+} = require('../store/canvas/layout.ts');
 const {
   segmentsFromAst,
   ensureExplicitCheckpointName,
@@ -57,8 +61,8 @@ test('labels say what the checkpoint does', () => {
   );
 });
 
-test('two checkpoints: three stages, two dividers, each checkpoint node above the tables joined onto it', () => {
-  const graph = buildCanvasGraph(asts[TWO], {});
+test('two checkpoints, all expanded: three stages, two dividers, each node joined to its divider', () => {
+  const graph = buildCanvasGraph(asts[TWO], {}, 'result_1');
   const tables = graph.nodes.filter(n => n.type === 'table-node');
   const dividers = graph.nodes.filter(n => n.type === 'checkpoint-divider');
 
@@ -79,10 +83,21 @@ test('two checkpoints: three stages, two dividers, each checkpoint node above th
   assert.ok(dividerY('result_1') < y('result_1'));
   assert.ok(y('d') < dividerY('result_2'));
   assert.ok(dividerY('result_2') < y('result_2'));
-
-  // The checkpoint's node lists its result's columns, and d joins onto it.
+  // Close below its divider; the pill is centred on the node, and the
+  // connector runs from the pill down to the node's box.
   const r1 = tables.find(n => n.id === 'result_1').data;
-  assert.deepEqual(r1.checkpoint.columns, ['id', 'company_id', 'reports_to']);
+  const d1 = dividers.find(n => n.data.name === 'result_1');
+  assert.ok(y('result_1') - dividerY('result_1') <= 30);
+  assert.equal(r1.checkpoint.expanded, true);
+  assert.equal(d1.data.expanded, true);
+  assert.equal(
+    d1.position.x + d1.data.pillX,
+    graph.nodes.find(n => n.id === 'result_1').position.x + 95,
+  );
+  assert.ok(d1.data.connector > 0 && d1.data.connector < 40);
+
+  // Drawn like a table: no columns list, not removable, d joins onto it.
+  assert.deepEqual(Object.keys(r1.checkpoint), ['expanded']);
   assert.equal(r1.removable, false);
   assert.ok(graph.edges.some(e => e.source === 'result_1' && e.target === 'd'));
   // A table inside a sealed checkpoint can't be removed; one after it can.
@@ -90,10 +105,52 @@ test('two checkpoints: three stages, two dividers, each checkpoint node above th
   assert.equal(tables.find(n => n.id === 'd').data.removable, true);
 });
 
+test('by default only the checkpoint feeding the last stage is expanded', () => {
+  const graph = buildCanvasGraph(asts[TWO], {});
+  const ids = graph.nodes.filter(n => n.type === 'table-node').map(n => n.id);
+  // c and e are inside result_1, which is collapsed: hidden.
+  assert.deepEqual(ids.sort(), ['d', 'result_1', 'result_2']);
+  const data = id => graph.nodes.find(n => n.id === id).data;
+  assert.equal(data('result_1').checkpoint.expanded, false);
+  assert.equal(data('result_2').checkpoint.expanded, true);
+  // Each checkpoint node has its pill: a stub when collapsed, the full line
+  // when expanded.
+  const dividers = graph.nodes.filter(n => n.type === 'checkpoint-divider');
+  assert.deepEqual(
+    dividers.map(n => [n.data.name, n.data.label, n.data.expanded]),
+    [
+      ['result_1', 'limit 10', false],
+      ['result_2', 'limit 5', true],
+    ],
+  );
+  assert.ok(dividers[0].data.width < dividers[1].data.width);
+});
+
+test('with nothing expanded, only the last stage is drawn', () => {
+  const graph = buildCanvasGraph(asts[TWO], {}, null);
+  assert.deepEqual(
+    graph.nodes.map(n => n.id),
+    ['checkpoint-divider:result_2', 'result_2'],
+  );
+  assert.equal(graph.nodes[1].data.checkpoint.expanded, false);
+  assert.equal(graph.nodes[0].data.expanded, false);
+});
+
+test('the checkpoint a gesture adds is found by name', () => {
+  const c1 = { name: 'result_1' };
+  const c2 = { name: 'result_2' };
+  assert.equal(newCheckpointName([], [c1]), 'result_1');
+  assert.equal(newCheckpointName([c1], [c1, c2]), 'result_2');
+  assert.equal(newCheckpointName(undefined, [c1]), 'result_1');
+  // Changing or removing one isn't adding one.
+  assert.equal(newCheckpointName([c1], [c1]), null);
+  assert.equal(newCheckpointName([c1, c2], [c1]), null);
+});
+
 test('a trailing checkpoint still gets its divider and node', () => {
   const graph = buildCanvasGraph(asts[GROUP], {});
   const node = graph.nodes.find(n => n.id === 'result_1');
-  assert.deepEqual(node.data.checkpoint.columns, ['name', 'count']);
+  assert.equal(node.data.checkpoint.expanded, true);
   assert.deepEqual(
     graph.nodes.filter(n => n.type === 'checkpoint-divider').map(n => n.data.label),
     ['group c.name → count'],
@@ -228,4 +285,39 @@ test('removing the only table before a checkpoint removes the checkpoint too', (
     ],
   };
   assert.equal(deleteNode(pinned, 'c'), 'employee as e');
+});
+
+// After a gesture adds a limit, focus moves to the new checkpoint's node and
+// it is expanded - the same way focus follows a newly joined table.
+const { Session } = require('../store/session.ts');
+const { CanvasStore } = require('../store/canvas/canvas.store.ts');
+
+test('adding a limit focuses and expands the new checkpoint', async () => {
+  const flat = text => text.replace(/\s+/g, ' ').trim();
+  const original = global.fetch;
+  global.fetch = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    const expression = flat(body.expressions[body.expressions.length - 1] ?? '');
+    return { ok: true, json: async () => ({ ast: asts[expression] ?? null }) };
+  };
+  try {
+    const session = new Session('focus', { connections: [], accessPolicies: [] });
+    session.connectionId = 'conn-1';
+    session.expression = 'company as c';
+    session.ast = asts['company as c'];
+    const store = new CanvasStore(session);
+    const stop = store.start();
+    store.focusNode('c');
+
+    await store.commitLimit(5, 'c');
+    assert.equal(flat(session.expression), 'company as c | limit: 5');
+    // The build that follows the commit.
+    session.ast = asts['company as c | limit: 5'];
+
+    assert.equal(store.expandedNested, 'result_1');
+    assert.equal(store.focusedAlias, 'result_1');
+    stop();
+  } finally {
+    global.fetch = original;
+  }
 });

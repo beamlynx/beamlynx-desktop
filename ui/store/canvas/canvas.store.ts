@@ -21,7 +21,7 @@ import {
   WhereConditionDraft,
   WhereDraft,
 } from './canvas.model';
-import { buildCanvasGraph } from './layout';
+import { buildCanvasGraph, defaultExpandedCheckpoint, newCheckpointName } from './layout';
 import {
   checkpointOpIndex,
   currentLimit,
@@ -75,6 +75,14 @@ export class CanvasStore {
   picker: PickerState = { open: false };
 
   canvasGraph: CanvasGraph = emptyGraph;
+  /**
+   * The nested query whose contents are shown - one at a time (see
+   * layout.ts's buildCanvasGraph). Today a nested query is a checkpoint; the
+   * state is by name, so other kinds (a named result) can share the rule. undefined: the default, the one feeding the last
+   * stage. null: none, only the last stage. UI-only: never written into the
+   * Pine text, and not persisted.
+   */
+  expandedNested: string | null | undefined = undefined;
   /** Aliases of the currently box/shift-selected table nodes - see Canvas.tsx's onSelectionChange. */
   selectedAliases: string[] = [];
   // Keyboard "cursor" for the modal (vim-style) navigation/shortcut layer -
@@ -561,7 +569,10 @@ export class CanvasStore {
     // (confirmed live). Naming happens on demand - see openCheckpointPicker/
     // ensureCheckpointPinned. The node shows the name pine-lang reports
     // either way.
-    this.canvasGraph = buildCanvasGraph(ast, this.positions);
+    // A picked checkpoint missing from this ast falls back to the default
+    // (buildCanvasGraph). It isn't cleared here: right after a commit the ast
+    // can still be the one from before, without the checkpoint just added.
+    this.canvasGraph = buildCanvasGraph(ast, this.positions, this.expandedNested);
     if (!this.hasSeededHoverAlias && this.orderedFocusTargets.length > 0) {
       this.hasSeededHoverAlias = true;
       this.setHoveredAlias(this.focusedAlias);
@@ -818,9 +829,15 @@ export class CanvasStore {
       // fail visibly (an unresolved edge, or "Not parsing"), not to succeed
       // with nicer formatting.
       let probedOk = true;
+      // A gesture that adds a group:/limit: makes a new checkpoint, and its
+      // node is the new "current" node the next step builds on - so focus
+      // moves there and it is expanded, as focus follows a newly joined
+      // table (see commitJoin).
+      let addedCheckpoint: string | null = null;
       const prettified = await probeBuild(next, this.session.connectionId).then(
         ast => {
           if (!ast) probedOk = false;
+          addedCheckpoint = newCheckpointName(base.ast.checkpoints, ast?.checkpoints);
           return ast?.prettified || next;
         },
         () => {
@@ -836,6 +853,10 @@ export class CanvasStore {
         // it anyway here would send a guaranteed-to-fail /eval for
         // something the canvas itself is about to show as "Not parsing".
         this.applyExpression(prettified, { skipAutoRun: !probedOk });
+        if (addedCheckpoint) {
+          this.expandedNested = addedCheckpoint;
+          this.focusNode(addedCheckpoint);
+        }
         // The select/where/order pickers stay open across multiple picks
         // (see toggleSelectColumn) with `request.alias` frozen from when
         // they were opened. If *this* commit is the one that pinned that
@@ -1688,6 +1709,29 @@ export class CanvasStore {
   }
 
   // --- checkpoint node -------------------------------------------------
+
+  /**
+   * Expands or collapses the nested query `name` (today: a checkpoint) - the
+   * toggle on its divider's pill, and `e`
+   * on its focused node. Expanding one collapses whichever was open.
+   * Collapsing one hides what it seals: the open checkpoint becomes the next
+   * one down the chain, or none for the last. UI-only - the text doesn't
+   * change, so no commit.
+   */
+  toggleNested(name: string) {
+    const ast = this.session.ast;
+    if (!ast) return;
+    const checkpoints = ast.checkpoints ?? [];
+    const k = checkpoints.findIndex(c => c.name === name);
+    if (k < 0) return;
+    const known = this.expandedNested === null || checkpoints.some(c => c.name === this.expandedNested);
+    const open =
+      this.expandedNested === undefined || !known ? defaultExpandedCheckpoint(ast) : this.expandedNested;
+    const openIndex = open === null ? -1 : checkpoints.findIndex(c => c.name === open);
+    const isExpanded = openIndex >= 0 && k >= openIndex;
+    this.expandedNested = isExpanded ? (checkpoints[k + 1]?.name ?? null) : name;
+    this.recompute();
+  }
 
   /**
    * Writes every checkpoint's `|= name` into the text if it isn't there yet

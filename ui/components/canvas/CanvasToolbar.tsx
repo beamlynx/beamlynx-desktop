@@ -259,7 +259,8 @@ const legendKeysFor = (isStart: boolean, isCheckpoint: boolean, removable: boole
   // No 'g' - group isn't offered for a checkpoint's own sealed output. 'x'
   // removes the checkpoint itself (CanvasStore.deleteCheckpoint), as the ×
   // on its divider does.
-  if (isCheckpoint) return ['c', 's', 'w', 'o', 'l', 'p', '+', 'i', 'x'];
+  // 'e' expands or collapses what the checkpoint seals.
+  if (isCheckpoint) return ['c', 's', 'w', 'o', 'l', 'p', '+', 'i', 'e', 'x'];
   return ['c', 's', 'w', 'o', 'g', 'l', 'p', '+', 'i', ...(removable ? ['x'] : [])];
 };
 

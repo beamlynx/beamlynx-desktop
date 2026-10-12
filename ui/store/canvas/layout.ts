@@ -50,25 +50,6 @@ const actionBarHeight = 28;
 const effectiveHandleCount = (handles: CanvasHandle[]): number =>
   handles.length > 1 || (handles.length === 1 && handles[0].column !== '') ? handles.length : 0;
 
-// A checkpoint's node lists its result's columns, one per row. A wide table
-// sealed by `limit: 10` has dozens, so only the first few are listed, plus
-// every column a join uses (its handle sits on that column's row).
-const maxCheckpointRows = 8;
-
-/**
- * The rows a checkpoint's node lists: its first columns, then any other
- * column a join handle needs, and how many columns are left out. Shared by
- * TableNode.tsx (which draws them) and getNodeHeight (which sizes the node),
- * so the two agree.
- */
-export const checkpointRows = (data: CanvasTableNodeData): { columns: string[]; hidden: number } => {
-  const all = data.checkpoint?.columns ?? [];
-  const joined = new Set([...data.leftHandles, ...data.rightHandles].map(h => h.column).filter(Boolean));
-  const shown = all.filter((column, i) => i < maxCheckpointRows || joined.has(column));
-  const extra = Array.from(joined).filter(column => !all.includes(column));
-  return { columns: [...shown, ...extra], hidden: all.length - shown.length };
-};
-
 /**
  * The identity box's own height - what TableNode.tsx sets as its minHeight.
  * `node.type` isn't a literal-discriminated field on reactflow's `Node<T>`,
@@ -78,11 +59,6 @@ export const checkpointRows = (data: CanvasTableNodeData): { columns: string[]; 
 export const getNodeHeight = (node: CanvasNode): number => {
   if (node.type !== 'table-node') return startNodeHeight;
   const data = node.data as CanvasTableNodeData;
-  if (data.checkpoint) {
-    const { columns, hidden } = checkpointRows(data);
-    const rows = columns.length + (hidden > 0 ? 1 : 0);
-    return rows === 0 ? minNodeHeight : headerHeight + rows * handleRowHeight + 10;
-  }
   const rows = Math.max(effectiveHandleCount(data.leftHandles), effectiveHandleCount(data.rightHandles));
   return rows === 0 ? minNodeHeight : headerHeight + rows * handleRowHeight + 10;
 };
@@ -378,7 +354,8 @@ const deriveStage = (
         order: order++,
         removable: false,
         ...chipsFor(after.name),
-        checkpoint: { columns: after.columns },
+        // Whether it's expanded is set by buildCanvasGraph.
+        checkpoint: { expanded: false },
       },
     });
   }
@@ -451,66 +428,144 @@ const layoutStage = (nodes: CanvasTableNode[], edges: CanvasEdge[]): CanvasTable
 };
 
 // A checkpoint's divider: the space it takes between two stages, and how far
-// its line reaches past the nodes on either side.
+// its line reaches past the nodes on either side. Its label is a pill on the
+// line, centred above the checkpoint's node, and the node sits just below
+// it: the connector runs from the pill's bottom edge, behind the node's
+// action bar, to the node's box.
 const dividerGap = 20;
-const dividerHeight = 24;
+const dividerHeight = 24; // the line is at its vertical middle
+const pillHalfHeight = 9;
+const gapBelowPill = 2;
 const dividerOverhang = 24;
 const minDividerWidth = 320;
+// A collapsed checkpoint has no stage above it: its pill sits on a short
+// stub of line instead of one across the canvas.
+const stubWidth = nodeWidth;
+
+/**
+ * Which checkpoint is expanded when the user hasn't picked one: the one that
+ * feeds the last stage, so a pipeline with one checkpoint shows everything.
+ */
+export const defaultExpandedCheckpoint = (ast: Ast): string | null => {
+  const checkpoints = ast.checkpoints ?? [];
+  return checkpoints.length ? checkpoints[checkpoints.length - 1].name : null;
+};
+
+/**
+ * The checkpoint a gesture just added: the one in `after` that wasn't in
+ * `before`, by name. A gesture always starts from a base where every
+ * checkpoint is pinned (see getPinnedBase), so the earlier ones keep their
+ * names and only the new one is unknown. null when none was added.
+ */
+export const newCheckpointName = (
+  before: Checkpoint[] | undefined,
+  after: Checkpoint[] | undefined,
+): string | null => {
+  const known = new Set((before ?? []).map(c => c.name));
+  const added = (after ?? []).filter(c => !known.has(c.name));
+  return added.length === 1 && (after ?? []).length > (before ?? []).length ? added[0].name : null;
+};
 
 /**
  * ast -> laid-out nodes/edges. The pipeline is drawn as stages stacked top
  * to bottom (see stagesOf). Within a stage, tables keep the left-to-right
  * layout. Each checkpoint is a dashed divider across the whole width, below
- * the stage it seals, and the node named after it starts the next stage.
+ * the stage it seals, and the node named after it starts the next stage,
+ * joined to the divider by a vertical connector.
+ *
+ * Only one checkpoint is expanded at a time: `expanded`, or by default the
+ * one feeding the last stage (null: none). Checkpoints are a chain - each
+ * one's node sits in the stage the next one seals - so expanding one shows
+ * every stage from the one it seals down to the last. The checkpoints above
+ * it stay collapsed: their node is drawn, their contents aren't. The last
+ * stage is always drawn.
  *
  * `positions` holds nodes the user has dragged: they keep that position.
  */
-export const buildCanvasGraph = (ast: Ast, positions: Record<string, { x: number; y: number }>): CanvasGraph => {
+export const buildCanvasGraph = (
+  ast: Ast,
+  positions: Record<string, { x: number; y: number }>,
+  expanded?: string | null,
+): CanvasGraph => {
   const checkpoints = ast.checkpoints ?? [];
   const checkpointNames = new Set(checkpoints.map(c => c.name));
   const stages = stagesOf(ast);
+  // A name this ast doesn't have (removed, or not built yet) means the default.
+  const known = expanded === null || checkpoints.some(c => c.name === expanded);
+  const open = expanded === undefined || !known ? defaultExpandedCheckpoint(ast) : expanded;
+  // Stage k is sealed by checkpoints[k], and stage k+1 starts from its node.
+  const openIndex = open === null ? -1 : checkpoints.findIndex(c => c.name === open);
+  const firstStage = openIndex < 0 ? stages.length - 1 : openIndex;
+  const isExpanded = (name: string) => {
+    const k = checkpoints.findIndex(c => c.name === name);
+    return openIndex >= 0 && k >= openIndex;
+  };
 
   const laidOut: CanvasTableNode[] = [];
   const edges: CanvasEdge[] = [];
-  const stageBottoms: number[] = [];
+  // The y of each expanded checkpoint's line, by name.
+  const lineY: Record<string, number> = {};
   let top = 0;
   let order = 1;
-  for (const stage of stages) {
+  stages.forEach((stage, k) => {
+    if (k < firstStage) return;
     const derived = deriveStage(stage, checkpointNames, order);
     order += derived.nodes.length;
-    const placed = layoutStage(derived.nodes, derived.edges).map(n => ({
-      ...n,
-      position: { x: n.position.x, y: n.position.y + top },
-    }));
+    const placed = layoutStage(derived.nodes, derived.edges).map(n => {
+      const position = { x: n.position.x, y: n.position.y + top };
+      if (!n.data.checkpoint) return { ...n, position };
+      return { ...n, position, data: { ...n.data, checkpoint: { expanded: isExpanded(n.id) } } };
+    });
     const bottom = placed.length ? Math.max(...placed.map(n => n.position.y + getNodeFootprintHeight(n))) : top;
     laidOut.push(...placed);
     edges.push(...derived.edges);
-    stageBottoms.push(bottom);
-    top = bottom + dividerGap * 2 + dividerHeight;
-  }
-
-  const maxX = laidOut.length ? Math.max(...laidOut.map(n => n.position.x + nodeWidth)) : nodeWidth;
-  const width = Math.max(maxX + dividerOverhang * 2, minDividerWidth);
-  const dividers: CanvasDividerNode[] = checkpoints.map((checkpoint, k) => ({
-    id: `checkpoint-divider:${checkpoint.name}`,
-    type: 'checkpoint-divider',
-    position: { x: -dividerOverhang, y: stageBottoms[k] + dividerGap },
-    draggable: false,
-    selectable: false,
-    focusable: false,
-    // ReactFlow's own wrapper around the node would otherwise take every
-    // click along the line's whole width - including the mousedown that
-    // starts a rubber-band selection. The label and remove button opt back
-    // in (see CheckpointDividerNode.tsx).
-    style: { pointerEvents: 'none' },
-    data: {
-      name: checkpoint.name,
-      label: checkpointLabel(checkpoint),
-      limit: checkpoint.kind === 'limit' ? checkpoint.limit : undefined,
-      width,
-    },
-  }));
+    if (k < checkpoints.length) {
+      const y = bottom + dividerGap + dividerHeight / 2;
+      lineY[checkpoints[k].name] = y;
+      top = y + pillHalfHeight + gapBelowPill;
+    }
+  });
 
   const nodes = laidOut.map(n => (positions[n.id] ? { ...n, position: positions[n.id] } : n));
-  return { nodes: [...dividers, ...nodes], edges, parsing: true, singleBlock: true };
+  const maxX = laidOut.length ? Math.max(...laidOut.map(n => n.position.x + nodeWidth)) : nodeWidth;
+  const width = Math.max(maxX + dividerOverhang * 2, minDividerWidth);
+
+  // One divider per checkpoint node drawn: across the canvas when expanded
+  // (the stage it seals is above), a short stub when collapsed. Placed from
+  // the node's final position, so a dragged node keeps its pill above it.
+  const dividerNodes: CanvasDividerNode[] = nodes
+    .filter(n => n.data.checkpoint)
+    .map(n => {
+      const checkpoint = checkpoints.find(c => c.name === n.id)!;
+      const expandedHere = !!n.data.checkpoint?.expanded;
+      const centre = n.position.x + nodeWidth / 2;
+      const y = expandedHere ? lineY[n.id] : n.position.y - gapBelowPill - pillHalfHeight;
+      const x = expandedHere ? -dividerOverhang : centre - stubWidth / 2;
+      return {
+        id: `checkpoint-divider:${n.id}`,
+        type: 'checkpoint-divider',
+        position: { x, y: y - dividerHeight / 2 },
+        draggable: false,
+        selectable: false,
+        focusable: false,
+        // ReactFlow's own wrapper around the node would otherwise take every
+        // click along the line's whole width - including the mousedown that
+        // starts a rubber-band selection. The pill opts back in (see
+        // CheckpointDividerNode.tsx).
+        style: { pointerEvents: 'none' },
+        data: {
+          kind: 'checkpoint',
+          name: n.id,
+          label: checkpointLabel(checkpoint),
+          limit: checkpoint.kind === 'limit' ? checkpoint.limit : undefined,
+          width: expandedHere ? width : stubWidth,
+          pillX: centre - x,
+          expanded: expandedHere,
+          // From the pill's bottom edge to the node's box, past its action bar.
+          connector: Math.max(n.position.y + actionBarHeight - (y + pillHalfHeight), 0),
+        },
+      };
+    });
+
+  return { nodes: [...dividerNodes, ...nodes], edges, parsing: true, singleBlock: true };
 };

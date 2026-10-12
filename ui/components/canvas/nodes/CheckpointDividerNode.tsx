@@ -3,61 +3,100 @@ import { observer } from 'mobx-react-lite';
 import { NodeProps } from 'reactflow';
 import { CanvasDividerNodeData } from '../../../store/canvas/canvas.model';
 import { useCanvasStore } from '../canvas-context';
-import { DeleteButton } from './TableNode';
+
+// The line and the connector are one stroke: same colour, same weight.
+const stroke = '1.5px dashed var(--canvas-container-border)';
+const lineY = 12; // the line's height in the node - layout.ts's dividerHeight / 2
+const pillHeight = 18; // layout.ts's pillHalfHeight * 2
 
 /**
- * A checkpoint, drawn as a dashed line across the canvas: below it is the
- * node named after the checkpoint, which works on its sealed result. See
+ * A checkpoint, drawn as a dashed line with a pill on it, right above the
+ * checkpoint's node: the node stands for everything above the line. See
  * layout.ts's buildCanvasGraph for where it goes.
  *
- * The label at the left edge says what the checkpoint does (`limit 10`,
- * `limit 1 per c.id`, `group t.title → count`). A limit's label opens the
- * limit editor for this checkpoint's own number. The × removes the
- * checkpoint (CanvasStore.deleteCheckpoint).
+ * - The line crosses the canvas when the checkpoint is expanded, with the
+ *   stage it seals above it. Collapsed, it is a short stub: the pill alone
+ *   says the node is a nested query.
+ * - The pill is the junction. It sits on the line, centred on the node, and
+ *   the connector runs from its bottom edge down to the node's box (passing
+ *   behind the node's action bar).
+ * - The pill holds the expand/collapse toggle, the label (`limit 10`,
+ *   `limit 1 per c.id`, `group t.title → count` - a limit's label opens the
+ *   limit editor for this checkpoint), and × to remove the checkpoint.
  *
- * Only the label and × take clicks. The rest of the line lets them through,
- * so a rubber-band selection can start on it - layout.ts also sets
- * `pointerEvents: 'none'` on ReactFlow's own wrapper for the same reason.
+ * Only the pill takes clicks. The rest lets them through, so a rubber-band
+ * selection can start on the line - layout.ts also sets `pointerEvents:
+ * 'none'` on ReactFlow's own wrapper for the same reason.
  */
 const CheckpointDividerNode: React.FC<NodeProps<CanvasDividerNodeData>> = observer(({ data }) => {
   const canvasStore = useCanvasStore();
   const editable = data.limit !== undefined;
+  const pillBottom = lineY + pillHeight / 2;
 
   return (
     <div
       data-testid={`checkpoint-divider-${data.name}`}
       style={{
         width: data.width,
-        height: 24,
+        height: pillBottom + data.connector,
         position: 'relative',
-        display: 'flex',
-        alignItems: 'center',
         pointerEvents: 'none',
       }}
     >
       <div
         aria-hidden
+        style={{ position: 'absolute', left: 0, right: 0, top: lineY - 0.75, borderTop: stroke }}
+      />
+      <div
+        aria-hidden
+        data-testid={`checkpoint-connector-${data.name}`}
         style={{
           position: 'absolute',
-          left: 0,
-          right: 0,
-          top: '50%',
-          borderTop: '1.5px dashed var(--canvas-container-border)',
+          left: data.pillX - 0.75,
+          top: pillBottom,
+          height: data.connector,
+          borderLeft: stroke,
         }}
       />
       <div
+        data-testid={`checkpoint-pill-${data.name}`}
         className="nodrag nopan"
         style={{
-          position: 'relative',
-          marginLeft: 12,
-          paddingRight: 2,
+          position: 'absolute',
+          left: data.pillX,
+          top: lineY - pillHeight / 2,
+          height: pillHeight,
+          transform: 'translateX(-50%)',
+          boxSizing: 'border-box',
           display: 'flex',
           alignItems: 'center',
-          gap: 2,
+          gap: 4,
+          padding: '0 6px',
+          border: '1.5px solid var(--canvas-container-border)',
+          borderRadius: pillHeight / 2,
           background: 'var(--canvas-bg)',
+          fontSize: 'calc(10px * var(--text-scale, 1))',
+          lineHeight: 1,
+          fontFamily: 'var(--canvas-font)',
+          whiteSpace: 'nowrap',
           pointerEvents: 'auto',
         }}
       >
+        <span
+          data-testid={`checkpoint-toggle-${data.name}`}
+          title={
+            data.expanded
+              ? 'Collapse: hide what this checkpoint seals (e)'
+              : 'Expand: show what this checkpoint seals (e)'
+          }
+          onClick={e => {
+            e.stopPropagation();
+            canvasStore.toggleNested(data.name);
+          }}
+          style={{ cursor: 'pointer', color: 'var(--canvas-text-dim)' }}
+        >
+          {data.expanded ? '▾' : '▸'}
+        </span>
         {/* Written as pine-lang reports it - not uppercased like the action
             buttons, since it carries column names (`c.id`). A limit's label
             is a picker trigger (see TableNode.tsx's ActionButton for what
@@ -75,24 +114,28 @@ const CheckpointDividerNode: React.FC<NodeProps<CanvasDividerNodeData>> = observ
               : undefined
           }
           style={{
-            fontSize: 'calc(11px * var(--text-scale, 1))',
-            lineHeight: 'calc(11px * var(--text-scale, 1))',
-            fontFamily: 'var(--canvas-font)',
             fontWeight: 600,
-            padding: '2px 4px',
             color: editable ? 'var(--canvas-trace)' : 'var(--canvas-text-dim)',
             cursor: editable ? 'pointer' : undefined,
-            whiteSpace: 'nowrap',
           }}
         >
           {data.label}
         </span>
-        <DeleteButton
-          testId={`checkpoint-delete-${data.name}`}
+        <span
+          data-testid={`checkpoint-delete-${data.name}`}
           title="Remove checkpoint"
-          onClick={() => void canvasStore.deleteCheckpoint(data.name)}
-          style={{ position: 'static' }}
-        />
+          onClick={e => {
+            e.stopPropagation();
+            void canvasStore.deleteCheckpoint(data.name);
+          }}
+          style={{
+            cursor: 'pointer',
+            color: 'var(--canvas-text-dim)',
+            fontSize: 'calc(11px * var(--text-scale, 1))',
+          }}
+        >
+          &times;
+        </span>
       </div>
     </div>
   );

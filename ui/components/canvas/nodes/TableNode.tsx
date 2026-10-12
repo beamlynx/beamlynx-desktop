@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { Handle, NodeProps, Position, useUpdateNodeInternals } from 'reactflow';
 import { CanvasHandle, CanvasTableNodeData, PickerState } from '../../../store/canvas/canvas.model';
-import { checkpointRows, getNodeHeight, nodeWidth } from '../../../store/canvas/layout';
+import { getNodeHeight, nodeWidth } from '../../../store/canvas/layout';
 import { useCanvasStore } from '../canvas-context';
 import { useStores } from '../../../store/store-container';
 import { NOTCHED_NODE_THEMES } from '../../../styles/palette/themes';
@@ -92,27 +92,21 @@ const headerHeight = 48;
 // Square, not round - a join column is a "pin" on the component package, and
 // pins are square in this system (see the notch/badge below); a round dot
 // here would read as a different kind of thing from everything else.
-// `rowOf` places each handle on a given row instead of stacking them in
-// order: a checkpoint's node lists its columns, and a join's handle sits on
-// the row of the column it uses, with no label of its own.
 const RelationDots = ({
   handles,
   type,
   position,
-  rowOf,
 }: {
   handles: CanvasHandle[];
   type: 'target' | 'source';
   position: Position;
-  rowOf?: (column: string) => number;
 }) => {
   if (handles.length === 0) return null;
   const labelSide: React.CSSProperties = position === Position.Left ? { left: 8 } : { right: 8 };
   return (
     <>
       {handles.map((h, i) => {
-        const row = rowOf ? Math.max(rowOf(h.column), 0) : i;
-        const top = headerHeight + (row + 0.5) * handleRowHeight;
+        const top = headerHeight + (i + 0.5) * handleRowHeight;
         return (
           <React.Fragment key={h.id}>
             <Handle
@@ -121,7 +115,7 @@ const RelationDots = ({
               id={h.id}
               style={{ width: 6, height: 6, borderRadius: 1, background: 'var(--canvas-pin)', top }}
             />
-            {h.column && !rowOf && (
+            {h.column && (
               <div
                 title={h.column}
                 style={{
@@ -283,28 +277,15 @@ export const ActionDivider = () => (
 // focus), so it doesn't need its own attention-grabbing treatment on top of
 // that - a quiet × reads as "close", not an alarm. Sits inside the card's
 // own top-right corner (not straddling the border) so it doesn't compete
-// with the notch/pin system that lives right at the edges. Exported for a
-// checkpoint's divider, whose × removes the checkpoint - the same kind of
-// one-off destructive action, so it looks the same. `style` overrides the
-// corner placement there.
-export const DeleteButton = ({
-  onClick,
-  testId,
-  title = 'Remove node',
-  style,
-}: {
-  onClick: () => void;
-  testId?: string;
-  title?: string;
-  style?: React.CSSProperties;
-}) => (
+// with the notch/pin system that lives right at the edges.
+const DeleteButton = ({ onClick, testId }: { onClick: () => void; testId?: string }) => (
   <div
     data-testid={testId}
     onClick={e => {
       e.stopPropagation();
       onClick();
     }}
-    title={title}
+    title="Remove node"
     style={{
       position: 'absolute',
       top: 6,
@@ -321,7 +302,6 @@ export const DeleteButton = ({
       fontSize: 'calc(11px * var(--text-scale, 1))',
       lineHeight: 1,
       color: 'var(--canvas-text-dim)',
-      ...style,
     }}
   >
     &times;
@@ -590,8 +570,6 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
   // True while this checkpoint's first action waits for its name to be
   // written into the text - see CanvasStore.checkpointPinning.
   const pinning = !!checkpoint && canvasStore.checkpointPinning === data.alias;
-  const rows = checkpoint ? checkpointRows(data) : null;
-  const rowOf = rows ? (column: string) => rows.columns.indexOf(column) : undefined;
 
   return (
     <div
@@ -657,6 +635,10 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
           flexWrap: 'nowrap',
           opacity: engaged ? 1 : 0,
           transition: 'opacity 0.1s ease-in-out',
+          // A checkpoint's connector runs down through this row to the box
+          // (CheckpointDividerNode.tsx); while the bar shows, it covers the
+          // line instead of the line striking through its labels.
+          ...(checkpoint ? { background: 'var(--canvas-bg)', alignSelf: 'center', width: 'fit-content', margin: '0 auto 4px', padding: '0 4px' } : {}),
         }}
       >
         {pinning && (
@@ -716,11 +698,9 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
             // node at the same time"). Only one thing shows as current at
             // once: the specific config item while there is one, the whole
             // node otherwise.
-            // A checkpoint's node has a dashed border, like the divider above
-            // it: it is a sealed result, not a table.
             border: isFocusTarget && !hasConfigCursor
-              ? `3px ${checkpoint ? 'dashed' : 'solid'} var(--canvas-node-border-current)`
-              : `1.5px ${checkpoint ? 'dashed' : 'solid'} var(--canvas-node-border)`,
+              ? '3px solid var(--canvas-node-border-current)'
+              : '1.5px solid var(--canvas-node-border)',
             background: isFocusTarget && !hasConfigCursor ? 'var(--canvas-node-bg-current)' : 'var(--canvas-node-bg)',
             borderRadius: hasNotch ? '3px' : '8px',
             clipPath: hasNotch ? cardClipPath : undefined,
@@ -755,46 +735,8 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
             )}
           </div>
 
-          {/* The sealed result's columns, one per row - the same rows its
-              join handles sit on (see RelationDots' rowOf). */}
-          {rows && (
-            <div
-              data-testid={`checkpoint-columns-${data.alias}`}
-              style={{
-                position: 'absolute',
-                top: headerHeight,
-                left: 14,
-                right: 14,
-                fontSize: 'calc(10px * var(--text-scale, 1))',
-                fontFamily: 'var(--canvas-font)',
-                color: 'var(--canvas-text-dim)',
-              }}
-            >
-              {rows.columns.map(column => (
-                <div
-                  key={column}
-                  title={column}
-                  style={{
-                    height: handleRowHeight,
-                    lineHeight: `${handleRowHeight}px`,
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}
-                >
-                  {column}
-                </div>
-              ))}
-              {rows.hidden > 0 && (
-                <div style={{ height: handleRowHeight, lineHeight: `${handleRowHeight}px`, opacity: 0.7 }}>
-                  … {rows.hidden} more
-                </div>
-              )}
-            </div>
-          )}
-
-          <RelationDots handles={data.leftHandles} type="target" position={Position.Left} rowOf={rowOf} />
-          <RelationDots handles={data.rightHandles} type="source" position={Position.Right} rowOf={rowOf} />
+          <RelationDots handles={data.leftHandles} type="target" position={Position.Left} />
+          <RelationDots handles={data.rightHandles} type="source" position={Position.Right} />
           {/* Default (unnamed) handles - every other handle on this node is
               named (`l:column`/`r:column`, from an actually-resolved join's
               columns). An edge with no column info to name a handle after -

@@ -258,6 +258,14 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
           if (isCheckpoint) void canvasStore.openCheckpointPicker(alias, 'path', anchorFor(alias));
           else canvasStore.openPathPicker(alias, anchorFor(alias));
           return;
+        // Expand or collapse the focused checkpoint's contents - the stage it
+        // seals (CanvasStore.toggleNested). The same as the toggle on its
+        // node. Checkpoints' nodes only.
+        case 'e':
+          if (!isCheckpoint) return;
+          e.preventDefault();
+          canvasStore.toggleNested(alias);
+          return;
         case 'l':
           // Offered on a checkpoint's node too, like 'p': it limits the
           // sealed result (see CanvasStore.openLimitEditor). The checkpoint's
