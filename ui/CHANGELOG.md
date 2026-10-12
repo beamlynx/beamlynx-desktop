@@ -34,7 +34,6 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - The unused `marked` library.
 
 ### Fixed
-- The SQL panel couldn't format a query that uses a `$variable` with no value yet, such as `name = $test`. It showed the query unformatted, and in `next dev` the error overlay opened over the canvas. It now formats it, with `$test` in place of the value.
 - A table that uses a named result showed its name twice, as `top (top)`. It shows it once.
 - A canvas popover opened near the edge of the canvas could be cut off. It now always stays inside the window.
 - Changing a limit on the canvas kept only the number: `limit: 1 per c.id` became `limit: 3`. The `per` columns now stay.
