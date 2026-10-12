@@ -98,6 +98,46 @@ test('a burst of SQL typing is one undo step', async () => {
   }
 });
 
+test('undo and redo end a burst, even when they land on the last translation', async () => {
+  const { restore } = stubFetch(sql => ({ expression: `t_${sql}`, warnings: [] }));
+  try {
+    const session = newSession();
+    const canvas = session.getCanvasStore();
+    session.expression = 'original';
+    for (const sql of ['1', '2']) {
+      session.query = sql;
+      await session.convertSql();
+    }
+    canvas.undo();
+    canvas.redo();
+    assert.equal(session.expression, 't_2');
+    session.query = '3';
+    await session.convertSql();
+    canvas.undo();
+    assert.equal(session.expression, 't_2');
+  } finally {
+    restore();
+  }
+});
+
+test("a translation that changes nothing doesn't start a burst", async () => {
+  const { restore } = stubFetch(sql => ({ expression: sql === 'same' ? 'current' : 'changed', warnings: [] }));
+  try {
+    const session = newSession();
+    const canvas = session.getCanvasStore();
+    session.expression = 'current';
+    session.query = 'same';
+    await session.convertSql();
+    session.query = 'other';
+    await session.convertSql();
+    assert.equal(session.expression, 'changed');
+    canvas.undo();
+    assert.equal(session.expression, 'current');
+  } finally {
+    restore();
+  }
+});
+
 test("a slow answer about older SQL doesn't replace a newer one", async () => {
   let releaseFirst;
   const first = new Promise(r => (releaseFirst = r));

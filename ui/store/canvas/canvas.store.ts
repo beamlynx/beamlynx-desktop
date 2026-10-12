@@ -697,8 +697,13 @@ export class CanvasStore {
     this.closePicker();
     this.selectedAliases = [];
     this._cursor = null;
+    const before = this.session.expression;
     this.applyExpression(pine, { skipAutoRun: true, coalesce });
-    this.sqlTranslationWritten = this.session.expression;
+    // A translation that changed nothing doesn't start a burst: the step
+    // under the next real one must be the Pine as it is now.
+    if (coalesce || this.session.expression !== before) {
+      this.sqlTranslationWritten = this.session.expression;
+    }
   }
 
   /**
@@ -776,6 +781,9 @@ export class CanvasStore {
   undo() {
     if (this.undoStack.length === 0) return;
     const previous = this.undoStack.pop() as string;
+    // Ends any burst of SQL typing, even when this lands on the text the
+    // last translation wrote: the next translation is a step of its own.
+    this.sqlTranslationWritten = null;
     this.redoStack.push(this.session.expression);
     this.closePicker();
     this.selectedAliases = [];
@@ -788,6 +796,9 @@ export class CanvasStore {
   redo() {
     if (this.redoStack.length === 0) return;
     const next = this.redoStack.pop() as string;
+    // Ends any burst of SQL typing, even when this lands on the text the
+    // last translation wrote: the next translation is a step of its own.
+    this.sqlTranslationWritten = null;
     this.undoStack.push(this.session.expression);
     this.closePicker();
     this.selectedAliases = [];
