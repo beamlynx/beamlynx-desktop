@@ -74,7 +74,7 @@ type McpQueryRequest = {
   // Values for the expression's $variables, as the agent passed them to
   // run_query. Absent from a desktop app older than variables.
   variables?: Record<string, import('./store/client').VariableValue>;
-  // run_query's SQL, in place of an expression. runMcpQuery converts it to
+  // run_sql_as_pine's SQL, in place of an expression. runMcpQuery converts it to
   // Pine; it never runs as SQL. Absent from a desktop app older than this.
   sql?: string;
 };

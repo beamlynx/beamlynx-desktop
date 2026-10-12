@@ -28,7 +28,7 @@ const McpBridge = () => {
       if (kind === 'build') {
         return global.explainMcpQuery({ profileId, expression });
       }
-      // sql: run_query's SQL, which runMcpQuery converts to Pine and never runs.
+      // sql: run_sql_as_pine's SQL, which runMcpQuery converts to Pine and never runs.
       return global.runMcpQuery({ profileId, expression, sql, variables });
     });
   }, [global]);

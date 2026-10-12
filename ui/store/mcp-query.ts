@@ -20,7 +20,7 @@
 // credential-store.ts), so a human's own tab on that connection is
 // redacted exactly like the MCP tab is.
 //
-// An agent may send SQL to run_query, but SQL never runs: runMcpQuery
+// An agent may send SQL (the run_sql_as_pine tool), but SQL never runs: runMcpQuery
 // converts it to Pine with pine-lang's /sql-to-pine (client.sqlToPine) and
 // runs the Pine, down the same path as any agent expression. So the
 // choke point above still sees every query. See
