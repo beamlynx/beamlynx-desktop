@@ -149,7 +149,7 @@ const { join } = require('node:path');
 test('nothing outside the store decides what the "+" menu offers', () => {
   const callers = [
     'components/canvas/nodes/TableNode.tsx',
-    'components/canvas/nodes/CheckpointDividerNode.tsx',
+    'components/canvas/nodes/NestedContainerNode.tsx',
     'hooks/useCanvasKeybindings.ts',
   ];
   for (const file of callers) {

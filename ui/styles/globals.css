@@ -234,3 +234,56 @@ body.is-resizing {
     scroll-behavior: auto !important;
   }
 }
+
+/* Canvas: expanding or collapsing a nested query (components/canvas/Canvas.tsx).
+   Nodes that stay move to their new place; a node that appears grows in, and
+   one that goes shrinks out - a container collapsing into the node below it.
+   The animation is on the node's content, not ReactFlow's wrapper, whose
+   transform is its position. A node being dragged follows the pointer with
+   no transition. */
+@media (prefers-reduced-motion: no-preference) {
+  .canvas-flow .react-flow__node {
+    transition: transform 250ms ease-in-out;
+  }
+  .canvas-flow .react-flow__node.dragging {
+    transition: none;
+  }
+  /* A container that stays open but changes size - an outer one when an
+     inner one opens or closes - grows or shrinks with it, connector too. */
+  .canvas-flow .canvas-container,
+  .canvas-flow .canvas-container > div {
+    transition: width 250ms ease-in-out, height 250ms ease-in-out, top 250ms ease-in-out, left 250ms ease-in-out;
+  }
+  .canvas-flow .react-flow__node.canvas-entering > div {
+    animation: canvas-grow 250ms ease-in-out;
+  }
+  .canvas-flow .react-flow__node.canvas-exiting > div {
+    animation: canvas-shrink 250ms ease-in-out forwards;
+  }
+}
+
+@keyframes canvas-grow {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+    transform-origin: 50% 100%;
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+    transform-origin: 50% 100%;
+  }
+}
+
+@keyframes canvas-shrink {
+  from {
+    opacity: 1;
+    transform: scale(1);
+    transform-origin: 50% 100%;
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.85);
+    transform-origin: 50% 100%;
+  }
+}

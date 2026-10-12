@@ -79,11 +79,11 @@ export class CanvasStore {
 
   canvasGraph: CanvasGraph = emptyGraph;
   /**
-   * The nested query whose contents are shown - one at a time (see
-   * layout.ts's buildCanvasGraph). Today a nested query is a checkpoint; the
-   * state is by name, so other kinds (a named result) can share the rule. undefined: the default, the one feeding the last
-   * stage. null: none, only the last stage. UI-only: never written into the
-   * Pine text, and not persisted.
+   * The nested query whose container is open - one at a time (see
+   * layout.ts's buildCanvasGraph): a checkpoint, a named block, or a
+   * checkpoint inside a named block (`b0/result_1`). undefined or null:
+   * none, the default - only the last stage is drawn. UI-only: never
+   * written into the Pine text, and not persisted.
    */
   expandedNested: string | null | undefined = undefined;
 
@@ -972,8 +972,7 @@ export class CanvasStore {
       let probedOk = true;
       // A gesture that adds a group:/limit: makes a new checkpoint, and its
       // node is the new "current" node the next step builds on - so focus
-      // moves there and it is expanded, as focus follows a newly joined
-      // table (see commitJoin).
+      // moves there, as focus follows a newly joined table (see commitJoin).
       let addedCheckpoint: string | null = null;
       const prettified = await probeBuild(next, this.session.connectionId, this.contextOf(block)).then(
         ast => {
@@ -995,7 +994,9 @@ export class CanvasStore {
         // something the canvas itself is about to show as "Not parsing".
         this.applyExpression(prettified, { skipAutoRun: !probedOk, block, after });
         if (addedCheckpoint) {
-          this.expandedNested = prefix + addedCheckpoint;
+          // Collapsed, like every nested query by default: the new node
+          // stands for what it seals. Its toggle, or `e`, opens it.
+          this.expandedNested = undefined;
           this.focusNode(prefix + addedCheckpoint);
         }
         // The select/where/order pickers stay open across multiple picks

@@ -200,8 +200,8 @@ what makes the shortcuts discoverable without memorizing them up front.
 
 Focus order is the pipeline's own sequence, top to bottom
 (`CanvasStore.orderedFocusTargets`): each stage's tables, then the node of the
-checkpoint that seals it, then the next stage's tables. A checkpoint's divider
-is not a stop. There's no second navigation axis (no left/right), since the
+checkpoint that seals it, then the next stage's tables. A container is not a
+stop, and a node hidden in a collapsed one isn't either. There's no second navigation axis (no left/right), since the
 pipeline is a single strict sequence, not a 2D graph to roam.
 
 **Acting on the focused node** (normal mode only):
@@ -213,8 +213,8 @@ pipeline is a single strict sequence, not a 2D graph to roam.
 | `w` | Open the where-condition picker |
 | `o` | Open the order-by picker |
 | `g` | Open the group-by picker (not offered on a checkpoint node — grouping an already-grouped result is a different question, not implemented) |
-| `e` | On a checkpoint's node: expand or collapse what it seals (the same as the toggle on its pill) |
-| `x` | Delete the focused node — a table if `removable`, or, on a checkpoint's node, the checkpoint (as the × on its divider does; the tables it sealed stay) |
+| `e` | On a nested query's node (a checkpoint, or a table using a named block): expand or collapse its container |
+| `x` | Delete the focused node — a table if `removable`, or, on a checkpoint's node, the checkpoint (as the × on its node does; the tables it sealed stay) |
 | `u` | Undo the last canvas gesture |
 | `c` | Write (or edit) the comment at the top of the expression — see "The comment" below |
 | `Shift`+`U` | Redo |
@@ -378,30 +378,35 @@ The canvas draws the pipeline as stages stacked top to bottom
 (`layout.ts`'s `buildCanvasGraph`):
 
 - Within a stage, tables keep the left-to-right layout, each drawn once.
-- Each checkpoint is a dashed divider across the canvas, below the stage it
-  seals (`nodes/CheckpointDividerNode.tsx`). On the line, centred above the
-  checkpoint's node, is a pill: the expand toggle, the label (`limit 10`,
-  `limit 1 per c.id`, `group t.title → count`) and ×. A limit's label opens
-  the limit editor for that checkpoint's own number; `per` is kept. The ×
-  removes the checkpoint. A short dashed connector runs from the pill's
-  bottom edge to the node's box.
-- Below the divider is a node named after the checkpoint, exactly as pine-lang
-  reports it. It is drawn like any table node (`TableNode` with
-  `data.checkpoint` set): chips for the steps after the checkpoint, join
-  handles, the action bar. Its actions go through `openCheckpointPicker`.
-  Tables joined after the checkpoint are in its stage, with an edge from it.
-- **One nested query is expanded at a time** (`CanvasStore.expandedNested`,
-  UI-only, not saved). Checkpoints form a chain - each one's node sits in
-  the stage the next one seals - so expanding one draws every stage from the
-  one it seals down to the last. The checkpoints above it are collapsed:
-  their node and pill are drawn (the pill on a short stub of line), their
-  stage isn't. By default the checkpoint feeding the last stage is
-  expanded. The pill's toggle and `e` expand or collapse; collapsing hands
-  the expansion to the next checkpoint down, or to none for the last.
-  Keyboard focus only visits drawn nodes.
-- **After a gesture adds a checkpoint**, focus moves to its node, and it is
-  expanded - as focus follows a newly joined table
-  (`CanvasStore.runCommit`, via `layout.ts`'s `newCheckpointName`).
+- A checkpoint is a node named after it, exactly as pine-lang reports it,
+  drawn like any table node (`TableNode` with `data.checkpoint` and
+  `data.nested` set). Under its name it says what produced it: an expand
+  toggle (▸), the operation (`limit 10`, `limit 1 per c.id`,
+  `group t.title → count`) and ×. A limit's label opens the limit editor
+  for that checkpoint's own number and `per`. The × removes the checkpoint.
+  Its actions go through `openCheckpointPicker`. Tables joined after the
+  checkpoint are in its stage, with an edge from it.
+- **Collapsed** (the default), that node is all there is. **Expanded**, a
+  container is drawn directly above it (`nodes/NestedContainerNode.tsx`):
+  a dashed box with no fill around the stage the checkpoint seals, with the
+  operation on its top edge and a short connector from its bottom edge to
+  the node. The tables inside stay fully interactive. The box's header
+  collapses it.
+- **One container is open at a time** (`CanvasStore.expandedNested`, UI-only,
+  not saved). Checkpoints form a chain - each one's node sits in the stage
+  the next one seals - so expanding one keeps the ones below it open too,
+  and their containers nest. Collapsing one hands the expansion to the next
+  checkpoint down, or to none for the last. The toggle and `e` expand or
+  collapse. Keyboard focus only visits drawn nodes.
+- **Animation.** Expanding or collapsing animates (`Canvas.tsx`, and the
+  `canvas-flow` rules in `styles/globals.css`): nodes that stay move to
+  their new place, a node that appears grows in, and one that goes is kept
+  for the animation and shrinks out, so a container visibly collapses into
+  its node while another opens. A dragged node has no transition, and
+  `prefers-reduced-motion` turns it all off.
+- **After a gesture adds a checkpoint**, focus moves to its node, collapsed -
+  as focus follows a newly joined table (`CanvasStore.runCommit`, via
+  `layout.ts`'s `newCheckpointName`).
 
 A sealed checkpoint's stage is drawn from its snapshot in
 `ast['pending-assignments'][name]`, which carries its tables, joins, columns,
@@ -422,11 +427,12 @@ draws the last one; each earlier one must end in `|= name` (`tab-blocks.ts`),
 or the canvas shows a banner instead. Such a block is a nested query of the
 last one, with the same one-expanded-at-a-time rule as checkpoints:
 
-- The table in the last block that uses `name` gets a pill (`|= name`, or
-  `limit 20 |= name` when the block ends in a checkpoint). Expanding it draws
-  the block above, with the line and connector down to that table.
-- A block nothing joins is a standalone node beside the graph, with its own
-  pill and no actions. When a `where: ... in name` uses it, it says so.
+- The table in the last block that uses `name` says so under its name
+  (`|= name`, or `limit 20 |= name` when the block ends in a checkpoint),
+  with an expand toggle. Expanding it draws the block above it, in a
+  container.
+- A block nothing joins is a standalone node beside the graph, with no
+  actions. When a `where: ... in name` uses it, it says so.
 - Nodes drawn from an earlier block have its prefix in their id (`b0/c`).
   `CanvasStore.scopeOf` turns an id into the block and its alias in that
   block, so a gesture on one edits that block's own text, and its probes
@@ -437,7 +443,7 @@ last one, with the same one-expanded-at-a-time rule as checkpoints:
 **The limit editor's `per`.** Besides N, the limit editor has an optional
 `per` field: the first N rows of each group of rows sharing those columns.
 It offers every column of the tables in the stage the limit ends. Opened
-from a checkpoint's pill, both fields show what the checkpoint has.
+from a checkpoint node's label, both fields show what the checkpoint has.
 
 **Variables in the where editor.** A value starting with `$` is a variable
 (`status = $status`, `id in $ids`); the tab's variables are offered as you
@@ -505,7 +511,8 @@ responded to the first build.
 stage out with dagre (`layoutStage`), overriding dagre's own y-coordinate
 with strict pipeline-sequence order (`sequenceYByAlias`) so node 2 always
 sits below node 1 regardless of which rank dagre's crossing-minimization puts
-it on. Stages are stacked with a checkpoint divider between each pair. It's a
+it on. Stages are stacked, and an expanded checkpoint's stage gets a
+container above its node. It's a
 smaller, independent model from the classic graph's
 `store/graph.util.ts`/`store/node-layout.ts` — no suggested/candidate nodes.
 
@@ -603,9 +610,9 @@ that never touches `session.expression`/`session.ast`).
 ### Layout (`store/canvas/layout.ts`)
 
 `stagesOf` (AST → stages), `deriveStage` (one stage → nodes/edges, with the
-checkpoint's node first), `checkpointLabel` (a divider's text) and
-`buildCanvasGraph` (lays out each stage, stacks them, and adds a divider per
-checkpoint).
+checkpoint's node first), `checkpointLabel` (what a checkpoint's node and
+container say) and `buildCanvasGraph` (lays out each stage, stacks them, and
+adds a container around each expanded nested query).
 
 ### Types (`store/canvas/canvas.model.ts`)
 
@@ -625,8 +632,9 @@ checkpoint).
 - `nodes/TableNode.tsx` — action bar, chip rows (`sel`/`where`/`order`/
   `group`), delete button (last node only), join-direction handles.
 - `nodes/StartNode.tsx` — the empty-graph "+ pick a table" node.
-- `nodes/CheckpointDividerNode.tsx` — a checkpoint's dashed divider: its
-  label (a limit's opens the limit editor) and its ×.
+- `nodes/NestedContainerNode.tsx` — an expanded nested query's dashed
+  container, its label and collapse toggle on the top edge, and the
+  connector down to its node.
 - `Picker.tsx` — the dropdown for both list-mode (table/join/select/where/
   order/group) and the where-value two-step flow; keyboard nav, click-outside
   close, filter-as-you-type. `,` doubles as `Enter` on the list.

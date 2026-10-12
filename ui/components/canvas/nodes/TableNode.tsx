@@ -503,7 +503,8 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
   // of this condition - hover and an actually-open picker both still show
   // it regardless, since neither of those is "just browsing".
   // A named block nothing joins isn't in the query's text: no actions.
-  const standalone = !!data.named?.standalone;
+  const nested = data.nested;
+  const standalone = !!nested?.standalone;
   const engaged = !standalone && (hovered || pickerOpenHere || (isFocusTarget && !hasConfigCursor));
 
   // The three always-visible operations, in their fixed display order - a
@@ -722,8 +723,10 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
             >
               {data.table}
             </span>
-            {/* A checkpoint's node is named once: its name is its alias. */}
-            {!checkpoint && (
+            {/* A nested query's node is named once - its name is its alias
+                (`result_1`, `top`) - except a standalone one, which says how
+                the query uses it. */}
+            {(!nested || standalone) && (
               <span
                 style={{
                   flexShrink: 0,
@@ -736,13 +739,84 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
                     block, without the block's prefix (see scopeOf); a
                     standalone named block says how the query uses it. */}
                 {standalone
-                  ? data.named?.usedInWhere
+                  ? nested?.usedInWhere
                     ? '(used in where)'
                     : '(not joined)'
                   : `(${data.alias.replace(/^b\d+\//, '')})`}
               </span>
             )}
           </div>
+
+          {/* A nested query says what produced it, under its name: the
+              expand toggle, the operation (`limit 1 per c.id`, `|= top`) -
+              a limit's opens the limit editor - and, for a checkpoint, ×
+              to remove it. */}
+          {nested && (
+            <div
+              className="nodrag"
+              data-testid={`nested-badge-${data.alias}`}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                marginTop: 2,
+                fontSize: 'calc(10px * var(--text-scale, 1))',
+                fontFamily: 'var(--canvas-font)',
+                color: 'var(--canvas-text-dim)',
+                whiteSpace: 'nowrap',
+                minWidth: 0,
+              }}
+            >
+              <span
+                data-testid={`nested-toggle-${nested.name}`}
+                title={nested.expanded ? 'Collapse (e)' : 'Expand: show what this holds (e)'}
+                onClick={e => {
+                  e.stopPropagation();
+                  canvasStore.toggleNested(nested.name);
+                }}
+                style={{ cursor: 'pointer', color: 'var(--canvas-container-border)' }}
+              >
+                {nested.expanded ? '▾' : '▸'}
+              </span>
+              <span
+                data-testid={`nested-label-${nested.name}`}
+                className={nested.limit !== undefined ? 'picker-trigger' : undefined}
+                title={nested.limit !== undefined ? 'Change the limit' : undefined}
+                onClick={
+                  nested.limit !== undefined
+                    ? e => {
+                        e.stopPropagation();
+                        canvasStore.openLimitEditor(data.alias, { x: e.clientX, y: e.clientY }, nested.name);
+                      }
+                    : e => {
+                        e.stopPropagation();
+                        canvasStore.toggleNested(nested.name);
+                      }
+                }
+                style={{
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  cursor: 'pointer',
+                  color: nested.limit !== undefined ? 'var(--canvas-trace)' : undefined,
+                }}
+              >
+                {nested.label}
+              </span>
+              {nested.kind === 'checkpoint' && (
+                <span
+                  data-testid={`nested-delete-${nested.name}`}
+                  title="Remove this checkpoint"
+                  onClick={e => {
+                    e.stopPropagation();
+                    void canvasStore.deleteCheckpoint(nested.name);
+                  }}
+                  style={{ cursor: 'pointer', opacity: 0.7 }}
+                >
+                  &times;
+                </span>
+              )}
+            </div>
+          )}
 
           <RelationDots handles={data.leftHandles} type="target" position={Position.Left} />
           <RelationDots handles={data.rightHandles} type="source" position={Position.Right} />

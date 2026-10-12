@@ -47,28 +47,34 @@ test('a gesture rewrites only its own block', () => {
 
 const blocks = [{ name: 'top', prefix: 'b0/', ast: asts.block }];
 
-test('collapsed: the node using the block has a pill, the block is not drawn', () => {
+test('collapsed: the node using the block says so, the block is not drawn', () => {
   const graph = buildCanvasGraph(asts.main, {}, undefined, blocks);
   const ids = graph.nodes.map(n => n.id);
-  assert.ok(ids.includes('named-divider:top'));
-  assert.ok(!ids.some(id => id.startsWith('b0/')));
+  assert.ok(!ids.some(id => id.startsWith('b0/') || id.startsWith('container:')));
   const top = graph.nodes.find(n => n.id === 'top');
-  assert.deepEqual(top.data.named, { name: 'top', expanded: false });
-  // The block ends in a limit named top: the pill says both.
-  assert.equal(graph.nodes.find(n => n.id === 'named-divider:top').data.label, 'limit 10 |= top');
+  // The block ends in a limit named top: the label says both.
+  assert.deepEqual(top.data.nested, {
+    kind: 'named',
+    name: 'top',
+    label: 'limit 10 |= top',
+    expanded: false,
+  });
 });
 
-test('expanded: the block is drawn above, with its own node ids and chips', () => {
+test('expanded: the block is drawn above, in a container, with its own node ids and chips', () => {
   const graph = buildCanvasGraph(asts.main, {}, 'top', blocks);
   const c = graph.nodes.find(n => n.id === 'b0/c');
   assert.ok(c, "the block's table is drawn, prefixed");
   assert.deepEqual(c.data.whereChips, ['id = 1']);
   // Its own trailing checkpoint isn't drawn twice: top is the last block's node.
   assert.ok(!graph.nodes.some(n => n.id === 'b0/top'));
-  const divider = graph.nodes.find(n => n.id === 'named-divider:top');
-  assert.equal(divider.data.expanded, true);
-  assert.ok(c.position.y < divider.position.y);
-  assert.ok(divider.position.y < graph.nodes.find(n => n.id === 'top').position.y);
+  const container = graph.nodes.find(n => n.id === 'container:top');
+  assert.equal(container.data.kind, 'named');
+  assert.ok(container.position.y < c.position.y);
+  assert.ok(
+    container.position.y + container.data.height <
+      graph.nodes.find(n => n.id === 'top').position.y + 28,
+  );
 });
 
 test('a named block nothing joins is a standalone node', () => {
@@ -76,5 +82,5 @@ test('a named block nothing joins is a standalone node', () => {
     { name: 'other', prefix: 'b0/', ast: asts.block },
   ]);
   const node = graph.nodes.find(n => n.id === 'named:other');
-  assert.equal(node.data.named.standalone, true);
+  assert.equal(node.data.nested.standalone, true);
 });

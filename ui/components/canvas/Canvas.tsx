@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import { Portal } from '@mui/material';
 import ReactFlow, {
   Background,
   BackgroundVariant,
@@ -15,7 +16,7 @@ import { observer } from 'mobx-react-lite';
 import { useStores } from '../../store/store-container';
 import { CanvasStore } from '../../store/canvas/canvas.store';
 import {
-  CanvasDividerNodeData,
+  CanvasContainerNodeData,
   CanvasNode,
   CanvasStartNodeData,
   CanvasTableNodeData,
@@ -25,7 +26,7 @@ import { useCanvasKeybindings } from '../../hooks/useCanvasKeybindings';
 import { CanvasStoreContext } from './canvas-context';
 import TableNode from './nodes/TableNode';
 import StartNode from './nodes/StartNode';
-import CheckpointDividerNode from './nodes/CheckpointDividerNode';
+import NestedContainerNode from './nodes/NestedContainerNode';
 import TraceEdge from './edges/TraceEdge';
 import Picker from './Picker';
 import MultiSelectToolbar from './MultiSelectToolbar';
@@ -36,10 +37,14 @@ import CanvasVariables from './CanvasVariables';
 const nodeTypes: NodeTypes = {
   'table-node': TableNode,
   'start-node': StartNode,
-  'checkpoint-divider': CheckpointDividerNode,
+  'nested-container': NestedContainerNode,
 };
 
 const edgeTypes = { trace: TraceEdge };
+
+// How long a nested query's expand/collapse animation runs - the same as
+// the `canvas-entering`/`canvas-exiting` animations in styles/globals.css.
+const NESTED_MOTION_MS = 250;
 
 // 'info' (connecting/loading - nothing wrong, just not ready yet) reuses the
 // same neutral accent the rest of canvas mode already uses for "in
@@ -105,19 +110,46 @@ const Flow: React.FC<{
   // actually changes, mirroring Graph.box.tsx's layoutedNodes -> setNodes
   // pattern exactly.
   const [nodes, setNodes, onNodesChange] = useNodesState<
-    CanvasTableNodeData | CanvasStartNodeData | CanvasDividerNodeData
+    CanvasTableNodeData | CanvasStartNodeData | CanvasContainerNodeData
   >([]);
 
+  // Expanding or collapsing a nested query animates (styles/globals.css): a
+  // node that appears grows in (`canvas-entering`), and one that goes is
+  // kept for the length of the animation to shrink out (`canvas-exiting`),
+  // so a container visibly collapses into its node while another opens.
+  // Nodes that stay just move, by a CSS transition on their position.
+  const previous = useRef<CanvasNode[] | null>(null);
   useEffect(() => {
-    setNodes(derivedNodes);
+    const before = previous.current;
+    previous.current = derivedNodes;
+    // The first graph, and a switch between tabs or connections, just appear.
+    if (!before || before.length === 0) {
+      setNodes(derivedNodes);
+      return;
+    }
+    const now = new Set(derivedNodes.map(n => n.id));
+    const was = new Set(before.map(n => n.id));
+    const leaving = before
+      .filter(n => !now.has(n.id))
+      .map(n => ({
+        ...n,
+        className: 'canvas-exiting',
+        draggable: false,
+        selectable: false,
+        style: { ...n.style, pointerEvents: 'none' as const },
+      }));
+    setNodes([...leaving, ...derivedNodes.map(n => (was.has(n.id) ? n : { ...n, className: 'canvas-entering' }))]);
+    if (leaving.length === 0) return;
+    const t = setTimeout(() => setNodes(ns => ns.filter(n => n.className !== 'canvas-exiting')), NESTED_MOTION_MS);
+    return () => clearTimeout(t);
   }, [derivedNodes, setNodes]);
 
   useEffect(() => {
-    if (nodes.length === 0) return;
+    if (derivedNodes.length === 0) return;
     const t = setTimeout(() => reactFlowInstance.fitView({ duration: 200 }), 50);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes.length, canvasGraph.edges.length, recenterRequestCount]);
+  }, [derivedNodes.length, canvasGraph.edges.length, recenterRequestCount]);
 
   const onNodeDragStop = (_e: React.MouseEvent, node: CanvasNode) => {
     if (node.type === 'table-node') {
@@ -235,6 +267,7 @@ const Flow: React.FC<{
         }}
       >
         <ReactFlow
+          className="canvas-flow"
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
@@ -314,7 +347,12 @@ const Flow: React.FC<{
           />
         </ReactFlow>
       </div>
-      <Picker />
+      {/* In a portal on <body>: the canvas pane clips what overflows it, so
+          a popover opened near its edge was cut off. Context still reaches
+          it through the portal. */}
+      <Portal>
+        <Picker />
+      </Portal>
       <CanvasToolbar canvasStore={canvasStore} extraAction={toolbarExtraAction} />
       <CanvasModeIndicator canvasStore={canvasStore} />
       <MultiSelectToolbar canvasStore={canvasStore} />
