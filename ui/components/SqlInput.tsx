@@ -10,6 +10,7 @@ import { vim } from '@replit/codemirror-vim';
 import { Box } from '@mui/material';
 import { useStores } from '../store/store-container';
 import { editorChrome, editorDarkSyntax } from './editor-theme';
+import { sqlCompletionConfig } from '../utils/sqlCompletion';
 
 interface SqlInputProps {
   session: Session;
@@ -93,6 +94,17 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true 
   );
 
   const isDark = global.theme === 'dark';
+  const vimMode = global.vimMode;
+
+  // Table and column names to complete, loaded again when the connection
+  // changes or is reindexed.
+  const connectionId = session.connectionId;
+  const schemaVersion = global.schemaVersion;
+  useEffect(() => {
+    void session.loadSqlSchema();
+  }, [session, connectionId, schemaVersion]);
+  const sqlSchema = session.sqlSchema;
+  const sqlConfig = useMemo(() => sqlCompletionConfig(sqlSchema), [sqlSchema]);
 
   const selectionUpdateExtension = useMemo(() => {
     return EditorView.updateListener.of(update => {
@@ -102,65 +114,70 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true 
     });
   }, [session]);
 
-  const extensions = [
-    EditorView.lineWrapping,
-    sql(),
-    editorChrome(isDark),
-    ...(isDark ? [editorDarkSyntax] : []),
-    selectionUpdateExtension,
-    // Structural only (height/padding) - color and font-family now come
-    // entirely from editorChrome, shared with PineInput.tsx.
-    EditorView.theme({
-      '&': {
-        fontSize: '13px',
-        height: '100%',
-      },
-      '.cm-editor': {
-        height: '100%',
-      },
-      '.cm-focused': {
-        outline: 'none',
-      },
-      '.cm-content': {
-        padding: '8px 12px',
-        minHeight: '100%',
-      },
-      '.cm-scroller': {
-        height: '100%',
-      },
-    }),
-    Prec.high(
-      keymap.of([
-        {
-          key: 'Mod-Enter',
-          run: () => {
-            session.evaluate();
-            return true;
-          },
+  // Memoized: a new array reconfigures the whole editor, and this component
+  // renders on every build. With a large schema that was felt per keystroke.
+  const extensions = useMemo(() => {
+    const extensions = [
+      EditorView.lineWrapping,
+      sql(sqlConfig),
+      editorChrome(isDark),
+      ...(isDark ? [editorDarkSyntax] : []),
+      selectionUpdateExtension,
+      // Structural only (height/padding) - color and font-family now come
+      // entirely from editorChrome, shared with PineInput.tsx.
+      EditorView.theme({
+        '&': {
+          fontSize: '13px',
+          height: '100%',
         },
-      ]),
-    ),
-  ];
-
-  if (global.vimMode) {
-    extensions.push(Prec.high(vim()));
-  }
-
-  // Escape stops a running query, as in the Pine editor (PineInput.tsx).
-  extensions.push(
-    Prec.lowest(
-      keymap.of([
-        {
-          key: 'Escape',
-          run: () => {
-            if (!session.loading || !session.runId) return false;
-            session.stop();
-            return true;
-          },
+        '.cm-editor': {
+          height: '100%',
         },
-      ]),
-    ),
-  );
+        '.cm-focused': {
+          outline: 'none',
+        },
+        '.cm-content': {
+          padding: '8px 12px',
+          minHeight: '100%',
+        },
+        '.cm-scroller': {
+          height: '100%',
+        },
+      }),
+      Prec.high(
+        keymap.of([
+          {
+            key: 'Mod-Enter',
+            run: () => {
+              session.evaluate();
+              return true;
+            },
+          },
+        ]),
+      ),
+    ];
+
+    if (vimMode) {
+      extensions.push(Prec.high(vim()));
+    }
+
+    // Escape stops a running query, as in the Pine editor (PineInput.tsx).
+    extensions.push(
+      Prec.lowest(
+        keymap.of([
+          {
+            key: 'Escape',
+            run: () => {
+              if (!session.loading || !session.runId) return false;
+              session.stop();
+              return true;
+            },
+          },
+        ]),
+      ),
+    );
+    return extensions;
+  }, [isDark, vimMode, sqlConfig, selectionUpdateExtension, session]);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>

@@ -26,6 +26,7 @@ import {
   JsonPathStep,
   Operation,
   Response,
+  SqlSchemaResponse,
   SqlToPineResponse,
   VariablesReport,
 } from './client';
@@ -281,6 +282,13 @@ export class Session {
    * editor shows.
    */
   sqlConversion: SqlConversion = { status: 'idle', message: '', warnings: [] };
+
+  /**
+   * What the SQL panel completes table and column names from, or null until
+   * loaded (or when the server is too old to send it). See loadSqlSchema.
+   */
+  sqlSchema: SqlSchemaResponse | null = null;
+  private sqlSchemaSeq = 0;
   /**
    * The expression the last successful conversion left the tab with. While
    * the tab's Pine is still exactly this, the SQL panel's text is what the
@@ -428,6 +436,8 @@ export class Session {
       columns: observable.ref,
       columnVisibilityModel: observable.ref,
       columnMetadata: observable.ref,
+      // Replaced whole, and can hold thousands of tables.
+      sqlSchema: observable.ref,
     });
 
     // Turning the hidden columns on or off swaps the SQL shown, unless it was
@@ -1228,6 +1238,25 @@ export class Session {
           warnings: [],
         };
       }
+    });
+  }
+
+  /**
+   * Load the connection's tables and columns for the SQL panel's completion.
+   * A failure (no connection, or a server without /sql-schema) leaves no
+   * completion, never an error.
+   */
+  public async loadSqlSchema(): Promise<void> {
+    const seq = ++this.sqlSchemaSeq;
+    let schema: SqlSchemaResponse | null;
+    try {
+      schema = await client.sqlSchema(this.connectionId);
+    } catch {
+      schema = null;
+    }
+    if (seq !== this.sqlSchemaSeq) return;
+    runInAction(() => {
+      this.sqlSchema = schema;
     });
   }
 
