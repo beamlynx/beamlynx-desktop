@@ -348,9 +348,27 @@ export const deleteCheckpoint = (base: PinnedBase): string => {
  * at the end remains correct only for the very first `limit:` a pipeline
  * gets, when nothing (a name or otherwise) exists after it yet.
  */
+/**
+ * The segments without `kind` (a checkpoint's limit: or group:), and without
+ * the checkpoint's name when that leaves it nothing to name.
+ *
+ * Every gesture pins a trailing checkpoint's name first (`|= agg`, see
+ * getPinnedBase), so removing its only limit: or group: used to leave
+ * `company as c | = agg` behind. The name goes too, but only when the canvas
+ * made it up (agg, agg2, ...) and nothing comes after it. A name someone wrote,
+ * or one that later steps use, stays.
+ */
+const withoutCheckpointOp = (segments: Segment[], kind: 'limit' | 'group'): Segment[] => {
+  const rest = segments.filter(s => s.kind !== kind);
+  const last = rest[rest.length - 1];
+  const stillACheckpoint = rest.some(s => s.kind === 'group' || s.kind === 'limit');
+  if (last?.kind === 'assign' && !stillACheckpoint && /^=\s*agg\d*$/.test(last.text.trim())) return rest.slice(0, -1);
+  return rest;
+};
+
 export const setLimit = (base: PinnedBase, value: number | null): string => {
   const existingIndex = base.segments.findIndex(s => s.kind === 'limit');
-  if (value === null) return toText(base.segments.filter(s => s.kind !== 'limit'));
+  if (value === null) return toText(withoutCheckpointOp(base.segments, 'limit'));
   const newSegment: Segment = { text: `limit: ${value}`, start: -1, end: -1, kind: 'limit', owner: null };
   if (existingIndex < 0) return toText([...base.segments, newSegment]);
   const next = [...base.segments];
@@ -392,7 +410,7 @@ export const setGroupColumns = (base: PinnedBase, alias: string, columns: string
   const others = priorAll.filter(part => !part.startsWith(`${alias}.`));
   const mine = columns.map(c => `${alias}.${c}`);
   const nextAll = [...others, ...mine];
-  if (nextAll.length === 0) return toText(base.segments.filter(s => s.kind !== 'group'));
+  if (nextAll.length === 0) return toText(withoutCheckpointOp(base.segments, 'group'));
   const newSegment: Segment = { text: `group: ${nextAll.join(', ')}`, start: -1, end: -1, kind: 'group', owner: null };
   if (existingIndex < 0) return toText([...base.segments, newSegment]);
   const next = [...base.segments];

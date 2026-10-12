@@ -15,9 +15,9 @@ interface CanvasKeybindingsProps {
  * (arrows always, j/k only with Vim Mode on), Shift+J/Shift+K's finer-
  * grained walk through every node's own configured items (always available,
  * regardless of Vim Mode), and this app's own mnemonic single-letter
- * operation shortcuts (s/w/o/g/p/+/x/u/U/i, always available -- these aren't
- * vim conventions and don't depend on Vim Mode) on whichever node currently
- * has keyboard focus (CanvasStore.focusedAlias).
+ * operation shortcuts (s/w/o/g/l/p/+/x/u/U/i, always available -- these
+ * aren't vim conventions and don't depend on Vim Mode) on whichever node
+ * currently has keyboard focus (CanvasStore.focusedAlias).
  *
  * Mirrors useGlobalKeybindings.ts's structure (a single document-level
  * `keydown` listener) but is deliberately its own hook rather than an
@@ -259,7 +259,16 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
           if (isFrame) void canvasStore.openCheckpointPicker('path', anchorFor(alias));
           else canvasStore.openPathPicker(alias, anchorFor(alias));
           return;
-        // The "+" overflow itself - o/g/p above already jump straight to
+        case 'l':
+          // Offered on a checkpoint too, like 'p' - `limit:` is pipeline-wide
+          // regardless of which node the gesture is opened from (see
+          // CanvasStore.openLimitEditor), so unlike 'g' there's no "does this
+          // even make sense here" question for a frame.
+          if (isStart) return;
+          e.preventDefault();
+          canvasStore.openLimitEditor(alias, anchorFor(alias));
+          return;
+        // The "+" overflow itself - o/g/l/p above already jump straight to
         // their target, so this exists for someone who wants to see what's
         // behind the button rather than recall the individual letter.
         // Mirrors TableNode.tsx's/FrameNode.tsx's own "+" button onClick

@@ -290,6 +290,17 @@ export type PickerState =
     }
   | {
       open: true;
+      mode: 'limit-value';
+      /** The node the gesture was opened from - `limit:` itself is pipeline-wide, not owned by this alias (see pine-actions.ts's setLimit). */
+      alias: string;
+      /** The pipeline's existing limit, if any - null shows no "clear" action (see Picker.tsx). Unlike `value` below, never changed after the picker opens. */
+      current: number | null;
+      /** The input's live text, seeded from `current` (CanvasStore.openLimitEditor) - a string, not a number, so a mid-edit empty/partial value doesn't need its own placeholder state. */
+      value: string;
+      anchor: PickerAnchor;
+    }
+  | {
+      open: true;
       mode: 'traverse';
       alias: string;
       /**
@@ -306,10 +317,11 @@ export type PickerState =
     };
 
 /** The actions tucked behind a node's "+" overflow trigger - see TableNode.tsx/FrameNode.tsx. */
-export type MoreAction = 'order' | 'group' | 'path' | 'traverse';
+export type MoreAction = 'order' | 'group' | 'path' | 'limit' | 'traverse';
 export const MORE_ACTIONS: { action: MoreAction; label: string; key: string }[] = [
   { action: 'order', label: 'order', key: 'o' },
   { action: 'group', label: 'group', key: 'g' },
+  { action: 'limit', label: 'limit', key: 'l' },
   { action: 'path', label: 'path', key: 'p' },
   { action: 'traverse', label: 'traverse', key: 't' },
 ];
@@ -325,8 +337,9 @@ export const MORE_ACTIONS: { action: MoreAction; label: string; key: string }[] 
  * result, and `traverse` would have to follow a foreign key out of a CTE's
  * sealed output, which is not a thing.
  */
-export const MORE_ACTIONS_FOR_TABLE: MoreAction[] = ['order', 'group', 'path', 'traverse'];
-export const MORE_ACTIONS_FOR_FRAME: MoreAction[] = ['order', 'path'];
+export const MORE_ACTIONS_FOR_TABLE: MoreAction[] = ['order', 'group', 'limit', 'path', 'traverse'];
+// `limit:` is pipeline-wide, so a checkpoint is as good a place to set it from.
+export const MORE_ACTIONS_FOR_FRAME: MoreAction[] = ['order', 'limit', 'path'];
 
 /** What a traversal does at each table it reaches - see store/canvas/traversal.ts. */
 export const TRAVERSE_VERBS: { verb: 'count' | 'delete'; label: string; key: string }[] = [
