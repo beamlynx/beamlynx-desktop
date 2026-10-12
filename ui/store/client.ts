@@ -484,6 +484,16 @@ export type SqlSchemaResponse = {
   tables: { schema: string; table: string; columns: string[] }[];
 };
 
+/** A join to suggest after JOIN in the SQL panel (pine-lang's /sql-join-hints). */
+export type SqlJoinHint = {
+  /** The text that goes after JOIN: `employee e ON e.company_id = c.id`. */
+  sql: string;
+  schema: string | null;
+  table: string;
+  /** fk for a foreign key, heuristic for a join guessed from column names. */
+  resolution: string;
+};
+
 export type SqlToPineResponse = {
   expression?: string;
   warnings?: string[];
@@ -602,6 +612,15 @@ export class HttpClient {
   public async sqlSchema(connectionId?: string): Promise<SqlSchemaResponse> {
     const response = await this.post('sql-schema', this.withConnectionId({}, connectionId));
     return (response ?? { tables: [] }) as unknown as SqlSchemaResponse;
+  }
+
+  /**
+   * After JOIN in the SQL being typed, the tables that join to the query's
+   * (pine-lang's docs/sql-hints.md). `cursor` is an offset into `query`.
+   */
+  public async sqlJoinHints(query: string, cursor: number, connectionId?: string): Promise<SqlJoinHint[]> {
+    const response = await this.post('sql-join-hints', this.withConnectionId({ query, cursor }, connectionId));
+    return ((response as unknown as { joins?: SqlJoinHint[] })?.joins ?? []) as SqlJoinHint[];
   }
 
   /**

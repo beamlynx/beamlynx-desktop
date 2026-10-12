@@ -26,6 +26,7 @@ import {
   JsonPathStep,
   Operation,
   Response,
+  SqlJoinHint,
   SqlSchemaResponse,
   SqlToPineResponse,
   VariablesReport,
@@ -1281,6 +1282,18 @@ export class Session {
     runInAction(() => {
       this.sqlSchema = schema;
     });
+  }
+
+  /**
+   * The joins to suggest at `cursor` in the SQL panel's text. None when the
+   * server can't say (no connection, or a pine-lang without the endpoint).
+   */
+  public async sqlJoinHints(query: string, cursor: number): Promise<SqlJoinHint[]> {
+    try {
+      return await client.sqlJoinHints(query, cursor, this.connectionId);
+    } catch {
+      return [];
+    }
   }
 
   public setInputMode(mode: InputMode) {
