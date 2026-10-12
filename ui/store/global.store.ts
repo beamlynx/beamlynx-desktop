@@ -1641,6 +1641,12 @@ export class GlobalStore {
   };
 
   /**
+   * Counts reindexes, so what was loaded from a connection's schema (the SQL
+   * panel's completion) loads again.
+   */
+  schemaVersion = 0;
+
+  /**
    * Re-read a live connection's tables/columns from the database. The server
    * indexes a connection's schema once on first connect and caches it for the
    * life of the process, so a table or column added afterward stays invisible
@@ -1650,6 +1656,9 @@ export class GlobalStore {
     const pineId = this.pineIdForProfile(id, isDesktop());
     try {
       await client.reindexConnection(pineId);
+      runInAction(() => {
+        this.schemaVersion++;
+      });
     } catch (e) {
       const message = (e as Error)?.message ?? 'Unknown error';
       runInAction(() => {

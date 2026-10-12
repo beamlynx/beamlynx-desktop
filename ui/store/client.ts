@@ -478,6 +478,12 @@ export const authHeaders = (): Record<string, string> => {
 };
 
 /** pine-lang's POST /api/v1/sql-to-pine. */
+export type SqlSchemaResponse = {
+  dialect?: 'postgres' | 'mysql' | 'sqlite';
+  'default-schema'?: string;
+  tables: { schema: string; table: string; columns: string[] }[];
+};
+
 export type SqlToPineResponse = {
   expression?: string;
   warnings?: string[];
@@ -587,6 +593,15 @@ export class HttpClient {
       return { ...body, 'connection-id': connectionId };
     }
     return body;
+  }
+
+  /**
+   * The connection's tables and columns, for completing SQL in the SQL panel
+   * (pine-lang's docs/sql-hints.md). Empty with no connection.
+   */
+  public async sqlSchema(connectionId?: string): Promise<SqlSchemaResponse> {
+    const response = await this.post('sql-schema', this.withConnectionId({}, connectionId));
+    return (response ?? { tables: [] }) as unknown as SqlSchemaResponse;
   }
 
   /**
