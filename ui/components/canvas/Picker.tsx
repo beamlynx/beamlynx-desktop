@@ -617,6 +617,64 @@ const Picker: React.FC = observer(() => {
           }}
           style={{ ...inputStyle, width: 80 }}
         />
+        {/* Optional: the first N rows of each group of rows sharing these
+            columns (pine-lang's `limit: N per ...`). The columns come from
+            the tables of the stage this limit ends. */}
+        <div style={{ margin: '8px 0 4px', opacity: 0.7 }}>per (optional)</div>
+        {picker.per.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4, maxWidth: 220 }}>
+            {picker.per.map(column => (
+              <span
+                key={column}
+                data-testid={`limit-per-chip-${column}`}
+                style={{
+                  padding: '1px 6px',
+                  borderRadius: 3,
+                  background: 'var(--canvas-chip-bg)',
+                  border: '1px solid var(--canvas-chip-border)',
+                }}
+              >
+                {column}{' '}
+                <span style={{ cursor: 'pointer', opacity: 0.6 }} onClick={() => store.togglePer(column)}>
+                  &times;
+                </span>
+              </span>
+            ))}
+          </div>
+        )}
+        <input
+          data-testid="limit-per-input"
+          placeholder={picker.perOptions === null ? 'loading…' : 'column'}
+          value={picker.perFilter}
+          onChange={e => store.setPerFilter(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              const first = (picker.perOptions ?? []).find(
+                o => !picker.per.includes(o) && o.toLowerCase().includes(picker.perFilter.toLowerCase()),
+              );
+              if (picker.perFilter && first) store.togglePer(first);
+              else void store.submitLimit();
+            }
+          }}
+          style={{ ...inputStyle, width: 200 }}
+        />
+        {picker.perFilter && (
+          <div style={{ maxHeight: 140, overflowY: 'auto', marginTop: 2 }}>
+            {(picker.perOptions ?? [])
+              .filter(o => !picker.per.includes(o) && o.toLowerCase().includes(picker.perFilter.toLowerCase()))
+              .slice(0, 8)
+              .map(o => (
+                <div
+                  key={o}
+                  data-testid={`limit-per-option-${o}`}
+                  style={{ cursor: 'pointer', padding: '2px 4px' }}
+                  onClick={() => store.togglePer(o)}
+                >
+                  {o}
+                </div>
+              ))}
+          </div>
+        )}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 6 }}>
           <span style={{ cursor: 'pointer', opacity: 0.7 }} onClick={() => store.closePicker()}>
             cancel
@@ -739,13 +797,39 @@ const Picker: React.FC = observer(() => {
                 ) : (
                   <input
                     data-tab-order={11 + row * 10}
+                    data-testid={`where-value-input-${row}`}
                     value={condition.value}
+                    placeholder="value, or $variable"
                     onChange={e => store.setWhereValue(row, e.target.value)}
                     onKeyDown={onValueKeyDown}
                     style={{ ...inputStyle, flex: 1, minWidth: 0 }}
                   />
                 )}
               </div>
+              {/* A value starting with `$` is a variable: the tab's own are
+                  offered. A new name gets a `$name = ` line in the values
+                  block when the condition is added. */}
+              {condition.value.startsWith('$') &&
+                (() => {
+                  const typed = condition.value.slice(1).toLowerCase();
+                  const names = store.variableNames.filter(n => n.toLowerCase().startsWith(typed) && `$${n}` !== condition.value);
+                  const isNew = /^\$[A-Za-z_][A-Za-z0-9_]*$/.test(condition.value) && !store.variableNames.includes(condition.value.slice(1));
+                  return (
+                    <div style={{ marginTop: 2, fontSize: 'calc(11px * var(--text-scale, 1))' }}>
+                      {names.slice(0, 6).map(n => (
+                        <div
+                          key={n}
+                          data-testid={`where-variable-${n}`}
+                          style={{ cursor: 'pointer', padding: '2px 4px', color: 'var(--canvas-trace)' }}
+                          onClick={() => store.setWhereValue(row, `$${n}`)}
+                        >
+                          ${n}
+                        </div>
+                      ))}
+                      {isNew && <div style={{ padding: '2px 4px', opacity: 0.7 }}>new variable: adds {condition.value} = to the values block</div>}
+                    </div>
+                  );
+                })()}
             </React.Fragment>
           );
         })}
@@ -771,6 +855,18 @@ const Picker: React.FC = observer(() => {
             <button type="button" data-tab-order={1002} onClick={() => store.closePicker()} style={{ ...actionStyle, opacity: 0.7 }}>
               cancel
             </button>
+            {picker.editIndex !== undefined && single && !relative && first.value.trim() && !first.value.trim().startsWith('$') && (
+              <button
+                type="button"
+                data-tab-order={1005}
+                data-testid="where-make-variable"
+                title="Move this value into the values block, as a $variable"
+                onClick={() => void store.makeWhereVariable()}
+                style={{ ...actionStyle, color: 'var(--canvas-trace)' }}
+              >
+                make variable
+              </button>
+            )}
             {picker.editIndex !== undefined && (
               <button
                 type="button"

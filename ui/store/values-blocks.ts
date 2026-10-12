@@ -171,6 +171,9 @@ export function setValue(expression: string, name: string, literal: string): str
   return expression.trim() ? `${assignment}\n\n${expression}` : `${assignment}\n`;
 }
 
+/** Whether the tab's values blocks set `$name` (even to nothing: `$name =`). */
+export const hasValue = (expression: string, name: string): boolean => assignments(expression, name).length > 0;
+
 /** A value from JSON as a Pine literal, or null when Pine can't write it. */
 function literalOfValue(value: unknown): string | null {
   const one = (v: unknown): string | null =>

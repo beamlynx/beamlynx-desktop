@@ -139,8 +139,11 @@ export type WhereCondition = {
   operator: string;
   // A literal compared with a JSON key arrives as JSON text, with its
   // 'json-type': `'SE'` is `"SE"`. See whereLiteral.
-  value: { type: string; value: string; 'json-type'?: string } | null;
+  // After `in (1, 2)`, a list of them.
+  value: WhereValue | WhereValue[] | null;
 };
+
+type WhereValue = { type: string; value: string; 'json-type'?: string };
 
 /**
  * A condition's value as Pine shows it: a $variable as `$name`, and a
@@ -148,6 +151,7 @@ export type WhereCondition = {
  * `data.country = 'SE'` reads `SE`, not `"SE"`.
  */
 export const whereLiteral = (value: WhereCondition['value']): string => {
+  if (Array.isArray(value)) return `(${value.map(v => whereLiteral(v)).join(', ')})`;
   if (!value || !('value' in value)) return '';
   if (value.type === 'variable') return `$${value.value}`;
   if (value['json-type']) {

@@ -184,11 +184,28 @@ const columnAfterAlias = (part: string, alias: string): string => {
   return dot >= 0 ? part.slice(dot + 1) : part;
 };
 
-const buildWhereLiteral = (value: string): string => {
+/** `$name`: a value typed as a variable in the where editor. */
+export const VARIABLE_VALUE = /^\$([A-Za-z_][A-Za-z0-9_]*)$/;
+
+/**
+ * A where value as typed, written as Pine: `$name` as a variable, a number
+ * or true/false/null bare, anything else quoted. After `in`/`not in`, a list:
+ * `(1, 2)` as written, or `1, 2` put in brackets.
+ */
+export const buildWhereLiteral = (value: string, operator = '='): string => {
+  if (VARIABLE_VALUE.test(value)) return value;
+  if (/^(not )?in$/i.test(operator)) {
+    if (value.startsWith('(')) return value;
+    return `(${splitTopLevel(value).map(v => buildWhereLiteral(v)).join(', ')})`;
+  }
   const isBareLiteral =
     /^-?\d+(\.\d+)?$/.test(value) || ['true', 'false', 'null'].includes(value.toLowerCase());
   return isBareLiteral ? value : `'${value.replace(/'/g, "''")}'`;
 };
+
+/** The variables a where draft names that the tab doesn't set yet: each gets a `$name = ` line. */
+export const variablesIn = (conditions: WhereConditionDraft[]): string[] =>
+  Array.from(new Set(conditions.flatMap(c => VARIABLE_VALUE.exec(c.value.trim())?.[1] ?? [])));
 
 // Splits a comma-separated segment body on top-level commas only - i.e. not
 // commas inside a quoted where-value - so an existing hand-typed condition
@@ -223,7 +240,7 @@ export const addWhereCondition = (base: PinnedBase, alias: string, conditions: W
 /** `where: c.a = 1 or c.b = 'x'` - each condition qualified by its own alias. */
 export const whereSegmentText = (conditions: WhereConditionDraft[]): string =>
   `where: ${conditions
-    .map(({ alias, column, operator, value }) => `${alias}.${column} ${operator} ${buildWhereLiteral(value)}`)
+    .map(({ alias, column, operator, value }) => `${alias}.${column} ${operator} ${buildWhereLiteral(value, operator)}`)
     .join(' or ')}`;
 
 // `index` is this alias's where-conditions in pipeline order - the same
@@ -386,10 +403,21 @@ const withoutCheckpointOp = (segments: Segment[], index: number): Segment[] => {
   return rest;
 };
 
-/** `limit: 9` from `limit: 5` or `l: 5 per c.id`, keeping whatever follows the number - `per ...` above all. */
-const withLimitValue = (text: string, value: number): string => {
+/**
+ * `limit: 9` from `limit: 5` or `l: 5 per c.id`. With `per`, the columns
+ * after `per` are replaced (none: a plain limit). Without it, whatever
+ * follows the number is kept - `per ...` above all.
+ */
+const withLimitValue = (text: string, value: number, per?: string[]): string => {
+  if (per) return `limit: ${value}${per.length ? ` per ${per.join(', ')}` : ''}`;
   const rest = text.replace(/^(?:limit:|l:)\s*\d+/i, '');
   return `limit: ${value}${rest}`;
+};
+
+/** The columns after `per` in a limit segment's text, as written: `c.id, c.name`. */
+export const limitPer = (text: string): string[] => {
+  const m = /\s+per\s+([\s\S]*)$/i.exec(text);
+  return m ? splitTopLevel(m[1]) : [];
 };
 
 /**
@@ -409,17 +437,24 @@ const withLimitValue = (text: string, value: number): string => {
  * Changing a limit rewrites only its number, in place, so `per ...` and the
  * checkpoint's `= name` right after it stay where they are.
  */
-export const setLimit = (base: PinnedBase, value: number | null, alias?: string, checkpoint?: string): string => {
+export const setLimit = (
+  base: PinnedBase,
+  value: number | null,
+  alias?: string,
+  checkpoint?: string,
+  // The columns after `per`, from the limit editor. Omitted: kept as they are.
+  per?: string[],
+): string => {
   const index = checkpoint
     ? base.segments.findIndex(s => s.kind === 'limit' && s.owner === checkpoint)
     : stageLimitIndex(base.segments, alias);
   if (value === null) return index < 0 ? toText(base.segments) : toText(withoutCheckpointOp(base.segments, index));
   if (index >= 0) {
     const next = [...base.segments];
-    next[index] = { ...next[index], text: withLimitValue(next[index].text, value) };
+    next[index] = { ...next[index], text: withLimitValue(next[index].text, value, per) };
     return toText(next);
   }
-  const newSegment: Segment = { text: `limit: ${value}`, start: -1, end: -1, kind: 'limit', owner: null };
+  const newSegment: Segment = { text: withLimitValue('', value, per ?? []), start: -1, end: -1, kind: 'limit', owner: null };
   return toText([...base.segments, newSegment]);
 };
 

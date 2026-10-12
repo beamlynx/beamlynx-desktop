@@ -698,7 +698,7 @@ export const buildCanvasGraph = (
   // A pill above each node that uses a named block; a standalone node for a
   // block nothing joins.
   const usedInWhere = new Set(
-    (ast.where ?? []).flatMap(w => whereConditions(w)).flatMap(c => (c.value?.type === 'named-result' ? [String(c.value.value)] : [])),
+    (ast.where ?? []).flatMap(w => whereConditions(w)).flatMap(c => (c.value && !Array.isArray(c.value) && c.value.type === 'named-result' ? [String(c.value.value)] : [])),
   );
   const maxMainX = main.nodes.length ? Math.max(...main.nodes.map(n => n.position.x + nodeWidth)) : 0;
   let standaloneY = top;

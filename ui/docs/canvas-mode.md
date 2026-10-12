@@ -417,6 +417,35 @@ the end of the target's stage, for the same reason: probing after a
 checkpoint reflects the sealed output's shape, not the real table the
 gesture is about.
 
+**Earlier query blocks.** A tab can have several query blocks. The canvas
+draws the last one; each earlier one must end in `|= name` (`tab-blocks.ts`),
+or the canvas shows a banner instead. Such a block is a nested query of the
+last one, with the same one-expanded-at-a-time rule as checkpoints:
+
+- The table in the last block that uses `name` gets a pill (`|= name`, or
+  `limit 20 |= name` when the block ends in a checkpoint). Expanding it draws
+  the block above, with the line and connector down to that table.
+- A block nothing joins is a standalone node beside the graph, with its own
+  pill and no actions. When a `where: ... in name` uses it, it says so.
+- Nodes drawn from an earlier block have its prefix in their id (`b0/c`).
+  `CanvasStore.scopeOf` turns an id into the block and its alias in that
+  block, so a gesture on one edits that block's own text, and its probes
+  build it with the blocks above it (`contextFor`).
+- In such a tab the canvas builds every block itself (`refreshBlockAsts`):
+  the session builds only the block under the editor's cursor.
+
+**The limit editor's `per`.** Besides N, the limit editor has an optional
+`per` field: the first N rows of each group of rows sharing those columns.
+It offers every column of the tables in the stage the limit ends. Opened
+from a checkpoint's pill, both fields show what the checkpoint has.
+
+**Variables in the where editor.** A value starting with `$` is a variable
+(`status = $status`, `id in $ids`); the tab's variables are offered as you
+type. A new name gets a `$name = ` line in the values block in the same step,
+and the Variables list asks for its value. On an existing condition, "make
+variable" turns `status = 'shipped'` into `status = $status` and moves
+`'shipped'` into the values block, picking `$status_2` if `$status` is taken.
+
 **Checkpoint names.** The canvas never makes a name up. Before any gesture,
 `getPinnedBase` writes each unnamed checkpoint's name into the text as `|=
 result_1`, using the name pine-lang reports (`ensureExplicitCheckpointName`).

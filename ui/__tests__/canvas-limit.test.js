@@ -76,3 +76,17 @@ test('a name someone wrote, or one later steps use, stays', () => {
   ];
   assert.equal(setLimit(base(used), null), 'company as c | = result_1 | employee as e');
 });
+
+test('the limit editor sets, changes and clears per', () => {
+  const { limitPer } = require('../store/canvas/pine-actions.ts');
+  const table = seg('company as c', 'table', 'c');
+  assert.equal(setLimit(base([table]), 1, undefined, undefined, ['c.id']), 'company as c | limit: 1 per c.id');
+  const segments = [table, seg('limit: 1 per c.id', 'limit', 'result_1'), seg('= result_1', 'assign', 'result_1')];
+  assert.equal(
+    setLimit(base(segments), 2, undefined, 'result_1', ['c.id', 'c.name']),
+    'company as c | limit: 2 per c.id, c.name | = result_1',
+  );
+  assert.equal(setLimit(base(segments), 2, undefined, 'result_1', []), 'company as c | limit: 2 | = result_1');
+  assert.deepEqual(limitPer('limit: 1 per c.id, data.region'), ['c.id', 'data.region']);
+  assert.deepEqual(limitPer('l: 3'), []);
+});

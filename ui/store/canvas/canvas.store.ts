@@ -24,6 +24,8 @@ import {
 import { buildCanvasGraph, expansionOf, NamedBlock, newCheckpointName, whereEntriesFor } from './layout';
 import { contextFor, queryText, replaceQuery, TabBlocks, tabBlocks } from './tab-blocks';
 import {
+  Segment,
+  stageLimitIndex,
   checkpointOpIndex,
   currentLimit,
   isCheckpointPinned,
@@ -36,7 +38,7 @@ import {
   withDoc,
 } from './pine-text';
 import * as actions from './pine-actions';
-import { literalFor, setValue } from '../values-blocks';
+import { hasValue, literalFor, setValue, valueNames } from '../values-blocks';
 import { probeBuild } from './probe';
 import { canDeleteTraverse } from './traversal';
 import { computeDateBounds } from './relative-date';
@@ -723,7 +725,15 @@ export class CanvasStore {
 
   private applyExpression(
     rawExpression: string,
-    options?: { skipAutoRun?: boolean; preserveDoc?: boolean; coalesce?: boolean; block?: number },
+    options?: {
+      skipAutoRun?: boolean;
+      preserveDoc?: boolean;
+      coalesce?: boolean;
+      block?: number;
+      // A change elsewhere in the tab made in the same step - a `$name = `
+      // line in the values block for a variable the gesture introduced.
+      after?: (expression: string) => string;
+    },
   ) {
     // Every gesture rebuilds the expression from the operation spans in
     // `ast.ranges` (pine-text.ts's segmentsFromAst + toText), and a doc
@@ -745,7 +755,8 @@ export class CanvasStore {
     const tab = this.tab;
     const old = this.textOf(block);
     const query = options?.preserveDoc === false ? rawExpression : withDoc(old, rawExpression);
-    const expression = tab ? replaceQuery(this.session.expression, tab, block, query) : query;
+    const replaced = tab ? replaceQuery(this.session.expression, tab, block, query) : query;
+    const expression = options?.after ? options.after(replaced) : replaced;
     // A no-op gesture (e.g. deleteNode/setLimit returning the same text)
     // shouldn't push a snapshot that's identical to what undo would already
     // land on - it would just be a wasted step, never a wrong one, but it's
@@ -917,17 +928,25 @@ export class CanvasStore {
    * `scopeId` is the node the gesture is on (see scopeOf): it picks the
    * query block the gesture edits. Omitted: the last block.
    */
-  private async commit(fn: (base: actions.PinnedBase) => string | null, scopeId?: string): Promise<void> {
+  private async commit(
+    fn: (base: actions.PinnedBase) => string | null,
+    scopeId?: string,
+    after?: (expression: string) => string,
+  ): Promise<void> {
     const block = scopeId === undefined ? this.mainBlock : this.scopeOf(scopeId).block;
     // Serialized: chain onto whatever's already pending so a second commit
     // never starts computing its mutation until the first one has fully
     // applied - see commitChain's declaration and runCommit below.
-    const run = this.commitChain.then(() => this.runCommit(fn, block));
+    const run = this.commitChain.then(() => this.runCommit(fn, block, after));
     this.commitChain = run.catch(() => undefined);
     await run;
   }
 
-  private async runCommit(fn: (base: actions.PinnedBase) => string | null, block: number): Promise<void> {
+  private async runCommit(
+    fn: (base: actions.PinnedBase) => string | null,
+    block: number,
+    after?: (expression: string) => string,
+  ): Promise<void> {
     const base = await this.pinnedBase(block);
     const prefix = block === this.mainBlock ? '' : `b${block}/`;
     if (!base) return;
@@ -974,7 +993,7 @@ export class CanvasStore {
         // exists to run known-valid canvas commits immediately, and firing
         // it anyway here would send a guaranteed-to-fail /eval for
         // something the canvas itself is about to show as "Not parsing".
-        this.applyExpression(prettified, { skipAutoRun: !probedOk, block });
+        this.applyExpression(prettified, { skipAutoRun: !probedOk, block, after });
         if (addedCheckpoint) {
           this.expandedNested = prefix + addedCheckpoint;
           this.focusNode(prefix + addedCheckpoint);
@@ -1358,6 +1377,11 @@ export class CanvasStore {
         ? limitValue(segments[opIndex].text)
         : null
       : currentLimit(segments, plain);
+    // The limit segment being changed, if there is one: its `per` columns
+    // fill the field, and the stage it ends is where `per` columns come from.
+    const target = plainCheckpoint ? opIndex : stageLimitIndex(segments, plain);
+    const per = target >= 0 ? actions.limitPer(segments[target].text) : [];
+    const seq = ++this.pickerSeq;
     this.picker = {
       open: true,
       mode: 'limit-value',
@@ -1365,8 +1389,54 @@ export class CanvasStore {
       checkpoint,
       current,
       value: current === null ? '' : String(current),
+      per,
+      perOptions: null,
+      perFilter: '',
       anchor,
     };
+    void this.loadPerOptions(block, segments, target, seq);
+  }
+
+  /**
+   * Every column of the tables in the stage a limit ends, as `alias.column`,
+   * for the limit editor's `per` field. A new limit goes at the end of the
+   * query, so its stage is the last one. Each table's columns come from a
+   * probe ending in `from: alias | s:`, like the select picker's.
+   */
+  private async loadPerOptions(block: number, segments: Segment[], target: number, seq: number) {
+    const ast = this.astOf(block);
+    const before = target >= 0 ? segments.slice(0, target) : segments;
+    const owner = target >= 0 ? segments[target].owner : null;
+    const checkpoint = owner ? (ast?.checkpoints ?? []).find(c => c.name === owner) : undefined;
+    const aliases = checkpoint
+      ? checkpoint.tables
+      : Array.from(new Set([...(ast?.['selected-tables'] ?? []).map(t => t.alias), ...(ast?.current ? [ast.current] : [])]));
+    const text = toText(before).replace(/\|\s*$/, '').trimEnd();
+    const lists = await Promise.all(
+      aliases.map(async a => {
+        const probe = await probeBuild(`${text} | from: ${a} | s: `, this.session.connectionId, this.contextOf(block)).catch(
+          () => undefined,
+        );
+        return (probe?.hints.select ?? []).map(h => `${a}.${h.column}`);
+      }),
+    );
+    runInAction(() => {
+      if (seq !== this.pickerSeq || !this.picker.open || this.picker.mode !== 'limit-value') return;
+      this.picker = { ...this.picker, perOptions: lists.flat() };
+    });
+  }
+
+  setPerFilter(filter: string) {
+    if (this.picker.open && this.picker.mode === 'limit-value') this.picker = { ...this.picker, perFilter: filter };
+  }
+
+  /** Adds or removes one column of the limit editor's `per` field. */
+  togglePer(column: string) {
+    if (!this.picker.open || this.picker.mode !== 'limit-value') return;
+    const per = this.picker.per.includes(column)
+      ? this.picker.per.filter(c => c !== column)
+      : [...this.picker.per, column];
+    this.picker = { ...this.picker, per, perFilter: '' };
   }
 
   setLimitValue(value: string) {
@@ -1378,7 +1448,7 @@ export class CanvasStore {
     if (!this.picker.open || this.picker.mode !== 'limit-value') return;
     const n = parseInt(this.picker.value, 10);
     if (!Number.isFinite(n) || n <= 0) return;
-    await this.commitLimit(n, this.picker.alias, this.picker.checkpoint);
+    await this.commitLimit(n, this.picker.alias, this.picker.checkpoint, this.picker.per);
     this.closePicker();
   }
 
@@ -1639,7 +1709,14 @@ export class CanvasStore {
       column: columnName(column, path),
       // ast.where operators come back SQL-cased (e.g. "ILIKE") from pine-lang; Pine syntax is lowercase-only.
       operator: operator.toLowerCase(),
-      value: val && 'value' in val ? (val['json-type'] ? whereLiteral(val) : String(val.value)) : '',
+      // A variable reads back as `$name`, an `in` list as `1, 2`.
+      value: Array.isArray(val)
+        ? val.map(v => String(v?.value ?? '')).join(', ')
+        : val && 'value' in val
+          ? val['json-type'] || val.type === 'variable'
+            ? whereLiteral(val)
+            : String(val.value)
+          : '',
     }));
     this.focusConfigItem(alias, { kind: 'where', index });
     this.picker = {
@@ -1715,8 +1792,9 @@ export class CanvasStore {
       const bounds = computeDateBounds(
         first.operator === WHERE_TODAY_OPERATOR ? { kind: 'today' } : { kind: 'rolling', count: rollingCount, unit: rollingUnit },
       );
-      await this.commit(base =>
-        actions.addRelativeDateWhereCondition(base, actions.resolveAlias(base, first.alias), first.column, bounds), first.alias
+      await this.commit(
+        base => actions.addRelativeDateWhereCondition(base, actions.resolveAlias(base, first.alias), first.column, bounds),
+        first.alias,
       );
       this.closePicker();
       return;
@@ -1732,8 +1810,67 @@ export class CanvasStore {
   }
 
   async commitWhere(alias: string, conditions: WhereConditionDraft[]) {
-    await this.commit(base =>
-      actions.addWhereCondition(base, actions.resolveAlias(base, alias), actions.resolveConditionAliases(base, conditions)), alias
+    await this.commit(
+      base =>
+        actions.addWhereCondition(base, actions.resolveAlias(base, alias), actions.resolveConditionAliases(base, conditions)),
+      alias,
+      this.declareVariables(conditions),
+    );
+    this.closePicker();
+  }
+
+  /**
+   * A `$name` typed as a where value that the tab doesn't set yet gets a
+   * `$name = ` line in the values block, in the same step, so the Variables
+   * list asks for its value.
+   */
+  private declareVariables(conditions: WhereConditionDraft[]): (expression: string) => string {
+    const names = actions.variablesIn(conditions);
+    return expression => names.reduce((text, name) => (hasValue(text, name) ? text : setValue(text, name, '')), expression);
+  }
+
+  /** The tab's variables: those its query uses, and those its values blocks set. For the where editor's `$` suggestions. */
+  get variableNames(): string[] {
+    return Array.from(new Set([...(this.session.variablesReport?.used ?? []), ...Array.from(valueNames(this.session.expression))])).sort();
+  }
+
+  /** A variable name for a column that the tab doesn't use yet: `status`, else `status_2`, ... */
+  private freeVariableName(column: string): string {
+    const last = column.split('.').pop() ?? column;
+    const clean = last.replace(/[^A-Za-z0-9_]/g, '_');
+    const base = /^[A-Za-z_]/.test(clean) ? clean : `v_${clean}`;
+    const taken = new Set(this.variableNames);
+    if (!taken.has(base)) return base;
+    let i = 2;
+    while (taken.has(`${base}_${i}`)) i++;
+    return `${base}_${i}`;
+  }
+
+  /**
+   * "make variable" on an existing where chip: `status = 'shipped'` becomes
+   * `status = $status`, and `$status = 'shipped'` goes into the values block,
+   * in one step. A name the tab already uses gets a number (`$status_2`).
+   * An `in` list moves as a list: `$ids = (1, 2)`.
+   */
+  async makeWhereVariable() {
+    if (!this.picker.open || this.picker.mode !== 'where-value') return;
+    const { alias, conditions, editIndex } = this.picker;
+    if (editIndex === undefined || conditions.length !== 1) return;
+    const [condition] = conditions;
+    const value = condition.value.trim();
+    if (!value || actions.VARIABLE_VALUE.test(value)) return;
+    const name = this.freeVariableName(condition.column);
+    const literal = actions.buildWhereLiteral(value, condition.operator);
+    await this.commit(
+      base =>
+        actions.updateWhereConditionAt(
+          base,
+          actions.resolveAlias(base, alias),
+          editIndex,
+          actions.resolveConditionAliases(base, [{ ...condition, value: `$${name}` }]),
+        ),
+      alias,
+      expression => setValue(expression, name, literal),
     );
     this.closePicker();
   }
@@ -1745,7 +1882,9 @@ export class CanvasStore {
         actions.resolveAlias(base, alias),
         index,
         actions.resolveConditionAliases(base, conditions),
-      ), alias
+      ),
+      alias,
+      this.declareVariables(conditions),
     );
     this.closePicker();
   }
@@ -1838,14 +1977,21 @@ export class CanvasStore {
    * setLimit for which one `alias` and `checkpoint` pick. With neither, the
    * pipeline's first limit (the multi-select toolbar).
    */
-  async commitLimit(value: number | null, alias?: string, checkpoint?: string) {
-    await this.commit(base =>
-      actions.setLimit(
+  async commitLimit(value: number | null, alias?: string, checkpoint?: string, per?: string[]) {
+    await this.commit(
+      base =>
+        actions.setLimit(
         base,
         value,
         alias === undefined ? undefined : actions.resolveAlias(base, alias),
         checkpoint === undefined ? undefined : this.scopeOf(checkpoint).alias,
-      ), checkpoint ?? alias
+        // `c_0.id` read before this base pinned c_0 as c: follow the rename.
+        per?.map(column => {
+          const dot = column.indexOf('.');
+          return dot < 0 ? column : `${actions.resolveAlias(base, column.slice(0, dot))}${column.slice(dot)}`;
+        }),
+      ),
+      checkpoint ?? alias,
     );
   }
 

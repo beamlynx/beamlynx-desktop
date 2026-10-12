@@ -298,6 +298,12 @@ export type PickerState =
       current: number | null;
       /** The input's live text, seeded from `current` (CanvasStore.openLimitEditor) - a string, not a number, so a mid-edit empty/partial value doesn't need its own placeholder state. */
       value: string;
+      /** The columns after `per`, as written (`c.id`): the first N rows of each group of rows sharing them. Empty: a plain limit. */
+      per: string[];
+      /** Columns `per` can take - every column of the stage's tables, as `alias.column`. null while loading. */
+      perOptions: string[] | null;
+      /** The text typed to filter `perOptions`. */
+      perFilter: string;
       anchor: PickerAnchor;
     }
   | {
@@ -350,7 +356,8 @@ export const TRAVERSE_VERBS: { verb: 'count' | 'delete'; label: string; key: str
   { verb: 'delete', label: 'Delete rows…', key: 'd' },
 ];
 
-export const WHERE_OPERATORS = ['=', '!=', '>', '<', 'like', 'not like', 'ilike', 'is', 'is not'] as const;
+// `in`/`not in` take a list (`1, 2` or `(1, 2)`) or a list variable (`$ids`).
+export const WHERE_OPERATORS = ['=', '!=', '>', '<', 'like', 'not like', 'ilike', 'is', 'is not', 'in', 'not in'] as const;
 
 export const RELATIVE_DATE_UNITS = [
   { value: 'day', label: 'day' },
