@@ -1,4 +1,10 @@
 import CodeMirror, { ReactCodeMirrorRef } from '@uiw/react-codemirror';
+import {
+  autocompletion,
+  completionStatus,
+  moveCompletionSelection,
+  startCompletion,
+} from '@codemirror/autocomplete';
 import { EditorView, keymap } from '@codemirror/view';
 import { Prec } from '@codemirror/state';
 import { sql } from '@codemirror/lang-sql';
@@ -120,6 +126,9 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true 
     const extensions = [
       EditorView.lineWrapping,
       sql(sqlConfig),
+      // Hints open on request, as in the Pine panel (pine-autocomplete.ts):
+      // Tab or Ctrl/Cmd-Space, never while typing.
+      autocompletion({ activateOnTyping: false, closeOnBlur: true, selectOnOpen: true }),
       editorChrome(isDark),
       ...(isDark ? [editorDarkSyntax] : []),
       selectionUpdateExtension,
@@ -153,6 +162,21 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true 
               return true;
             },
           },
+          // The Pine panel's keys (PineInput.tsx): Tab opens the hints, then
+          // moves to the next one; Shift-Tab moves back.
+          {
+            key: 'Tab',
+            run: view =>
+              completionStatus(view.state) === 'active'
+                ? moveCompletionSelection(true)(view)
+                : startCompletion(view),
+          },
+          {
+            key: 'Shift-Tab',
+            run: view =>
+              completionStatus(view.state) === 'active' && moveCompletionSelection(false)(view),
+          },
+          { key: 'Mod-Space', run: startCompletion },
         ]),
       ),
     ];
@@ -199,6 +223,8 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true 
           onChange={handleChange}
           indentWithTab={false}
           basicSetup={{
+            // Configured in extensions, so hints don't open while typing.
+            autocompletion: false,
             tabSize: 2,
             foldGutter: false,
             dropCursor: false,
