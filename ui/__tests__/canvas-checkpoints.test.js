@@ -61,79 +61,101 @@ test('labels say what the checkpoint does', () => {
   );
 });
 
-test('two checkpoints, all expanded: three stages, two dividers, each node joined to its divider', () => {
+test('two checkpoints, all expanded: nested containers, each above its node', () => {
   const graph = buildCanvasGraph(asts[TWO], {}, 'result_1');
   const tables = graph.nodes.filter(n => n.type === 'table-node');
-  const dividers = graph.nodes.filter(n => n.type === 'checkpoint-divider');
+  const containers = graph.nodes.filter(n => n.type === 'nested-container');
 
   // Every table once, in pipe order, with the checkpoints' nodes between.
   assert.deepEqual(
     tables.sort((a, b) => a.data.order - b.data.order).map(n => n.id),
     ['c', 'e', 'result_1', 'd', 'result_2'],
   );
+  // No divider lines: a container per expanded checkpoint.
   assert.deepEqual(
-    dividers.map(n => n.data.label),
-    ['limit 10', 'limit 5'],
-  );
-
-  const y = id => graph.nodes.find(n => n.id === id).position.y;
-  const dividerY = name => dividers.find(n => n.data.name === name).position.y;
-  // Stage 1 (c, e) | divider | stage 2 (result_1, d) | divider | result_2
-  assert.ok(y('e') < dividerY('result_1'));
-  assert.ok(dividerY('result_1') < y('result_1'));
-  assert.ok(y('d') < dividerY('result_2'));
-  assert.ok(dividerY('result_2') < y('result_2'));
-  // Close below its divider; the pill is centred on the node, and the
-  // connector runs from the pill down to the node's box.
-  const r1 = tables.find(n => n.id === 'result_1').data;
-  const d1 = dividers.find(n => n.data.name === 'result_1');
-  assert.ok(y('result_1') - dividerY('result_1') <= 30);
-  assert.equal(r1.checkpoint.expanded, true);
-  assert.equal(d1.data.expanded, true);
-  assert.equal(
-    d1.position.x + d1.data.pillX,
-    graph.nodes.find(n => n.id === 'result_1').position.x + 95,
-  );
-  assert.ok(d1.data.connector > 0 && d1.data.connector < 40);
-
-  // Drawn like a table: no columns list, not removable, d joins onto it.
-  assert.deepEqual(Object.keys(r1.checkpoint), ['expanded']);
-  assert.equal(r1.removable, false);
-  assert.ok(graph.edges.some(e => e.source === 'result_1' && e.target === 'd'));
-  // A table inside a sealed checkpoint can't be removed; one after it can.
-  assert.equal(tables.find(n => n.id === 'c').data.removable, false);
-  assert.equal(tables.find(n => n.id === 'd').data.removable, true);
-});
-
-test('by default only the checkpoint feeding the last stage is expanded', () => {
-  const graph = buildCanvasGraph(asts[TWO], {});
-  const ids = graph.nodes.filter(n => n.type === 'table-node').map(n => n.id);
-  // c and e are inside result_1, which is collapsed: hidden.
-  assert.deepEqual(ids.sort(), ['d', 'result_1', 'result_2']);
-  const data = id => graph.nodes.find(n => n.id === id).data;
-  assert.equal(data('result_1').checkpoint.expanded, false);
-  assert.equal(data('result_2').checkpoint.expanded, true);
-  // Each checkpoint node has its pill: a stub when collapsed, the full line
-  // when expanded.
-  const dividers = graph.nodes.filter(n => n.type === 'checkpoint-divider');
-  assert.deepEqual(
-    dividers.map(n => [n.data.name, n.data.label, n.data.expanded]),
+    containers.map(n => [n.data.name, n.data.label]),
     [
-      ['result_1', 'limit 10', false],
-      ['result_2', 'limit 5', true],
+      ['result_1', 'limit 10'],
+      ['result_2', 'limit 5'],
     ],
   );
-  assert.ok(dividers[0].data.width < dividers[1].data.width);
+
+  const node = id => graph.nodes.find(n => n.id === id);
+  const box = name => {
+    const c = containers.find(n => n.data.name === name);
+    return {
+      x0: c.position.x,
+      y0: c.position.y,
+      x1: c.position.x + c.data.width,
+      y1: c.position.y + c.data.height,
+      c,
+    };
+  };
+  const inside = (b, id) => {
+    const n = node(id);
+    return (
+      n.position.x >= b.x0 &&
+      n.position.x + 190 <= b.x1 &&
+      n.position.y >= b.y0 &&
+      n.position.y <= b.y1
+    );
+  };
+  const r1 = box('result_1');
+  const r2 = box('result_2');
+  // result_1's box holds c and e, and sits right above result_1's node.
+  assert.ok(inside(r1, 'c') && inside(r1, 'e'));
+  assert.ok(!inside(r1, 'result_1'));
+  assert.ok(r1.y1 < node('result_1').position.y + 28);
+  // result_2's box holds result_1's box, its node and d: they nest.
+  assert.ok(r2.x0 < r1.x0 && r2.y0 < r1.y0 && r2.y1 > r1.y1);
+  assert.ok(inside(r2, 'result_1') && inside(r2, 'd'));
+  assert.ok(!inside(r2, 'result_2'));
+  // The connector runs from the box's bottom edge to the node's box, at its centre.
+  assert.equal(r1.c.data.connectorX, node('result_1').position.x + 95 - r1.x0);
+  assert.ok(r1.c.data.connector > 0 && r1.c.data.connector < 60);
+
+  // Drawn like a table, saying what it is; not removable, d joins onto it.
+  const d1 = node('result_1').data;
+  assert.deepEqual(d1.nested, {
+    kind: 'checkpoint',
+    name: 'result_1',
+    label: 'limit 10',
+    limit: 10,
+    expanded: true,
+  });
+  assert.equal(d1.removable, false);
+  assert.ok(graph.edges.some(e => e.source === 'result_1' && e.target === 'd'));
+  // A table inside a sealed checkpoint can't be removed; one after it can.
+  assert.equal(node('c').data.removable, false);
+  assert.equal(node('d').data.removable, true);
 });
 
-test('with nothing expanded, only the last stage is drawn', () => {
-  const graph = buildCanvasGraph(asts[TWO], {}, null);
+test('by default everything is collapsed: only the last stage, no containers', () => {
+  for (const expanded of [undefined, null]) {
+    const graph = buildCanvasGraph(asts[TWO], {}, expanded);
+    assert.deepEqual(
+      graph.nodes.map(n => n.id),
+      ['result_2'],
+    );
+    assert.deepEqual(graph.nodes[0].data.nested, {
+      kind: 'checkpoint',
+      name: 'result_2',
+      label: 'limit 5',
+      limit: 5,
+      expanded: false,
+    });
+  }
+});
+
+test('expanding the last checkpoint shows the stage it seals, with the earlier one collapsed', () => {
+  const graph = buildCanvasGraph(asts[TWO], {}, 'result_2');
+  const ids = graph.nodes.filter(n => n.type === 'table-node').map(n => n.id);
+  assert.deepEqual(ids.sort(), ['d', 'result_1', 'result_2']);
+  assert.equal(graph.nodes.find(n => n.id === 'result_1').data.nested.expanded, false);
   assert.deepEqual(
-    graph.nodes.map(n => n.id),
-    ['checkpoint-divider:result_2', 'result_2'],
+    graph.nodes.filter(n => n.type === 'nested-container').map(n => n.data.name),
+    ['result_2'],
   );
-  assert.equal(graph.nodes[1].data.checkpoint.expanded, false);
-  assert.equal(graph.nodes[0].data.expanded, false);
 });
 
 test('the checkpoint a gesture adds is found by name', () => {
@@ -147,12 +169,12 @@ test('the checkpoint a gesture adds is found by name', () => {
   assert.equal(newCheckpointName([c1, c2], [c1]), null);
 });
 
-test('a trailing checkpoint still gets its divider and node', () => {
-  const graph = buildCanvasGraph(asts[GROUP], {});
+test('a trailing checkpoint, expanded, holds the tables it groups', () => {
+  const graph = buildCanvasGraph(asts[GROUP], {}, 'result_1');
   const node = graph.nodes.find(n => n.id === 'result_1');
-  assert.equal(node.data.checkpoint.expanded, true);
+  assert.equal(node.data.nested.expanded, true);
   assert.deepEqual(
-    graph.nodes.filter(n => n.type === 'checkpoint-divider').map(n => n.data.label),
+    graph.nodes.filter(n => n.type === 'nested-container').map(n => n.data.label),
     ['group c.name → count'],
   );
   // The group chip stays on the table it groups.
@@ -160,7 +182,7 @@ test('a trailing checkpoint still gets its divider and node', () => {
 });
 
 test('chips before a checkpoint stay on the table, chips after it go on its node', () => {
-  const graph = buildCanvasGraph(asts[AFTER], {});
+  const graph = buildCanvasGraph(asts[AFTER], {}, 'result_1');
   assert.deepEqual(graph.nodes.find(n => n.id === 'c').data.whereChips, ['id = 1']);
   assert.deepEqual(graph.nodes.find(n => n.id === 'result_1').data.whereChips, ['id = 2']);
 });
@@ -287,12 +309,12 @@ test('removing the only table before a checkpoint removes the checkpoint too', (
   assert.equal(deleteNode(pinned, 'c'), 'employee as e');
 });
 
-// After a gesture adds a limit, focus moves to the new checkpoint's node and
-// it is expanded - the same way focus follows a newly joined table.
+// After a gesture adds a limit, focus moves to the new checkpoint's node,
+// collapsed - the same way focus follows a newly joined table.
 const { Session } = require('../store/session.ts');
 const { CanvasStore } = require('../store/canvas/canvas.store.ts');
 
-test('adding a limit focuses and expands the new checkpoint', async () => {
+test('adding a limit focuses the new checkpoint, collapsed', async () => {
   const flat = text => text.replace(/\s+/g, ' ').trim();
   const original = global.fetch;
   global.fetch = async (_url, options) => {
@@ -314,8 +336,12 @@ test('adding a limit focuses and expands the new checkpoint', async () => {
     // The build that follows the commit.
     session.ast = asts['company as c | limit: 5'];
 
-    assert.equal(store.expandedNested, 'result_1');
+    assert.equal(store.expandedNested, undefined);
     assert.equal(store.focusedAlias, 'result_1');
+    assert.deepEqual(
+      store.canvasGraph.nodes.map(n => n.id),
+      ['result_1'],
+    );
     stop();
   } finally {
     global.fetch = original;

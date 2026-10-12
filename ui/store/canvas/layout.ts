@@ -15,7 +15,7 @@ import {
   whereLiteral,
 } from '../client';
 import {
-  CanvasDividerNode,
+  CanvasContainerNode,
   CanvasEdge,
   CanvasGraph,
   CanvasHandle,
@@ -438,29 +438,14 @@ const layoutStage = (nodes: CanvasTableNode[], edges: CanvasEdge[]): CanvasTable
   return placed.map(n => ({ ...n, position: { x: n.position.x - minX, y: n.position.y } }));
 };
 
-// A checkpoint's divider: the space it takes between two stages, and how far
-// its line reaches past the nodes on either side. Its label is a pill on the
-// line, centred above the checkpoint's node, and the node sits just below
-// it: the connector runs from the pill's bottom edge, behind the node's
-// action bar, to the node's box.
-const dividerGap = 20;
-const dividerHeight = 24; // the line is at its vertical middle
-const pillHalfHeight = 9;
-const gapBelowPill = 2;
-const dividerOverhang = 24;
-const minDividerWidth = 320;
-// A collapsed checkpoint has no stage above it: its pill sits on a short
-// stub of line instead of one across the canvas.
-const stubWidth = nodeWidth;
-
-/**
- * Which checkpoint is expanded when the user hasn't picked one: the one that
- * feeds the last stage, so a pipeline with one checkpoint shows everything.
- */
-export const defaultExpandedCheckpoint = (ast: Ast): string | null => {
-  const checkpoints = ast.checkpoints ?? [];
-  return checkpoints.length ? checkpoints[checkpoints.length - 1].name : null;
-};
+// An expanded nested query's container: a dashed box, with no fill, around
+// what the nested query holds, directly above its node. `containerPad` is
+// the room inside the border, `containerHeader` the room for the label on
+// its top edge, and `connectorGap` the space between the box and the node's
+// action bar, which the connector crosses to reach the node's box.
+const containerPad = 14;
+const containerHeader = 16;
+const connectorGap = 10;
 
 /**
  * The checkpoint a gesture just added: the one in `after` that wasn't in
@@ -488,7 +473,7 @@ export type NamedBlock = { name: string; prefix: string; ast: Ast };
 
 /**
  * What is expanded, worked out from CanvasStore.expandedNested (one name, or
- * undefined for the default, or null for none):
+ * undefined or null for none - the default):
  *
  * - `block`: the named block drawn above the last block, if any. Naming a
  *   block, or a checkpoint inside one (`b0/result_1`), expands it.
@@ -525,24 +510,25 @@ export const expansionOf = (ast: Ast, blocks: NamedBlock[], expanded: string | n
       mainOpen: used !== null && used < checkpoints.length ? used : -1,
     };
   }
-  // A name this ast doesn't have (removed, or not built yet) means the default.
-  const known = expanded === null || checkpoints.some(c => c.name === expanded);
-  const open = expanded === undefined || !known ? defaultExpandedCheckpoint(ast) : expanded;
-  return { block: null, innerOpen: null, mainOpen: open === null ? -1 : checkpoints.findIndex(c => c.name === open) };
+  // By default nothing is expanded, and a name this ast doesn't have
+  // (removed, or not built yet) means nothing either.
+  const open = typeof expanded === 'string' ? checkpoints.findIndex(c => c.name === expanded) : -1;
+  return { block: null, innerOpen: null, mainOpen: open };
 };
 
-/** A divider to draw, found while laying out a pipeline (see layoutPipeline). */
-type DividerSpec = {
+/**
+ * A container to draw: an expanded nested query's box. `members` are the ids
+ * of the nodes it holds, and `inner` the name of a container nested in it
+ * (an expanded checkpoint further up the chain).
+ */
+type ContainerSpec = {
   kind: 'checkpoint' | 'named';
-  /** The checkpoint's name, or the named block's - what the pill's toggle expands. */
   name: string;
   label: string;
-  limit?: number;
-  /** The id of the node below the pill. */
+  /** The node below the box: the nested query's own node. */
   nodeId: string;
-  expanded: boolean;
-  /** The line's y when expanded (it then crosses the canvas). */
-  lineY?: number;
+  members: string[];
+  inner?: string;
 };
 
 const prefixed = (prefix: string, nodes: CanvasTableNode[], edges: CanvasEdge[]) => {
@@ -568,9 +554,11 @@ const prefixed = (prefix: string, nodes: CanvasTableNode[], edges: CanvasEdge[])
 /**
  * Lays out one query block's stages from `top` down (see stagesOf),
  * starting at `firstStage`. `openIndex` is its expanded checkpoint (-1:
- * none): checkpoints from it down are expanded. `dropLastStage` leaves out
- * a trailing checkpoint's node-only stage and its divider - a named block
- * ending in `limit: 10 |= x`, whose node is the last block's `x`.
+ * none): checkpoints from it down are expanded, and each gets a container
+ * around the stage it seals. `dropLastStage` leaves out a trailing
+ * checkpoint's node-only stage - a named block ending in `limit: 10 |= x`,
+ * whose node is the last block's `x`; `sealing` is then what that node's
+ * container holds.
  */
 const layoutPipeline = (
   ast: Ast,
@@ -590,12 +578,11 @@ const layoutPipeline = (
   };
   const nodes: CanvasTableNode[] = [];
   const edges: CanvasEdge[] = [];
-  const dividers: DividerSpec[] = [];
-  // The y of each expanded checkpoint's line, by name. The line is found
-  // with the stage it seals; the checkpoint's node, which its divider is
-  // made from, comes in the next stage.
-  const lineY: Record<string, number> = {};
+  const containers: ContainerSpec[] = [];
   const lastStage = dropLastStage ? stages.length - 2 : stages.length - 1;
+  // The container drawn for the stage before, which the next one nests.
+  let previous: string | undefined;
+  let sealing: { members: string[]; inner?: string } = { members: [] };
   stages.forEach((stage, k) => {
     if (k < firstStage || k > lastStage) return;
     const derived = deriveStage(stage, checkpointNames, order);
@@ -603,52 +590,70 @@ const layoutPipeline = (
     const placed = layoutStage(derived.nodes, derived.edges).map(n => {
       const position = { x: n.position.x, y: n.position.y + top };
       if (!n.data.checkpoint) return { ...n, position };
-      return { ...n, position, data: { ...n.data, checkpoint: { expanded: isExpanded(n.id) } } };
+      const checkpoint = checkpoints.find(c => c.name === n.id)!;
+      const expanded = isExpanded(n.id);
+      return {
+        ...n,
+        position,
+        data: {
+          ...n.data,
+          checkpoint: { expanded },
+          nested: {
+            kind: 'checkpoint' as const,
+            name: prefix + n.id,
+            label: checkpointLabel(checkpoint),
+            limit: checkpoint.kind === 'limit' ? checkpoint.limit : undefined,
+            expanded,
+          },
+        },
+      };
     });
     const bottom = placed.length ? Math.max(...placed.map(n => n.position.y + getNodeFootprintHeight(n))) : top;
     const { nodes: ns, edges: es } = prefixed(prefix, placed, derived.edges);
     nodes.push(...ns);
     edges.push(...es);
-    for (const n of placed.filter(n => n.data.checkpoint)) {
-      const checkpoint = checkpoints.find(c => c.name === n.id)!;
-      dividers.push({
-        kind: 'checkpoint',
-        name: prefix + n.id,
-        label: checkpointLabel(checkpoint),
-        limit: checkpoint.kind === 'limit' ? checkpoint.limit : undefined,
-        nodeId: prefix + n.id,
-        expanded: !!n.data.checkpoint?.expanded,
-      });
-    }
+    const members = ns.map(n => n.id);
     if (k < checkpoints.length && k < lastStage) {
-      const y = bottom + dividerGap + dividerHeight / 2;
-      lineY[prefix + checkpoints[k].name] = y;
-      top = y + pillHalfHeight + gapBelowPill;
+      // An expanded checkpoint's stage: a container around it, above the
+      // checkpoint's node in the next stage.
+      const name = prefix + checkpoints[k].name;
+      containers.push({
+        kind: 'checkpoint',
+        name,
+        label: checkpointLabel(checkpoints[k]),
+        nodeId: name,
+        members,
+        inner: previous,
+      });
+      previous = name;
+      top = bottom + containerPad + connectorGap;
     } else {
+      sealing = { members, inner: previous };
       top = bottom;
     }
   });
-  for (const d of dividers) if (d.expanded) d.lineY = lineY[d.name];
-  return { nodes, edges, dividers, bottom: top, order };
+  return { nodes, edges, containers, sealing, bottom: top, order };
 };
+
+type Rect = { x0: number; y0: number; x1: number; y1: number };
 
 /**
  * ast -> laid-out nodes/edges. The pipeline is drawn as stages stacked top
  * to bottom (see stagesOf). Within a stage, tables keep the left-to-right
- * layout. Each checkpoint is a dashed divider across the whole width, below
- * the stage it seals; on it, a pill centred above the node named after the
- * checkpoint, joined to the node by a short connector.
+ * layout. A checkpoint is the node named after it, drawn like any table,
+ * saying what it does (`limit 10`).
  *
- * Only one nested query is expanded at a time (see expansionOf). Checkpoints
- * are a chain - each one's node sits in the stage the next one seals - so
- * expanding one shows every stage from the one it seals down to the last.
- * The checkpoints above it stay collapsed: their node and pill are drawn,
- * their stage isn't. The last stage is always drawn.
+ * Expanding a nested query draws what it holds directly above its node, in
+ * a dashed container with no fill, joined to the node by a short connector.
+ * Only one is expanded at a time (see expansionOf); by default none is.
+ * Checkpoints are a chain - each one's node sits in the stage the next one
+ * seals - so expanding one keeps the checkpoints below it expanded too, and
+ * their containers nest. The last stage is always drawn.
  *
  * `blocks` are the tab's earlier query blocks ending in `|= name`. The node
- * that uses one (a table named after it) gets a pill too; expanding it
- * draws that block above the last block. A block nothing joins is a
- * standalone node beside the graph, with its own pill.
+ * that uses one (a table named after it) can expand it: the block is drawn
+ * above, in a container. A block nothing joins is a standalone node beside
+ * the graph.
  *
  * `positions` holds nodes the user has dragged: they keep that position.
  */
@@ -664,41 +669,42 @@ export const buildCanvasGraph = (
 
   const nodes: CanvasTableNode[] = [];
   const edges: CanvasEdge[] = [];
-  const dividers: DividerSpec[] = [];
+  const containers: ContainerSpec[] = [];
   let top = 0;
   let order = 1;
 
-  // The expanded named block, above the last block, with the line between.
-  let blockLineY: number | null = null;
+  // The expanded named block, above the last block.
+  let blockLaid: ReturnType<typeof layoutPipeline> | null = null;
   if (expansion.block) {
     const b = expansion.block;
     const inner = b.ast.checkpoints ?? [];
     const last = inner[inner.length - 1];
     // `... | limit: 10 |= x`: the block's own last checkpoint is `x`, whose
-    // node is the last block's x. Its stage-only-node and divider are left
-    // out; the named pill says what it does.
+    // node is the last block's x. Its node-only stage is left out; the named
+    // node says what it does.
     const endsInCheckpoint = !!last && !last.sealed && last.name === b.name;
     const innerOpen = expansion.innerOpen === null ? -1 : inner.findIndex(c => c.name === expansion.innerOpen);
     const blockStages = stagesOf(b.ast).length;
     const usable = endsInCheckpoint ? blockStages - 2 : blockStages - 1;
-    const laid = layoutPipeline(b.ast, b.prefix, innerOpen < 0 ? usable : innerOpen, innerOpen, top, order, endsInCheckpoint);
-    nodes.push(...laid.nodes);
-    edges.push(...laid.edges);
-    dividers.push(...laid.dividers);
-    order = laid.order;
-    blockLineY = laid.bottom + dividerGap + dividerHeight / 2;
-    top = blockLineY + pillHalfHeight + gapBelowPill;
+    blockLaid = layoutPipeline(b.ast, b.prefix, innerOpen < 0 ? usable : innerOpen, innerOpen, top, order, endsInCheckpoint);
+    nodes.push(...blockLaid.nodes);
+    edges.push(...blockLaid.edges);
+    containers.push(...blockLaid.containers);
+    order = blockLaid.order;
+    top = blockLaid.bottom + containerPad + connectorGap;
   }
 
   const main = layoutPipeline(ast, '', firstStage, expansion.mainOpen, top, order);
   nodes.push(...main.nodes);
   edges.push(...main.edges);
-  dividers.push(...main.dividers);
+  containers.push(...main.containers);
 
-  // A pill above each node that uses a named block; a standalone node for a
-  // block nothing joins.
+  // Each node that uses a named block says so; a block nothing joins is a
+  // standalone node beside the graph.
   const usedInWhere = new Set(
-    (ast.where ?? []).flatMap(w => whereConditions(w)).flatMap(c => (c.value && !Array.isArray(c.value) && c.value.type === 'named-result' ? [String(c.value.value)] : [])),
+    (ast.where ?? [])
+      .flatMap(w => whereConditions(w))
+      .flatMap(c => (c.value && !Array.isArray(c.value) && c.value.type === 'named-result' ? [String(c.value.value)] : [])),
   );
   const maxMainX = main.nodes.length ? Math.max(...main.nodes.map(n => n.position.x + nodeWidth)) : 0;
   let standaloneY = top;
@@ -707,17 +713,18 @@ export const buildCanvasGraph = (
     const inner = b.ast.checkpoints ?? [];
     const last = inner[inner.length - 1];
     const label = last && !last.sealed && last.name === b.name ? `${checkpointLabel(last)} |= ${b.name}` : `|= ${b.name}`;
+    const nested = { kind: 'named' as const, name: b.name, label, expanded: open };
     const using = main.nodes.find(n => n.data.table === b.name && !n.data.checkpoint);
     let nodeId: string;
     if (using) {
-      using.data = { ...using.data, named: { name: b.name, expanded: open } };
+      using.data = { ...using.data, nested };
       nodeId = using.id;
     } else {
       nodeId = `named:${b.name}`;
       const node: CanvasTableNode = {
         id: nodeId,
         type: 'table-node',
-        position: { x: maxMainX + 80, y: standaloneY + pillHalfHeight * 2 + gapBelowPill },
+        position: { x: maxMainX + 80, y: standaloneY },
         targetPosition: Position.Left,
         sourcePosition: Position.Right,
         data: {
@@ -732,64 +739,80 @@ export const buildCanvasGraph = (
           groupChips: [],
           leftHandles: [],
           rightHandles: [],
-          named: { name: b.name, expanded: open, standalone: true, usedInWhere: usedInWhere.has(b.name) },
+          nested: { ...nested, standalone: true, usedInWhere: usedInWhere.has(b.name) },
         },
       };
       nodes.push(node);
       standaloneY = node.position.y + getNodeFootprintHeight(node) + verticalGap;
+      // Its block, when expanded, goes right above it.
+      if (open && blockLaid) {
+        const ids = new Set(blockLaid.nodes.map(n => n.id));
+        for (const n of nodes) if (ids.has(n.id)) n.position = { x: n.position.x + node.position.x, y: n.position.y };
+      }
     }
-    dividers.push({
-      kind: 'named',
-      name: b.name,
-      label,
-      nodeId,
-      expanded: open,
-      lineY: open && blockLineY !== null ? blockLineY : undefined,
-    });
+    if (open && blockLaid) {
+      containers.push({ kind: 'named', name: b.name, label, nodeId, ...blockLaid.sealing });
+    }
   }
 
   const finalNodes = nodes.map(n => (positions[n.id] ? { ...n, position: positions[n.id] } : n));
-  const maxX = finalNodes.length ? Math.max(...finalNodes.map(n => n.position.x + nodeWidth)) : nodeWidth;
-  const width = Math.max(maxX + dividerOverhang * 2, minDividerWidth);
 
-  // One divider per nested query node drawn: across the canvas when
-  // expanded (what it stands for is above), a short stub when collapsed.
-  // Placed from the node's final position, so a dragged node keeps its pill
-  // above it.
-  const dividerNodes: CanvasDividerNode[] = dividers.flatMap(d => {
-    const n = finalNodes.find(node => node.id === d.nodeId);
-    if (!n) return [];
-    const centre = n.position.x + nodeWidth / 2;
-    const across = d.expanded && d.lineY !== undefined;
-    const y = across ? d.lineY! : n.position.y - gapBelowPill - pillHalfHeight;
-    const x = across ? -dividerOverhang : centre - stubWidth / 2;
+  // Each container's box, from its members' final positions and the box of
+  // the container nested in it. It also spans its node's centre, so the
+  // connector starts on its bottom edge.
+  const rects: Record<string, Rect> = {};
+  const rectOf = (c: ContainerSpec): Rect | null => {
+    if (rects[c.name]) return rects[c.name];
+    const boxes: Rect[] = finalNodes
+      .filter(n => c.members.includes(n.id))
+      .map(n => ({ x0: n.position.x, y0: n.position.y, x1: n.position.x + nodeWidth, y1: n.position.y + getNodeFootprintHeight(n) }));
+    const innerSpec = c.inner ? containers.find(i => i.name === c.inner) : undefined;
+    const inner = innerSpec ? rectOf(innerSpec) : null;
+    if (inner) boxes.push(inner);
+    const node = finalNodes.find(n => n.id === c.nodeId);
+    if (!boxes.length || !node) return null;
+    const centre = node.position.x + nodeWidth / 2;
+    const rect = {
+      x0: Math.min(...boxes.map(r => r.x0), centre - 30) - containerPad,
+      y0: Math.min(...boxes.map(r => r.y0)) - containerPad - containerHeader,
+      x1: Math.max(...boxes.map(r => r.x1), centre + 30) + containerPad,
+      y1: Math.max(...boxes.map(r => r.y1)) + containerPad,
+    };
+    rects[c.name] = rect;
+    return rect;
+  };
+
+  const containerNodes: CanvasContainerNode[] = containers.flatMap(c => {
+    const rect = rectOf(c);
+    const node = finalNodes.find(n => n.id === c.nodeId);
+    if (!rect || !node) return [];
     return [
       {
-        id: `${d.kind === 'named' ? 'named-divider' : 'checkpoint-divider'}:${d.name}`,
-        type: 'checkpoint-divider',
-        position: { x, y: y - dividerHeight / 2 },
+        id: `container:${c.name}`,
+        type: 'nested-container',
+        position: { x: rect.x0, y: rect.y0 },
         draggable: false,
         selectable: false,
         focusable: false,
-        // ReactFlow's own wrapper around the node would otherwise take every
-        // click along the line's whole width - including the mousedown that
-        // starts a rubber-band selection. The pill opts back in (see
-        // CheckpointDividerNode.tsx).
+        // Behind the nodes it holds, which stay fully interactive. ReactFlow's
+        // own wrapper would otherwise take every click inside the box -
+        // including the mousedown that starts a rubber-band selection. The
+        // header opts back in (see NestedContainerNode.tsx).
+        zIndex: -1,
         style: { pointerEvents: 'none' },
         data: {
-          kind: d.kind,
-          name: d.name,
-          label: d.label,
-          limit: d.limit,
-          width: across ? width : stubWidth,
-          pillX: centre - x,
-          expanded: d.expanded,
-          // From the pill's bottom edge to the node's box, past its action bar.
-          connector: Math.max(n.position.y + actionBarHeight - (y + pillHalfHeight), 0),
+          kind: c.kind,
+          name: c.name,
+          label: c.label,
+          width: rect.x1 - rect.x0,
+          height: rect.y1 - rect.y0,
+          connectorX: node.position.x + nodeWidth / 2 - rect.x0,
+          // From the box's bottom edge to the node's box, past its action bar.
+          connector: Math.max(node.position.y + actionBarHeight - rect.y1, 0),
         },
       },
     ];
   });
 
-  return { nodes: [...dividerNodes, ...finalNodes], edges, parsing: true, singleBlock: true };
+  return { nodes: [...containerNodes, ...finalNodes], edges, parsing: true, singleBlock: true };
 };

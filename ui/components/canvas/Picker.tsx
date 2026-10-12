@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import {
   CanvasTableNode,
@@ -165,6 +165,21 @@ const Picker: React.FC = observer(() => {
   // keeps the two in sync rather than being two independent notions of
   // selection.
   const [highlighted, setHighlighted] = useState(0);
+
+  // Keep the open popover inside the window. Its position is worked out
+  // from a fixed size estimate (anchoredStyle), and some panels are larger
+  // than that - the limit editor with its `per` field - so after each render
+  // it is measured and moved back in by however much it overflows.
+  useLayoutEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const margin = 8;
+    const rect = el.getBoundingClientRect();
+    const dx = Math.max(rect.right - (window.innerWidth - margin), 0);
+    const dy = Math.max(rect.bottom - (window.innerHeight - margin), 0);
+    if (dx) el.style.left = `${Math.max(rect.left - dx, margin)}px`;
+    if (dy) el.style.top = `${Math.max(rect.top - dy, margin)}px`;
+  });
 
   // Computed unconditionally (rather than after the where-value early
   // return below) so `flatItems` can already sink selected columns to the

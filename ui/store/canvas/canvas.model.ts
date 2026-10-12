@@ -43,52 +43,56 @@ export type CanvasTableNodeData = {
    */
   checkpoint?: { expanded: boolean };
   /**
-   * Set when this node is a named result from an earlier query block (a
-   * block ending in `|= name`): the table that uses it in the last block,
-   * or, when nothing joins it, a standalone node beside the graph
-   * (`standalone`; `usedInWhere` when a `where: ... in name` uses it). Its
-   * divider's pill expands the block above. A standalone node has no
-   * actions of its own: it isn't in the query's text.
+   * Set when this node stands for a nested query: a checkpoint's node, or a
+   * table that uses a named result from an earlier query block (a block
+   * ending in `|= name`). It shows `label` (`limit 10`, `|= top`) and an
+   * expand toggle; expanded, a container above it holds what the nested
+   * query holds (see layout.ts's buildCanvasGraph). `limit` makes the label
+   * open the limit editor.
+   *
+   * A named block nothing joins is a standalone node beside the graph
+   * (`standalone`; `usedInWhere` when a `where: ... in name` uses it). It has
+   * no actions of its own: it isn't in the query's text.
    */
-  named?: { name: string; expanded: boolean; standalone?: boolean; usedInWhere?: boolean };
+  nested?: {
+    kind: 'checkpoint' | 'named';
+    name: string;
+    label: string;
+    limit?: number;
+    expanded: boolean;
+    standalone?: boolean;
+    usedInWhere?: boolean;
+  };
 };
 
 // eslint-disable-next-line @typescript-eslint/ban-types
 export type CanvasStartNodeData = {};
 
 /**
- * The divider above a nested query's node: a node whose body - what it
- * stands for - can be drawn above the line. It is a checkpoint, labelled
- * by its operation, or a named result from an earlier query block,
- * labelled `|= name` (`kind` tells them apart).
- *
- * For a checkpoint (see layout.ts's buildCanvasGraph): a dashed line
- * with a pill on it, centred above the checkpoint's node, and a connector
- * from the pill down to the node. Across the canvas when the checkpoint is
- * expanded (the stage it seals is drawn above); a short stub when
- * collapsed. Not a pipeline slot: it isn't focusable or selectable, and only
- * the pill takes clicks.
+ * An expanded nested query's container (see layout.ts's buildCanvasGraph): a
+ * dashed box with no fill around what it holds, directly above its node,
+ * with a short connector from its bottom edge down to the node. Its label
+ * sits on its top edge. Not a pipeline slot: it isn't focusable or
+ * selectable, and only its header takes clicks.
  */
-export type CanvasDividerNodeData = {
+export type CanvasContainerNodeData = {
   kind: 'checkpoint' | 'named';
-  /** The nested query's name - the id of the node below the line. */
+  /** The nested query's name - what its collapse toggle collapses. */
   name: string;
-  /** What the checkpoint does, e.g. `limit 1 per c.id` or `group t.title → count`. */
+  /** What it is, e.g. `limit 1 per c.id`, `group t.title → count`, `|= top`. */
   label: string;
-  /** Set for a limit: the label then opens the limit editor for this checkpoint. */
-  limit?: number;
   width: number;
-  /** The pill's centre, from the divider's left edge: the node's centre. */
-  pillX: number;
-  expanded: boolean;
-  /** The connector's length, from the pill's bottom edge to the node's box. */
+  height: number;
+  /** The connector's x in the box: its node's centre. */
+  connectorX: number;
+  /** The connector's length, from the box's bottom edge to the node's box. */
   connector: number;
 };
 
 export type CanvasTableNode = Node<CanvasTableNodeData>;
 export type CanvasStartNode = Node<CanvasStartNodeData>;
-export type CanvasDividerNode = Node<CanvasDividerNodeData>;
-export type CanvasNode = CanvasTableNode | CanvasStartNode | CanvasDividerNode;
+export type CanvasContainerNode = Node<CanvasContainerNodeData>;
+export type CanvasNode = CanvasTableNode | CanvasStartNode | CanvasContainerNode;
 export type CanvasEdge = Edge & {
   unresolved?: boolean;
   uncertain?: boolean;

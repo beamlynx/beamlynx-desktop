@@ -121,10 +121,11 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
       // (TableNode.tsx).
       const focused = canvasStore.canvasGraph.nodes.find(n => n.id === alias);
       const isCheckpoint = focused?.type === 'table-node' && !!(focused.data as CanvasTableNodeData).checkpoint;
-      // A table that uses a named block from an earlier query block, or a
-      // standalone node for one nothing joins. A standalone node isn't in
-      // the query's text: only `e` (and moving focus) applies to it.
-      const named = focused?.type === 'table-node' ? (focused.data as CanvasTableNodeData).named : undefined;
+      // A nested query's node: a checkpoint's, a table that uses a named
+      // block from an earlier query block, or a standalone node for one
+      // nothing joins. A standalone node isn't in the query's text: only `e`
+      // (and moving focus) applies to it.
+      const nested = focused?.type === 'table-node' ? (focused.data as CanvasTableNodeData).nested : undefined;
 
       // Synthesized anchor: there's no click event to read a position from
       // when a picker is opened by keyboard - use the focused node's own
@@ -173,7 +174,7 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
         }
       }
 
-      if (named?.standalone && e.key !== 'e') return;
+      if (nested?.standalone && e.key !== 'e') return;
 
       switch (e.key) {
         // The fine-grained counterpart to plain j/k (or ArrowUp/Down) above:
@@ -268,9 +269,9 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
         // seals (CanvasStore.toggleNested). The same as the toggle on its
         // node. Checkpoints' nodes only.
         case 'e':
-          if (!isCheckpoint && !named) return;
+          if (!nested) return;
           e.preventDefault();
-          canvasStore.toggleNested(named ? named.name : alias);
+          canvasStore.toggleNested(nested.name);
           return;
         case 'l':
           // Offered on a checkpoint's node too, like 'p': it limits the

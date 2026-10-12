@@ -268,7 +268,7 @@ const legendKeysFor = (
   // on its divider does.
   // 'e' expands or collapses what the checkpoint seals.
   if (isCheckpoint) return ['c', 's', 'w', 'o', 'l', 'p', '+', 'i', 'e', 'x'];
-  // 'e' on a table that uses a named block expands that block.
+  // 'e' on a table that uses a named block expands or collapses that block.
   return ['c', 's', 'w', 'o', 'g', 'l', 'p', '+', 'i', ...(named ? ['e'] : []), ...(removable ? ['x'] : [])];
 };
 
@@ -332,7 +332,7 @@ export const CanvasModeIndicator: React.FC<{ canvasStore: CanvasStore }> = obser
             isStart,
             isCheckpoint,
             removable,
-            focusedNode?.type === 'table-node' ? (focusedNode.data as CanvasTableNodeData).named : undefined,
+            focusedNode?.type === 'table-node' ? (focusedNode.data as CanvasTableNodeData).nested : undefined,
           ).map((key, i) => (
             <React.Fragment key={key}>
               {i > 0 && (
