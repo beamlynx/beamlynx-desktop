@@ -84,6 +84,9 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true 
           session.query = value;
         });
         lastValueRef.current = value;
+        // Only a typed edit converts, never a write from the session (the
+        // SQL built from the Pine), which arrives with value === query.
+        session.sqlEdited();
       }
     },
     [session],
@@ -160,36 +163,77 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true 
   );
 
   return (
-    <CodeMirror
-      ref={inputRef}
-      id="sql-input"
-      value={session.query}
-      height="100%"
-      theme="none"
-      extensions={extensions}
-      onCreateEditor={onCreateEditor}
-      onFocus={() => {
-        session.focusTextInput();
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      <Box sx={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+        <CodeMirror
+          ref={inputRef}
+          id="sql-input"
+          value={session.query}
+          height="100%"
+          theme="none"
+          extensions={extensions}
+          onCreateEditor={onCreateEditor}
+          onFocus={() => {
+            session.focusTextInput();
+          }}
+          onBlur={() => {
+            session.blurTextInput();
+          }}
+          onChange={handleChange}
+          indentWithTab={false}
+          basicSetup={{
+            tabSize: 2,
+            foldGutter: false,
+            dropCursor: false,
+            allowMultipleSelections: false,
+            crosshairCursor: false,
+            lineNumbers: true,
+          }}
+          style={{
+            outline: 'none',
+          }}
+          autoFocus={autoFocus}
+          placeholder="Enter your SQL query here..."
+        />
+      </Box>
+      <SqlConversionStatus session={session} />
+    </Box>
+  );
+});
+
+/**
+ * Under the SQL editor: whether its text converted to Pine, the canvas's
+ * source. Nothing while the editor hasn't been typed in.
+ */
+const SqlConversionStatus: React.FC<{ session: Session }> = observer(({ session }) => {
+  const { status, message, warnings } = session.sqlConversion;
+  if (status === 'idle') return null;
+  const lines =
+    status === 'converting'
+      ? ['Converting to Pine…']
+      : status === 'converted'
+        ? ['Converted to Pine.', ...warnings]
+        : [`Not converted. ${message}`, 'The canvas shows the last query that converted.'];
+  return (
+    <Box
+      role="status"
+      sx={{
+        flexShrink: 0,
+        px: 1.5,
+        py: 0.5,
+        borderTop: '1px solid var(--divider-color)',
+        fontFamily: 'var(--canvas-font)',
+        fontSize: '12px',
+        lineHeight: 1.5,
+        whiteSpace: 'pre-wrap',
+        color:
+          status === 'failed' ? 'var(--text-warning-color)' : 'var(--node-secondary-text-color)',
       }}
-      onBlur={() => {
-        session.blurTextInput();
-      }}
-      onChange={handleChange}
-      indentWithTab={false}
-      basicSetup={{
-        tabSize: 2,
-        foldGutter: false,
-        dropCursor: false,
-        allowMultipleSelections: false,
-        crosshairCursor: false,
-        lineNumbers: true,
-      }}
-      style={{
-        outline: 'none',
-      }}
-      autoFocus={autoFocus}
-      placeholder="Enter your SQL query here..."
-    />
+    >
+      {lines.map((line, i) => (
+        <div key={i}>{line}</div>
+      ))}
+    </Box>
   );
 });
 
