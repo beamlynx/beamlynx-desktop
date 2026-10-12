@@ -11,6 +11,17 @@ function detectLanguage(query: string): 'mysql' | 'postgresql' {
   return query.includes('`') ? 'mysql' : 'postgresql';
 }
 
+// A Pine `$name` variable with no value yet reaches the SQL as `$name`, which
+// sql-formatter doesn't know as a parameter and refuses to parse. Declaring
+// it as a custom parameter keeps the panel formatted while a value is missing.
+// `?` (positional) and Postgres's `$1` (numbered) are listed too, because
+// setting paramTypes replaces the dialect's defaults.
+const paramTypes = {
+  positional: true,
+  numbered: ['$' as const],
+  custom: [{ regex: String.raw`\$[A-Za-z_][A-Za-z0-9_]*` }],
+};
+
 /**
  * Pretty-prints a compiled SQL query for display, dialect-detected from the
  * query text. Falls back to the raw, unformatted query (not '') on a
@@ -27,9 +38,12 @@ export function formatSql(query: string): string {
       language: detectLanguage(query),
       indentStyle: 'tabularRight',
       denseOperators: false,
+      paramTypes,
     });
   } catch (e) {
-    console.error('formatSql: failed to format SQL, showing it unformatted', e);
+    // warn, not error: in `next dev` an error opens the overlay over the
+    // canvas, though the panel already shows the query unformatted.
+    console.warn('formatSql: failed to format SQL, showing it unformatted', e);
     return query;
   }
 }
