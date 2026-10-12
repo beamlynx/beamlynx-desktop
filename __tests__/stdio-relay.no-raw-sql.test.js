@@ -44,6 +44,7 @@ test('stdio-relay.ts registers exactly the expected tool set', () => {
       'open_in_desktop',
       'request_reveal',
       'run_query',
+      'run_sql_as_pine',
     ].sort(),
     'Registered tool set changed -- if this was intentional, update this test; if not, something was added ' +
       '(or removed) unexpectedly. Keep this an exact-set assertion: the point is that a raw-SQL tool cannot be ' +
@@ -91,12 +92,13 @@ test('stdio-relay.ts renders tool output through format.ts rather than JSON-dump
   );
 });
 
-// run_query may carry SQL, which beamlynx-ui converts to Pine before
+// run_sql_as_pine carries SQL, which beamlynx-ui converts to Pine before
 // anything runs (beamlynx-plans/pending/2026-10-12-agents-run-sql-as-pine.md).
 // The relay only forwards it, to the control plane's /query, the same route
 // a Pine expression takes.
-test('run_query forwards SQL only to the control plane /query route', () => {
+test('run_sql_as_pine forwards SQL only to the control plane /query route', () => {
   const sends = [...STDIO_RELAY_SOURCE.matchAll(/controlPlaneRequest\(\s*'(\w+)',\s*'([^']+)'/g)].map(m => m[2]);
   assert.ok(sends.every(route => ['/connections', '/explain', '/query', '/reveal', '/reveal-status'].some(r => route.startsWith(r))), sends.join(', '));
-  assert.ok(/hasSql \? \{ profileId: connection_id, sql, variables \}/.test(STDIO_RELAY_SOURCE));
+  assert.ok(/runOnControlPlane\(\{ profileId: connection_id, sql, variables \}\)/.test(STDIO_RELAY_SOURCE));
+  assert.ok(/controlPlaneRequest\('POST', '\/query', body\)/.test(STDIO_RELAY_SOURCE));
 });

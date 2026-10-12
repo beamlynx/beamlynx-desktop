@@ -133,7 +133,7 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
       if (req.method === 'POST' && (req.url === '/query' || req.url === '/explain')) {
         const body = await readJsonBody(req);
         const { profileId, expression, sql, variables } = body ?? {};
-        // run_query sends Pine as `expression` or SQL as `sql`, never both.
+        // run_query sends Pine as `expression`, run_sql_as_pine SQL as `sql`.
         // SQL is only for /query, where beamlynx-ui converts it to Pine and
         // runs the Pine; it never runs as SQL.
         const hasSql = typeof sql === 'string';

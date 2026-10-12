@@ -61,7 +61,7 @@ export type EvalResponse = {
   columns?: { column: string; alias?: string; 'column-alias'?: string; hidden?: boolean }[];
   rows?: unknown[][];
   error?: string;
-  // Set when run_query got SQL: the Pine it was converted to and ran, and
+  // Set for run_sql_as_pine: the Pine the SQL was converted to and ran, and
   // how that Pine differs from the SQL without changing the rows.
   pine?: string;
   warnings?: string[];
@@ -380,7 +380,7 @@ const EVAL_ERROR_GUIDANCE: { pattern: RegExp; guidance: string }[] = [
     // SQL sent as `expression`. pine-lang's own hint points at the app's
     // SQL panel, which an agent doesn't have.
     pattern: /This looks like SQL/,
-    guidance: 'Send it as `sql` instead of `expression`. run_query converts SQL to Pine and runs the Pine.',
+    guidance: 'To run SQL, use run_sql_as_pine. It converts the SQL to Pine and runs the Pine.',
   },
   {
     // e.g. `customers | orders .customer_id` where the column is really
