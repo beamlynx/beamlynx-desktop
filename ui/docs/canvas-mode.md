@@ -187,8 +187,8 @@ The current mode is always visible bottom-left of the canvas
 (`CanvasModeIndicator`, in `CanvasToolbar.tsx`) — "normal" or "insert", plus,
 in normal mode, `c` (write the canvas comment, canvas-wide, always first)
 followed by the exact letters armed for whichever node is currently focused
-(e.g. `c s w o g i x` for a table with something to delete, `c s w o i x`
-for a checkpoint, `c i` for the empty-canvas start node). This legend is
+(e.g. `c s w o g i x` for a table with something to delete, `c s w o l p + i e x`
+for a checkpoint's node, `c i` for the empty-canvas start node). This legend is
 what makes the shortcuts discoverable without memorizing them up front.
 
 **Moving focus** (normal mode only):
@@ -198,11 +198,11 @@ what makes the shortcuts discoverable without memorizing them up front.
 | `j` / `↓` | Focus the next node in pipeline order |
 | `k` / `↑` | Focus the previous node |
 
-Focus order is the pipeline's own left-to-right sequence
-(`CanvasStore.orderedFocusTargets`), with a checkpoint frame interleaved right
-after the last table it wraps — there's no second navigation axis (no
-left/right), since the pipeline is a single strict sequence, not a 2D graph
-to roam.
+Focus order is the pipeline's own sequence, top to bottom
+(`CanvasStore.orderedFocusTargets`): each stage's tables, then the node of the
+checkpoint that seals it, then the next stage's tables. A checkpoint's divider
+is not a stop. There's no second navigation axis (no left/right), since the
+pipeline is a single strict sequence, not a 2D graph to roam.
 
 **Acting on the focused node** (normal mode only):
 
@@ -213,7 +213,8 @@ to roam.
 | `w` | Open the where-condition picker |
 | `o` | Open the order-by picker |
 | `g` | Open the group-by picker (not offered on a checkpoint node — grouping an already-grouped result is a different question, not implemented) |
-| `x` | Delete the focused node — a table if `removable`, or a checkpoint's whole `group:`/`limit:` run if focused on a frame (its member tables become plain nodes again, not deleted themselves) |
+| `e` | On a checkpoint's node: expand or collapse what it seals (the same as the toggle on its pill) |
+| `x` | Delete the focused node — a table if `removable`, or, on a checkpoint's node, the checkpoint (as the × on its divider does; the tables it sealed stay) |
 | `u` | Undo the last canvas gesture |
 | `c` | Write (or edit) the comment at the top of the expression — see "The comment" below |
 | `Shift`+`U` | Redo |
@@ -228,12 +229,12 @@ out of it: undo/redo are a near-universal convention, already carrying their
 own always-visible icons in the toolbar above, so they don't need it
 (`CanvasToolbar.tsx`'s `legendKeysFor`).
 
-A checkpoint (frame) node routes `s`/`w`/`o`/`i`/`x` through
+A checkpoint's node routes `s`/`w`/`o`/`p`/`i` through
 `openCheckpointPicker` instead of the per-table picker methods, but the same
 letters apply — the legend at the bottom of the screen always reflects which
 set is active for whatever's focused. `x` is unavailable on a table with
-`removable: false` (only the tables still sealed *inside* an unconsumed
-checkpoint — see Constraints) and simply does nothing if pressed.
+`removable: false` (the tables inside a sealed checkpoint — see Constraints)
+and simply does nothing if pressed.
 
 For a keyboard-opened picker, there's no click position to anchor its dropdown
 to — `useCanvasKeybindings.ts`'s `anchorFor` reads the focused node's own
@@ -360,34 +361,104 @@ clicking away commits, `Escape` cancels.
 
 **Ownership.** `assignOwners` walks segments left to right: a table segment
 sets the "current" alias to its own (from an explicit `as <alias>`, falling
-back to the corresponding entry in `ast['selected-tables']`); a `from: X`
-segment resets the current alias to `X`; every other segment inherits
-whatever alias is current. `group:`/`limit:` are the two exceptions to "one
-owner" — they're pipeline-wide, unowned segments (see below).
+back to the corresponding entry in `pipelineTables(ast)`); a `from: X`
+segment resets the current alias to `X`; a `group:`/`limit:` belongs to the
+checkpoint's own name (from `ast.checkpoints`), and so does everything after
+it up to the next table; every other segment inherits whatever alias is
+current.
 
-**Checkpoints seal the pipeline.** `group:` and `limit:` are pine-lang
-"checkpoint" operations (see pine-lang's own `docs/checkpoints.md`) that seal
-the pipeline's current shape — nothing can validly follow one in the same
-block. Canvas mode always appends new `group:`/`limit:` content, and any new
-join or column-clause edit, *before* a trailing checkpoint run rather than
-after it: `splitTrailingCheckpoints` (`pine-text.ts`) pops any trailing
-`group`/`limit` segments off the list before a gesture computes its insertion
-point, and reattaches them at the end afterward. Both `appendTableSegment`
-(new joins) and `upsertOwnedSegment` (select/where/order edits) go through
-this split — without it, e.g. adding a `where:` to an already-grouped node
-would land the new condition after `group:` in the committed text, which
-pine-lang treats as invalid. Building a picker's hint probe
-(`CanvasStore.buildProbeExpression`) does the same strip, for the same
-reason: probing with a trailing checkpoint attached reflects the *sealed*
-output's shape (just the grouped columns) rather than the real table the
+**Checkpoints split the pipeline into stages.** `group:` and `limit:` are
+pine-lang "checkpoint" operations (see pine-lang's own `docs/checkpoints.md`).
+Each seals what came before it into a CTE named `result_1`, `result_2`, ...
+(or the `|= name` after it), and the steps after it work on that sealed
+result. pine-lang lists them in `ast.checkpoints`, in pipe order, with each
+one's name, kind, limit/`per` or group columns, and result columns.
+
+The canvas draws the pipeline as stages stacked top to bottom
+(`layout.ts`'s `buildCanvasGraph`):
+
+- Within a stage, tables keep the left-to-right layout, each drawn once.
+- Each checkpoint is a dashed divider across the canvas, below the stage it
+  seals (`nodes/CheckpointDividerNode.tsx`). On the line, centred above the
+  checkpoint's node, is a pill: the expand toggle, the label (`limit 10`,
+  `limit 1 per c.id`, `group t.title → count`) and ×. A limit's label opens
+  the limit editor for that checkpoint's own number; `per` is kept. The ×
+  removes the checkpoint. A short dashed connector runs from the pill's
+  bottom edge to the node's box.
+- Below the divider is a node named after the checkpoint, exactly as pine-lang
+  reports it. It is drawn like any table node (`TableNode` with
+  `data.checkpoint` set): chips for the steps after the checkpoint, join
+  handles, the action bar. Its actions go through `openCheckpointPicker`.
+  Tables joined after the checkpoint are in its stage, with an edge from it.
+- **One nested query is expanded at a time** (`CanvasStore.expandedNested`,
+  UI-only, not saved). Checkpoints form a chain - each one's node sits in
+  the stage the next one seals - so expanding one draws every stage from the
+  one it seals down to the last. The checkpoints above it are collapsed:
+  their node and pill are drawn (the pill on a short stub of line), their
+  stage isn't. By default the checkpoint feeding the last stage is
+  expanded. The pill's toggle and `e` expand or collapse; collapsing hands
+  the expansion to the next checkpoint down, or to none for the last.
+  Keyboard focus only visits drawn nodes.
+- **After a gesture adds a checkpoint**, focus moves to its node, and it is
+  expanded - as focus follows a newly joined table
+  (`CanvasStore.runCommit`, via `layout.ts`'s `newCheckpointName`).
+
+A sealed checkpoint's stage is drawn from its snapshot in
+`ast['pending-assignments'][name]`, which carries its tables, joins, columns,
+`where`, `order` and `group`. The stage after the last checkpoint comes from
+the live AST.
+
+Because a checkpoint's own segment belongs to its name, a gesture on a table
+lands in that table's stage: "after the last segment this table owns" is
+always before the checkpoint that seals it. A new join or `group:`
+goes at the end of the stage it belongs to (`stageEnd` in `pine-text.ts`).
+Building a picker's hint probe (`CanvasStore.buildProbeExpression`) stops at
+the end of the target's stage, for the same reason: probing after a
+checkpoint reflects the sealed output's shape, not the real table the
 gesture is about.
 
-**`group:` is a single shared segment.** Unlike `select:`/`order:` (one
-segment per owning table) or `where:` (one segment per *condition* - see
-below), grouping on two different nodes doesn't produce two `group:`
-segments — it's one segment that each contributing table's columns are
-merged into (`getGroupColumns`/`setGroupColumns` in `pine-actions.ts`),
-always kept at the pipeline's literal end.
+**Earlier query blocks.** A tab can have several query blocks. The canvas
+draws the last one; each earlier one must end in `|= name` (`tab-blocks.ts`),
+or the canvas shows a banner instead. Such a block is a nested query of the
+last one, with the same one-expanded-at-a-time rule as checkpoints:
+
+- The table in the last block that uses `name` gets a pill (`|= name`, or
+  `limit 20 |= name` when the block ends in a checkpoint). Expanding it draws
+  the block above, with the line and connector down to that table.
+- A block nothing joins is a standalone node beside the graph, with its own
+  pill and no actions. When a `where: ... in name` uses it, it says so.
+- Nodes drawn from an earlier block have its prefix in their id (`b0/c`).
+  `CanvasStore.scopeOf` turns an id into the block and its alias in that
+  block, so a gesture on one edits that block's own text, and its probes
+  build it with the blocks above it (`contextFor`).
+- In such a tab the canvas builds every block itself (`refreshBlockAsts`):
+  the session builds only the block under the editor's cursor.
+
+**The limit editor's `per`.** Besides N, the limit editor has an optional
+`per` field: the first N rows of each group of rows sharing those columns.
+It offers every column of the tables in the stage the limit ends. Opened
+from a checkpoint's pill, both fields show what the checkpoint has.
+
+**Variables in the where editor.** A value starting with `$` is a variable
+(`status = $status`, `id in $ids`); the tab's variables are offered as you
+type. A new name gets a `$name = ` line in the values block in the same step,
+and the Variables list asks for its value. On an existing condition, "make
+variable" turns `status = 'shipped'` into `status = $status` and moves
+`'shipped'` into the values block, picking `$status_2` if `$status` is taken.
+
+**Checkpoint names.** The canvas never makes a name up. Before any gesture,
+`getPinnedBase` writes each unnamed checkpoint's name into the text as `|=
+result_1`, using the name pine-lang reports (`ensureExplicitCheckpointName`).
+An auto name can change when the rest of the expression does, so steps
+written against it need it pinned. Removing a checkpoint's last `limit:` or
+`group:` also removes its pinned name, when that name is an auto name and
+nothing follows it.
+
+**`group:` is a single shared segment per stage.** Unlike `select:`/`order:`
+(one segment per owning table) or `where:` (one segment per *condition* - see
+below), grouping on two different nodes of a stage doesn't produce two
+`group:` segments — it's one segment that each contributing table's columns
+are merged into (`getGroupColumns`/`setGroupColumns` in `pine-actions.ts`).
 
 **`where:` is one segment per condition, not a shared comma list.** A second
 filter on the same table appends a new `where:` step (`appendOwnedSegment` in
@@ -429,14 +500,14 @@ has completed yet" from a genuine parse failure, which still returns a real
 over "Not parsing" right after a session restore, before the backend has
 responded to the first build.
 
-**Layout.** `store/canvas/layout.ts` derives nodes/edges from the AST
-(`deriveGraph`) and lays them out with dagre (`layoutNodes`), overriding
-dagre's own y-coordinate with strict pipeline-sequence order
-(`sequenceYByAlias`) so node 2 always sits below node 1 regardless of which
-rank dagre's crossing-minimization puts it on. It's a smaller, independent
-model from the classic graph's `store/graph.util.ts`/`store/node-layout.ts` —
-no suggested/candidate nodes, no variable/checkpoint containers (see
-Constraints).
+**Layout.** `store/canvas/layout.ts` splits the AST into stages
+(`stagesOf`), derives each stage's nodes/edges (`deriveStage`) and lays each
+stage out with dagre (`layoutStage`), overriding dagre's own y-coordinate
+with strict pipeline-sequence order (`sequenceYByAlias`) so node 2 always
+sits below node 1 regardless of which rank dagre's crossing-minimization puts
+it on. Stages are stacked with a checkpoint divider between each pair. It's a
+smaller, independent model from the classic graph's
+`store/graph.util.ts`/`store/node-layout.ts` — no suggested/candidate nodes.
 
 ## Constraints
 
@@ -452,10 +523,13 @@ Constraints).
   `src/pine/ast/table.clj`) rather than failing outright, and `layout.ts`'s
   `addJoins` renders that the same as any other unresolved join (dashed,
   warning-colored, no column labels) rather than a plain solid line.
-- **No checkpoint/variable nodes.** There's no way to join onto, or select
-  from, a `group:`/`limit:` checkpoint's own sealed/aggregated output as a
-  node in its own right. Checkpoints today only ever sit at the pipeline's
-  literal end.
+- **Tables inside a sealed checkpoint can't be removed.** Removing one could
+  break the checkpoint's own `group:` or joins in ways a segment removal
+  doesn't account for. Tables after the last checkpoint, or sealed by a
+  checkpoint still pending at the end, can be.
+- **No grouping a checkpoint's result from its node.** `group` isn't offered
+  on a checkpoint's node: grouping an already-grouped result is a different
+  question.
 - **No `update!`/`delete!` support.** Canvas mode only models read pipelines.
 - **Multi-select `assign` is inert.** Shown in the toolbar but not wired to
   any mutation — pine-lang's `|=` variable/checkpoint assignment needs
@@ -481,19 +555,21 @@ Constraints).
 - `segmentsFromAst` — segments the expression using `ast.ranges`, then calls
   `assignOwners` to attribute each one to a table alias by a left-to-right
   walk. Returns `null` when the expression doesn't currently parse.
+- `pipelineTables` — every real table in the pipeline, across all stages;
+  `ast['selected-tables']` only has the last stage's.
 - `upsertOwnedSegment` — insert/replace/remove the one segment of a given
-  `kind` owned by a given alias; used for `select:`/`order:`. Splits off
-  trailing checkpoints first (see `splitAtCheckpoint`) so the scan for "last
-  segment owned by this alias" can't mistake an inherited-owner checkpoint for
-  real ownership.
+  `kind` owned by a given alias (a table's alias or a checkpoint's name);
+  used for `select:`/`order:`.
 - `appendOwnedSegment` — the multi-segment counterpart: inserts a NEW segment
   of a given `kind` without touching any existing one of that kind. Used for
   `where:`, where each condition is its own step (see above).
-- `appendTableSegment` — appends a new table (optionally preceded by a
-  `from:` reset) before any trailing checkpoint run.
-- `splitTrailingCheckpoints` — pops a trailing run of `group`/`limit`
-  segments off the end of the list; shared by both of the above and by
+- `appendTableSegment` — inserts a new table (optionally preceded by a
+  `from:` reset) at the end of the stage of the node it joins from.
+- `stageEnd` — where an alias's stage ends: the next `group:`/`limit:` after
+  the last segment it owns. Shared by joins, `setGroupColumns` and
   `CanvasStore.buildProbeExpression`.
+- `ensureExplicitCheckpointName` — pins `|= name` on every unnamed
+  checkpoint, using the name pine-lang reports.
 - `ensureExplicitAliases` — pins an explicit alias onto every table lacking
   one and rewrites every qualified reference to match; returns
   `{expression, changed, aliasMap}`.
@@ -507,9 +583,9 @@ Pure functions, each taking a `PinnedBase` (`{expression, ast, segments,
 aliasMap}`, from `getPinnedBase`) and returning the next expression string:
 `join`, `setSelectColumns`/`getSelectColumns`, `addWhereCondition`/
 `removeWhereConditionAt`, `addOrderColumn`/`removeOrderColumnAt`/
-`getOrderColumns`, `deleteNode`, `setLimit`, `getGroupColumns`/
-`setGroupColumns`. `resolveAlias` looks up a possibly-stale alias through
-`PinnedBase.aliasMap`.
+`getOrderColumns`, `deleteNode`, `deleteCheckpoint`, `setLimit`,
+`getGroupColumns`/`setGroupColumns`. `resolveAlias` looks up a possibly-stale
+alias through `PinnedBase.aliasMap`.
 
 ### Store (`store/canvas/canvas.store.ts`)
 
@@ -526,13 +602,15 @@ that never touches `session.expression`/`session.ast`).
 
 ### Layout (`store/canvas/layout.ts`)
 
-`deriveGraph` (AST → nodes/edges, scoped to `selected-tables` plus the
-in-progress table) and `buildCanvasGraph` (adds dagre-based positions,
-overridden on the y-axis by `sequenceYByAlias`).
+`stagesOf` (AST → stages), `deriveStage` (one stage → nodes/edges, with the
+checkpoint's node first), `checkpointLabel` (a divider's text) and
+`buildCanvasGraph` (lays out each stage, stacks them, and adds a divider per
+checkpoint).
 
 ### Types (`store/canvas/canvas.model.ts`)
 
-`CanvasTableNodeData`, `CanvasStartNodeData`, `CanvasGraph`, `PickerRequest`
+`CanvasTableNodeData` (with `checkpoint` set for a checkpoint's node),
+`CanvasStartNodeData`, `CanvasDividerNodeData`, `CanvasGraph`, `PickerRequest`
 (`table`/`join`/`select`/`where`/`order`/`group`), `PickerState`
 (`list`/`where-value` modes). Deliberately independent of `model.d.ts`'s
 `PineNode`/`SelectedNodeData` family used by the classic graph.
@@ -547,6 +625,8 @@ overridden on the y-axis by `sequenceYByAlias`).
 - `nodes/TableNode.tsx` — action bar, chip rows (`sel`/`where`/`order`/
   `group`), delete button (last node only), join-direction handles.
 - `nodes/StartNode.tsx` — the empty-graph "+ pick a table" node.
+- `nodes/CheckpointDividerNode.tsx` — a checkpoint's dashed divider: its
+  label (a limit's opens the limit editor) and its ×.
 - `Picker.tsx` — the dropdown for both list-mode (table/join/select/where/
   order/group) and the where-value two-step flow; keyboard nav, click-outside
   close, filter-as-you-type. `,` doubles as `Enter` on the list.

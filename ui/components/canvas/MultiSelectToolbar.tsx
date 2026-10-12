@@ -29,7 +29,7 @@ const disabledButtonStyle: React.CSSProperties = {
  * Appears once 2+ nodes are box/shift-selected (see Canvas.tsx's
  * onSelectionChange). `limit` is fully wired - a pipeline-wide `limit: N`,
  * unrelated to which specific nodes are selected. Also reachable one node at
- * a time now via each node's own "+" overflow (TableNode.tsx/FrameNode.tsx,
+ * a time now via each node's own "+" overflow (TableNode.tsx,
  * CanvasStore.openLimitEditor) - kept here too, unlike `group`'s full move
  * off this toolbar, since a bulk "limit everything I've selected" gesture
  * still reads naturally without picking one specific node to open it from.

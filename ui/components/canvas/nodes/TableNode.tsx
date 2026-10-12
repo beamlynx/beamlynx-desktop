@@ -9,10 +9,9 @@ import { NOTCHED_NODE_THEMES } from '../../../styles/palette/themes';
 
 /**
  * The alias a currently-open picker is targeting, regardless of its mode -
- * null if closed or table-picker. Exported for FrameNode.tsx's own
- * `engaged` check - a checkpoint's picker (opened via openCheckpointPicker)
- * still ends up as a normal `PickerState` keyed by the checkpoint's pinned
- * name, exactly like any table's.
+ * null if closed or table-picker. A checkpoint's picker (opened via
+ * openCheckpointPicker) is keyed by the checkpoint's name, which is also
+ * its node's alias, so this works for it unchanged.
  */
 export const pickerAliasFor = (picker: PickerState): string | null => {
   if (!picker.open) return null;
@@ -45,12 +44,10 @@ export type OperationKind = 'select' | 'join' | 'where' | 'order' | 'group' | 'p
  * all four: once you're inside e.g. "select", seeing "where"/"join"/"+"
  * alongside it is just noise you can't act on right now (a picker being open
  * already means we're in insert mode - see CanvasStore.mode - where none of
- * those other letters do anything). Exported for FrameNode.tsx to apply the
- * same decluttering to a checkpoint's own action bar - `openCheckpointPicker`
- * (canvas.store.ts) ultimately calls `openColumnPicker`/`openJoinPicker`/
- * `openPathPicker` with the checkpoint's pinned name, which is exactly the
- * FrameNode's own `id` (see that file's own doc comment), so this same
- * alias-keyed check works unchanged for it.
+ * those other letters do anything). A checkpoint's node works the same way:
+ * `openCheckpointPicker` (canvas.store.ts) ultimately calls
+ * `openColumnPicker`/`openJoinPicker`/`openPathPicker` with the checkpoint's
+ * name, which is the node's own alias.
  */
 export const activeOperationFor = (picker: PickerState, alias: string): OperationKind | null => {
   if (!picker.open) return null;
@@ -95,11 +92,7 @@ const headerHeight = 48;
 // Square, not round - a join column is a "pin" on the component package, and
 // pins are square in this system (see the notch/badge below); a round dot
 // here would read as a different kind of thing from everything else.
-// Exported so FrameNode.tsx can render join handles for a checkpoint the
-// same way - the checkpoint's own name is a real alias joins address it by
-// (see layout.ts's deriveGraph/makeFrameNode), so its handles should look
-// identical to any table's.
-export const RelationDots = ({
+const RelationDots = ({
   handles,
   type,
   position,
@@ -170,11 +163,6 @@ export const RelationDots = ({
 // different node's picker") isn't preempted by the outside-click handler
 // closing things first. Defined on the component so every call site gets
 // it - a per-call-site className is one more place to forget it.
-// Exported so FrameNode.tsx can render the same action bar look for a
-// checkpoint's own select/where/order actions - both are ultimately "a set
-// of actions attached to something occupying a pipeline slot" (a table or a
-// sealed checkpoint), so they should look identical, not like two different
-// button systems.
 export const ActionButton = ({
   label,
   onClick,
@@ -211,8 +199,7 @@ export const ActionButton = ({
   emphasizeIndex?: number;
   /**
    * True for every operation except the one whose picker is currently open
-   * (see TableNode's `activeOperation`/`operations` and FrameNode's mirror
-   * of the same). Dims via opacity only - the button stays in the DOM at
+   * (see TableNode's `activeOperation`/`operations`). Dims via opacity only - the button stays in the DOM at
    * its normal place in the row rather than being removed, which is the
    * whole point: removing the other four and letting the row re-center
    * around the one survivor was the first version of this, and it moved
@@ -290,12 +277,8 @@ export const ActionDivider = () => (
 // focus), so it doesn't need its own attention-grabbing treatment on top of
 // that - a quiet × reads as "close", not an alarm. Sits inside the card's
 // own top-right corner (not straddling the border) so it doesn't compete
-// with the notch/pin system that lives right at the edges. Exported so
-// FrameNode.tsx can offer the same "cancel this" affordance for a
-// checkpoint - removing a container is the same kind of one-off destructive
-// action as removing a table, so it should look identical, not like a
-// second delete-button system.
-export const DeleteButton = ({ onClick, testId }: { onClick: () => void; testId?: string }) => (
+// with the notch/pin system that lives right at the edges.
+const DeleteButton = ({ onClick, testId }: { onClick: () => void; testId?: string }) => (
   <div
     data-testid={testId}
     onClick={e => {
@@ -519,7 +502,9 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
   // which it isn't. `hasConfigCursor` only suppresses the PLAIN-focus half
   // of this condition - hover and an actually-open picker both still show
   // it regardless, since neither of those is "just browsing".
-  const engaged = hovered || pickerOpenHere || (isFocusTarget && !hasConfigCursor);
+  // A named block nothing joins isn't in the query's text: no actions.
+  const standalone = !!data.named?.standalone;
+  const engaged = !standalone && (hovered || pickerOpenHere || (isFocusTarget && !hasConfigCursor));
 
   // The three always-visible operations, in their fixed display order - a
   // plain lookup (not derived from anywhere else) so both render paths below
@@ -532,6 +517,14 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
   // their own bare-letter shortcut (o/g/p, see useCanvasKeybindings.ts) or a
   // click through "+" - nothing about them actually moved, only which ones
   // get a standing button.
+  // A checkpoint's node works on the sealed result: its actions go through
+  // openCheckpointPicker, which first writes the checkpoint's name into the
+  // text if it isn't there yet (see CanvasStore.ensureCheckpointPinned).
+  const checkpoint = data.checkpoint;
+  const openAction = (kind: 'select' | 'where') => (anchor: { x: number; y: number }) =>
+    checkpoint
+      ? void canvasStore.openCheckpointPicker(data.alias, kind, anchor)
+      : canvasStore.openColumnPicker(kind, data.alias, anchor);
   const operations: {
     kind: OperationKind;
     label: string;
@@ -542,13 +535,13 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
     {
       kind: 'select',
       label: 'select',
-      onClick: anchor => canvasStore.openColumnPicker('select', data.alias, anchor),
+      onClick: openAction('select'),
       emphasize: showKeyHints,
     },
     {
       kind: 'where',
       label: 'where',
-      onClick: anchor => canvasStore.openColumnPicker('where', data.alias, anchor),
+      onClick: openAction('where'),
       emphasize: showKeyHints,
     },
     {
@@ -559,7 +552,10 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
       // inserting the very first table - but `i` isn't join's first letter,
       // it's its third ("j-o-I-n"), so this needs an explicit index rather
       // than ActionButton's default.
-      onClick: anchor => canvasStore.openJoinPicker(data.alias, anchor),
+      onClick: anchor =>
+        checkpoint
+          ? void canvasStore.openCheckpointPicker(data.alias, 'join', anchor)
+          : canvasStore.openJoinPicker(data.alias, anchor),
       emphasize: showKeyHints,
       emphasizeIndex: 2,
     },
@@ -573,6 +569,9 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
   // open (see `engaged` above), so there's no "dim the rest" state to
   // compute for that case - it's just not shown at all.
   const activeOperation = activeOperationFor(canvasStore.picker, data.alias);
+  // True while this checkpoint's first action waits for its name to be
+  // written into the text - see CanvasStore.checkpointPinning.
+  const pinning = !!checkpoint && canvasStore.checkpointPinning === data.alias;
 
   return (
     <div
@@ -638,9 +637,18 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
           flexWrap: 'nowrap',
           opacity: engaged ? 1 : 0,
           transition: 'opacity 0.1s ease-in-out',
+          // A checkpoint's connector runs down through this row to the box
+          // (CheckpointDividerNode.tsx); while the bar shows, it covers the
+          // line instead of the line striking through its labels.
+          ...(checkpoint ? { background: 'var(--canvas-bg)', alignSelf: 'center', width: 'fit-content', margin: '0 auto 4px', padding: '0 4px' } : {}),
         }}
       >
-        {operations.map((op, i) => (
+        {pinning && (
+          <div data-testid={`checkpoint-pinning-${data.alias}`} style={{ opacity: 0.7, fontSize: 'calc(10px * var(--text-scale, 1))' }}>
+            loading...
+          </div>
+        )}
+        {!pinning && operations.map((op, i) => (
           <React.Fragment key={op.kind}>
             {i > 0 && <ActionDivider />}
             <ActionButton
@@ -653,18 +661,20 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
             />
           </React.Fragment>
         ))}
-        <ActionDivider />
+        {!pinning && <ActionDivider />}
         {/* order/group/path/limit, tucked behind one trigger - see the
             `operations` comment above for why. No own keyboard letter of its
             own (o/g/p/l still work directly on this node regardless of
             whether this menu is ever opened - see useCanvasKeybindings.ts),
             so unlike the three above this never renders emphasized. */}
-        <ActionButton
-          label="+"
-          testId={`action-more-${data.alias}`}
-          onClick={anchor => canvasStore.openMorePicker(data.alias, false, anchor)}
-          suppressed={activeOperation !== null && activeOperation !== 'more'}
-        />
+        {!pinning && (
+          <ActionButton
+            label="+"
+            testId={`action-more-${data.alias}`}
+            onClick={anchor => canvasStore.openMorePicker(data.alias, !!checkpoint, anchor)}
+            suppressed={activeOperation !== null && activeOperation !== 'more'}
+          />
+        )}
       </div>
 
       {/* Identity - the outer wrapper here is the positioning context for the
@@ -712,16 +722,26 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
             >
               {data.table}
             </span>
-            <span
-              style={{
-                flexShrink: 0,
-                fontSize: 'calc(11px * var(--text-scale, 1))',
-                fontFamily: 'var(--canvas-font)',
-                color: 'var(--canvas-text-dim)',
-              }}
-            >
-              ({data.alias})
-            </span>
+            {/* A checkpoint's node is named once: its name is its alias. */}
+            {!checkpoint && (
+              <span
+                style={{
+                  flexShrink: 0,
+                  fontSize: 'calc(11px * var(--text-scale, 1))',
+                  fontFamily: 'var(--canvas-font)',
+                  color: 'var(--canvas-text-dim)',
+                }}
+              >
+                {/* A node from an earlier query block shows its alias in that
+                    block, without the block's prefix (see scopeOf); a
+                    standalone named block says how the query uses it. */}
+                {standalone
+                  ? data.named?.usedInWhere
+                    ? '(used in where)'
+                    : '(not joined)'
+                  : `(${data.alias.replace(/^b\d+\//, '')})`}
+              </span>
+            )}
           </div>
 
           <RelationDots handles={data.leftHandles} type="target" position={Position.Left} />

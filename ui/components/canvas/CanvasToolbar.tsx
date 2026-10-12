@@ -238,14 +238,19 @@ const CanvasToolbar: React.FC<{ canvasStore: CanvasStore; extraAction?: CanvasTo
     );
   });
 
-// The armed-key legend per focused-node kind. Not derived from TableNode's/
-// FrameNode's own action bars (which would mean this file reaching into a
+// The armed-key legend per focused-node kind. Not derived from TableNode's
+// own action bar (which would mean this file reaching into a
 // rendered node's DOM/props) - a plain lookup kept in sync by hand, same as
 // those files' own action lists; all three are short and change together.
 // Returns individual keys (not a joined string) so the indicator below can
 // render each one bold/accented with only the separators dimmed, rather than
 // the whole legend at one flat, easy-to-miss opacity.
-const legendKeysFor = (isStart: boolean, isFrame: boolean, removable: boolean): string[] => {
+const legendKeysFor = (
+  isStart: boolean,
+  isCheckpoint: boolean,
+  removable: boolean,
+  named?: { standalone?: boolean },
+): string[] => {
   // 'c' (write the canvas comment) leads every legend, including the empty
   // start node's - it needs no focused node, and is the one canvas-wide key
   // included here. 'u'/Shift+'u' (undo/redo) are just as canvas-wide but
@@ -256,11 +261,15 @@ const legendKeysFor = (isStart: boolean, isFrame: boolean, removable: boolean): 
   // memorizing it up front, and that need is real for 'c' in a way it
   // isn't for undo/redo.
   if (isStart) return ['c', 'i'];
-  // No 'g' - group isn't offered for a checkpoint's own sealed output (see
-  // FrameNode.tsx's doc comment). 'x' here cancels the container itself
-  // (CanvasStore.deleteCheckpoint), not a per-table removal.
-  if (isFrame) return ['c', 's', 'w', 'o', 'l', 'p', '+', 'i', 'x'];
-  return ['c', 's', 'w', 'o', 'g', 'l', 'p', '+', 'i', ...(removable ? ['x'] : [])];
+  // A named block nothing joins: not in the query's text, so only 'e'.
+  if (named?.standalone) return ['c', 'e'];
+  // No 'g' - group isn't offered for a checkpoint's own sealed output. 'x'
+  // removes the checkpoint itself (CanvasStore.deleteCheckpoint), as the ×
+  // on its divider does.
+  // 'e' expands or collapses what the checkpoint seals.
+  if (isCheckpoint) return ['c', 's', 'w', 'o', 'l', 'p', '+', 'i', 'e', 'x'];
+  // 'e' on a table that uses a named block expands that block.
+  return ['c', 's', 'w', 'o', 'g', 'l', 'p', '+', 'i', ...(named ? ['e'] : []), ...(removable ? ['x'] : [])];
 };
 
 /**
@@ -277,7 +286,8 @@ export const CanvasModeIndicator: React.FC<{ canvasStore: CanvasStore }> = obser
   const alias = canvasStore.focusedAlias;
   const isStart = alias === START_NODE_ID;
   const focusedNode = canvasStore.canvasGraph.nodes.find(n => n.id === alias);
-  const isFrame = focusedNode?.type === 'frame-node';
+  const isCheckpoint =
+    focusedNode?.type === 'table-node' && !!(focusedNode.data as CanvasTableNodeData).checkpoint;
   // `node.type` isn't a literal-discriminated field on reactflow's `Node<T>`
   // (see layout.ts's getNodeHeight comment) - TS can't narrow the union from
   // the `type === 'table-node'` check alone, hence the explicit cast, same
@@ -318,7 +328,12 @@ export const CanvasModeIndicator: React.FC<{ canvasStore: CanvasStore }> = obser
           <span aria-hidden style={{ opacity: 0.5 }}>
             ·
           </span>
-          {legendKeysFor(isStart, isFrame, removable).map((key, i) => (
+          {legendKeysFor(
+            isStart,
+            isCheckpoint,
+            removable,
+            focusedNode?.type === 'table-node' ? (focusedNode.data as CanvasTableNodeData).named : undefined,
+          ).map((key, i) => (
             <React.Fragment key={key}>
               {i > 0 && (
                 <span aria-hidden style={{ opacity: 0.35 }}>

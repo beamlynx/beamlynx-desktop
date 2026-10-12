@@ -2,23 +2,26 @@ import dagre from 'dagre';
 import { Position } from 'reactflow';
 import {
   Ast,
+  Checkpoint,
+  CheckpointColumn,
+  Column,
   columnName,
   GroupColumn,
   Join,
   OrderColumn,
   NamedResultAst,
+  WhereEntry,
   whereConditions,
   whereLiteral,
 } from '../client';
 import {
+  CanvasDividerNode,
   CanvasEdge,
-  CanvasFrameNode,
   CanvasGraph,
   CanvasHandle,
   CanvasNode,
   CanvasTableNode,
   CanvasTableNodeData,
-  PENDING_CHECKPOINT_FRAME_ID,
 } from './canvas.model';
 import { inProgressTable } from './pine-text';
 
@@ -60,9 +63,22 @@ export const getNodeHeight = (node: CanvasNode): number => {
   return rows === 0 ? minNodeHeight : headerHeight + rows * handleRowHeight + 10;
 };
 
-/** Total on-screen footprint - what dagre needs for spacing. Only table nodes reserve actionBarHeight. */
+// The chip rows (sel/where/order/group) below a node's box. A rough estimate,
+// not a measurement: about two chips to a line at nodeWidth. Counted so that
+// the next node in a stage, and a checkpoint's divider below the stage,
+// don't sit on top of them.
+const chipRowHeight = 22;
+const chipsHeight = (data: CanvasTableNodeData): number =>
+  [data.selectColumns, data.whereChips, data.orderChips, data.groupChips].reduce(
+    (height, chips) => (chips.length ? height + chipRowHeight * Math.ceil(chips.length / 2) : height),
+    0,
+  );
+
+/** Total on-screen footprint - what dagre needs for spacing. Only table nodes reserve actionBarHeight and their chips. */
 const getNodeFootprintHeight = (node: CanvasNode): number =>
-  node.type === 'table-node' ? getNodeHeight(node) + actionBarHeight : getNodeHeight(node);
+  node.type === 'table-node'
+    ? getNodeHeight(node) + actionBarHeight + chipsHeight(node.data as CanvasTableNodeData)
+    : getNodeHeight(node);
 
 const byAlias = <T,>(items: T[], aliasOf: (item: T) => string): Record<string, T[]> => {
   const acc: Record<string, T[]> = {};
@@ -93,12 +109,8 @@ const toHandles = (m: Map<string, CanvasHandle> | undefined): CanvasHandle[] =>
   m ? Array.from(m.values()).sort((a, b) => a.column.localeCompare(b.column)) : [];
 
 /**
- * Walks one joins list (either ast.joins, or a sealed checkpoint's own
- * inner joins - see the checkpoint branch in deriveGraph below) into
- * edges/handles. Extracted so a checkpoint's inner joins (tenant<->company)
- * get exactly the same treatment as the outer pipeline's - same handle
- * naming, same uncertain/unresolved flagging - rather than a second,
- * drifting copy of this logic.
+ * Walks one stage's joins list into edges/handles - the same handle naming
+ * and uncertain/unresolved flagging for every stage.
  */
 // Join.type is typed as plain `string | null` (client.ts) since it's an
 // untyped wire value - pine-lang only ever actually sends 'LEFT'/'RIGHT'/nil
@@ -112,9 +124,8 @@ const addJoins = (
   joins: Join[],
   handles: HandleMaps,
   edges: CanvasEdge[],
-  // A join naming a checkpoint's own pinned name directly (a table joined
-  // onto a sealed group:/limit: output - see deriveGraph's own comment on
-  // `rankAnchors`/`t.table`) has no table segment of its own for
+  // A join naming a checkpoint's own name directly (a table joined onto a
+  // sealed group:/limit: output) has no table segment of its own for
   // pine-actions.ts's setJoinType to find - the checkpoint is an `= name`
   // assign, not a `table` segment with a `:left`/`:right` modifier slot.
   // Leaving `joinTargetAlias` unset for that case (rather than pointing it
@@ -178,20 +189,6 @@ const addJoins = (
   }
 };
 
-/**
- * ast -> nodes/edges (no positions yet), mirroring generateGraph's join
- * direction logic (store/graph.util.ts) but scoped to just selected-tables -
- * canvas mode has no suggested-node concept, those are replaced by pickers.
- */
-// The table currently being typed is deliberately excluded from
-// `ast['selected-tables']` while `operation.type === 'table'` (see
-// pipeline.md - "the last table is excluded ... intended for the live
-// graph"). Its identity comes from the shared `inProgressTable` helper in
-// pine-text.ts, which uses `ast.current` (always the real alias, whether
-// auto-generated or explicit) rather than `operation.value.alias` (only
-// present once the user has actually typed `as ...`) - using the latter
-// here would display a placeholder alias that no gesture (join/select/
-// where/order) could actually resolve against.
 // Table.schema (client.ts) is typed non-null - accurate for a fully
 // resolved, already-selected table, but the in-progress table below is
 // synthesized from operation.value, which can genuinely be null. Widening
@@ -200,49 +197,125 @@ const addJoins = (
 // canvas-only shape instead.
 type CanvasTableRef = { schema: string | null; table: string; alias: string };
 
+/** What one stage is drawn from: a checkpoint's snapshot, or the live AST for the last stage. */
+type StageSource = {
+  tables: CanvasTableRef[];
+  joins: Join[];
+  columns: Column[];
+  where: WhereEntry[];
+  order: OrderColumn[];
+  group: GroupColumn[];
+};
+
 /**
- * A selected-tables entry whose `.table` matches a key in `ast['named-results']`
- * (assigned in an earlier expression) or `ast['pending-assignments']`
- * (sealed within this one) is a checkpoint's CTE, not a real table -
- * `seal-as-cte` (pine-lang's ast/main.clj) injects the checkpoint's own name
- * as both `table` and `alias` when it replaces a table op, so this lookup by
- * `.table` is exactly the same alias the rest of this expression (joins,
- * select/where/order) already addresses it by.
+ * One stage of the pipeline: the tables between two checkpoints. `after` is
+ * the checkpoint the stage starts from - its node is the stage's first node,
+ * and the tables joined onto its sealed result are in this stage too.
+ * `removable` is whether its tables can be removed: not inside a sealed
+ * checkpoint, where removing one could break the checkpoint's own group:
+ * or joins in ways a segment removal doesn't account for.
  */
-const checkpointFor = (ast: Ast, tableName: string): NamedResultAst | undefined =>
-  ast['named-results']?.[tableName] ?? ast['pending-assignments']?.[tableName];
+type Stage = { source: StageSource; after?: Checkpoint; removable: boolean };
 
-/** A checkpoint that has replaced a selected-tables slot - its inner tables render as their own nodes, wrapped in a frame (see makeFrameNode). */
-export type FrameSpec = { id: string; memberIds: string[]; leftHandles: CanvasHandle[]; rightHandles: CanvasHandle[] };
+const emptySource: StageSource = { tables: [], joins: [], columns: [], where: [], order: [], group: [] };
 
-/** A dagre-only edge, never rendered - see deriveGraph's rankEdges for why these exist. */
-type RankEdge = { source: string; target: string };
+const fromSnapshot = (snapshot: NamedResultAst): StageSource => ({
+  tables: snapshot.tables ?? snapshot['selected-tables'] ?? [],
+  joins: snapshot.joins ?? [],
+  columns: snapshot.columns ?? [],
+  where: snapshot.where ?? [],
+  order: snapshot.order ?? [],
+  group: snapshot.group ?? [],
+});
 
-const deriveGraph = (
-  ast: Ast,
-): { nodes: CanvasNode[]; edges: CanvasEdge[]; frames: FrameSpec[]; rankAnchors: string[]; rankEdges: RankEdge[] } => {
+/**
+ * The pipeline's stages, top to bottom. A sealed checkpoint's stage comes
+ * from its snapshot (`ast['pending-assignments'][name]`); the stage after
+ * the last sealed checkpoint comes from the live AST. A checkpoint still
+ * pending at the end seals the live stage, and is followed by a stage with
+ * only its own node.
+ */
+const stagesOf = (ast: Ast): Stage[] => {
+  // The table currently being typed is deliberately excluded from
+  // `ast['selected-tables']` while `operation.type === 'table'` (see
+  // pipeline.md - "the last table is excluded ... intended for the live
+  // graph"). Its identity comes from the shared `inProgressTable` helper in
+  // pine-text.ts, which uses `ast.current` (always the real alias, whether
+  // auto-generated or explicit) rather than `operation.value.alias` (only
+  // present once the user has actually typed `as ...`).
   const selectedTables: CanvasTableRef[] = ast['selected-tables'] ?? [];
   const inProgress = inProgressTable(ast);
-  const allTables: CanvasTableRef[] =
-    inProgress && !selectedTables.some(t => t.alias === inProgress.alias)
-      ? [...selectedTables, inProgress]
-      : selectedTables;
-  const selectByAlias = byAlias((ast.columns ?? []).filter(c => !c.hidden), c => c.alias);
+  const live: StageSource = {
+    tables:
+      inProgress && !selectedTables.some(t => t.alias === inProgress.alias)
+        ? [...selectedTables, inProgress]
+        : selectedTables,
+    joins: ast.joins ?? [],
+    columns: ast.columns ?? [],
+    where: ast.where ?? [],
+    // See the `order: Column[]` comment in client.ts - the real wire shape is OrderColumn.
+    order: (ast.order ?? []) as unknown as OrderColumn[],
+    group: ast.group ?? [],
+  };
+  const checkpoints = ast.checkpoints ?? [];
+  const stages: Stage[] = checkpoints.map((checkpoint, k) => {
+    const after = checkpoints[k - 1];
+    if (!checkpoint.sealed) return { source: live, after, removable: true };
+    const snapshot = ast['pending-assignments']?.[checkpoint.name];
+    return { source: snapshot ? fromSnapshot(snapshot) : emptySource, after, removable: false };
+  });
+  const last = checkpoints[checkpoints.length - 1];
+  if (!last) stages.push({ source: live, removable: true });
+  else if (last.sealed) stages.push({ source: live, after: last, removable: true });
+  else stages.push({ source: emptySource, after: last, removable: false });
+  return stages;
+};
+
+/**
+ * The where conditions of `alias` in every stage, in pipeline order - the
+ * same order its chips show them. A table sealed by a checkpoint has its
+ * conditions in the checkpoint's snapshot, not the top-level `ast.where`.
+ */
+export const whereEntriesFor = (ast: Ast, alias: string): WhereEntry[] =>
+  stagesOf(ast)
+    .filter((stage, k, all) => all.findIndex(s => s.source === stage.source) === k)
+    .flatMap(s => s.source.where)
+    .filter(w => whereConditions(w)[0].alias === alias);
+
+/** What a checkpoint's divider says: `limit 10`, `limit 1 per c.id`, `group t.title → count`. */
+const columnLabel = (c: CheckpointColumn): string => `${c.alias}.${columnName(c.column, c.path)}`;
+export const checkpointLabel = (checkpoint: Checkpoint): string => {
+  if (checkpoint.kind === 'limit') {
+    const per = checkpoint.per?.length ? ` per ${checkpoint.per.map(columnLabel).join(', ')}` : '';
+    return `limit ${checkpoint.limit ?? ''}${per}`;
+  }
+  const aggregates = checkpoint.aggregates?.length ? ` → ${checkpoint.aggregates.join(', ')}` : '';
+  return `group ${(checkpoint.group ?? []).map(columnLabel).join(', ')}${aggregates}`;
+};
+
+/**
+ * One stage -> nodes/edges (no positions yet), mirroring generateGraph's
+ * join direction logic (store/graph.util.ts). `order` numbers every node in
+ * the pipeline top to bottom, starting at `firstOrder` - it drives the
+ * vertical stacking within the stage and CanvasStore's keyboard order.
+ */
+const deriveStage = (
+  stage: Stage,
+  checkpointNames: Set<string>,
+  firstOrder: number,
+): { nodes: CanvasTableNode[]; edges: CanvasEdge[] } => {
+  const { source, after } = stage;
+  const selectByAlias = byAlias(source.columns.filter(c => !c.hidden && !!c.column), c => c.alias);
   // An `or` group belongs to the table of its first condition - one chip,
   // on one node, even when its conditions name several tables.
-  const whereByAlias = byAlias(ast.where ?? [], w => whereConditions(w)[0].alias);
-  // See the `order: Column[]` comment in client.ts - the real wire shape is OrderColumn.
-  const orderByAlias = byAlias((ast.order ?? []) as unknown as OrderColumn[], o => o.alias);
-  const groupByAlias = byAlias((ast.group ?? []) as GroupColumn[], g => g.alias);
-  // pine-lang merges every group: column into ast.columns too - required so
+  const whereByAlias = byAlias(source.where, w => whereConditions(w)[0].alias);
+  const orderByAlias = byAlias(source.order, o => o.alias);
+  const groupByAlias = byAlias(source.group, g => g.alias);
+  // pine-lang merges every group: column into the columns too - required so
   // the generated SQL's SELECT list actually includes what it groups by, not
   // a canvas-specific quirk. Left unfiltered, a grouped column would render
-  // under BOTH the "sel" and "group" chip rows - the same column appearing
-  // twice reads as "did I select this too, or is this a display bug?" when
-  // the user only ever did the one gesture (group). Whether or not the user
-  // also separately wrote select: for it is unrecoverable from ast.columns
-  // alone (pine-lang adds it regardless) - "sel" just excludes anything
-  // already shown under "group" for that same alias, full stop.
+  // under BOTH the "sel" and "group" chip rows. "sel" excludes anything
+  // already shown under "group" for that same alias.
   const groupedColumnNamesByAlias: Record<string, Set<string>> = {};
   for (const [alias, cols] of Object.entries(groupByAlias)) {
     groupedColumnNamesByAlias[alias] = new Set(cols.map(g => columnName(g.column, g.path)));
@@ -250,144 +323,74 @@ const deriveGraph = (
 
   const handles: HandleMaps = { left: {}, right: {} };
   const edges: CanvasEdge[] = [];
-  addJoins(ast.joins ?? [], handles, edges, name => !!checkpointFor(ast, name));
+  addJoins(source.joins, handles, edges, name => checkpointNames.has(name));
 
-  const nodes: CanvasNode[] = [];
-  const frames: FrameSpec[] = [];
-  const rankAnchors: string[] = [];
-  const rankEdges: RankEdge[] = [];
-
-  for (let i = 0; i < allTables.length; i++) {
-    const t = allTables[i];
-    const checkpoint = checkpointFor(ast, t.table);
-    if (checkpoint) {
-      // The inner tables render as their own normal, fully-interactive
-      // table nodes - never collapsed into a summary card (see the plan
-      // doc's container-node follow-up pass: a first version did exactly
-      // that, and it was explicitly rejected - the user wants tenant/
-      // company to stay visible and actionable even once something is
-      // composed on top of the seal). `tables` (the raw accumulation) is
-      // used over `selected-tables` for the same reason store/graph.util.
-      // ts's makeVariableNodes does: `selected-tables` strips the last
-      // table while it's still being typed, never what a *sealed*
-      // checkpoint's inner list should reflect. Excludes an inner table
-      // that is itself another checkpoint's CTE (a chained/nested
-      // checkpoint) - real, out of scope for now (see the plan doc).
-      const innerTables = (checkpoint.tables ?? checkpoint['selected-tables'] ?? []).filter(
-        it => !checkpointFor(ast, it.table),
-      );
-      addJoins(checkpoint.joins ?? [], handles, edges, name => !!checkpointFor(ast, name));
-      // checkpoint.columns tells us what each inner alias contributed to
-      // the sealed output - but NamedResultAst has no equivalent of ast.where/
-      // ast.order/ast.group, so where/order chips and the select-vs-group
-      // distinction are genuinely unrecoverable once sealed. Shown under
-      // "sel" only, not split - an honest simplification, not a bug to
-      // chase, given the AST just doesn't carry the rest.
-      const innerSelectByAlias = byAlias(
-        (checkpoint.columns ?? []).filter(c => !c.hidden && !!c.column),
-        c => c.alias,
-      );
-      const memberIds: string[] = [];
-      for (const it of innerTables) {
-        const data: CanvasTableNodeData = {
-          alias: it.alias,
-          table: it.table,
-          schema: it.schema,
-          // Same integer as the outer slot this checkpoint replaced, for
-          // every inner table - Array.prototype.sort is stable (ES2019+),
-          // so sequenceYByAlias still stacks them in `innerTables`' own
-          // order relative to each other even with tied values. Purely
-          // structural now (vertical position + CanvasStore's keyboard-nav
-          // ordering) - no longer separately rendered as a visible badge.
-          order: i + 1,
-          // Deleting a table from inside a sealed checkpoint isn't
-          // supported yet - it could break the checkpoint's own join graph
-          // in ways a simple segment removal doesn't account for.
-          removable: false,
-          selectColumns: (innerSelectByAlias[it.alias] ?? []).map(c => c.column),
-          whereChips: [],
-          orderChips: [],
-          groupChips: [],
-          leftHandles: toHandles(handles.left[it.alias]),
-          rightHandles: toHandles(handles.right[it.alias]),
-        };
-        nodes.push({ id: it.alias, type: 'table-node', position: { x: 0, y: 0 }, data });
-        memberIds.push(it.alias);
-      }
-      // `t.table` - the checkpoint's own pinned name - not a synthetic
-      // frame-specific id: it's exactly the alias a join onto the sealed
-      // output addresses in ast.joins (confirmed live - `group: c.id |=
-      // agg | company_officer` produces a join tuple naming "agg"
-      // directly), so the frame can only act as that join's anchor if it
-      // shares that same id. Handles come from the very same handles.left/
-      // right maps addJoins already populated for every other alias - a
-      // join targeting "agg" needs no special-casing there at all.
-      if (memberIds.length) {
-        frames.push({
-          id: t.table,
-          memberIds,
-          leftHandles: toHandles(handles.left[t.table]),
-          rightHandles: toHandles(handles.right[t.table]),
-        });
-        // The checkpoint's own identity (t.table, e.g. "agg") is never
-        // rendered as a node - the frame is a decoration sized from its
-        // inner tables' own laid-out positions - but ast.joins can still
-        // name it directly as a source (a table joined onto the sealed
-        // output). Without a real anchor here, dagre has no edge
-        // connecting "agg" to the inner cluster at all (checkpoint.joins,
-        // added above via addJoins, only wires the inner tables to EACH
-        // OTHER, never to the checkpoint's own name) - dagre.setEdge then
-        // implicitly creates "agg" as an unconnected phantom node ranked
-        // from 0 on its own, same as the inner cluster's own rank-0 start.
-        // Found live: a table joined onto the checkpoint rendered
-        // directly in the same column as one of the inner tables, purely
-        // because their ranks coincided by chance. `rankAnchors`/
-        // `rankEdges` are dagre-ranking-only (see layoutNodes) - they
-        // never appear in the returned `nodes`/`edges`, so nothing new
-        // renders because of them.
-        rankAnchors.push(t.table);
-        for (const memberId of memberIds) {
-          rankEdges.push({ source: memberId, target: t.table });
-        }
-      }
-      continue;
-    }
-    const whereChips = (whereByAlias[t.alias] ?? []).map(entry =>
+  const chipsFor = (alias: string) => ({
+    selectColumns: (selectByAlias[alias] ?? [])
+      .map(c => columnName(c.column, c.path))
+      .filter(column => !groupedColumnNamesByAlias[alias]?.has(column)),
+    whereChips: (whereByAlias[alias] ?? []).map(entry =>
       whereConditions(entry)
-        .map(({ alias, column, path, operator, value: val }) => {
+        .map(({ alias: conditionAlias, column, path, operator, value: val }) => {
           // A $variable shows as `$name`: the tab builds without its value.
           const literal = whereLiteral(val);
           // Another table's column in the same group keeps its alias, so the
           // chip doesn't read as this table's.
-          const name = alias === t.alias ? columnName(column, path) : `${alias}.${columnName(column, path)}`;
+          const name =
+            conditionAlias === alias ? columnName(column, path) : `${conditionAlias}.${columnName(column, path)}`;
           return `${name} ${operator} ${literal}`.trim();
         })
         .join(' or '),
-    );
-    const data: CanvasTableNodeData = {
-      alias: t.alias,
-      table: t.table,
-      schema: t.schema,
-      order: i + 1,
-      // Any top-level table can be removed, not just the last one -
-      // pine-text.ts's removeNode pins a dangling from: where needed so a
-      // downstream implicit join fails visibly instead of silently
-      // re-targeting. Checkpoint-inner tables are the one exception, still
-      // gated `false` above - a separate, harder problem.
-      removable: true,
-      selectColumns: (selectByAlias[t.alias] ?? [])
-        .map(c => columnName(c.column, c.path))
-        .filter(column => !groupedColumnNamesByAlias[t.alias]?.has(column)),
-      whereChips,
-      orderChips: (orderByAlias[t.alias] ?? []).map(o => `${columnName(o.column, o.path)} ${o.direction}`),
-      groupChips: (groupByAlias[t.alias] ?? []).map(g => columnName(g.column, g.path)),
-      leftHandles: toHandles(handles.left[t.alias]),
-      rightHandles: toHandles(handles.right[t.alias]),
-    };
-    nodes.push({ id: t.alias, type: 'table-node', position: { x: 0, y: 0 }, data });
-  }
+    ),
+    orderChips: (orderByAlias[alias] ?? []).map(o => `${columnName(o.column, o.path)} ${o.direction}`),
+    groupChips: (groupByAlias[alias] ?? []).map(g => columnName(g.column, g.path)),
+    leftHandles: toHandles(handles.left[alias]),
+    rightHandles: toHandles(handles.right[alias]),
+  });
 
-  return { nodes, edges, frames, rankAnchors, rankEdges };
+  const nodes: CanvasTableNode[] = [];
+  let order = firstOrder;
+  if (after) {
+    // The checkpoint's sealed result, named exactly as pine-lang reports it.
+    // Its id is that name too: the alias every join onto it, and every
+    // select/where/order on it, already uses.
+    nodes.push({
+      id: after.name,
+      type: 'table-node',
+      position: { x: 0, y: 0 },
+      data: {
+        alias: after.name,
+        table: after.name,
+        schema: null,
+        order: order++,
+        removable: false,
+        ...chipsFor(after.name),
+        // Whether it's expanded is set by buildCanvasGraph.
+        checkpoint: { expanded: false },
+      },
+    });
+  }
+  // A table named after a checkpoint is that checkpoint's CTE - drawn as the
+  // checkpoint's own node above, not as a table.
+  for (const t of source.tables.filter(t => !checkpointNames.has(t.table))) {
+    nodes.push({
+      id: t.alias,
+      type: 'table-node',
+      position: { x: 0, y: 0 },
+      data: {
+        alias: t.alias,
+        table: t.table,
+        schema: t.schema,
+        order: order++,
+        // Any top-level table can be removed, not just the last one -
+        // pine-text.ts's removeNode handles an interior one. A table inside
+        // a sealed checkpoint can't (see Stage).
+        removable: stage.removable,
+        ...chipsFor(t.alias),
+      },
+    });
+  }
+  return { nodes, edges };
 };
 
 const verticalGap = 24;
@@ -402,155 +405,391 @@ const verticalGap = 24;
  * backwards. x is untouched - which side of the graph a node lands on
  * (parent left, child right) still comes entirely from dagre's rank axis.
  */
-const sequenceYByAlias = (nodes: CanvasNode[]): Record<string, number> => {
-  const tableNodes = nodes
-    .filter((n): n is CanvasTableNode => n.type === 'table-node')
-    .sort((a, b) => a.data.order - b.data.order);
+const sequenceYByAlias = (nodes: CanvasTableNode[]): Record<string, number> => {
+  const sorted = [...nodes].sort((a, b) => a.data.order - b.data.order);
   const sequenceY: Record<string, number> = {};
   let runningY = 0;
-  for (const n of tableNodes) {
+  for (const n of sorted) {
     sequenceY[n.id] = runningY;
     runningY += getNodeFootprintHeight(n) + verticalGap;
   }
   return sequenceY;
 };
 
-const layoutNodes = (
-  positions: Record<string, { x: number; y: number }>,
-  nodes: CanvasNode[],
-  edges: CanvasEdge[],
-  rankAnchors: string[] = [],
-  rankEdges: RankEdge[] = [],
-): CanvasNode[] => {
+/** Lays out one stage on its own: x from dagre's left-to-right ranks, y by sequence, both starting at 0. */
+const layoutStage = (nodes: CanvasTableNode[], edges: CanvasEdge[]): CanvasTableNode[] => {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({ rankdir: 'LR', nodesep: 24 });
   nodes.forEach(n => g.setNode(n.id, { width: nodeWidth, height: getNodeFootprintHeight(n) }));
-  // Dagre-ranking-only anchors for a checkpoint's own identity (see
-  // deriveGraph's rankAnchors/rankEdges comment) - never part of `nodes`,
-  // so `nodes.map(...)` below can never return one of these; they exist
-  // purely so a table joined onto the checkpoint ranks after the whole
-  // inner cluster instead of as an unconnected phantom dagre node.
-  rankAnchors.forEach(id => g.setNode(id, { width: nodeWidth, height: minNodeHeight }));
   edges.forEach(e => g.setEdge(e.source, e.target));
-  rankEdges.forEach(e => g.setEdge(e.source, e.target));
   dagre.layout(g);
-
   const sequenceY = sequenceYByAlias(nodes);
-
-  return nodes.map(n => {
-    const cached = positions[n.id];
-    const position =
-      cached ??
-      (() => {
-        const p = g.node(n.id);
-        if (!p) return { x: 0, y: 0 };
-        // The footprint (not getNodeHeight alone) so the position offset
-        // agrees with what dagre actually reserved space for - position.y
-        // ends up at the top of the action bar, the true top of what
-        // TableNode.tsx renders at this node. sequenceY is already a top
-        // offset (see sequenceYByAlias), unlike dagre's own p.y (a center),
-        // so only the fallback (the start node, which has no sequence)
-        // needs the center-to-top conversion.
-        const y = sequenceY[n.id] ?? p.y - getNodeFootprintHeight(n) / 2;
-        return { x: p.x - nodeWidth / 2, y };
-      })();
-    return { ...n, position, targetPosition: Position.Left, sourcePosition: Position.Right };
+  const placed = nodes.map(n => {
+    const p = g.node(n.id);
+    return {
+      ...n,
+      position: { x: p ? p.x - nodeWidth / 2 : 0, y: sequenceY[n.id] ?? 0 },
+      targetPosition: Position.Left,
+      sourcePosition: Position.Right,
+    };
   });
+  const minX = Math.min(...placed.map(n => n.position.x));
+  return placed.map(n => ({ ...n, position: { x: n.position.x - minX, y: n.position.y } }));
 };
 
-const framePadding = 16;
-const frameHeaderHeight = 30;
+// A checkpoint's divider: the space it takes between two stages, and how far
+// its line reaches past the nodes on either side. Its label is a pill on the
+// line, centred above the checkpoint's node, and the node sits just below
+// it: the connector runs from the pill's bottom edge, behind the node's
+// action bar, to the node's box.
+const dividerGap = 20;
+const dividerHeight = 24; // the line is at its vertical middle
+const pillHalfHeight = 9;
+const gapBelowPill = 2;
+const dividerOverhang = 24;
+const minDividerWidth = 320;
+// A collapsed checkpoint has no stage above it: its pill sits on a short
+// stub of line instead of one across the canvas.
+const stubWidth = nodeWidth;
 
 /**
- * Background frame wrapping a specific set of already-laid-out nodes -
- * sized to their bounding box, drawn behind them (zIndex -1). Used for two
- * different situations that both end up needing "a border around some
- * table nodes, with its own action bar": a pipeline whose trailing
- * group:/limit: hasn't been composed on top of yet (CanvasStore.recompute's
- * hasTrailingCheckpoint check - `memberIds` is every currently-rendered
- * table node in that case), and a checkpoint that HAS been composed on top
- * of, whose inner tables now render as their own nodes rather than a
- * collapsed summary (deriveGraph's `frames` output - `memberIds` is just
- * that checkpoint's own inner tables).
+ * Which checkpoint is expanded when the user hasn't picked one: the one that
+ * feeds the last stage, so a pipeline with one checkpoint shows everything.
  */
-const makeFrameNode = (
-  id: string,
-  laidOutNodes: CanvasNode[],
-  memberIds: string[],
-  leftHandles: CanvasHandle[] = [],
-  rightHandles: CanvasHandle[] = [],
-): CanvasFrameNode | null => {
-  const members = new Set(memberIds);
-  const memberNodes = laidOutNodes.filter(
-    (n): n is CanvasTableNode => n.type === 'table-node' && members.has(n.id),
-  );
-  if (memberNodes.length === 0) return null;
-  const boxes = memberNodes.map(n => ({
-    x: n.position.x,
-    y: n.position.y,
-    width: nodeWidth,
-    height: getNodeFootprintHeight(n),
-  }));
-  const memberOrder = Math.max(...memberNodes.map(n => n.data.order));
-  const minX = Math.min(...boxes.map(b => b.x));
-  const minY = Math.min(...boxes.map(b => b.y));
-  const maxX = Math.max(...boxes.map(b => b.x + b.width));
-  const maxY = Math.max(...boxes.map(b => b.y + b.height));
+export const defaultExpandedCheckpoint = (ast: Ast): string | null => {
+  const checkpoints = ast.checkpoints ?? [];
+  return checkpoints.length ? checkpoints[checkpoints.length - 1].name : null;
+};
+
+/**
+ * The checkpoint a gesture just added: the one in `after` that wasn't in
+ * `before`, by name. A gesture always starts from a base where every
+ * checkpoint is pinned (see getPinnedBase), so the earlier ones keep their
+ * names and only the new one is unknown. null when none was added.
+ */
+export const newCheckpointName = (
+  before: Checkpoint[] | undefined,
+  after: Checkpoint[] | undefined,
+): string | null => {
+  const known = new Set((before ?? []).map(c => c.name));
+  const added = (after ?? []).filter(c => !known.has(c.name));
+  return added.length === 1 && (after ?? []).length > (before ?? []).length ? added[0].name : null;
+};
+
+/**
+ * An earlier query block of the tab that ends in `|= name`: a nested query of
+ * the last block. `prefix` (`b0/`) goes in front of every node id drawn
+ * from it, so its aliases can't clash with the last block's, and so a
+ * gesture on one of its nodes knows which block's text to edit (see
+ * CanvasStore.scopeOf). `ast` is the block's own build.
+ */
+export type NamedBlock = { name: string; prefix: string; ast: Ast };
+
+/**
+ * What is expanded, worked out from CanvasStore.expandedNested (one name, or
+ * undefined for the default, or null for none):
+ *
+ * - `block`: the named block drawn above the last block, if any. Naming a
+ *   block, or a checkpoint inside one (`b0/result_1`), expands it.
+ * - `innerOpen`: the checkpoint expanded inside that block (unprefixed), or
+ *   null: only the block's last stage is drawn.
+ * - `mainOpen`: the index of the last block's expanded checkpoint, or -1.
+ *   While a block is expanded, it is the checkpoint whose stage holds the
+ *   node that uses the block, so that node stays drawn.
+ */
+export type Expansion = { block: NamedBlock | null; innerOpen: string | null; mainOpen: number };
+
+/**
+ * The stage of `ast` whose tables include the named result `name`, or null
+ * when nothing in the query joins it.
+ */
+const stageUsing = (ast: Ast, name: string): number | null => {
+  const names = new Set((ast.checkpoints ?? []).map(c => c.name));
+  const k = stagesOf(ast).findIndex(s => s.source.tables.some(t => t.table === name && !names.has(t.table)));
+  return k < 0 ? null : k;
+};
+
+export const expansionOf = (ast: Ast, blocks: NamedBlock[], expanded: string | null | undefined): Expansion => {
+  const checkpoints = ast.checkpoints ?? [];
+  const block =
+    typeof expanded === 'string'
+      ? (blocks.find(b => b.name === expanded || expanded.startsWith(b.prefix)) ?? null)
+      : null;
+  if (block) {
+    const inner = expanded!.startsWith(block.prefix) ? expanded!.slice(block.prefix.length) : null;
+    const used = stageUsing(ast, block.name);
+    return {
+      block,
+      innerOpen: inner && (block.ast.checkpoints ?? []).some(c => c.name === inner) ? inner : null,
+      mainOpen: used !== null && used < checkpoints.length ? used : -1,
+    };
+  }
+  // A name this ast doesn't have (removed, or not built yet) means the default.
+  const known = expanded === null || checkpoints.some(c => c.name === expanded);
+  const open = expanded === undefined || !known ? defaultExpandedCheckpoint(ast) : expanded;
+  return { block: null, innerOpen: null, mainOpen: open === null ? -1 : checkpoints.findIndex(c => c.name === open) };
+};
+
+/** A divider to draw, found while laying out a pipeline (see layoutPipeline). */
+type DividerSpec = {
+  kind: 'checkpoint' | 'named';
+  /** The checkpoint's name, or the named block's - what the pill's toggle expands. */
+  name: string;
+  label: string;
+  limit?: number;
+  /** The id of the node below the pill. */
+  nodeId: string;
+  expanded: boolean;
+  /** The line's y when expanded (it then crosses the canvas). */
+  lineY?: number;
+};
+
+const prefixed = (prefix: string, nodes: CanvasTableNode[], edges: CanvasEdge[]) => {
+  if (!prefix) return { nodes, edges };
+  const p = (id: string) => prefix + id;
+  const handles = (hs: CanvasHandle[]) => hs.map(h => ({ ...h, connectedNodeId: p(h.connectedNodeId) }));
   return {
-    id,
-    type: 'frame-node',
-    position: { x: minX - framePadding, y: minY - framePadding - frameHeaderHeight },
-    draggable: false,
-    selectable: false,
-    // ReactFlow renders its own `.react-flow__node` wrapper AROUND
-    // whatever FrameNode.tsx returns - `pointerEvents: 'none'` set only on
-    // FrameNode's own root div doesn't make THAT wrapper transparent too,
-    // since a child's pointer-events:none doesn't propagate to its parent.
-    // The wrapper stays hit-testable (it has to - the action bar's clicks
-    // need to reach it) and, unless told otherwise, keeps whatever cursor
-    // ReactFlow's own default node styling applies - reported live as a
-    // stray pointer/grab cursor across the whole frame even off the
-    // buttons, which an inner-div-only fix couldn't reach. `style` is a
-    // real top-level Node field ReactFlow applies directly to that
-    // wrapper, so this reaches the one element the inner fix couldn't.
-    style: { pointerEvents: 'none' },
-    zIndex: -1,
-    data: {
-      width: maxX - minX + framePadding * 2,
-      height: maxY - minY + framePadding * 2 + frameHeaderHeight,
-      leftHandles,
-      rightHandles,
-      memberOrder,
-    },
+    nodes: nodes.map(n => ({
+      ...n,
+      id: p(n.id),
+      data: { ...n.data, alias: p(n.data.alias), leftHandles: handles(n.data.leftHandles), rightHandles: handles(n.data.rightHandles) },
+    })),
+    edges: edges.map(e => ({
+      ...e,
+      id: p(e.id),
+      source: p(e.source),
+      target: p(e.target),
+      joinTargetAlias: e.joinTargetAlias === undefined ? undefined : p(e.joinTargetAlias),
+    })),
   };
 };
 
+/**
+ * Lays out one query block's stages from `top` down (see stagesOf),
+ * starting at `firstStage`. `openIndex` is its expanded checkpoint (-1:
+ * none): checkpoints from it down are expanded. `dropLastStage` leaves out
+ * a trailing checkpoint's node-only stage and its divider - a named block
+ * ending in `limit: 10 |= x`, whose node is the last block's `x`.
+ */
+const layoutPipeline = (
+  ast: Ast,
+  prefix: string,
+  firstStage: number,
+  openIndex: number,
+  top: number,
+  order: number,
+  dropLastStage = false,
+) => {
+  const checkpoints = ast.checkpoints ?? [];
+  const checkpointNames = new Set(checkpoints.map(c => c.name));
+  const stages = stagesOf(ast);
+  const isExpanded = (name: string) => {
+    const k = checkpoints.findIndex(c => c.name === name);
+    return openIndex >= 0 && k >= openIndex;
+  };
+  const nodes: CanvasTableNode[] = [];
+  const edges: CanvasEdge[] = [];
+  const dividers: DividerSpec[] = [];
+  // The y of each expanded checkpoint's line, by name. The line is found
+  // with the stage it seals; the checkpoint's node, which its divider is
+  // made from, comes in the next stage.
+  const lineY: Record<string, number> = {};
+  const lastStage = dropLastStage ? stages.length - 2 : stages.length - 1;
+  stages.forEach((stage, k) => {
+    if (k < firstStage || k > lastStage) return;
+    const derived = deriveStage(stage, checkpointNames, order);
+    order += derived.nodes.length;
+    const placed = layoutStage(derived.nodes, derived.edges).map(n => {
+      const position = { x: n.position.x, y: n.position.y + top };
+      if (!n.data.checkpoint) return { ...n, position };
+      return { ...n, position, data: { ...n.data, checkpoint: { expanded: isExpanded(n.id) } } };
+    });
+    const bottom = placed.length ? Math.max(...placed.map(n => n.position.y + getNodeFootprintHeight(n))) : top;
+    const { nodes: ns, edges: es } = prefixed(prefix, placed, derived.edges);
+    nodes.push(...ns);
+    edges.push(...es);
+    for (const n of placed.filter(n => n.data.checkpoint)) {
+      const checkpoint = checkpoints.find(c => c.name === n.id)!;
+      dividers.push({
+        kind: 'checkpoint',
+        name: prefix + n.id,
+        label: checkpointLabel(checkpoint),
+        limit: checkpoint.kind === 'limit' ? checkpoint.limit : undefined,
+        nodeId: prefix + n.id,
+        expanded: !!n.data.checkpoint?.expanded,
+      });
+    }
+    if (k < checkpoints.length && k < lastStage) {
+      const y = bottom + dividerGap + dividerHeight / 2;
+      lineY[prefix + checkpoints[k].name] = y;
+      top = y + pillHalfHeight + gapBelowPill;
+    } else {
+      top = bottom;
+    }
+  });
+  for (const d of dividers) if (d.expanded) d.lineY = lineY[d.name];
+  return { nodes, edges, dividers, bottom: top, order };
+};
+
+/**
+ * ast -> laid-out nodes/edges. The pipeline is drawn as stages stacked top
+ * to bottom (see stagesOf). Within a stage, tables keep the left-to-right
+ * layout. Each checkpoint is a dashed divider across the whole width, below
+ * the stage it seals; on it, a pill centred above the node named after the
+ * checkpoint, joined to the node by a short connector.
+ *
+ * Only one nested query is expanded at a time (see expansionOf). Checkpoints
+ * are a chain - each one's node sits in the stage the next one seals - so
+ * expanding one shows every stage from the one it seals down to the last.
+ * The checkpoints above it stay collapsed: their node and pill are drawn,
+ * their stage isn't. The last stage is always drawn.
+ *
+ * `blocks` are the tab's earlier query blocks ending in `|= name`. The node
+ * that uses one (a table named after it) gets a pill too; expanding it
+ * draws that block above the last block. A block nothing joins is a
+ * standalone node beside the graph, with its own pill.
+ *
+ * `positions` holds nodes the user has dragged: they keep that position.
+ */
 export const buildCanvasGraph = (
   ast: Ast,
   positions: Record<string, { x: number; y: number }>,
-  hasPendingCheckpoint: boolean,
+  expanded?: string | null,
+  blocks: NamedBlock[] = [],
 ): CanvasGraph => {
-  const { nodes, edges, frames, rankAnchors, rankEdges } = deriveGraph(ast);
-  const laidOut = layoutNodes(positions, nodes, edges, rankAnchors, rankEdges);
+  const stages = stagesOf(ast);
+  const expansion = expansionOf(ast, blocks, expanded);
+  const firstStage = expansion.mainOpen < 0 ? stages.length - 1 : expansion.mainOpen;
 
-  const consumedFrames = frames
-    .map(f => makeFrameNode(f.id, laidOut, f.memberIds, f.leftHandles, f.rightHandles))
-    .filter((f): f is CanvasFrameNode => f !== null);
+  const nodes: CanvasTableNode[] = [];
+  const edges: CanvasEdge[] = [];
+  const dividers: DividerSpec[] = [];
+  let top = 0;
+  let order = 1;
 
-  // The pending frame wraps whatever's left once any already-consumed
-  // checkpoint's own members are excluded - without this, a pipeline with
-  // both an earlier, already-composed-on checkpoint and a later, still-
-  // pending one would double-wrap the earlier one's inner tables. Chained
-  // checkpoints are still an edge case this doesn't fully model (see the
-  // plan doc's still-out-of-scope list), but this avoids the most visible
-  // glitch cheaply.
-  const claimed = new Set(frames.flatMap(f => f.memberIds));
-  const pendingMemberIds = laidOut.filter(n => n.type === 'table-node' && !claimed.has(n.id)).map(n => n.id);
-  const pendingFrame = hasPendingCheckpoint
-    ? makeFrameNode(PENDING_CHECKPOINT_FRAME_ID, laidOut, pendingMemberIds)
-    : null;
+  // The expanded named block, above the last block, with the line between.
+  let blockLineY: number | null = null;
+  if (expansion.block) {
+    const b = expansion.block;
+    const inner = b.ast.checkpoints ?? [];
+    const last = inner[inner.length - 1];
+    // `... | limit: 10 |= x`: the block's own last checkpoint is `x`, whose
+    // node is the last block's x. Its stage-only-node and divider are left
+    // out; the named pill says what it does.
+    const endsInCheckpoint = !!last && !last.sealed && last.name === b.name;
+    const innerOpen = expansion.innerOpen === null ? -1 : inner.findIndex(c => c.name === expansion.innerOpen);
+    const blockStages = stagesOf(b.ast).length;
+    const usable = endsInCheckpoint ? blockStages - 2 : blockStages - 1;
+    const laid = layoutPipeline(b.ast, b.prefix, innerOpen < 0 ? usable : innerOpen, innerOpen, top, order, endsInCheckpoint);
+    nodes.push(...laid.nodes);
+    edges.push(...laid.edges);
+    dividers.push(...laid.dividers);
+    order = laid.order;
+    blockLineY = laid.bottom + dividerGap + dividerHeight / 2;
+    top = blockLineY + pillHalfHeight + gapBelowPill;
+  }
 
-  const allFrames = [...consumedFrames, ...(pendingFrame ? [pendingFrame] : [])];
-  return { nodes: [...allFrames, ...laidOut], edges, parsing: true, singleBlock: true };
+  const main = layoutPipeline(ast, '', firstStage, expansion.mainOpen, top, order);
+  nodes.push(...main.nodes);
+  edges.push(...main.edges);
+  dividers.push(...main.dividers);
+
+  // A pill above each node that uses a named block; a standalone node for a
+  // block nothing joins.
+  const usedInWhere = new Set(
+    (ast.where ?? []).flatMap(w => whereConditions(w)).flatMap(c => (c.value && !Array.isArray(c.value) && c.value.type === 'named-result' ? [String(c.value.value)] : [])),
+  );
+  const maxMainX = main.nodes.length ? Math.max(...main.nodes.map(n => n.position.x + nodeWidth)) : 0;
+  let standaloneY = top;
+  for (const b of blocks) {
+    const open = expansion.block === b;
+    const inner = b.ast.checkpoints ?? [];
+    const last = inner[inner.length - 1];
+    const label = last && !last.sealed && last.name === b.name ? `${checkpointLabel(last)} |= ${b.name}` : `|= ${b.name}`;
+    const using = main.nodes.find(n => n.data.table === b.name && !n.data.checkpoint);
+    let nodeId: string;
+    if (using) {
+      using.data = { ...using.data, named: { name: b.name, expanded: open } };
+      nodeId = using.id;
+    } else {
+      nodeId = `named:${b.name}`;
+      const node: CanvasTableNode = {
+        id: nodeId,
+        type: 'table-node',
+        position: { x: maxMainX + 80, y: standaloneY + pillHalfHeight * 2 + gapBelowPill },
+        targetPosition: Position.Left,
+        sourcePosition: Position.Right,
+        data: {
+          alias: nodeId,
+          table: b.name,
+          schema: null,
+          order: 10_000 + nodes.length,
+          removable: false,
+          selectColumns: [],
+          whereChips: [],
+          orderChips: [],
+          groupChips: [],
+          leftHandles: [],
+          rightHandles: [],
+          named: { name: b.name, expanded: open, standalone: true, usedInWhere: usedInWhere.has(b.name) },
+        },
+      };
+      nodes.push(node);
+      standaloneY = node.position.y + getNodeFootprintHeight(node) + verticalGap;
+    }
+    dividers.push({
+      kind: 'named',
+      name: b.name,
+      label,
+      nodeId,
+      expanded: open,
+      lineY: open && blockLineY !== null ? blockLineY : undefined,
+    });
+  }
+
+  const finalNodes = nodes.map(n => (positions[n.id] ? { ...n, position: positions[n.id] } : n));
+  const maxX = finalNodes.length ? Math.max(...finalNodes.map(n => n.position.x + nodeWidth)) : nodeWidth;
+  const width = Math.max(maxX + dividerOverhang * 2, minDividerWidth);
+
+  // One divider per nested query node drawn: across the canvas when
+  // expanded (what it stands for is above), a short stub when collapsed.
+  // Placed from the node's final position, so a dragged node keeps its pill
+  // above it.
+  const dividerNodes: CanvasDividerNode[] = dividers.flatMap(d => {
+    const n = finalNodes.find(node => node.id === d.nodeId);
+    if (!n) return [];
+    const centre = n.position.x + nodeWidth / 2;
+    const across = d.expanded && d.lineY !== undefined;
+    const y = across ? d.lineY! : n.position.y - gapBelowPill - pillHalfHeight;
+    const x = across ? -dividerOverhang : centre - stubWidth / 2;
+    return [
+      {
+        id: `${d.kind === 'named' ? 'named-divider' : 'checkpoint-divider'}:${d.name}`,
+        type: 'checkpoint-divider',
+        position: { x, y: y - dividerHeight / 2 },
+        draggable: false,
+        selectable: false,
+        focusable: false,
+        // ReactFlow's own wrapper around the node would otherwise take every
+        // click along the line's whole width - including the mousedown that
+        // starts a rubber-band selection. The pill opts back in (see
+        // CheckpointDividerNode.tsx).
+        style: { pointerEvents: 'none' },
+        data: {
+          kind: d.kind,
+          name: d.name,
+          label: d.label,
+          limit: d.limit,
+          width: across ? width : stubWidth,
+          pillX: centre - x,
+          expanded: d.expanded,
+          // From the pill's bottom edge to the node's box, past its action bar.
+          connector: Math.max(n.position.y + actionBarHeight - (y + pillHalfHeight), 0),
+        },
+      },
+    ];
+  });
+
+  return { nodes: [...dividerNodes, ...finalNodes], edges, parsing: true, singleBlock: true };
 };

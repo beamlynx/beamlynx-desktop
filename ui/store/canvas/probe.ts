@@ -18,7 +18,14 @@ const client = new HttpClient();
  * clean and then crash the whole app at runtime the first time this
  * actually happened.
  */
-export const probeBuild = async (expression: string, connectionId?: string): Promise<Ast | undefined> => {
-  const response = await client.build([expression], undefined, connectionId);
+export const probeBuild = async (
+  expression: string,
+  connectionId?: string,
+  // The blocks before it in the tab (and values blocks after), as the
+  // session's own build sends them: a named result from an earlier block
+  // only resolves with that block in the request. See tab-blocks.ts.
+  context: string[] = [],
+): Promise<Ast | undefined> => {
+  const response = await client.build([...context, expression], undefined, connectionId);
   return response.ast;
 };
