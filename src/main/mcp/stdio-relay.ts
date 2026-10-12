@@ -281,67 +281,93 @@ async function registerTools(server: McpServer): Promise<void> {
     },
   );
 
+  // Shared by run_query and run_sql_as_pine: both go to the control plane's
+  // /query. SQL is converted to Pine in beamlynx-ui, and only the Pine runs.
+  const variablesInput = variablesSchema
+    .optional()
+    .describe(
+      'Values for the $variables in the query, by name without the $: {"company_name": "Acme", ' +
+        '"tenant_ids": [17, 23]}. A list is for a variable used with `in`. Pass an id larger than ' +
+        '9007199254740991 (2^53 - 1) as a string, since a larger JSON number arrives rounded. ' +
+        `At most ${MAX_VARIABLES} variables, ${MAX_LIST_ITEMS} values in a list and ` +
+        `${MAX_STRING_LENGTH} characters in a string.`,
+    );
+  const sayWhy =
+    'Lead it with a `/* ... */` comment saying what you are looking for and why -- the tab this opens ' +
+    'renders it as a note above the query, which is how the user sees your reasoning rather than just rows. ';
+  async function runOnControlPlane(body: Record<string, unknown>) {
+    try {
+      await ensureGuiRunning();
+      const { result } = await controlPlaneRequest('POST', '/query', body);
+      return textResult(formatRows(result ?? {}));
+    } catch (e) {
+      return errorResult(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   server.registerTool(
     'run_query',
     {
       description:
-        'Run a query against a connection (must be one returned by list_connections) and return the rows. ' +
-        'Opens or updates a visible tab in the beamlynx app so the user can see what ran. Pass a Pine ' +
-        '`expression`, or one SQL SELECT as `sql` -- never both. SQL is converted to Pine and only the Pine ' +
-        'runs; the result starts with that Pine, so read it to learn Pine. SQL that does not convert (OFFSET, ' +
-        'DISTINCT, functions, subqueries, ...) runs nothing and says why; write that query in Pine instead. ' +
-        'Use find_tables and complete_query rather than guessing at table or column names. Results are capped ' +
-        'by the server at 250 rows. ' +
-        'Lead the expression or SQL with a `/* ... */` comment saying what you are looking for and why -- the tab ' +
-        'this opens renders it as a note above the query, which is how the user sees your reasoning rather ' +
-        'than just rows. ' +
-        'If the query contains `$name` variables, pass their values in `variables`; they are bound as ' +
+        'Run a Pine expression against a connection (must be one returned by list_connections) and return the ' +
+        'rows. Opens or updates a visible tab in the beamlynx app so the user can see what ran. Build the ' +
+        'expression with find_tables and complete_query rather than guessing at table or column names. ' +
+        'To run SQL, use run_sql_as_pine. Results are capped by the server at 250 rows. ' +
+        sayWhy +
+        'If the expression contains `$name` variables, pass their values in `variables`; they are bound as ' +
         'values, never pasted into the query (see get_pine_doc "variables").',
       inputSchema: {
         connection_id: z.string().describe('A connection id from list_connections'),
-        expression: z.string().optional().describe('The Pine expression to run'),
-        sql: z
-          .string()
-          .optional()
-          .describe('One SQL SELECT to run as Pine, in place of `expression`. It is converted, never run as SQL.'),
-        variables: variablesSchema
-          .optional()
-          .describe(
-            'Values for the $variables in the expression, by name without the $: {"company_name": "Acme", ' +
-              '"tenant_ids": [17, 23]}. A list is for a variable used with `in`. Pass an id larger than ' +
-              '9007199254740991 (2^53 - 1) as a string, since a larger JSON number arrives rounded. ' +
-              `At most ${MAX_VARIABLES} variables, ${MAX_LIST_ITEMS} values in a list and ` +
-              `${MAX_STRING_LENGTH} characters in a string.`,
-          ),
+        expression: z.string().describe('The Pine expression to run'),
+        variables: variablesInput,
       },
     },
     async ({
       connection_id,
       expression,
+      variables,
+    }: {
+      connection_id: string;
+      expression: string;
+      variables?: Record<string, VariableValue>;
+    }) => runOnControlPlane({ profileId: connection_id, expression, variables }),
+  );
+
+  // A tool of its own, not a field on run_query: an MCP client grants
+  // permission per tool, so a person can allow Pine and refuse SQL. The SQL
+  // never runs -- beamlynx-ui converts it to Pine (pine-lang's /sql-to-pine)
+  // and runs the Pine down run_query's path. Named for that: there is still
+  // no run_sql tool. See beamlynx-plans/pending/2026-10-12-agents-run-sql-as-pine.md.
+  server.registerTool(
+    'run_sql_as_pine',
+    {
+      description:
+        'Run one SQL SELECT against a connection (must be one returned by list_connections) by converting it ' +
+        'to Pine. Only the Pine runs, exactly as run_query would run it: in a visible tab in the beamlynx app, ' +
+        'with the same access policy and no writes. The result starts with the Pine that ran -- read it, since ' +
+        'it is how to write the same query with run_query. Converts joins (inner, left, right), WHERE, ' +
+        'GROUP BY with COUNT(*), ORDER BY and LIMIT. Anything else (OFFSET, DISTINCT, functions, subqueries, ' +
+        'UNION, writes) runs nothing and says why; write that query in Pine with run_query instead. ' +
+        'Results are capped by the server at 250 rows. ' +
+        sayWhy +
+        'SQL `$name` placeholders are Pine variables: pass their values in `variables`.',
+      inputSchema: {
+        connection_id: z.string().describe('A connection id from list_connections'),
+        sql: z.string().describe('One SQL SELECT. It is converted to Pine, never run as SQL.'),
+        variables: variablesInput,
+      },
+    },
+    async ({
+      connection_id,
       sql,
       variables,
     }: {
       connection_id: string;
-      expression?: string;
-      sql?: string;
+      sql: string;
       variables?: Record<string, VariableValue>;
     }) => {
-      try {
-        const hasExpression = expression !== undefined && expression.trim() !== '';
-        const hasSql = sql !== undefined && sql.trim() !== '';
-        if (hasExpression === hasSql) {
-          return errorResult('Pass a Pine `expression` or one SQL SELECT as `sql`, not both and not neither.');
-        }
-        await ensureGuiRunning();
-        const { result } = await controlPlaneRequest(
-          'POST',
-          '/query',
-          hasSql ? { profileId: connection_id, sql, variables } : { profileId: connection_id, expression, variables },
-        );
-        return textResult(formatRows(result ?? {}));
-      } catch (e) {
-        return errorResult(e instanceof Error ? e.message : String(e));
-      }
+      if (!sql.trim()) return errorResult('run_sql_as_pine needs a SQL SELECT in `sql`.');
+      return runOnControlPlane({ profileId: connection_id, sql, variables });
     },
   );
 

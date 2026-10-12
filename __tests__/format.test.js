@@ -562,7 +562,7 @@ test('a SQL conversion error is passed through, and runs nothing', () => {
   assert.equal(formatRows({ error }), error);
 });
 
-test('SQL sent as an expression is pointed at `sql`', () => {
+test('SQL sent as an expression is pointed at run_sql_as_pine', () => {
   const out = formatRows({ error: 'This looks like SQL. Paste it in the SQL panel, and it converts to Pine as you type.' });
-  assert.match(out, /Send it as `sql` instead of `expression`/);
+  assert.match(out, /To run SQL, use run_sql_as_pine/);
 });
