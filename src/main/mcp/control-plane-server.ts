@@ -132,9 +132,14 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
       // this handler and hang in readJsonBody.
       if (req.method === 'POST' && (req.url === '/query' || req.url === '/explain')) {
         const body = await readJsonBody(req);
-        const { profileId, expression, variables } = body ?? {};
-        if (!profileId || typeof expression !== 'string') {
-          return sendJson(res, 400, { error: 'profileId and expression are required' });
+        const { profileId, expression, sql, variables } = body ?? {};
+        // run_query sends Pine as `expression` or SQL as `sql`, never both.
+        // SQL is only for /query, where beamlynx-ui converts it to Pine and
+        // runs the Pine; it never runs as SQL.
+        const hasSql = typeof sql === 'string';
+        const hasExpression = typeof expression === 'string' && expression !== '';
+        if (!profileId || hasSql === hasExpression || (hasSql && req.url !== '/query')) {
+          return sendJson(res, 400, { error: 'profileId and one of expression or sql (for /query) are required' });
         }
         assertWhitelisted(profileId);
 
@@ -149,7 +154,8 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
         const result = await runInRenderer(mainWindow, {
           kind,
           profileId,
-          expression,
+          expression: hasSql ? '' : expression,
+          ...(hasSql ? { sql } : {}),
           variables: variables && typeof variables === 'object' && !Array.isArray(variables) ? variables : undefined,
         });
         return sendJson(res, 200, { result });

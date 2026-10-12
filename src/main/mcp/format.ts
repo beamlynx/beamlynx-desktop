@@ -61,6 +61,10 @@ export type EvalResponse = {
   columns?: { column: string; alias?: string; 'column-alias'?: string; hidden?: boolean }[];
   rows?: unknown[][];
   error?: string;
+  // Set when run_query got SQL: the Pine it was converted to and ran, and
+  // how that Pine differs from the SQL without changing the rows.
+  pine?: string;
+  warnings?: string[];
 };
 
 /** A saved-connection record as the control plane's /connections route returns it. */
@@ -373,6 +377,12 @@ const EVAL_ERROR_GUIDANCE: { pattern: RegExp; guidance: string }[] = [
       'or call complete_query with `<alias>.` on the end to see which columns each alias has.',
   },
   {
+    // SQL sent as `expression`. pine-lang's own hint points at the app's
+    // SQL panel, which an agent doesn't have.
+    pattern: /This looks like SQL/,
+    guidance: 'Send it as `sql` instead of `expression`. run_query converts SQL to Pine and runs the Pine.',
+  },
+  {
     // e.g. `customers | orders .customer_id` where the column is really
     // `customerId`. pine-lang builds the join with an empty column rather
     // than rejecting it, so the failure surfaces here with nothing pointing
@@ -423,6 +433,15 @@ export function formatRows(response: EvalResponse): string {
     return explainEvalError(response.error);
   }
 
+  // SQL ran as this Pine. Shown first: it is how an agent that writes SQL
+  // learns Pine. Never the SQL itself, the agent's or the compiled one.
+  const ranAs = response.pine
+    ? [`Ran as Pine:\n${response.pine}`, ...(response.warnings ?? []).map(w => `Note: ${w}`), ''].join('\n') + '\n'
+    : '';
+  return ranAs + formatRowsOnly(response);
+}
+
+function formatRowsOnly(response: EvalResponse): string {
   const rows = response.rows ?? [];
   if (!rows.length) {
     return 'No rows.';

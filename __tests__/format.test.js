@@ -118,6 +118,15 @@ test('no output path emits SQL', () => {
     // ones where format.ts writes the prose itself.
     formatCompletion('user | public.document .userId | select: document.', NO_HINTS_RESPONSE, noDocs),
     formatRows({ error: `zero-length delimited identifier at or near ${'"'.repeat(4)}` }),
+    // run_query given SQL: the Pine it ran and the converter's notes, never
+    // the SQL.
+    formatRows({
+      pine: 'company as c\n | employee as e .company_id = .id\n | where: active = true',
+      warnings: ["A condition in an inner join's ON moved to where:. It means the same there."],
+      columns: [{ column: 'id' }],
+      rows: [['id'], ['1']],
+    }),
+    formatRows({ error: 'This looks like SQL. Paste it in the SQL panel, and it converts to Pine as you type.' }),
   ];
   for (const out of outputs) {
     assert.ok(!SQL_KEYWORDS.test(out), `MCP output must never contain SQL, got:\n${out}`);
@@ -528,4 +537,32 @@ test('a cell longer than MAX_CELL_CHARS is cut, saying how much was left out', (
   assert.ok(!text.includes(long));
   assert.match(text, /… \(500 more characters\)/);
   assert.match(text, /"short"/);
+});
+
+test('formatRows leads with the Pine that SQL ran as, and its notes', () => {
+  const out = formatRows({
+    pine: 'company\n | where: id = 1',
+    warnings: ['Pine names the count column `count`.'],
+    columns: [{ column: 'id' }],
+    rows: [['id'], [1]],
+  });
+  assert.equal(
+    out,
+    ['Ran as Pine:', 'company', ' | where: id = 1', 'Note: Pine names the count column `count`.', '', '1 row', '', '["id"]', '[1]'].join(
+      '\n',
+    ),
+  );
+});
+
+// A conversion error quotes the agent's own SQL constructs ("OFFSET isn't
+// in Pine."), so it is the one output the no-SQL check above doesn't cover.
+// It is passed through as written: it is about the agent's input.
+test('a SQL conversion error is passed through, and runs nothing', () => {
+  const error = "The SQL didn't convert to Pine, so nothing ran. Line 3: OFFSET isn't in Pine.";
+  assert.equal(formatRows({ error }), error);
+});
+
+test('SQL sent as an expression is pointed at `sql`', () => {
+  const out = formatRows({ error: 'This looks like SQL. Paste it in the SQL panel, and it converts to Pine as you type.' });
+  assert.match(out, /Send it as `sql` instead of `expression`/);
 });
