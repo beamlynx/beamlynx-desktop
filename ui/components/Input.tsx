@@ -1,7 +1,7 @@
 import { observer } from 'mobx-react-lite';
 import React, { useMemo } from 'react';
-import { Box, ToggleButton, ToggleButtonGroup, Button, IconButton, Tooltip } from '@mui/material';
-import { PlayArrow, Loop, Stop, Visibility, VisibilityOff } from '@mui/icons-material';
+import { Box, ToggleButton, ToggleButtonGroup, Button } from '@mui/material';
+import { PlayArrow, Loop, Stop } from '@mui/icons-material';
 import PineInput from './PineInput';
 import SqlInput from './SqlInput';
 import { Session } from '../store/session';
@@ -68,62 +68,6 @@ export const RunButton: React.FC<{ session: Session; onRun?: () => void | Promis
   },
 );
 
-/**
- * Shows or hides, in the SQL, the columns pine-lang adds so results can be
- * edited. The same preference as the switch in Settings > Preferences.
- *
- * Enabled only when clicking it changes the SQL shown. Otherwise it is
- * dimmed and says why: a button that flips a setting with nothing visible
- * happening reads as broken.
- */
-const HIDDEN_COLUMNS_UNAVAILABLE: Record<string, string> = {
-  'own-sql': 'This is your own SQL, so there are no added columns to show or hide',
-  none: 'This query has no added columns to show or hide',
-  'old-server': 'This pine-lang always includes the added columns. A newer one can hide them',
-};
-
-const HiddenColumnsToggle: React.FC<{ session: Session }> = observer(({ session }) => {
-  const { global } = useStores();
-  const shown = global.showHiddenSqlColumns;
-  const state = session.hiddenColumnsToggle;
-  const enabled = state === 'available';
-  const title = enabled
-    ? shown
-      ? 'Hide the columns beamlynx adds so results can be edited'
-      : 'Show the columns beamlynx adds so results can be edited'
-    : HIDDEN_COLUMNS_UNAVAILABLE[state];
-  return (
-    <Tooltip title={title}>
-      {/* A disabled button gets no pointer events, so the tooltip hangs on
-          this wrapper instead. */}
-      <span>
-        <IconButton
-          size="small"
-          tabIndex={-1}
-          aria-label={shown ? 'Hide hidden columns' : 'Show hidden columns'}
-          aria-pressed={shown}
-          disabled={!enabled}
-          onClick={() => global.toggleShowHiddenSqlColumns()}
-          sx={{
-            color: shown ? 'var(--primary-color)' : 'var(--text-color)',
-            backgroundColor: 'var(--background-color)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '4px',
-            height: '30px',
-            width: '30px',
-            '&.Mui-disabled': {
-              color: 'var(--text-color)',
-              opacity: 0.35,
-            },
-          }}
-        >
-          {shown ? <Visibility fontSize="small" /> : <VisibilityOff fontSize="small" />}
-        </IconButton>
-      </span>
-    </Tooltip>
-  );
-});
-
 const Input: React.FC<InputProps> = observer(({ session, onRun, autoFocus = true }) => {
   const handleInputModeChange = (
     event: React.MouseEvent<HTMLElement>,
@@ -175,7 +119,6 @@ const Input: React.FC<InputProps> = observer(({ session, onRun, autoFocus = true
             gap: 0.5,
           }}
         >
-          {session.inputMode === 'sql' && <HiddenColumnsToggle session={session} />}
           {/* Input mode toggle. Tab skips both buttons (see each
               ToggleButton's own tabIndex={-1} below) and lands straight in
               the editor instead -- confirmed live that Tab used to stop on
