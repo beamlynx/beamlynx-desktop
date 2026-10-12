@@ -27,6 +27,7 @@ type McpQueryRequest = {
   profileId: string;
   expression: string;
   variables?: Record<string, unknown>;
+  sql?: string;
 };
 
 // Matches beamlynx-ui's desktop.d.ts RevealRequest/RevealOutcome -- see

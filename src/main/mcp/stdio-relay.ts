@@ -285,18 +285,25 @@ async function registerTools(server: McpServer): Promise<void> {
     'run_query',
     {
       description:
-        'Run a Pine expression against a connection (must be one returned by list_connections) and return the ' +
-        'rows. Opens or updates a visible tab in the beamlynx app so the user can see what ran. Pine is not SQL ' +
-        'and SQL is not accepted here. Build the expression with find_tables and complete_query rather than ' +
-        'guessing at table or column names. Results are capped by the server at 250 rows. ' +
-        'Lead the expression with a `/* ... */` comment saying what you are looking for and why -- the tab ' +
+        'Run a query against a connection (must be one returned by list_connections) and return the rows. ' +
+        'Opens or updates a visible tab in the beamlynx app so the user can see what ran. Pass a Pine ' +
+        '`expression`, or one SQL SELECT as `sql` -- never both. SQL is converted to Pine and only the Pine ' +
+        'runs; the result starts with that Pine, so read it to learn Pine. SQL that does not convert (OFFSET, ' +
+        'DISTINCT, functions, subqueries, ...) runs nothing and says why; write that query in Pine instead. ' +
+        'Use find_tables and complete_query rather than guessing at table or column names. Results are capped ' +
+        'by the server at 250 rows. ' +
+        'Lead the expression or SQL with a `/* ... */` comment saying what you are looking for and why -- the tab ' +
         'this opens renders it as a note above the query, which is how the user sees your reasoning rather ' +
         'than just rows. ' +
-        'If the expression contains `$name` variables, pass their values in `variables`; they are bound as ' +
+        'If the query contains `$name` variables, pass their values in `variables`; they are bound as ' +
         'values, never pasted into the query (see get_pine_doc "variables").',
       inputSchema: {
         connection_id: z.string().describe('A connection id from list_connections'),
-        expression: z.string().describe('The Pine expression to run'),
+        expression: z.string().optional().describe('The Pine expression to run'),
+        sql: z
+          .string()
+          .optional()
+          .describe('One SQL SELECT to run as Pine, in place of `expression`. It is converted, never run as SQL.'),
         variables: variablesSchema
           .optional()
           .describe(
@@ -311,15 +318,26 @@ async function registerTools(server: McpServer): Promise<void> {
     async ({
       connection_id,
       expression,
+      sql,
       variables,
     }: {
       connection_id: string;
-      expression: string;
+      expression?: string;
+      sql?: string;
       variables?: Record<string, VariableValue>;
     }) => {
       try {
+        const hasExpression = expression !== undefined && expression.trim() !== '';
+        const hasSql = sql !== undefined && sql.trim() !== '';
+        if (hasExpression === hasSql) {
+          return errorResult('Pass a Pine `expression` or one SQL SELECT as `sql`, not both and not neither.');
+        }
         await ensureGuiRunning();
-        const { result } = await controlPlaneRequest('POST', '/query', { profileId: connection_id, expression, variables });
+        const { result } = await controlPlaneRequest(
+          'POST',
+          '/query',
+          hasSql ? { profileId: connection_id, sql, variables } : { profileId: connection_id, expression, variables },
+        );
         return textResult(formatRows(result ?? {}));
       } catch (e) {
         return errorResult(e instanceof Error ? e.message : String(e));

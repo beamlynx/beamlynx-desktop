@@ -20,6 +20,9 @@ export type McpQueryRequestPayload = {
   expression: string;
   // Values for the expression's $variables, from run_query.
   variables?: Record<string, unknown>;
+  // run_query's SQL, in place of an expression (then ''). beamlynx-ui
+  // converts it to Pine and runs only the Pine.
+  sql?: string;
 };
 
 type PendingEntry = {

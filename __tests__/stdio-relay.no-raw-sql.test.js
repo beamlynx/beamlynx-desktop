@@ -90,3 +90,13 @@ test('stdio-relay.ts renders tool output through format.ts rather than JSON-dump
       'response wholesale is exactly the bloat format.ts exists to remove.',
   );
 });
+
+// run_query may carry SQL, which beamlynx-ui converts to Pine before
+// anything runs (beamlynx-plans/pending/2026-10-12-agents-run-sql-as-pine.md).
+// The relay only forwards it, to the control plane's /query, the same route
+// a Pine expression takes.
+test('run_query forwards SQL only to the control plane /query route', () => {
+  const sends = [...STDIO_RELAY_SOURCE.matchAll(/controlPlaneRequest\(\s*'(\w+)',\s*'([^']+)'/g)].map(m => m[2]);
+  assert.ok(sends.every(route => ['/connections', '/explain', '/query', '/reveal', '/reveal-status'].some(r => route.startsWith(r))), sends.join(', '));
+  assert.ok(/hasSql \? \{ profileId: connection_id, sql, variables \}/.test(STDIO_RELAY_SOURCE));
+});

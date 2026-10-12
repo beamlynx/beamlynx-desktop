@@ -13,8 +13,10 @@
 // Keep this short. It is prepended to every session whether it gets used or
 // not, so it earns its place by covering the shape of the language and the
 // tool loop -- not by being a reference. get_pine_doc is the reference.
-export const SERVER_INSTRUCTIONS = `beamlynx queries databases with Pine, a pipe-based query language. Pine is not SQL, and no
-part of this server accepts SQL -- expressions are Pine only.
+export const SERVER_INSTRUCTIONS = `beamlynx queries databases with Pine, a pipe-based query language. run_query also takes
+one SQL SELECT as \`sql\`: it is converted to Pine, and only the Pine runs. The result starts
+with that Pine, so SQL is a fine way to start and to learn Pine. SQL that Pine can't say
+(OFFSET, DISTINCT, functions, subqueries, ...) is refused with the reason; write those in Pine.
 
 SHAPE
 
@@ -64,7 +66,8 @@ HOW TO WORK
    Build expressions by extending them one step at a time this way. After a join, only the
    last table's columns are listed -- end with \`| select: u_0.\` (any alias, then a dot) to
    list an earlier one's.
-4. run_query -- execute. Opens a visible tab in the user's beamlynx app so they can see it.
+4. run_query -- execute a Pine \`expression\` or a SQL \`sql\`. Opens a visible tab in the user's
+   beamlynx app so they can see it.
 
 SAY WHY
 
