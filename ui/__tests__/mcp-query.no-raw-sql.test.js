@@ -50,6 +50,14 @@ test('mcp-query.ts never calls client.sql (raw SQL execution)', () => {
   );
 });
 
+test('mcp-query.ts never converts SQL to Pine', () => {
+  assert.ok(
+    !/\b(sqlToPine|convertSql|sqlEdited)\b/.test(MCP_QUERY_SOURCE),
+    'store/mcp-query.ts must never reach SQL-to-Pine conversion -- agents write Pine, and no SQL text reaches ' +
+      'pine-lang from the MCP surface, in either direction.',
+  );
+});
+
 test('mcp-query.ts only drives pine-lang through connections/eval/build', () => {
   // The only HttpClient methods this file is allowed to call at all.
   const clientCallPattern = /\bclient\.(\w+)\s*\(/g;

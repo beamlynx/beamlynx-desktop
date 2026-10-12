@@ -26,6 +26,7 @@ import {
   JsonPathStep,
   Operation,
   Response,
+  SqlToPineResponse,
   VariablesReport,
 } from './client';
 import { generateGraph, getCandidateIndex, Graph } from './graph.util';
@@ -53,6 +54,15 @@ export type Mode = 'documentation' | 'graph' | 'result' | 'monitor';
 export type Theme = 'light' | 'dark';
 
 export type InputMode = 'pine' | 'sql';
+
+/** Where converting the SQL panel's text to Pine stands. */
+export type SqlConversion = {
+  status: 'idle' | 'converting' | 'converted' | 'failed';
+  /** Why it failed, from pine-lang: "Line 3: OFFSET isn't in Pine." */
+  message: string;
+  /** How the Pine differs from the SQL without changing the rows. */
+  warnings: string[];
+};
 
 export type Row = { [key: string]: any };
 
@@ -264,6 +274,25 @@ export class Session {
    */
   variablesReport: VariablesReport | null = null;
   query: string = '';
+  /**
+   * SQL to Pine (pine-lang's docs/sql-to-pine.md). Typing in the SQL panel
+   * converts the SQL, debounced, and the result replaces the tab's Pine, so
+   * the canvas follows the SQL. This is what the status line under the SQL
+   * editor shows.
+   */
+  sqlConversion: SqlConversion = { status: 'idle', message: '', warnings: [] };
+  /**
+   * The expression the last successful conversion left the tab with. While
+   * the tab's Pine is still exactly this, the SQL panel's text is what the
+   * Pine came from, so a build doesn't replace it with the Pine's own SQL.
+   * Once anything else changes the Pine, the panel shows its SQL again.
+   */
+  sqlTranslatedExpression: string | null = null;
+  // Each conversion request's number. Only the latest one's answer is used,
+  // so a slow answer about older text never replaces a newer one.
+  private sqlConversionSeq = 0;
+  /** Called on every edit of the SQL text. Debounced; see convertSql. */
+  sqlEdited: () => void;
   // The last build's SQL, with and without the hidden columns. `query` is
   // one of them until it is edited by hand in SQL mode.
   builtQuery: string = '';
@@ -449,6 +478,12 @@ export class Session {
       void this.evaluate({ forcePine: true });
     }, 150);
 
+    // Longer than auto-run's 150 ms: it is a request on every pause in
+    // typing, and nobody reads the canvas mid-word.
+    this.sqlEdited = debounce(() => {
+      void this.convertSql();
+    }, 300);
+
     /**
      * Mark hints as loading the moment a build is queued, not once it starts
      * running. The debounced reaction below only flips `hintsLoading` back to
@@ -581,7 +616,14 @@ export class Session {
           this.builtQueryWithoutHidden = response['query-without-hidden']
             ? formatSql(response['query-without-hidden'])
             : this.builtQuery;
-          this.query = this.shownBuiltQuery(!!this.globalStore?.showHiddenSqlColumns);
+          // Not while the Pine is a translation of the SQL panel's text:
+          // that text is what the user wrote, and the source of the Pine.
+          // Once it shows the Pine's SQL again, there is no conversion to
+          // report.
+          if (this.expression !== this.sqlTranslatedExpression) {
+            this.query = this.shownBuiltQuery(!!this.globalStore?.showHiddenSqlColumns);
+            this.sqlConversion = { status: 'idle', message: '', warnings: [] };
+          }
 
           // operation
           this.operation = handleOperation(response);
@@ -1148,6 +1190,45 @@ export class Session {
 
     // Increment counter to trigger the reaction
     this.hintsRequestedCounter++;
+  }
+
+  /**
+   * Convert the SQL panel's text to Pine and put it in the tab, through the
+   * canvas so it is one undo step (CanvasStore.applySqlTranslation). Runs
+   * nothing. When the SQL doesn't convert, the Pine is left as it was and
+   * the status line says why.
+   */
+  public async convertSql(): Promise<void> {
+    const seq = ++this.sqlConversionSeq;
+    const sql = this.query;
+    if (sql.trim() === '') {
+      this.sqlConversion = { status: 'idle', message: '', warnings: [] };
+      return;
+    }
+    this.sqlConversion = { status: 'converting', message: '', warnings: [] };
+    let result: SqlToPineResponse;
+    try {
+      result = await client.sqlToPine(sql, this.connectionId);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      result = {
+        error: /^404\b/.test(message) ? 'This Pine server is too old to convert SQL.' : message,
+      };
+    }
+    if (seq !== this.sqlConversionSeq) return;
+    runInAction(() => {
+      if (result.expression !== undefined && !result.error) {
+        this.getCanvasStore().applySqlTranslation(result.expression);
+        this.sqlTranslatedExpression = this.expression;
+        this.sqlConversion = { status: 'converted', message: '', warnings: result.warnings ?? [] };
+      } else {
+        this.sqlConversion = {
+          status: 'failed',
+          message: result.error || 'The SQL could not be converted.',
+          warnings: [],
+        };
+      }
+    });
   }
 
   public setInputMode(mode: InputMode) {

@@ -642,7 +642,7 @@ export class CanvasStore {
 
   private applyExpression(
     rawExpression: string,
-    options?: { skipAutoRun?: boolean; preserveDoc?: boolean },
+    options?: { skipAutoRun?: boolean; preserveDoc?: boolean; coalesce?: boolean },
   ) {
     // Every gesture rebuilds the expression from the operation spans in
     // `ast.ranges` (pine-text.ts's segmentsFromAst + toText), and a doc
@@ -666,11 +666,44 @@ export class CanvasStore {
     // land on - it would just be a wasted step, never a wrong one, but it's
     // free to skip.
     if (expression === this.session.expression) return;
-    this.undoStack.push(this.session.expression);
+    // `coalesce` replaces the current step instead of adding one, so undo
+    // goes back past it to the snapshot already on the stack.
+    if (!options?.coalesce) this.undoStack.push(this.session.expression);
     this.redoStack = [];
     this.canvasWrittenExpression = expression;
     this.session.expression = expression;
     if (!options?.skipAutoRun) this.notifyAutoRun();
+  }
+
+  // The expression the last SQL translation wrote, or null.
+  private sqlTranslationWritten: string | null = null;
+
+  /**
+   * Replace the query with Pine translated from the SQL panel's text
+   * (Session.convertSql). Undoable like a gesture, but one step per burst
+   * of SQL typing, not one per translation: while the expression is still
+   * exactly what the last translation wrote, the next one replaces it
+   * instead of adding a step. So the step under a burst of typing is the
+   * Pine from before it began, and one undo brings that back. Anything else
+   * that changes the expression - a gesture, an undo, typed Pine - ends the
+   * burst, because the expression no longer matches.
+   *
+   * Values blocks above the query and the doc comment are kept, as for any
+   * gesture. Doesn't run the query: in SQL mode, Run runs the SQL.
+   */
+  applySqlTranslation(pine: string) {
+    const coalesce = this.sqlTranslationWritten !== null && this.session.expression === this.sqlTranslationWritten;
+    // The whole query changed, so nothing pointing at its nodes still holds.
+    this.closePicker();
+    this.selectedAliases = [];
+    this._cursor = null;
+    const before = this.session.expression;
+    this.applyExpression(pine, { skipAutoRun: true, coalesce });
+    // A translation that changed nothing doesn't start a burst: the step
+    // under the next real one must be the Pine as it is now.
+    if (coalesce || this.session.expression !== before) {
+      this.sqlTranslationWritten = this.session.expression;
+    }
   }
 
   /**
@@ -748,6 +781,9 @@ export class CanvasStore {
   undo() {
     if (this.undoStack.length === 0) return;
     const previous = this.undoStack.pop() as string;
+    // Ends any burst of SQL typing, even when this lands on the text the
+    // last translation wrote: the next translation is a step of its own.
+    this.sqlTranslationWritten = null;
     this.redoStack.push(this.session.expression);
     this.closePicker();
     this.selectedAliases = [];
@@ -760,6 +796,9 @@ export class CanvasStore {
   redo() {
     if (this.redoStack.length === 0) return;
     const next = this.redoStack.pop() as string;
+    // Ends any burst of SQL typing, even when this lands on the text the
+    // last translation wrote: the next translation is a step of its own.
+    this.sqlTranslationWritten = null;
     this.undoStack.push(this.session.expression);
     this.closePicker();
     this.selectedAliases = [];

@@ -477,6 +477,15 @@ export const authHeaders = (): Record<string, string> => {
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
+/** pine-lang's POST /api/v1/sql-to-pine. */
+export type SqlToPineResponse = {
+  expression?: string;
+  warnings?: string[];
+  error?: string;
+  /** sql-unsupported, sql-parse-error or internal. */
+  'error-type'?: string;
+};
+
 export class HttpClient {
   constructor(private readonly onBuild?: (ast: Ast) => void) {}
 
@@ -578,6 +587,16 @@ export class HttpClient {
       return { ...body, 'connection-id': connectionId };
     }
     return body;
+  }
+
+  /**
+   * One SQL SELECT as Pine (pine-lang's docs/sql-to-pine.md). Nothing runs.
+   * Never called from store/mcp-query.ts: agents write Pine, and no SQL
+   * reaches pine-lang from the MCP surface (see the no-raw-SQL test).
+   */
+  public async sqlToPine(query: string, connectionId?: string): Promise<SqlToPineResponse> {
+    const response = await this.post('sql-to-pine', this.withConnectionId({ query }, connectionId));
+    return (response ?? {}) as unknown as SqlToPineResponse;
   }
 
   public async prettify(expression: string, connectionId?: string): Promise<string> {
