@@ -42,6 +42,15 @@ export type CanvasTableNodeData = {
    * with the label, × and expand toggle, is a separate node above it.
    */
   checkpoint?: { expanded: boolean };
+  /**
+   * Set when this node is a named result from an earlier query block (a
+   * block ending in `|= name`): the table that uses it in the last block,
+   * or, when nothing joins it, a standalone node beside the graph
+   * (`standalone`; `usedInWhere` when a `where: ... in name` uses it). Its
+   * divider's pill expands the block above. A standalone node has no
+   * actions of its own: it isn't in the query's text.
+   */
+  named?: { name: string; expanded: boolean; standalone?: boolean; usedInWhere?: boolean };
 };
 
 // eslint-disable-next-line @typescript-eslint/ban-types
@@ -49,9 +58,9 @@ export type CanvasStartNodeData = {};
 
 /**
  * The divider above a nested query's node: a node whose body - what it
- * stands for - can be drawn above the line. Today the only kind is a
- * checkpoint, labelled by its operation; a named result from an earlier
- * block is meant to be the next (`kind` tells them apart).
+ * stands for - can be drawn above the line. It is a checkpoint, labelled
+ * by its operation, or a named result from an earlier query block,
+ * labelled `|= name` (`kind` tells them apart).
  *
  * For a checkpoint (see layout.ts's buildCanvasGraph): a dashed line
  * with a pill on it, centred above the checkpoint's node, and a connector
@@ -61,7 +70,7 @@ export type CanvasStartNodeData = {};
  * the pill takes clicks.
  */
 export type CanvasDividerNodeData = {
-  kind: 'checkpoint';
+  kind: 'checkpoint' | 'named';
   /** The nested query's name - the id of the node below the line. */
   name: string;
   /** What the checkpoint does, e.g. `limit 1 per c.id` or `group t.title → count`. */

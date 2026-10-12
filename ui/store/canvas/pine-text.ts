@@ -627,6 +627,9 @@ export const ensureExplicitAliases = (expression: string, ast: Ast | null | unde
     tableIdx++;
     if (!table) return seg; // trailing uncommitted table op - nothing to pin yet
     if (extractAsAlias(seg.text)) return seg; // already explicit
+    // A named result from an earlier block is its own alias (`top`, not
+    // `t_0`): stable already, and renaming it would rewrite the name itself.
+    if (table.alias === table.table) return seg;
     const oldAlias = table.alias;
     const newAlias = makeAlias(table.table, used);
     used.add(newAlias);

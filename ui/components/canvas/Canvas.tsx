@@ -211,7 +211,7 @@ const Flow: React.FC<{
       }}
     >
       {!canvasGraph.singleBlock && (
-        <Banner>The canvas shows one query, with any values blocks above it</Banner>
+        <Banner>The canvas draws the last query. Each query above it needs to end in |= name</Banner>
       )}
       {canvasGraph.singleBlock && !canvasGraph.parsing && canvasStore.isConnecting && (
         <Banner variant="info">Connecting…</Banner>

@@ -1,5 +1,5 @@
 import { makeAutoObservable, reaction, runInAction } from 'mobx';
-import { columnName, PathHint, TableHint, whereConditions, whereLiteral } from '../client';
+import { Ast, columnName, PathHint, TableHint, whereConditions, whereLiteral } from '../client';
 import { Session } from '../session';
 import {
   CanvasGraph,
@@ -21,7 +21,8 @@ import {
   WhereConditionDraft,
   WhereDraft,
 } from './canvas.model';
-import { buildCanvasGraph, defaultExpandedCheckpoint, newCheckpointName } from './layout';
+import { buildCanvasGraph, expansionOf, NamedBlock, newCheckpointName, whereEntriesFor } from './layout';
+import { contextFor, queryText, replaceQuery, TabBlocks, tabBlocks } from './tab-blocks';
 import {
   checkpointOpIndex,
   currentLimit,
@@ -35,7 +36,7 @@ import {
   withDoc,
 } from './pine-text';
 import * as actions from './pine-actions';
-import { joinQuery, literalFor, setValue, splitQuery } from '../values-blocks';
+import { literalFor, setValue } from '../values-blocks';
 import { probeBuild } from './probe';
 import { canDeleteTraverse } from './traversal';
 import { computeDateBounds } from './relative-date';
@@ -83,6 +84,13 @@ export class CanvasStore {
    * Pine text, and not persisted.
    */
   expandedNested: string | null | undefined = undefined;
+
+  /**
+   * Each query block's own build, when the tab has more than one (see
+   * refreshBlockAsts), by query-block index, with the text it was built
+   * from. With one query block, the session's own build is used instead.
+   */
+  blockAsts: { text: string; ast: Ast | undefined }[] = [];
   /** Aliases of the currently box/shift-selected table nodes - see Canvas.tsx's onSelectionChange. */
   selectedAliases: string[] = [];
   // Keyboard "cursor" for the modal (vim-style) navigation/shortcut layer -
@@ -203,7 +211,7 @@ export class CanvasStore {
   get focusedAlias(): string {
     const targets = this.orderedFocusTargets;
     if (this._cursor && targets.includes(this._cursor.alias)) return this._cursor.alias;
-    const current = this.session.ast?.current;
+    const current = this.mainAst?.current;
     if (current && targets.includes(current)) return current;
     return targets[0];
   }
@@ -522,9 +530,16 @@ export class CanvasStore {
    */
   start(): () => void {
     const disposeGraph = reaction(
-      () => [this.session.expression, this.session.ast] as const,
+      () => [this.session.expression, this.session.ast, this.blockAsts] as const,
       () => this.recompute(),
       { fireImmediately: true },
+    );
+    // A tab with several query blocks: the canvas builds each block itself,
+    // since the session builds only the block under the editor's cursor.
+    const disposeBlocks = reaction(
+      () => this.session.expression,
+      () => void this.refreshBlockAsts(),
+      { fireImmediately: true, delay: 150 },
     );
     const disposeCursorReset = reaction(
       () => this.session.expression,
@@ -535,19 +550,21 @@ export class CanvasStore {
     return () => {
       disposeGraph();
       disposeCursorReset();
+      disposeBlocks();
     };
   }
 
   private recompute() {
-    const { ast } = this.session;
-    // The canvas shows one query block, with any values blocks above it
-    // (store/values-blocks.ts). Anything else gets the banner.
-    const parts = splitQuery(this.session.expression);
-    if (!parts) {
+    const ast = this.mainAst;
+    // The canvas draws the last query block, with values blocks anywhere
+    // above it and earlier blocks ending in `|= name` as nested queries
+    // (see tab-blocks.ts). Anything else gets the banner.
+    const tab = this.tab;
+    if (!tab) {
       this.canvasGraph = { ...this.canvasGraph, singleBlock: false };
       return;
     }
-    const expression = parts.query;
+    const expression = this.queryText;
     if (expression.trim() === '') {
       // A brand-new session has never run a build (session.ast starts null
       // and there's no fireImmediately reaction to populate it for an empty
@@ -572,7 +589,7 @@ export class CanvasStore {
     // A picked checkpoint missing from this ast falls back to the default
     // (buildCanvasGraph). It isn't cleared here: right after a commit the ast
     // can still be the one from before, without the checkpoint just added.
-    this.canvasGraph = buildCanvasGraph(ast, this.positions, this.expandedNested);
+    this.canvasGraph = buildCanvasGraph(ast, this.positions, this.expandedNested, this.namedBlocks);
     if (!this.hasSeededHoverAlias && this.orderedFocusTargets.length > 0) {
       this.hasSeededHoverAlias = true;
       this.setHoveredAlias(this.focusedAlias);
@@ -586,7 +603,98 @@ export class CanvasStore {
    * part of a gesture.
    */
   get queryText(): string {
-    return splitQuery(this.session.expression)?.query ?? this.session.expression;
+    return this.textOf(this.mainBlock);
+  }
+
+  // --- the tab's blocks ------------------------------------------------
+
+  /** The tab split into blocks for the canvas, or null when it can't be drawn - see tab-blocks.ts. */
+  get tab(): TabBlocks | null {
+    return tabBlocks(this.session.expression);
+  }
+
+  /** The index (into `tab.queries`) of the query block the canvas draws: the last one. */
+  get mainBlock(): number {
+    return Math.max((this.tab?.queries.length ?? 1) - 1, 0);
+  }
+
+  /** Whether the tab has earlier query blocks, so the canvas builds each block itself. */
+  private get multiBlock(): boolean {
+    return (this.tab?.queries.length ?? 0) > 1;
+  }
+
+  /**
+   * Which query block a node belongs to, and its alias in that block's text.
+   * A node drawn from an earlier block has its block's prefix in front of its
+   * alias (`b0/c` - see layout.ts's NamedBlock); everything else is the last
+   * block's. Every gesture starts here, so it edits the right block.
+   */
+  scopeOf(id: string): { block: number; alias: string } {
+    const m = /^b(\d+)\/(.*)$/.exec(id);
+    return m ? { block: Number(m[1]), alias: m[2] } : { block: this.mainBlock, alias: id };
+  }
+
+  /** Query block `block`'s text. */
+  textOf(block: number): string {
+    const tab = this.tab;
+    return tab ? queryText(tab, block) : this.session.expression;
+  }
+
+  /** What a build of query block `block` sends before it - see tab-blocks.ts's contextFor. */
+  contextOf(block: number): string[] {
+    const tab = this.tab;
+    return tab ? contextFor(tab, block) : [];
+  }
+
+  /**
+   * Query block `block`'s build. The last block uses the session's own,
+   * unless the tab has several query blocks: the session builds the block
+   * under the editor's cursor, which may be an earlier one.
+   */
+  astOf(block: number): Ast | null | undefined {
+    if (!this.multiBlock) return this.session.ast;
+    const built = this.blockAsts[block];
+    return built && built.text === this.textOf(block) ? built.ast : undefined;
+  }
+
+  /** The build of the query the canvas draws. */
+  get mainAst(): Ast | null | undefined {
+    return this.astOf(this.mainBlock);
+  }
+
+  /** The tab's earlier query blocks, for layout.ts - each with its name, node-id prefix and build. */
+  private get namedBlocks(): NamedBlock[] {
+    const tab = this.tab;
+    if (!tab) return [];
+    return tab.names.flatMap((name, k) => {
+      const ast = name ? this.astOf(k) : undefined;
+      return name && ast ? [{ name, prefix: `b${k}/`, ast }] : [];
+    });
+  }
+
+  /**
+   * Builds every query block of a tab with more than one, each with the
+   * blocks before it, and keeps the results in `blockAsts`. A build that
+   * finishes after the text has moved on is dropped.
+   */
+  private async refreshBlockAsts(): Promise<void> {
+    const tab = this.tab;
+    if (!tab || tab.queries.length < 2) {
+      if (this.blockAsts.length) runInAction(() => (this.blockAsts = []));
+      return;
+    }
+    const expression = this.session.expression;
+    const built = await Promise.all(
+      tab.queries.map(async (_, k) => {
+        const text = queryText(tab, k);
+        const ast = await probeBuild(text, this.session.connectionId, contextFor(tab, k)).catch(() => undefined);
+        return { text, ast };
+      }),
+    );
+    if (this.session.expression !== expression) return;
+    runInAction(() => {
+      this.blockAsts = built;
+    });
   }
 
   /**
@@ -615,7 +723,7 @@ export class CanvasStore {
 
   private applyExpression(
     rawExpression: string,
-    options?: { skipAutoRun?: boolean; preserveDoc?: boolean; coalesce?: boolean },
+    options?: { skipAutoRun?: boolean; preserveDoc?: boolean; coalesce?: boolean; block?: number },
   ) {
     // Every gesture rebuilds the expression from the operation spans in
     // `ast.ranges` (pine-text.ts's segmentsFromAst + toText), and a doc
@@ -631,9 +739,13 @@ export class CanvasStore {
     // comment impossible.
     // A gesture rewrites the query block only (see queryText); the values
     // blocks above it are put back in front, untouched.
-    const parts = splitQuery(this.session.expression) ?? { prefix: '', query: this.session.expression };
-    const query = options?.preserveDoc === false ? rawExpression : withDoc(parts.query, rawExpression);
-    const expression = joinQuery(parts.prefix, query);
+    // A gesture on a node of an earlier block (see scopeOf) rewrites that
+    // block instead.
+    const block = options?.block ?? this.mainBlock;
+    const tab = this.tab;
+    const old = this.textOf(block);
+    const query = options?.preserveDoc === false ? rawExpression : withDoc(old, rawExpression);
+    const expression = tab ? replaceQuery(this.session.expression, tab, block, query) : query;
     // A no-op gesture (e.g. deleteNode/setLimit returning the same text)
     // shouldn't push a snapshot that's identical to what undo would already
     // land on - it would just be a wasted step, never a wrong one, but it's
@@ -723,9 +835,12 @@ export class CanvasStore {
    */
   setDoc(text: string) {
     this.docEditing = false;
-    this.applyExpression(replaceDoc(this.queryText, text), {
+    // The tab's doc comment is the one at the top of its first block.
+    const first = this.tab && this.tab.queries.length > 0 && this.tab.queries[0] === 0 ? 0 : this.mainBlock;
+    this.applyExpression(replaceDoc(this.textOf(first), text), {
       skipAutoRun: true,
       preserveDoc: false,
+      block: first,
     });
   }
 
@@ -781,8 +896,9 @@ export class CanvasStore {
     this.notifyAutoRun();
   }
 
-  private async pinnedBase(): Promise<actions.PinnedBase | null> {
-    const expression = this.queryText;
+  private async pinnedBase(block: number): Promise<actions.PinnedBase | null> {
+    const expression = this.textOf(block);
+    const context = this.contextOf(block);
     // Not `this.session.ast` - it's kept up to date by the session's own,
     // separately-debounced build and can still describe the *previous*
     // expression for a moment right after a commit applies a new one (e.g.
@@ -793,21 +909,27 @@ export class CanvasStore {
     // (confirmed live: two rapid picks turned "case_ref as cr" into "cas as
     // cr"). A fresh probe on the exact current expression guarantees the
     // pair this base is built from actually matches.
-    const ast = await probeBuild(expression, this.session.connectionId);
-    return actions.getPinnedBase(expression, ast, this.session.connectionId);
+    const ast = await probeBuild(expression, this.session.connectionId, context);
+    return actions.getPinnedBase(expression, ast, this.session.connectionId, context);
   }
 
-  private async commit(fn: (base: actions.PinnedBase) => string | null): Promise<void> {
+  /**
+   * `scopeId` is the node the gesture is on (see scopeOf): it picks the
+   * query block the gesture edits. Omitted: the last block.
+   */
+  private async commit(fn: (base: actions.PinnedBase) => string | null, scopeId?: string): Promise<void> {
+    const block = scopeId === undefined ? this.mainBlock : this.scopeOf(scopeId).block;
     // Serialized: chain onto whatever's already pending so a second commit
     // never starts computing its mutation until the first one has fully
     // applied - see commitChain's declaration and runCommit below.
-    const run = this.commitChain.then(() => this.runCommit(fn));
+    const run = this.commitChain.then(() => this.runCommit(fn, block));
     this.commitChain = run.catch(() => undefined);
     await run;
   }
 
-  private async runCommit(fn: (base: actions.PinnedBase) => string | null): Promise<void> {
-    const base = await this.pinnedBase();
+  private async runCommit(fn: (base: actions.PinnedBase) => string | null, block: number): Promise<void> {
+    const base = await this.pinnedBase(block);
+    const prefix = block === this.mainBlock ? '' : `b${block}/`;
     if (!base) return;
     const next = fn(base);
     if (next !== null) {
@@ -834,7 +956,7 @@ export class CanvasStore {
       // moves there and it is expanded, as focus follows a newly joined
       // table (see commitJoin).
       let addedCheckpoint: string | null = null;
-      const prettified = await probeBuild(next, this.session.connectionId).then(
+      const prettified = await probeBuild(next, this.session.connectionId, this.contextOf(block)).then(
         ast => {
           if (!ast) probedOk = false;
           addedCheckpoint = newCheckpointName(base.ast.checkpoints, ast?.checkpoints);
@@ -852,10 +974,10 @@ export class CanvasStore {
         // exists to run known-valid canvas commits immediately, and firing
         // it anyway here would send a guaranteed-to-fail /eval for
         // something the canvas itself is about to show as "Not parsing".
-        this.applyExpression(prettified, { skipAutoRun: !probedOk });
+        this.applyExpression(prettified, { skipAutoRun: !probedOk, block });
         if (addedCheckpoint) {
-          this.expandedNested = addedCheckpoint;
-          this.focusNode(addedCheckpoint);
+          this.expandedNested = prefix + addedCheckpoint;
+          this.focusNode(prefix + addedCheckpoint);
         }
         // The select/where/order pickers stay open across multiple picks
         // (see toggleSelectColumn) with `request.alias` frozen from when
@@ -865,9 +987,10 @@ export class CanvasStore {
         // no segment owns (see PinnedBase's aliasMap comment). Follow the
         // same rename here so a still-open picker keeps working.
         if (this.picker.open && this.picker.mode === 'list' && 'alias' in this.picker.request) {
-          const renamed = base.aliasMap.get(this.picker.request.alias);
-          if (renamed) {
-            this.picker = { ...this.picker, request: { ...this.picker.request, alias: renamed } };
+          const { alias: plain } = this.scopeOf(this.picker.request.alias);
+          const renamed = base.aliasMap.get(plain);
+          if (renamed && this.picker.request.alias === prefix + plain) {
+            this.picker = { ...this.picker, request: { ...this.picker.request, alias: prefix + renamed } };
           }
         }
       });
@@ -904,9 +1027,18 @@ export class CanvasStore {
   /** Fallback anchor for a picker opened without a captured click position. */
   private static readonly defaultAnchor: PickerAnchor = { x: 24, y: 24 };
 
+  /** A picker's probe: buildProbeExpression's text, built with its block's context. */
+  private probeFor(request: PickerRequest): Promise<Ast | undefined> {
+    const block = 'alias' in request ? this.scopeOf(request.alias).block : this.mainBlock;
+    return probeBuild(this.buildProbeExpression(request), this.session.connectionId, this.contextOf(block));
+  }
+
   private buildProbeExpression(request: PickerRequest): string {
     if (request.kind === 'table') return '';
-    const segments = segmentsFromAst(this.queryText, this.session.ast) ?? [];
+    // A node of an earlier block probes that block, with its own alias.
+    const { block, alias } = this.scopeOf(request.alias);
+    const text = this.textOf(block);
+    const segments = segmentsFromAst(text, this.astOf(block)) ?? [];
     // The probe stops at the end of the target's own stage (see stageEnd):
     // a hint probe built after a checkpoint reflects the sealed output's
     // shape (just the grouped columns, plus aggregate function names), not
@@ -916,7 +1048,7 @@ export class CanvasStore {
     // node's already-grouped column and "count". For a checkpoint's own
     // node, its stage starts after its group:/limit:/`= name`, so the probe
     // keeps the checkpoint, and `from: <name>` resolves.
-    let relevant = 'alias' in request ? segments.slice(0, stageEnd(segments, request.alias)) : segments;
+    let relevant = 'alias' in request ? segments.slice(0, stageEnd(segments, alias)) : segments;
     // Group reuses select's hint category, per the comment below - but
     // hints.select deliberately excludes columns already in that alias's
     // OWN select: (a sensible exclusion for select's own "what else could
@@ -927,11 +1059,11 @@ export class CanvasStore {
     // segment before probing (for the group case only) restores the full
     // list, since the probe then looks exactly like nothing was selected.
     if (request.kind === 'group') {
-      relevant = relevant.filter(s => !(s.owner === request.alias && s.kind === 'select'));
+      relevant = relevant.filter(s => !(s.owner === alias && s.kind === 'select'));
     }
-    const base = (relevant.length ? toText(relevant) : this.queryText).replace(/\|\s*$/, '').trimEnd();
-    const current = this.session.ast?.current;
-    const focusPrefix = request.alias !== current ? `${base} | from: ${request.alias}` : base;
+    const base = (relevant.length ? toText(relevant) : text).replace(/\|\s*$/, '').trimEnd();
+    const current = this.astOf(block)?.current;
+    const focusPrefix = alias !== current ? `${base} | from: ${alias}` : base;
     // Step 2 of the path picker (a specific destination already chosen) -
     // unlike every other kind below, this one has a real target to name
     // after `?`, not a fixed keyword prefix - see openPathRoutePicker.
@@ -1036,8 +1168,7 @@ export class CanvasStore {
     this.focusNode(alias);
     const request: PickerRequest = { kind: 'join', alias };
     void this.openListPicker(request, anchor, async () => {
-      const expr = this.buildProbeExpression(request);
-      const ast = await probeBuild(expr, this.session.connectionId);
+      const ast = await this.probeFor(request);
       if (!ast) throw new Error('Failed to build join suggestions');
       const has = ast.hints.table.filter(h => !h.parent);
       const belongsTo = ast.hints.table.filter(h => h.parent);
@@ -1086,8 +1217,7 @@ export class CanvasStore {
     this.focusNode(alias);
     const request: PickerRequest = { kind: 'path', alias };
     void this.openListPicker(request, anchor, async () => {
-      const expr = this.buildProbeExpression(request);
-      const ast = await probeBuild(expr, this.session.connectionId);
+      const ast = await this.probeFor(request);
       if (!ast) throw new Error('Failed to build path suggestions');
       const items: PickerItem[] = ast.hints.table.map(h => ({
         id: `${h.schema ?? ''}.${h.table}`,
@@ -1118,8 +1248,7 @@ export class CanvasStore {
   ) {
     const request: PickerRequest = { kind: 'path-route', alias, target, targetSchema };
     void this.openListPicker(request, anchor, async () => {
-      const expr = this.buildProbeExpression(request);
-      const ast = await probeBuild(expr, this.session.connectionId);
+      const ast = await this.probeFor(request);
       if (!ast) throw new Error('Failed to build route suggestions');
       const routeLabel = (path: PathHint): string | undefined => {
         if (path.length <= 1) return undefined;
@@ -1220,13 +1349,15 @@ export class CanvasStore {
    */
   openLimitEditor(alias: string, anchor: PickerAnchor = CanvasStore.defaultAnchor, checkpoint?: string) {
     this.focusNode(alias);
-    const segments = segmentsFromAst(this.queryText, this.session.ast) ?? [];
-    const opIndex = checkpoint ? checkpointOpIndex(segments, checkpoint) : -1;
-    const current = checkpoint
+    const { block, alias: plain } = this.scopeOf(alias);
+    const segments = segmentsFromAst(this.textOf(block), this.astOf(block)) ?? [];
+    const plainCheckpoint = checkpoint === undefined ? undefined : this.scopeOf(checkpoint).alias;
+    const opIndex = plainCheckpoint ? checkpointOpIndex(segments, plainCheckpoint) : -1;
+    const current = plainCheckpoint
       ? opIndex >= 0
         ? limitValue(segments[opIndex].text)
         : null
-      : currentLimit(segments, alias);
+      : currentLimit(segments, plain);
     this.picker = {
       open: true,
       mode: 'limit-value',
@@ -1273,7 +1404,7 @@ export class CanvasStore {
       return;
     }
     this.focusNode(alias);
-    const verdict = canDeleteTraverse(this.session.ast);
+    const verdict = canDeleteTraverse(this.astOf(this.scopeOf(alias).block));
     this.picker = {
       open: true,
       mode: 'traverse',
@@ -1305,8 +1436,7 @@ export class CanvasStore {
       request,
       anchor,
       async () => {
-        const expr = this.buildProbeExpression(request);
-        const ast = await probeBuild(expr, this.session.connectionId);
+        const ast = await this.probeFor(request);
         if (!ast) throw new Error('Failed to build column suggestions');
         // No dedicated hint category for group - see buildProbeExpression's
         // matching comment; reuses select's.
@@ -1381,9 +1511,10 @@ export class CanvasStore {
       const resolvedFocus = actions.resolveAlias(base, focusAlias);
       const fromAlias = resolvedFocus !== base.ast.current ? resolvedFocus : undefined;
       return actions.join(base, hint, alias, fromAlias);
-    });
+    }, focusAlias);
     this.closePicker();
-    if (createdAlias) this.focusNode(createdAlias);
+    const { block } = this.scopeOf(focusAlias);
+    if (createdAlias) this.focusNode(block === this.mainBlock ? createdAlias : `b${block}/${createdAlias}`);
   }
 
   /**
@@ -1406,7 +1537,7 @@ export class CanvasStore {
 
   /** Inner/Left/Right, mutually exclusive - always a full commit+close, never staying open for repeat picks (unlike select/order/group's checkbox-style toggles), since picking one answers the whole question. */
   async setJoinType(alias: string, type: JoinType) {
-    await this.commit(base => actions.setJoinType(base, actions.resolveAlias(base, alias), type));
+    await this.commit(base => actions.setJoinType(base, actions.resolveAlias(base, alias), type), alias);
     this.closePicker();
   }
 
@@ -1438,12 +1569,12 @@ export class CanvasStore {
   async setOrderDirection(direction: OrderDirection) {
     if (!this.picker.open || this.picker.mode !== 'order-direction') return;
     const { alias, index } = this.picker;
-    await this.commit(base => actions.setOrderDirectionAt(base, actions.resolveAlias(base, alias), index, direction));
+    await this.commit(base => actions.setOrderDirectionAt(base, actions.resolveAlias(base, alias), index, direction), alias);
     this.closePicker();
   }
 
   async commitSelectColumns(alias: string, columns: string[]) {
-    await this.commit(base => actions.setSelectColumns(base, actions.resolveAlias(base, alias), columns));
+    await this.commit(base => actions.setSelectColumns(base, actions.resolveAlias(base, alias), columns), alias);
   }
 
   /**
@@ -1461,7 +1592,7 @@ export class CanvasStore {
       const current = actions.getSelectColumns(base, resolvedAlias);
       const next = current.includes(column) ? current.filter(c => c !== column) : [...current, column];
       return actions.setSelectColumns(base, resolvedAlias, next);
-    });
+    }, alias);
   }
 
   /**
@@ -1495,10 +1626,15 @@ export class CanvasStore {
    * racing a commit that just removed it).
    */
   openWhereEditor(alias: string, index: number, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
-    const entry = (this.session.ast?.where ?? []).filter(w => whereConditions(w)[0].alias === alias)[index];
+    // Every stage's conditions, not just the last's: a table sealed by a
+    // checkpoint has its conditions in the checkpoint's snapshot.
+    const { block, alias: plain } = this.scopeOf(alias);
+    const ast = this.astOf(block);
+    const entry = (ast ? whereEntriesFor(ast, plain) : [])[index];
+    const prefix = block === this.mainBlock ? '' : `b${block}/`;
     if (!entry) return;
     const conditions = whereConditions(entry).map(({ alias: conditionAlias, column, path, operator, value: val }) => ({
-      alias: conditionAlias,
+      alias: prefix + conditionAlias,
       // A key inside a JSON column is written back as its path: data.address.city.
       column: columnName(column, path),
       // ast.where operators come back SQL-cased (e.g. "ILIKE") from pine-lang; Pine syntax is lowercase-only.
@@ -1548,7 +1684,7 @@ export class CanvasStore {
     const draft: WhereDraft = { conditions, editIndex, rollingCount, rollingUnit };
     const request: PickerRequest = { kind: 'where', alias, draft };
     void this.openListPicker(request, anchor, async () => {
-      const ast = await probeBuild(this.buildProbeExpression(request), this.session.connectionId);
+      const ast = await this.probeFor(request);
       if (!ast) throw new Error('Failed to build column suggestions');
       return { groups: [{ label: '', items: ast.hints.where.map(h => ({ id: h.column, label: h.column, value: h.column })) }] };
     });
@@ -1580,7 +1716,7 @@ export class CanvasStore {
         first.operator === WHERE_TODAY_OPERATOR ? { kind: 'today' } : { kind: 'rolling', count: rollingCount, unit: rollingUnit },
       );
       await this.commit(base =>
-        actions.addRelativeDateWhereCondition(base, actions.resolveAlias(base, first.alias), first.column, bounds),
+        actions.addRelativeDateWhereCondition(base, actions.resolveAlias(base, first.alias), first.column, bounds), first.alias
       );
       this.closePicker();
       return;
@@ -1597,7 +1733,7 @@ export class CanvasStore {
 
   async commitWhere(alias: string, conditions: WhereConditionDraft[]) {
     await this.commit(base =>
-      actions.addWhereCondition(base, actions.resolveAlias(base, alias), actions.resolveConditionAliases(base, conditions)),
+      actions.addWhereCondition(base, actions.resolveAlias(base, alias), actions.resolveConditionAliases(base, conditions)), alias
     );
     this.closePicker();
   }
@@ -1609,13 +1745,13 @@ export class CanvasStore {
         actions.resolveAlias(base, alias),
         index,
         actions.resolveConditionAliases(base, conditions),
-      ),
+      ), alias
     );
     this.closePicker();
   }
 
   async removeWhereAt(alias: string, index: number) {
-    await this.commit(base => actions.removeWhereConditionAt(base, actions.resolveAlias(base, alias), index));
+    await this.commit(base => actions.removeWhereConditionAt(base, actions.resolveAlias(base, alias), index), alias);
   }
 
   /** The where-value panel's own "remove" action (offered only while editing an existing condition - see Picker.tsx) - removes, then closes, unlike removeWhereAt's own (ChipRow's × stays open on nothing, since there's nothing left to show). */
@@ -1638,11 +1774,11 @@ export class CanvasStore {
       return index >= 0
         ? actions.removeOrderColumnAt(base, resolvedAlias, index)
         : actions.addOrderColumn(base, resolvedAlias, column, 'desc');
-    });
+    }, alias);
   }
 
   async removeOrderAt(alias: string, index: number) {
-    await this.commit(base => actions.removeOrderColumnAt(base, actions.resolveAlias(base, alias), index));
+    await this.commit(base => actions.removeOrderColumnAt(base, actions.resolveAlias(base, alias), index), alias);
   }
 
   /**
@@ -1657,7 +1793,7 @@ export class CanvasStore {
       const current = actions.getGroupColumns(base, resolvedAlias);
       const next = current.includes(column) ? current.filter(c => c !== column) : [...current, column];
       return actions.setGroupColumns(base, resolvedAlias, next);
-    });
+    }, alias);
   }
 
   /**
@@ -1678,7 +1814,7 @@ export class CanvasStore {
     const targets = this.orderedFocusTargets;
     const idx = targets.indexOf(alias);
     const neighbor = idx > 0 ? targets[idx - 1] : START_NODE_ID;
-    await this.commit(base => actions.deleteNode(base, actions.resolveAlias(base, alias)));
+    await this.commit(base => actions.deleteNode(base, actions.resolveAlias(base, alias)), alias);
     if (wasFocused) this.focusNode(neighbor);
   }
 
@@ -1693,7 +1829,7 @@ export class CanvasStore {
     const targets = this.orderedFocusTargets;
     const idx = targets.indexOf(name);
     const neighbor = idx > 0 ? targets[idx - 1] : START_NODE_ID;
-    await this.commit(base => actions.deleteCheckpoint(base, name));
+    await this.commit(base => actions.deleteCheckpoint(base, this.scopeOf(name).alias), name);
     if (wasFocused) this.focusNode(neighbor);
   }
 
@@ -1704,7 +1840,12 @@ export class CanvasStore {
    */
   async commitLimit(value: number | null, alias?: string, checkpoint?: string) {
     await this.commit(base =>
-      actions.setLimit(base, value, alias === undefined ? undefined : actions.resolveAlias(base, alias), checkpoint),
+      actions.setLimit(
+        base,
+        value,
+        alias === undefined ? undefined : actions.resolveAlias(base, alias),
+        checkpoint === undefined ? undefined : this.scopeOf(checkpoint).alias,
+      ), checkpoint ?? alias
     );
   }
 
@@ -1719,17 +1860,37 @@ export class CanvasStore {
    * change, so no commit.
    */
   toggleNested(name: string) {
-    const ast = this.session.ast;
+    const ast = this.mainAst;
     if (!ast) return;
+    const blocks = this.namedBlocks;
+    const state = expansionOf(ast, blocks, this.expandedNested);
+    const named = blocks.find(b => b.name === name);
+    if (named) {
+      // A named block: expanding it draws it above the last block.
+      // Collapsing it goes back to the last block's default.
+      this.expandedNested = state.block === named ? undefined : name;
+      this.recompute();
+      return;
+    }
+    const inBlock = blocks.find(b => name.startsWith(b.prefix));
+    if (inBlock) {
+      // A checkpoint inside an expanded named block: the same chain rule,
+      // within that block. Collapsing its last checkpoint leaves the block
+      // expanded, showing only its last stage.
+      const inner = inBlock.ast.checkpoints ?? [];
+      const k = inner.findIndex(c => inBlock.prefix + c.name === name);
+      if (k < 0) return;
+      const openIndex = state.block === inBlock && state.innerOpen ? inner.findIndex(c => c.name === state.innerOpen) : -1;
+      const expanded = openIndex >= 0 && k >= openIndex;
+      this.expandedNested = expanded ? (inner[k + 1] ? inBlock.prefix + inner[k + 1].name : inBlock.name) : name;
+      this.recompute();
+      return;
+    }
     const checkpoints = ast.checkpoints ?? [];
     const k = checkpoints.findIndex(c => c.name === name);
     if (k < 0) return;
-    const known = this.expandedNested === null || checkpoints.some(c => c.name === this.expandedNested);
-    const open =
-      this.expandedNested === undefined || !known ? defaultExpandedCheckpoint(ast) : this.expandedNested;
-    const openIndex = open === null ? -1 : checkpoints.findIndex(c => c.name === open);
-    const isExpanded = openIndex >= 0 && k >= openIndex;
-    this.expandedNested = isExpanded ? (checkpoints[k + 1]?.name ?? null) : name;
+    const expanded = state.mainOpen >= 0 && k >= state.mainOpen;
+    this.expandedNested = expanded ? (checkpoints[k + 1]?.name ?? null) : name;
     this.recompute();
   }
 
@@ -1745,10 +1906,11 @@ export class CanvasStore {
    */
   async ensureCheckpointPinned(name: string): Promise<string | null> {
     let found = false;
+    const plain = this.scopeOf(name).alias;
     await this.commit(base => {
-      found = checkpointOpIndex(base.segments, name) >= 0;
+      found = checkpointOpIndex(base.segments, plain) >= 0;
       return base.expression;
-    });
+    }, name);
     if (!found) return null;
     await this.syncAstToExpression();
     return name;
@@ -1775,6 +1937,8 @@ export class CanvasStore {
    * because Session's debounced build had caught up for real by then.
    */
   private async syncAstToExpression(): Promise<void> {
+    // With several query blocks the canvas builds them itself.
+    if (this.multiBlock) return this.refreshBlockAsts();
     const expression = this.queryText;
     const ast = await probeBuild(expression, this.session.connectionId);
     if (ast && this.queryText === expression) {
@@ -1833,8 +1997,9 @@ export class CanvasStore {
     kind: 'select' | 'where' | 'order' | 'join' | 'path',
     anchor: PickerAnchor,
   ) {
-    const segments = segmentsFromAst(this.queryText, this.session.ast) ?? [];
-    const pinned = isCheckpointPinned(segments, name) ? name : await this.ensureCheckpointPinnedShared(name);
+    const { block, alias: plain } = this.scopeOf(name);
+    const segments = segmentsFromAst(this.textOf(block), this.astOf(block)) ?? [];
+    const pinned = isCheckpointPinned(segments, plain) ? name : await this.ensureCheckpointPinnedShared(name);
     if (!pinned) return;
     if (kind === 'join') {
       this.openJoinPicker(pinned, anchor);

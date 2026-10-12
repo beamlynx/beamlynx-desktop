@@ -121,21 +121,24 @@ const CheckpointDividerNode: React.FC<NodeProps<CanvasDividerNodeData>> = observ
         >
           {data.label}
         </span>
-        <span
-          data-testid={`checkpoint-delete-${data.name}`}
-          title="Remove checkpoint"
-          onClick={e => {
-            e.stopPropagation();
-            void canvasStore.deleteCheckpoint(data.name);
-          }}
-          style={{
-            cursor: 'pointer',
-            color: 'var(--canvas-text-dim)',
-            fontSize: 'calc(11px * var(--text-scale, 1))',
-          }}
-        >
-          &times;
-        </span>
+        {/* A named block is removed from the text, not from here. */}
+        {data.kind === 'checkpoint' && (
+          <span
+            data-testid={`checkpoint-delete-${data.name}`}
+            title="Remove checkpoint"
+            onClick={e => {
+              e.stopPropagation();
+              void canvasStore.deleteCheckpoint(data.name);
+            }}
+            style={{
+              cursor: 'pointer',
+              color: 'var(--canvas-text-dim)',
+              fontSize: 'calc(11px * var(--text-scale, 1))',
+            }}
+          >
+            &times;
+          </span>
+        )}
       </div>
     </div>
   );

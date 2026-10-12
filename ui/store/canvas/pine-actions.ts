@@ -54,13 +54,15 @@ export const getPinnedBase = async (
   expression: string,
   ast: Ast | null | undefined,
   connectionId: string | undefined,
+  // The tab's other blocks this one builds with - see probe.ts.
+  context: string[] = [],
 ): Promise<PinnedBase | null> => {
   const aliasPin = ensureExplicitAliases(expression, ast);
   let curExpression = expression;
   let curAst = ast;
   if (aliasPin.changed) {
     curExpression = aliasPin.expression;
-    curAst = await probeBuild(curExpression, connectionId);
+    curAst = await probeBuild(curExpression, connectionId, context);
   }
 
   let segments = segmentsFromAst(curExpression, curAst);
@@ -69,7 +71,7 @@ export const getPinnedBase = async (
   const namePin = ensureExplicitCheckpointName(segments);
   if (namePin.changed) {
     curExpression = toText(namePin.segments);
-    curAst = await probeBuild(curExpression, connectionId);
+    curAst = await probeBuild(curExpression, connectionId, context);
     segments = segmentsFromAst(curExpression, curAst);
     if (!segments) return null;
   }
@@ -87,8 +89,19 @@ export const getPinnedBase = async (
   };
 };
 
-/** Resolves an alias captured before `base` was computed through its rename map (see PinnedBase). */
-export const resolveAlias = (base: PinnedBase, alias: string): string => base.aliasMap.get(alias) ?? alias;
+/**
+ * Resolves an alias captured before `base` was computed through its rename
+ * map (see PinnedBase). A node drawn from an earlier query block has its
+ * block's prefix in front of its alias (`b0/c` - see layout.ts's
+ * NamedBlock); the text only knows `c`, so the prefix goes.
+ */
+export const resolveAlias = (base: PinnedBase, alias: string): string => {
+  const plain = alias.replace(BLOCK_PREFIX, '');
+  return base.aliasMap.get(plain) ?? plain;
+};
+
+/** The prefix of a node id drawn from an earlier query block: `b0/`. */
+export const BLOCK_PREFIX = /^b\d+\//;
 
 /** resolveAlias for every condition of a where draft - each carries its own alias. */
 export const resolveConditionAliases = (base: PinnedBase, conditions: WhereConditionDraft[]): WhereConditionDraft[] =>

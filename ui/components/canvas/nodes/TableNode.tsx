@@ -502,7 +502,9 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
   // which it isn't. `hasConfigCursor` only suppresses the PLAIN-focus half
   // of this condition - hover and an actually-open picker both still show
   // it regardless, since neither of those is "just browsing".
-  const engaged = hovered || pickerOpenHere || (isFocusTarget && !hasConfigCursor);
+  // A named block nothing joins isn't in the query's text: no actions.
+  const standalone = !!data.named?.standalone;
+  const engaged = !standalone && (hovered || pickerOpenHere || (isFocusTarget && !hasConfigCursor));
 
   // The three always-visible operations, in their fixed display order - a
   // plain lookup (not derived from anywhere else) so both render paths below
@@ -730,7 +732,14 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
                   color: 'var(--canvas-text-dim)',
                 }}
               >
-                ({data.alias})
+                {/* A node from an earlier query block shows its alias in that
+                    block, without the block's prefix (see scopeOf); a
+                    standalone named block says how the query uses it. */}
+                {standalone
+                  ? data.named?.usedInWhere
+                    ? '(used in where)'
+                    : '(not joined)'
+                  : `(${data.alias.replace(/^b\d+\//, '')})`}
               </span>
             )}
           </div>
