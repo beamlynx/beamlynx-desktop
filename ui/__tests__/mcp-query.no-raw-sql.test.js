@@ -1,5 +1,5 @@
 // Regression tests for the hard rule in
-// beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md: the MCP
+// beamlynx-plans/completed/2026-08-15-mcp-server-and-url-scheme.md: the MCP
 // server must NEVER have a path to raw SQL execution, under any
 // configuration, and must always be redacted by whichever access policy its
 // connection has assigned -- never governed by the human-only
@@ -29,23 +29,48 @@ const { runMcpQuery, explainMcpQuery } = require('../store/mcp-query.ts');
 const { effectiveAccessPolicyRules } = require('../store/client.ts');
 const { Session } = require('../store/session.ts');
 const { GlobalStore } = require('../store/global.store.ts');
+const { McpWriteRefusalMinVersion } = require('../constants.ts');
 
 function stripComments(source) {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 }
 
-const MCP_QUERY_SOURCE = stripComments(fs.readFileSync(path.join(__dirname, '..', 'store', 'mcp-query.ts'), 'utf-8'));
-const GLOBAL_STORE_SOURCE = stripComments(fs.readFileSync(path.join(__dirname, '..', 'store', 'global.store.ts'), 'utf-8'));
+const MCP_QUERY_SOURCE = stripComments(
+  fs.readFileSync(path.join(__dirname, '..', 'store', 'mcp-query.ts'), 'utf-8'),
+);
+const GLOBAL_STORE_SOURCE = stripComments(
+  fs.readFileSync(path.join(__dirname, '..', 'store', 'global.store.ts'), 'utf-8'),
+);
 
 test('mcp-query.ts never calls client.sql (raw SQL execution)', () => {
   assert.ok(
     !/\.sql\s*\(/.test(MCP_QUERY_SOURCE),
     'store/mcp-query.ts must never call client.sql() -- raw SQL execution must not be reachable from an MCP client, ' +
-      'not even behind a flag. See the "No run_sql tool" rule in beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md.',
+      'not even behind a flag. See the "No run_sql tool" rule in beamlynx-plans/completed/2026-08-15-mcp-server-and-url-scheme.md.',
   );
 });
 
-test('mcp-query.ts only drives pine-lang through connections/eval/build', () => {
+// An agent's SQL is converted to Pine and only the Pine runs
+// (beamlynx-plans/pending/2026-10-12-agents-run-sql-as-pine.md). It must not
+// go through the SQL panel's path: convertSql/sqlEdited write the SQL into
+// session.query and the canvas's undo stack, and a session holding SQL is
+// one inputMode flip away from running it.
+test('mcp-query.ts converts SQL only through client.sqlToPine, never the SQL panel', () => {
+  assert.ok(
+    /\bclient\.sqlToPine\s*\(/.test(MCP_QUERY_SOURCE),
+    'expected the conversion to call client.sqlToPine',
+  );
+  assert.ok(
+    !/\b(convertSql|sqlEdited)\b/.test(MCP_QUERY_SOURCE),
+    "store/mcp-query.ts must not use the SQL panel's conversion (convertSql/sqlEdited).",
+  );
+  assert.ok(
+    !/\.query\s*=[^=]/.test(MCP_QUERY_SOURCE),
+    'store/mcp-query.ts must never put SQL into a session (session.query = ...).',
+  );
+});
+
+test('mcp-query.ts only drives pine-lang through connections/eval/build/sql-to-pine', () => {
   // The only HttpClient methods this file is allowed to call at all.
   const clientCallPattern = /\bclient\.(\w+)\s*\(/g;
   const found = new Set();
@@ -53,12 +78,14 @@ test('mcp-query.ts only drives pine-lang through connections/eval/build', () => 
   while ((match = clientCallPattern.exec(MCP_QUERY_SOURCE))) {
     found.add(match[1]);
   }
-  const disallowed = [...found].filter(name => !['createConnection', 'build'].includes(name));
+  const disallowed = [...found].filter(
+    name => !['createConnection', 'build', 'sqlToPine'].includes(name),
+  );
   assert.deepEqual(
     disallowed,
     [],
     `store/mcp-query.ts calls client.${disallowed.join(', client.')}(), which isn't in the allowed set ` +
-      `(createConnection, build). Session.evaluate() (not a direct client call) handles eval.`,
+      `(createConnection, build, sqlToPine). Session.evaluate() (not a direct client call) handles eval.`,
   );
 });
 
@@ -68,13 +95,15 @@ test('mcp-query.ts only drives pine-lang through connections/eval/build', () => 
 // can check real call sequence, not just that both happened.
 function makeFakeDeps(overrides = {}) {
   const calls = [];
+  const evaluateOpts = [];
   const session = {
     id: 'mcp-session',
     inputMode: 'pine',
     columns: [{ name: 'id' }],
     error: '',
-    evaluate: async () => {
+    evaluate: async opts => {
       calls.push('session.evaluate');
+      evaluateOpts.push(opts);
       return [{ id: 1 }];
     },
     ...overrides.session,
@@ -90,7 +119,13 @@ function makeFakeDeps(overrides = {}) {
         return { query: 'select 1', args };
       },
     },
-    getSavedProfileCredentials: async () => ({ dbHost: 'h', dbPort: '5432', dbName: 'd', dbUser: 'u', dbPassword: 'p' }),
+    getSavedProfileCredentials: async () => ({
+      dbHost: 'h',
+      dbPort: '5432',
+      dbName: 'd',
+      dbUser: 'u',
+      dbPassword: 'p',
+    }),
     getOrCreateMcpSession: () => session,
     getMcpConnectionId: () => undefined,
     setMcpConnectionId: () => {},
@@ -98,27 +133,66 @@ function makeFakeDeps(overrides = {}) {
       calls.push('resolveAccessPolicyRules');
       return [{ type: 'foreign-key' }];
     },
+    // A server new enough to honour allow-writes, so the default fixture
+    // exercises the normal path. The version gate has its own test below.
+    getServerVersion: () => McpWriteRefusalMinVersion,
     ...overrides.deps,
   };
-  return { deps, session, calls };
+  return { deps, session, calls, evaluateOpts };
 }
 
-test('mcp-query.ts guards against the Pine delete! write operator unless explicitly allowed', async () => {
-  const { deps } = makeFakeDeps();
-  delete process.env.BEAMLYNX_MCP_ALLOW_DELETE;
-  await assert.rejects(
-    () => runMcpQuery(deps, { profileId: 'p1', expression: 'user | delete!.by_id' }),
-    /delete!/,
-  );
-  process.env.BEAMLYNX_MCP_ALLOW_DELETE = '1';
-  try {
-    await assert.doesNotReject(() => runMcpQuery(deps, { profileId: 'p1', expression: 'user | delete!.by_id' }));
-  } finally {
-    delete process.env.BEAMLYNX_MCP_ALLOW_DELETE;
+// The write guard itself now lives in pine-lang: every eval on this path
+// sends allow-writes: false and the server refuses any expression whose
+// operations write. What this file can still assert -- and the thing that
+// would silently undo the guard if it regressed -- is that runMcpQuery
+// actually sends it, on every call, whatever the expression says.
+test('runMcpQuery always evaluates with allowWrites: false', async () => {
+  const { deps, evaluateOpts } = makeFakeDeps();
+  for (const expression of [
+    'user',
+    'user | delete! .id',
+    'user | d! .id',
+    "user | update! name = 'x'",
+  ]) {
+    await runMcpQuery(deps, { profileId: 'p1', expression });
+  }
+  assert.equal(evaluateOpts.length, 4);
+  for (const opts of evaluateOpts) {
+    assert.equal(opts?.allowWrites, false);
   }
 });
 
-test('runMcpQuery refuses to evaluate a session that somehow isn\'t in pine input mode', async () => {
+// The regex this replaced matched `delete!` only, so `update!`, `u!` and
+// `d!` all reached the database. Nothing in the file may pattern-match
+// write operators any more -- a leftover partial check reading as "handled"
+// is exactly how the old hole survived.
+test('mcp-query.ts no longer pattern-matches write operators in expression text', () => {
+  // MCP_QUERY_SOURCE has comments stripped, so the explanation of what this
+  // replaced doesn't itself trip the check.
+  assert.ok(
+    !/BEAMLYNX_MCP_ALLOW_DELETE/.test(MCP_QUERY_SOURCE),
+    'the machine-wide delete opt-out is gone; writes are refused by the server, per-request',
+  );
+  assert.ok(
+    !/(?:delete|update|\bd|\bu)!/.test(MCP_QUERY_SOURCE),
+    'store/mcp-query.ts names write operators again -- ask pine-lang (allow-writes) instead of keeping a second copy of the grammar here',
+  );
+});
+
+// Fails closed: a server too old to know allow-writes would ignore it and
+// run the write, which is worse than the regex this replaced.
+test('runMcpQuery refuses outright against a server too old to honour allow-writes', async () => {
+  for (const version of ['0.45.0', '0.44.0', undefined]) {
+    const { deps, calls } = makeFakeDeps({ deps: { getServerVersion: () => version } });
+    await assert.rejects(
+      () => runMcpQuery(deps, { profileId: 'p1', expression: 'user' }),
+      /cannot refuse expressions that change data/,
+    );
+    assert.ok(!calls.includes('session.evaluate'), `evaluated anyway on pine-lang ${version}`);
+  }
+});
+
+test("runMcpQuery refuses to evaluate a session that somehow isn't in pine input mode", async () => {
   const { deps } = makeFakeDeps({ session: { inputMode: 'sql' } });
   await assert.rejects(
     () => runMcpQuery(deps, { profileId: 'p1', expression: 'user' }),
@@ -134,12 +208,17 @@ test('runMcpQuery resolves accessPolicyRules before evaluating, not just at sess
   assert.ok(resolveIndex !== -1 && evaluateIndex !== -1 && resolveIndex < evaluateIndex);
 });
 
-test('explainMcpQuery passes the connection\'s freshly-resolved accessPolicyRules straight to client.build', async () => {
+test("explainMcpQuery passes the connection's freshly-resolved accessPolicyRules straight to client.build", async () => {
   const { deps } = makeFakeDeps({
     deps: { resolveAccessPolicyRules: async () => [{ type: 'column-name', suffix: '_id' }] },
   });
   const result = await explainMcpQuery(deps, { profileId: 'p1', expression: 'user' });
-  assert.deepEqual(result.args, [['user'], undefined, 'conn-1', [{ type: 'column-name', suffix: '_id' }]]);
+  assert.deepEqual(result.args, [
+    ['user'],
+    undefined,
+    'conn-1',
+    [{ type: 'column-name', suffix: '_id' }],
+  ]);
 });
 
 // client.ts's effectiveAccessPolicyRules -- the single place that decides
@@ -151,7 +230,10 @@ test('explainMcpQuery passes the connection\'s freshly-resolved accessPolicyRule
 // applyPolicyToOwnQueries is explicitly true.
 test('effectiveAccessPolicyRules: no policyId means no rules, for either caller', () => {
   const policies = [{ id: 'p1', name: 'X', rules: [{ type: 'foreign-key', enabled: true }] }];
-  assert.deepEqual(effectiveAccessPolicyRules({ policyId: null, mcpEnabled: true }, policies, true), []);
+  assert.deepEqual(
+    effectiveAccessPolicyRules({ policyId: null, mcpEnabled: true }, policies, true),
+    [],
+  );
   assert.deepEqual(effectiveAccessPolicyRules({ policyId: null }, policies, false), []);
   assert.deepEqual(effectiveAccessPolicyRules(undefined, policies, true), []);
 });
@@ -167,12 +249,18 @@ test('effectiveAccessPolicyRules: human path is gated on applyPolicyToOwnQueries
   const policies = [{ id: 'p1', name: 'X', rules: [{ type: 'foreign-key', enabled: true }] }];
   const conn = { policyId: 'p1', mcpEnabled: false, applyPolicyToOwnQueries: true };
   assert.deepEqual(effectiveAccessPolicyRules(conn, policies, false), [{ type: 'foreign-key' }]);
-  assert.deepEqual(effectiveAccessPolicyRules({ ...conn, applyPolicyToOwnQueries: false }, policies, false), []);
+  assert.deepEqual(
+    effectiveAccessPolicyRules({ ...conn, applyPolicyToOwnQueries: false }, policies, false),
+    [],
+  );
 });
 
 test('effectiveAccessPolicyRules: human path defaults to no redaction when applyPolicyToOwnQueries is absent', () => {
   const policies = [{ id: 'p1', name: 'X', rules: [{ type: 'foreign-key', enabled: true }] }];
-  assert.deepEqual(effectiveAccessPolicyRules({ policyId: 'p1', mcpEnabled: true }, policies, false), []);
+  assert.deepEqual(
+    effectiveAccessPolicyRules({ policyId: 'p1', mcpEnabled: true }, policies, false),
+    [],
+  );
 });
 
 test('effectiveAccessPolicyRules: only enabled rules are returned, with `enabled` itself stripped', () => {
@@ -192,7 +280,10 @@ test('effectiveAccessPolicyRules: only enabled rules are returned, with `enabled
 
 test('effectiveAccessPolicyRules: an unresolvable policyId (deleted policy) yields no rules, not a throw', () => {
   const policies = [{ id: 'p1', name: 'X', rules: [{ type: 'foreign-key', enabled: true }] }];
-  assert.deepEqual(effectiveAccessPolicyRules({ policyId: 'gone', mcpEnabled: true }, policies, true), []);
+  assert.deepEqual(
+    effectiveAccessPolicyRules({ policyId: 'gone', mcpEnabled: true }, policies, true),
+    [],
+  );
 });
 
 // session.ts's accessPolicyRules getter -- Session.globalStore is typed
@@ -219,7 +310,7 @@ test("session.ts's accessPolicyRules getter derives from the connected profile's
   assert.deepEqual(session.accessPolicyRules, []);
 });
 
-test("session.ts passes forMcp based on whether this session IS globalStore.mcpSessionId, not a hardcoded value", () => {
+test('session.ts passes forMcp based on whether this session IS globalStore.mcpSessionId, not a hardcoded value', () => {
   const fakeGlobalStore = {
     connections: [{ id: 'c1', mcpEnabled: true, policyId: 'p1', applyPolicyToOwnQueries: false }],
     accessPolicies: [{ id: 'p1', name: 'X', rules: [{ type: 'foreign-key', enabled: true }] }],
@@ -268,7 +359,137 @@ test("global.store.ts's resolveAccessPolicyRules always passes forMcp: true to e
     /effectiveAccessPolicyRules\(/.test(body) && /,\s*true\s*\)\s*;/.test(body),
     'resolveAccessPolicyRules -- the only path runMcpQuery/explainMcpQuery use to resolve rules -- must call ' +
       'effectiveAccessPolicyRules with forMcp hardcoded to true. It has no Session to derive forMcp from the ' +
-      "way Session.accessPolicyRules does, and this is only ever reached from the MCP path, so a `false` or " +
+      'way Session.accessPolicyRules does, and this is only ever reached from the MCP path, so a `false` or ' +
       "computed value here would let a connection's applyPolicyToOwnQueries silently leak into what MCP sees.",
   );
+});
+
+// Defence in depth for the option above: runMcpQuery passing
+// allowWrites: false is what stops an agent today, but it is a per-call
+// decision, and `allow-writes` defaults to *allowed* server-side (so the
+// person's own editor keeps working). A future caller into the agent's tab
+// that forgets the option would therefore inherit writes. Binding it to the
+// session makes forgetting impossible -- and covers the person pressing Run
+// on the agent's own tab, where the expression on screen is the agent's.
+test('the MCP session forces allowWrites: false even when the caller omits it', async () => {
+  const store = new GlobalStore();
+  const mcpSession = store.getOrCreateMcpSession();
+  const humanSession = store.createSession();
+
+  assert.equal(mcpSession.isMcpSession, true);
+  assert.equal(humanSession.isMcpSession, false);
+
+  const seen = [];
+  mcpSession.plugins.default.evaluate = async opts => {
+    seen.push(opts);
+    return [];
+  };
+  humanSession.plugins.default.evaluate = async opts => {
+    seen.push(opts);
+    return [];
+  };
+
+  // No opts at all, and opts that explicitly ask for writes: the agent's
+  // session must come out false either way.
+  await mcpSession.evaluate();
+  await mcpSession.evaluate({ allowWrites: true });
+  assert.equal(seen[0]?.allowWrites, false);
+  assert.equal(seen[1]?.allowWrites, false);
+
+  // The person's own session is untouched -- delete!/update! in their own
+  // tab is the point, not a threat.
+  await humanSession.evaluate();
+  assert.equal(seen[2]?.allowWrites, undefined);
+});
+
+// SQL from an agent: converted with the MCP connection's id, then run as
+// Pine down the usual path, with writes refused. A real HttpClient with
+// fetch stubbed, so the request pine-lang would get is what is checked.
+function stubFetch(answer) {
+  const requests = [];
+  const original = global.fetch;
+  global.fetch = async (url, options) => {
+    const body = JSON.parse(options.body);
+    requests.push({ path: url.split('/api/v1/')[1], body });
+    return { ok: true, status: 200, json: async () => answer(body) };
+  };
+  return { requests, restore: () => (global.fetch = original) };
+}
+
+test('runMcpQuery runs SQL as Pine: converted with the connection id, evaluated with writes refused', async () => {
+  const { HttpClient } = require('../store/client.ts');
+  const { requests, restore } = stubFetch(() => ({
+    expression: 'company\n | where: id = $id',
+    warnings: ['w'],
+  }));
+  try {
+    const { deps, session, calls, evaluateOpts } = makeFakeDeps();
+    deps.client = Object.assign(new HttpClient(), {
+      createConnection: deps.client.createConnection,
+    });
+    const result = await runMcpQuery(deps, {
+      profileId: 'p1',
+      expression: '',
+      sql: '/* Why */ select * from company where id = $id',
+      variables: { id: 1 },
+    });
+    assert.deepEqual(requests, [
+      {
+        path: 'sql-to-pine',
+        body: {
+          query: '/* Why */ select * from company where id = $id',
+          'connection-id': 'conn-1',
+        },
+      },
+    ]);
+    assert.deepEqual(calls, [
+      'client.createConnection',
+      'resolveAccessPolicyRules',
+      'session.evaluate',
+    ]);
+    assert.equal(evaluateOpts[0].allowWrites, false);
+    assert.deepEqual(evaluateOpts[0].variables, { id: 1 });
+    assert.equal(session.inputMode, 'pine');
+    assert.equal(session.query, undefined);
+    assert.equal(result.pine, '/* Why */\ncompany\n | where: id = $id');
+    assert.deepEqual(result.warnings, ['w']);
+  } finally {
+    restore();
+  }
+});
+
+test('runMcpQuery runs nothing when the SQL does not convert', async () => {
+  const { HttpClient } = require('../store/client.ts');
+  const { requests, restore } = stubFetch(() => ({
+    error: "Line 1: OFFSET isn't in Pine.",
+    'error-type': 'sql-unsupported',
+  }));
+  try {
+    const { deps, calls } = makeFakeDeps();
+    deps.client = Object.assign(new HttpClient(), {
+      createConnection: deps.client.createConnection,
+    });
+    const result = await runMcpQuery(deps, {
+      profileId: 'p1',
+      expression: '',
+      sql: 'select * from t offset 5',
+    });
+    assert.equal(
+      result.error,
+      "The SQL didn't convert to Pine, so nothing ran. Line 1: OFFSET isn't in Pine.",
+    );
+    assert.ok(!calls.includes('session.evaluate'));
+    assert.deepEqual(
+      requests.map(r => r.path),
+      ['sql-to-pine'],
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('an expression run carries no pine/warnings fields', async () => {
+  const { deps } = makeFakeDeps();
+  const result = await runMcpQuery(deps, { profileId: 'p1', expression: 'company' });
+  assert.ok(!('pine' in result));
 });

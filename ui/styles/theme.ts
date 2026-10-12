@@ -1,6 +1,7 @@
 import { createTheme, Theme } from '@mui/material/styles';
 import { buildColorTokens } from './palette/build';
 import { ColorTokens, THEME_MODE, ThemeId } from './palette/tokens';
+import { MOTION, motionCssVariables, motionDuration } from './motion';
 
 const generateCssVariables = (colors: ColorTokens) => {
   return Object.entries(colors)
@@ -30,7 +31,11 @@ const MUI_BASE_SPACING = 8;
 // instead.
 const MUI_DEFAULT_HTML_FONT_SIZE = 16;
 
-export const createAppTheme = (themeId: ThemeId, textScale: number, htmlFontSize = MUI_DEFAULT_HTML_FONT_SIZE): Theme => {
+export const createAppTheme = (
+  themeId: ThemeId,
+  textScale: number,
+  htmlFontSize = MUI_DEFAULT_HTML_FONT_SIZE,
+): Theme => {
   const colors = buildColorTokens(themeId);
   const vars = generateCssVariables(colors);
   const mode = THEME_MODE[themeId];
@@ -55,9 +60,27 @@ export const createAppTheme = (themeId: ThemeId, textScale: number, htmlFontSize
       htmlFontSize,
     },
     spacing: (factor: number) => `${MUI_BASE_SPACING * textScale * factor}px`,
+    // MUI animates Drawer/Modal/Fade through inline styles, not CSS classes,
+    // so neither the --motion-* variables nor globals.css's reduced-motion
+    // rule reaches them. Feeding its duration scale from the same tokens is
+    // what keeps the JSON inspector drawer and the modals moving at the same
+    // speed as everything else - and motionDuration() is what makes them
+    // honor the OS's reduced-motion setting, which they otherwise ignore.
+    transitions: {
+      duration: {
+        enteringScreen: motionDuration(MOTION.enter),
+        leavingScreen: motionDuration(MOTION.exit),
+      },
+    },
     components: {
       MuiCssBaseline: {
-        styleOverrides: `:root{${vars}}`,
+        // Motion tokens ride along in the same :root block as the color
+        // tokens, but come from their own emitter (styles/motion.ts) rather
+        // than from ColorTokens - they're identical across all three themes,
+        // so making them per-theme values would mean maintaining three
+        // copies of one number. See generateCssVariables above: it iterates
+        // ColorTokens and only ColorTokens.
+        styleOverrides: `:root{${vars}${motionCssVariables()}}`,
       },
     },
   });

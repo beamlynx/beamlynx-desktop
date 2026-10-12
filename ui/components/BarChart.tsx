@@ -22,8 +22,14 @@ export const BarChart: React.FC<BarChartProps> = ({ data, height = '400px' }) =>
     );
   }
 
-  const maxValue = Math.max(...data.map(item => item.value));
-  const minValue = Math.min(...data.map(item => item.value));
+  // A loop, not Math.max(...values): spreading a large result as arguments
+  // overflows the call stack.
+  let maxValue = -Infinity;
+  let minValue = Infinity;
+  for (const item of data) {
+    if (item.value > maxValue) maxValue = item.value;
+    if (item.value < minValue) minValue = item.value;
+  }
   const valueRange = maxValue - minValue;
 
   // Handle case where all values are the same

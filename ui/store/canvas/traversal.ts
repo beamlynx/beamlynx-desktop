@@ -1,0 +1,617 @@
+import { Ast, deleteOp, HttpClient, pipesAtLineStart, TableHint } from '../client';
+import { formatSql } from '../../utils/formatSql';
+
+// Walking the tables that hang off the current one by foreign key, and doing
+// something at each: counting rows, or building the DELETE that would empty
+// it.
+//
+// This used to be a Pine operation. `delete:` parsed into an operation that
+// built no SQL -- purely a marker the client noticed on the end of an
+// expression (see plugin/recursive-delete.plugin.ts, now gone). That was the
+// wrong shape twice over. A Pine expression describes one result set; this is
+// a procedure that runs many. And a marker for a client-side routine is not a
+// language feature -- pine-lang removed `delete:` outright rather than growing
+// a generic `traverse:` token it would only have had to ignore.
+//
+// Nothing here needs a new server operation. Every query the walk issues is an
+// expression Pine already understands:
+//
+//   children of a node   POST /build with a trailing `|`, read ast.hints.table
+//   rows at a node       <expr> | count:
+//   the DELETE for one   <expr> | limit: N | delete! .<column>[, .<column>]
+
+/** One table the walk reached. `expression` is real Pine, runnable on its own. */
+export type TraversalNode = {
+  /** Stable within one traversal: the node's own expression. */
+  id: string;
+  parentId: string | null;
+  table: string;
+  schema: string | null;
+  /**
+   * The columns this node's own DELETE keys on: the foreign key linking it to
+   * its parent, or - at the root, which has no parent - the hardcoded `id`
+   * that rootTableOf supplies. See that function for why it is hardcoded.
+   *
+   * More than one when that foreign key is made of several columns. Deleting
+   * on one of them at a time removes rows belonging to other records, so the
+   * DELETE names all of them and pine-lang matches them as a row.
+   */
+  columns: string[];
+  expression: string;
+  depth: number;
+  count: number;
+};
+
+export type TraversalVerb = 'count' | 'delete';
+
+export type TraversalStatus = 'walking' | 'done' | 'cancelled' | 'failed';
+
+/**
+ * How deep the walk goes before stopping.
+ *
+ * The walk's only backstop. A table that appears again below itself - a
+ * folder's child folders, or `company | employee | company` through a second
+ * foreign key - is followed, and ends on its own where the counts reach zero.
+ * Only a loop in the data itself (two companies each marked a duplicate of
+ * the other) keeps going, and this is where it stops. Real hierarchies nest
+ * further than a first guess suggests, so this is set well clear of them;
+ * hitting it should mean something is wrong, not that the data is deep.
+ *
+ * What matters more than the number is that hitting it is *visible*:
+ * `depthCapped` below, which the panel reports, rather than a truncated tree
+ * presented as a complete one. A capped delete plan cannot be run.
+ */
+export const MAX_DEPTH = 25;
+
+export type TraversalResult = {
+  nodes: TraversalNode[];
+  /** True when the walk stopped somewhere because of MAX_DEPTH. */
+  depthCapped: boolean;
+};
+
+/**
+ * The traversal's own client. Deliberately not the session's: that one carries
+ * an onBuild callback that writes every build's AST back into the session, and
+ * a traversal issues a build per node - which would leave the canvas rendering
+ * whichever child table the walk happened to finish on.
+ */
+export const traversalClient = new HttpClient();
+
+/** A traversal in flight or finished - see Session.startTraversal. */
+export type TraversalState = {
+  verb: TraversalVerb;
+  rootExpression: string;
+  status: TraversalStatus;
+  nodes: TraversalNode[];
+  depthCapped: boolean;
+  /** The BEGIN;...COMMIT; script, for the delete verb once the walk finishes. */
+  script: string | null;
+  /** Each node's own statement, aligned with `nodes` - see runDeleteScript. */
+  queries: string[];
+  error: string | null;
+  /**
+   * Where the "do it for real" half is up to. 'idle' means the script has been
+   * generated and nothing has run -- which is where a delete traversal stops
+   * unless the person explicitly goes further.
+   */
+  /**
+   * Where the "do it for real" half is up to.
+   *
+   * 'failed' is its own state rather than being inferred from how far the run
+   * got: the first table can be the one that fails, and then "how far" is
+   * zero, which is indistinguishable from never having started. That is
+   * exactly the case where resuming matters most.
+   */
+  run: 'idle' | 'confirming' | 'running' | 'paused' | 'failed' | 'finished';
+  outcomes: DeleteOutcome[];
+  /**
+   * The next node to attempt. Advances past each success, so a run that was
+   * paused or that stopped on an error resumes exactly where it left off
+   * instead of re-issuing deletes that already ran.
+   */
+  runFrom: number;
+};
+
+// ---------------------------------------------------------------------------
+// Whether deleting along this expression is correct at all
+// ---------------------------------------------------------------------------
+
+export type DeleteEligibility = { ok: true } | { ok: false; reason: string };
+
+/**
+ * Whether `Delete rows...` is correct for this expression -- not whether it is
+ * convenient. On the wrong shape the walk empties a table the root's own query
+ * depends on, and the result is a delete that removes nothing and reports
+ * success.
+ *
+ * `employee | company` is the case. `current` is company, so the walk asks for
+ * company's children and finds `employee` -- a table already in the pipe:
+ *
+ *   1. DELETE FROM employee WHERE company_id IN (
+ *        SELECT e_1.company_id FROM employee e_0
+ *          JOIN company c_0 ON e_0.company_id = c_0.id
+ *          JOIN employee e_1 ON e_1.company_id = c_0.id )   <- empties e_0 too
+ *
+ *   2. DELETE FROM company WHERE id IN (
+ *        SELECT c_0.id FROM employee e_0
+ *          JOIN company c_0 ON e_0.company_id = c_0.id )    <- e_0 is gone
+ *
+ * Step 2 matches nothing. The companies survive, silently. A mapping table in
+ * the pipe does the same thing: its rows go first, and the parent's subquery
+ * then joins through nothing.
+ *
+ * The two checks below read Pine's own parent flag on each join. If every join in the
+ * expression goes from parent to child and the walk starts at the end, the
+ * tables above the root are all ancestors, and the walk - which follows
+ * children only - never deletes from them before the root.
+ */
+export const canDeleteTraverse = (ast: Ast | null | undefined): DeleteEligibility => {
+  if (!ast || !ast.current) return { ok: false, reason: 'Pick a table first.' };
+  const joins = ast.joins ?? [];
+
+  // 1. Every join points parent -> child. A join's `parent` says which of its
+  //    two sides owns the key: 'from' means the `from` alias is the parent,
+  //    'to' means it is the child -- the same field layout.ts reads as
+  //    `parentIsFrom`. An unresolved join is disqualifying: an unknown
+  //    direction is not a safe one to assume is downward.
+  for (const { from, to, parent, resolution } of joins) {
+    if (!resolution) {
+      return { ok: false, reason: `The join between ${from} and ${to} could not be resolved.` };
+    }
+    if (parent !== 'from') {
+      return {
+        ok: false,
+        reason: `Delete needs every join to go from parent to child, and this one joins ${to} back up from ${from}.`,
+      };
+    }
+  }
+
+  // 2. `current` is the last table in the pipe. A `from:` pointing back up
+  //    the chain breaks the invariant just as thoroughly even when every
+  //    join is downward: on `company | employee | document | from: employee`
+  //    the walk visits `document`, which is in the root expression, and
+  //    empties it before employee's own subquery runs.
+  //
+  //    Checked against the last join's target rather than
+  //    ast['selected-tables'], which deliberately omits the pipe's final
+  //    table (see pipeline.md) and so cannot answer this.
+  const lastJoin = joins[joins.length - 1];
+  if (lastJoin && lastJoin.to !== ast.current) {
+    return {
+      ok: false,
+      reason: `Delete starts from the end of the pipe, and this expression points back at ${ast.current}. Remove the \`from:\` to delete from ${lastJoin.to}.`,
+    };
+  }
+
+  return { ok: true };
+};
+
+// ---------------------------------------------------------------------------
+// The walk
+// ---------------------------------------------------------------------------
+
+export type WalkOptions = {
+  connectionId?: string;
+  maxDepth?: number;
+  /** Aborts the walk between steps. */
+  signal?: { cancelled: boolean };
+  /** Called as each node's count lands, so a panel can fill in as it goes. */
+  onNode?: (node: TraversalNode) => void;
+};
+
+/**
+ * Depth-first, children before parents, pruning a branch as soon as a node has
+ * no rows.
+ *
+ * Post-order is not a detail: it is the order the DELETEs have to run in, so a
+ * child is always emptied before the parent it points at. Counting inherits
+ * the same order for free, which also makes the panel read bottom-up the way
+ * the script does.
+ */
+export const runTraversal = async (
+  client: HttpClient,
+  startFrom: string,
+  options: WalkOptions = {},
+): Promise<TraversalResult> => {
+  // Normalised once, here, so the root reads the same as the expressions the
+  // walk derives from it -- otherwise the first few lines keep pine-lang's own
+  // indentation and everything appended below them doesn't. Whitespace only:
+  // the expression that gets sent is the same expression.
+  const rootExpression = pipesAtLineStart(startFrom);
+  const maxDepth = options.maxDepth ?? MAX_DEPTH;
+  const nodes: TraversalNode[] = [];
+  let depthCapped = false;
+
+  const visit = async (
+    expression: string,
+    parentId: string | null,
+    table: string,
+    schema: string | null,
+    columns: string[],
+    depth: number,
+  ): Promise<void> => {
+    if (options.signal?.cancelled) return;
+
+    const count = await client.count(expression, options.connectionId);
+    if (count === 0) return;
+
+    const node: TraversalNode = {
+      id: expression,
+      parentId,
+      table,
+      schema,
+      columns,
+      expression,
+      depth,
+      count,
+    };
+    options.onNode?.(node);
+
+    if (depth >= maxDepth) {
+      depthCapped = true;
+      nodes.push(node);
+      return;
+    }
+
+    const { expressions } = await client.makeChildExpressions(expression, options.connectionId);
+
+    for (const child of expressions) {
+      if (options.signal?.cancelled) return;
+      // Children only, never parents (see makeChildExpressions), so a table
+      // met again is always a deeper set of rows: child folders, or
+      // `company | employee | company` through a second foreign key. The walk
+      // ends where a level has no rows; only a loop in the data runs on to
+      // maxDepth, which is reported.
+      await visit(child.expression, expression, child.table, child.schema, child.columns, depth + 1);
+    }
+
+    // After its children, never before -- see the post-order note above.
+    nodes.push(node);
+  };
+
+  const root = await rootTableOf(client, rootExpression, options.connectionId);
+  await visit(rootExpression, null, root.table, root.schema, root.columns, 0);
+
+  return { nodes, depthCapped };
+};
+
+/**
+ * The column the root's own DELETE keys on.
+ *
+ * Hardcoded, carried forward from the routine this replaces, where the same
+ * limitation lived as a FIXME: a table whose primary key is not `id` still
+ * cannot be deleted through. It does not affect counting, which never uses it.
+ */
+const ROOT_COLUMN = 'id';
+
+/**
+ * The real name of the table the root expression sits on.
+ *
+ * Needs two builds, and the reason is a quirk worth stating: `selected-tables`
+ * deliberately omits the pipe's *final* table (pipeline.md), so a single-table
+ * expression like `company` reports no tables at all and there is nothing to
+ * look the current alias up in. Adding a trailing pipe makes that table no
+ * longer final, so the second build does list it -- and the first build is
+ * what says which alias to look for.
+ *
+ * The obvious shortcut, deriving the name from the alias, does not work:
+ * pine builds `c_0` from `company`, and stripping the suffix gives `c`.
+ */
+const rootTableOf = async (
+  client: HttpClient,
+  expression: string,
+  connectionId?: string,
+): Promise<{ table: string; schema: string | null; columns: string[] }> => {
+  const alias = (await client.build([expression], undefined, connectionId))?.ast?.current;
+  const probe = await client.build([`${expression} |`], undefined, connectionId);
+  const match = probe?.ast?.['selected-tables']?.find(t => t.alias === alias);
+  return {
+    // The alias is a poor label, but it is honest -- better than a guess that
+    // looks like a table name and is not one.
+    table: match?.table ?? alias ?? 'table',
+    schema: match?.schema ?? null,
+    columns: [ROOT_COLUMN],
+  };
+};
+
+// ---------------------------------------------------------------------------
+// The verbs
+// ---------------------------------------------------------------------------
+
+/**
+ * One statement's entry in the record of a run: what was asked for, what ran,
+ * what happened, and when.
+ *
+ * Kept per statement rather than as a running total because a delete is not
+ * one event -- it is a table at a time, and a run can stop in the middle and
+ * be resumed later. A total cannot say which tables are already gone.
+ */
+export type DeleteOutcome = {
+  table: string;
+  /** The Pine that was sent -- exactly what ran, not a reconstruction. */
+  expression: string;
+  /** The SQL that expression compiles to, from the plan shown beforehand. */
+  query: string;
+  /** When the statement finished, ISO 8601. */
+  at: string;
+  /** How long it took, milliseconds. */
+  ms: number;
+  deleted?: number;
+  error?: string;
+};
+
+/**
+ * Where a delete run got to, so it can pick up from there.
+ *
+ * `from` is the index into the node list that the next attempt starts at: one
+ * past the last node that succeeded. A failure leaves everything below it
+ * already deleted, and children always go before parents -- so resuming at the
+ * node that failed is both correct and the only sensible place to resume,
+ * rather than starting over and re-issuing deletes that already ran.
+ */
+export type DeleteProgress = { from: number };
+
+/**
+ * Runs a planned delete, one node at a time, in the order the nodes are in.
+ *
+ * Not by sending the generated script to /api/v1/sql, which is the obvious
+ * implementation and does not work: `run-sql` (pine-lang's db/exec.clj) picks
+ * SELECT-vs-action by string prefix, takes the action branch for a script
+ * starting with a comment, and hands the whole thing to `jdbc/execute!` --
+ * which prepares a statement, and PgJDBC refuses more than one command in a
+ * prepared statement. Its return shape assumes a single count too. The script
+ * fails outright rather than running non-atomically.
+ *
+ * So each node's own Pine goes down the ordinary eval path instead, as
+ * `<expr> | limit: N | delete! .<column>[, .<column>]`. That keeps the whole thing inside
+ * the AST layer rather than reaching for raw SQL, and it lets the panel report
+ * each table as it goes.
+ *
+ * The cost, which the caller must state rather than imply: **there is no
+ * transaction across nodes.** A failure partway leaves the deeper deletes
+ * committed and the shallower ones not. For this shape that is an unfinished
+ * job rather than a corrupt one -- the order is children before parents, so a
+ * partial run never leaves a foreign key violated -- and re-running the
+ * traversal re-counts and finishes it.
+ */
+/**
+ * The largest `limit:` pine-lang accepts (its parser's max-limit). A node
+ * with more rows than this is deleted in batches of this size.
+ */
+export const MAX_DELETE_BATCH = 10000;
+
+export const runDeleteScript = async (
+  client: HttpClient,
+  nodes: TraversalNode[],
+  // The SQL each node compiles to, from buildDeleteScript, positionally
+  // aligned with `nodes`. Recorded in the run's log so it says what actually
+  // ran and not only which expression asked for it.
+  queries: string[],
+  connectionId?: string,
+  onOutcome?: (outcome: DeleteOutcome) => void,
+  // Where to start. Non-zero when resuming after a failure or a pause: the
+  // nodes before it are already gone, and re-running their DELETEs would at
+  // best be a no-op and at worst confusing to read in the outcome list.
+  from = 0,
+  signal?: { cancelled: boolean },
+): Promise<DeleteOutcome[]> => {
+  const outcomes: DeleteOutcome[] = [];
+  for (const [offset, node] of Array.from(nodes.slice(from).entries())) {
+    if (signal?.cancelled) break;
+    // In batches of at most MAX_DELETE_BATCH, which pine-lang's `limit:`
+    // accepts at most. Never more than the rows counted when the plan was
+    // made, and done when a batch removes fewer than it asked for.
+    const firstBatch = Math.min(node.count, MAX_DELETE_BATCH);
+    const expression = `${node.expression} | limit: ${firstBatch} | ${deleteOp(node.columns)}`;
+    const startedAt = Date.now();
+    let result: { deleted?: number; error?: string };
+    let deleted = 0;
+    let remaining = node.count;
+    let error: string | undefined;
+    do {
+      const batch = Math.min(remaining, MAX_DELETE_BATCH);
+      const batchExpression = `${node.expression} | limit: ${batch} | ${deleteOp(node.columns)}`;
+      let removed = 0;
+      try {
+        const response = await client.eval([batchExpression], connectionId);
+        if (response?.error) {
+          error = response.error;
+        } else {
+          removed = Number(response?.result?.[1]?.[0] ?? 0);
+        }
+      } catch (e) {
+        error = e instanceof Error ? e.message : 'Failed';
+      }
+      deleted += removed;
+      remaining -= removed;
+      if (error || removed < batch) break;
+    } while (remaining > 0);
+    result = error ? { error, ...(deleted ? { deleted } : {}) } : { deleted };
+    const outcome: DeleteOutcome = {
+      table: node.table,
+      expression,
+      query: queries[from + offset] ?? '',
+      at: new Date().toISOString(),
+      ms: Date.now() - startedAt,
+      ...result,
+    };
+    outcomes.push(outcome);
+    onOutcome?.(outcome);
+    // Stop at the first failure. Carrying on would try to delete a parent
+    // whose child still has rows, which fails on the foreign key anyway --
+    // and a wall of consequential errors buries the one that matters.
+    if (outcome.error) break;
+  }
+  return outcomes;
+};
+
+/**
+ * Breaks a Pine expression onto one line per operation, for the comment above
+ * each DELETE.
+ *
+ * The walk assembles expressions by appending joins, so they arrive as one
+ * long line. Read as a comment in a script -- next to a DELETE that is already
+ * several lines of formatted SQL -- that is the hardest part to scan.
+ *
+ * A plain split rather than a round trip to pine-lang's prettify for each
+ * node: the walk already costs several requests per table, and this text is a
+ * *comment*. The one thing a naive split gets wrong is a pipe inside a string
+ * literal (`where: name = 'a|b'`), and the cost of that here is a comment with
+ * an odd line break in it -- nothing is parsed, and nothing runs differently.
+ */
+const asLines = (expression: string): string =>
+  expression
+    .split('|')
+    .map(part => part.trim())
+    .filter(Boolean)
+    .join('\n| ');
+
+/**
+ * A leading comment on an expression -- the tab's own note, which pine-lang
+ * returns as `doc`. Either style: a `/* ... *\/` block or a run of `--` lines.
+ */
+const LEADING_COMMENT = /^\s*(?:\/\*[\s\S]*?\*\/|(?:--[^\n]*(?:\n|$))+)\s*/;
+
+/** Every node's expression carries the root's note; this drops it. */
+const withoutLeadingComment = (expression: string): string =>
+  expression.replace(LEADING_COMMENT, '');
+
+/** Renders text as SQL line comments, one `--` per line. */
+const asSqlComment = (text: string): string =>
+  text
+    .split('\n')
+    .map(line => `-- ${line}`.trimEnd())
+    .join('\n');
+
+/**
+ * The record of a delete run: every statement that was sent, what it did, and
+ * when.
+ *
+ * Written as text rather than CSV or JSON because the interesting column is a
+ * SQL statement spanning several lines, which neither of those carries
+ * readably -- and because the first thing anyone does with this is read it.
+ *
+ * Says what it does not know, too. A run can stop partway and be resumed
+ * later, so a log that only listed successes would read as a complete account
+ * of a job that is not complete. Anything not attempted is named at the end.
+ */
+export const buildAuditLog = (
+  traversal: Pick<TraversalState, 'rootExpression' | 'nodes' | 'outcomes' | 'run'>,
+  connection: string,
+): string => {
+  const { rootExpression, nodes, outcomes, run } = traversal;
+  const deleted = outcomes.reduce((sum, o) => sum + (o.deleted ?? 0), 0);
+  const failed = outcomes.filter(o => o.error);
+
+  const lines: string[] = [
+    'beamlynx delete log',
+    '',
+    `Connection    ${connection}`,
+    `Started from  ${withoutLeadingComment(rootExpression).replace(/\s+/g, ' ').trim()}`,
+    `Written       ${new Date().toISOString()}`,
+    `Statements    ${outcomes.length} of ${nodes.length} attempted`,
+    `Rows deleted  ${deleted}`,
+    `Outcome       ${
+      run === 'finished'
+        ? 'completed'
+        : run === 'paused'
+          ? 'paused before finishing'
+          : failed.length
+            ? 'stopped on an error'
+            : 'not finished'
+    }`,
+    '',
+    '='.repeat(72),
+  ];
+
+  outcomes.forEach((outcome, i) => {
+    lines.push(
+      '',
+      `[${i + 1}/${nodes.length}] ${outcome.table}  --  ${
+        outcome.error ? `FAILED: ${outcome.error}` : `${outcome.deleted ?? 0} rows deleted`
+      }`,
+      `at ${outcome.at} (${outcome.ms}ms)`,
+      '',
+      outcome.expression,
+      '',
+      outcome.query.trim(),
+      '',
+      '-'.repeat(72),
+    );
+  });
+
+  // Naming what was left is the part that makes this an account rather than a
+  // receipt: a resumed run picks up exactly here.
+  const remaining = nodes.slice(outcomes.length - failed.length);
+  if (run !== 'finished' && remaining.length) {
+    lines.push('', `Not deleted (${remaining.length}): ${remaining.map(n => n.table).join(', ')}`);
+  }
+
+  return lines.join('\n');
+};
+
+/** The `BEGIN; ... COMMIT;` script for a completed delete traversal. */
+export const buildDeleteScript = async (
+  client: HttpClient,
+  nodes: TraversalNode[],
+  connectionId?: string,
+): Promise<{ script: string; queries: string[] }> => {
+  const queries: string[] = [];
+  // `--` line comments, never `/* ... */`.
+  //
+  // An expression can carry its own note, and that note is usually a block
+  // comment. Wrapping it in another block comment produces `/* /* test */ ...
+  // */`, and block comments do not nest portably -- the inner `*/` closes the
+  // outer one, the rest of the Pine text spills out as bare SQL, and the
+  // trailing `*/` is a syntax error on top. A line comment cannot be closed
+  // early by anything the expression contains, which makes this immune rather
+  // than merely escaped.
+  // The header says how this differs from the panel's Run button, which sends
+  // one table's delete at a time with no transaction (see runDeleteScript).
+  // The BEGIN/COMMIT below are real when the script is run by hand; the
+  // panel never sends them.
+  const parts: string[] = [
+    asSqlComment(
+      [
+        'DELETE queries',
+        '',
+        'Run as a whole, this script deletes everything in one transaction.',
+        "The panel's Run button doesn't use it: it deletes one table at a time,",
+        'deepest first, and each table is committed as it goes.',
+      ].join('\n'),
+    ),
+  ];
+
+  // The note once, at the top, rather than above every statement. Each node's
+  // expression is its parent's plus one more join, so the root's note is
+  // carried by all of them and would otherwise repeat once per table.
+  const note = nodes[0]?.expression.match(LEADING_COMMENT)?.[0].trim();
+  if (note) parts.push(asSqlComment(note));
+
+  parts.push('BEGIN;');
+  for (const node of nodes) {
+    // pine-lang's limit: stops at MAX_DELETE_BATCH. Past that the statement
+    // removes one batch, and says so: run by hand, it has to be repeated.
+    const query = await client.buildDeleteQuery(
+      node.expression,
+      node.columns,
+      Math.min(node.count, MAX_DELETE_BATCH),
+      connectionId,
+    );
+    queries.push(query);
+    parts.push(asSqlComment(asLines(withoutLeadingComment(node.expression))));
+    if (node.count > MAX_DELETE_BATCH) {
+      parts.push(
+        asSqlComment(
+          `${node.count} rows: this statement removes at most ${MAX_DELETE_BATCH} at a time. ` +
+            `Run it again until it removes fewer.`,
+        ),
+      );
+    }
+    parts.push(query);
+  }
+  parts.push('COMMIT;');
+  // Comments pass through untouched; only the statements are formatted.
+  const script = parts.map(part => (part.startsWith('--') ? part : formatSql(part))).join('\n\n');
+  return { script, queries };
+};

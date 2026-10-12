@@ -1,6 +1,15 @@
 import dagre from 'dagre';
 import { Position } from 'reactflow';
-import { Ast, GroupColumn, JoinTuple, OrderColumn, VariableAst } from '../client';
+import {
+  Ast,
+  columnName,
+  GroupColumn,
+  Join,
+  OrderColumn,
+  NamedResultAst,
+  whereConditions,
+  whereLiteral,
+} from '../client';
 import {
   CanvasEdge,
   CanvasFrameNode,
@@ -91,7 +100,7 @@ const toHandles = (m: Map<string, CanvasHandle> | undefined): CanvasHandle[] =>
  * naming, same uncertain/unresolved flagging - rather than a second,
  * drifting copy of this logic.
  */
-// JoinTuple[3] is typed as plain `string | null` (client.ts) since it's an
+// Join.type is typed as plain `string | null` (client.ts) since it's an
 // untyped wire value - pine-lang only ever actually sends 'LEFT'/'RIGHT'/nil
 // (see eval.clj's join-keyword), but nothing upstream enforces that in TS.
 // Narrows defensively rather than asserting, so an unexpected future value
@@ -100,7 +109,7 @@ const asJoinType = (value: string | null): 'LEFT' | 'RIGHT' | null =>
   value === 'LEFT' || value === 'RIGHT' ? value : null;
 
 const addJoins = (
-  joins: JoinTuple[],
+  joins: Join[],
   handles: HandleMaps,
   edges: CanvasEdge[],
   // A join naming a checkpoint's own pinned name directly (a table joined
@@ -113,18 +122,16 @@ const addJoins = (
   // rendering a click target that always silently no-ops.
   isCheckpointName: (name: string) => boolean,
 ): void => {
-  for (const [fromAlias, toAlias, relation, rawJoinType] of joins) {
-    const joinType = asJoinType(rawJoinType);
+  for (const join of joins) {
+    const { from: fromAlias, to: toAlias, columns, resolution } = join;
+    const joinType = asJoinType(join.type);
     const joinTargetAlias = isCheckpointName(toAlias) ? undefined : toAlias;
-    // pine-lang can return a "hint-less" relation - not null, but with
-    // col/f-col/resolution all nil - when an explicit join-column no longer
-    // matches any real reference (e.g. a canvas edit retargeted this join
-    // onto a different upstream table after the one in between was deleted;
-    // see join-helper's comment in pine-lang's src/pine/ast/table.clj). That's
-    // exactly as unresolved as `relation` being null outright - treating it
-    // as a confident, solid join rendered a structurally broken one as if it
-    // were certain, and fed null column names into the handles below.
-    if (!relation || !relation[5]) {
+    // An unresolved join - nothing connects the two tables, or an explicit
+    // join-column no longer matches any real reference (e.g. a canvas edit
+    // retargeted this join onto a different upstream table after the one in
+    // between was deleted). It has one spelling: a null resolution, and no
+    // column pairs to draw handles from.
+    if (!resolution) {
       // Unresolved join (see pipeline.md) - still shown, flagged, rather than silently dropped.
       edges.push({
         id: `${fromAlias}-${toAlias}`,
@@ -136,17 +143,21 @@ const addJoins = (
       });
       continue;
     }
-    const parentIsFrom = relation[2] === 'has';
+    const parentIsFrom = join.parent === 'from';
     const fromNode = parentIsFrom ? fromAlias : toAlias;
     const toNode = parentIsFrom ? toAlias : fromAlias;
-    const [, col1, , , col2, resolution] = relation;
-    // col1/col2 are only null on the hint-less relation already filtered out
-    // above (pine-lang's join-helper never returns a truthy resolution
-    // alongside a null column - see the type's comment in client.ts) - safe
-    // to assert non-null here.
-    const [parentCol, childCol] = parentIsFrom ? [col1!, col2!] : [col2!, col1!];
-    addHandle(handles.right, fromNode, parentCol, 'r', toNode);
-    addHandle(handles.left, toNode, childCol, 'l', fromNode);
+    // A foreign key made of several columns is one join with several pairs.
+    // The edge is drawn from the first - the pair the join is named by - and
+    // every pair gets a handle, so each column the join actually uses shows
+    // on its own table.
+    const oriented = columns.map(({ from, to }) =>
+      parentIsFrom ? { parent: from, child: to } : { parent: to, child: from },
+    );
+    for (const { parent, child } of oriented) {
+      addHandle(handles.right, fromNode, parent, 'r', toNode);
+      addHandle(handles.left, toNode, child, 'l', fromNode);
+    }
+    const [{ parent: parentCol, child: childCol }] = oriented;
     const uncertain = resolution === 'heuristic' || resolution === 'synthetic';
     edges.push({
       id: `${fromNode}->${toNode}:${parentCol}=${childCol}`,
@@ -159,7 +170,7 @@ const addJoins = (
       // CanvasEdge.joinTargetAlias's own comment for why these two can
       // differ (a "belongs to" relation swaps fromNode/toNode for layout,
       // but the `:left`/`:right` modifier stays on whichever table
-      // JoinTuple's own [1] names, regardless of which side of the screen it
+      // the join's own `to` names, regardless of which side of the screen it
       // renders on).
       joinType,
       joinTargetAlias,
@@ -190,7 +201,7 @@ const addJoins = (
 type CanvasTableRef = { schema: string | null; table: string; alias: string };
 
 /**
- * A selected-tables entry whose `.table` matches a key in `ast.variables`
+ * A selected-tables entry whose `.table` matches a key in `ast['named-results']`
  * (assigned in an earlier expression) or `ast['pending-assignments']`
  * (sealed within this one) is a checkpoint's CTE, not a real table -
  * `seal-as-cte` (pine-lang's ast/main.clj) injects the checkpoint's own name
@@ -198,8 +209,8 @@ type CanvasTableRef = { schema: string | null; table: string; alias: string };
  * `.table` is exactly the same alias the rest of this expression (joins,
  * select/where/order) already addresses it by.
  */
-const checkpointFor = (ast: Ast, tableName: string): VariableAst | undefined =>
-  ast.variables?.[tableName] ?? ast['pending-assignments']?.[tableName];
+const checkpointFor = (ast: Ast, tableName: string): NamedResultAst | undefined =>
+  ast['named-results']?.[tableName] ?? ast['pending-assignments']?.[tableName];
 
 /** A checkpoint that has replaced a selected-tables slot - its inner tables render as their own nodes, wrapped in a frame (see makeFrameNode). */
 export type FrameSpec = { id: string; memberIds: string[]; leftHandles: CanvasHandle[]; rightHandles: CanvasHandle[] };
@@ -217,7 +228,9 @@ const deriveGraph = (
       ? [...selectedTables, inProgress]
       : selectedTables;
   const selectByAlias = byAlias((ast.columns ?? []).filter(c => !c.hidden), c => c.alias);
-  const whereByAlias = byAlias(ast.where ?? [], w => w[0]);
+  // An `or` group belongs to the table of its first condition - one chip,
+  // on one node, even when its conditions name several tables.
+  const whereByAlias = byAlias(ast.where ?? [], w => whereConditions(w)[0].alias);
   // See the `order: Column[]` comment in client.ts - the real wire shape is OrderColumn.
   const orderByAlias = byAlias((ast.order ?? []) as unknown as OrderColumn[], o => o.alias);
   const groupByAlias = byAlias((ast.group ?? []) as GroupColumn[], g => g.alias);
@@ -232,7 +245,7 @@ const deriveGraph = (
   // already shown under "group" for that same alias, full stop.
   const groupedColumnNamesByAlias: Record<string, Set<string>> = {};
   for (const [alias, cols] of Object.entries(groupByAlias)) {
-    groupedColumnNamesByAlias[alias] = new Set(cols.map(g => g.column));
+    groupedColumnNamesByAlias[alias] = new Set(cols.map(g => columnName(g.column, g.path)));
   }
 
   const handles: HandleMaps = { left: {}, right: {} };
@@ -265,7 +278,7 @@ const deriveGraph = (
       );
       addJoins(checkpoint.joins ?? [], handles, edges, name => !!checkpointFor(ast, name));
       // checkpoint.columns tells us what each inner alias contributed to
-      // the sealed output - but VariableAst has no equivalent of ast.where/
+      // the sealed output - but NamedResultAst has no equivalent of ast.where/
       // ast.order/ast.group, so where/order chips and the select-vs-group
       // distinction are genuinely unrecoverable once sealed. Shown under
       // "sel" only, not split - an honest simplification, not a bug to
@@ -339,10 +352,18 @@ const deriveGraph = (
       }
       continue;
     }
-    const whereChips = (whereByAlias[t.alias] ?? []).map(([, column, , operator, val]) => {
-      const literal = val && 'value' in val ? `${val.value}` : '';
-      return `${column} ${operator} ${literal}`.trim();
-    });
+    const whereChips = (whereByAlias[t.alias] ?? []).map(entry =>
+      whereConditions(entry)
+        .map(({ alias, column, path, operator, value: val }) => {
+          // A $variable shows as `$name`: the tab builds without its value.
+          const literal = whereLiteral(val);
+          // Another table's column in the same group keeps its alias, so the
+          // chip doesn't read as this table's.
+          const name = alias === t.alias ? columnName(column, path) : `${alias}.${columnName(column, path)}`;
+          return `${name} ${operator} ${literal}`.trim();
+        })
+        .join(' or '),
+    );
     const data: CanvasTableNodeData = {
       alias: t.alias,
       table: t.table,
@@ -355,11 +376,11 @@ const deriveGraph = (
       // gated `false` above - a separate, harder problem.
       removable: true,
       selectColumns: (selectByAlias[t.alias] ?? [])
-        .map(c => c.column)
+        .map(c => columnName(c.column, c.path))
         .filter(column => !groupedColumnNamesByAlias[t.alias]?.has(column)),
       whereChips,
-      orderChips: (orderByAlias[t.alias] ?? []).map(o => `${o.column} ${o.direction}`),
-      groupChips: (groupByAlias[t.alias] ?? []).map(g => g.column),
+      orderChips: (orderByAlias[t.alias] ?? []).map(o => `${columnName(o.column, o.path)} ${o.direction}`),
+      groupChips: (groupByAlias[t.alias] ?? []).map(g => columnName(g.column, g.path)),
       leftHandles: toHandles(handles.left[t.alias]),
       rightHandles: toHandles(handles.right[t.alias]),
     };

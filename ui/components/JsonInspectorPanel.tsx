@@ -8,7 +8,7 @@ import CodeMirror from '@uiw/react-codemirror';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_JSON_PANEL_WIDTH, MIN_JSON_PANEL_WIDTH } from '../constants';
 import { useResizeDrag } from '../hooks/useResizeDrag';
-import { getUserPreference, STORAGE_KEYS } from '../store/preferences';
+import { getUserPreference, isFiniteNumber, STORAGE_KEYS } from '../store/preferences';
 import { useStores } from '../store/store-container';
 import { editorChrome, editorDarkSyntax } from './editor-theme';
 import { prettyJson } from './json-cell.util';
@@ -29,7 +29,7 @@ interface JsonInspectorPanelProps {
 
 /**
  * The one place a JSON cell's value is viewed AND edited - opened by
- * clicking the cell (JsonCellContent), closed by its own X, Escape, or the
+ * clicking the cell in the results grid, closed by its own X, Escape, or the
  * backdrop. Earlier rounds of this feature split viewing (this panel),
  * editing (a separate CodeMirror grown into the grid row) and "inspect the
  * update query" (a Modal) into three different surfaces with three
@@ -75,7 +75,7 @@ const JsonInspectorPanel: React.FC<JsonInspectorPanelProps> = ({
   // width is instead loaded in the mount effect below, same as Settings'.
   const [width, setWidth] = useState(DEFAULT_JSON_PANEL_WIDTH);
   useEffect(() => {
-    setWidth(getUserPreference(STORAGE_KEYS.JSON_PANEL_WIDTH, DEFAULT_JSON_PANEL_WIDTH));
+    setWidth(getUserPreference(STORAGE_KEYS.JSON_PANEL_WIDTH, DEFAULT_JSON_PANEL_WIDTH, isFiniteNumber));
   }, []);
   // invert: true - the divider sits at the panel's LEFT edge, but the panel
   // itself is anchored to the viewport's right edge (Drawer anchor="right")
@@ -101,7 +101,7 @@ const JsonInspectorPanel: React.FC<JsonInspectorPanelProps> = ({
   const dirtyRef = useRef(false);
   const textRef = useRef('');
   // Clicking a cell opens the panel already in edit mode (see
-  // JsonCellContent's onOpen) - handleEditStart below still seeds textRef
+  // the results grid's JSON cell click) - handleEditStart below still seeds textRef
   // for the Cancel-then-Edit-again path, but that's a click, which happens
   // in its own render after this one; the FIRST render of a freshly opened
   // panel has no button click to hang a seed off, and needs textRef ready

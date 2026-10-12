@@ -68,6 +68,20 @@ const panelToggleStyle = (active: boolean): React.CSSProperties => ({
   color: active ? 'var(--canvas-trace)' : 'var(--canvas-text-dim)',
 });
 
+/**
+ * A drawing's title block: the ruled box in the corner of an engineering
+ * sheet carrying what the drawing is of. Reads as "the comment about this
+ * query" in the same schematic vocabulary the rest of the canvas speaks,
+ * rather than importing a speech-bubble or sticky-note glyph from a
+ * commenting system this isn't one of.
+ */
+const TitleBlock = () => (
+  <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden>
+    <rect x="2" y="3" width="12" height="10" rx="1" fill="none" stroke="currentColor" strokeWidth="1.2" />
+    <path d="M4.5 6.5 H11.5 M4.5 9 H9.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+  </svg>
+);
+
 const iconButtonStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
@@ -172,6 +186,26 @@ const CanvasToolbar: React.FC<{ canvasStore: CanvasStore; extraAction?: CanvasTo
         <Divider />
         <span
           title={
+            canvasStore.session.doc
+              ? 'Edit this comment (c)'
+              : 'Add a comment saying what this query is for (c)'
+          }
+          style={{
+            ...iconButtonStyle,
+            color:
+              canvasStore.session.doc || canvasStore.docEditing
+                ? 'var(--canvas-trace)'
+                : 'var(--canvas-text-dim)',
+          }}
+          onClick={() =>
+            canvasStore.docEditing ? canvasStore.cancelDocEdit() : canvasStore.startDocEdit()
+          }
+        >
+          <TitleBlock />
+        </span>
+        <Divider />
+        <span
+          title={
             global.newLayoutPanelVisible && canvasStore.session.inputMode === 'pine'
               ? 'Hide the Pine panel'
               : 'Show the Pine panel'
@@ -212,12 +246,21 @@ const CanvasToolbar: React.FC<{ canvasStore: CanvasStore; extraAction?: CanvasTo
 // render each one bold/accented with only the separators dimmed, rather than
 // the whole legend at one flat, easy-to-miss opacity.
 const legendKeysFor = (isStart: boolean, isFrame: boolean, removable: boolean): string[] => {
-  if (isStart) return ['i'];
+  // 'c' (write the canvas comment) leads every legend, including the empty
+  // start node's - it needs no focused node, and is the one canvas-wide key
+  // included here. 'u'/Shift+'u' (undo/redo) are just as canvas-wide but
+  // stay out: they're a near-universal convention already carrying their
+  // own always-visible icons in the toolbar above, so they don't need this
+  // legend's help. 'c' is new vocabulary unique to this app - the whole
+  // reason this legend exists is to make a shortcut discoverable without
+  // memorizing it up front, and that need is real for 'c' in a way it
+  // isn't for undo/redo.
+  if (isStart) return ['c', 'i'];
   // No 'g' - group isn't offered for a checkpoint's own sealed output (see
   // FrameNode.tsx's doc comment). 'x' here cancels the container itself
   // (CanvasStore.deleteCheckpoint), not a per-table removal.
-  if (isFrame) return ['s', 'w', 'o', 'p', '+', 'i', 'x'];
-  return ['s', 'w', 'o', 'g', 'p', '+', 'i', ...(removable ? ['x'] : [])];
+  if (isFrame) return ['c', 's', 'w', 'o', 'p', '+', 'i', 'x'];
+  return ['c', 's', 'w', 'o', 'g', 'p', '+', 'i', ...(removable ? ['x'] : [])];
 };
 
 /**

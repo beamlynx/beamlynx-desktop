@@ -93,7 +93,7 @@ export const editorChrome = (isDark: boolean): Extension =>
         color: 'var(--canvas-text)',
       },
       // Themed rather than the OS default scrollbar - matches the Results
-      // grid's own DataGrid scrollbar treatment (Result.tsx, same two
+      // grid's own scrollbar treatment (styles/globals.css, same two
       // tokens) so every scrollable code surface in the app (Pine/SQL
       // input, and JsonInspectorPanel's view/edit CodeMirror) agrees with
       // it, not just with each other. `.cm-scroller` (not `&`) since that's

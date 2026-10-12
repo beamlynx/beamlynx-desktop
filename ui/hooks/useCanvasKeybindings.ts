@@ -54,6 +54,29 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
       const target = e.target instanceof Element ? e.target : null;
       if (target?.closest('input, textarea, [contenteditable="true"]')) return;
 
+      // Anything typed inside the picker belongs to the picker, whatever the
+      // store says by the time this runs. The `mode` check below isn't enough
+      // on its own: a picker entry that CLOSES the picker does so during the
+      // same keydown, so by the time this document-level listener sees the
+      // event, mode has already flipped back to 'normal' and the key falls
+      // through to the bindings below. That's how `c` for "Count rows" in the
+      // traverse menu also opened the comment editor. The "+" menu's own
+      // o/g/p never showed it, because each of those opens ANOTHER picker, so
+      // the guard still held.
+      if (target?.closest('[data-testid="canvas-picker"]')) return;
+
+      // A dialog (the Ctrl+O recipe picker, Save as recipe, the command
+      // palette, ...) sits on top of the canvas, so nothing typed inside it
+      // is for the canvas. Clicking a dialog's text that isn't an input, then
+      // pressing Backspace, used to fall through to the bindings below and
+      // delete the selected item in the tab behind it.
+      if (target?.closest('.MuiModal-root, [role="dialog"]')) return;
+
+      // The results grid is a <canvas>, not a text input, so the check above
+      // doesn't see it - but once it has focus, arrow keys move between its
+      // cells and typing starts editing one. Those keys are the grid's.
+      if (target?.closest('[data-results-grid]')) return;
+
       // A picker is open (insert mode) - its own keydown handlers
       // (Picker.tsx's onListKeyDown and window-level Escape listener) keep
       // exclusive control of the keyboard while it's up.
@@ -80,6 +103,15 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
         if (canvasStore.canRedo) canvasStore.redo();
         return;
       }
+
+      // Every binding below is a bare letter, and none of them wants a
+      // modifier held. Without this, the switch matched on `e.key` alone and
+      // happily fired on Ctrl/Cmd+<letter> too -- so Ctrl+C, the most ordinary
+      // thing anyone does on a canvas, opened the comment editor instead of
+      // copying, and Ctrl+V/Ctrl+A/Ctrl+F had their own collisions waiting.
+      // The two shortcuts that DO take a modifier are handled above, before
+      // this line, precisely so this can be a blanket bail-out.
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
 
       const alias = canvasStore.focusedAlias;
       const isStart = alias === START_NODE_ID;
@@ -245,12 +277,7 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
         case '+':
           if (isStart) return;
           e.preventDefault();
-          canvasStore.openMorePicker(
-            alias,
-            isFrame ? ['order', 'path', 'limit'] : ['order', 'group', 'path', 'limit'],
-            isFrame,
-            anchorFor(alias),
-          );
+          canvasStore.openMorePicker(alias, isFrame, anchorFor(alias));
           return;
         // 'x' and Delete/Backspace are the same gesture - "remove the thing
         // that's the target of a key right now" - so a person who reaches
@@ -297,6 +324,18 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
         // browser build) and picks browser-safe alternates instead of
         // fighting the host chrome. Shift+U pairs visibly with plain `u`
         // without touching a combo a real browser tab would intercept.
+        // Canvas-scoped, like u/U below: a comment describes the whole
+        // query, so it needs no focused node and works on the start node
+        // too. Safe as a bare letter - the guards at the top bail out on
+        // any real text input, which includes the comment field this opens,
+        // so typing a `c` into a comment can never re-fire this. Unlike
+        // u/U, it does appear in CanvasModeIndicator's legend
+        // (CanvasToolbar.tsx's legendKeysFor) - see that function's own
+        // comment for why the two are treated differently.
+        case 'c':
+          e.preventDefault();
+          canvasStore.startDocEdit();
+          return;
         case 'u':
           if (canvasStore.canUndo) {
             e.preventDefault();

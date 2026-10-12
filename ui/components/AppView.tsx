@@ -6,24 +6,26 @@ import PineTabs from './PineTabs';
 import { UpgradeRequired } from './docs/UpgradeRequired';
 import ActiveConnection from './ActiveConnection';
 import Message from './Message';
-import UserBox from './UserBox';
-import { isDesktop, isDevelopment, isPlayground } from '../store/util';
+import { isDesktop, isPlayground } from '../store/util';
 import { useState, useEffect, useCallback } from 'react';
 import { getUserPreference, STORAGE_KEYS } from '../store/preferences';
-import { DEFAULT_SETTINGS_PANEL_WIDTH } from '../constants';
+
 import AnalysisModal from './AnalysisModal';
 import ChangelogModal from './ChangelogModal';
 import CommandPalette from './CommandPalette';
-import SavePineModal from './SavePineModal';
+import RecipePickerModal from './recipes/RecipePickerModal';
+import ChangeConnectionModal from './ChangeConnectionModal';
 import NotificationBell from './NotificationBell';
 import SettingsButton from './SettingsButton';
-import SettingsDockedPanel from './settings/SettingsDockedPanel';
-import { NewLayoutSettingsPanelDivider } from './ResizableDividers';
+import SettingsDock from './settings/SettingsDock';
+import McpActivityButton from './McpActivityButton';
+import CollapsibleHeight from './CollapsibleHeight';
+import DevModeChip from './DevModeChip';
 import { useGlobalKeybindings } from '../hooks/useGlobalKeybindings';
 import { useFocusedPanelTracking } from '../hooks/useFocusedPanelTracking';
 import { useSettingsKeybindings } from '../hooks/useSettingsKeybindings';
 import { LATEST_VERSION } from '../utils/changelog.data';
-import { compare } from 'semver';
+import { compare, valid } from 'semver';
 import { getKeybindingDisplayForCommand } from '../utils/keybindings';
 
 // The hosted playground's backend has been intentionally shut down (not a
@@ -65,15 +67,16 @@ const AppView = observer(() => {
   const session = global.getSession(global.activeSessionId);
   const [mounted, setMounted] = useState(false);
   const [hasUnreadUpdates, setHasUnreadUpdates] = useState(false);
-  // New Layout's docked Settings panel width - lives here (a sibling of
-  // PineTabs), not inside NewLayoutView, since global.showSettings is
-  // app-wide state, not per-session: nesting the dock inside a specific
-  // tab's own render tree meant it only showed for whichever tab happened
-  // to be active, and vanished on switching tabs instead of staying put
-  // like the rest of the app's chrome (confirmed live - reported as
-  // "settings show inside a tab, it should show on the left of all the
-  // tabs as well").
-  const [settingsPanelWidth, setSettingsPanelWidth] = useState(DEFAULT_SETTINGS_PANEL_WIDTH);
+  // The docked Settings panel is a sibling of PineTabs, not part of
+  // NewLayoutView, since global.showSettings is app-wide state rather than
+  // per-session: nesting the dock inside a specific tab's own render tree
+  // meant it only showed for whichever tab happened to be active, and
+  // vanished on switching tabs instead of staying put like the rest of the
+  // app's chrome (confirmed live - reported as "settings show inside a tab,
+  // it should show on the left of all the tabs as well"). Its width and its
+  // open/close animation live in SettingsDock itself -- deliberately NOT
+  // here, since state in this component re-renders PineTabs and every open
+  // Session with it.
 
   const handleOpenChangelog = () => {
     global.setShowChangelog(true);
@@ -101,13 +104,9 @@ const AppView = observer(() => {
     setMounted(true);
 
     // Check for unread updates
-    const lastReadVersion = getUserPreference(STORAGE_KEYS.LAST_READ_VERSION, '0.0.0');
+    const lastReadVersion = getUserPreference(STORAGE_KEYS.LAST_READ_VERSION, '0.0.0', v => typeof v === 'string' && valid(v) !== null);
     const hasUpdates = compare(LATEST_VERSION, lastReadVersion) > 0;
     setHasUnreadUpdates(hasUpdates);
-
-    setSettingsPanelWidth(
-      getUserPreference(STORAGE_KEYS.SETTINGS_PANEL_WIDTH, DEFAULT_SETTINGS_PANEL_WIDTH),
-    );
   }, []);
 
   useEffect(() => {
@@ -125,20 +124,13 @@ const AppView = observer(() => {
     return null;
   }
 
-  // Define UserContent inside the component so it can access the state.
-  // isDesktop() still has to gate out UserBox below - desktop ships without
-  // Clerk (see AGENTS.md), so rendering it there would break, not just show
-  // an unwanted label - but the desktop build no longer needs its own badge
-  // to say so, hence rendering nothing rather than an empty caption.
-  const UserContent =
-    isDevelopment() || isPlayground() ? (
-      <Typography variant="caption" color="gray">
-        {isDevelopment() ? '[Development]' : ''}
-        {isPlayground() ? '[Playground]' : ''}
-      </Typography>
-    ) : isDesktop() ? null : (
-      <UserBox />
-    );
+  // The playground marks itself; nothing else shows a user area. A dev copy
+  // shows DevModeChip instead, in the header below.
+  const UserContent = isPlayground() ? (
+    <Typography variant="caption" color="gray">
+      [Playground]
+    </Typography>
+  ) : null;
 
   if (global.connecting)
     return (
@@ -176,14 +168,35 @@ const AppView = observer(() => {
       <AnalysisModal />
       <ChangelogModal open={global.showChangelog} onClose={handleCloseChangelog} />
       <CommandPalette />
-      <SavePineModal />
+      <RecipePickerModal />
+      <ChangeConnectionModal />
       {/* Hidden entirely in Zen mode, not just visually de-emphasized -- Zen
           mode's whole point is a graph-only view, and every one of these
           (connection picker, search bar, layout switcher, gear icon) is
           exactly the "everything else" it hides. The modals above are
           untouched (separate components, not part of this Grid), so e.g.
           the command palette shortcut still works to get back out. */}
-      {!global.isZenModeActive && (
+      {/* Collapsed rather than unmounted on entering Zen mode. Zen is the
+          biggest single change of shape in the app - everything but the
+          graph goes away at once - and having it happen in one frame was
+          the most jarring version of exactly what this whole pass is
+          about. The contents hold their size inside the clip while the
+          wrapper closes over them, so the header slides up out of view
+          instead of each control reflowing on its way to nothing. */}
+      <CollapsibleHeight
+        expanded={!global.isZenModeActive}
+        transition={
+          global.isZenModeActive
+            ? 'height var(--motion-exit) var(--motion-ease-exit)'
+            : 'height var(--motion-enter) var(--motion-ease-enter)'
+        }
+        contentSx={{
+          opacity: global.isZenModeActive ? 0 : 1,
+          transition: global.isZenModeActive
+            ? 'opacity var(--motion-fast) var(--motion-ease-exit)'
+            : 'opacity var(--motion-enter) var(--motion-ease-enter)',
+        }}
+      >
         <Grid container>
           <Grid item xs={3}>
             <Box sx={{ m: 2, mt: 1, mb: 0 }}>
@@ -247,13 +260,15 @@ const AppView = observer(() => {
                   [{global.version}]
                 </Typography>
               )}
+              <DevModeChip />
               {UserContent}
               <NotificationBell hasUnreadUpdates={hasUnreadUpdates} onClick={handleOpenChangelog} />
+              <McpActivityButton />
               <SettingsButton onClick={() => global.setShowSettings(!global.showSettings)} />
             </Box>
           </Grid>
         </Grid>
-      )}
+      </CollapsibleHeight>
       {/* mt: 1 (not 0) - the header row above and the tab row below both
           have their own solid background now (previously neither did, so
           zero margin was invisible); with no gap the search box's bottom
@@ -301,39 +316,7 @@ const AppView = observer(() => {
           mr: global.isZenModeActive ? 0 : 1,
         }}
       >
-        {global.showSettings && (
-          // Wrapped together (not given individual margins) so the Box and
-          // the divider stretch to match each other's height automatically
-          // -- NewLayoutView's own outer wrapper insets Canvas/Results from
-          // the viewport's bottom edge by NEW_LAYOUT_GUTTER (`my`, not just
-          // `mt`), but this row (above) only carries the top/left/right
-          // inset; giving the bottom margin here instead of on the row
-          // keeps PineTabs itself flush (it doesn't need it - NewLayoutView
-          // supplies its own), while still bottom-aligning Settings with
-          // Canvas/Results.
-          <Box sx={{ display: 'flex', flexDirection: 'row', mb: global.isZenModeActive ? 0 : 1 }}>
-            <Box
-              sx={{
-                width: settingsPanelWidth,
-                flexShrink: 0,
-                // Matches Canvas's own pane wrapper in NewLayoutView (same
-                // token, same radius) rather than a bare border - every
-                // other docked pane in New Layout reads as a bordered card,
-                // and Settings should too instead of looking like the odd
-                // one out.
-                border: '1px solid var(--border-color)',
-                borderRadius: 1,
-                overflow: 'hidden',
-              }}
-            >
-              <SettingsDockedPanel />
-            </Box>
-            <NewLayoutSettingsPanelDivider
-              settingsPanelWidth={settingsPanelWidth}
-              setSettingsPanelWidth={setSettingsPanelWidth}
-            />
-          </Box>
-        )}
+        <SettingsDock />
         <Box
           sx={{
             display: 'flex',

@@ -1,10 +1,14 @@
 # Canvas Mode
 
 A graph editor for building a Pine expression by directly manipulating table
-nodes instead of typing pipe syntax. It's the default graph editor in New
-Layout, and an opt-in alternative to the classic graph in Legacy Layout — see
-[terminology.md](./terminology.md) for how the two layouts and the two graph
-modes fit together.
+nodes instead of typing pipe syntax. It is the only graph editor there is.
+
+Historical note, because the rest of this page keeps comparing against it:
+there used to be a second one, a read-only diagram called the classic graph
+(`components/Graph.box.tsx`), reachable by a toggle in a second page layout
+called Legacy Layout. Both are gone. Where this page says "the classic graph"
+it is explaining why canvas mode works the way it does, not describing
+something you can still switch to.
 
 ## Why
 
@@ -25,18 +29,10 @@ never a synchronous local mutation.
 
 ## Enabling it
 
-In New Layout (the default), Canvas mode is always on — there's no toggle for
-it there (`components/NewLayoutView.tsx` renders `<Canvas>` unconditionally).
-
-In Legacy Layout, a toggle inside the graph panel itself
-(`components/Session.tsx`'s `InteractiveViewToggle`, bottom-right of the
-graph/canvas widget - not the app header, which only ever refers to layout,
-see `docs/terminology.md`) switches between the classic graph and canvas mode
-for the active tab, via `GlobalStore.canvasModeEnabled` / `toggleCanvasMode()`.
-The preference persists across reloads (`STORAGE_KEYS.CANVAS_MODE`) and
-applies globally, not per session. `components/Session.tsx`'s `MainView`
-reads it to decide whether the `'graph'`/`'documentation'` mode slot renders
-`<Canvas>` or `<GraphBox>`.
+Nothing to enable. `components/NewLayoutView.tsx` renders `<Canvas>`
+unconditionally, and there is no toggle, preference or command for it — the
+`canvasModeEnabled` flag and its `InteractiveViewToggle` went with the classic
+graph.
 
 ## Auto-run
 
@@ -90,8 +86,7 @@ mode meant "no Pine editor on screen, nothing to build for." Canvas mode
 breaks that assumption — it renders a graph regardless of which text panel is
 open next to it, and needs a fresh `ast` after every gesture just the same.
 The guard now also checks `GlobalStore.canvasActive`, so it only actually
-skips when there's no canvas to keep in sync (Legacy Layout's classic
-SQL-only mode). Without this, a canvas edit made while the SQL panel was open
+skips when there is no canvas to keep in sync. Without this, a canvas edit made while the SQL panel was open
 silently went nowhere — the graph and the SQL panel's own text both stayed on
 whatever they showed before the edit — and a session restored with
 `inputMode` already `'sql'` from a previous visit got stuck on the
@@ -127,6 +122,46 @@ whatever they showed before the edit — and a session restored with
   parsing - showing last valid graph" (a genuine syntax error; the last good
   graph stays on screen, dimmed).
 
+## What sits in which corner
+
+Every persistent thing on the canvas is an absolutely-positioned overlay over
+the ReactFlow surface, at the same 8px gutter. There are only so many corners,
+so this is the map to check before adding another one — the alternative is
+grepping for `position: 'absolute'` and hoping.
+
+```
+ ┌─ toolbar ──────────┬─ multi-select ─┬──────── banners ─────────┐
+ │ ⟲ ⟳ ⚡ ▤ PINE SQL   │  (2+ selected) │ "Not parsing…"           │
+ │ ┌────────────────┐ │                │ "Connecting…"            │
+ │ │ the comment    │ │                │ "…single expression      │
+ │ └────────────────┘ │                │    block"                │
+ │                    │                │                          │
+ │                    │                │                          │
+ ├─ mode indicator ───┴────────────────┴───────────── free ───────┤
+ │ ■ NORMAL · s w o g p + i x                                     │
+ └────────────────────────────────────────────────────────────────┘
+```
+
+| Corner | Owner | Always there? |
+| --- | --- | --- |
+| Top left | `CanvasToolbar`, and the comment directly under it (`PineDoc.tsx`) | Toolbar always; comment when there is one |
+| Top centre | `MultiSelectToolbar` | Only with 2+ nodes selected |
+| Top right | The banners in `Canvas.tsx` | Only in a non-nominal state |
+| Bottom left | `CanvasModeIndicator` | Always |
+| Bottom right | — | Free |
+
+The comment is top-left, under the toolbar, for three reasons. It is the
+premise for everything else on the canvas, so it belongs where reading starts.
+It shares a column with the control that writes it (the toolbar's own comment
+button). And the only other free-at-the-top corner is the banners', which
+fill exactly when the graph is degraded — the moment the comment is worth most,
+so a persistent block there would either collide or have to dodge.
+
+Overlays share the toolbar's `left: 8` and the same 8px gutter between them.
+Sharing that edge is what makes the toolbar and the comment read as one column
+rather than as a block that happened to land near a toolbar; an earlier version
+was 3px off and read as exactly that.
+
 ## Keybindings
 
 Canvas mode is built around a vim-style modal keyboard layer
@@ -150,9 +185,10 @@ registry every other consumer has nothing to do with.
 
 The current mode is always visible bottom-left of the canvas
 (`CanvasModeIndicator`, in `CanvasToolbar.tsx`) — "normal" or "insert", plus,
-in normal mode, the exact letters armed for whichever node is currently
-focused (e.g. `s w o g i x` for a table with something to delete, `s w o i x`
-for a checkpoint, `i` alone for the empty-canvas start node). This legend is
+in normal mode, `c` (write the canvas comment, canvas-wide, always first)
+followed by the exact letters armed for whichever node is currently focused
+(e.g. `c s w o g i x` for a table with something to delete, `c s w o i x`
+for a checkpoint, `c i` for the empty-canvas start node). This legend is
 what makes the shortcuts discoverable without memorizing them up front.
 
 **Moving focus** (normal mode only):
@@ -179,9 +215,18 @@ to roam.
 | `g` | Open the group-by picker (not offered on a checkpoint node — grouping an already-grouped result is a different question, not implemented) |
 | `x` | Delete the focused node — a table if `removable`, or a checkpoint's whole `group:`/`limit:` run if focused on a frame (its member tables become plain nodes again, not deleted themselves) |
 | `u` | Undo the last canvas gesture |
+| `c` | Write (or edit) the comment at the top of the expression — see "The comment" below |
 | `Shift`+`U` | Redo |
 | `Ctrl`/`Cmd`+`Z` | Undo (same action as `u` — the combo most people already reach for) |
 | `Ctrl`/`Cmd`+`Shift`+`Z`, `Ctrl`+`Y` | Redo (same action as `Shift`+`U`) |
+
+`c`, `u` and `Shift`+`U` are the canvas-scoped ones: they need no focused
+node and work on the empty-canvas start node too. `c` leads the bottom-left
+legend for exactly that reason — it is new vocabulary unique to this app, so
+it earns the discoverability that legend exists to give. `u`/`Shift`+`U` stay
+out of it: undo/redo are a near-universal convention, already carrying their
+own always-visible icons in the toolbar above, so they don't need it
+(`CanvasToolbar.tsx`'s `legendKeysFor`).
 
 A checkpoint (frame) node routes `s`/`w`/`o`/`i`/`x` through
 `openCheckpointPicker` instead of the per-table picker methods, but the same
@@ -211,11 +256,40 @@ picker's own filter input maintain on focus/blur) and whether the event
 target is inside an `input`/`textarea`/`contenteditable` element — so typing
 a column name into a filter box, or hand-editing Pine/SQL in the panel, never
 triggers a single-letter canvas action by accident. The whole layer is also a
-no-op unless `global.canvasActive` is true (New Layout, or Legacy Layout with
-canvas mode on) and `canvasStore.mode === 'normal'` — a picker being open is
+no-op unless `global.canvasActive` is true and `canvasStore.mode === 'normal'` — a picker being open is
 enough on its own to suspend every letter shortcut above until it closes.
 
 ## How it works
+
+There is nothing keeping the graph and the expression in sync, because there
+is nothing to sync: the expression is the only state, and the graph is derived
+from it. Every gesture goes the long way round rather than touching a node.
+
+```
+                  ┌───────────────────────────────┐
+        ┌────────▶│      session.expression       │─────────┐
+        │         │  /* why */ company | employee │         │
+        │         └───────────────────────────────┘         │
+        │                                                   │ debounced
+ splice │                                                   ▼  build
+   text │                                        ┌──────────────────────┐
+        │                                        │  pine-lang /build    │
+        │                                        │  → ast (ranges, doc) │
+        │                                        └──────────────────────┘
+        │                                                   │
+ ┌──────┴────────────┐                          ┌───────────▼──────────┐
+ │  pine-actions.ts  │                          │  buildCanvasGraph()  │
+ │  segments → text  │                          │  ast → nodes + edges │
+ └───────────────────┘                          └──────────────────────┘
+        ▲                                                   │
+        │ gesture: pick a column, drop a                    │ render
+        │ node, type a comment                              ▼
+        └───────────────────────  the canvas  ◀─────────────┘
+```
+
+The graph cannot drift from the query, because it is not a second model of
+the query. That is the whole trade: every gesture is asynchronous (edit text →
+build → re-render), never a synchronous local mutation.
 
 **Text splice, not graph mutation.** Canvas mode never parses Pine itself and
 never edits `ast` or any node/edge array directly. Every gesture:
@@ -235,6 +309,54 @@ never edits `ast` or any node/edge array directly. Every gesture:
 5. Re-derives the whole graph from that AST (`store/canvas/layout.ts`'s
    `buildCanvasGraph`), via a MobX reaction owned by `CanvasStore`
    (`canvas.store.ts`).
+
+### The comment
+
+**It is the same loop, one layer out.** The block in the canvas's top-left
+corner (`components/PineDoc.tsx`) is a comment at the top of the expression,
+nothing more. Writing one goes through the same round trip as any other
+gesture, just with a simpler splice: `CanvasStore.setDoc` calls
+`pine-text.ts`'s `replaceDoc` to swap the leading comment in the expression
+text, and the rendered comment comes back on the rebuilt expression's own
+build response as `doc` (pine-lang computes it — see that repo's
+`docs/comments.md`).
+Canvas holds no copy of the text; `docEditing` is a boolean, not a draft.
+
+Two differences from a segment gesture, both because a comment can't change
+what the query returns: no `probeBuild` first (there is nothing to confirm —
+a comment cannot make an expression stop parsing), and no auto-run after.
+
+The doc also has to be carried *through* every other gesture. A gesture
+rebuilds the expression from `ast.ranges`' operation spans, and a leading
+comment is inside none of them — so `toText` drops it. `applyExpression` is
+the single place a gesture writes `session.expression`, so it re-attaches the
+previous expression's comment there (`withDoc`). `setDoc` is the one caller
+that opts out, via `preserveDoc: false`; without that, deleting a comment
+would be impossible.
+
+**How it looks, and why.** The canvas is a schematic: nodes are IC packages
+with square pins and a pin-1 notch (`nodes/TableNode.tsx`), operations are set
+in the clipped, letter-spaced style of a drawing's printed annotations, and
+the surface under it all is a dot grid. So the comment is drawn as a drawing's
+title block — cleared board, hairline rules, square corners, the left rule in
+the trace colour. It is opaque and ruled on all four sides because a node can
+pan underneath it, and without an edge that overlap read as the node being
+clipped rather than as the comment sitting over it. The first version was a
+rounded card with a filled accent bar and a drop shadow, which belongs to a
+different system entirely.
+
+Two things the text itself needs. A block comment is hard-wrapped by whoever
+typed it to fit their editor, so keeping those breaks and re-wrapping at this
+much narrower measure gives a ragged column of half-lines — `asProse` re-wraps
+it (single newline → space, blank line → paragraph). And the block is bounded
+by the pane, not the viewport, or a long comment in a short canvas pane runs
+off the bottom into the mode indicator in the opposite corner.
+
+**Writing one.** `c` from the canvas, the toolbar's comment button, or a click
+on an existing comment. When there is none, a dim "Add a comment" stands in
+its place — the toolbar button alone was not findable, and an empty canvas
+gives no hint that a comment is even possible. `Cmd`/`Ctrl`+`Enter` or
+clicking away commits, `Escape` cancels.
 
 **Ownership.** `assignOwners` walks segments left to right: a table segment
 sets the "current" alias to its own (from an explicit `as <alias>`, falling
@@ -332,9 +454,8 @@ Constraints).
   warning-colored, no column labels) rather than a plain solid line.
 - **No checkpoint/variable nodes.** There's no way to join onto, or select
   from, a `group:`/`limit:` checkpoint's own sealed/aggregated output as a
-  node in its own right (the classic graph's variable/checkpoint container is
-  the prior art — see `docs/classic-graph-node-types.md`). Checkpoints today only ever
-  sit at the pipeline's literal end.
+  node in its own right. Checkpoints today only ever sit at the pipeline's
+  literal end.
 - **No `update!`/`delete!` support.** Canvas mode only models read pipelines.
 - **Multi-select `assign` is inert.** Shown in the toolbar but not wired to
   any mutation — pine-lang's `|=` variable/checkpoint assignment needs
@@ -432,18 +553,14 @@ overridden on the y-axis by `sequenceYByAlias`).
 - `MultiSelectToolbar.tsx` — the floating toolbar shown for 2+ selected
   nodes; only `limit` is wired.
 - `CanvasToolbar.tsx` — the **canvas toolbar** (informally "the icon bar"),
-  pinned top-left: undo, redo, auto-run (a bolt icon; lit when on), a PINE/SQL
-  panel toggle (New Layout only — see "The Pine/SQL panel" below), plus one
-  optional caller-supplied extra action (New Layout's orientation toggle).
+  pinned top-left: undo, redo, auto-run (a bolt icon; lit when on), the
+  comment button, a PINE/SQL panel toggle (see "The Pine/SQL panel" below),
+  plus one optional caller-supplied extra action (the orientation toggle).
   Same file also exports `CanvasModeIndicator`, the bottom-left
   normal/insert status line with the focused node's armed-key legend.
 
 ### Integration points
 
-- `components/Session.tsx`'s `MainView` switches between `<Canvas>` and
-  `<GraphBox>` based on `global.canvasModeEnabled`.
-- `components/AppView.tsx`'s `InteractiveViewToggle` flips
-  `GlobalStore.canvasModeEnabled` (persisted via `STORAGE_KEYS.CANVAS_MODE`).
 - `store/session.ts` is otherwise unmodified for canvas mode — it owns
   `expression`/`ast`/the debounced build reaction regardless of which graph
   view is active; canvas mode only reads those fields and writes

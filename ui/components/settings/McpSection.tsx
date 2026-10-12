@@ -49,10 +49,10 @@ const CopyBlock = ({ text }: { text: string }) => {
  * itself. Registration is the agent's own concern (its own config format,
  * its own consent flow); a third-party app silently editing that file would
  * cross a trust boundary that isn't this app's to cross. See
- * beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md.
+ * beamlynx-plans/completed/2026-08-15-mcp-server-and-url-scheme.md.
  */
 const DesktopMcpInstructions = () => {
-  const [setupInfo, setSetupInfo] = useState<{ command: string; args: string[] } | null>(null);
+  const [setupInfo, setSetupInfo] = useState<{ name: string; command: string; args: string[] } | null>(null);
   const [tab, setTab] = useState<'claude' | 'json'>('claude');
 
   useEffect(() => {
@@ -62,7 +62,7 @@ const DesktopMcpInstructions = () => {
 
   const claudeCodeCommand = setupInfo
     ? [
-        'claude mcp add beamlynx -- \\',
+        `claude mcp add ${setupInfo.name} -- \\`,
         `    "${setupInfo.command}" \\`,
         ...setupInfo.args.map((arg, i) => (i === setupInfo.args.length - 1 ? `    ${arg}` : `    ${arg} \\`)),
       ].join('\n')
@@ -70,7 +70,7 @@ const DesktopMcpInstructions = () => {
 
   const manualJson = setupInfo
     ? JSON.stringify(
-        { mcpServers: { beamlynx: { type: 'stdio', command: setupInfo.command, args: setupInfo.args } } },
+        { mcpServers: { [setupInfo.name]: { type: 'stdio', command: setupInfo.command, args: setupInfo.args } } },
         null,
         2,
       )
@@ -103,7 +103,7 @@ const DesktopMcpInstructions = () => {
       </Box>
 
       <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0, display: 'block', mt: 2 }}>
-        Then toggle &quot;Enable for MCP access&quot; on a connection under Connections to let it be used.
+        Then turn on &quot;MCP access&quot; for a connection under Database Connections to let it be used.
       </Typography>
     </Box>
   );

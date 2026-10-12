@@ -1,19 +1,42 @@
 import { makeAutoObservable, reaction, runInAction } from 'mobx';
 import { lt } from 'semver';
-import { AccessPolicy, AccessPolicyRule, HttpClient, ConnectionInfo, effectiveAccessPolicyRules } from './client';
+import { AccessPolicy, AccessPolicyRule, HttpClient, ConnectionInfo, effectiveAccessPolicyRules, ServerRejectedError, VariableValue } from './client';
 import type { CredentialsStatus, RevealOutcome } from '../desktop';
+import type { DbType } from '../utils/dbType';
 import { Session, Theme, InputMode } from './session';
 import { THEME_MODE, ThemeId } from '../styles/palette/tokens';
 import { UiFontId, CodeFontId } from '../styles/fonts';
 import { TextSize } from '../styles/text-size';
-import { RequiredVersion } from '../constants';
-import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
+import {
+  DEFAULT_NEW_LAYOUT_PANEL_HEIGHT,
+  DEFAULT_NEW_LAYOUT_PANEL_WIDTH,
+  DEFAULT_NEW_LAYOUT_PANE_HEIGHT,
+  DEFAULT_NEW_LAYOUT_PANE_WIDTH,
+  RequiredVersion,
+} from '../constants';
+import {
+  getUserPreference,
+  isBoolean,
+  isFiniteNumber,
+  isStringArray,
+  isStringRecord,
+  oneOf,
+  setUserPreference,
+  STORAGE_KEYS,
+} from './preferences';
+import { THEMES } from '../styles/palette/themes';
+import { CODE_FONTS, UI_FONTS } from '../styles/fonts';
+import { TEXT_SIZE_SCALE } from '../styles/text-size';
 import { DevState } from './dev-state';
+import { leadingDoc } from './canvas/pine-text';
+import { isValuesBlock, splitExpressions } from './blocks';
 import { getCommandById } from '../utils/commands';
-import { CONNECTION_COLOR_PALETTE, isDesktop, isPlayground } from './util';
+import { normalizeServerVersion } from '../utils/version';
+import { CONNECTION_COLOR_PALETTE, isDesktop, isDevelopment, isPlayground, pineString } from './util';
 import {
   runMcpQuery as runMcpQueryImpl,
   explainMcpQuery as explainMcpQueryImpl,
+  ensureConnection,
 } from './mcp-query';
 
 /**
@@ -39,6 +62,13 @@ type PersistedSessionsState = {
 // (e.g. connections.json copied onto a different machine/user -- safeStorage
 // keys are OS/user/machine-scoped) -- distinguishable so the UI can offer to
 // re-enter the password instead of showing a generic connect failure.
+export class SavedConnectionNotFoundError extends Error {
+  constructor() {
+    super('Saved connection not found');
+    this.name = 'SavedConnectionNotFoundError';
+  }
+}
+
 export class DecryptionFailedError extends Error {
   constructor() {
     super('Failed to decrypt the saved password for this connection');
@@ -53,15 +83,28 @@ type ConnectionParams = {
   dbName: string;
   dbUser: string;
   dbPassword: string;
-  // Defaults to 'postgres' (see client.createConnection) when omitted --
-  // every caller that reconstructs this from a saved profile or MCP
-  // credentials doesn't carry a db type yet (beamlynx-desktop's
-  // SavedConnectionMeta has no such field), only the "add connection" form.
-  dbType?: 'postgres' | 'mysql';
+  // Defaults to 'postgres' (see client.createConnection) when omitted.
+  // For 'sqlite', dbName is the database file's absolute path and the host,
+  // port, user and password are empty strings.
+  dbType?: DbType;
   // Desktop-only (see credentials.save) -- pine-lang itself has no concept of
   // a custom label, so this is ignored on the plain HTTP createConnection call.
   label?: string;
 };
+
+// A connection switch that's on hold because the active tab has a non-empty
+// Pine expression -- switching would re-resolve it against a different
+// connection's schema, so the user gets a warning (ChangeConnectionModal)
+// before it's applied to the existing tab instead of it happening silently.
+// Only covers switching to an already-known connection (an existing web
+// session, or a desktop saved profile) -- these are the "pick a different
+// connection for this tab" UI entry points (ActiveConnection.tsx,
+// ConnectionsSection.tsx's switch action). Adding a brand-new connection via
+// the "Add Connection" form isn't gated this way: `connect()` always assigns
+// it to the active tab in place, same as before minus the silent-tab-fork.
+export type PendingConnectionSwitch =
+  | { kind: 'select'; connectionId: string }
+  | { kind: 'connectToSavedProfile'; id: string };
 
 export type SettingsSection = 'connections' | 'theme' | 'preferences' | 'access-policy' | 'mcp' | 'about';
 
@@ -73,11 +116,44 @@ export type SettingsSection = 'connections' | 'theme' | 'preferences' | 'access-
 // the other.
 export type TabOrientation = 'horizontal' | 'vertical';
 
+/**
+ * Drops a trailing `delete:` / `d:` from a restored expression.
+ *
+ * pine-lang removed that operation (0.46.0), so an expression still carrying
+ * it no longer parses - and in canvas mode a parse error means no
+ * `ast.ranges`, which means the canvas can't segment *any* of the expression,
+ * not just the last operation. A tab saved before the upgrade would come back
+ * blank rather than merely missing its last word.
+ *
+ * A text regex, not the segment list, because the segment list comes from
+ * `ast.ranges` - the parse that just failed. Anchored to a pipe so it can't
+ * mangle a string literal that happens to end in `d:`.
+ *
+ * The expression text is the only thing that persists (see PersistedSession),
+ * so this is the one place it needs doing. Removable a release or two after
+ * 0.46.0 is the floor everywhere.
+ */
+export const stripRemovedDeleteOperation = (expression: string): string =>
+  expression.replace(/\|\s*(?:delete:|d:)\s*$/i, '').trimEnd();
+
 export class GlobalStore {
   connecting = false;
   connection = '';
   version: string | undefined = undefined;
-  requiresUpgrade = false;
+  /**
+   * Whether the connected pine-lang is older than this UI needs. Derived from
+   * `version`, so it follows the server: it used to be a flag that was set
+   * once and never cleared.
+   *
+   * Compared on a normalised copy. semver.lt throws on a version like `dev`
+   * or `0.48`, and that throw used to land in loadConnectionMetadata's
+   * catch, showing a running server as "No connection". A version that
+   * can't be read doesn't block the app.
+   */
+  get requiresUpgrade(): boolean {
+    const comparable = normalizeServerVersion(this.version);
+    return comparable !== null && lt(comparable, RequiredVersion);
+  }
   connectionColors: Record<string, string> = {};
   connections: ConnectionInfo[] = [];
   // False until refreshConnections' first successful run. A session's
@@ -97,16 +173,34 @@ export class GlobalStore {
   accessPolicies: AccessPolicy[] = [];
   credentialsStatus: CredentialsStatus | null = null;
 
-  // Desktop-only: the one dedicated tab MCP-driven queries run in (see
+  // Desktop-only: the one dedicated session MCP-driven queries run in (see
   // runMcpQuery/explainMcpQuery below and store/mcp-query.ts). Deliberately
   // separate from activeSessionId -- MCP-driven queries must never hijack
-  // whatever tab the human is currently looking at; they show up in the tab
-  // bar (PineTabs renders every id in `sessions`) without switching focus.
+  // whatever tab the human is currently looking at, so a finished query
+  // doesn't switch focus to it on its own. It IS a real tab in `sessions`
+  // (getOrCreateMcpSession/session.evaluate both need a real Session to work
+  // against) and PineTabs.tsx does render it in the strip -- pinned at the
+  // end, not draggable, and excluded from Ctrl+Tab cycling (see
+  // visibleSessionIds) -- but excluded from `getSessionName`'s treatment and
+  // marked with its own icon instead, so it still reads as "the agent's
+  // tab" rather than one of yours. It's still always safe to close: the
+  // agent's next query just recreates it (getOrCreateMcpSession below).
   mcpSessionId: string | null = null;
+  // True from the moment an MCP-driven query finishes until that tab is next
+  // activated (McpActivityButton.tsx's onClick clears it) -- drives the
+  // small dot on that button, the only way to know a result landed while
+  // looking at a different tab (mirrors NotificationBell's hasUnreadUpdates).
+  mcpHasUnseenActivity = false;
   // profileId -> live pine-lang connection-id, cached per app session so
   // every MCP query doesn't spin up a fresh Hikari pool. See
   // store/mcp-query.ts's ensureConnection.
   private mcpConnectionsByProfile: Record<string, string> = {};
+  // Pine's id for each saved profile that has been connected this session.
+  // For a Postgres or MySQL profile pine's id is `host:port:dbname`, which
+  // can be worked out from the profile alone (see resolveConnectionEntry). A
+  // SQLite profile's can't: pine names it from a hash of the file's resolved
+  // path, so the id pine returned when connecting is kept here instead.
+  pineIdByProfile: Record<string, string> = {};
   // Set by connectToSavedProfile on a decryption failure, so the settings
   // form can pre-fill the (still-plaintext) host/port/db/user and prompt the
   // user to just re-enter the password, instead of retyping everything.
@@ -115,7 +209,7 @@ export class GlobalStore {
     dbPort: string;
     dbName: string;
     dbUser: string;
-    dbType: 'postgres' | 'mysql';
+    dbType: DbType;
   } | null = null;
 
   // Pine's own ids that are actually live (a pool exists) *right now* --
@@ -125,6 +219,13 @@ export class GlobalStore {
   // in desktop mode lists saved *profiles* regardless of whether they're
   // currently live -- see refreshConnections.
   liveConnectionIds: string[] = [];
+
+  /**
+   * True when the Pine server answered but refused this app (HTTP 401: a
+   * launch token this app didn't send). Shown instead of "No connection",
+   * which would send the person looking for a server that is running.
+   */
+  serverRejected: boolean = false;
 
   get pineConnected() {
     return DevState.pineConnected ?? !!this.version;
@@ -145,7 +246,7 @@ export class GlobalStore {
   // opposed to merely being a tab's *assigned* connection (see
   // Session.connectionId), which persists across restarts/reconnects even
   // while nothing is live. `liveConnectionIds` is always keyed by pine's own
-  // id (host:port), but callers here (the saved-connections list/picker)
+  // id (host:port:dbname), but callers here (the saved-connections list/picker)
   // pass a saved-profile id in desktop mode -- a different id space for the
   // same logical connection (see resolveConnectionEntry). Resolve both sides
   // to the same identity before comparing, so this works regardless of
@@ -266,6 +367,24 @@ export class GlobalStore {
     setUserPreference(STORAGE_KEYS.PINE_TABLE_COLORS, value);
   }
 
+  // Whether the SQL panel shows the hidden columns pine-lang adds so results
+  // can be edited: each table's key, each JSON value's type. They are
+  // fetched either way. Off by default: they make the SQL longer to read.
+  _showHiddenSqlColumns: boolean;
+
+  get showHiddenSqlColumns(): boolean {
+    return this._showHiddenSqlColumns;
+  }
+
+  set showHiddenSqlColumns(value: boolean) {
+    this._showHiddenSqlColumns = value;
+    setUserPreference(STORAGE_KEYS.SHOW_HIDDEN_SQL_COLUMNS, value);
+  }
+
+  public toggleShowHiddenSqlColumns() {
+    this.showHiddenSqlColumns = !this.showHiddenSqlColumns;
+  }
+
   // Auto-run - whenever a canvas gesture commits a new, backend-confirmed-
   // valid expression, run it immediately instead of waiting for an explicit
   // Run. Global (like theme), not per-session.
@@ -299,6 +418,42 @@ export class GlobalStore {
   // (like theme), not per-session - it's how you like to work, not
   // something that should vary tab to tab.
   _newLayoutPanelVisible: boolean;
+
+  /**
+   * The split sizes, in pixels. Global rather than per-tab, and held here so a
+   * tab switch cannot reset them -- see the constructor. The dividers write
+   * through these setters as they drag; persisting stays with the divider,
+   * which already owns the storage key for each (ResizableDividers.tsx).
+   */
+  _newLayoutPaneWidth: number;
+  _newLayoutPaneHeight: number;
+  _newLayoutPanelWidth: number;
+  _newLayoutPanelHeight: number;
+
+  get newLayoutPaneWidth(): number {
+    return this._newLayoutPaneWidth;
+  }
+  set newLayoutPaneWidth(value: number) {
+    this._newLayoutPaneWidth = value;
+  }
+  get newLayoutPaneHeight(): number {
+    return this._newLayoutPaneHeight;
+  }
+  set newLayoutPaneHeight(value: number) {
+    this._newLayoutPaneHeight = value;
+  }
+  get newLayoutPanelWidth(): number {
+    return this._newLayoutPanelWidth;
+  }
+  set newLayoutPanelWidth(value: number) {
+    this._newLayoutPanelWidth = value;
+  }
+  get newLayoutPanelHeight(): number {
+    return this._newLayoutPanelHeight;
+  }
+  set newLayoutPanelHeight(value: number) {
+    this._newLayoutPanelHeight = value;
+  }
 
   get newLayoutPanelVisible(): boolean {
     return this._newLayoutPanelVisible;
@@ -366,8 +521,6 @@ export class GlobalStore {
   }
 
   // User
-  email = '';
-  domain = '';
 
   // Which panel (New Layout only) most recently held real DOM focus --
   // 'graph' | 'settings' | 'input' | null (null = nothing panel-specific
@@ -441,7 +594,15 @@ export class GlobalStore {
   showChangelog = false;
 
   // Save-as-file modal (Ctrl/Cmd+S)
-  showSaveModal = false;
+  // Ctrl+S's "Save as recipe" bar above the active tab, and Ctrl+O's recipe
+  // picker (components/recipes/). Desktop only: recipes are stored by the
+  // desktop app.
+  showSaveRecipe = false;
+  saveRecipeRequestCount = 0;
+  showRecipePicker = false;
+
+  // See PendingConnectionSwitch.
+  pendingConnectionSwitch: PendingConnectionSwitch | null = null;
 
   get commandHistory(): string[] {
     return this._commandHistory;
@@ -459,27 +620,61 @@ export class GlobalStore {
   }
 
   constructor() {
-    this._themeId = getUserPreference(STORAGE_KEYS.THEME, 'dark');
-    this._uiFontFamily = getUserPreference(STORAGE_KEYS.UI_FONT_FAMILY, 'system');
-    this._codeFontFamily = getUserPreference(STORAGE_KEYS.CODE_FONT_FAMILY, 'plex-mono');
-    this._textSize = getUserPreference(STORAGE_KEYS.TEXT_SIZE, 'medium');
-    this._vimModeEnabled = getUserPreference(STORAGE_KEYS.VIM_MODE, false);
-    this._pineTableColorsEnabled = getUserPreference(STORAGE_KEYS.PINE_TABLE_COLORS, false);
-    this._autoRunEnabled = getUserPreference(STORAGE_KEYS.AUTO_RUN_ENABLED, true);
-    this._newLayoutPanelVisible = getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_VISIBLE, false);
-    this._newLayoutOrientation = getUserPreference(
+    // Every value is checked against what the app accepts today: a theme or
+    // font from an older version, or a hand-edited value, falls back to the
+    // default instead of breaking the first render.
+    const orientations = ['horizontal', 'vertical'] as const;
+    this._themeId = getUserPreference<ThemeId>(STORAGE_KEYS.THEME, 'dark', oneOf(Object.keys(THEMES)));
+    this._uiFontFamily = getUserPreference<UiFontId>(
+      STORAGE_KEYS.UI_FONT_FAMILY,
+      'system',
+      oneOf(UI_FONTS.map(f => f.id)),
+    );
+    this._codeFontFamily = getUserPreference<CodeFontId>(
+      STORAGE_KEYS.CODE_FONT_FAMILY,
+      'plex-mono',
+      oneOf(CODE_FONTS.map(f => f.id)),
+    );
+    this._textSize = getUserPreference<TextSize>(STORAGE_KEYS.TEXT_SIZE, 'medium', oneOf(Object.keys(TEXT_SIZE_SCALE)));
+    this._vimModeEnabled = getUserPreference(STORAGE_KEYS.VIM_MODE, false, isBoolean);
+    this._pineTableColorsEnabled = getUserPreference(STORAGE_KEYS.PINE_TABLE_COLORS, false, isBoolean);
+    this._autoRunEnabled = getUserPreference(STORAGE_KEYS.AUTO_RUN_ENABLED, true, isBoolean);
+    this._showHiddenSqlColumns = getUserPreference(STORAGE_KEYS.SHOW_HIDDEN_SQL_COLUMNS, false, isBoolean);
+    this._newLayoutPanelVisible = getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_VISIBLE, false, isBoolean);
+    this._newLayoutOrientation = getUserPreference<'horizontal' | 'vertical'>(
       STORAGE_KEYS.NEW_LAYOUT_ORIENTATION,
       'horizontal',
+      oneOf(orientations),
     );
-    this._tabOrientation = getUserPreference(STORAGE_KEYS.TAB_ORIENTATION, 'horizontal');
-    this._commandHistory = getUserPreference(STORAGE_KEYS.COMMAND_HISTORY, []);
-    this.connectionColors = getUserPreference(STORAGE_KEYS.CONNECTION_COLORS, {});
+    this._tabOrientation = getUserPreference<TabOrientation>(
+      STORAGE_KEYS.TAB_ORIENTATION,
+      'horizontal',
+      oneOf(orientations),
+    );
+    // Read here, with every other preference, rather than in the components
+    // that use them. They are global -- one panel width for the app, not one
+    // per tab -- and MUI unmounts an inactive tab's children, so a component
+    // reading them on mount re-read them on every tab switch: the layout
+    // started at its default size and moved to the saved one a commit later.
+    // Visible as the canvas resizing, the graph recentring, and even the empty
+    // results placeholder drifting, every time you changed tab.
+    this._newLayoutPaneWidth = getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANE_WIDTH, DEFAULT_NEW_LAYOUT_PANE_WIDTH, isFiniteNumber);
+    this._newLayoutPaneHeight = getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANE_HEIGHT, DEFAULT_NEW_LAYOUT_PANE_HEIGHT, isFiniteNumber);
+    this._newLayoutPanelWidth = getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_WIDTH, DEFAULT_NEW_LAYOUT_PANEL_WIDTH, isFiniteNumber);
+    this._newLayoutPanelHeight = getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_HEIGHT, DEFAULT_NEW_LAYOUT_PANEL_HEIGHT, isFiniteNumber);
+    this._commandHistory = getUserPreference<string[]>(STORAGE_KEYS.COMMAND_HISTORY, [], isStringArray);
+    this.connectionColors = getUserPreference<Record<string, string>>(STORAGE_KEYS.CONNECTION_COLORS, {}, isStringRecord);
     makeAutoObservable(this);
 
     // Restore tabs/sessions from a previous visit, if any were saved.
     // getUserPreference safely no-ops (returns the default) during SSR, so
     // this always falls through to a single fresh session there.
-    const restored = this.restoreSessions();
+    let restored = false;
+    try {
+      restored = this.restoreSessions();
+    } catch (e) {
+      console.error('Could not restore the previous tabs; starting fresh ->', e);
+    }
     if (!restored) {
       const initSession = new Session('0', this);
       this.sessions[initSession.id] = initSession;
@@ -552,18 +747,28 @@ export class GlobalStore {
       STORAGE_KEYS.SESSIONS,
       null,
     ) as PersistedSessionsState | null;
-    if (!persisted || !Array.isArray(persisted.sessions) || persisted.sessions.length === 0) {
+    if (!persisted || typeof persisted !== 'object' || !Array.isArray(persisted.sessions)) {
+      return false;
+    }
+    // A tab saved by an older version, or a damaged entry, is skipped rather
+    // than allowed to throw here: this runs while the store is being created,
+    // so a throw left a blank page.
+    const usable = persisted.sessions.filter(
+      (s): s is PersistedSession =>
+        typeof s === 'object' && s !== null && (s.expression === undefined || typeof s.expression === 'string'),
+    );
+    if (usable.length === 0) {
       return false;
     }
 
-    persisted.sessions.forEach((persistedSession, index) => {
+    usable.forEach((persistedSession, index) => {
       const session = this.createSessionUsingId(String(index));
-      const expression = persistedSession.expression ?? '';
+      const expression = stripRemovedDeleteOperation(persistedSession.expression ?? '');
       runInAction(() => {
         session.expression = expression;
         session.inputMode = persistedSession.inputMode === 'sql' ? 'sql' : 'pine';
-        session.connectionId = persistedSession.connectionId ?? '';
-        session.profileId = persistedSession.profileId ?? '';
+        session.connectionId = typeof persistedSession.connectionId === 'string' ? persistedSession.connectionId : '';
+        session.profileId = typeof persistedSession.profileId === 'string' ? persistedSession.profileId : '';
       });
       // `new Session()` (inside createSessionUsingId, just above) wires up its
       // own expression -> build reaction *while this whole forEach is still
@@ -604,24 +809,62 @@ export class GlobalStore {
     });
 
     const ids = Object.keys(this.sessions);
-    this.activeSessionId = ids[persisted.activeIndex] ?? ids[0];
+    const activeIndex = typeof persisted.activeIndex === 'number' ? persisted.activeIndex : 0;
+    this.activeSessionId = ids[activeIndex] ?? ids[0];
     return true;
   };
 
   // In desktop mode, `connections` is keyed by saved-profile id, while
   // `activeSession.connectionId`/`this.connection` are pine's own id
-  // (`host:port`) -- two different id spaces for the same logical
+  // (`host:port:dbname`) -- two different id spaces for the same logical
   // connection. Resolve pine's id back to its profile by comparing
-  // host:port, so color/label lookups work regardless of which id space
-  // they were called with. A no-op in browser mode, where `connections`
-  // is already keyed by pine's own id (first condition matches directly).
+  // host:port:dbname, so color/label lookups work regardless of which id
+  // space they were called with. A no-op in browser mode, where
+  // `connections` is already keyed by pine's own id (first condition
+  // matches directly).
+  //
+  // Also matches the older bare `host:port` shape (no dbname), which a
+  // PersistedSession from before pine folded dbname into the id may still
+  // hold in localStorage -- that form is ambiguous whenever two saved
+  // profiles now share a host:port with different databases, and this picks
+  // the first match, same as it always has for any other ambiguity here.
   private resolveConnectionEntry = (connectionId: string): ConnectionInfo | undefined => {
     if (!connectionId) return undefined;
-    return this.connections.find(
-      c =>
-        c.id === connectionId ||
-        (c.dbHost && c.dbPort && `${c.dbHost}:${c.dbPort}` === connectionId),
+    return (
+      this.connections.find(
+        c =>
+          c.id === connectionId ||
+          (c.dbHost && c.dbPort && c.dbName && `${c.dbHost}:${c.dbPort}:${c.dbName}` === connectionId) ||
+          (c.dbHost && c.dbPort && `${c.dbHost}:${c.dbPort}` === connectionId),
+      ) ?? this.connections.find(c => c.id === this.profileIdForPineId(connectionId))
     );
+  };
+
+  // The saved profile behind a pine connection id that can't be derived from
+  // the profile (a SQLite file, see pineIdByProfile): the profile connected
+  // this session, or else the one a tab restored from a previous session
+  // remembers (a tab keeps its profileId).
+  private profileIdForPineId = (pineId: string): string | undefined =>
+    Object.entries(this.pineIdByProfile).find(([, id]) => id === pineId)?.[0] ??
+    Object.values(this.sessions).find(s => s.connectionId === pineId && s.profileId)?.profileId;
+
+  private rememberPineId = (profileId: string, pineId: string) => {
+    if (profileId && pineId && this.pineIdByProfile[profileId] !== pineId) {
+      this.pineIdByProfile = { ...this.pineIdByProfile, [profileId]: pineId };
+    }
+  };
+
+  // Pine's own id for a saved profile, to close or reindex its pool. In
+  // desktop mode `id` is the saved profile's id, not pine's.
+  private pineIdForProfile = (id: string, useDesktop: boolean): string => {
+    const known = this.pineIdByProfile[id];
+    if (known) return known;
+    const conn = this.connections.find(c => c.id === id);
+    // Derived the same way pine derives it for a server database
+    // (pine.db.connections/make-connection-id).
+    return useDesktop && conn?.dbHost && conn?.dbPort && conn?.dbName
+      ? `${conn.dbHost}:${conn.dbPort}:${conn.dbName}`
+      : id;
   };
 
   getConnectionColor = (connectionId: string): string => {
@@ -670,13 +913,14 @@ export class GlobalStore {
     );
     if (isDesktop() && typeof window !== 'undefined' && window.beamlynxDesktop) {
       const profiles = await window.beamlynxDesktop.credentials.list();
-      console.log('[credentials] refreshConnections (desktop): profiles ->', profiles);
+      if (isDevelopment()) console.log('[credentials] refreshConnections (desktop): profiles ->', profiles);
       runInAction(() => {
         this.connections = profiles.map(p => ({
           id: p.id,
           label: p.label,
           dbHost: p.dbHost,
           dbPort: p.dbPort,
+          dbName: p.dbName,
           mcpEnabled: p.mcpEnabled,
           policyId: p.policyId,
           applyPolicyToOwnQueries: p.applyPolicyToOwnQueries,
@@ -805,7 +1049,7 @@ export class GlobalStore {
       return;
     }
     const status = await window.beamlynxDesktop.credentials.status();
-    console.log('[credentials] loadCredentialsStatus ->', status);
+    if (isDevelopment()) console.log('[credentials] loadCredentialsStatus ->', status);
     runInAction(() => {
       this.credentialsStatus = status;
     });
@@ -844,7 +1088,7 @@ export class GlobalStore {
     try {
       const analyseParam = urlParams.get('analyse');
       if (analyseParam) {
-        this.analysisInitialValue = decodeURIComponent(analyseParam);
+        this.analysisInitialValue = analyseParam;
         this.setShowAnalysis(true);
         urlParams.delete('analyse');
         hasChanges = true;
@@ -860,7 +1104,9 @@ export class GlobalStore {
         const session = this.getSession(this.activeSessionId);
         if (session) {
           runInAction(() => {
-            session.expression = decodeURIComponent(queryParam);
+            // Already decoded by URLSearchParams. Decoding again broke any
+            // query containing %, like `like '%a%'`.
+            session.expression = queryParam;
           });
           await session.prettify();
         }
@@ -995,15 +1241,24 @@ export class GlobalStore {
   }
 
   /**
-   * Select an existing server connection from the picker. Opens a new tab if the
-   * active tab has content; otherwise assigns the connection to the active tab.
+   * Select an existing server connection from the picker and assign it to the
+   * active tab. If that tab has a non-empty Pine expression, the switch is
+   * held in `pendingConnectionSwitch` and ChangeConnectionModal warns the
+   * user first -- pass `confirmed: true` (as confirmPendingConnectionSwitch
+   * does) to apply it anyway.
    */
-  selectConnection = async (connectionId: string) => {
+  selectConnection = async (connectionId: string, confirmed = false) => {
     const activeSession = this.sessions[this.activeSessionId];
     if (!activeSession) {
       return;
     }
     if (activeSession.connectionId === connectionId && this.connection === connectionId) {
+      return;
+    }
+    if (activeSession.expression.trim() && !confirmed) {
+      runInAction(() => {
+        this.pendingConnectionSwitch = { kind: 'select', connectionId };
+      });
       return;
     }
     try {
@@ -1012,13 +1267,13 @@ export class GlobalStore {
         this.connection = id;
         this.version = version ?? '0.0.0';
         this.liveConnectionIds = Array.from(new Set([...this.liveConnectionIds, id]));
-        if (activeSession.expression.trim()) {
-          const session = this.createSession();
-          this.activeSessionId = session.id;
-          session.connectionId = id;
-        } else {
-          activeSession.connectionId = id;
-        }
+        activeSession.connectionId = id;
+        // Nothing reacts to connectionId changing on its own -- bump the
+        // counter to force the debounced build reaction to re-resolve the
+        // existing expression against the new connection's schema, so any
+        // now-invalid table/column names surface via session.error.
+        activeSession.hintsRequestedCounter++;
+        this.pendingConnectionSwitch = null;
       });
       await this.refreshConnections();
     } catch (e) {
@@ -1041,7 +1296,10 @@ export class GlobalStore {
       throw new Error('Saved connections are only available in desktop mode');
     }
     const result = await window.beamlynxDesktop.credentials.get(profileId);
-    console.log('[credentials] getSavedProfileCredentials: get result ->', result);
+    // Never log `result` itself: on success it holds the decrypted password.
+    if (isDevelopment()) {
+      console.log('[credentials] getSavedProfileCredentials: ok ->', result.ok, 'profile ->', 'profile' in result ? result.profile.id : undefined);
+    }
     if (!result.ok) {
       if (result.error === 'decryption-failed') {
         const { dbHost, dbPort, dbName, dbUser, dbType } = result.profile;
@@ -1050,7 +1308,7 @@ export class GlobalStore {
         });
         throw new DecryptionFailedError();
       }
-      throw new Error('Saved connection not found');
+      throw new SavedConnectionNotFoundError();
     }
     const { profile, dbPassword } = result;
     return {
@@ -1067,8 +1325,10 @@ export class GlobalStore {
    * Connect to a saved (desktop-only) profile that may not have a live pine
    * pool yet this session -- fetches the decrypted credentials and goes
    * through the normal `connect` (create + use) path, rather than assuming
-   * a pool already exists the way `selectConnection` does. Manual/UI entry
-   * point: forks a new tab if the active one has content, same as `connect`.
+   * a pool already exists the way `selectConnection` does. No
+   * pendingConnectionSwitch warning here -- callers that need one
+   * (ActiveConnection.tsx / ConnectionsSection.tsx's switch action) check the
+   * active tab themselves via requestConnectionSwitch before calling this.
    * For a silent background reconnect of one specific (possibly inactive)
    * tab, see ensureSessionConnected instead.
    */
@@ -1103,6 +1363,7 @@ export class GlobalStore {
     client,
     getSavedProfileCredentials: this.getSavedProfileCredentials,
     getOrCreateMcpSession: this.getOrCreateMcpSession,
+    getServerVersion: () => this.version,
     getMcpConnectionId: (profileId: string) => this.mcpConnectionsByProfile[profileId],
     setMcpConnectionId: (profileId: string, connectionId: string) => {
       runInAction(() => {
@@ -1131,12 +1392,45 @@ export class GlobalStore {
    * human's active tab. See store/mcp-query.ts for the safety rules this
    * enforces (no raw SQL, no delete!, connection-id always explicit).
    */
-  runMcpQuery = (args: { profileId: string; expression: string }) =>
-    runMcpQueryImpl(this.mcpQueryDeps(), args);
+  runMcpQuery = async (args: {
+    profileId: string;
+    expression: string;
+    sql?: string;
+    variables?: Record<string, VariableValue>;
+  }) => {
+    const result = await runMcpQueryImpl(this.mcpQueryDeps(), args);
+    // Flag McpActivityButton's badge regardless of `result.error` -- a
+    // failed MCP query is still activity worth surfacing, not something to
+    // swallow silently. Not wrapped into runMcpQueryImpl itself: that file
+    // is deliberately isolated (see its own top comment) to keep
+    // __tests__/mcp-query.no-raw-sql.test.ts scoped to query execution, not
+    // UI state.
+    runInAction(() => {
+      this.mcpHasUnseenActivity = true;
+    });
+    return result;
+  };
 
   /** Backing call for the `complete_query` MCP tool -- parse/build only, no execution. */
   explainMcpQuery = (args: { profileId: string; expression: string }) =>
     explainMcpQueryImpl(this.mcpQueryDeps(), args);
+
+  /**
+   * Resolve a saved profile to a live pine-lang connection id the same way
+   * an MCP query does (mcp-query.ts's ensureConnection, reused here) --
+   * never pine-lang's shared "active connection" singleton, and never
+   * activeSessionId either. RevealRequestHandler.tsx uses this instead of
+   * connectToSavedProfile for exactly that second reason: a reveal-review
+   * tab must not steal focus onto itself the way connectToSavedProfile
+   * does. Refreshes connections afterward, same as connect() does, so the
+   * new session's (human-branch) accessPolicyRules and this connection's
+   * live/label state are current by the time it evaluates.
+   */
+  ensureProfileConnection = async (profileId: string): Promise<string> => {
+    const connectionId = await ensureConnection(this.mcpQueryDeps(), profileId);
+    await this.refreshConnections();
+    return connectionId;
+  };
 
   /**
    * Toggles whether MCP clients may use a saved connection at all -- the
@@ -1245,6 +1539,28 @@ export class GlobalStore {
   };
 
   /**
+   * Removes a reveal-request tab once there's no more reason to keep it
+   * pinned: RevealRequestBanner.tsx calls this right after Reveal/Decline
+   * actually resolves the request (a pinned tab only exists while pending),
+   * and RevealRequestHandler.tsx calls it if connecting failed before a
+   * banner ever had a chance to render. Unlike closeTab's own reveal-request
+   * branch, this never itself calls resolveRevealRequest -- the request is
+   * already resolved (or about to be, by RevealRequestHandler's own
+   * decline) by the time either caller reaches this.
+   */
+  finishRevealSession = (sessionId: string) => {
+    this.deleteSession(sessionId);
+    if (this.activeSessionId === sessionId) {
+      // Land on another still-pending reveal request first, if there is
+      // one -- the whole point of one pinned tab per request is to work
+      // through them one at a time, and falling through to a regular tab
+      // first would lose that thread.
+      this.activeSessionId =
+        this.pendingRevealSessionIds[0] ?? this.visibleSessionIds[0] ?? this.activeSessionId;
+    }
+  };
+
+  /**
    * Rename a saved connection profile. Desktop-only -- browser mode's
    * connection list comes straight from pine-lang's live pools (see
    * refreshConnections), which has nowhere to persist a custom name.
@@ -1284,13 +1600,7 @@ export class GlobalStore {
     }
     const desktopApi = typeof window !== 'undefined' ? window.beamlynxDesktop : undefined;
     const useDesktop = isDesktop() && !!desktopApi;
-    const conn = this.connections.find(c => c.id === id);
-    // In desktop mode, `id` is the saved profile's id, not pine's -- derive
-    // pine's own id (host:port) the same way pine derives it itself
-    // (pine.db.connections/make-connection-id) so the close attempt targets
-    // the right pool.
-    const pineId =
-      useDesktop && conn?.dbHost && conn?.dbPort ? `${conn.dbHost}:${conn.dbPort}` : id;
+    const pineId = this.pineIdForProfile(id, useDesktop);
     console.log(
       `[credentials] deleteConnection: id=${id} useDesktop=${useDesktop} pineId=${pineId}`,
     );
@@ -1317,6 +1627,8 @@ export class GlobalStore {
       // (see its getter) -- clearing it below, in the same sweep as every
       // other session, is enough; no separate field to reset here.
       this.liveConnectionIds = this.liveConnectionIds.filter(c => c !== id && c !== pineId);
+      const { [id]: _forgotten, ...stillConnected } = this.pineIdByProfile;
+      this.pineIdByProfile = stillConnected;
       Object.values(this.sessions).forEach(session => {
         if (session.connectionId === id || session.connectionId === pineId) {
           session.connectionId = '';
@@ -1334,20 +1646,24 @@ export class GlobalStore {
   };
 
   /**
+   * Counts reindexes, so what was loaded from a connection's schema (the SQL
+   * panel's completion) loads again.
+   */
+  schemaVersion = 0;
+
+  /**
    * Re-read a live connection's tables/columns from the database. The server
    * indexes a connection's schema once on first connect and caches it for the
    * life of the process, so a table or column added afterward stays invisible
    * until this is called (or the server restarts).
    */
   reindexConnection = async (id: string): Promise<void> => {
-    const useDesktop = isDesktop();
-    const conn = this.connections.find(c => c.id === id);
-    // Same id resolution as deleteConnection: in desktop mode `id` is the
-    // saved profile's id, not pine's own (host:port) id.
-    const pineId =
-      useDesktop && conn?.dbHost && conn?.dbPort ? `${conn.dbHost}:${conn.dbPort}` : id;
+    const pineId = this.pineIdForProfile(id, isDesktop());
     try {
       await client.reindexConnection(pineId);
+      runInAction(() => {
+        this.schemaVersion++;
+      });
     } catch (e) {
       const message = (e as Error)?.message ?? 'Unknown error';
       runInAction(() => {
@@ -1378,9 +1694,15 @@ export class GlobalStore {
   };
 
   /**
-   * Create (or re-establish) a connection and make it the active tab's.
-   * Opens a new tab instead if the active tab already has content, so an
-   * in-progress query isn't silently switched to a different database.
+   * Create (or re-establish) a connection and make it the active tab's,
+   * whatever that tab currently contains -- no fork-a-new-tab side step, and
+   * no pendingConnectionSwitch warning here. `connectToSavedProfile`'s own
+   * callers gate this for their "switch this tab to a different saved
+   * profile" UI actions (see PendingConnectionSwitch); this primitive is also
+   * called by flows with no tab-content concern to warn about at all: the
+   * "Add Connection" form (a brand-new connection, not a switch) and the
+   * deep-link/reveal-request handlers (which always target a fresh tab they
+   * just created).
    *
    * @param knownProfileId Pass the saved profile id when it's already known
    * (connectToSavedProfile) so the session can be tagged with it directly,
@@ -1410,7 +1732,7 @@ export class GlobalStore {
     if (!knownProfileId && isDesktop() && typeof window !== 'undefined' && window.beamlynxDesktop) {
       try {
         const saveResult = await window.beamlynxDesktop.credentials.save(params);
-        console.log('[credentials] connect: save result ->', saveResult);
+        if (isDevelopment()) console.log('[credentials] connect: save result ->', saveResult);
         profileId = saveResult.persisted ? saveResult.profile.id : '';
       } catch (e) {
         console.error('[credentials] connect: credentials.save threw ->', e);
@@ -1423,26 +1745,58 @@ export class GlobalStore {
       this.version = version ?? '0.0.0';
       this.assignConnectionColor(id);
       this.liveConnectionIds = Array.from(new Set([...this.liveConnectionIds, id]));
+      this.rememberPineId(profileId, id);
 
       const activeSession = this.sessions[this.activeSessionId];
       if (activeSession) {
-        if (activeSession.expression.trim()) {
-          const session = this.createSession();
-          this.activeSessionId = session.id;
-          session.connectionId = id;
-          session.profileId = profileId;
-        } else {
-          activeSession.connectionId = id;
-          activeSession.profileId = profileId;
-        }
+        activeSession.connectionId = id;
+        activeSession.profileId = profileId;
+        // See the matching comment in selectConnection -- forces the
+        // existing expression to re-resolve against the new connection.
+        activeSession.hintsRequestedCounter++;
       }
       if (this.virtualSession) {
         this.virtualSession.connectionId = id;
       }
+      this.pendingConnectionSwitch = null;
     });
 
     await this.refreshConnections();
     return id;
+  };
+
+  /**
+   * Apply a connection switch that ChangeConnectionModal warned about and the
+   * user confirmed anyway.
+   */
+  confirmPendingConnectionSwitch = async (): Promise<void> => {
+    const pending = this.pendingConnectionSwitch;
+    if (!pending) {
+      return;
+    }
+    runInAction(() => {
+      this.pendingConnectionSwitch = null;
+    });
+    if (pending.kind === 'select') {
+      await this.selectConnection(pending.connectionId, true);
+    } else {
+      await this.connectToSavedProfile(pending.id);
+    }
+  };
+
+  cancelPendingConnectionSwitch = () => {
+    this.pendingConnectionSwitch = null;
+  };
+
+  /**
+   * Hold a "switch this tab to a different known connection" action behind
+   * ChangeConnectionModal's warning -- called by the UI switch actions in
+   * ActiveConnection.tsx / ConnectionsSection.tsx when the active tab has a
+   * non-empty Pine expression, instead of calling selectConnection /
+   * connectToSavedProfile directly.
+   */
+  requestConnectionSwitch = (pending: PendingConnectionSwitch) => {
+    this.pendingConnectionSwitch = pending;
   };
 
   /**
@@ -1505,6 +1859,7 @@ export class GlobalStore {
         ({ id, version } = await this.establishConnection(params));
         runInAction(() => {
           session.profileId = profileId;
+          this.rememberPineId(profileId, id);
         });
       } else {
         ({ id, version } = await client.useConnection(session.connectionId));
@@ -1532,6 +1887,17 @@ export class GlobalStore {
       // succeeded, so lastHintsCursorPosition was never set.
       session.requestHints();
     } catch (e) {
+      if (e instanceof SavedConnectionNotFoundError) {
+        // The tab points at a saved connection that was deleted. Forget it
+        // once, rather than failing (and showing an alert) on every switch
+        // to this tab.
+        runInAction(() => {
+          session.profileId = '';
+          session.connectionId = '';
+          session.message = 'This tab’s saved connection no longer exists. Pick a connection.';
+        });
+        return;
+      }
       const message = (e as Error)?.message ?? 'Unknown error';
       console.error(`[credentials] ensureSessionConnected(${sessionId}): failed ->`, e);
       runInAction(() => {
@@ -1565,8 +1931,80 @@ export class GlobalStore {
     return this.createSessionUsingId(id);
   };
 
+  /**
+   * Creates a session already tagged as a pending reveal-request tab, in one
+   * MobX action -- RevealRequestHandler.tsx must never do this as two
+   * separate statements (create, then a later `runInAction` to set
+   * pendingRevealRequestId), since `sessions` is itself observable: between
+   * those two statements the session would exist with no
+   * pendingRevealRequestId yet, landing in visibleSessionIds (and briefly
+   * flashing as a regular tab in the user's own strip) for however long
+   * React takes to react to the first change.
+   */
+  createRevealSession = (requestId: string, reason: string | undefined): Session => {
+    const session = this.createSession();
+    session.pendingRevealRequestId = requestId;
+    session.revealReason = reason;
+    return session;
+  };
+
   deleteSession = (sessionId: string) => {
     delete this.sessions[sessionId];
+  };
+
+  /**
+   * Open a Pine expression in a new tab, inheriting the current tab's
+   * connection, and switch to it.
+   *
+   * Used by the traversal panel: every table the walk reached carries a real,
+   * runnable expression, so a row in that list is something you can go and
+   * look at rather than a name and a number. A new tab rather than the
+   * current one - the expression you were working on is the reason the
+   * traversal exists, and overwriting it to inspect a branch of its own
+   * result would be a poor trade.
+   */
+  openExpressionInNewTab = async (expression: string) => {
+    const from = this.activeSessionId;
+    this.addTab();
+    const session = this.sessions[this.activeSessionId];
+    if (!session) return undefined;
+    // Closing this tab should land back where it was opened from, not on
+    // whatever happens to be first (see closeTab).
+    session.openedFrom = from;
+
+    // Prettified before it is shown. The expressions a traversal builds are
+    // assembled by appending joins, so they arrive as one long line with
+    // doubled spaces -- correct Pine, but not what anyone would have typed.
+    let text = expression;
+    try {
+      text = await session.prettifyExpression(expression);
+    } catch {
+      // A prettify that fails is cosmetic; show the raw expression rather
+      // than nothing.
+    }
+    runInAction(() => {
+      session.expression = text;
+    });
+
+    // The expression -> build reaction cannot do this one. It was created
+    // inside `addTab` above, and a reaction created mid-action defers its
+    // first tracked read until that action unwinds -- by which point the
+    // expression is already its final value, so no before/after transition is
+    // ever observed and the build never fires. `ast` stays null, which is
+    // exactly the "no nodes on the canvas" symptom. restoreSessions hit the
+    // same trap and documents it at length. Past the action now (this await),
+    // so bumping the counter is a real change the reaction sees.
+    session.requestHints();
+
+    // And run it, if auto-run is on. Setting the expression builds it -- that
+    // is what draws the graph -- but building is not committing, and auto-run
+    // listens for a commit (notifyCanvasCommit, which every canvas gesture
+    // calls). Without this the new tab showed the query and the graph and then
+    // sat there, which is not what opening a row is for: the point is to see
+    // the rows. notifyCanvasCommit honours the auto-run preference itself, so
+    // there is nothing to check here.
+    session.notifyCanvasCommit();
+    return session;
   };
 
   /**
@@ -1581,29 +2019,94 @@ export class GlobalStore {
     this.activeSessionId = session.id;
   };
 
+  // Every session with a reveal request awaiting the owner's decision (see
+  // RevealRequestHandler.tsx and Session.pendingRevealRequestId's own
+  // comment) -- each one gets its own pinned tab in PineTabs.tsx, clustered
+  // with the MCP tab at the strip's end, same reasoning as mcpSessionId:
+  // one of these is never just "one of your own tabs" the way a regular
+  // session is.
+  get pendingRevealSessionIds(): string[] {
+    return Object.keys(this.sessions).filter(id => this.sessions[id].pendingRevealRequestId);
+  }
+
+  // The user's OWN tabs -- every open session except the pinned ones above
+  // (the one dedicated MCP session, and any pending reveal-request
+  // sessions), which PineTabs.tsx renders separately, pinned at the end of
+  // the same strip. Reorder and cycling read this instead of
+  // `Object.keys(sessions)` directly, so a pinned tab can't be dragged out
+  // of its end position or show up in Ctrl+Tab cycling (confirmed live:
+  // without this exclusion, closing a user's only other tab handed
+  // `activeSessionId` to the MCP session instead of resetting it in place,
+  // since `sessions` always had 2+ entries even with one of the user's own
+  // tabs open).
+  get visibleSessionIds(): string[] {
+    const pinned = new Set([this.mcpSessionId, ...this.pendingRevealSessionIds]);
+    return Object.keys(this.sessions).filter(id => !pinned.has(id));
+  }
+
   /**
    * Close a tab with proper cleanup and switching logic.
-   * If it's the last tab, resets it instead of closing.
+   * If it's the pinned MCP tab, just drops it -- the agent's next query
+   * recreates it (getOrCreateMcpSession), so there's no "last tab" case to
+   * special-case the way there is for the user's own tabs below.
+   * If it's a pinned reveal-request tab, drops it AND declines the request
+   * on the owner's behalf -- without this, the agent's check_reveal poll
+   * would spin forever with no way to find out the owner just closed the
+   * tab instead of using Reveal/Decline (see finishRevealSession for the
+   * counterpart once a request IS actually resolved through the banner).
+   * Otherwise, if it's the last one of the user's own tabs, resets it
+   * instead of closing.
    *
    * @param sessionId The session ID to close
    */
   closeTab = (sessionId: string) => {
-    const sessionIds = Object.keys(this.sessions);
+    if (sessionId === this.mcpSessionId) {
+      this.deleteSession(sessionId);
+      this.mcpSessionId = null;
+      if (this.activeSessionId === sessionId) {
+        this.activeSessionId = this.visibleSessionIds[0] ?? this.activeSessionId;
+      }
+      return;
+    }
 
-    // If it's the last tab, reset it instead of closing
+    const pendingRequestId = this.sessions[sessionId]?.pendingRevealRequestId;
+    if (pendingRequestId) {
+      this.finishRevealSession(sessionId);
+      this.resolveRevealRequest(pendingRequestId, {
+        ok: false,
+        comment: 'Closed without review.',
+      }).catch(e => console.error('[reveal-request] failed to decline on close ->', e));
+      return;
+    }
+
+    const sessionIds = this.visibleSessionIds;
+
+    // If it's the last visible tab, reset it instead of closing
     if (sessionIds.length === 1) {
       this.createSessionUsingId(sessionId.replace('session-', ''));
       return;
     }
+
+    const closedIndex = sessionIds.indexOf(sessionId);
+    const openedFrom = this.sessions[sessionId]?.openedFrom;
 
     // Remove the session
     this.deleteSession(sessionId);
 
     // If the active tab is being closed, switch to another tab
     if (this.activeSessionId === sessionId && sessionIds.length > 1) {
-      const remainingSessions = Object.keys(this.sessions);
-      if (remainingSessions.length > 0) {
-        this.activeSessionId = remainingSessions[0];
+      const remaining = this.visibleSessionIds;
+      if (remaining.length > 0) {
+        // Where this tab was opened from, if that tab is still open. A tab
+        // opened to go and look at something -- a row of a traversal -- is a
+        // detour, and finishing a detour should put you back where you
+        // started.
+        const returnTo = openedFrom && remaining.includes(openedFrom) ? openedFrom : undefined;
+        // Otherwise the neighbour on the left, or the new first tab if this
+        // was the leftmost. Jumping to tab one from anywhere in the strip
+        // loses your place for no reason.
+        const neighbour = remaining[Math.max(0, Math.min(closedIndex - 1, remaining.length - 1))];
+        this.activeSessionId = returnTo ?? neighbour ?? remaining[0];
       }
     }
   };
@@ -1628,7 +2131,7 @@ export class GlobalStore {
    * connection is disturbed by being dragged.
    */
   moveTab = (fromIndex: number, toIndex: number) => {
-    const ids = Object.keys(this.sessions);
+    const ids = this.visibleSessionIds;
     const valid = (i: number) => Number.isInteger(i) && i >= 0 && i < ids.length;
     if (fromIndex === toIndex || !valid(fromIndex) || !valid(toIndex)) return;
 
@@ -1637,6 +2140,17 @@ export class GlobalStore {
 
     const reordered: Record<string, Session> = {};
     ids.forEach(id => (reordered[id] = this.sessions[id]));
+    // No pinned session (the MCP one, or any pending reveal-request ones) is
+    // part of the draggable strip -- carry each over unchanged rather than
+    // dropping it, since none of them are in `ids` above (visibleSessionIds)
+    // and would otherwise vanish from `sessions`. Keyed off whatever isn't
+    // already in `reordered` rather than re-deriving the pinned id list, so
+    // this doesn't need its own copy of that logic to stay in sync with it.
+    Object.keys(this.sessions).forEach(id => {
+      if (!(id in reordered)) {
+        reordered[id] = this.sessions[id];
+      }
+    });
     this.sessions = reordered;
   };
 
@@ -1644,12 +2158,22 @@ export class GlobalStore {
    * Next/previous tab, wrapping at either end - the same cycling behavior
    * Ctrl+Tab/Ctrl+Shift+Tab has over a real browser's own tab strip (see
    * utils/keybindings.ts). Order matches PineTabs.tsx's own tab strip
-   * (`Object.keys(this.sessions)`), so this always moves to the visually
-   * adjacent tab.
+   * (`visibleSessionIds`), so this always moves to the visually adjacent
+   * one of the user's own tabs, and never lands on a pinned tab --
+   * including cycling FROM one: unlike the user's own tabs, activeSessionId
+   * can now be a pinned session (clicking its tab, or focusAgentTab), so
+   * `indexOf` below can legitimately be -1, not just
+   * "not found". Treat that as "off the end", same as a real browser tab
+   * strip cycling away from a pinned tab: Ctrl+Tab goes to the first tab,
+   * Ctrl+Shift+Tab to the last.
    */
   activateAdjacentTab = (direction: 1 | -1) => {
-    const sessionIds = Object.keys(this.sessions);
+    const sessionIds = this.visibleSessionIds;
     const currentIndex = sessionIds.indexOf(this.activeSessionId);
+    if (currentIndex < 0) {
+      this.activeSessionId = sessionIds[direction === 1 ? 0 : sessionIds.length - 1];
+      return;
+    }
     const nextIndex = (currentIndex + direction + sessionIds.length) % sessionIds.length;
     this.activeSessionId = sessionIds[nextIndex];
   };
@@ -1672,6 +2196,9 @@ export class GlobalStore {
   loadConnectionMetadata = async () => {
     try {
       const response = await client.get('connection');
+      runInAction(() => {
+        this.serverRejected = false;
+      });
       if (!response?.result) {
         runInAction(() => {
           this.connection = '';
@@ -1722,9 +2249,6 @@ export class GlobalStore {
           }
         }
 
-        if (lt(this.version, RequiredVersion)) {
-          this.requiresUpgrade = true;
-        }
       });
 
       await this.refreshConnections();
@@ -1734,6 +2258,7 @@ export class GlobalStore {
       runInAction(() => {
         this.connection = '';
         this.version = undefined;
+        this.serverRejected = e instanceof ServerRejectedError;
       });
     }
     return this.connection;
@@ -1743,17 +2268,10 @@ export class GlobalStore {
     return DevState.requiresUpgrade ?? this.requiresUpgrade;
   };
 
-  setEmail = (email: string) => {
-    if (!email) return;
-    this.email = email;
-    const [, domain] = email?.split('@');
-    this.domain = domain;
-  };
-
   setCopiedMessage = (sessionId: string, v: string, quote = false) => {
     const session = this.getSession(sessionId);
     if (quote) {
-      v = `'${v.replace(/'/g, "'")}'`;
+      v = pineString(v);
     }
     if (v.length > 120) {
       v = v.substring(0, 120) + '...';
@@ -1761,29 +2279,57 @@ export class GlobalStore {
     session.message = `📋 Copied: ${v}`;
   };
 
+  // Called for every tab, including the pinned MCP one -- PineTabs.tsx
+  // overrides that one's rendered label with a robot icon instead of using
+  // this name, so what this returns for it is never actually shown, but it
+  // still needs to not throw.
   getSessionName = (sessionId: string) => {
     const session = this.getSession(sessionId);
-    const length = session.expression.length;
+    // A doc comment at the top of the expression is prose about the query,
+    // not the query - naming the tab from it produced things like "Checki..."
+    // off the second sentence, since the split on '.' below lands inside the
+    // comment's own punctuation. Name the tab from the Pine itself.
+    // A values block (`$name = ...`) isn't the query either: name the tab
+    // from the first block that is.
+    const query = splitExpressions(session.expression).find(b => !isValuesBlock(b.text))?.text ?? session.expression;
+    const source = query.slice(leadingDoc(query).length).trim();
+    const length = source.length;
     const maxLength = 10;
 
     // Skip the schema when naming the session
-    const [x, y] = session.expression.split('.');
+    const [x, y] = source.split('.');
     const expression = y || x;
 
-    const name =
-      length > maxLength
-        ? expression.substring(0, maxLength).replaceAll('|', '') + '...'
-        : expression || '...';
-
-    // Visibly distinguish the tab MCP-driven queries run in from the
-    // human's own tabs -- see mcpSessionId/runMcpQuery above.
-    return sessionId === this.mcpSessionId ? `🤖 ${name}` : name;
+    return length > maxLength
+      ? expression.substring(0, maxLength).replaceAll('|', '') + '...'
+      : expression || '...';
   };
 
   setShowSettings = (show: boolean, section?: SettingsSection) => {
     this.showSettings = show;
     if (section) {
       this.settingsSection = section;
+    }
+  };
+
+  /**
+   * Jumps to whichever agent tab most needs the owner right now -- what the
+   * single agent icon in the header (McpActivityButton) does on click.
+   * A pending reveal request wins over the MCP activity tab: an agent is
+   * blocked waiting on a decision there, where a query result has already
+   * landed and nothing is waiting on it. A no-op when the agent has neither.
+   */
+  focusAgentTab = () => {
+    const target = this.pendingRevealSessionIds[0] ?? this.mcpSessionId;
+    if (!target) return;
+    this.activeSessionId = target;
+    // Only counts as having "seen" the query activity when that's actually
+    // where this landed -- jumping to an approval instead leaves an unread
+    // result unread, which it still is. There's no per-result read/unread
+    // list either way, just the one flag for "something changed since you
+    // last looked."
+    if (target === this.mcpSessionId) {
+      this.mcpHasUnseenActivity = false;
     }
   };
 
@@ -1810,8 +2356,15 @@ export class GlobalStore {
     this.showChangelog = show;
   };
 
-  setShowSaveModal = (show: boolean) => {
-    this.showSaveModal = show;
+  setShowSaveRecipe = (show: boolean) => {
+    this.showSaveRecipe = show;
+    // Counted, so Ctrl+S while the bar is already open (focus back in the
+    // editor, say) still takes you to its title.
+    if (show) this.saveRecipeRequestCount++;
+  };
+
+  setShowRecipePicker = (show: boolean) => {
+    this.showRecipePicker = show;
   };
 
   /**

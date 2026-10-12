@@ -56,6 +56,12 @@ const PreferencesSection = () => {
           onChange={() => global.toggleSqlPanel(session)}
         />
         <ToggleRow
+          label="Hidden columns in SQL"
+          description="Show the columns beamlynx adds to the SQL so results can be edited: each table's key, and the type of each JSON value. They are fetched either way."
+          checked={global.showHiddenSqlColumns}
+          onChange={() => global.toggleShowHiddenSqlColumns()}
+        />
+        <ToggleRow
           label="Vim keybindings"
           description="Use vim-style editing in the query editor, and j/k navigation on the canvas and in Settings' own section list. The canvas's other single-letter shortcuts (s/w/o/g/x/u/U/i) aren't vim conventions and are always available regardless of this setting."
           checked={global.vimMode}

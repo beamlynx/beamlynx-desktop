@@ -8,7 +8,7 @@ export const Monitor = observer(({ sessionId, height }: { sessionId: string, hei
   const { global } = useStores();
   const session = global.getSession(sessionId);
   const data = session.connectionCountLogs;
-  const maxCount = Math.max(...data.map((item: { count: number }) => item.count)) + 10;
+  const maxCount = data.reduce((max: number, item: { count: number }) => Math.max(max, item.count), 0) + 10;
   const yAxisTicks = 10;
 
   // Set up the interval when monitoring is active
@@ -17,7 +17,7 @@ export const Monitor = observer(({ sessionId, height }: { sessionId: string, hei
 
     if (session.mode === 'monitor' && document.visibilityState === 'visible') {
       intervalId = setInterval(() => {
-        session.updateConnectionLogs();
+        session.updateConnectionLogs().catch(e => console.warn('[monitor] stats failed ->', e));
       }, 1000);
 
       // Set up visibility change listener
@@ -33,7 +33,7 @@ export const Monitor = observer(({ sessionId, height }: { sessionId: string, hei
         if (session.mode !== 'monitor') return;
 
         intervalId = setInterval(() => {
-          session.updateConnectionLogs();
+          session.updateConnectionLogs().catch(e => console.warn('[monitor] stats failed ->', e));
         }, 1000);
       };
 

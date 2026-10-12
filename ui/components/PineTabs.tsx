@@ -8,8 +8,13 @@ import Session from './Session';
 import { observer } from 'mobx-react-lite';
 import { runInAction } from 'mobx';
 import { useStores } from '../store/store-container';
-import { AddCircle, CloseOutlined } from '@mui/icons-material';
-import { IconButton, CircularProgress, Tooltip } from '@mui/material';
+import {
+  AddCircle,
+  CloseOutlined,
+  SmartToyOutlined,
+  VisibilityOutlined,
+} from '@mui/icons-material';
+import { IconButton, CircularProgress, Tooltip, ButtonBase } from '@mui/material';
 import { NEW_LAYOUT_GUTTER, VERTICAL_TAB_RAIL_WIDTH } from '../constants';
 
 /* Drag auto-scroll for the vertical rail: how far from either end the pointer
@@ -25,9 +30,40 @@ const RAIL_AUTOSCROLL_MAX_SPEED = 14;
 const PineTabs = observer(() => {
   const { global } = useStores();
 
-  // Derive tabs directly from global sessions
-  const tabs = Object.keys(global.sessions).map(sessionId => ({ sessionId }));
+  // The user's own tabs, rendered by TabList/TabPanel below in the usual way.
+  const regularTabs = global.visibleSessionIds.map(sessionId => ({ sessionId }));
+  // The dedicated MCP session (if the agent has run a query this session)
+  // plus every reveal request still awaiting a decision, each rendered as
+  // its own element after TabList (see the pinned-tab render below),
+  // clustered at the strip's far end, rather than as one of TabList's own
+  // Tab children. They can't be one of those and still land after "+ New
+  // tab": that button has to come after the user's own tabs but before
+  // these, which means these have to live outside TabList's child list to
+  // get their own place in that order (TabList/Tabs clones Tabs-specific
+  // props onto every child it's given, which none of these can take either
+  // way). See GlobalStore.mcpSessionId's and pendingRevealSessionIds' own
+  // comments for why each exists.
+  const pinnedTabs = [
+    ...(global.mcpSessionId ? [{ sessionId: global.mcpSessionId, kind: 'mcp' as const }] : []),
+    ...global.pendingRevealSessionIds.map(sessionId => ({ sessionId, kind: 'reveal' as const })),
+  ];
   const sessionId = global.activeSessionId;
+  // TabList's underlying Tabs component AND every regularTabs' TabPanel read
+  // `value` from this same TabContext -- so when a pinned tab is truly
+  // active, this must be something that matches NONE of the user's own
+  // tabs, on both sides. '' (session ids are never empty) does that: no
+  // TabPanel un-hides itself, and Tabs shows no selected indicator, both
+  // correctly reflecting that none of the user's own tabs are selected.
+  // A previous version of this fell back to regularTabs[0]'s own id instead
+  // -- which silenced Tabs' console warning, but made that ONE regular tab's
+  // TabPanel wrongly match and un-hide itself (confirmed live: the pinned
+  // tab's content rendered mixed in with whatever regularTabs[0] happened to
+  // be, and Tabs' sliding indicator jumped to highlight it, each time a
+  // pinned tab became active). '' does still trigger Tabs' own "value is
+  // invalid" console.error, but that check -- and the log call inside it --
+  // is wrapped in `if (process.env.NODE_ENV !== 'production')` in MUI's own
+  // source, so it never fires in the built app, only local dev tools.
+  const tabListValue = regularTabs.some(t => t.sessionId === sessionId) ? sessionId : '';
   const activeSession = global.sessions[sessionId];
   const activeConnectionId = activeSession?.connectionId || '';
   const activeIndicatorColor =
@@ -182,7 +218,7 @@ const PineTabs = observer(() => {
     event.dataTransfer.dropEffect = 'move';
     if (overId === draggedId) return;
 
-    const ids = Object.keys(global.sessions);
+    const ids = global.visibleSessionIds;
     const from = ids.indexOf(draggedId);
     const overIndex = ids.indexOf(overId);
     if (from < 0 || overIndex < 0) return;
@@ -220,7 +256,7 @@ const PineTabs = observer(() => {
         flexDirection: vertical ? 'row' : 'column',
       }}
     >
-      <TabContext value={sessionId}>
+      <TabContext value={tabListValue}>
         {/* Hidden in Zen mode -- the tab strip is exactly the kind of "app
             chrome" a graph-only view is meant to hide; the TabPanels below
             (the actual session content) stay mounted either way. */}
@@ -464,7 +500,7 @@ const PineTabs = observer(() => {
                 },
               }}
             >
-              {tabs.map((tab, index) => {
+              {regularTabs.map((tab, index) => {
                 const session = global.getSession(tab.sessionId);
                 const sessionConnectionId = session.connectionId || '';
                 const connectionColor = global.getConnectionColor(sessionConnectionId);
@@ -625,10 +661,177 @@ const PineTabs = observer(() => {
                 />
               </Tooltip>
             )}
+
+            {/* The pinned tabs (MCP activity, plus one per pending reveal
+                request) -- see pinnedTabs' own comment for why these are
+                plain ButtonBases here rather than TabList's own Tab
+                children. marginLeft: 'auto' (horizontal), on the FIRST one
+                only, reaches the true right edge of this row without
+                touching TabList's own sizing (railRef, this element's
+                parent, already spans the full width) -- the rest cluster
+                right after it with no margin of their own needed. No such
+                margin needed in vertical, where TabList's own flex: 1
+                already claims all the rail's leftover height, so the first
+                pinned tab -- the next sibling after it -- lands at the
+                bottom on its own. There's no MuiTabs-indicator to carry
+                "this one's active" the way the user's own tabs get, since
+                that only spans TabList's actual children -- the
+                border-bottom below stands in for it (horizontal only; the
+                border already carries that in the rail, see the comment on
+                the map itself further down). */}
+            {pinnedTabs.map((pinned, pinnedIndex) => {
+              const session = global.getSession(pinned.sessionId);
+              const isActive = pinned.sessionId === sessionId;
+              const isFirstPinned = pinnedIndex === 0;
+              const label = pinned.kind === 'mcp' ? 'Agent activity' : 'Needs approval';
+              const title =
+                pinned.kind === 'mcp'
+                  ? 'Agent activity -- safe to close, the next agent query recreates it'
+                  : `An agent wants to see something hidden by your access policy on ${global.getConnectionLabel(
+                      session.connectionId,
+                    )}${
+                      session.revealReason ? `: "${session.revealReason}"` : ''
+                    }. Closing this tab declines the request.`;
+              // Both use the tab strip's normal dim/active text treatment --
+              // this isn't an error state, just something waiting on you, so
+              // it shouldn't read as one. The icon alone carries "this needs
+              // your attention" (idleIconColor below), the same amber token
+              // NotificationBell and McpActivityButton's own unseen-activity
+              // dot already use for that, rather than borrowing the app's
+              // actual error/warning color.
+              const idleColor = 'var(--canvas-text-dim)';
+              const activeColor = 'var(--canvas-trace)';
+              const idleIconColor =
+                pinned.kind === 'reveal' ? 'var(--notification-color)' : undefined;
+              return (
+                <ButtonBase
+                  key={pinned.sessionId}
+                  onClick={() => setActiveTab(pinned.sessionId)}
+                  title={title}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    flexShrink: 0,
+                    minHeight: 40,
+                    // Explicit rather than relying on CssBaseline: the
+                    // horizontal branch's borderBottom below (2px, used as
+                    // this element's own stand-in for MuiTabs-indicator)
+                    // must be absorbed into minHeight, not added on top of
+                    // it -- otherwise this tab would sit 2px taller than
+                    // its neighbours the moment it's active.
+                    boxSizing: 'border-box',
+                    padding: '12px 16px',
+                    fontFamily: 'var(--canvas-font)',
+                    fontSize: '0.875rem',
+                    color: isActive ? activeColor : idleColor,
+                    transition:
+                      'background-color var(--motion-fast) ease, color var(--motion-fast) ease',
+                    // A pinned tab is the only thing in the strip that
+                    // appears without the user doing anything -- an agent
+                    // queried something, or asked for approval, possibly
+                    // while they were looking elsewhere. Sliding it in from
+                    // the pinned end says where it came from; appearing
+                    // fully formed says nothing at all. Runs on mount only
+                    // (these are keyed by session id, so a new request gets
+                    // a fresh element) and needs no exit counterpart --
+                    // finishRevealSession removes the whole tab.
+                    animation: 'pine-pinned-tab-in var(--motion-enter) var(--motion-ease-enter)',
+                    '@keyframes pine-pinned-tab-in': {
+                      from: {
+                        opacity: 0,
+                        transform: vertical ? 'translateY(12px)' : 'translateX(12px)',
+                      },
+                      to: { opacity: 1, transform: 'none' },
+                    },
+                    '&:hover': {
+                      backgroundColor: 'var(--canvas-chip-bg)',
+                      color: 'var(--canvas-text)',
+                    },
+                    // Same hover-to-reveal as the user's own tabs
+                    // ('& .MuiTab-root:hover .pine-tab-close' on TabList
+                    // above), just scoped to this element directly since
+                    // it's not a descendant of TabList.
+                    '& .pine-tab-close': {
+                      opacity: 0,
+                      pointerEvents: 'none',
+                      transition: 'opacity 120ms ease',
+                    },
+                    '&:hover .pine-tab-close': {
+                      opacity: 1,
+                      pointerEvents: 'auto',
+                    },
+                    '@media (hover: none)': {
+                      '& .pine-tab-close': { opacity: 1, pointerEvents: 'auto' },
+                    },
+                    ...(vertical
+                      ? {
+                          width: '100%',
+                          justifyContent: 'flex-start',
+                          borderTop: isFirstPinned ? '1px solid var(--border-color)' : undefined,
+                          // Belt-and-braces: TabList's own flex: 1 should
+                          // already push the first pinned tab to the rail's
+                          // true bottom by consuming all the leftover
+                          // height itself, but this costs nothing if that
+                          // holds and saves the layout if it doesn't. Only
+                          // the first needs it -- the rest just follow.
+                          marginTop: isFirstPinned ? 'auto' : undefined,
+                        }
+                      : {
+                          marginLeft: isFirstPinned ? 'auto' : undefined,
+                          borderLeft: isFirstPinned ? '1px solid var(--border-color)' : undefined,
+                          borderBottom: `2px solid ${isActive ? activeIndicatorColor : 'transparent'}`,
+                        }),
+                  }}
+                >
+                  {/* The spinner REPLACES the icon rather than sitting next
+                      to it (which is what the user's own tabs do further up,
+                      where it's harmless). A pinned tab is anchored to the
+                      strip's far end by margin-left: auto, so anything that
+                      changes its width moves its LEFT edge -- inserting a
+                      second element here made the icon visibly jump sideways
+                      and back every time the session started and finished
+                      loading (reported directly). Same 14px footprint either
+                      way, so the tab's width never changes. */}
+                  {session.loading || session.connecting ? (
+                    <CircularProgress size={14} sx={{ color: 'inherit', flexShrink: 0 }} />
+                  ) : pinned.kind === 'mcp' ? (
+                    <SmartToyOutlined sx={{ fontSize: 14, flexShrink: 0 }} />
+                  ) : (
+                    <VisibilityOutlined
+                      sx={{ fontSize: 14, flexShrink: 0, color: idleIconColor }}
+                    />
+                  )}
+                  <span>{label}</span>
+                  <IconButton
+                    className="pine-tab-close"
+                    style={{ marginLeft: '5px' }}
+                    size="small"
+                    component="span"
+                    aria-label="Close tab"
+                    tabIndex={-1}
+                    onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
+                      event.stopPropagation();
+                      removeTab(pinned.sessionId);
+                    }}
+                    sx={{
+                      flexShrink: 0,
+                      color: 'var(--canvas-text-dim)',
+                      '&:hover': {
+                        color: 'var(--canvas-text)',
+                        backgroundColor: 'var(--canvas-node-border)',
+                      },
+                    }}
+                  >
+                    <CloseOutlined sx={{ fontSize: '14px' }} tabIndex={-1} />
+                  </IconButton>
+                </ButtonBase>
+              );
+            })}
           </Box>
         )}
 
-        {tabs.map(tab => (
+        {regularTabs.map(tab => (
           <TabPanel
             key={tab.sessionId}
             // The flex/display overrides only apply to the ACTIVE tab's
@@ -663,6 +866,26 @@ const PineTabs = observer(() => {
           </TabPanel>
         ))}
       </TabContext>
+
+      {/* Pinned sessions' own content -- deliberately outside TabContext
+          (see tabListValue's own comment) and toggled by hand rather than
+          through TabPanel, since TabPanel only ever matches TabContext's
+          shared value, which these are excluded from. Same
+          shown/hidden-but-mounted shape TabPanel itself uses, so switching
+          to or from one of these preserves its state exactly like switching
+          between two of the user's own tabs does. */}
+      {pinnedTabs.map(pinned => (
+        <Box
+          key={pinned.sessionId}
+          sx={
+            pinned.sessionId === sessionId
+              ? { flex: 1, minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column' }
+              : { display: 'none' }
+          }
+        >
+          <Session sessionId={pinned.sessionId}></Session>
+        </Box>
+      ))}
     </Box>
   );
 });

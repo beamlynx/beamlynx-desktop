@@ -6,7 +6,9 @@ import { getSchemaColor } from '../store/graph.util';
 export type CommandCategory = 'View' | 'Query' | 'Preferences' | 'Experimental' | 'Help';
 
 /** Helper constant for commands that are always enabled */
-export const ALWAYS_ENABLED = (_global: GlobalStore, _session: Session) => true;
+export const recipesAvailable = () => typeof window !== 'undefined' && !!window.beamlynxDesktop?.recipes;
+
+const ALWAYS_ENABLED = (_global: GlobalStore, _session: Session) => true;
 
 /**
  * Represents a selectable option in a two-stage command.
@@ -142,6 +144,13 @@ const COMMANDS: Command[] = [
     isEnabled: (_global, session) => !!(session.expression || session.query) && !session.loading,
   },
   {
+    id: 'stop-query',
+    label: 'Stop Query',
+    category: 'Query',
+    handler: (_global, session) => session.stop(),
+    isEnabled: (_global, session) => session.loading && !!session.runId,
+  },
+  {
     id: 'copy-pine-expression',
     label: 'Copy Pine Expression',
     category: 'Query',
@@ -178,12 +187,20 @@ const COMMANDS: Command[] = [
     },
     isEnabled: (_global, session) => session.columns.length > 0 && session.rows.length > 0,
   },
+  // Recipes are stored by the desktop app, so both are off in the browser.
   {
-    id: 'save-tab',
-    label: 'Save Tab',
+    id: 'save-recipe',
+    label: 'Save as Recipe',
     category: 'Query',
-    handler: global => global.setShowSaveModal(true),
-    isEnabled: (_global, session) => session.expression.trim() !== '',
+    handler: global => global.setShowSaveRecipe(true),
+    isEnabled: (_global, session) => recipesAvailable() && session.expression.trim() !== '',
+  },
+  {
+    id: 'use-recipe',
+    label: 'Use a Recipe',
+    category: 'Query',
+    handler: global => global.setShowRecipePicker(true),
+    isEnabled: () => recipesAvailable(),
   },
 
   // Hidden commands
@@ -234,6 +251,13 @@ const COMMANDS: Command[] = [
     label: 'Toggle Table Colors',
     category: 'Preferences',
     handler: global => global.togglePineTableColors(),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'toggle-hidden-sql-columns',
+    label: 'Toggle Hidden Columns in SQL',
+    category: 'Preferences',
+    handler: global => global.toggleShowHiddenSqlColumns(),
     isEnabled: ALWAYS_ENABLED,
   },
 

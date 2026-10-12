@@ -1,11 +1,16 @@
 import { isPlayground } from './util';
+import type { DbType } from '../utils/dbType';
 
-// Also correct for the beamlynx-desktop static export loaded via file://:
-// window.location.hostname is '' there, so isPlayground() already returns
-// false and this falls through to localhost:33333 -- which is exactly the
-// bundled local pine-server. Don't "fix" the empty-hostname case without
-// checking this.
+// Inside beamlynx-desktop, the desktop app says where its bundled server
+// listens. Its dev build uses a different port than the installed app, so
+// both can run at once.
+//
+// Everywhere else: note the static export loaded via file:// has
+// window.location.hostname '', so isPlayground() returns false there too.
+// Don't "fix" the empty-hostname case without checking this.
 const getBaseUrl = () => {
+  const desktopUrl = typeof window !== 'undefined' ? window.beamlynxDesktop?.pineServerUrl : undefined;
+  if (desktopUrl) return desktopUrl;
   return isPlayground() ? 'https://api.playground.beamlynx.com' : 'http://localhost:33333';
 };
 
@@ -24,9 +29,19 @@ export type TableHint = {
   // relation at all yet to describe.
   column?: string;
   'related-column'?: string;
+  // Every column pair of the relation, present only when there is more than
+  // one - i.e. a foreign key made of several columns. `column`/
+  // `related-column` above are the first of these, the pair the hint's `pine`
+  // text names; joining needs no more than that, since naming any column of a
+  // key joins on the whole key. Something that has to name the whole key
+  // rather than join on it - scoping a `delete!` to the rows this relation
+  // reaches - needs them all. pine-lang leaves it off a single-column key,
+  // where it would only repeat the two fields above across what can be
+  // thousands of hints, so read it as `columns ?? [{column, related-column}]`.
+  columns?: { column: string; 'related-column': string }[];
   parent?: boolean;
   // 'synthetic' is a made-up id=id join with no real FK behind it (today only
-  // ever the same-source case - see docs/variables.md in pine-lang - but not
+  // ever the same-source case - see docs/named-results.md in pine-lang - but not
   // inherently variable-specific; a future self-join between two real tables
   // would use the same tag). 'manual' (explicit `.col1 = .col2`) is never
   // emitted by hints today - that syntax bypasses the reference map entirely,
@@ -76,7 +91,6 @@ export type Hints = {
 // There are more operations. I'll add them as we need to handle them here
 export type OperationType =
   | 'table'
-  | 'delete'
   | 'select'
   | 'select-partial'
   | 'order'
@@ -94,28 +108,120 @@ export type Operation = {
   // layout.ts), so this is intentionally loose rather than a full union.
   value?: unknown;
 };
-export type WhereCondition = [string, string, null, string, { type: string; value: string } | null];
+/** One step of a path into a JSON column: a key, or an array index. */
+export type JsonPathStep = string | number;
 
 /**
- * ON-clause equality: `${alias1}.${col1} = ${alias2}.${col2}`. Position 2
- * (`'has'`/`'of'`) records which side owns the FK. Position 6 is the same
- * confidence tag a `TableHint` carries (see `TableHint.resolution`) - added
- * by pine-lang so an already-committed join doesn't need a client-side
- * workaround (re-deriving it from the picker hint that produced it) to know
- * whether it's backed by a real FK.
+ * A column as Pine writes it: `data`, or `data.address.city` for a key inside
+ * a JSON column. Keys that aren't Pine names are quoted, `data.'home address'`,
+ * and indexes are bracketed, `data.tags[0]`. Mirrors pine-lang's
+ * pine.ast.path/path-text, which names a path column the same way.
  */
-// col/f-col/resolution can all come back null - a "hint-less" join pine-lang
-// returns (rather than nulling the whole relation) when an explicit
-// join-column doesn't match any real reference for the resolved pair - see
-// join-helper's comment in pine-lang's src/pine/ast/table.clj. Callers must
-// treat that the same as a null relation (see layout.ts's addJoins), not as
-// a resolved-but-uncertain join. Trailing element is needs-cast? (unused
-// here - only eval.clj's SQL generation reads it).
-export type JoinRelation = [string, string | null, 'has' | 'of', string, string | null, TableHint['resolution'] | null, boolean];
-/** `[from-alias, to-alias, relation, join-type]` — join-type is `'LEFT'`/`'RIGHT'`/null (inner). */
-export type JoinTuple = [string, string, JoinRelation | null, string | null];
+export const columnName = (column: string, path?: JsonPathStep[] | null): string =>
+  (path ?? []).reduce<string>(
+    (name, step) =>
+      typeof step === 'number'
+        ? `${name}[${step}]`
+        : /^[A-Za-z_][A-Za-z0-9_-]*$/.test(step)
+          ? `${name}.${step}`
+          : `${name}.'${step.replace(/'/g, "''")}'`,
+    column,
+  );
 
-export type Column = { alias: string; column: string; 'column-alias': string; hidden: boolean };
+/** One condition of a `where:`, as pine-lang reports it in `ast.where`. */
+export type WhereCondition = {
+  alias: string;
+  column: string;
+  // Set when the condition is on a key inside a JSON column.
+  path?: JsonPathStep[];
+  cast: string | null;
+  // SQL-cased, e.g. "ILIKE".
+  operator: string;
+  // A literal compared with a JSON key arrives as JSON text, with its
+  // 'json-type': `'SE'` is `"SE"`. See whereLiteral.
+  value: { type: string; value: string; 'json-type'?: string } | null;
+};
+
+/**
+ * A condition's value as Pine shows it: a $variable as `$name`, and a
+ * literal pine-lang turned into JSON for a JSON key decoded back, so
+ * `data.country = 'SE'` reads `SE`, not `"SE"`.
+ */
+export const whereLiteral = (value: WhereCondition['value']): string => {
+  if (!value || !('value' in value)) return '';
+  if (value.type === 'variable') return `$${value.value}`;
+  if (value['json-type']) {
+    try {
+      return String(JSON.parse(value.value));
+    } catch {
+      return value.value;
+    }
+  }
+  return `${value.value}`;
+};
+
+/**
+ * One entry of `ast.where`. Entries are ANDed. An `or` group is the
+ * conditions of one `where:` joined with `or` (`where: a = 1 or b = 2`).
+ */
+export type WhereEntry = WhereCondition | { or: WhereCondition[] };
+
+/** The conditions of one `ast.where` entry: one, or every member of an `or` group. */
+export const whereConditions = (entry: WhereEntry): WhereCondition[] =>
+  'or' in entry ? entry.or : [entry];
+
+/** One column pair of a join's ON clause, each side labelled by the alias that owns it. */
+export type JoinColumns = { from: string; to: string };
+
+/**
+ * One join in the pipeline, as pine-lang describes it.
+ *
+ * `from`/`to` are the two aliases in pipeline order - the order they were
+ * typed. `columns` is every column pair of the ON clause, so a foreign key
+ * made of more than one column is simply a longer list; read it as a list,
+ * never as `columns[0]`. `parent` says which of the two sides owns the key
+ * being pointed at. `resolution` is the same confidence tag a `TableHint`
+ * carries (see `TableHint.resolution`), so an already-committed join doesn't
+ * need a client-side workaround - re-deriving it from the picker hint that
+ * produced it - to know whether it's backed by a real FK.
+ *
+ * `resolution: null` is an unresolved join: nothing connects the two tables,
+ * or an explicit join-column matched no real reference (e.g. a canvas edit
+ * retargeted this join onto a different upstream table after the one in
+ * between was deleted). `columns` is empty in that case and the SQL has no ON
+ * clause. There is exactly one spelling for it, so checking `resolution` is
+ * enough - see layout.ts's addJoins.
+ *
+ * `cast` is `'text'` when a heuristic join's two sides have different DB types
+ * (unused here - only pine-lang's own SQL generation reads it).
+ */
+export type Join = {
+  from: string;
+  to: string;
+  columns: JoinColumns[];
+  parent: 'from' | 'to';
+  resolution: TableHint['resolution'] | null;
+  /** `'LEFT'`/`'RIGHT'`, or null for an inner join. */
+  type: string | null;
+  cast: string | null;
+};
+
+export type Column = {
+  alias: string;
+  column: string;
+  'column-alias': string;
+  hidden: boolean;
+  // A primary key column pine-lang added so a row can be edited. One per key
+  // column of each table; a table without a primary key has none.
+  'auto-id'?: boolean;
+  // A key inside a JSON column. Computed by the query, so it can't be edited.
+  path?: JsonPathStep[];
+  // A date bucket, `created_at => month`. Computed too.
+  'col-fn'?: string;
+  // A hidden column holding the JSON type of a path column's value in each
+  // row, named after that column's 'column-alias'.
+  'json-type-of'?: string;
+};
 
 /** Range returned by the build endpoint mapping segments to table aliases */
 export type PineRange = {
@@ -124,23 +230,30 @@ export type PineRange = {
   end: { line: number; character: number };
 };
 
-export type VariableAst = {
+/** A named result (`|= name`) as /build's AST describes it. */
+export type NamedResultAst = {
   'selected-tables': Table[];
   tables?: Table[];
-  joins: JoinTuple[];
+  joins: Join[];
   columns: Column[];
 };
 
 /** An order-by entry - distinct from Column: no `column-alias`/`hidden`, but carries direction. */
-export type OrderColumn = { alias: string; column: string; direction: 'ASC' | 'DESC'; 'operation-index'?: number };
+export type OrderColumn = {
+  alias: string;
+  column: string;
+  path?: JsonPathStep[];
+  direction: 'ASC' | 'DESC';
+  'operation-index'?: number;
+};
 
 /** A group-by entry (pine-lang's ast/group.clj) - alias/column only, no aggregation info canvas mode needs. */
-export type GroupColumn = { alias: string; column: string; 'operation-index'?: number };
+export type GroupColumn = { alias: string; column: string; path?: JsonPathStep[]; 'operation-index'?: number };
 
 export type Ast = {
   hints: Hints;
   'selected-tables': Table[];
-  joins: JoinTuple[];
+  joins: Join[];
   context: string;
   current: string;
   operation: Operation;
@@ -150,13 +263,28 @@ export type Ast = {
   // makeColumnsLookup(orderColumns: Column[]) only ever reads `.alias`/`.column`
   // and is out of scope to touch; canvas mode casts to OrderColumn[] where it needs `direction`.
   order: Column[];
-  where: WhereCondition[];
+  where: WhereEntry[];
   group?: GroupColumn[];
   prettified: string;
   ranges: PineRange[];
-  variables?: Record<string, VariableAst>;
-  'pending-assignments'?: Record<string, VariableAst>;
+  'named-results'?: Record<string, NamedResultAst>;
+  'pending-assignments'?: Record<string, NamedResultAst>;
   assign?: string;
+};
+
+// A $variable's value as pine-lang takes it: a string, number or boolean, or a
+// list of them for `in $name`. See pine-lang's docs/variables.md.
+export type VariableScalar = string | number | boolean;
+export type VariableValue = VariableScalar | VariableScalar[];
+
+// What /build reports about an expression's $variables: every one used, those
+// with no value, those used with `in` (which take a list), and the values
+// written in the tab's values blocks.
+export type VariablesReport = {
+  used: string[];
+  unbound: string[];
+  lists: string[];
+  values?: Record<string, VariableValue>;
 };
 
 export type Response = {
@@ -167,9 +295,28 @@ export type Response = {
   // build
   ast: Ast;
   query: string;
+  // The same SQL without the hidden columns pine-lang adds for the results
+  // grid. Absent from a server older than JSON key edits.
+  'query-without-hidden'?: string;
+  // Absent against a server older than $variables.
+  variables?: VariablesReport;
+  // eval refused for a missing value: the names of the variables without one.
+  unbound?: string[];
+  // This tab's doc comment: the comment at the top of the *first* expression
+  // sent, cleaned for display (delimiters, per-line markers and shared
+  // indentation removed). Null/absent when there isn't one, and absent
+  // entirely against a server older than the feature. See pine-lang's
+  // docs/comments.md.
+  doc?: string | null;
   // eval
   result: (string | number)[][];
   columns: Column[];
+  // Whether the expression changes data -- true for delete!/update! (and d!/u!),
+  // false for everything else. Present on every eval response, including one
+  // refused because the caller sent allow-writes: false, which comes back with
+  // `error-type: "write-refused"`. Absent against a server older than the
+  // feature. See pine-lang's docs/side-effects.md.
+  writes?: boolean;
   // Nicely formatted rendering of the expression that ran - pine-lang
   // computes it on every build or eval alike (see client.prettify()'s own
   // use of ast.prettified for build), so it comes back here for free
@@ -214,12 +361,13 @@ export type ConnectionInfo = {
   // Only present in desktop mode, where entries come from locally saved
   // profiles rather than pine-server's live session list -- carried here so
   // GlobalStore.deleteConnection can derive pine's own connection id
-  // (`${dbHost}:${dbPort}`) without an extra round trip.
+  // (`${dbHost}:${dbPort}:${dbName}`) without an extra round trip.
   dbHost?: string;
   dbPort?: string;
+  dbName?: string;
   // Desktop-only: whether this saved connection has been opted in to MCP
   // access. See GlobalStore.setMcpEnabled and
-  // beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md.
+  // beamlynx-plans/completed/2026-08-15-mcp-server-and-url-scheme.md.
   mcpEnabled?: boolean;
   // Desktop-only: which access policy (if any) applies to this connection,
   // defaulted at connection creation (credential-store.ts's saveConnection)
@@ -280,6 +428,80 @@ export type ConnectionsListResult = {
   connections: ConnectionInfo[];
 };
 
+/**
+ * Puts every operation of an expression at the start of its own line.
+ *
+ * Only ever rewrites the whitespace in front of a leading `|`, never anything
+ * between pipes -- so, unlike splitting on `|`, it cannot damage a string
+ * literal that happens to contain one (`where: name = 'a|b'`). pine-lang's own
+ * prettify indents its continuation lines by a space; a traversal's expressions
+ * are assembled here rather than there, and this keeps the whole expression in
+ * one style rather than the first half in pine's and the appended half in ours.
+ */
+export const pipesAtLineStart = (expression: string): string =>
+  expression
+    .split('\n')
+    .map((line, i) => (i === 0 ? line : line.replace(/^[ \t]+\|/, '|')))
+    .join('\n');
+
+/**
+ * The `delete!` operation scoping a delete to the given columns.
+ *
+ * More than one when the rows are identified by a foreign key made of several
+ * columns. pine-lang matches those as a row -- `WHERE (a, b) IN ( SELECT a, b
+ * ... )` -- which is the only correct thing to do: one column of such a key
+ * matches rows belonging to other records too, and says nothing about it.
+ */
+export const deleteOp = (columns: string[]): string =>
+  `delete! ${columns.map(c => `.${c}`).join(', ')}`;
+
+/**
+ * The server answered 401: it requires a launch token this app didn't send.
+ * beamlynx-desktop gives its bundled server a fresh token each launch and
+ * hands the same token to this UI (authHeaders below), so this means the UI
+ * and the server came from different launches, or the UI is too old for the
+ * server.
+ */
+export class ServerRejectedError extends Error {
+  constructor() {
+    super("The Pine server refused this app's requests: it requires a launch token this app didn't send. Restart beamlynx.");
+    this.name = 'ServerRejectedError';
+  }
+}
+
+// The desktop app's launch token for its bundled server, when there is one.
+// Every request carries it; the server refuses requests without it, so no
+// other program or web page can use the server.
+export const authHeaders = (): Record<string, string> => {
+  const token = typeof window !== 'undefined' ? window.beamlynxDesktop?.pineServerToken : undefined;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
+/** pine-lang's POST /api/v1/sql-to-pine. */
+export type SqlSchemaResponse = {
+  dialect?: 'postgres' | 'mysql' | 'sqlite';
+  'default-schema'?: string;
+  tables: { schema: string; table: string; columns: string[] }[];
+};
+
+/** A join to suggest after JOIN in the SQL panel (pine-lang's /sql-join-hints). */
+export type SqlJoinHint = {
+  /** The text that goes after JOIN: `employee e ON e.company_id = c.id`. */
+  sql: string;
+  schema: string | null;
+  table: string;
+  /** fk for a foreign key, heuristic for a join guessed from column names. */
+  resolution: string;
+};
+
+export type SqlToPineResponse = {
+  expression?: string;
+  warnings?: string[];
+  error?: string;
+  /** sql-unsupported, sql-parse-error or internal. */
+  'error-type'?: string;
+};
+
 export class HttpClient {
   constructor(private readonly onBuild?: (ast: Ast) => void) {}
 
@@ -288,8 +510,12 @@ export class HttpClient {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
+        ...authHeaders(),
       },
     });
+    if (res.status === 401) {
+      throw new ServerRejectedError();
+    }
     if (!res.ok) {
       return;
     }
@@ -304,7 +530,8 @@ export class HttpClient {
     const res = await this.baseGet<{ 'connection-count': number; time: string }>(
       'connection/stats',
     );
-    if (!res) {
+    // No numbers when nothing is selected (pine-lang answers with an error).
+    if (!res || typeof res['connection-count'] !== 'number') {
       return;
     }
     return {
@@ -341,9 +568,13 @@ export class HttpClient {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...authHeaders(),
       },
       body: JSON.stringify(body),
     });
+    if (res.status === 401) {
+      throw new ServerRejectedError();
+    }
     if (!res.ok) {
       throw new Error(await this.describeFailure(res));
     }
@@ -355,8 +586,12 @@ export class HttpClient {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
+        ...authHeaders(),
       },
     });
+    if (res.status === 401) {
+      throw new ServerRejectedError();
+    }
     if (!res.ok) {
       throw new Error(await this.describeFailure(res));
     }
@@ -368,6 +603,34 @@ export class HttpClient {
       return { ...body, 'connection-id': connectionId };
     }
     return body;
+  }
+
+  /**
+   * The connection's tables and columns, for completing SQL in the SQL panel
+   * (pine-lang's docs/sql-hints.md). Empty with no connection.
+   */
+  public async sqlSchema(connectionId?: string): Promise<SqlSchemaResponse> {
+    const response = await this.post('sql-schema', this.withConnectionId({}, connectionId));
+    return (response ?? { tables: [] }) as unknown as SqlSchemaResponse;
+  }
+
+  /**
+   * After JOIN in the SQL being typed, the tables that join to the query's
+   * (pine-lang's docs/sql-hints.md). `cursor` is an offset into `query`.
+   */
+  public async sqlJoinHints(query: string, cursor: number, connectionId?: string): Promise<SqlJoinHint[]> {
+    const response = await this.post('sql-join-hints', this.withConnectionId({ query, cursor }, connectionId));
+    return ((response as unknown as { joins?: SqlJoinHint[] })?.joins ?? []) as SqlJoinHint[];
+  }
+
+  /**
+   * One SQL SELECT as Pine (pine-lang's docs/sql-to-pine.md). Nothing runs.
+   * Never called from store/mcp-query.ts: agents write Pine, and no SQL
+   * reaches pine-lang from the MCP surface (see the no-raw-SQL test).
+   */
+  public async sqlToPine(query: string, connectionId?: string): Promise<SqlToPineResponse> {
+    const response = await this.post('sql-to-pine', this.withConnectionId({ query }, connectionId));
+    return (response ?? {}) as unknown as SqlToPineResponse;
   }
 
   public async prettify(expression: string, connectionId?: string): Promise<string> {
@@ -388,10 +651,38 @@ export class HttpClient {
     expressions: string[],
     connectionId?: string,
     accessPolicyRules?: AccessPolicyRule[],
+    // false asks pine-lang to refuse an expression that changes data
+    // (delete!/update!, and their d!/u! short forms) rather than run it -- see
+    // its docs/side-effects.md. Sent only when explicitly false, so an
+    // ordinary call is byte-for-byte the request it was before; pine-lang
+    // treats the field's absence as "writes allowed", which is what the
+    // person's own editor needs.
+    allowWrites?: boolean,
+    // Values for the expressions' $variables. Sent only when there are some,
+    // so an expression without variables is the request it always was.
+    variables?: Record<string, VariableValue>,
+    // Names this run, so cancel() can stop it. A run without one can't be
+    // stopped.
+    runId?: string,
   ): Promise<Response> {
-    const body: { expressions: string[]; 'access-policy'?: AccessPolicyRule[] } = { expressions };
+    const body: {
+      expressions: string[];
+      'access-policy'?: AccessPolicyRule[];
+      'allow-writes'?: boolean;
+      variables?: Record<string, { value: VariableValue }>;
+      'run-id'?: string;
+    } = { expressions };
+    if (runId) {
+      body['run-id'] = runId;
+    }
+    if (variables && Object.keys(variables).length) {
+      body.variables = Object.fromEntries(Object.entries(variables).map(([name, value]) => [name, { value }]));
+    }
     if (accessPolicyRules?.length) {
       body['access-policy'] = accessPolicyRules;
+    }
+    if (allowWrites === false) {
+      body['allow-writes'] = false;
     }
     const response = await this.post('eval', this.withConnectionId(body, connectionId));
     if (!response) {
@@ -400,15 +691,23 @@ export class HttpClient {
     return response;
   }
 
-  public async sql(query: string, connectionId?: string): Promise<Response> {
+  public async sql(query: string, connectionId?: string, runId?: string): Promise<Response> {
     const response = await this.post(
       'sql',
-      this.withConnectionId({ query: query.trim() }, connectionId),
+      this.withConnectionId({ query: query.trim(), ...(runId ? { 'run-id': runId } : {}) }, connectionId),
     );
     if (!response) {
       throw new Error('No response when trying to execute SQL');
     }
     return response;
+  }
+
+  /**
+   * Stops the run started with this id. The database stops the statement,
+   * and the run answers with error-type "cancelled". A write is rolled back.
+   */
+  public async cancel(runId: string): Promise<void> {
+    await this.post('cancel', { 'run-id': runId });
   }
 
   public async build(
@@ -417,7 +716,11 @@ export class HttpClient {
     connectionId?: string,
     accessPolicyRules?: AccessPolicyRule[],
   ): Promise<Response> {
-    const body: { expressions: string[]; cursor?: CursorPosition; 'access-policy'?: AccessPolicyRule[] } = {
+    const body: {
+      expressions: string[];
+      cursor?: CursorPosition;
+      'access-policy'?: AccessPolicyRule[];
+    } = {
       expressions,
     };
     if (cursor) {
@@ -442,13 +745,26 @@ export class HttpClient {
     if (response.error) {
       throw new Error(response.error);
     }
-    return response.result[1][0] as number;
+    // A header with no row means nothing was counted.
+    const count = Number(response.result?.[1]?.[0]);
+    if (!Number.isFinite(count)) {
+      throw new Error("Couldn't count the matching rows");
+    }
+    return count;
   }
 
   public async makeChildExpressions(
     expression: string,
     connectionId?: string,
-  ): Promise<{ expressions: { expression: string; column: string }[]; ast: Ast }> {
+  ): Promise<{
+    expressions: {
+      expression: string;
+      columns: string[];
+      table: string;
+      schema: string | null;
+    }[];
+    ast: Ast;
+  }> {
     // Add trailing `|` explicitly for child expressions
     const x = `${expression} |`;
     const response = await this.post(
@@ -465,22 +781,43 @@ export class HttpClient {
       // through.
       .filter(
         (h): h is TableHint & { column: string } =>
-          !h.parent && h.resolution !== 'heuristic' && h.resolution !== 'synthetic' && h.column !== undefined,
+          !h.parent &&
+          h.resolution !== 'heuristic' &&
+          h.resolution !== 'synthetic' &&
+          h.column !== undefined,
       )
+      // table/schema come along so a caller can name the table without
+      // re-parsing `h.pine` -- store/canvas/traversal.ts keys its cycle check
+      // on them, and labels each row of its panel with them.
       .map(h => ({
-        expression: `${x} ${h.pine}`,
-        column: h.column,
+        // Each hop on its own line. The walk builds an expression by appending
+        // joins, and appended inline they ran onto the end of whatever the
+        // canvas had already formatted -- so a traversal five tables deep read
+        // as one long line. Pine treats a newline as whitespace, so this costs
+        // nothing but makes every expression the walk produces readable
+        // wherever it surfaces: the panel's tooltip, the comment above each
+        // generated DELETE, the log of a run, and the tab you get when you
+        // open a row.
+        expression: pipesAtLineStart(`${expression}\n| ${h.pine}`),
+        // Every column on THIS side of the join, not just the first: a
+        // foreign key made of several columns needs all of them to scope a
+        // DELETE, and one of them alone removes rows belonging to other
+        // records. A single-column key carries no `columns` array (see
+        // TableHint), so fall back to the one column it does name.
+        columns: h.columns ? h.columns.map(c => c.column) : [h.column],
+        table: h.table,
+        schema: h.schema,
       }));
     return { expressions, ast: response.ast };
   }
 
   public async buildDeleteQuery(
     expression: string,
-    column: string,
+    columns: string[],
     limit: number,
     connectionId?: string,
   ): Promise<string> {
-    const x = `${expression} | limit: ${limit} | delete! .${column}`;
+    const x = `${expression}\n| limit: ${limit}\n| ${deleteOp(columns)}`;
     const response = await this.build([x], undefined, connectionId);
     if (!response) {
       throw new Error('No response when trying to build the delete query');
@@ -494,7 +831,7 @@ export class HttpClient {
     dbName: string;
     dbUser: string;
     dbPassword: string;
-    dbType?: 'postgres' | 'mysql';
+    dbType?: DbType;
   }): Promise<string> {
     type ServerConnectionParams = {
       host: string;
@@ -530,7 +867,10 @@ export class HttpClient {
   }
 
   public async useConnection(connectionId: string): Promise<{ id: string; version: string }> {
-    const response = await this.post(`connections/${connectionId}/connect`, {});
+    // Encoded because the id now folds dbname in (host:port:dbname, see
+    // pine.db.connections/make-connection-id) -- a dbname with a character
+    // that's not path-safe would otherwise land as extra/malformed segments.
+    const response = await this.post(`connections/${encodeURIComponent(connectionId)}/connect`, {});
     if (!response) {
       throw new Error('No response when trying to test connection');
     }
@@ -541,7 +881,7 @@ export class HttpClient {
   }
 
   public async deleteConnection(connectionId: string): Promise<void> {
-    const response = await this.del(`connections/${connectionId}`);
+    const response = await this.del(`connections/${encodeURIComponent(connectionId)}`);
     if (!response) {
       throw new Error('No response when trying to remove connection');
     }
@@ -551,7 +891,7 @@ export class HttpClient {
   }
 
   public async reindexConnection(connectionId: string): Promise<void> {
-    const response = await this.post(`connections/${connectionId}/reindex`, {});
+    const response = await this.post(`connections/${encodeURIComponent(connectionId)}/reindex`, {});
     if (!response) {
       throw new Error('No response when trying to reindex connection');
     }

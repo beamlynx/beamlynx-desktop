@@ -9,9 +9,12 @@ import {
   DEFAULT_NEW_LAYOUT_PANEL_WIDTH,
   NEW_LAYOUT_GUTTER,
 } from '../constants';
+import { usePanelPresence } from '../hooks/usePanelPresence';
+import { MOTION, motionDuration } from '../styles/motion';
 import { getUserPreference, STORAGE_KEYS } from '../store/preferences';
 import { useStores } from '../store/store-container';
 import Canvas from './canvas/Canvas';
+import CollapsibleHeight from './CollapsibleHeight';
 import ErrorMessage from './ErrorMessage';
 import Input, { RunButton } from './Input';
 import { Monitor } from './Monitor';
@@ -47,12 +50,43 @@ const RightPane = observer(({ sessionId }: { sessionId: string }) => {
   }
 
   return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      {session.error && (
-        <Box sx={{ flexShrink: 0 }}>
-          <ErrorMessage />
-        </Box>
-      )}
+    <Box
+      sx={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 0,
+        // Makes this pane a size container, so the error band can cap
+        // itself at a share of it (`cqh` in ErrorMessage.tsx) rather than a
+        // flat number of lines. With the pane dragged short, a six-line
+        // error would otherwise squeeze the grid below it down to its
+        // footer. Safe to contain: this box's height comes from the pane
+        // around it, never from what's inside it.
+        containerType: 'size',
+      }}
+    >
+      {/* Always rendered, collapsed to zero height when there's no error,
+          rather than mounted and unmounted on `session.error`. Auto-run
+          makes a failed query an ordinary event, so this band appears and
+          disappears more often than anything else in the app, and it used
+          to shove the results grid down a line in a single frame every
+          time. On the short duration deliberately - it's usually a
+          transient state on the way to a working query, and anything
+          slower would feel like being told off.
+
+          ErrorMessage keeps its own `if (!session.error) return null` as
+          the safety net it always was; presence is owned here, by the one
+          element that can animate. */}
+      <CollapsibleHeight
+        expanded={Boolean(session.error)}
+        transition="height var(--motion-fast) var(--motion-ease-enter)"
+        contentSx={{
+          opacity: session.error ? 1 : 0,
+          transition: 'opacity var(--motion-fast) var(--motion-ease-enter)',
+        }}
+      >
+        <ErrorMessage sessionId={sessionId} />
+      </CollapsibleHeight>
       <Box sx={{ flex: 1, minHeight: 0 }}>
         <Result sessionId={sessionId} />
       </Box>
@@ -89,19 +123,29 @@ const LeftPane = observer(
     const { global } = useStores();
     const session = global.getSession(sessionId);
     const panelVisible = global.newLayoutPanelVisible;
+    // Keeps the panel (and its divider) mounted through the closing
+    // transition -- see hooks/usePanelPresence.ts.
+    const panel = usePanelPresence(panelVisible);
     // Only when the outer split is top/bottom - see the doc comment above.
-    const panelBesideCanvas = panelVisible && !isHorizontal;
+    // Keyed on `panel.mounted`, not on panelVisible: the flag flips the
+    // instant the toggle is hit, and this decides the flex AXIS, so reading
+    // it directly would swap the panel from a row to a column halfway
+    // through its own closing animation.
+    const panelBesideCanvas = panel.mounted && !isHorizontal;
 
-    const [panelWidth, setPanelWidth] = useState(DEFAULT_NEW_LAYOUT_PANEL_WIDTH);
-    const [panelHeight, setPanelHeight] = useState(DEFAULT_NEW_LAYOUT_PANEL_HEIGHT);
-    useEffect(() => {
-      setPanelWidth(
-        getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_WIDTH, DEFAULT_NEW_LAYOUT_PANEL_WIDTH),
-      );
-      setPanelHeight(
-        getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_HEIGHT, DEFAULT_NEW_LAYOUT_PANEL_HEIGHT),
-      );
-    }, []);
+    // From the store, not local state read on mount. These are global sizes,
+    // and a tab switch remounts this pane (MUI unmounts an inactive tab's
+    // children) - so read on mount they started at their default and moved to
+    // the saved value a commit later, which is the canvas resizing and the
+    // graph recentring on every tab change.
+    const panelWidth = global.newLayoutPanelWidth;
+    const setPanelWidth = (v: number) => {
+      global.newLayoutPanelWidth = v;
+    };
+    const panelHeight = global.newLayoutPanelHeight;
+    const setPanelHeight = (v: number) => {
+      global.newLayoutPanelHeight = v;
+    };
 
     return (
       <Box
@@ -122,9 +166,7 @@ const LeftPane = observer(
             // check exists -- ReactFlow's own nodes/controls manage their own
             // focus, and this must not fight that.
             const target = e.target as HTMLElement;
-            if (
-              !target.closest('input, textarea, button, [tabindex], [contenteditable="true"]')
-            ) {
+            if (!target.closest('input, textarea, button, [tabindex], [contenteditable="true"]')) {
               e.currentTarget.focus();
             }
           }}
@@ -158,46 +200,85 @@ const LeftPane = observer(
               own RunButton (Input.tsx) when it's open. Safe from
               Result.tsx's download/chart icons now that those sit inside
               their own box in New Layout (see Result.tsx's compactMode). */}
-          {!panelVisible && (
-            <Box sx={{ position: 'absolute', bottom: 8, right: 8, zIndex: 20 }}>
-              <RunButton session={session} />
-            </Box>
-          )}
-        </Box>
-        {panelVisible &&
-          (panelBesideCanvas ? (
-            <NewLayoutPanelDivider panelWidth={panelWidth} setPanelWidth={setPanelWidth} />
-          ) : (
-            <NewLayoutHorizontalPanelDivider
-              panelHeight={panelHeight}
-              setPanelHeight={setPanelHeight}
-            />
-          ))}
-        {panelVisible && (
+          {/* Cross-faded rather than mounted/unmounted on panelVisible:
+              the panel's own RunButton is arriving (or leaving) at the same
+              moment, and a hard swap made one blink out a frame before the
+              other appeared. `visibility` rides along with the opacity so
+              the hidden one isn't focusable or clickable - opacity alone
+              leaves an invisible button sitting over the canvas corner. */}
           <Box
-            data-keyboard-panel="input"
-            // -1, not a real Tab stop -- see SettingsDockedPanel.tsx's
-            // identical comment; reachable only by clicking.
-            tabIndex={-1}
-            onMouseDownCapture={e => {
-              // See SettingsDockedPanel.tsx's identical handler -- Input's
-              // CodeMirror editor manages its own focus, and this must not
-              // fight that.
-              const target = e.target as HTMLElement;
-              if (
-                !target.closest('input, textarea, button, [tabindex], [contenteditable="true"]')
-              ) {
-                e.currentTarget.focus();
-              }
-            }}
             sx={{
-              outline: 'none',
-              ...(panelBesideCanvas
-                ? { width: panelWidth, flexShrink: 0 }
-                : { height: panelHeight, flexShrink: 0 }),
+              position: 'absolute',
+              bottom: 8,
+              right: 8,
+              zIndex: 20,
+              opacity: panelVisible ? 0 : 1,
+              visibility: panelVisible ? 'hidden' : 'visible',
+              transition: `opacity var(--motion-fast) ease, visibility var(--motion-fast)`,
             }}
           >
-            <Input session={session} autoFocus={false} />
+            <RunButton session={session} />
+          </Box>
+        </Box>
+        {/* The panel and its divider used to be two separate
+            `{panelVisible && ...}` siblings. They're wrapped together now
+            because this wrapper is what animates: it clips (overflow:
+            hidden) while both children keep their real size, so the panel
+            SLIDES out of view instead of being squeezed to nothing with its
+            editor reflowing the whole way down. Wrapping them also means the
+            divider can't blink out on its own while the panel is still
+            animating, which is what separate siblings would do. */}
+        {panel.mounted && (
+          <Box
+            ref={panel.ref}
+            data-panel-motion
+            sx={{
+              display: 'flex',
+              flexDirection: panelBesideCanvas ? 'row' : 'column',
+              flexShrink: 0,
+              overflow: 'hidden',
+              opacity: panel.open ? 1 : 0,
+              ...(panelBesideCanvas
+                ? { width: panel.open ? panelWidth + NEW_LAYOUT_GUTTER : 0 }
+                : { height: panel.open ? panelHeight + NEW_LAYOUT_GUTTER : 0 }),
+              transition: panel.open
+                ? 'width var(--motion-enter) var(--motion-ease-enter), height var(--motion-enter) var(--motion-ease-enter), opacity var(--motion-enter) var(--motion-ease-enter)'
+                : 'width var(--motion-exit) var(--motion-ease-exit), height var(--motion-exit) var(--motion-ease-exit), opacity var(--motion-exit) var(--motion-ease-exit)',
+            }}
+          >
+            {panelBesideCanvas ? (
+              <NewLayoutPanelDivider panelWidth={panelWidth} setPanelWidth={setPanelWidth} />
+            ) : (
+              <NewLayoutHorizontalPanelDivider
+                panelHeight={panelHeight}
+                setPanelHeight={setPanelHeight}
+              />
+            )}
+            <Box
+              data-keyboard-panel="input"
+              // -1, not a real Tab stop -- see SettingsDockedPanel.tsx's
+              // identical comment; reachable only by clicking.
+              tabIndex={-1}
+              onMouseDownCapture={e => {
+                // See SettingsDockedPanel.tsx's identical handler -- Input's
+                // CodeMirror editor manages its own focus, and this must not
+                // fight that.
+                const target = e.target as HTMLElement;
+                if (
+                  !target.closest('input, textarea, button, [tabindex], [contenteditable="true"]')
+                ) {
+                  e.currentTarget.focus();
+                }
+              }}
+              sx={{
+                outline: 'none',
+                ...(panelBesideCanvas
+                  ? { width: panelWidth, flexShrink: 0 }
+                  : { height: panelHeight, flexShrink: 0 }),
+              }}
+            >
+              <Input session={session} autoFocus={false} />
+            </Box>
           </Box>
         )}
       </Box>
@@ -218,17 +299,16 @@ const NewLayoutView: React.FC<NewLayoutViewProps> = observer(({ sessionId }) => 
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('lg'));
 
-  const [paneWidth, setPaneWidth] = useState(DEFAULT_NEW_LAYOUT_PANE_WIDTH);
-  const [paneHeight, setPaneHeight] = useState(DEFAULT_NEW_LAYOUT_PANE_HEIGHT);
-
-  useEffect(() => {
-    setPaneWidth(
-      getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANE_WIDTH, DEFAULT_NEW_LAYOUT_PANE_WIDTH),
-    );
-    setPaneHeight(
-      getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANE_HEIGHT, DEFAULT_NEW_LAYOUT_PANE_HEIGHT),
-    );
-  }, []);
+  // Same as the panel sizes above: global, held on the store, so a tab switch
+  // doesn't reset them to their defaults for a commit.
+  const paneWidth = global.newLayoutPaneWidth;
+  const setPaneWidth = (v: number) => {
+    global.newLayoutPaneWidth = v;
+  };
+  const paneHeight = global.newLayoutPaneHeight;
+  const setPaneHeight = (v: number) => {
+    global.newLayoutPaneHeight = v;
+  };
 
   // Small screens always stack top-bottom, regardless of the persisted
   // preference.
@@ -254,7 +334,31 @@ const NewLayoutView: React.FC<NewLayoutViewProps> = observer(({ sessionId }) => 
   // which caused it.
   const [recenterRequestCount, setRecenterRequestCount] = useState(0);
   useEffect(() => {
-    setRecenterRequestCount(c => c + 1);
+    // Delayed past the transition, not fired immediately. Every one of
+    // these causes changes Canvas's container size, and that change is now
+    // ANIMATED - so an immediate fitView would measure the container at its
+    // pre-animation size and leave the graph off-centre once the movement
+    // actually finished. MOTION.enter is used for both directions even
+    // though closing is quicker: a re-fit that lands slightly late is
+    // invisible, one that lands early is the bug this guards against.
+    //
+    // global.showSettings does NOT belong in this list, and used to be here
+    // on the assumption that opening Settings takes width away from Canvas.
+    // It doesn't: in horizontal orientation, LeftPane (Canvas, plus the
+    // Pine panel when open) has a fixed pixel width of its own
+    // (paneWidth, set below) and only RightPane (Results) is flex:1 - so
+    // Settings taking space from the row only ever shrinks Results.
+    // Verified directly: Canvas's own rendered width held at a constant
+    // 640px through an entire open+close of Settings. Keeping showSettings
+    // here fired a real ReactFlow fitView() - measured as part of the
+    // render burst on every Settings toggle - for a resize that never
+    // happened, on top of the results grid's own resize for the pane that
+    // actually did move.
+    const timer = setTimeout(
+      () => setRecenterRequestCount(c => c + 1),
+      motionDuration(MOTION.enter) + 32,
+    );
+    return () => clearTimeout(timer);
   }, [effectiveOrientation, global.isZenModeActive, global.newLayoutPanelVisible]);
 
   return (
@@ -272,10 +376,42 @@ const NewLayoutView: React.FC<NewLayoutViewProps> = observer(({ sessionId }) => 
           renders per-session, once per open tab) and vanished switching
           tabs - it's now hoisted to AppView.tsx, a sibling of PineTabs
           itself, so it spans every tab instead of living inside one. */}
-      {global.isZenModeActive ? (
-        // Zen mode: Results (and its divider) aren't just narrowed, they're
-        // gone entirely - Canvas takes the whole row.
-        <Box sx={{ flex: 1, minWidth: 0, height: '100%' }}>
+      {/* Zen mode used to be a separate branch of this ternary that rendered
+          its own <LeftPane> without Results. That unmounted and remounted
+          Canvas on every toggle - the exact thing this component's own doc
+          comment above says it renders Canvas unconditionally to avoid - and
+          left nothing to animate, since the old tree was gone the same frame
+          the new one appeared. One tree now, with Results COLLAPSING: in
+          side-by-side it hands its flex-grow to Canvas, in top/bottom its
+          height goes to zero. Canvas is the same element throughout, so it
+          keeps its pan/zoom across the toggle instead of re-mounting. */}
+      <Box
+        sx={{
+          flex: 1,
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: isHorizontal ? 'row' : 'column',
+        }}
+      >
+        <Box
+          data-panel-motion
+          sx={{
+            ...(isHorizontal
+              ? {
+                  width: paneWidth,
+                  flexShrink: 0,
+                  // Canvas only needs to GROW in Zen mode when the split is
+                  // side-by-side - it's the fixed-width pane there, so
+                  // without this it would stay at paneWidth with empty space
+                  // where Results used to be. Top/bottom already has Canvas
+                  // as the flexible pane, so it fills the gap on its own.
+                  flexGrow: global.isZenModeActive ? 1 : 0,
+                  height: '100%',
+                }
+              : { flex: 1, minHeight: 0 }),
+            transition: 'flex-grow var(--motion-enter) var(--motion-ease-enter)',
+          }}
+        >
           <LeftPane
             sessionId={sessionId}
             isHorizontal={isHorizontal}
@@ -283,29 +419,38 @@ const NewLayoutView: React.FC<NewLayoutViewProps> = observer(({ sessionId }) => 
             recenterRequestCount={recenterRequestCount}
           />
         </Box>
-      ) : (
+
+        {/* Results and its divider, wrapped together so they collapse as one
+            (same reasoning as the Pine panel's wrapper in LeftPane above).
+            The opacity runs on the SHORT duration on the way out while the
+            size runs on the long one: Results is a data grid that re-lays-out
+            as it narrows, and fading it first means it's already invisible by
+            the time that reflow would be noticeable. */}
         <Box
+          data-panel-motion
           sx={{
-            flex: 1,
-            minHeight: 0,
             display: 'flex',
             flexDirection: isHorizontal ? 'row' : 'column',
+            overflow: 'hidden',
+            opacity: global.isZenModeActive ? 0 : 1,
+            ...(isHorizontal
+              ? {
+                  flexGrow: global.isZenModeActive ? 0 : 1,
+                  flexBasis: 0,
+                  // Without this the wrapper bottoms out at the divider's own
+                  // 8px min-content width instead of disappearing.
+                  minWidth: 0,
+                  height: '100%',
+                }
+              : {
+                  height: global.isZenModeActive ? 0 : paneHeight + NEW_LAYOUT_GUTTER,
+                  flexShrink: 0,
+                }),
+            transition: global.isZenModeActive
+              ? 'flex-grow var(--motion-exit) var(--motion-ease-exit), height var(--motion-exit) var(--motion-ease-exit), opacity var(--motion-fast) var(--motion-ease-exit)'
+              : 'flex-grow var(--motion-enter) var(--motion-ease-enter), height var(--motion-enter) var(--motion-ease-enter), opacity var(--motion-enter) var(--motion-ease-enter)',
           }}
         >
-          <Box
-            sx={{
-              ...(isHorizontal ? { width: paneWidth, flexShrink: 0 } : { flex: 1, minHeight: 0 }),
-              height: isHorizontal ? '100%' : undefined,
-            }}
-          >
-            <LeftPane
-              sessionId={sessionId}
-              isHorizontal={isHorizontal}
-              onToggleOrientation={toggleOrientation}
-              recenterRequestCount={recenterRequestCount}
-            />
-          </Box>
-
           {isHorizontal ? (
             <NewLayoutPaneDivider paneWidth={paneWidth} setPaneWidth={setPaneWidth} />
           ) : (
@@ -314,6 +459,11 @@ const NewLayoutView: React.FC<NewLayoutViewProps> = observer(({ sessionId }) => 
 
           <Box
             sx={{
+              // Keeps the results grid's own layout work from escalating
+              // into a whole-document reflow on every frame of a panel
+              // animation - see globals.css's matching rule for the graph
+              // pane.
+              contain: 'layout paint',
               ...(isHorizontal
                 ? { flex: 1, minWidth: 0, height: '100%' }
                 : { height: paneHeight, flexShrink: 0 }),
@@ -322,7 +472,7 @@ const NewLayoutView: React.FC<NewLayoutViewProps> = observer(({ sessionId }) => 
             <RightPane sessionId={sessionId} />
           </Box>
         </Box>
-      )}
+      </Box>
     </Box>
   );
 });

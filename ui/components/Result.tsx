@@ -1,22 +1,38 @@
-import { DataGrid } from '@mui/x-data-grid';
-import { runInAction, toJS } from 'mobx';
+import { runInAction } from 'mobx';
 import { observer } from 'mobx-react-lite';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useStores } from '../store/store-container';
-import { Box, IconButton, Tooltip, useTheme, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
+import type { Row } from '../store/session';
+import {
+  Box,
+  IconButton,
+  Tooltip,
+  useTheme,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
+} from '@mui/material';
 import {
   FileDownload,
   ContentCopy,
   FilterAlt,
-  Code,
   BarChart as BarChartIcon,
 } from '@mui/icons-material';
 import UpdateModal from './UpdateModal';
+import { useRetainedValue } from '../hooks/useRetainedValue';
 import DownloadResultsModal from './DownloadResultsModal';
-import { pineEscape } from '../store/util';
+import { pineString } from '../store/util';
+import { columnName, type JsonPathStep } from '../store/client';
+import { jsonCellReadOnlyReason, jsonEditLiteral } from '../store/json-edit.util';
 import { getColorForAlias, shouldShowTableColors } from '../store/table-colors.util';
+import { estimateColumnWidth } from './column-width.util';
+import { columnWidthKey, loadColumnWidths, saveColumnWidth } from '../store/column-widths';
+import { MIN_RESULT_COLUMN_WIDTH, MAX_RESULT_COLUMN_WIDTH } from '../constants';
 import { BarChart } from './BarChart';
-import JsonCellContent from './JsonCellContent';
+import TraversalResult from './TraversalResult';
+import ResultsGrid, { type ResultsGridColumn } from './results-grid/ResultsGrid';
+import ResultNotice, { type Notice } from './results-grid/ResultNotice';
 import JsonInspectorPanel from './JsonInspectorPanel';
 import {
   columnLooksLikeJson,
@@ -36,9 +52,26 @@ interface ContextMenuState {
   fieldIndex: string;
 }
 
+/** The value of one primary key column in the row being edited. */
+interface KeyValue {
+  column: string;
+  value: string | number;
+}
+
+/** What saving one cell writes, and where. */
+interface EditTarget {
+  alias: string;
+  /** How the cell's column is named in messages: `email`, `companies[0].id`. */
+  name: string;
+  column: string;
+  /** Set for a key inside a JSON column. */
+  path?: JsonPathStep[];
+  /** The `update!` assignment: `email = 'a@b.c'`. */
+  assignment: string;
+}
+
 interface UpdateData {
   column: string;
-  id: string | number;
   value: string;
   alias: string;
   updateExpression: string;
@@ -53,8 +86,11 @@ interface JsonPanelState {
 const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const { global } = useStores();
   const session = global.getSession(sessionId);
-  const rows = toJS(session.rows);
-  const baseColumns = toJS(session.columns);
+  // Plain arrays, stable until the next eval replaces them: the session
+  // stores a result as a ref, not a deep observable (see its
+  // makeAutoObservable call). That stability is what the memos below key on.
+  const rows = session.rows;
+  const baseColumns = session.columns;
 
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
@@ -63,7 +99,15 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   // ambient per-table tint and the hover spotlight below are gated on this,
   // since coloring or highlighting the one table present would just be
   // visual noise with no information in it.
-  const uniqueAliases = Array.from(new Set(Object.values(colIndexToAlias).filter(Boolean)));
+  //
+  // Memoized against colIndexToAlias (stable between evals - see the
+  // rows/baseColumns comment above for why) rather than left as a plain
+  // Array.from(...)/new Set(...) computed fresh every render, so memos
+  // keyed on it only re-run when the result changes.
+  const uniqueAliases = React.useMemo(
+    () => Array.from(new Set(Object.values(colIndexToAlias).filter(Boolean))),
+    [colIndexToAlias],
+  );
   const hasMultipleTables = uniqueAliases.length > 1;
 
   const showResultColors =
@@ -89,82 +133,175 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     return fields;
   }, [rows, baseColumns]);
 
-  // Add custom edit component and column color classes by table alias
-  const columns = baseColumns.map(column => {
-    const alias = colIndexToAlias[column.field] ?? '';
-    const classNames = [
-      showResultColors && alias ? `result-col-${alias.replace(/[^a-z0-9_]/gi, '_')}` : '',
-      alias && alias === hoveredAlias ? 'result-col-hovered' : '',
-    ]
-      .filter(Boolean)
-      .join(' ');
-    const isJsonColumn = jsonColumnFields.has(column.field);
-    return {
-      ...column,
-      renderEditCell: (params: any) => <CellEditComponent {...params} />,
-      ...(isJsonColumn && {
-        // Not editable at the DataGrid level - editing a JSON cell happens
-        // entirely inside JsonInspectorPanel, opened already in edit mode by
-        // this same click (see onOpen below), not via DataGrid's own
-        // double-click/F2/type-to-edit. renderEditCell above is therefore
-        // dead code for this column (never invoked), left in place rather
-        // than branched around since it's harmless.
-        editable: false,
-        renderCell: (params: any) => (
-          <JsonCellContent
-            value={params.value}
-            onOpen={() => setJsonPanel({ id: params.id, field: params.field, editing: true })}
-          />
-        ),
-      }),
-      ...(classNames && {
-        headerClassName: classNames,
-        cellClassName: classNames,
-      }),
-    };
-  });
+  // A dragged column width, kept here rather than inside the grid so it
+  // survives the grid unmounting and remounting.
+  const [resizedColumnWidths, setResizedColumnWidths] = useState<Record<string, number>>({});
+  // A new eval means new columns at new field indices - an old override
+  // keyed by field "2" has no reason to still apply to whatever column
+  // happens to be field "2" in a completely different result set.
+  useEffect(() => {
+    setResizedColumnWidths({});
+  }, [session.columns]);
 
   const ast = session.response?.ast ?? null;
-  const columnColorSx =
-    showResultColors && uniqueAliases.length
-      ? Object.fromEntries(
-          uniqueAliases.flatMap(alias => {
-            const safeClass = `result-col-${alias.replace(/[^a-z0-9_]/gi, '_')}`;
-            const color = getColorForAlias(alias, ast, isDark);
-            return [
-              [`& .MuiDataGrid-columnHeader.${safeClass}`, { backgroundColor: color }],
-              [`& .MuiDataGrid-cell.${safeClass}`, { backgroundColor: color }],
-            ];
-          }),
-        )
-      : {};
-  // A hover spotlight, independent of the "Table colors" preference above -
-  // this answers "which columns belong to the table I'm pointing at right
-  // now", not "always tint everything", so it fires regardless of
-  // showResultColors. Reuses the same alias->color mapping so the two never
-  // disagree when both are visible at once; the border is the part that
-  // still shows even when a column's background already matches (ambient
-  // colors on, hovering its own table).
-  const hoveredColorSx = hoveredAlias
-    ? {
-        '& .MuiDataGrid-columnHeader.result-col-hovered': {
-          backgroundColor: getColorForAlias(hoveredAlias, ast, isDark),
-          // inset box-shadow, not border-top: a real border adds 2px of
-          // layout height only to the hovered columns' headers, jittering
-          // the header row as the spotlight moves between them - a shadow
-          // paints over existing space instead, and (unlike a border-width
-          // change) actually animates via the transition below.
-          boxShadow: 'inset 0 2px 0 var(--canvas-trace)',
-          transition: 'background-color 120ms ease, box-shadow 120ms ease',
-        },
-        '& .MuiDataGrid-cell.result-col-hovered': {
-          backgroundColor: getColorForAlias(hoveredAlias, ast, isDark),
-          transition: 'background-color 120ms ease',
-        },
-      }
-    : {};
+
+  // Widths dragged earlier for this connection, by table and heading rather
+  // than position, so they apply again in the next result (desktop only).
+  const connectionId = session.connectionId;
+  const [savedColumnWidths, setSavedColumnWidths] = useState<Record<string, number>>({});
+  useEffect(() => {
+    let current = true;
+    setSavedColumnWidths({});
+    loadColumnWidths(connectionId).then(widths => {
+      if (current) setSavedColumnWidths({ ...widths });
+    });
+    return () => {
+      current = false;
+    };
+  }, [connectionId]);
+  const widthKeyFor = (field: string, heading: string) =>
+    columnWidthKey(ast, colIndexToAlias[field] ?? '', heading);
+  const handleColumnWidthChange = (field: string, width: number) => {
+    setResizedColumnWidths(prev => ({ ...prev, [field]: width }));
+    const column = baseColumns.find(c => c.field === field);
+    const key = widthKeyFor(field, column?.headerName ?? field);
+    saveColumnWidth(connectionId, key, width);
+    setSavedColumnWidths(prev => ({ ...prev, [key]: Math.round(width) }));
+  };
+
+  // The table behind an alias, for messages people read ("user.email"
+  // rather than "u_0.email"). Falls back to the alias itself.
+  const tableForAlias = (alias: string): string =>
+    ast?.['selected-tables']?.find(t => t.alias === alias)?.table ?? alias;
+
+  // Why a column's values can't be edited, if they can't. An update finds
+  // its row by that table's primary key, so the table needs one, and the key
+  // itself is the one thing it can't change.
+  const readOnlyReasonFor = (field: string, headerName: string): string | undefined => {
+    const alias = colIndexToAlias[field];
+    const pathTarget = session.columnMetadata.colIndexToPathLookup[field];
+    const column = session.columnMetadata.colIndexToColumnLookup[field] ?? pathTarget?.column;
+    if (!alias || !column) {
+      return `${headerName} is worked out by the query, not stored in a table, so it can't be edited.`;
+    }
+    // A query that ends on a bare table doesn't list it in selected-tables,
+    // and an alias like `le_0` means nothing to the reader.
+    const table = tableForAlias(alias);
+    const known = table !== alias;
+    const key = session.columnMetadata.aliasToKeyLookup[alias];
+    if (!key?.length) {
+      return known
+        ? `${table} values can't be edited here. ${table} has no primary key, so an update can't tell its rows apart.`
+        : `These values can't be edited here. Their table has no primary key, so an update can't tell its rows apart.`;
+    }
+    if (!pathTarget && key.some(k => k.column === column)) {
+      return `${known ? `${table}.` : ''}${column} can't be edited. It's part of the primary key, which is how an update finds the row to change.`;
+    }
+    return undefined;
+  };
+
+  // Why one cell of a JSON path column can't be edited: its key is missing in
+  // that row, or it holds an object or an array. Read from the row's hidden
+  // JSON type, so it differs from row to row.
+  const cellReadOnlyReasonFor = (field: string): ((row: Row) => string | undefined) | undefined => {
+    const target = session.columnMetadata.colIndexToPathLookup[field];
+    if (!target) return undefined;
+    const name = columnName(target.column, target.path);
+    return row => jsonCellReadOnlyReason(name, row[target.typeField]);
+  };
+
+  // The primary key of the record a cell belongs to, read from its row. A
+  // string saying why not, when the row has no such record: an outer join
+  // that found nothing for that table leaves its key empty.
+  const rowKey = (row: Row, alias: string): KeyValue[] | string => {
+    const key = session.columnMetadata.aliasToKeyLookup[alias];
+    if (!key?.length) return `${tableForAlias(alias)} has no primary key`;
+    const values = key.map(k => ({ column: k.column, value: row[k.field] }));
+    if (values.some(v => v.value === null || v.value === undefined)) {
+      return `this row has no ${tableForAlias(alias)} record`;
+    }
+    return values as KeyValue[];
+  };
+
+  // A short message in the results pane: that a save worked ("Saved email"),
+  // why one failed, or why a value can't be edited. Which cell was saved is
+  // shown by the cell itself (flash, below), so the message doesn't repeat
+  // it.
+  const [notice, setNotice] = useState<Notice | null>(null);
+  // The cell just saved, found again in the re-run's rows: the grid glows
+  // it briefly.
+  const [flash, setFlash] = useState<{ rowIndex: number; field: string; token: number } | null>(
+    null,
+  );
+
+  // What the grid needs to know about each column. Memoized so the grid's
+  // own derived state only rebuilds when a column input actually changed.
+  const columns = React.useMemo<ResultsGridColumn[]>(
+    () =>
+      baseColumns.map(column => {
+        const alias = colIndexToAlias[column.field] ?? '';
+        const isJsonColumn = jsonColumnFields.has(column.field);
+        const readOnlyReason = column.editable
+          ? readOnlyReasonFor(column.field, column.headerName ?? column.field)
+          : 'This column is read-only.';
+        // Header-only, for both kinds of color a column can carry: the
+        // "Table colors" preference, and the spotlight on the table hovered
+        // on the canvas. Tinting every cell read as noise across a full
+        // table; the header alone says which table a column belongs to. The
+        // spotlight shows whether or not the preference is on, and both use
+        // the same alias -> color mapping so they never disagree.
+        const spotlight = !!alias && alias === hoveredAlias;
+        const tinted = (showResultColors && !!alias) || spotlight;
+        return {
+          field: column.field,
+          title: column.headerName ?? column.field,
+          // A fixed width, not flex - see column-width.util.ts.
+          width:
+            resizedColumnWidths[column.field] ??
+            savedColumnWidths[widthKeyFor(column.field, column.headerName ?? column.field)] ??
+            estimateColumnWidth(rows, column.field, column.headerName ?? column.field, {
+              min: MIN_RESULT_COLUMN_WIDTH,
+              max: MAX_RESULT_COLUMN_WIDTH,
+              isJson: isJsonColumn,
+            }),
+          json: isJsonColumn,
+          // A JSON cell is edited in JsonInspectorPanel, which a click on it
+          // opens already in edit mode - never inline.
+          editable: column.editable && !isJsonColumn && !readOnlyReason,
+          readOnlyReason,
+          cellReadOnlyReason: readOnlyReason ? undefined : cellReadOnlyReasonFor(column.field),
+          headerColor: tinted ? getColorForAlias(alias, ast, isDark) : undefined,
+          spotlight,
+        };
+      }),
+    // readOnlyReasonFor is rebuilt every render but reads only
+    // columnMetadata and ast, both listed here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      baseColumns,
+      rows,
+      session.columnMetadata,
+      colIndexToAlias,
+      showResultColors,
+      hoveredAlias,
+      jsonColumnFields,
+      resizedColumnWidths,
+      savedColumnWidths,
+      ast,
+      isDark,
+    ],
+  );
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [updateData, setUpdateData] = useState<UpdateData | undefined>(undefined);
+  // The cell the update dialog was opened for, kept while it animates shut
+  // -- see the UpdateModal render below. hooks/useRetainedValue.ts.
+  const retainedUpdateData = useRetainedValue(updateData);
+  // Hidden columns stay in `columns` (updates still need their id column)
+  // but are not drawn.
+  const visibleColumns = React.useMemo(
+    () => columns.filter(col => session.columnVisibilityModel[col.field] !== false),
+    [columns, session.columnVisibilityModel],
+  );
   const [jsonPanel, setJsonPanel] = useState<JsonPanelState | null>(null);
   // Looked up fresh from rows/columnMetadata each render (not captured when
   // the panel opens) so it reflects a re-evaluated session rather than a
@@ -177,8 +314,12 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const jsonPanelAlias = jsonPanel
     ? session.columnMetadata.colIndexToAliasLookup[jsonPanel.field]
     : '';
+  // A key inside a JSON column, or a computed column, names no table column:
+  // the panel is titled with the column's own header, `companies[0]`.
   const jsonPanelColumn = jsonPanel
-    ? session.columnMetadata.colIndexToColumnLookup[jsonPanel.field]
+    ? (session.columnMetadata.colIndexToColumnLookup[jsonPanel.field] ??
+      columns.find(c => c.field === jsonPanel.field)?.title ??
+      '')
     : '';
 
   const closeJsonPanel = () => setJsonPanel(null);
@@ -206,8 +347,23 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     });
   };
 
+  // Why one cell can't be edited: its column's reason, or, in a JSON path
+  // column, this row's.
+  const readOnlyReasonOfCell = (field: string, row: Row | undefined): string | undefined => {
+    const column = columns.find(c => c.field === field);
+    return column?.readOnlyReason ?? (row ? column?.cellReadOnlyReason?.(row) : undefined);
+  };
+
   const startEditingJsonPanel = () => {
     if (!jsonPanel) return;
+    const reason = readOnlyReasonOfCell(
+      jsonPanel.field,
+      rows.find(row => row._id === jsonPanel.id),
+    );
+    if (reason) {
+      setNotice({ kind: 'info', text: reason });
+      return;
+    }
     setJsonPanel({ ...jsonPanel, editing: true });
   };
 
@@ -219,9 +375,8 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   // The panel's own Save button - runs the same direct-execute update every
   // other cell's Enter-to-commit already does (createUpdateExpression below
   // + a virtual-session evaluate), just reached from the panel instead of
-  // DataGrid's processRowUpdate (JSON columns are `editable: false` at the
-  // DataGrid level now - see the columns map above - so processRowUpdate
-  // never runs for them). Returns whether the commit succeeded so the panel
+  // the grid's cell editor (JSON cells are never edited inline - see the
+  // columns memo above). Returns whether the commit succeeded so the panel
   // knows whether to show its own inline "Invalid JSON" state or flip back
   // to view mode.
   const commitJsonPanel = async (text: string): Promise<boolean> => {
@@ -229,36 +384,27 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     const minified = minifyJsonText(text);
     if (!minified.ok) return false;
     const alias = session.columnMetadata.colIndexToAliasLookup[jsonPanel.field];
-    const idColumnIndex = session.columnMetadata.aliasToIdLookup[alias];
-    if (!idColumnIndex) {
-      console.error('No id column index found for alias:', alias);
-      return false;
-    }
     const rowData = rows.find(row => row._id === jsonPanel.id);
     if (!rowData) {
       console.error('Row data not found for id:', jsonPanel.id);
       return false;
     }
-    const rowId = rowData[idColumnIndex];
-    const column = session.columnMetadata.colIndexToColumnLookup[jsonPanel.field];
-    try {
-      const updateExpression = await createUpdateExpression(
-        session.expression,
-        alias,
-        rowId,
-        column,
-        minified.value,
-      );
-      const vs = global.getVirtualSession();
-      runInAction(() => {
-        vs.expression = updateExpression;
-      });
-      await vs.evaluate();
-      await session.evaluate();
-    } catch (error) {
-      console.error('JSON cell update failed:', error);
+    // A key inside a JSON column whose value is a string of JSON text: saved
+    // as that string, the type it had. One holding an object or array never
+    // gets here; its panel is read-only.
+    const target = editTarget(rowData, jsonPanel.field, minified.value);
+    // A computed column names no table column; nothing to save it to.
+    if (!target) return false;
+    if ('error' in target) {
+      setNotice({ kind: 'error', text: `Couldn't save ${target.name}: ${target.error}` });
       return false;
     }
+    const key = rowKey(rowData, alias);
+    if (typeof key === 'string') {
+      setNotice({ kind: 'error', text: `Couldn't save ${target.name}: ${key}` });
+      return false;
+    }
+    if (!(await runUpdate(target, key))) return false;
     // Close rather than flip back to view mode: session.evaluate() just
     // rebuilt `rows`, and `_id` is a positional index re-assigned on every
     // evaluation (see default.plugin.tsx), not a stable row identity - if
@@ -280,21 +426,24 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   // Track data structure changes to reset view mode
   const prevDataSignature = useRef<string>('');
 
-  // Check if data is suitable for bar chart visualization
-  const isBarChartSuitable = () => {
-    // Check: exactly 2 columns (excluding _id)
+  // Whether the data has a bar chart's shape: two columns, the second one
+  // numeric. Computed once per result rather than on every render, since it
+  // scans every row. An empty string or Infinity is not a number to chart:
+  // Number('') is 0 and Number('Infinity') isn't NaN, so both used to pass.
+  const barChartShape = useMemo(() => {
     const visibleColumns = columns.filter(col => col.field !== '_id');
-    if (visibleColumns.length !== 2) return false;
-
-    // Check: second column has numeric values
+    if (visibleColumns.length !== 2 || rows.length === 0) return false;
     const secondColField = visibleColumns[1].field;
-    if (rows.length === 0) return false;
-
     return rows.every(row => {
       const value = row[secondColField];
-      return value !== null && value !== undefined && !isNaN(Number(value));
+      return value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
     });
-  };
+  }, [columns, rows]);
+  // One bar, tooltip and label per row: past a couple of thousand the tab
+  // stops responding, so the chart is offered only below that.
+  const MAX_CHART_ROWS = 2000;
+  const barChartTooLarge = rows.length > MAX_CHART_ROWS;
+  const isBarChartSuitable = () => barChartShape && !barChartTooLarge;
 
   // Reset view mode to table only when data becomes unsuitable for bar chart
   useEffect(() => {
@@ -312,13 +461,12 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     setContextMenu(null);
   };
 
-  const handleContextMenu = (event: React.MouseEvent, params: any) => {
-    event.preventDefault();
+  const handleCellContextMenu = (row: Row, field: string, x: number, y: number) => {
     setContextMenu({
-      mouseX: event.clientX + 2,
-      mouseY: event.clientY - 6,
-      cellValue: params.value,
-      fieldIndex: params.field,
+      mouseX: x + 2,
+      mouseY: y - 6,
+      cellValue: row[field],
+      fieldIndex: field,
     });
   };
 
@@ -362,7 +510,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     if (alias && dbColumn) {
       await session
         .getCanvasStore()
-        .commitWhere(alias, dbColumn, '=', String(contextMenu.cellValue));
+        .commitWhere(alias, [{ alias, column: dbColumn, operator: '=', value: String(contextMenu.cellValue) }]);
     } else {
       console.error('Missing alias/column metadata for filter action:', {
         fieldIndex: contextMenu.fieldIndex,
@@ -373,56 +521,113 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     handleContextMenuClose();
   };
 
-  const updateRecord = async (newRow: any, oldRow: any) => {
-    // Find which field/column changed
-    const changedFields = Object.keys(newRow).filter(field => newRow[field] !== oldRow[field]);
-
-    if (changedFields.length === 0) {
-      return oldRow;
+  // What an edit of one cell writes: `email = 'a@b.c'` for a column, or
+  // `dp.companies[0].id = 7` for a key inside a JSON column, written as the
+  // type the value had. Or why it can't be written. Null for a computed
+  // column, which names nothing to write to.
+  const editTarget = (
+    row: Row,
+    field: string,
+    value: string,
+  ): EditTarget | { name: string; error: string } | null => {
+    // The field is the column's index, stringified; the alias says which
+    // table it came from, and so which key columns identify the row.
+    const alias = session.columnMetadata.colIndexToAliasLookup[field];
+    const pathTarget = session.columnMetadata.colIndexToPathLookup[field];
+    if (pathTarget) {
+      const name = columnName(pathTarget.column, pathTarget.path);
+      const type = row[pathTarget.typeField];
+      const reason = jsonCellReadOnlyReason(name, type);
+      if (reason) return { name, error: reason };
+      const literal = jsonEditLiteral(name, type, value);
+      if ('error' in literal) return { name, error: literal.error };
+      // Qualified by the alias: after `from: dp`, `dp.companies` can only
+      // mean that table's column, whatever else is called `companies`.
+      return {
+        alias,
+        name,
+        column: pathTarget.column,
+        path: pathTarget.path,
+        assignment: `${alias}.${name} = ${literal.literal}`,
+      };
     }
-    const changedField = changedFields[0]; // Usually only one field changes at a time
+    const column = session.columnMetadata.colIndexToColumnLookup[field];
+    if (!column) return null;
+    return { alias, name: column, column, assignment: `${column} = ${pineString(value)}` };
+  };
 
-    // If you need the column index instead of field name
-    const columnIndex = columns.findIndex(col => col.field === changedField).toString();
-
-    // the field is a stringified index of the column
-    // We want to find the table i.e. the alias of the table for the column
-    const alias = session.columnMetadata.colIndexToAliasLookup[columnIndex];
-    const idColumnIndex = session.columnMetadata.aliasToIdLookup[alias];
-    if (!idColumnIndex) {
-      console.error('No id column index found for alias:', alias);
-      return oldRow;
+  // Enter in a cell's editor: run the update straight away, without the
+  // dialog. The dialog is for the editor's Inspect button (inspectEdit).
+  const commitEdit = async (row: Row, field: string, value: string) => {
+    const target = editTarget(row, field, value);
+    if (!target) return;
+    if ('error' in target) {
+      setNotice({ kind: 'error', text: `Couldn't save ${target.name}: ${target.error}` });
+      // The grid shows the typed text until the next result arrives.
+      await session.evaluate();
+      return;
     }
-    const id = newRow[idColumnIndex];
-    const column = session.columnMetadata.colIndexToColumnLookup[columnIndex];
+    const key = rowKey(row, target.alias);
+    if (typeof key === 'string') {
+      setNotice({ kind: 'error', text: `Couldn't save ${target.name}: ${key}` });
+      return;
+    }
+    await runUpdate(target, key);
+  };
 
-    // For default behavior (Enter/Esc), execute the update directly without showing modal
-    // The modal is only shown when the inspect icon is clicked
+  // Runs one update through the virtual session, then re-runs this tab's
+  // query so the grid shows what the database now holds (after a failure,
+  // the value that is still there). A save that worked glows in its cell and
+  // says so briefly; a failure says why.
+  const runUpdate = async (target: EditTarget, key: KeyValue[]): Promise<boolean> => {
+    const { alias, name, column, path } = target;
+    let error = '';
     try {
-      // Create the update expression using the helper function
       const updateExpression = await createUpdateExpression(
         session.expression,
         alias,
-        id,
-        column,
-        newRow[columnIndex],
+        key,
+        target.assignment,
+        { requireRow: true },
       );
-
-      // Get virtual session and execute the update
       const vs = global.getVirtualSession();
       runInAction(() => {
         vs.expression = updateExpression;
       });
       await vs.evaluate();
-
-      // Refresh the main session
-      await session.evaluate();
-    } catch (error) {
-      console.error('Direct update failed:', error);
+      error = vs.error;
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e);
     }
-
-    // Return newRow for optimistic update
-    return newRow;
+    setNotice(
+      error
+        ? { kind: 'error', text: `Couldn't save ${name}: ${error}` }
+        : { kind: 'success', text: `Saved ${name}` },
+    );
+    await session.evaluate();
+    if (!error) {
+      // Where the row and the column are now: the re-run can reorder rows,
+      // and field indices belong to one result, not the next.
+      const meta = session.columnMetadata;
+      const samePath = (p: JsonPathStep[]) => JSON.stringify(p) === JSON.stringify(path);
+      const field = Object.keys(meta.colIndexToAliasLookup).find(f => {
+        if (meta.colIndexToAliasLookup[f] !== alias) return false;
+        const pathTarget = meta.colIndexToPathLookup[f];
+        return path
+          ? !!pathTarget && pathTarget.column === column && samePath(pathTarget.path)
+          : meta.colIndexToColumnLookup[f] === column;
+      });
+      const keyFields = meta.aliasToKeyLookup[alias] ?? [];
+      const rowIndex = keyFields.length
+        ? session.rows.findIndex(row =>
+            keyFields.every(
+              k => String(row[k.field]) === String(key.find(v => v.column === k.column)?.value),
+            ),
+          )
+        : -1;
+      if (field && rowIndex >= 0) setFlash({ rowIndex, field, token: Date.now() });
+    }
+    return !error;
   };
 
   const handleModalClose = () => {
@@ -434,9 +639,9 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const createUpdateExpression = async (
     baseExpression: string,
     alias: string,
-    id: string | number,
-    column: string,
-    value: string,
+    key: KeyValue[],
+    assignment: string,
+    { requireRow = false }: { requireRow?: boolean } = {},
   ) => {
     const vs = global.getVirtualSession();
 
@@ -454,155 +659,64 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     });
     await vs.prettify();
     await vs.pipeAndUpdateExpression(`from: ${alias}`);
-    await vs.pipeAndUpdateExpression(
-      `where: id = ${Number.isInteger(id) ? parseInt(id as string, 10) : `'${pineEscape(id as string)}'`}`,
-    );
-    await vs.pipeAndUpdateExpression(`update! ${column} = '${pineEscape(value)}'`);
+    // One where: step per key column. Separate steps combine with AND;
+    // inside one where:, conditions can only be joined with `or`.
+    for (const { column: keyColumn, value: keyValue } of key) {
+      await vs.pipeAndUpdateExpression(
+        `where: ${keyColumn} = ${Number.isInteger(keyValue) ? String(keyValue) : pineString(String(keyValue))}`,
+      );
+    }
+    // Enter in a cell saves without a dialog, so check first that the row
+    // is still there. The primary key names exactly one record, so the
+    // update can't change more than that one. The count can still be above
+    // one: in `employee | document`, an employee appears once per document.
+    if (requireRow) {
+      const matching = await vs.countRows();
+      if (matching === 0) {
+        throw new Error('the row is no longer there');
+      }
+    }
+    await vs.pipeAndUpdateExpression(`update! ${assignment}`);
 
     return vs.expression;
   };
 
   // Inspect action for JsonInspectorPanel's own "Inspect" button (edit mode
-  // only) - mirrors CellEditComponent's handleInspectClick below, minified
+  // only) - mirrors inspectEdit above, minified
   // rather than the prettified text the panel shows, since that's the value
   // that will actually be committed.
   const openJsonInspect = async (id: string | number, field: string, text: string) => {
     const minified = minifyJsonText(text);
     if (!minified.ok) return;
-    const alias = session.columnMetadata.colIndexToAliasLookup[field];
-    const idColumnIndex = session.columnMetadata.aliasToIdLookup[alias];
-    if (!idColumnIndex) {
-      console.error('No id column index found for alias:', alias);
-      return;
-    }
     const rowData = rows.find(row => row._id === id);
     if (!rowData) {
       console.error('Row data not found for id:', id);
       return;
     }
-    const rowId = rowData[idColumnIndex];
-    const column = session.columnMetadata.colIndexToColumnLookup[field];
-    const updateExpression = await createUpdateExpression(
-      session.expression,
-      alias,
-      rowId,
-      column,
-      minified.value,
-    );
-    setUpdateData({ column, id: rowId, value: minified.value, alias, updateExpression });
+    await inspectEdit(rowData, field, minified.value);
   };
 
-  // Custom edit component that shows inspect icon during editing
-  const CellEditComponent = (props: any) => {
-    const { id, field, value, api, ...other } = props;
-    const [inputValue, setInputValue] = useState(value ?? '');
-
-    const handleInspectClick = async () => {
-      // Find the column information
-      const columnIndex = field;
-      const alias = session.columnMetadata.colIndexToAliasLookup[columnIndex];
-      const idColumnIndex = session.columnMetadata.aliasToIdLookup[alias];
-      if (!idColumnIndex) {
-        console.error('No id column index found for alias:', alias);
-        return;
-      }
-      const rowData = rows.find(row => row._id === id);
-      if (!rowData) {
-        console.error('Row data not found for id:', id);
-        return;
-      }
-      const rowId = rowData[idColumnIndex];
-      const column = session.columnMetadata.colIndexToColumnLookup[columnIndex];
-
-      // Create the update expression
-      const updateExpression = await createUpdateExpression(
-        session.expression,
-        alias,
-        rowId,
-        column,
-        inputValue,
-      );
-
-      // Prepare update data and show modal
-      setUpdateData({
-        column,
-        id: rowId,
-        value: inputValue,
-        alias,
-        updateExpression, // Add the pre-built expression
-      });
-
-      // Exit edit mode
-      api.stopCellEditMode({ id, field });
-    };
-
-    const handleKeyDown = (event: React.KeyboardEvent) => {
-      if (event.key === 'Enter') {
-        // Default behavior - save and exit
-        api.stopCellEditMode({ id, field });
-      } else if (event.key === 'Escape') {
-        // Default behavior - cancel and exit
-        api.stopCellEditMode({ id, field, ignoreModifications: true });
-      }
-    };
-
-    return (
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          width: '100%',
-          height: '100%',
-          position: 'relative',
-        }}
-      >
-        <input
-          value={inputValue}
-          onChange={e => {
-            setInputValue(e.target.value);
-            api.setEditCellValue({ id, field, value: e.target.value });
-          }}
-          onKeyDown={handleKeyDown}
-          style={{
-            border: 'none',
-            outline: 'none',
-            background: 'transparent',
-            width: '100%',
-            height: '100%',
-            padding: '8px 32px 8px 8px', // Add right padding for the icon
-            fontSize: 'inherit',
-            color: 'inherit',
-            fontFamily: 'inherit',
-          }}
-          autoFocus
-          {...other}
-        />
-        <Tooltip title="Inspect Update (opens update modal)">
-          <IconButton
-            size="small"
-            onClick={handleInspectClick}
-            aria-label="Inspect update"
-            sx={{
-              position: 'absolute',
-              right: 4,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              borderRadius: '4px',
-              backgroundColor: 'var(--canvas-node-bg)',
-              border: '1px solid var(--canvas-node-border)',
-              color: 'var(--canvas-trace)',
-              '&:hover': {
-                backgroundColor: 'var(--canvas-chip-bg)',
-              },
-              width: 24,
-              height: 24,
-            }}
-          >
-            <Code fontSize="small" />
-          </IconButton>
-        </Tooltip>
-      </Box>
+  // The cell editor's Inspect button: build the update and show it in
+  // UpdateModal instead of running it.
+  const inspectEdit = async (row: Row, field: string, value: string) => {
+    const target = editTarget(row, field, value);
+    if (!target) return;
+    if ('error' in target) {
+      setNotice({ kind: 'error', text: `Can't edit ${target.name}: ${target.error}` });
+      return;
+    }
+    const key = rowKey(row, target.alias);
+    if (typeof key === 'string') {
+      setNotice({ kind: 'error', text: `Can't edit ${target.name}: ${key}` });
+      return;
+    }
+    const updateExpression = await createUpdateExpression(
+      session.expression,
+      target.alias,
+      key,
+      target.assignment,
     );
+    setUpdateData({ column: target.name, value, alias: target.alias, updateExpression });
   };
 
   const exportToCSV = () => {
@@ -616,6 +730,13 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     setExportData({ filename: defaultFilename, csvContent });
     setExportModalOpen(true);
   };
+
+  // A traversal is a result too -- it just wants a tree rather than a grid.
+  // Checked before the empty-state guard below, since a traversal has no
+  // columns and would otherwise be mistaken for "nothing has run yet".
+  if (session.traversal) {
+    return <TraversalResult session={session} />;
+  }
 
   if (columns.length === 0) {
     return (
@@ -648,8 +769,13 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
 
   return (
     <div
-      className="copy-data-grid"
-      style={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}
+      style={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 0,
+        position: 'relative',
+      }}
     >
       {/* The following Box wrapppers were added because the grid was not
       respecting the max width. Hack taken from here:
@@ -723,6 +849,15 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
         </Tooltip>
 
         {/* Bar Chart Toggle Button */}
+        {barChartShape && barChartTooLarge && (
+          <Tooltip title={`Too many rows to chart (over ${MAX_CHART_ROWS.toLocaleString()})`}>
+            <span style={{ position: 'absolute', top: 4, right: 92, zIndex: 1000 }}>
+              <IconButton disabled size="small" aria-label="Bar chart unavailable for this many rows">
+                <BarChartIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+        )}
         {isBarChartSuitable() && (
           <Tooltip title={viewMode === 'table' ? 'View as Bar Chart' : 'View as Table'}>
             <IconButton
@@ -751,109 +886,25 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
 
         {/* Conditional rendering: Table or Bar Chart */}
         {viewMode === 'table' ? (
-          <Box
-            sx={{ position: 'absolute', inset: 0 }}
-            onContextMenu={(event: React.MouseEvent) => {
-              // Find the cell that was right-clicked
-              const target = event.target as HTMLElement;
-              const cell = target.closest('.MuiDataGrid-cell');
-              if (cell) {
-                event.preventDefault();
-                const fieldAttr = cell.getAttribute('data-field');
-                const rowElement = cell.closest('.MuiDataGrid-row');
-                if (fieldAttr && rowElement) {
-                  const rowIndexAttr = rowElement.getAttribute('data-rowindex');
-                  if (rowIndexAttr) {
-                    const rowIndex = parseInt(rowIndexAttr, 10);
-                    const rowData = rows[rowIndex];
-                    if (rowData) {
-                      const params = {
-                        field: fieldAttr,
-                        value: rowData[fieldAttr],
-                        row: rowData,
-                      };
-                      handleContextMenu(event, params);
-                    }
-                  }
-                }
-              }
-            }}
-          >
-            <DataGrid
-              sx={{
-                height: '100%',
-                '--DataGrid-containerBackground': 'var(--canvas-node-bg)',
-                '--DataGrid-rowBorderColor': 'var(--canvas-node-border)',
-                color: 'var(--canvas-text)',
-                // Tabular data benefits from the same monospace alignment
-                // code does - --code-font, not --canvas-font (the UI font),
-                // unlike the surrounding chrome (empty-state text, icon
-                // buttons, context menu) in this same file.
-                fontFamily: 'var(--code-font)',
-                // rem, not calc(...* var(--text-scale)) like the other code-
-                // surface font sizes in this file/Query.tsx/editor-theme.ts -
-                // those are px literals unaffected by the root font-size
-                // change pages/_app.tsx now also makes, but this one IS rem,
-                // so it already scales via inheritance; multiplying by
-                // --text-scale too would double-apply the scale.
-                fontSize: '0.875rem',
-                border: '1px solid var(--canvas-node-border)',
-                borderRadius: '3px',
-                overflow: 'hidden',
-                '& .MuiDataGrid-withBorderColor': {
-                  borderColor: 'transparent',
-                },
-                // A tonal step up from the body (the same "labeled section"
-                // idea as canvas mode's picker group headers), not just a
-                // border, so the header row reads as its own row rather
-                // than the first row of data.
-                '& .MuiDataGrid-columnHeaders': {
-                  backgroundColor: 'var(--canvas-chip-bg)',
-                  borderBottom: '1px solid var(--canvas-node-border)',
-                },
-                '& .MuiDataGrid-columnHeaderTitle': {
-                  color: 'var(--canvas-text)',
-                  fontWeight: 600,
-                },
-                '& .MuiDataGrid-cell': {
-                  color: 'var(--canvas-text)',
-                  borderBottom: '1px solid var(--canvas-node-border)',
-                  userSelect: 'none', // Prevent text selection
-                  WebkitUserSelect: 'none',
-                  MozUserSelect: 'none',
-                  msUserSelect: 'none',
-                },
-                ...columnColorSx,
-                ...hoveredColorSx,
-                '& .MuiDataGrid-row:hover': {
-                  backgroundColor: 'var(--canvas-chip-bg)',
-                },
-                '& .MuiTablePagination-root, & .MuiTablePagination-root .MuiSvgIcon-root, & .MuiTablePagination-root .MuiIconButton-root':
-                  {
-                    color: 'var(--canvas-text-dim)',
-                    fontFamily: 'var(--canvas-font)',
-                  },
-                '& ::-webkit-scrollbar': {
-                  width: '10px',
-                  height: '10px',
-                },
-                '& ::-webkit-scrollbar-track': {
-                  background: 'transparent',
-                },
-                '& ::-webkit-scrollbar-thumb': {
-                  backgroundColor: 'var(--canvas-pin)',
-                  borderRadius: '5px',
-                },
-                '& ::-webkit-scrollbar-thumb:hover': {
-                  background: 'var(--canvas-trace)',
-                },
-              }}
-              density="compact"
+          <Box sx={{ position: 'absolute', inset: 0 }}>
+            <ResultsGrid
+              columns={visibleColumns}
               rows={rows}
-              columns={columns}
-              getRowId={row => row._id ?? ''}
-              columnVisibilityModel={session.columnVisibilityModel}
-              processRowUpdate={updateRecord}
+              onColumnResize={handleColumnWidthChange}
+              onJsonOpen={(row, field) =>
+                // Straight into edit mode, unless the value can't be changed:
+                // then it opens to read.
+                setJsonPanel({
+                  id: row._id,
+                  field,
+                  editing: !readOnlyReasonOfCell(field, row),
+                })
+              }
+              onReadOnlyEdit={reason => setNotice({ kind: 'info', text: reason })}
+              flash={flash}
+              onCommitEdit={commitEdit}
+              onInspectEdit={inspectEdit}
+              onCellContextMenu={handleCellContextMenu}
             />
           </Box>
         ) : (
@@ -872,6 +923,22 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
           </Box>
         )}
       </Box>
+      {viewMode === 'table' && (
+        <Box
+          data-results-row-count
+          sx={{
+            flexShrink: 0,
+            px: '10px',
+            pt: '4px',
+            textAlign: 'right',
+            color: 'var(--canvas-text-dim)',
+            fontFamily: 'var(--canvas-font)',
+            fontSize: 'calc(12px * var(--text-scale, 1))',
+          }}
+        >
+          {rows.length.toLocaleString()} row{rows.length === 1 ? '' : 's'}
+        </Box>
+      )}
 
       {contextMenu && (
         <Menu
@@ -920,14 +987,20 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
         </Menu>
       )}
 
-      {/* Update Modal */}
-      {updateData && (
-        <UpdateModal
-          updateExpression={updateData.updateExpression}
-          updateData={updateData}
-          onClose={handleModalClose}
-        />
-      )}
+      {/* Mounted unconditionally rather than behind `{updateData && ...}`:
+          unmounting it the instant the data cleared meant its closing
+          animation never got to run. It keeps rendering the cell it was
+          opened for while it fades (useRetainedValue); MUI's Modal still
+          takes its own contents out of the DOM once that finishes, so
+          nothing is left behind. */}
+      <UpdateModal
+        updateExpression={retainedUpdateData?.updateExpression ?? ''}
+        updateData={retainedUpdateData}
+        open={Boolean(updateData)}
+        onClose={handleModalClose}
+      />
+
+      <ResultNotice notice={notice} onClose={() => setNotice(null)} />
 
       {/* Export Modal */}
       <DownloadResultsModal

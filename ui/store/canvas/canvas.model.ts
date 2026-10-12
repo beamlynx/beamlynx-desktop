@@ -93,11 +93,11 @@ export type CanvasNode = CanvasTableNode | CanvasStartNode | CanvasFrameNode;
 export type CanvasEdge = Edge & {
   unresolved?: boolean;
   uncertain?: boolean;
-  /** Raw wire value from JoinTuple[3] (client.ts) - null means inner (Pine's default, no `:left`/`:right` modifier). */
+  /** Raw wire value from a join's `type` (client.ts) - null means inner (Pine's default, no `:left`/`:right` modifier). */
   joinType?: 'LEFT' | 'RIGHT' | null;
   /**
    * The alias whose own table segment carries the `:left`/`:right` modifier -
-   * always JoinTuple's literal `to-alias`, which is NOT necessarily this
+   * always the join's own literal `to` alias, which is NOT necessarily this
    * edge's rendered `target` (addJoins in layout.ts swaps source/target for
    * "belongs to" relations so the FK parent renders on the left, but the
    * modifier always lives on the table that was actually appended second in
@@ -142,11 +142,45 @@ export type PickerItem = {
   subLabel?: string;
 };
 
+/**
+ * One condition in the where panel. `alias` is per condition, not per panel:
+ * a hand-typed `where: c.name = 'x' or e.name = 'x'` spans two tables, and
+ * editing it from either chip must write both back as they were.
+ */
+export type WhereConditionDraft = { alias: string; column: string; operator: string; value: string };
+
+/** What the where panel is building: one condition, or several joined with `or`. */
+export type WhereDraft = {
+  conditions: WhereConditionDraft[];
+  /** Set only when reopened from an existing chip (ChipRow's onSelect) - see CanvasStore.openWhereEditor/submitWhereValue. Undefined for a brand-new condition. */
+  editIndex?: number;
+  /**
+   * The first condition's `operator` doubles as the relative-date picks -
+   * 'today' and 'in the last' are two extra entries Picker.tsx appends to
+   * the operator <select> for a brand-new, single condition on a column
+   * that looksLikeDateColumn (never while editing an existing one, and never
+   * alongside an `or` - see CanvasStore.submitWhereValue's own comment),
+   * rather than a separate mode/tab. `value` is unused for both;
+   * `rollingCount`/`rollingUnit` are unused except for 'in the last'.
+   * Always reset to '=' when the panel (re)opens - a stored condition has no
+   * record of having been built from one of these, so there's nothing to
+   * restore.
+   */
+  rollingCount: number;
+  rollingUnit: RelativeDateUnit;
+};
+
 export type PickerRequest =
   | { kind: 'table' }
   | { kind: 'join'; alias: string }
   | { kind: 'select'; alias: string }
-  | { kind: 'where'; alias: string }
+  /**
+   * `draft` is set when the list was opened from the where panel's own `or`
+   * button: the conditions entered so far, kept so that picking a column
+   * returns to the panel with that column appended as a new row, instead of
+   * starting over. See CanvasStore.addWhereOrCondition.
+   */
+  | { kind: 'where'; alias: string; draft?: WhereDraft }
   | { kind: 'order'; alias: string }
   | { kind: 'group'; alias: string }
   /** Step 1 of `? table` (docs/paths.md in pine-lang): pick a destination table - see CanvasStore.openPathPicker. */
@@ -223,27 +257,10 @@ export type PickerState =
   | {
       open: true;
       mode: 'where-value';
+      /** The node the panel was opened from, and so the node its chip belongs to. */
       alias: string;
-      column: string;
-      operator: string;
-      value: string;
       anchor: PickerAnchor;
-      /** Set only when reopened from an existing chip (ChipRow's onSelect) - see CanvasStore.openWhereEditor/submitWhereValue. Undefined for a brand-new condition. */
-      editIndex?: number;
-      /**
-       * `operator` doubles as the relative-date picks - 'today' and 'in the
-       * last' are two extra entries Picker.tsx appends to the operator
-       * <select> for a brand-new condition on a column that
-       * looksLikeDateColumn (never while editing an existing one - see
-       * CanvasStore.submitWhereValue's own comment), rather than a separate
-       * mode/tab. `value` is unused for both; `rollingCount`/`rollingUnit`
-       * are unused except for 'in the last'. Always reset to '=' when the
-       * panel (re)opens - a stored condition has no record of having been
-       * built from one of these, so there's nothing to restore.
-       */
-      rollingCount: number;
-      rollingUnit: RelativeDateUnit;
-    }
+    } & WhereDraft
   | {
       open: true;
       mode: 'join-type';
@@ -281,15 +298,55 @@ export type PickerState =
       /** The input's live text, seeded from `current` (CanvasStore.openLimitEditor) - a string, not a number, so a mid-edit empty/partial value doesn't need its own placeholder state. */
       value: string;
       anchor: PickerAnchor;
+    }
+  | {
+      open: true;
+      mode: 'traverse';
+      alias: string;
+      /**
+       * Why "Delete rows..." can't be picked, when it can't. Counting is
+       * always available; deleting is only correct on a downward pipe whose
+       * last table is the current one (canDeleteTraverse in
+       * store/canvas/traversal.ts). Carried as a reason rather than a bare
+       * boolean so the entry can be shown disabled *with* its explanation -
+       * a missing menu item is a mystery, a disabled one with a sentence
+       * teaches the rule.
+       */
+      deleteBlockedReason: string | null;
+      anchor: PickerAnchor;
     };
 
 /** The actions tucked behind a node's "+" overflow trigger - see TableNode.tsx/FrameNode.tsx. */
-export type MoreAction = 'order' | 'group' | 'path' | 'limit';
+export type MoreAction = 'order' | 'group' | 'path' | 'limit' | 'traverse';
 export const MORE_ACTIONS: { action: MoreAction; label: string; key: string }[] = [
   { action: 'order', label: 'order', key: 'o' },
   { action: 'group', label: 'group', key: 'g' },
   { action: 'limit', label: 'limit', key: 'l' },
   { action: 'path', label: 'path', key: 'p' },
+  { action: 'traverse', label: 'traverse', key: 't' },
+];
+
+/**
+ * What the "+" menu offers, by node kind. Defined once because it is read from
+ * three places - TableNode's button, FrameNode's button, and the keyboard
+ * shortcut in useCanvasKeybindings - and three hand-maintained copies drift:
+ * `traverse` was added to the button's list and the keyboard opened a menu
+ * without it.
+ *
+ * A checkpoint frame gets less: `group` would re-group an already-grouped
+ * result, and `traverse` would have to follow a foreign key out of a CTE's
+ * sealed output, which is not a thing.
+ */
+export const MORE_ACTIONS_FOR_TABLE: MoreAction[] = ['order', 'group', 'limit', 'path', 'traverse'];
+// `limit:` is pipeline-wide, so a checkpoint is as good a place to set it from.
+export const MORE_ACTIONS_FOR_FRAME: MoreAction[] = ['order', 'limit', 'path'];
+
+/** What a traversal does at each table it reaches - see store/canvas/traversal.ts. */
+export const TRAVERSE_VERBS: { verb: 'count' | 'delete'; label: string; key: string }[] = [
+  { verb: 'count', label: 'Count rows', key: 'c' },
+  // The ellipsis is doing real work: this produces the queries and stops.
+  // Running them is a separate decision, made in the panel afterwards.
+  { verb: 'delete', label: 'Delete rows…', key: 'd' },
 ];
 
 export const WHERE_OPERATORS = ['=', '!=', '>', '<', 'like', 'not like', 'ilike', 'is', 'is not'] as const;

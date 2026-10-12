@@ -45,10 +45,16 @@ function getPineCompletions(
   const beforeCursor = lineText.slice(0, pos - line.from);
   const afterCursor = lineText.slice(pos - line.from);
 
-  // Find the word being typed
-  const wordMatch = beforeCursor.match(/(\.|[A-Za-z0-9_-]*)$/);
-  const word = wordMatch ? wordMatch[1] : '';
+  // Find the word being typed: the name after the last dot. After `t.` it is
+  // empty, so every column of `t` is offered and the chosen one goes after
+  // the dot. Capturing the dot itself filtered out every column.
+  const wordMatch = beforeCursor.match(/[A-Za-z0-9_-]*$/);
+  const word = wordMatch ? wordMatch[0] : '';
   const wordStart = pos - word.length;
+  // A table hint's text carries its schema (`public.tenant`), so it replaces
+  // the whole qualified name typed so far, `public.te`, not just `te`.
+  const qualifiedWordMatch = beforeCursor.match(/[A-Za-z0-9_.-]*$/);
+  const qualifiedWordStart = pos - (qualifiedWordMatch ? qualifiedWordMatch[0].length : 0);
 
   const completions: PineCompletion[] = [];
 
@@ -144,8 +150,9 @@ function getPineCompletions(
           label: hint.table,
           info: (tableCount.get(getKey(hint)) || 0) > 1 ? hint.pine : undefined,
           type: 'variable',
-          apply: (view: EditorView, completion: PineCompletion, from: number, to: number) => {
+          apply: (view: EditorView, completion: PineCompletion, _from: number, to: number) => {
             // Insert pipe
+            const from = qualifiedWordStart;
             view.dispatch({
               changes: { from, to, insert: hint.pine + '|' },
               selection: { anchor: from + hint.pine.length + 1 },

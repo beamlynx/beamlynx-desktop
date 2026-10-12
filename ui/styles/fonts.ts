@@ -1,7 +1,5 @@
-// Font choice metadata shared by the store and the settings UI. Actual font
-// loading (self-hosted via next/font on web, system-font stacks on desktop)
-// lives in app-font.ts / app-font.desktop.ts - see those for why the two
-// builds need different mechanisms.
+// Font choice metadata shared by the store and the settings UI. The font
+// stacks, and the list of fonts the app bundles, live in app-font.ts.
 //
 // Two independent axes, not one shared list - the app's UI chrome (buttons,
 // labels, headers, canvas node text) and its code surfaces (the query

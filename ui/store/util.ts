@@ -72,11 +72,9 @@ export const isDevelopment = () => {
 
 // True only for the beamlynx-desktop static-export build (see
 // beamlynx-desktop/scripts/build-ui-export.sh, which sets NEXT_PUBLIC_DESKTOP
-// alongside next.config.js's NEXT_DESKTOP). Note: isPlayground() already
-// happens to return false when loaded via file:// (empty window.location.hostname),
-// so getBaseUrl() in client.ts falls through to http://localhost:33333
-// correctly without needing this flag -- this is only for gating things
-// that assume a hosted context, like Clerk auth in pages/index.tsx.
+// alongside next.config.js's NEXT_DESKTOP). The server URL doesn't depend on
+// this flag -- getBaseUrl() in client.ts asks the desktop bridge directly --
+// so this is only for gating things that assume a hosted context.
 export const isDesktop = () => {
   if (DevState.desktop !== undefined) {
     return DevState.desktop;
@@ -85,32 +83,15 @@ export const isDesktop = () => {
 };
 
 /**
- * Escapes a string for use in a SQL query
+ * A Pine string literal holding exactly `x`: wrapped in single quotes, with
+ * each apostrophe inside doubled, as in SQL ('O''Brien'). Pine has no other
+ * escapes, so this is complete: nothing in `x` can end the literal early.
  *
- * TODO: I am replacing the single quote with an underscore but a more robust
- * solution is needed.
+ * Needs a pine-lang that reads '' inside a string (after 0.48.1). The
+ * function this replaced turned every apostrophe into an underscore, so a
+ * cell edited to O'Brien was saved as O_Brien.
  */
-export const pineEscape = (x: string) => {
-  return x.replace(/'/g, "_");
-};
-
-/**
- * Triggers a browser download of `content` as a file named `filename`, using
- * the anchor+Blob+ObjectURL pattern (no server round-trip, no native save
- * dialog available from a browser tab or Electron's static export).
- */
-export const downloadTextFile = (filename: string, content: string, mimeType: string) => {
-  const blob = new Blob([content], { type: mimeType });
-  const link = document.createElement('a');
-  const url = URL.createObjectURL(blob);
-  link.setAttribute('href', url);
-  link.setAttribute('download', filename);
-  link.style.visibility = 'hidden';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-};
+export const pineString = (x: string): string => `'${x.replace(/'/g, "''")}'`;
 
 export const CONNECTION_COLOR_PALETTE = [
   '#4ade80', // green

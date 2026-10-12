@@ -1,7 +1,6 @@
-import { ClerkProvider } from '@clerk/nextjs';
 import Container from '@mui/material/Container';
 import type { NextPage } from 'next';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { reaction, runInAction } from 'mobx';
 import AppView from '../components/AppView';
 import DesktopUpdateBanner from '../components/DesktopUpdateBanner';
@@ -10,16 +9,13 @@ import McpBridge from '../components/McpBridge';
 import DeepLinkHandler from '../components/DeepLinkHandler';
 import RevealRequestHandler from '../components/RevealRequestHandler';
 import { useStores } from '../store/store-container';
-import { isDesktop, isDevelopment, isPlayground } from '../store/util';
-import { appFontVariablesClassName } from '../styles/app-font';
+import { isDesktop } from '../store/util';
 
 const Home: NextPage = () => {
   const { global } = useStores();
-  const [mounted, setMounted] = useState(false);
 
   // Load Connection details
   useEffect(() => {
-    setMounted(true);
     let pollingInterval: NodeJS.Timeout | null = null;
 
     const startPolling = () => {
@@ -71,17 +67,9 @@ const Home: NextPage = () => {
   }, []);
 
   const AppContent = (
-    // appFontVariablesClassName defines all four --font-* CSS custom
-    // properties (see styles/app-font.ts) on this element and everything
-    // below it - applied once, here, at the app's actual root, so every
-    // surface (results grid, editors, tabs, modals, canvas mode) has them
-    // available regardless of which subtree it lives in. Which one
-    // --canvas-font actually points to is set separately, imperatively, in
-    // pages/_app.tsx based on GlobalStore.fontFamily.
     <Container
       maxWidth={false}
       disableGutters={true}
-      className={appFontVariablesClassName}
       sx={{
         display: 'flex',
         flexDirection: 'column',
@@ -97,16 +85,7 @@ const Home: NextPage = () => {
     </Container>
   );
 
-  // Prevent hydration mismatch by ensuring consistent rendering
-  if (!mounted) {
-    return AppContent;
-  }
-
-  return isDevelopment() || isPlayground() || isDesktop() ? (
-    AppContent
-  ) : (
-    <ClerkProvider>{AppContent}</ClerkProvider>
-  );
+  return AppContent;
 };
 
 export default Home;

@@ -1,5 +1,5 @@
 import { makeAutoObservable, reaction, runInAction } from 'mobx';
-import { PathHint, TableHint } from '../client';
+import { columnName, PathHint, TableHint, whereConditions, whereLiteral } from '../client';
 import { Session } from '../session';
 import {
   CanvasFrameNode,
@@ -7,6 +7,8 @@ import {
   CanvasTableNode,
   ConfigItem,
   JoinType,
+  MORE_ACTIONS_FOR_FRAME,
+  MORE_ACTIONS_FOR_TABLE,
   MoreAction,
   OrderDirection,
   PENDING_CHECKPOINT_FRAME_ID,
@@ -18,6 +20,8 @@ import {
   START_NODE_ID,
   WHERE_ROLLING_OPERATOR,
   WHERE_TODAY_OPERATOR,
+  WhereConditionDraft,
+  WhereDraft,
 } from './canvas.model';
 import { buildCanvasGraph } from './layout';
 import {
@@ -26,14 +30,17 @@ import {
   hasTrailingCheckpoint,
   makeAlias,
   segmentsFromAst,
+  replaceDoc,
   splitAtCheckpoint,
   toText,
+  withDoc,
 } from './pine-text';
 import * as actions from './pine-actions';
+import { joinQuery, literalFor, setValue, splitQuery } from '../values-blocks';
 import { probeBuild } from './probe';
+import { canDeleteTraverse } from './traversal';
 import { computeDateBounds } from './relative-date';
 
-const hasMultipleBlocks = (expression: string): boolean => /\n\s*\n/.test(expression.trim());
 
 /** Identifies a picker request for the "already open for this" check below - table has no alias to key on. */
 const requestKey = (r: PickerRequest): string =>
@@ -67,6 +74,7 @@ type FocusStop = { kind: 'node'; alias: string } | { kind: 'config'; alias: stri
 export class CanvasStore {
   positions: Record<string, { x: number; y: number }> = {};
   picker: PickerState = { open: false };
+
   canvasGraph: CanvasGraph = emptyGraph;
   /** Aliases of the currently box/shift-selected table nodes - see Canvas.tsx's onSelectionChange. */
   selectedAliases: string[] = [];
@@ -99,6 +107,12 @@ export class CanvasStore {
   // cursor were two separate fields that could drift out of sync with each
   // other).
   private _cursor: FocusStop | null = null;
+  // The last expression the canvas itself wrote (applyExpression/undo/redo).
+  // Any other change - typing in the editor, Result.tsx's `from:`, a restored
+  // tab - clears `_cursor`, so focus falls back to `ast.current`, the latest
+  // table. Without that, a cursor left on an older node survived hand-typed
+  // joins, and the next `|` quietly joined from the older node instead.
+  private canvasWrittenExpression: string | null = null;
   private pickerSeq = 0;
   // Shares one in-flight checkpoint-naming commit across concurrent picker
   // opens that land before an earlier one resolves - see
@@ -199,7 +213,8 @@ export class CanvasStore {
   /**
    * Lands the cursor on `alias`'s own bare stop - no config item highlighted.
    * Up/Down (focusNext/focusPrev below) and every mouse click that changes
-   * focus go through this - also spotlights `alias`'s columns in Result.tsx
+   * focus go through this - never a plain hover (see TableNode.tsx's
+   * onMouseEnter) - also spotlights `alias`'s columns in Result.tsx
    * (see `hoveredAlias`), so keyboard nav gets the same column highlight
    * hovering a node already gave mouse users.
    */
@@ -234,9 +249,9 @@ export class CanvasStore {
    * Lands the cursor directly on one specific config item (a chip, or an
    * incoming join's own icon) - the mouse's equivalent of what Left/Right
    * (configNext/configPrev) does one stop at a time. Every picker that
-   * reopens an EXISTING item (a chip's own click/hover, a join icon's own
-   * click/hover) goes through this rather than focusNode, so hovering or
-   * clicking that exact item shows the same "this one thing is selected"
+   * reopens an EXISTING item (a chip's own click, a join icon's own
+   * click) goes through this rather than focusNode, so clicking that exact
+   * item shows the same "this one thing is selected"
    * ring keyboard nav already gives it, instead of the whole node's
    * thicker border ALSO lighting up alongside it (see TableNode.tsx's own
    * `hasConfigCursor` comment for why the two are drawn as mutually
@@ -489,7 +504,7 @@ export class CanvasStore {
    */
   resolveFrameAlias(frameId: string): string {
     if (frameId !== PENDING_CHECKPOINT_FRAME_ID) return frameId;
-    const segments = segmentsFromAst(this.session.expression, this.session.ast) ?? [];
+    const segments = segmentsFromAst(this.queryText, this.session.ast) ?? [];
     return currentCheckpointName(segments) ?? frameId;
   }
 
@@ -528,20 +543,33 @@ export class CanvasStore {
    * actually current the moment it subscribes, independent of that race.
    */
   start(): () => void {
-    return reaction(
+    const disposeGraph = reaction(
       () => [this.session.expression, this.session.ast] as const,
       () => this.recompute(),
       { fireImmediately: true },
     );
+    const disposeCursorReset = reaction(
+      () => this.session.expression,
+      expression => {
+        if (expression !== this.canvasWrittenExpression) this._cursor = null;
+      },
+    );
+    return () => {
+      disposeGraph();
+      disposeCursorReset();
+    };
   }
 
   private recompute() {
-    const { expression, ast } = this.session;
-    const singleBlock = !hasMultipleBlocks(expression);
-    if (!singleBlock) {
+    const { ast } = this.session;
+    // The canvas shows one query block, with any values blocks above it
+    // (store/values-blocks.ts). Anything else gets the banner.
+    const parts = splitQuery(this.session.expression);
+    if (!parts) {
       this.canvasGraph = { ...this.canvasGraph, singleBlock: false };
       return;
     }
+    const expression = parts.query;
     if (expression.trim() === '') {
       // A brand-new session has never run a build (session.ast starts null
       // and there's no fireImmediately reaction to populate it for an empty
@@ -579,6 +607,32 @@ export class CanvasStore {
     }
   }
 
+  /**
+   * The tab's query block: the text every gesture, probe and range offset
+   * works on. The same as session.expression unless the tab has values blocks
+   * above the query (store/values-blocks.ts), which the canvas never edits as
+   * part of a gesture.
+   */
+  get queryText(): string {
+    return splitQuery(this.session.expression)?.query ?? this.session.expression;
+  }
+
+  /**
+   * Set a $variable's value, typed in the canvas's Variables list, by
+   * rewriting (or adding) its `$name = value` line. Undoable like a gesture.
+   * Throws with a message for a value Pine can't hold.
+   */
+  setVariableValue(name: string, typed: string, list: boolean, opts: { string?: boolean } = {}) {
+    const next = setValue(this.session.expression, name, literalFor(typed, list, opts));
+    if (next === this.session.expression) return;
+    this.undoStack.push(this.session.expression);
+    this.redoStack = [];
+    this.canvasWrittenExpression = next;
+    this.session.expression = next;
+    // A new value changes the results, like any gesture does.
+    this.notifyAutoRun();
+  }
+
   setNodePosition(id: string, position: { x: number; y: number }) {
     this.positions[id] = position;
   }
@@ -587,16 +641,70 @@ export class CanvasStore {
     this.selectedAliases = aliases;
   }
 
-  private applyExpression(expression: string, options?: { skipAutoRun?: boolean }) {
+  private applyExpression(
+    rawExpression: string,
+    options?: { skipAutoRun?: boolean; preserveDoc?: boolean; coalesce?: boolean },
+  ) {
+    // Every gesture rebuilds the expression from the operation spans in
+    // `ast.ranges` (pine-text.ts's segmentsFromAst + toText), and a doc
+    // comment at the top is outside all of them - so a gesture would
+    // otherwise delete this tab's own documentation on the way past. This is
+    // the single place a canvas gesture writes `session.expression` (the
+    // start-node's commitFirstTable and the probe/prettify path in runCommit
+    // both land here), so re-attaching it once here covers all of them.
+    // Undo/redo snapshots are taken after this, so they carry the doc too.
+    //
+    // setDoc opts out: it is the one write whose whole purpose is to change
+    // (or clear) the doc, so re-attaching the old one would make deleting a
+    // comment impossible.
+    // A gesture rewrites the query block only (see queryText); the values
+    // blocks above it are put back in front, untouched.
+    const parts = splitQuery(this.session.expression) ?? { prefix: '', query: this.session.expression };
+    const query = options?.preserveDoc === false ? rawExpression : withDoc(parts.query, rawExpression);
+    const expression = joinQuery(parts.prefix, query);
     // A no-op gesture (e.g. deleteNode/setLimit returning the same text)
     // shouldn't push a snapshot that's identical to what undo would already
     // land on - it would just be a wasted step, never a wrong one, but it's
     // free to skip.
     if (expression === this.session.expression) return;
-    this.undoStack.push(this.session.expression);
+    // `coalesce` replaces the current step instead of adding one, so undo
+    // goes back past it to the snapshot already on the stack.
+    if (!options?.coalesce) this.undoStack.push(this.session.expression);
     this.redoStack = [];
+    this.canvasWrittenExpression = expression;
     this.session.expression = expression;
     if (!options?.skipAutoRun) this.notifyAutoRun();
+  }
+
+  // The expression the last SQL translation wrote, or null.
+  private sqlTranslationWritten: string | null = null;
+
+  /**
+   * Replace the query with Pine translated from the SQL panel's text
+   * (Session.convertSql). Undoable like a gesture, but one step per burst
+   * of SQL typing, not one per translation: while the expression is still
+   * exactly what the last translation wrote, the next one replaces it
+   * instead of adding a step. So the step under a burst of typing is the
+   * Pine from before it began, and one undo brings that back. Anything else
+   * that changes the expression - a gesture, an undo, typed Pine - ends the
+   * burst, because the expression no longer matches.
+   *
+   * Values blocks above the query and the doc comment are kept, as for any
+   * gesture. Doesn't run the query: in SQL mode, Run runs the SQL.
+   */
+  applySqlTranslation(pine: string) {
+    const coalesce = this.sqlTranslationWritten !== null && this.session.expression === this.sqlTranslationWritten;
+    // The whole query changed, so nothing pointing at its nodes still holds.
+    this.closePicker();
+    this.selectedAliases = [];
+    this._cursor = null;
+    const before = this.session.expression;
+    this.applyExpression(pine, { skipAutoRun: true, coalesce });
+    // A translation that changed nothing doesn't start a burst: the step
+    // under the next real one must be the Pine as it is now.
+    if (coalesce || this.session.expression !== before) {
+      this.sqlTranslationWritten = this.session.expression;
+    }
   }
 
   /**
@@ -608,6 +716,45 @@ export class CanvasStore {
    */
   private notifyAutoRun() {
     this.session.notifyCanvasCommit();
+  }
+
+  // --- doc comment ------------------------------------------------------
+
+  /**
+   * True while the canvas comment is open for editing (PineDoc.tsx renders a
+   * text field instead of the printed text).
+   *
+   * Note that the *text* being edited is not held here. It lives in the
+   * expression, like everything else on this canvas: the field starts from
+   * `session.doc` and `setDoc` splices the result back into
+   * `session.expression`, which rebuilds and hands the text back as the
+   * build response's `doc`. Canvas keeps no copy to drift from - the same
+   * reason it holds no copy of the tables or the joins.
+   */
+  docEditing = false;
+
+  startDocEdit() {
+    this.docEditing = true;
+  }
+
+  cancelDocEdit() {
+    this.docEditing = false;
+  }
+
+  /**
+   * Write the canvas comment into the expression. Empty text removes it.
+   *
+   * No probe first, unlike every other gesture (see runCommit): a comment
+   * cannot change whether the expression parses, so there is nothing to
+   * confirm. No auto-run either - a comment says nothing about which rows come
+   * back, so re-running the query would be pure noise.
+   */
+  setDoc(text: string) {
+    this.docEditing = false;
+    this.applyExpression(replaceDoc(this.queryText, text), {
+      skipAutoRun: true,
+      preserveDoc: false,
+    });
   }
 
   get canUndo(): boolean {
@@ -635,10 +782,14 @@ export class CanvasStore {
   undo() {
     if (this.undoStack.length === 0) return;
     const previous = this.undoStack.pop() as string;
+    // Ends any burst of SQL typing, even when this lands on the text the
+    // last translation wrote: the next translation is a step of its own.
+    this.sqlTranslationWritten = null;
     this.redoStack.push(this.session.expression);
     this.closePicker();
     this.selectedAliases = [];
     this._cursor = null;
+    this.canvasWrittenExpression = previous;
     this.session.expression = previous;
     this.notifyAutoRun();
   }
@@ -646,16 +797,20 @@ export class CanvasStore {
   redo() {
     if (this.redoStack.length === 0) return;
     const next = this.redoStack.pop() as string;
+    // Ends any burst of SQL typing, even when this lands on the text the
+    // last translation wrote: the next translation is a step of its own.
+    this.sqlTranslationWritten = null;
     this.undoStack.push(this.session.expression);
     this.closePicker();
     this.selectedAliases = [];
     this._cursor = null;
+    this.canvasWrittenExpression = next;
     this.session.expression = next;
     this.notifyAutoRun();
   }
 
   private async pinnedBase(): Promise<actions.PinnedBase | null> {
-    const expression = this.session.expression;
+    const expression = this.queryText;
     // Not `this.session.ast` - it's kept up to date by the session's own,
     // separately-debounced build and can still describe the *previous*
     // expression for a moment right after a commit applies a new one (e.g.
@@ -743,6 +898,21 @@ export class CanvasStore {
     this.picker = { open: false };
   }
 
+  /**
+   * Escape, or the list's own cancel. A column list opened from the where
+   * panel's `or` button goes back to that panel with nothing lost - backing
+   * out of choosing a column shouldn't throw away the conditions already
+   * entered. Anything else closes.
+   */
+  dismissPicker() {
+    const p = this.picker;
+    if (p.open && p.mode === 'list' && p.request.kind === 'where' && p.request.draft) {
+      this.picker = { open: true, mode: 'where-value', alias: p.request.alias, anchor: p.anchor, ...p.request.draft };
+      return;
+    }
+    this.closePicker();
+  }
+
   setPickerFilter(filter: string) {
     if (this.picker.open && this.picker.mode === 'list') {
       this.picker = { ...this.picker, filter };
@@ -754,7 +924,7 @@ export class CanvasStore {
 
   private buildProbeExpression(request: PickerRequest): string {
     if (request.kind === 'table') return '';
-    const segments = segmentsFromAst(this.session.expression, this.session.ast) ?? [];
+    const segments = segmentsFromAst(this.queryText, this.session.ast) ?? [];
     // Targeting the checkpoint itself (the frame's own select/where/order -
     // see openCheckpointPicker) is the one case that needs the checkpoint
     // KEPT in the probe base, not stripped - `from: <checkpointName>` only
@@ -785,7 +955,7 @@ export class CanvasStore {
     if (request.kind === 'group') {
       relevant = relevant.filter(s => !(s.owner === request.alias && s.kind === 'select'));
     }
-    const base = (relevant.length ? toText(relevant) : this.session.expression).replace(/\|\s*$/, '').trimEnd();
+    const base = (relevant.length ? toText(relevant) : this.queryText).replace(/\|\s*$/, '').trimEnd();
     const current = this.session.ast?.current;
     const focusPrefix = request.alias !== current ? `${base} | from: ${request.alias}` : base;
     // Step 2 of the path picker (a specific destination already chosen) -
@@ -1009,9 +1179,17 @@ export class CanvasStore {
    * 'join-type' rendering, the closest existing precedent for a small static
    * popover).
    */
+  /**
+   * The "+" overflow menu. What it offers is decided here, from `isFrame`
+   * alone - callers used to pass the list too, and a caller that can pass a
+   * list is a caller that can pass the wrong one. That is not hypothetical:
+   * `traverse` was added to the button's list and the keyboard shortcut kept
+   * opening a menu without it, because it had its own copy. There is nothing
+   * left to keep in step now; a new action is one edit to MORE_ACTIONS_FOR_*
+   * and every way of opening this menu has it.
+   */
   openMorePicker(
     alias: string,
-    offer: MoreAction[],
     isFrame: boolean,
     anchor: PickerAnchor = CanvasStore.defaultAnchor,
   ) {
@@ -1020,6 +1198,7 @@ export class CanvasStore {
       return;
     }
     this.focusNode(alias);
+    const offer = isFrame ? MORE_ACTIONS_FOR_FRAME : MORE_ACTIONS_FOR_TABLE;
     this.picker = { open: true, mode: 'more', alias, offer, isFrame, anchor };
   }
 
@@ -1040,6 +1219,14 @@ export class CanvasStore {
     // plain "set the limit" click.
     if (action === 'limit') {
       this.openLimitEditor(alias, anchor);
+      return;
+    }
+    if (action === 'traverse') {
+      // Plain nodes only. A checkpoint frame seals its contents into a CTE,
+      // and following a foreign key out of a CTE's output isn't a thing -
+      // FrameNode.tsx doesn't offer it either.
+      if (isFrame) return;
+      this.openTraversePicker(alias, anchor);
       return;
     }
     if (isFrame) {
@@ -1089,6 +1276,32 @@ export class CanvasStore {
     await this.commitLimit(null);
     this.closePicker();
   }
+
+  /**
+   * The verb menu for a traversal: Count rows, Delete rows...
+   *
+   * A fixed two-entry list, so it opens directly rather than through
+   * openListPicker - same as the "+" menu itself. Whether deleting is
+   * *correct* here needs the AST, which is already in hand, so that decision
+   * is made once at open time and carried on the picker rather than
+   * re-derived per click.
+   */
+  openTraversePicker(alias: string, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
+    if (this.picker.open && this.picker.mode === 'traverse' && this.picker.alias === alias) {
+      this.closePicker();
+      return;
+    }
+    this.focusNode(alias);
+    const verdict = canDeleteTraverse(this.session.ast);
+    this.picker = {
+      open: true,
+      mode: 'traverse',
+      alias,
+      deleteBlockedReason: verdict.ok ? null : verdict.reason,
+      anchor,
+    };
+  }
+
 
   openColumnPicker(
     kind: 'select' | 'where' | 'order' | 'group',
@@ -1270,19 +1483,23 @@ export class CanvasStore {
     });
   }
 
-  /** Column chosen from the where picker's list - switch to entering an operator/value, same anchor. */
-  beginWhereValue(alias: string, column: string) {
+  /**
+   * Column chosen from the where picker's list - switch to entering an
+   * operator/value, same anchor. With a `draft` (the list was opened from the
+   * panel's own `or` button), the column becomes one more row of it rather
+   * than a fresh panel.
+   */
+  beginWhereValue(alias: string, column: string, draft?: WhereDraft) {
     const anchor = this.picker.open ? this.picker.anchor : CanvasStore.defaultAnchor;
+    const condition: WhereConditionDraft = { alias, column, operator: '=', value: '' };
     this.picker = {
       open: true,
       mode: 'where-value',
       alias,
-      column,
-      operator: '=',
-      value: '',
       anchor,
-      rollingCount: 1,
-      rollingUnit: 'day',
+      ...(draft
+        ? { ...draft, conditions: [...draft.conditions, condition] }
+        : { conditions: [condition], rollingCount: 1, rollingUnit: 'day' }),
     };
   }
 
@@ -1290,39 +1507,48 @@ export class CanvasStore {
    * Reopens the where-value panel for an EXISTING condition (a chip's own
    * click, or configNext/openConfigCursor's keyboard equivalent), prefilled
    * from `ast.where` - structured data already, so no re-parsing of the
-   * derived `whereChips` display string (`"id = 1"`) is needed. `index` is
-   * the same pipeline-order indexing removeWhereConditionAt/
-   * updateWhereConditionAt use. No-op if the index doesn't currently exist
-   * (e.g. a stale click racing a commit that just removed it).
+   * derived `whereChips` display string (`"id = 1"`) is needed. An `or`
+   * group opens with one row per condition. `index` is the same
+   * pipeline-order indexing removeWhereConditionAt/updateWhereConditionAt
+   * use. No-op if the index doesn't currently exist (e.g. a stale click
+   * racing a commit that just removed it).
    */
   openWhereEditor(alias: string, index: number, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
-    const condition = (this.session.ast?.where ?? []).filter(w => w[0] === alias)[index];
-    if (!condition) return;
-    const [, column, , operator, val] = condition;
-    const value = val && 'value' in val ? String(val.value) : '';
-    // ast.where operators come back SQL-cased (e.g. "ILIKE") from pine-lang; Pine syntax is lowercase-only.
-    const pineOperator = operator.toLowerCase();
+    const entry = (this.session.ast?.where ?? []).filter(w => whereConditions(w)[0].alias === alias)[index];
+    if (!entry) return;
+    const conditions = whereConditions(entry).map(({ alias: conditionAlias, column, path, operator, value: val }) => ({
+      alias: conditionAlias,
+      // A key inside a JSON column is written back as its path: data.address.city.
+      column: columnName(column, path),
+      // ast.where operators come back SQL-cased (e.g. "ILIKE") from pine-lang; Pine syntax is lowercase-only.
+      operator: operator.toLowerCase(),
+      value: val && 'value' in val ? (val['json-type'] ? whereLiteral(val) : String(val.value)) : '',
+    }));
     this.focusConfigItem(alias, { kind: 'where', index });
     this.picker = {
       open: true,
       mode: 'where-value',
       alias,
-      column,
-      operator: pineOperator,
-      value,
       anchor,
+      conditions,
       editIndex: index,
       rollingCount: 1,
       rollingUnit: 'day',
     };
   }
 
-  setWhereOperator(operator: string) {
-    if (this.picker.open && this.picker.mode === 'where-value') this.picker = { ...this.picker, operator };
+  private updateWhereRow(row: number, change: Partial<WhereConditionDraft>) {
+    if (!this.picker.open || this.picker.mode !== 'where-value') return;
+    const conditions = this.picker.conditions.map((c, i) => (i === row ? { ...c, ...change } : c));
+    this.picker = { ...this.picker, conditions };
   }
 
-  setWhereValue(value: string) {
-    if (this.picker.open && this.picker.mode === 'where-value') this.picker = { ...this.picker, value };
+  setWhereOperator(row: number, operator: string) {
+    this.updateWhereRow(row, { operator });
+  }
+
+  setWhereValue(row: number, value: string) {
+    this.updateWhereRow(row, { value });
   }
 
   setWhereRolling(rollingCount: number, rollingUnit: RelativeDateUnit) {
@@ -1330,46 +1556,79 @@ export class CanvasStore {
   }
 
   /**
-   * `operator` doubles as the two relative-date picks (WHERE_TODAY_OPERATOR/
-   * WHERE_ROLLING_OPERATOR - see PickerState's own comment), so this is the
-   * one submit path for the where-value panel regardless of which the
-   * dropdown holds. Both relative picks always ADD a new pair of `where:`
-   * conditions rather than editing in place - Picker.tsx only offers them
-   * for a brand-new condition (editIndex undefined), and this bails out too
-   * as a second guard, since merging one back into a single existing
-   * condition would need updateWhereConditionAt to grow a second segment
-   * mid-commit, not worth it for what's meant to stay a quick-add shortcut.
+   * The panel's `or` button: pick the next condition's column from the same
+   * column list a new filter starts from, then come back to the panel with
+   * it appended (see beginWhereValue's `draft`). The list is searchable,
+   * which a column dropdown inside the panel would not be.
+   */
+  addWhereOrCondition() {
+    if (!this.picker.open || this.picker.mode !== 'where-value') return;
+    const { alias, anchor, conditions, editIndex, rollingCount, rollingUnit } = this.picker;
+    const draft: WhereDraft = { conditions, editIndex, rollingCount, rollingUnit };
+    const request: PickerRequest = { kind: 'where', alias, draft };
+    void this.openListPicker(request, anchor, async () => {
+      const ast = await probeBuild(this.buildProbeExpression(request), this.session.connectionId);
+      if (!ast) throw new Error('Failed to build column suggestions');
+      return { groups: [{ label: '', items: ast.hints.where.map(h => ({ id: h.column, label: h.column, value: h.column })) }] };
+    });
+  }
+
+  /** Drops one row of an `or`. The last row can't be dropped - that is what the panel's own remove/cancel are for. */
+  removeWhereRow(row: number) {
+    if (!this.picker.open || this.picker.mode !== 'where-value' || this.picker.conditions.length < 2) return;
+    this.picker = { ...this.picker, conditions: this.picker.conditions.filter((_, i) => i !== row) };
+  }
+
+  /**
+   * The first condition's `operator` doubles as the two relative-date picks
+   * (WHERE_TODAY_OPERATOR/WHERE_ROLLING_OPERATOR - see WhereDraft's own
+   * comment), so this is the one submit path for the where-value panel
+   * regardless of which the dropdown holds. Both relative picks always ADD a
+   * new pair of `where:` conditions rather than editing in place -
+   * Picker.tsx only offers them for a brand-new, single condition, and this
+   * bails out too as a second guard. They are two ANDed steps (a lower and
+   * an upper bound), so they can't be one member of an `or` either.
    */
   async submitWhereValue() {
     if (!this.picker.open || this.picker.mode !== 'where-value') return;
-    const { alias, column, operator, value, editIndex, rollingCount, rollingUnit } = this.picker;
-    if (operator === WHERE_TODAY_OPERATOR || operator === WHERE_ROLLING_OPERATOR) {
-      if (editIndex !== undefined) return;
+    const { alias, conditions, editIndex, rollingCount, rollingUnit } = this.picker;
+    const [first] = conditions;
+    if (first.operator === WHERE_TODAY_OPERATOR || first.operator === WHERE_ROLLING_OPERATOR) {
+      if (editIndex !== undefined || conditions.length > 1) return;
       const bounds = computeDateBounds(
-        operator === WHERE_TODAY_OPERATOR ? { kind: 'today' } : { kind: 'rolling', count: rollingCount, unit: rollingUnit },
+        first.operator === WHERE_TODAY_OPERATOR ? { kind: 'today' } : { kind: 'rolling', count: rollingCount, unit: rollingUnit },
       );
       await this.commit(base =>
-        actions.addRelativeDateWhereCondition(base, actions.resolveAlias(base, alias), column, bounds),
+        actions.addRelativeDateWhereCondition(base, actions.resolveAlias(base, first.alias), first.column, bounds),
       );
       this.closePicker();
       return;
     }
-    if (!value.trim()) return;
+    // Every row needs a value - a half-filled `or` would drop the empty one silently.
+    if (conditions.some(c => !c.value.trim())) return;
+    const trimmed = conditions.map(c => ({ ...c, value: c.value.trim() }));
     if (editIndex !== undefined) {
-      await this.commitWhereUpdate(alias, editIndex, column, operator, value.trim());
+      await this.commitWhereUpdate(alias, editIndex, trimmed);
     } else {
-      await this.commitWhere(alias, column, operator, value.trim());
+      await this.commitWhere(alias, trimmed);
     }
   }
 
-  async commitWhere(alias: string, column: string, operator: string, value: string) {
-    await this.commit(base => actions.addWhereCondition(base, actions.resolveAlias(base, alias), column, operator, value));
+  async commitWhere(alias: string, conditions: WhereConditionDraft[]) {
+    await this.commit(base =>
+      actions.addWhereCondition(base, actions.resolveAlias(base, alias), actions.resolveConditionAliases(base, conditions)),
+    );
     this.closePicker();
   }
 
-  async commitWhereUpdate(alias: string, index: number, column: string, operator: string, value: string) {
+  async commitWhereUpdate(alias: string, index: number, conditions: WhereConditionDraft[]) {
     await this.commit(base =>
-      actions.updateWhereConditionAt(base, actions.resolveAlias(base, alias), index, column, operator, value),
+      actions.updateWhereConditionAt(
+        base,
+        actions.resolveAlias(base, alias),
+        index,
+        actions.resolveConditionAliases(base, conditions),
+      ),
     );
     this.closePicker();
   }
@@ -1517,9 +1776,9 @@ export class CanvasStore {
    * waste; this one specific caller does, so it pays for its own fix.
    */
   private async syncAstToExpression(): Promise<void> {
-    const expression = this.session.expression;
+    const expression = this.queryText;
     const ast = await probeBuild(expression, this.session.connectionId);
-    if (ast && this.session.expression === expression) {
+    if (ast && this.queryText === expression) {
       runInAction(() => {
         this.session.ast = ast;
       });
@@ -1570,7 +1829,7 @@ export class CanvasStore {
    * (see toggleSelectColumn etc.) - this only covers opening the picker.
    */
   async openCheckpointPicker(kind: 'select' | 'where' | 'order' | 'join' | 'path', anchor: PickerAnchor) {
-    const segments = segmentsFromAst(this.session.expression, this.session.ast) ?? [];
+    const segments = segmentsFromAst(this.queryText, this.session.ast) ?? [];
     const name = currentCheckpointName(segments) ?? (await this.ensureCheckpointPinnedShared());
     if (!name) return;
     if (kind === 'join') {

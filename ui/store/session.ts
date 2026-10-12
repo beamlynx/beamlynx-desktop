@@ -1,11 +1,21 @@
-import { GridColDef } from '@mui/x-data-grid';
-import { makeAutoObservable, reaction, runInAction } from 'mobx';
+import { makeAutoObservable, observable, reaction, runInAction } from 'mobx';
 import { TOTAL_BARS } from '../constants';
 import { DefaultPlugin } from '../plugin/default.plugin';
 import { EvaluateOptions } from '../plugin/plugin.interface';
-import { RecursiveDeletePlugin } from '../plugin/recursive-delete.plugin';
+import { csvCell } from '../utils/csv';
+import { mayChangeData } from './canvas/pine-text';
 import { formatSql } from '../utils/formatSql';
 import { CanvasStore } from './canvas/canvas.store';
+import {
+  buildDeleteScript,
+  DeleteOutcome,
+  runDeleteScript,
+  runTraversal,
+  TraversalNode,
+  TraversalState,
+  traversalClient,
+  TraversalVerb,
+} from './canvas/traversal';
 import {
   AccessPolicyRule,
   Ast,
@@ -13,42 +23,30 @@ import {
   effectiveAccessPolicyRules,
   Hints,
   HttpClient,
+  JsonPathStep,
   Operation,
   Response,
+  SqlJoinHint,
+  SqlSchemaResponse,
+  SqlToPineResponse,
+  VariablesReport,
 } from './client';
 import { generateGraph, getCandidateIndex, Graph } from './graph.util';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
 import { debounce } from './util';
 
-type ExpressionBlock = { text: string; startLine: number };
-
-function splitExpressions(text: string): ExpressionBlock[] {
-  const lines = text.split('\n');
-  const blocks: ExpressionBlock[] = [];
-  let current: string[] = [];
-  let currentStart = 0;
-
-  for (let i = 0; i <= lines.length; i++) {
-    const line = lines[i];
-    if (i === lines.length || line.trim() === '') {
-      const joined = current.join('\n').trim();
-      if (joined) blocks.push({ text: joined, startLine: currentStart });
-      current = [];
-      currentStart = i + 1;
-    } else {
-      if (current.length === 0) currentStart = i;
-      current.push(line);
-    }
-  }
-  return blocks;
-}
-
-function findActiveBlock(blocks: ExpressionBlock[], cursorLine: number): number {
-  for (let i = blocks.length - 1; i >= 0; i--) {
-    if (blocks[i].startLine <= cursorLine) return i;
-  }
-  return blocks.length - 1;
-}
+// The editor text split into blocks, and which block is the query a build
+// works on: in store/blocks.ts, a module with no imports, so the canvas and
+// values-block helpers can use them without importing this store.
+import {
+  blocksForBuild,
+  cursorForBuild,
+  findActiveBlock,
+  findActiveQueryBlock,
+  isValuesBlock,
+  splitExpressions,
+} from './blocks';
+export { blocksForBuild, findActiveBlock, findActiveQueryBlock, isValuesBlock, splitExpressions };
 
 // Canvas is not a distinct mode here - it's the only renderer 'graph' has
 // (the classic node-graph widget, GraphBox, was removed). See
@@ -59,13 +57,53 @@ export type Theme = 'light' | 'dark';
 
 export type InputMode = 'pine' | 'sql';
 
+/** Where converting the SQL panel's text to Pine stands. */
+/**
+ * How long SQL that is merely unfinished ("The SQL ends before the
+ * statement does.") stays quiet before the status line says so. It is true
+ * at every pause while typing, so it is shown only when the text stays that
+ * way. A refusal (OFFSET, a function) is shown at once.
+ */
+export const SQL_UNFINISHED_QUIET_MS = 1500;
+
+export type SqlConversion = {
+  status: 'idle' | 'converting' | 'converted' | 'failed';
+  /** Why it failed, from pine-lang: "Line 3: OFFSET isn't in Pine." */
+  message: string;
+  /** How the Pine differs from the SQL without changing the rows. */
+  warnings: string[];
+};
+
 export type Row = { [key: string]: any };
+
+/**
+ * One column of a result, as the results grid needs it. `field` is the
+ * column's index in the server's response, stringified - the key its values
+ * sit under in every Row.
+ */
+export type ResultColumn = {
+  field: string;
+  headerName: string;
+  editable: boolean;
+};
+
+/** One column of a table's primary key, and the field its value is under in each row. */
+export type KeyColumn = { column: string; field: string };
 
 export type ColumnMetadata = {
   colIndexToAliasLookup: Record<string, string>; // i.e. which table does the column belong to
-  aliasToIdLookup: Record<string, string>; // i.e. what is the id column index for the table
+  // The primary key columns of each table, in key order. A table without a
+  // primary key has no entry, and its values can't be edited.
+  aliasToKeyLookup: Record<string, KeyColumn[]>;
   colIndexToColumnLookup: Record<string, string>; // i.e. what is the column name for the column index
+  // A key inside a JSON column (`companies[0].id`): the column, the path, and
+  // the field of the hidden column holding each row's JSON type. Only for a
+  // table whose rows can be edited; pine-lang sends no type otherwise.
+  colIndexToPathLookup: Record<string, JsonPathTarget>;
 };
+
+/** Where an edit of a JSON path cell is written. */
+export type JsonPathTarget = { column: string; path: JsonPathStep[]; typeField: string };
 
 const client = new HttpClient();
 
@@ -81,29 +119,30 @@ const client = new HttpClient();
  *
  * The evaluation is explicit. A function is called to evaluate the expression.
  *
- * Depending on the operation type, we are using the appropriate plugin i.e.
- * default vs recursive delete.
+ * There used to be a second plugin here, picked by operation type: a `delete:`
+ * on the end of an expression routed to a routine that walked child tables and
+ * built a DELETE for each. It wanted to write to only parts of the session
+ * (the SQL panel, not the results), which a plugin returning Row[] couldn't
+ * express - so it wrote to the session directly and returned nothing.
  *
- * I would like to merge the logic for all invocations the the backend i.e.
- * build the expression, get the results, or evaluate in the recursive delete
- * mode.
- *
- * Right now, I need to keep the evaluation of recursive delete separate as it
- * lets me update parts of the session and not everything e.g. only update the
- * graph while keeping the pine expressions and the sql query the same. If I add
- * functionality for tabs within sessions, then each tab could hold a separate
- * pine expression and the related query for each data set that needs to be
- * deleted - but that requires more work to copy all the delete queries (and not
- * go throw each tab in the session and manually copy the queries).
- *
- * For now I'll keep it like this and let it percolate until I am convinced of a
- * way to refactor is in a better way.
+ * That's gone. Walking related tables is an action on the canvas now, with
+ * state of its own (store/canvas/traversal.ts), so it no longer has to pretend
+ * to be an evaluation. One plugin is left.
  */
 export class Session {
   /**
    * Unique session id
    */
   id: string;
+
+  /**
+   * The tab this one was opened from, when it was opened as a detour rather
+   * than by someone pressing "+" -- today, clicking a row of a traversal to
+   * go and look at that table. Closing it goes back there (GlobalStore
+   * .closeTab). Undefined for a tab opened on its own, which has nowhere
+   * particular to return to.
+   */
+  openedFrom?: string;
 
   /**
    * Layout properties
@@ -120,15 +159,17 @@ export class Session {
   /** Input mode - pine or sql */
   inputMode: InputMode = 'pine';
 
-  /** Per-session database connection id (pine's own id, e.g. `host:port` in desktop mode) */
+  /** Per-session database connection id (pine's own id, e.g. `host:port:dbname` in desktop mode) */
   connectionId: string = '';
 
   /**
    * Desktop-only: which saved profile `connectionId` came from. Needed
-   * because pine's own id is derived only from host:port -- coarser than a
-   * saved profile's host+port+db+user, so two profiles can share one
-   * connectionId. Blank in browser mode, where there's no separate profile
-   * concept.
+   * because pine's own id is derived from host+port+dbname only, one level
+   * coarser than a saved profile's host+port+db+user -- two profiles that
+   * target the same database as different users share one connectionId
+   * (pine itself only lets one of them actually be connected at a time; see
+   * pine.db.connections/add-connection-pool). Blank in browser mode, where
+   * there's no separate profile concept.
    */
   profileId: string = '';
 
@@ -148,6 +189,15 @@ export class Session {
   /** The agent-supplied reason for the request_reveal call this tab is reviewing, if any. */
   revealReason?: string;
 
+  /**
+   * Set when a beamlynx://run link opened this tab (DeepLinkHandler.tsx).
+   * The link's expression is put in the editor but not run: anyone can write
+   * such a link, so the person checks the expression and the connection and
+   * presses Run themselves. Shows LinkOpenedBanner until dismissed or until
+   * the first run that succeeds. Not persisted.
+   */
+  openedFromLink: boolean = false;
+
   /** Database connection monitoring */
   monitor: boolean = false;
   connectionCountLogs: { time: string; count: number }[] = [];
@@ -157,15 +207,19 @@ export class Session {
 
   /** Result */
   loading: boolean = false; // observable
-  columns: GridColDef[] = [];
+  // The id of the query running now, which Stop sends to the server. Null
+  // when nothing that can be stopped is running.
+  runId: string | null = null;
+  columns: ResultColumn[] = [];
   // The field name - which is the index of the column (stringified) - and the
   // value is false The id fields are hidden by default but kept in the list of
   // columns so that finding the correct id of the row being updated is possible
   columnVisibilityModel: Record<string, boolean> = {};
   columnMetadata: ColumnMetadata = {
     colIndexToAliasLookup: {},
-    aliasToIdLookup: {},
+    aliasToKeyLookup: {},
     colIndexToColumnLookup: {},
+    colIndexToPathLookup: {},
   };
   rows: Row[] = [];
 
@@ -204,17 +258,66 @@ export class Session {
   connection: string = '-';
   error: string = '';
   errorType: string = '';
+  /**
+   * pine-lang's `error-type` from the last /eval, when it failed (for
+   * example "write-refused"). Kept apart from errorType, which the build
+   * reaction sets and which decides how a build error is shown.
+   */
+  evalErrorType: string = '';
 
   /** Ast */
   operation: Operation = { type: 'table' };
   ast: Ast | null = null; // observable
+  /**
+   * This tab's doc comment - the prose at the top of the expression,
+   * already cleaned up by pine-lang (see its docs/comments.md). Empty when
+   * the expression has no comment at the top, or against a server too old
+   * to return one.
+   */
+  doc: string = ''; // observable
+
+  /**
+   * $variables (pine-lang's docs/variables.md): the latest successful build's
+   * report of which variables the tab uses, which are used with `in`, and the
+   * values written in its values blocks. Kept across failed builds the way
+   * doc is. The canvas's Variables list reads it.
+   */
+  variablesReport: VariablesReport | null = null;
   query: string = '';
+  /**
+   * SQL to Pine (pine-lang's docs/sql-to-pine.md). Typing in the SQL panel
+   * converts the SQL, debounced, and the result replaces the tab's Pine, so
+   * the canvas follows the SQL. This is what the status line under the SQL
+   * editor shows.
+   */
+  sqlConversion: SqlConversion = { status: 'idle', message: '', warnings: [] };
+
+  /**
+   * What the SQL panel completes table and column names from, or null until
+   * loaded (or when the server is too old to send it). See loadSqlSchema.
+   */
+  sqlSchema: SqlSchemaResponse | null = null;
+  private sqlSchemaSeq = 0;
+  /**
+   * The expression the last successful conversion left the tab with. While
+   * the tab's Pine is still exactly this, the SQL panel's text is what the
+   * Pine came from, so a build doesn't replace it with the Pine's own SQL.
+   * Once anything else changes the Pine, the panel shows its SQL again.
+   */
+  sqlTranslatedExpression: string | null = null;
+  // Each conversion request's number. Only the latest one's answer is used,
+  // so a slow answer about older text never replaces a newer one.
+  private sqlConversionSeq = 0;
+  /** Called on every edit of the SQL text. Debounced; see convertSql. */
+  sqlEdited: () => void;
+  // The last build's SQL, with and without the hidden columns. `query` is
+  // one of them until it is edited by hand in SQL mode.
+  builtQuery: string = '';
+  builtQueryWithoutHidden: string = '';
   /** Currently selected text in the SQL editor, if any. Running a query while text is
    * selected runs only the selection instead of the full query. */
   querySelection: string = '';
   hints: Hints | null = null; // observable
-
-
 
   /** Graph */
   candidateIndex: number | undefined = undefined; // observable
@@ -273,12 +376,35 @@ export class Session {
   get accessPolicyRules(): AccessPolicyRule[] {
     const connections = this.globalStore?.connections as ConnectionInfo[] | undefined;
     const policies = this.globalStore?.accessPolicies ?? [];
-    const forMcp = this.id === this.globalStore?.mcpSessionId;
-    return effectiveAccessPolicyRules(connections?.find(c => c.id === this.profileId), policies, forMcp);
+    return effectiveAccessPolicyRules(
+      connections?.find(c => c.id === this.profileId),
+      policies,
+      this.isMcpSession,
+    );
+  }
+
+  /**
+   * Whether this is GlobalStore's dedicated MCP session -- the one tab
+   * agent-driven queries run in (GlobalStore.getOrCreateMcpSession). Derived,
+   * never stored: a flag set at construction would have to be kept in step
+   * with mcpSessionId, which is reassigned when the tab is closed and
+   * recreated. Read by accessPolicyRules above and by evaluate() below.
+   */
+  get isMcpSession(): boolean {
+    return !!this.globalStore?.mcpSessionId && this.id === this.globalStore.mcpSessionId;
+  }
+
+  /**
+   * True for a tab whose expression came from an AI agent: the MCP tab, or a
+   * tab opened to review a request_reveal call. evaluate() never lets such a
+   * tab change data, whoever presses Run.
+   */
+  get isAgentSession(): boolean {
+    return agentSessionNeverWrites(this);
   }
 
   /** Evaluation plugins */
-  plugins: { delete: RecursiveDeletePlugin; default: DefaultPlugin };
+  plugins: { default: DefaultPlugin };
 
   /**
    * Lazily-created, cached CanvasStore for this session - see
@@ -290,18 +416,50 @@ export class Session {
   /** Debounced trigger for auto-run - see notifyCanvasCommit(). */
   private autoRunTrigger: () => void;
 
-  /** Global store reference for accessing theme */
-  private globalStore: any = null;
+  /**
+   * Global store reference - theme, the connection list, the MCP session id,
+   * and opening a new tab (see CanvasStore.openTraversalNode). Public because
+   * the set of things read from it has outgrown "for accessing theme".
+   */
+  globalStore: any = null;
 
   constructor(id: string, globalStore?: any) {
     this.id = `session-${id}`;
     this.globalStore = globalStore;
 
-    makeAutoObservable(this);
+    // traversalSignal excluded: an observable field hands back a Proxy of what
+    // was assigned, so the object read back would never be identical to the
+    // one handed to the walk -- which is exactly the bug that left a traversal
+    // stuck on "walking" forever. Nothing renders it either.
+    makeAutoObservable<Session, 'traversalSignal' | 'runSignal'>(this, {
+      traversalSignal: false,
+      runSignal: false,
+      // A result is only ever replaced whole (plugin/default.plugin.tsx),
+      // never edited in place, so nothing needs to observe inside it. Deep
+      // observation wrapped every row of every result in a Proxy on the way
+      // in, and Result.tsx then copied them all back out with toJS - about
+      // 1.6s for 100k rows before the grid drew anything. As refs, a new
+      // result costs nothing to store and comes back as the plain arrays it
+      // went in as.
+      rows: observable.ref,
+      columns: observable.ref,
+      columnVisibilityModel: observable.ref,
+      columnMetadata: observable.ref,
+      // Replaced whole, and can hold thousands of tables.
+      sqlSchema: observable.ref,
+    });
+
+    // Turning the hidden columns on or off swaps the SQL shown, unless it was
+    // edited by hand since the last build.
+    reaction(
+      () => !!this.globalStore?.showHiddenSqlColumns,
+      show => {
+        if (this.query === this.shownBuiltQuery(!show)) this.query = this.shownBuiltQuery(show);
+      },
+    );
 
     /** Evaluation plugins */
     this.plugins = {
-      delete: new RecursiveDeletePlugin(this),
       default: new DefaultPlugin(this),
     };
 
@@ -322,6 +480,15 @@ export class Session {
         this.autoRunTrigger();
         return;
       }
+      // Never run an expression that changes data on its own. A where chip
+      // added to narrow an update! would otherwise run it 150 ms later,
+      // without anyone pressing Run.
+      if (mayChangeData(this.expression)) {
+        runInAction(() => {
+          this.message = 'Auto-run skipped: this expression changes data. Press Run to run it.';
+        });
+        return;
+      }
       // A canvas commit's source of truth is always session.expression
       // (Pine), never the SQL panel's text - forcePine runs that regardless
       // of session.inputMode, instead of silently no-oping (or, worse,
@@ -329,6 +496,12 @@ export class Session {
       // be the one showing. See EvaluateOptions.forcePine.
       void this.evaluate({ forcePine: true });
     }, 150);
+
+    // Longer than auto-run's 150 ms: it is a request on every pause in
+    // typing, and nobody reads the canvas mid-word.
+    this.sqlEdited = debounce(() => {
+      void this.convertSql();
+    }, 300);
 
     /**
      * Mark hints as loading the moment a build is queued, not once it starts
@@ -384,13 +557,9 @@ export class Session {
         try {
           const blocks = splitExpressions(expression);
           const cursor = this.cursorPosition;
-          const activeIdx = cursor !== undefined
-            ? findActiveBlock(blocks, cursor.line)
-            : blocks.length - 1;
-          const activeExpressions = blocks.slice(0, activeIdx + 1).map(b => b.text);
-          const adjustedCursor = cursor && blocks[activeIdx]
-            ? { line: cursor.line - blocks[activeIdx].startLine, character: cursor.character }
-            : cursor;
+          const activeIdx = findActiveQueryBlock(blocks, cursor?.line);
+          const activeExpressions = blocksForBuild(blocks, activeIdx);
+          const adjustedCursor = cursorForBuild(blocks, activeIdx, cursor);
           const response = await client.build(
             activeExpressions,
             adjustedCursor,
@@ -399,7 +568,13 @@ export class Session {
           );
           runInAction(() => {
             this.response = response;
-            this.lastHintsCursorPosition = cursor;
+            // A build refused because the tab's connection isn't back yet
+            // built nothing. Recording its cursor would make requestHints
+            // skip the rebuild that runs once the connection is up, and the
+            // refusal would stay on screen.
+            if (response?.['error-type'] !== 'no-connection') {
+              this.lastHintsCursorPosition = cursor;
+            }
           });
         } catch (e) {
           runInAction(() => {
@@ -433,8 +608,41 @@ export class Session {
           // ast
           this.ast = response.ast;
 
-          // query
-          this.query = formatSql(response.query);
+          // doc
+          //
+          // Only off a build that actually succeeded. A parse failure comes
+          // back with no `doc` at all, and this block renders directly above
+          // the editor being typed in - taking `response.doc` unconditionally
+          // would blank it on every keystroke that left the expression
+          // momentarily unparseable. A *successful* build with no doc is
+          // real (the comment was deleted), so that still clears it.
+          //
+          // `ast` is what makes this a build response specifically - only
+          // build returns a doc at all. Today `this.response` is written
+          // from exactly one place (the build reaction above), so this is
+          // belt-and-braces: were an eval response ever assigned here, it
+          // would carry neither `error` nor `doc` and would otherwise blank
+          // the block on every run.
+          if (!response.error && response.ast) {
+            this.variablesReport = response.variables ?? null;
+            this.doc = response.doc ?? '';
+          }
+
+          // query: what the SQL panel shows. With or without the hidden
+          // columns, as the preference says; both are kept, so turning it
+          // doesn't need another build.
+          this.builtQuery = formatSql(response.query);
+          this.builtQueryWithoutHidden = response['query-without-hidden']
+            ? formatSql(response['query-without-hidden'])
+            : this.builtQuery;
+          // Not while the Pine is a translation of the SQL panel's text:
+          // that text is what the user wrote, and the source of the Pine.
+          // Once it shows the Pine's SQL again, there is no conversion to
+          // report.
+          if (this.expression !== this.sqlTranslatedExpression) {
+            this.query = this.shownBuiltQuery(!!this.globalStore?.showHiddenSqlColumns);
+            this.sqlConversion = { status: 'idle', message: '', warnings: [] };
+          }
 
           // operation
           this.operation = handleOperation(response);
@@ -538,16 +746,17 @@ export class Session {
     });
   }
 
-  public async prettifyExpression(expression: string, appendPipe: boolean = false): Promise<string> {
+  public async prettifyExpression(
+    expression: string,
+    appendPipe: boolean = false,
+  ): Promise<string> {
     const blocks = splitExpressions(expression);
     if (blocks.length <= 1) {
       const prettified = await client.prettify(expression, this.connectionId);
       return appendPipe ? prettified + '\n | ' : prettified;
     }
     const cursor = this.cursorPosition;
-    const activeIdx = cursor !== undefined
-      ? findActiveBlock(blocks, cursor.line)
-      : blocks.length - 1;
+    const activeIdx = findActiveQueryBlock(blocks, cursor?.line);
     const activeBlock = blocks[activeIdx];
     const prettifiedBlock = await client.prettify(activeBlock.text, this.connectionId);
     const result = appendPipe ? prettifiedBlock + '\n | ' : prettifiedBlock;
@@ -566,6 +775,30 @@ export class Session {
 
   public appendAndUpdateExpression(string: string) {
     this.expression = this.expression + string;
+  }
+
+  /**
+   * How many rows this tab's expression matches, counted by the server with
+   * `| count:` on its last block. Never writes. Used before saving a cell
+   * edit, so a save that would change more than one row is refused.
+   */
+  public async countRows(): Promise<number> {
+    const blocks = this.expressions;
+    if (blocks.length === 0) return 0;
+    const last = blocks.length - 1;
+    // A built-up expression ends in ` | `, ready for the next step
+    // (pipeExpression). Left in, `| count:` would follow an empty step.
+    const lastBlock = blocks[last].replace(/[\s|]+$/, '');
+    const response = await client.eval(
+      [...blocks.slice(0, last), `${lastBlock} | count:`],
+      this.connectionId,
+      this.accessPolicyRules,
+      false,
+    );
+    if (response.error) throw new Error(response.error);
+    const count = Number(response.result?.[1]?.[0]);
+    if (!Number.isFinite(count)) throw new Error("Couldn't count the matching rows");
+    return count;
   }
 
   public async pipeAndUpdateExpression(pine: string, overwriteLastOperation: boolean = false) {
@@ -606,16 +839,297 @@ export class Session {
     this.autoRunTrigger();
   }
 
-  public async evaluate(opts?: EvaluateOptions) {
-    const { type } = this.operation;
-    switch (type) {
-      case 'delete':
-        return await this.plugins.delete.evaluate(opts);
-      case 'table':
-      // intentional fall through
-      default:
-        return await this.plugins.default.evaluate(opts);
+  /**
+   * The traversal shown in the results pane, or null when the pane is showing
+   * ordinary rows.
+   *
+   * A traversal IS a result -- counting the tables under one of yours answers
+   * a question about the data, the same as a query does; it just wants a tree
+   * rather than a grid. So it lives here next to `rows`/`columns` and renders
+   * in the results pane, rather than floating over the canvas in a panel of
+   * its own. Result.tsx already had the idea that one result can be drawn more
+   * than one way (its bar-chart view); this is the same idea with a third
+   * shape.
+   *
+   * Non-null is what tells the results pane to show a traversal instead of
+   * rows -- no separate mode flag, and an ordinary run clears it
+   * (DefaultPlugin), because running a query means the pane is showing that
+   * query now.
+   */
+  traversal: TraversalState | null = null;
+
+  /**
+   * Cancellation for the in-flight walk. Excluded from observability (see the
+   * makeAutoObservable call): an observable field hands back a Proxy of
+   * whatever was assigned, so the object read here would never be identical to
+   * the one handed to the walk. Nothing renders it either.
+   */
+  private traversalSignal: { cancelled: boolean } | null = null;
+
+  /** Pause/cancel for an in-flight delete run. Non-observable, same reason. */
+  private runSignal: { cancelled: boolean } | null = null;
+
+  /**
+   * Generation counter for traversals, so a late callback from a superseded
+   * walk can tell it has been superseded and drop its result rather than
+   * writing over the newer one. A number rather than object identity, for the
+   * reason above.
+   */
+  private traversalSeq = 0;
+
+  /**
+   * Runs a traversal from the expression as it stands.
+   *
+   * The root is `session.expression`, unmodified. There's no rooting logic
+   * here because the walk only ever *appends*: each node one level down is
+   * its parent's expression plus one more join (see traversal.ts). Acting on
+   * a node that isn't the end of the pipe is already handled the way every
+   * other canvas gesture handles it - a `from:` committed into the expression
+   * first (commitJoin's fromAlias) - so by the time this runs, the expression
+   * already points where it should.
+   */
+  async startTraversal(verb: TraversalVerb) {
+    const rootExpression = this.expression.trim();
+    if (!rootExpression) return;
+    this.getCanvasStore().closePicker();
+
+    const signal = { cancelled: false };
+    const seq = ++this.traversalSeq;
+    this.traversalSignal = signal;
+    runInAction(() => {
+      // The results pane is showing this now, the same as it would show rows
+      // after a run.
+      this.mode = 'result';
+      this.traversal = {
+        verb,
+        rootExpression,
+        status: 'walking',
+        nodes: [],
+        depthCapped: false,
+        script: null,
+        queries: [],
+        error: null,
+        run: 'idle',
+        outcomes: [],
+        runFrom: 0,
+      };
+    });
+
+    try {
+      const result = await runTraversal(traversalClient, rootExpression, {
+        connectionId: this.connectionId,
+        signal,
+        onNode: node =>
+          runInAction(() => {
+            if (this.traversal && this.traversalSeq === seq) {
+              this.traversal.nodes = [...this.traversal.nodes, node];
+            }
+          }),
+      });
+      if (signal.cancelled) {
+        runInAction(() => {
+          if (this.traversal && this.traversalSeq === seq) this.traversal.status = 'cancelled';
+        });
+        return;
+      }
+      const plan =
+        verb === 'delete'
+          ? await buildDeleteScript(traversalClient, result.nodes, this.connectionId)
+          : null;
+      runInAction(() => {
+        if (!this.traversal || this.traversalSeq !== seq) return;
+        // Replaces the streamed list rather than appending to it: onNode
+        // fires as each count lands, so the panel fills in while the walk
+        // runs, but the finished list is post-order - the order the DELETEs
+        // have to run in.
+        this.traversal.nodes = result.nodes;
+        this.traversal.depthCapped = result.depthCapped;
+        this.traversal.script = plan?.script ?? null;
+        this.traversal.queries = plan?.queries ?? [];
+        this.traversal.status = 'done';
+      });
+    } catch (e) {
+      runInAction(() => {
+        if (!this.traversal || this.traversalSeq !== seq) return;
+        this.traversal.status = 'failed';
+        this.traversal.error = e instanceof Error ? e.message : 'Traversal failed';
+      });
     }
+  }
+
+  /**
+   * Opens one row of the traversal in a new tab. Each node's `expression` is
+   * ordinary Pine - the walk builds them by appending joins - so this needs
+   * no "traversal result" viewer, just a tab.
+   */
+  openTraversalNode(node: TraversalNode) {
+    this.globalStore?.openExpressionInNewTab?.(node.expression);
+  }
+
+  /**
+   * How the connection is named in the confirmation. Its label AND its host,
+   * because a label alone is exactly what gets misread when two connections
+   * are named something similar -- and "which database am I pointed at" is
+   * the question the confirmation exists to answer.
+   */
+  get traversalConnectionLabel(): string {
+    const connections = (this.globalStore?.connections ?? []) as {
+      id: string;
+      label?: string;
+      dbHost?: string;
+      dbName?: string;
+    }[];
+    const match = connections.find(c => c.id === this.profileId);
+    if (!match) return this.connectionId || 'this connection';
+    const where = [match.dbHost, match.dbName].filter(Boolean).join('/');
+    return where ? `${match.label ?? match.id} (${where})` : (match.label ?? match.id);
+  }
+
+  /** Opens the confirmation. Deliberately a separate step from running. */
+  requestTraversalRun() {
+    if (!this.traversal || this.traversal.verb !== 'delete' || !this.traversal.script) return;
+    // A walk cut off at the depth limit is an incomplete plan: the tables
+    // below the limit have rows pointing at rows it would delete.
+    if (this.traversal.depthCapped) return;
+    runInAction(() => {
+      if (this.traversal) this.traversal.run = 'confirming';
+    });
+  }
+
+  dismissTraversalRun() {
+    runInAction(() => {
+      if (this.traversal && this.traversal.run === 'confirming') this.traversal.run = 'idle';
+    });
+  }
+
+  /**
+   * Runs the planned deletes, after the confirmation: it names the
+   * connection with its host and lists every table and count, so the wrong
+   * query or the wrong database shows up with the numbers in front of you.
+   */
+  async confirmTraversalRun() {
+    const traversal = this.traversal;
+    if (!traversal) return;
+    // From the confirmation, or resuming: paused, or stopped on an error
+    // (which leaves run back at 'idle' with runFrom part-way through).
+    // Resuming is deliberately NOT gated behind the confirmation again -- it
+    // was granted for this exact set of tables, and nothing about them has
+    // changed, only how far through them we are.
+    const resuming = traversal.run === 'paused' || traversal.run === 'failed';
+    if (traversal.run !== 'confirming' && !resuming) return;
+
+    const signal = { cancelled: false };
+    this.runSignal = signal;
+    runInAction(() => {
+      traversal.run = 'running';
+      // Drop the failure being retried, so the panel doesn't keep reporting a
+      // node as failed while it is being attempted again. Successes stay:
+      // they are what runFrom counts.
+      const last = traversal.outcomes[traversal.outcomes.length - 1];
+      if (resuming && last && 'error' in last) {
+        traversal.outcomes = traversal.outcomes.slice(0, -1);
+      }
+    });
+
+    await runDeleteScript(
+      traversalClient,
+      traversal.nodes,
+      traversal.queries,
+      this.connectionId,
+      outcome =>
+        runInAction(() => {
+          if (this.traversal !== traversal) return;
+          traversal.outcomes = [...traversal.outcomes, outcome];
+          // Advance only past a success. A failure leaves runFrom pointing AT
+          // the node that failed, which is where a resume has to start.
+          if (!outcome.error) traversal.runFrom += 1;
+        }),
+      traversal.runFrom,
+      signal,
+    );
+
+    runInAction(() => {
+      if (this.traversal !== traversal) return;
+      // Paused stays paused -- pauseTraversalRun already set it, and the loop
+      // simply stopped asking for more.
+      if (traversal.run !== 'paused') {
+        traversal.run =
+          traversal.runFrom >= traversal.nodes.length
+            ? 'finished'
+            : // Stopped short without being paused: the node at runFrom threw.
+              'failed';
+      }
+    });
+  }
+
+  cancelTraversal() {
+    if (this.traversalSignal) this.traversalSignal.cancelled = true;
+    if (this.runSignal) this.runSignal.cancelled = true;
+  }
+
+  /**
+   * Stops a delete run after the statement in flight, keeping its place.
+   *
+   * Not the same as cancelling the walk: nothing is undone, because nothing
+   * can be -- each table's DELETE is its own statement and the ones that ran
+   * are committed. Pausing only declines to start the next one, which is why
+   * the button says Pause rather than Stop.
+   */
+  pauseTraversalRun() {
+    if (this.runSignal) this.runSignal.cancelled = true;
+    runInAction(() => {
+      if (this.traversal && this.traversal.run === 'running') this.traversal.run = 'paused';
+    });
+  }
+
+  closeTraversal() {
+    this.cancelTraversal();
+    runInAction(() => {
+      this.traversal = null;
+    });
+  }
+
+  /**
+   * Stops the query this tab is running. The server stops the statement in
+   * the database, and a write is rolled back. The run itself then ends with
+   * "Query stopped.".
+   */
+  public async stop() {
+    const runId = this.runId;
+    if (!runId) return;
+    try {
+      await client.cancel(runId);
+    } catch (e) {
+      runInAction(() => {
+        this.error = `Couldn't stop the query: ${e instanceof Error ? e.message : String(e)}`;
+      });
+    }
+  }
+
+  public async evaluate(opts?: EvaluateOptions) {
+    // An agent's tab never writes, whoever asked it to. runMcpQuery already
+    // passes allowWrites: false, so for the MCP tab this is not what stops an
+    // agent today -- it is what stops the next caller. Binding it to the
+    // session means a future path into this tab that forgets the option
+    // inherits the safe answer instead of silently inheriting writes
+    // (allow-writes defaults to allowed server-side, for the person's own
+    // editor). It also covers the person pressing Run on an agent's tab,
+    // where the expression on screen is the agent's, not theirs.
+    //
+    // A reveal-review tab is an agent's tab too: RevealRequestHandler runs
+    // the agent's expression the moment the request arrives, so the owner
+    // can see the data before deciding. Without this, `user | delete!` sent
+    // as a reveal request deleted rows before anyone was asked.
+    const effectiveOpts: EvaluateOptions | undefined = this.isAgentSession
+      ? { ...opts, allowWrites: false }
+      : opts;
+    const result = await this.plugins.default.evaluate(effectiveOpts);
+    if (this.openedFromLink && !this.error) {
+      runInAction(() => {
+        this.openedFromLink = false;
+      });
+    }
+    return result;
   }
 
   /**
@@ -655,6 +1169,20 @@ export class Session {
     this.querySelection = text;
   }
 
+  /**
+   * A selection for the editor to apply the next time it takes this
+   * session's expression, as offsets into the new text. Set together with
+   * `expression` when a recipe is used, so its first value is selected (or,
+   * in Vim mode, the cursor sits on it). PineInput clears it once applied.
+   */
+  pendingSelection: { anchor: number; head: number } | null = null;
+
+  public setExpressionWithSelection(expression: string, selection: { anchor: number; head: number } | null) {
+    this.pendingSelection = selection;
+    this.expression = expression;
+    this.textInputFocused = true;
+  }
+
   public updateCursorPosition(line: number, character: number) {
     this.cursorPosition = { line, character };
   }
@@ -683,6 +1211,91 @@ export class Session {
     this.hintsRequestedCounter++;
   }
 
+  /**
+   * Convert the SQL panel's text to Pine and put it in the tab, through the
+   * canvas so it is one undo step (CanvasStore.applySqlTranslation). Runs
+   * nothing. When the SQL doesn't convert, the Pine is left as it was and
+   * the status line says why.
+   */
+  public async convertSql(): Promise<void> {
+    const seq = ++this.sqlConversionSeq;
+    const sql = this.query;
+    if (sql.trim() === '') {
+      this.sqlConversion = { status: 'idle', message: '', warnings: [] };
+      return;
+    }
+    // Keep what the line says until the answer arrives, so it doesn't blink
+    // out and back on every keystroke.
+    this.sqlConversion = { ...this.sqlConversion, status: 'converting' };
+    let result: SqlToPineResponse;
+    try {
+      result = await client.sqlToPine(sql, this.connectionId);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      result = {
+        error: /^404\b/.test(message) ? 'This Pine server is too old to convert SQL.' : message,
+      };
+    }
+    if (seq !== this.sqlConversionSeq) return;
+    runInAction(() => {
+      if (result.expression !== undefined && !result.error) {
+        this.getCanvasStore().applySqlTranslation(result.expression);
+        this.sqlTranslatedExpression = this.expression;
+        this.sqlConversion = { status: 'converted', message: '', warnings: result.warnings ?? [] };
+      } else {
+        const failed: SqlConversion = {
+          status: 'failed',
+          message: result.error || 'The SQL could not be converted.',
+          warnings: [],
+        };
+        if (result['error-type'] !== 'sql-parse-error') {
+          this.sqlConversion = failed;
+          return;
+        }
+        // Unfinished SQL: say nothing yet, and say it only if the text is
+        // still this when the pause is over.
+        this.sqlConversion = { status: 'converting', message: '', warnings: [] };
+        setTimeout(() => {
+          if (seq !== this.sqlConversionSeq) return;
+          runInAction(() => {
+            this.sqlConversion = failed;
+          });
+        }, SQL_UNFINISHED_QUIET_MS);
+      }
+    });
+  }
+
+  /**
+   * Load the connection's tables and columns for the SQL panel's completion.
+   * A failure (no connection, or a server without /sql-schema) leaves no
+   * completion, never an error.
+   */
+  public async loadSqlSchema(): Promise<void> {
+    const seq = ++this.sqlSchemaSeq;
+    let schema: SqlSchemaResponse | null;
+    try {
+      schema = await client.sqlSchema(this.connectionId);
+    } catch {
+      schema = null;
+    }
+    if (seq !== this.sqlSchemaSeq) return;
+    runInAction(() => {
+      this.sqlSchema = schema;
+    });
+  }
+
+  /**
+   * The joins to suggest at `cursor` in the SQL panel's text. None when the
+   * server can't say (no connection, or a pine-lang without the endpoint).
+   */
+  public async sqlJoinHints(query: string, cursor: number): Promise<SqlJoinHint[]> {
+    try {
+      return await client.sqlJoinHints(query, cursor, this.connectionId);
+    } catch {
+      return [];
+    }
+  }
+
   public setInputMode(mode: InputMode) {
     this.inputMode = mode;
     this.querySelection = '';
@@ -701,6 +1314,10 @@ export class Session {
         });
       }, autoClearMs);
     }
+  }
+
+  shownBuiltQuery(showHidden: boolean): string {
+    return showHidden ? this.builtQuery : this.builtQueryWithoutHidden;
   }
 
   /**
@@ -724,28 +1341,18 @@ export class Session {
    * Mirrors Result.tsx's exportToCSV so the toolbar button and the copy-result command agree.
    */
   getResultClipboardText(): string {
-    const visibleColumns = this.columns.filter(col => col.field !== '_id');
+    // Not the hidden columns pine-lang adds for editing (each table's key,
+    // each JSON value's type): they aren't part of the result anyone sees.
+    const visibleColumns = this.columns.filter(
+      col => col.field !== '_id' && this.columnVisibilityModel[col.field] !== false,
+    );
     const headers = visibleColumns.map(col => col.headerName || col.field);
 
     const csvRows = [
       headers.join(','),
       ...this.rows.map(row =>
         visibleColumns
-          .map(col => {
-            const value = row[col.field];
-            if (value === null || value === undefined) {
-              return '';
-            }
-            const stringValue = String(value);
-            if (
-              stringValue.includes(',') ||
-              stringValue.includes('"') ||
-              stringValue.includes('\n')
-            ) {
-              return `"${stringValue.replace(/"/g, '""')}"`;
-            }
-            return stringValue;
-          })
+          .map(col => csvCell(row[col.field]))
           .join(','),
       ),
     ];
@@ -794,10 +1401,19 @@ const handleOperation = (response: Response): Operation => {
   return response.ast.operation;
 };
 
+/**
+ * Whether a session's expression came from an AI agent, so it must never
+ * change data: the dedicated MCP tab, or a tab reviewing a request_reveal
+ * call. Exported for tests.
+ */
+export const agentSessionNeverWrites = (session: {
+  isMcpSession: boolean;
+  pendingRevealRequestId?: string;
+}): boolean => session.isMcpSession || !!session.pendingRevealRequestId;
+
 const handleError = (response: Response): { error: string; errorType: string } => {
   return {
     error: response.error || '',
     errorType: response['error-type'] || '',
   };
 };
-

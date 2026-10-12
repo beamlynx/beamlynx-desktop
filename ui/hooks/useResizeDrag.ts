@@ -21,6 +21,14 @@ export function useResizeDrag(options: {
 
   return (e: React.MouseEvent) => {
     e.preventDefault();
+    // Panels transition their width/height when they open and close. This
+    // sets that same dimension on every mousemove, so the transition has to
+    // be off for the duration of the drag or the panel rubber-bands behind
+    // the cursor instead of tracking it. globals.css turns it off for
+    // anything carrying data-panel-motion while this class is present (and
+    // suppresses text selection, which dragging used to trigger on whatever
+    // the cursor passed over).
+    document.body.classList.add('is-resizing');
     const startX = e.pageX;
     const startY = e.pageY;
     const startValue = value;
@@ -36,6 +44,7 @@ export function useResizeDrag(options: {
     };
 
     const handleMouseUp = () => {
+      document.body.classList.remove('is-resizing');
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };

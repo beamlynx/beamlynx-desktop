@@ -1,4 +1,5 @@
-import { Box, Modal, Typography, IconButton, Tooltip } from '@mui/material';
+import { Box, Typography, IconButton, Tooltip } from '@mui/material';
+import ModalSurface from './ModalSurface';
 import { Close } from '@mui/icons-material';
 import { observer } from 'mobx-react-lite';
 import { runInAction } from 'mobx';
@@ -9,7 +10,6 @@ import { useStores } from '../store/store-container';
 
 interface UpdateData {
   column: string;
-  id: string | number;
   value: string;
   alias: string;
   updateExpression: string;
@@ -17,68 +17,77 @@ interface UpdateData {
 
 interface UpdateModalProps {
   updateExpression: string;
-  updateData: UpdateData;
+  updateData: UpdateData | null;
+  /**
+   * Separate from `updateData` being present: Result.tsx keeps this
+   * component mounted through the closing transition (ModalSurface's
+   * `closeAfterTransition`), so "has data" and "should be open" stop being
+   * the same question the moment this animates.
+   */
+  open: boolean;
   onClose: () => void;
 }
 
-const UpdateModal: React.FC<UpdateModalProps> = observer(({ updateExpression, updateData, onClose }) => {
-  const { global } = useStores();
-  const vs = global.getVirtualSession();
-  const [title, setTitle] = useState('Review Update Query');
+const UpdateModal: React.FC<UpdateModalProps> = observer(
+  ({ updateExpression, updateData, open, onClose }) => {
+    const { global } = useStores();
+    const vs = global.getVirtualSession();
+    const [title, setTitle] = useState('Review Update Query');
 
-  const onRun = async () => {
-    try {
-      // Execute the update query
-      const [messageRow, countRow] = await vs.evaluate();
-      const message = messageRow[0];
-      const count = countRow[0];
-      setTitle(`✅ ${message}: ${count}`);
-      
-    } catch (error) {
-      setTitle(`❌ Update execution failed`);
-      console.error(error);
-    }
-  };
+    const onRun = async () => {
+      try {
+        // Execute the update query
+        const rows = await vs.evaluate();
+        // evaluate() returns [] on failure and puts the reason in vs.error.
+        if (vs.error || rows.length < 2) {
+          setTitle(`❌ ${vs.error || 'Update execution failed'}`);
+          return;
+        }
+        const [messageRow, countRow] = rows;
+        const message = messageRow[0];
+        const count = countRow[0];
+        setTitle(`✅ ${message}: ${count}`);
+      } catch (error) {
+        setTitle(`❌ Update execution failed`);
+        console.error(error);
+      }
+    };
 
-  // Set up the Pine expression when modal opens with update data
-  useEffect(() => {
-    const { column, alias } = updateData;
+    // Set up the Pine expression when modal opens with update data
+    useEffect(() => {
+      // Null while the dialog is closed or on its way out -- there is
+      // nothing to set up for a dialog nobody is opening.
+      if (!updateData) return;
+      const { column, alias } = updateData;
 
-    // Reset virtual session state
-    vs.setMessage('');
-    runInAction(() => {
-      vs.error = '';
-      vs.loading = false;
-    });
+      // Reset virtual session state
+      vs.setMessage('');
+      runInAction(() => {
+        vs.error = '';
+        vs.loading = false;
+      });
 
-    // Always start in Pine mode to ensure the build process triggers
-    vs.setInputMode('pine');
+      // Always start in Pine mode to ensure the build process triggers
+      vs.setInputMode('pine');
 
-    // Use the pre-built update expression
-    runInAction(() => {
-      vs.expression = updateExpression;
-    });
+      // Use the pre-built update expression
+      runInAction(() => {
+        vs.expression = updateExpression;
+      });
 
-    // Update title to be more specific
-    setTitle(`Update ${alias}.${column}`);
-  }, [updateData, vs, updateExpression]);
+      // Update title to be more specific
+      setTitle(`Update ${alias}.${column}`);
+    }, [updateData, vs, updateExpression]);
 
-  return (
-    <Modal open={!!updateData} onClose={onClose} aria-labelledby="update-modal-title">
-      <Box
-        sx={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
+    return (
+      <ModalSurface
+        open={open}
+        onClose={onClose}
+        aria-labelledby="update-modal-title"
+        surfaceSx={{
           width: '80%',
           maxWidth: 800,
-          bgcolor: 'var(--background-color)',
-          border: '1px solid var(--border-color)',
-          boxShadow: 24,
           p: 3,
-          borderRadius: 2,
-          outline: 'none',
           maxHeight: '80vh',
           overflow: 'auto',
         }}
@@ -121,9 +130,9 @@ const UpdateModal: React.FC<UpdateModalProps> = observer(({ updateExpression, up
 
         {/* The Input component */}
         <Input session={vs} onRun={onRun} />
-      </Box>
-    </Modal>
-  );
-});
+      </ModalSurface>
+    );
+  },
+);
 
 export default UpdateModal;

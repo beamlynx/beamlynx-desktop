@@ -21,7 +21,6 @@ import {
   CanvasTableNodeData,
   START_NODE_ID,
 } from '../../store/canvas/canvas.model';
-import { appFontVariablesClassName } from '../../styles/app-font';
 import { useCanvasKeybindings } from '../../hooks/useCanvasKeybindings';
 import { CanvasStoreContext } from './canvas-context';
 import TableNode from './nodes/TableNode';
@@ -31,6 +30,8 @@ import TraceEdge from './edges/TraceEdge';
 import Picker from './Picker';
 import MultiSelectToolbar from './MultiSelectToolbar';
 import CanvasToolbar, { CanvasModeIndicator, CanvasToolbarExtraAction } from './CanvasToolbar';
+import PineDoc from '../PineDoc';
+import CanvasVariables from './CanvasVariables';
 
 const nodeTypes: NodeTypes = {
   'table-node': TableNode,
@@ -198,7 +199,6 @@ const Flow: React.FC<{
 
   return (
     <div
-      className={appFontVariablesClassName}
       style={{
         position: 'relative',
         width: '100%',
@@ -207,7 +207,7 @@ const Flow: React.FC<{
       }}
     >
       {!canvasGraph.singleBlock && (
-        <Banner>Canvas mode only supports a single expression block</Banner>
+        <Banner>The canvas shows one query, with any values blocks above it</Banner>
       )}
       {canvasGraph.singleBlock && !canvasGraph.parsing && canvasStore.isConnecting && (
         <Banner variant="info">Connecting…</Banner>
@@ -215,6 +215,13 @@ const Flow: React.FC<{
       {canvasGraph.singleBlock && !canvasGraph.parsing && !canvasStore.isConnecting && (
         <Banner>Not parsing - showing last valid graph</Banner>
       )}
+      {/* What this query is for, in the author's own words - see PineDoc.tsx.
+          Outside the graph wrapper below on purpose, so it stays legible at
+          full opacity even while the graph is dimmed for a parse failure:
+          that is exactly when knowing what the query was meant to do is
+          worth most. */}
+      <PineDoc canvasStore={canvasStore} />
+      <CanvasVariables canvasStore={canvasStore} />
       <div
         style={{
           width: '100%',

@@ -3,7 +3,9 @@
 // `typeof window !== 'undefined' && window.beamlynxDesktop` before use, since
 // isDesktop() (store/util.ts) can be true in a plain browser dev-server run
 // (NEXT_PUBLIC_DESKTOP=1 without Electron) where this doesn't exist.
+import type { Recipe, SaveRecipeInput } from './utils/recipes';
 import type { AccessPolicy, AccessPolicyRule } from './store/client';
+import type { DbType } from './utils/dbType';
 
 type DesktopUpdateStatus =
   | { state: 'checking' }
@@ -23,7 +25,7 @@ type SavedConnectionMeta = {
   // Defaults to 'postgres' for connections saved before this field existed
   // (credential-store.ts's toMeta) -- matches client.ts's own createConnection
   // default, so an old saved profile still reconnects exactly as before.
-  dbType: 'postgres' | 'mysql';
+  dbType: DbType;
   createdAt: string;
   lastUsedAt: string;
   // MCP always uses this connection's own assigned policy whenever this is
@@ -63,12 +65,18 @@ type SetConnectionPolicyResult =
 // Sent by the main process (control-plane-server.ts) when an MCP client calls
 // the run_query or complete_query MCP tool -- the renderer is the only place
 // that can actually execute a query into a visible tab. See
-// beamlynx-plans/pending/2026-08-15-mcp-server-and-url-scheme.md.
+// beamlynx-plans/completed/2026-08-15-mcp-server-and-url-scheme.md.
 type McpQueryRequest = {
   requestId: string;
   kind: 'eval' | 'build';
   profileId: string;
   expression: string;
+  // Values for the expression's $variables, as the agent passed them to
+  // run_query. Absent from a desktop app older than variables.
+  variables?: Record<string, import('./store/client').VariableValue>;
+  // run_sql_as_pine's SQL, in place of an expression. runMcpQuery converts it to
+  // Pine; it never runs as SQL. Absent from a desktop app older than this.
+  sql?: string;
 };
 
 type McpQueryResult =
@@ -96,6 +104,16 @@ type RevealOutcome =
   | { ok: true; expression: string; columns: unknown; rows: unknown }
   | { ok: false; comment?: string };
 
+// Matches beamlynx-desktop's StartupState (src/main/app-db.ts). Not ok when
+// the file couldn't be opened; preferences then stay in localStorage.
+type AppDbStartupState =
+  | {
+      ok: true;
+      preferences: Record<string, string>;
+      status: { wasReset: boolean; importedFromLocalStorage: boolean };
+    }
+  | { ok: false; reason: string };
+
 type CredentialsStatus = {
   persistenceAvailable: boolean;
   linuxBackend?: string;
@@ -108,7 +126,9 @@ type SaveConnectionInput = {
   dbUser: string;
   dbPassword: string;
   // Optional; defaults to 'postgres' (credential-store.ts's saveConnection).
-  dbType?: 'postgres' | 'mysql';
+  // For 'sqlite', dbName is the database file's absolute path and the host,
+  // port, user and password are empty.
+  dbType?: DbType;
   // Optional; falls back to a derived `user@host:port/db` label when blank
   // or omitted.
   label?: string;
@@ -122,6 +142,16 @@ type GetConnectionResult =
   | { ok: false; error: 'decryption-failed'; profile: SavedConnectionMeta };
 
 interface BeamlynxDesktopApi {
+  // Where this app's bundled pine server listens, e.g. http://localhost:33333.
+  // The dev build uses a different port than the installed app, so both can
+  // run at once (see beamlynx-desktop's src/main/ports.ts).
+  pineServerUrl: string;
+  // The bundled server's launch token, sent as `Authorization: Bearer` on
+  // every request (beamlynx-desktop's launch-secrets.ts).
+  pineServerToken?: string;
+  // True when running from source (beamlynx-desktop's `npm start`), not an
+  // installed app. Shows the DEV chip in the header (DevModeChip.tsx).
+  isDevBuild: boolean;
   onUpdateStatus: (callback: (status: DesktopUpdateStatus) => void) => () => void;
   restartToUpdate: () => void;
   // Backs the Settings About section's "App version" row -- reads the
@@ -131,6 +161,31 @@ interface BeamlynxDesktopApi {
   // (GlobalStore.version) -- three separate things that happen to often
   // move together but aren't the same number.
   getAppVersion: () => Promise<string>;
+  // Saved recipes. Matches beamlynx-desktop's src/preload/index.ts. Optional
+  // because a desktop app older than 0.19 doesn't have them.
+  recipes?: {
+    list: () => Promise<Recipe[]>;
+    find: (text: string) => Promise<Recipe[]>;
+    get: (id: string) => Promise<Recipe | null>;
+    save: (input: SaveRecipeInput, connectionId?: string) => Promise<Recipe>;
+    delete: (id: string) => Promise<boolean>;
+  };
+  // The app's own SQLite file, where preferences live on desktop
+  // (store/preferences.ts). Values are the JSON text localStorage would
+  // hold. Optional because older desktop apps lack it, and loadStartupState
+  // is newer still.
+  appDb?: {
+    // Blocks while the main process reads the file. Called once, at startup.
+    loadStartupState?: () => AppDbStartupState;
+    // A null value deletes the key. All changes in one call are one write.
+    setPreferences: (changes: Record<string, string | null>) => Promise<void>;
+    markImportedFromLocalStorage: () => Promise<void>;
+    // Remembered column widths for one connection, keyed as
+    // store/column-widths.ts's columnWidthKey names them.
+    getColumnWidths?: (connection: string) => Promise<Record<string, number>>;
+    // A null width forgets the column. The file drops the oldest past a limit.
+    setColumnWidths?: (connection: string, changes: Record<string, number | null>) => Promise<void>;
+  };
   credentials: {
     status: () => Promise<CredentialsStatus>;
     list: () => Promise<SavedConnectionMeta[]>;
@@ -141,6 +196,10 @@ interface BeamlynxDesktopApi {
     setConnectionPolicy: (id: string, policyId: string | null) => Promise<SetConnectionPolicyResult>;
     setApplyPolicyToOwnQueries: (id: string, apply: boolean) => Promise<SavedConnectionMeta | null>;
     rename: (id: string, label: string) => Promise<SavedConnectionMeta | null>;
+    // Opens the OS file chooser for a SQLite database; resolves with the
+    // chosen absolute path, or null if the user cancels. Absent in a desktop
+    // build that predates SQLite, so callers hide their Browse button then.
+    pickSqliteFile?: () => Promise<string | null>;
   };
   // Named, user-creatable access policies -- each connection independently
   // selects which one applies (credentials.setConnectionPolicy above), or
@@ -166,7 +225,9 @@ interface BeamlynxDesktopApi {
     // (e.g. `claude mcp add beamlynx -- <command> <args>`). Resolved at call
     // time, not baked in statically -- the executable path varies by install
     // location and packaging format (.app bundle vs. deb-installed binary).
-    getSetupInfo: () => Promise<{ command: string; args: string[] }>;
+    // `name` is the server name to register it under: "beamlynx", or
+    // "beamlynx-dev" for a dev build, so both can be registered side by side.
+    getSetupInfo: () => Promise<{ name: string; command: string; args: string[] }>;
     onQueryRequest: (handler: (request: McpQueryRequest) => Promise<unknown>) => () => void;
   };
   // request_reveal/check_reveal's renderer half -- see
@@ -198,6 +259,8 @@ export type {
   SavedConnectionMeta,
   SetMcpEnabledResult,
   SetConnectionPolicyResult,
+  BeamlynxDesktopApi,
+  AppDbStartupState,
   CredentialsStatus,
   SaveConnectionInput,
   SaveConnectionResult,

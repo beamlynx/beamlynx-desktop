@@ -43,7 +43,11 @@ const ActiveConnection = () => {
         ? truncatedLabel
         : `${truncatedLabel} (not connected)`;
 
-  const displayText = global.pineConnected ? displayName : '🔌 No connection to Pine server!';
+  const displayText = global.pineConnected
+    ? displayName
+    : global.serverRejected
+      ? '🔒 The Pine server refused this app. Restart beamlynx.'
+      : '🔌 No connection to Pine server!';
 
   // Reconnect is only meaningful once the DB actually comes back up -- an
   // assigned connection whose pool died (or never got established because
@@ -66,6 +70,11 @@ const ActiveConnection = () => {
   const handleSwitchTo = async (id: string) => {
     if (isDesktop()) {
       if (id === global.activeProfileId) {
+        setConnectionMenuAnchor(null);
+        return;
+      }
+      if (activeSession?.expression.trim()) {
+        global.requestConnectionSwitch({ kind: 'connectToSavedProfile', id });
         setConnectionMenuAnchor(null);
         return;
       }
@@ -94,6 +103,10 @@ const ActiveConnection = () => {
     setSwitchingConnection(true);
     try {
       await global.selectConnection(id);
+    } catch (e) {
+      // selectConnection has already shown why; this only stops the
+      // rejection from going unhandled.
+      console.error('[connections] switching failed ->', e);
     } finally {
       setSwitchingConnection(false);
       setConnectionMenuAnchor(null);

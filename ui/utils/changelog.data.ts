@@ -23,6 +23,392 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.65.0',
+    date: '2026-10-06',
+    breaking: [
+      {
+        title: "Needs pine-lang 0.48.0 or later (was 0.47.0)",
+        description:
+          "Values blocks and named results after in need it. Connecting to an older server shows the upgrade-required screen.",
+      },
+      {
+        title: "Ctrl+S no longer downloads the tab as a .pine file",
+        description:
+          "Nothing in beamlynx opened those files. Ctrl+S now saves a recipe (see below). In the browser, where there are no recipes, Ctrl+S does nothing.",
+      },
+    ],
+    added: [
+      {
+        title: "Variables",
+        description:
+          "Write $name in a query where a value goes, and set it in a values block of its own above the query: $company_name = 'Acme', or a list for in, $statuses = ('failed', 'stuck'). A values block holds one or more $name = value lines, so the query and its values are all in the Pine text. Pressing Ctrl+Enter with the cursor in a values block runs the query below it. On the canvas, a Variables list shows each $name the query uses and its value, or \"no value\"; click a value to change it, which rewrites its line in the text. Condition chips show $name. Needs pine-lang with values blocks (0.48 or later).",
+      },
+      {
+        title: "One query's result in another: a named result that selects one column can be used after in, like employee | where: id in acme_emps (pine-lang 0.48 or later)",
+      },
+      {
+        title: "A recipe keeps its $variables and their values: saving one includes the values blocks the query uses, placed above the query, and using it puts them in with the query",
+      },
+      {
+        title: "An AI agent can pass values for $variables to run_query, overriding those written in the text (with beamlynx-desktop's matching change)",
+        description:
+          "The agent's tab shows the values it used in a values block above the query, so the run can be repeated.",
+      },
+      {
+        title: "Save a query as a recipe with Ctrl+S (desktop app 0.19 or later)",
+        description:
+          "A bar above the tab asks for a title, offering the first line of the query's top comment. Enter saves, Esc cancels. It saves the block under the cursor, plus any block above it that the query uses through a named result. Comments are saved with the query: they are the recipe's explanation. Recipes are offered on every database.",
+      },
+      {
+        title: "Use a recipe with Ctrl+O",
+        description:
+          "Find it by any word in its title, comments or query, then click it or press Enter. Its query, comments included, goes into the tab as ordinary text. Nothing runs until you press Ctrl+Enter. Hover a recipe to see its query. Delete one with the trash icon on its row: click once, then again within 3 seconds. Editing comes later.",
+      },
+    ],
+    changed: [
+      {
+        title: "Vercel no longer deploys this repo",
+        description:
+          "vercel.json turns off deployments for every branch, including main and release/**. The last deployed version stays online until the Vercel project is removed.",
+      },
+      {
+        title: "The hosted web app builds on Node.js 24",
+        description:
+          "Vercel stopped building with Node.js 20, so every deployment since 2026-10-03 had failed. package.json now sets engines.node to 24.x, which overrides the Vercel project's setting, and .nvmrc says 24. npm test works on Node.js 22 and later again: it passes the test files, not the folder.",
+      },
+      {
+        title: "A dev copy shows an amber DEV chip in the header, in place of the grey \"[Development]\" text",
+        description:
+          "It also shows in a desktop dev build (beamlynx-desktop's npm start), which had no label at all, so it can't be mistaken for the installed app when both are open. Hover it to see which kind of dev copy it is.",
+      },
+      {
+        title: "Inside beamlynx-desktop, the app now asks the desktop app which port its Pine server is on instead of assuming 33333",
+        description:
+          "The desktop dev build uses a different port, so it can run next to the installed app. The browser and playground are unchanged.",
+      },
+      {
+        title: "In the desktop dev build, the MCP setup instructions register the server as beamlynx-dev, so it can sit next to the installed app's beamlynx entry",
+      },
+    ],
+    fixed: [
+      {
+        title: "The Access Policy section now says that a masked column can still be used in a query's conditions, so a query can test a guess about its values, for example by counting matching rows",
+        description:
+          "That has always been true; it wasn't written down.",
+      },
+      {
+        title: "Keys pressed in a dialog, such as the Ctrl+O recipe picker or the command palette, no longer reach the canvas behind it",
+        description:
+          "Clicking a dialog's text and then pressing Backspace, Delete or x used to delete the selected item in your tab.",
+      },
+      {
+        title: "New Database Connection in the command palette opens the add form again",
+        description:
+          "It used to open Settings on the list of connections instead, because that section was already loaded in the background. The same fix covers a saved password that can't be unlocked: the form now opens filled in every time, not only the first time.",
+      },
+      {
+        title: "The Access Policy section said agent (MCP) access needs an active rule in some policy",
+        description:
+          "The rule is per connection: MCP access can be turned on for a connection whose own policy has an active rule, or that has no policy.",
+      },
+      {
+        title: "The MCP section's setup steps named a toggle and a section that no longer exist",
+        description:
+          "They now say to turn on MCP access under Database Connections.",
+      },
+    ],
+  },
+  {
+    version: '0.64.0',
+    date: '2026-09-27',
+    breaking: [
+      {
+        title: "Needs pine-lang 0.47.0 or later (was 0.46.0)",
+        description:
+          "Canvas filters that match any of several conditions are written with or, which pine-lang 0.47.0 added. Connecting to an older server shows the upgrade-required screen.",
+      },
+    ],
+    added: [
+      {
+        title: "After you edit a value, its cell glows briefly and a short message says it was saved",
+        description:
+          "If it wasn't, the message says why.",
+      },
+      {
+        title: "A value that can't be edited now says why as soon as you try, instead of opening an editor",
+        description:
+          "That covers a row's id (an update uses it to find the row), a table whose id isn't in the result, and values the query works out rather than reads from a table.",
+      },
+      {
+        title: "Move between result cells with the arrow keys",
+        description:
+          "Select a range by dragging or with Shift, and copy it with Ctrl+C as tab-separated text that pastes into a spreadsheet.",
+      },
+      {
+        title: "A canvas filter can match either of several conditions",
+        description:
+          "In the filter panel, + or adds another condition; pick its column from the same list as the first. The filter is written as one where: joined with or, like where: c.status = 'blocked' or c.status = 'active'. It needs pine-lang 0.47.0, which added or.",
+      },
+    ],
+    changed: [
+      {
+        title: "The results grid is new, and much faster",
+        description:
+          "It draws only the cells in view, so scrolling stays smooth however many rows a result has. A result shows up in about half the time, and a 100,000-row result about four times sooner than before.",
+      },
+      {
+        title: "The delete script from traverse now says in its first lines how its Run button works",
+        description:
+          "Running the script yourself deletes everything in one transaction, between its BEGIN; and COMMIT;. Run doesn't send those: it deletes one table at a time, deepest first, and each table is committed as it goes.",
+      },
+      {
+        title: "Opening or closing Settings or the Pine panel beside the results is smooth now",
+        description:
+          "The results used to be swapped for a grey placeholder while the panel moved, then redrawn; now they resize along with it.",
+      },
+      {
+        title: "Results are no longer split into pages of 100 rows",
+        description:
+          "Every row the query returns is in one scrolling grid, with the row count underneath.",
+      },
+    ],
+    removed: [
+      {
+        title: "Sorting by clicking a column header, and the column menu (sort, filter, hide columns)",
+        description:
+          "Sorting and filtering will come back as changes to the Pine expression, so they show up in the query. To filter on a value for now, right-click the cell and choose Filter.",
+      },
+    ],
+    fixed: [
+      {
+        title: "Tab in the canvas filter panel moved focus out of the panel, usually to the Pine panel",
+        description:
+          "It now moves through the panel's own fields and buttons, going to add right after the value, and wraps around. Escape still closes the panel.",
+      },
+      {
+        title: "A filter typed by hand that matches any of several conditions disappeared from its table on the canvas",
+        description:
+          "It now shows as one chip, and clicking it opens every condition in it for editing.",
+      },
+      {
+        title: "The app's fonts now ship inside it",
+        description:
+          "The desktop app showed IBM Plex Mono, JetBrains Mono, Fira Code, Inter and IBM Plex Sans only if they were installed on your computer, and a system font otherwise. The web app downloaded them from Google Fonts. Every build now carries its own copies, and works offline.",
+      },
+    ],
+  },
+  {
+    version: '0.63.0',
+    date: '2026-09-25',
+    breaking: [
+      {
+        title: "delete: is gone from Pine",
+        description:
+          "Use the traverse action below instead. A saved tab that still ends in delete: has it removed when the tab opens, so the tab doesn't come back blank.",
+      },
+      {
+        title: "Needs pine-lang 0.46.0 or later (was 0.45.0)",
+        description:
+          "The server now describes a join in a different shape, which this release needs to draw the canvas. Connecting to an older server shows the upgrade-required screen.",
+      },
+    ],
+    added: [
+      {
+        title: "Traverse from a table on the canvas",
+        description:
+          "Press + on a table and pick traverse. It follows every table that points at it by foreign key, up to 25 levels deep, and offers two operations on them. Count rows lists each table with its row count; click one to open its rows in a new tab. Delete rows… generates the delete statements, deepest table first, as a script you can copy or run from the same panel after a confirmation.",
+      },
+    ],
+    fixed: [
+      {
+        title: "Joins on the canvas now start from the latest table unless you pick another one",
+        description:
+          "Hovering over a table used to move keyboard focus to it, even with the pointer hidden while you typed, so the next | could join from an older table. Hovering now only highlights. To join from an older table, click it or move to it with the keyboard.",
+      },
+      {
+        title: "Ctrl+C on the canvas copies again instead of opening the comment editor",
+        description: "The same goes for Ctrl+V, Ctrl+A and Ctrl+F.",
+      },
+      {
+        title: "Switching tabs no longer shifts the layout",
+        description:
+          "Pane and panel sizes used to reset to their defaults and then jump to your saved sizes on every tab change.",
+      },
+      {
+        title: "The error above the results is no longer cut off",
+        description:
+          "The whole message wraps over as many lines as it needs, up to six before it scrolls.",
+      },
+    ],
+    security: [
+      {
+        title: "An agent can no longer change your data through MCP",
+        description:
+          "The old check only refused delete!, found by searching the text, and let update!, d! and u! through. The Pine server now refuses every write from the agent's tab, even when you press Run on it yourself. Your own tabs are unchanged.",
+      },
+      {
+        title: "Agent queries need pine-lang 0.46.0 or later",
+        description:
+          "An older server would run the writes it was asked to refuse, so MCP refuses to run anything against it.",
+      },
+    ],
+    removed: [
+      {
+        title: "The BEAMLYNX_MCP_ALLOW_DELETE environment variable",
+        description: "It turned off the agent delete check for the whole machine.",
+      },
+    ],
+  },
+  {
+    version: '0.62.0',
+    date: '2026-09-20',
+    added: [
+      {
+        title: 'A tab can now explain itself',
+        description:
+          'Start an expression with a comment -- either /* ... */ across lines, or a run of -- lines -- and the canvas shows it in its top-left corner instead of leaving it as grey text to scroll past. Write what you are looking for and why when you open a tab, and it is still there when you come back to it.',
+      },
+      {
+        title: "Write a tab's comment from the canvas",
+        description:
+          'Press c (shown at the front of the bottom-left keybinding legend), click the comment button in the toolbar, or click an existing comment to edit it. A dim "Add a comment" marks the spot when there isn\'t one. What you type is spliced into the expression as a comment, the same way picking a table splices in an operation, so the canvas and the expression can never disagree. Emptying it removes the comment. Enter is a line break; Cmd/Ctrl+Enter or clicking away saves, Esc cancels.',
+      },
+      {
+        title: 'MCP: an agent says what each query is for',
+        description:
+          'An agent now leads every query it runs with a comment saying what it is looking for and why, so the tab it opens shows its reasoning, not just its results.',
+      },
+      {
+        title: 'Database Connections: more than one connection to the same host and port',
+        description:
+          'As long as they point at different databases. Previously the second one was rejected.',
+      },
+      {
+        title: 'Add Connection form: fields and connection string stay in sync both ways',
+        description:
+          'Switching to the "Connection string" tab rebuilds the string from whatever\'s in the Fields tab, instead of only going string-to-fields.',
+      },
+    ],
+    changed: [
+      {
+        title: 'Panels open and close with a short animation',
+        description:
+          'Settings, the Pine/SQL panel, Zen mode, the error band above the results, the agent\'s pinned tabs and every dialog all move now, so you can see where something came from. All of it follows your operating system\'s "reduce motion" setting -- turn that on and everything is instant again.',
+      },
+      {
+        title: 'Results columns size to their own content instead of stretching to fill the pane',
+        description:
+          'A UUID column gets the room it needs and a short "status" column isn\'t stretched to match; scroll horizontally if a wide result doesn\'t fit, the same as any spreadsheet.',
+      },
+      {
+        title: 'Table colors tint column headers only, not every value',
+        description:
+          'Coloring every cell read as noise -- and the canvas hover spotlight did it even with "Table colors" turned off, which made the preference look like it had no effect.',
+      },
+      {
+        title:
+          "Database Connections: switching a tab's connection warns instead of opening a new tab",
+        description:
+          "Switching the active tab's connection while it still has a query in it no longer silently opens a new tab. You get a warning that the query may reference tables or columns the new connection doesn't have, and the choice to switch anyway or cancel.",
+      },
+      {
+        title: 'Database Connections: renaming has its own pencil icon',
+        description: 'Previously renaming only worked by first expanding the row.',
+      },
+      {
+        title: "MCP: an agent's queries show in their own pinned tab",
+        description:
+          "Pinned to the end of the tab strip and marked with a robot icon so it doesn't read as one of your own. It always shows the same query slot -- an agent's next query replaces whatever was there -- so closing it is always safe.",
+      },
+      {
+        title: 'MCP: a reveal request gets its own "Needs approval" pinned tab',
+        description:
+          "When an agent asks to see something its access policy redacted, the request no longer opens as a new tab and steals focus. The tab names the connection, quotes the agent's reason, and offers Approve/Decline. Closing it without deciding declines, so an agent waiting on a decision never hangs.",
+      },
+      {
+        title: 'MCP: an agent icon in the header covers everything the agent is doing',
+        description:
+          'Next to the bell: a dot when a result landed while you were looking elsewhere, a count when approvals are waiting. Clicking it goes to whichever needs you most -- an approval first, since an agent is blocked on it, otherwise the activity tab.',
+      },
+      {
+        title: 'Settings opens faster the first time',
+        description:
+          'Its contents are built once while the app is idle and kept afterwards, which also preserves your scroll position and the section you were last on.',
+      },
+      {
+        title: 'Dragging a pane divider no longer selects the text it passes over',
+      },
+    ],
+    removed: [
+      {
+        title: 'The classic Graph mode is gone',
+        description:
+          'The non-interactive node diagram you got with "Canvas mode" off. Canvas is now the only graph editor, and the preference and its command-palette entry are gone with it.',
+      },
+      {
+        title: 'Legacy Layout is gone',
+        description:
+          'The Canvas + Results two-pane layout is now the only one. The "Switch to legacy layout" header link, the "New layout" toggle and their command-palette entries are gone with it. Settings always opens as a docked panel now, never a floating window.',
+      },
+    ],
+    fixed: [
+      {
+        title: 'Panels open and close smoothly, even with a full table of results on screen',
+        description:
+          'The results grid re-fits its columns whenever its container resizes, which is expensive, so a panel opening beside it used to redo that work on every frame. The grid now stands still while the panel moves -- a skeleton of your real column headers stands in for that moment -- and fits itself once, afterwards.',
+      },
+      {
+        title: 'Upgraded the results grid library',
+        description:
+          '@mui/x-data-grid 7.15.0 -> 7.29.13, 14 minor releases of fixes, measured as a ~18% cut in the main-thread work it does when its container resizes.',
+      },
+      {
+        title: 'Resizing a results column by hand no longer snaps back to its default width',
+        description:
+          "The grid was rebuilding its whole column list on every render -- including renders that had nothing to do with it, like hovering a table on the canvas -- and losing the width you'd just dragged.",
+      },
+      {
+        title: 'Entering and leaving Zen mode no longer resets the canvas',
+        description:
+          'It used to rebuild the canvas from scratch each way, losing whatever you had panned or zoomed to.',
+      },
+      {
+        title: 'A blank line inside a /* ... */ comment no longer breaks the expression',
+        description:
+          'Blank lines separate one expression block from the next, and that rule used to apply inside a comment too -- so a comment with a paragraph break was split down the middle and sent to the server as an unterminated comment followed by loose text.',
+      },
+      {
+        title:
+          'Header: the version badge no longer shows "obsolete" when you\'re simply not connected yet',
+        description: "It stays hidden until there's a real version to show.",
+      },
+      {
+        title:
+          'Database Connections: typing a space while renaming a connection switched connections',
+        description:
+          "It did nothing to the text and silently switched your active connection instead. The row's own Enter/Space shortcut was intercepting keystrokes meant for the rename field inside it.",
+      },
+      {
+        title:
+          'Database Connections: the rename pencil and the MCP badge could misalign across rows',
+        description:
+          "The badge also shifted sideways the moment you clicked the pencil. The rename and expand icons now form a stable column regardless of a row's MCP state.",
+      },
+      {
+        title: 'Icon-only buttons have accessible labels',
+        description:
+          'Close, download, save, notifications, tab controls and the JSON inspector now read correctly in a screen reader.',
+      },
+    ],
+    breaking: [
+      {
+        title: 'Minimum required pine-lang server version raised to 0.45.0',
+        description:
+          'Canvas comments need it: an older server deletes a comment the moment you touch the canvas, since it strips comments when it reformats an expression. Multiple connections to one host and port need it too. Connecting to an older server now shows the upgrade-required screen instead of the app.',
+      },
+    ],
+  },
+  {
     version: '0.61.0',
     date: '2026-09-12',
     added: [
@@ -74,7 +460,8 @@ export const CHANGELOG: ChangelogVersion[] = [
     ],
     changed: [
       {
-        title: "Database Connections: access policy no longer applies to your own queries by default",
+        title:
+          'Database Connections: access policy no longer applies to your own queries by default',
         description:
           'The per-connection "apply access policy to my own queries" toggle is now off by default and opt-in, instead of on by default with an opt-out "bypass". An access policy protects the MCP agent only unless you explicitly turn this on to have it also redact your own queries on that connection.',
       },
@@ -109,7 +496,7 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: 'Canvas mode: hovering a table spotlights its columns in the Results grid',
         description:
-          "Makes it easy to see which columns come from which joined table without needing to turn on the \"Table colors\" preference.",
+          'Makes it easy to see which columns come from which joined table without needing to turn on the "Table colors" preference.',
       },
       {
         title: 'Canvas mode: click an existing order chip to change its direction',
@@ -121,7 +508,7 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: 'Results grid "Filter" now scopes to the right table',
         description:
-          "Right-clicking a cell and choosing \"Filter\" generated an unqualified where: that silently filtered whichever table the query's pipe ended on. It now scopes to the table that cell's column actually belongs to (alias.column).",
+          'Right-clicking a cell and choosing "Filter" generated an unqualified where: that silently filtered whichever table the query\'s pipe ended on. It now scopes to the table that cell\'s column actually belongs to (alias.column).',
       },
     ],
   },
@@ -159,14 +546,14 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: 'Canvas mode: Shift+J / Shift+K step through the whole pipeline',
         description:
-          'Each node, then everything configured on it (its incoming join, selected columns, where conditions, order columns, group columns), then the next node\'s. Enter or Space opens whichever is highlighted; Delete, Backspace, or x removes it.',
+          "Each node, then everything configured on it (its incoming join, selected columns, where conditions, order columns, group columns), then the next node's. Enter or Space opens whichever is highlighted; Delete, Backspace, or x removes it.",
       },
     ],
     changed: [
       {
         title: "A resolved join's line is now neutral, not accented",
         description:
-          "The accent now lives on the join-type icon itself, marking the one clickable thing on the edge rather than the whole line. Broken and heuristic-only joins keep their own distinct colors, unchanged.",
+          'The accent now lives on the join-type icon itself, marking the one clickable thing on the edge rather than the whole line. Broken and heuristic-only joins keep their own distinct colors, unchanged.',
       },
     ],
     fixed: [
@@ -210,7 +597,8 @@ export const CHANGELOG: ChangelogVersion[] = [
     changed: [
       {
         title: 'Tab close buttons now appear on hover',
-        description: 'Instead of on every tab at once. Hovering a tab also tints it and brightens its label.',
+        description:
+          'Instead of on every tab at once. Hovering a tab also tints it and brightens its label.',
       },
     ],
     fixed: [
@@ -1849,4 +2237,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.61.0';
+export const LATEST_VERSION = '0.65.0';

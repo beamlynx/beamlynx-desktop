@@ -1,0 +1,93 @@
+import { Box, Typography, Button } from '@mui/material';
+import ModalSurface from './ModalSurface';
+import { observer } from 'mobx-react-lite';
+import React, { useState } from 'react';
+import { useRetainedValue } from '../hooks/useRetainedValue';
+import { useStores } from '../store/store-container';
+
+/**
+ * Warns before switching the active tab's connection when that tab has a
+ * non-empty Pine expression -- the expression stays as-is but now resolves
+ * against a different connection's schema, so table/column names it relies
+ * on may no longer exist. See GlobalStore.pendingConnectionSwitch.
+ */
+const ChangeConnectionModal = observer(() => {
+  const { global } = useStores();
+  const [switching, setSwitching] = useState(false);
+  const pending = global.pendingConnectionSwitch;
+
+  const targetId = pending && (pending.kind === 'select' ? pending.connectionId : pending.id);
+  // Retained, because this dialog now animates out: `pending` is already
+  // null for the length of the closing transition, and without this the
+  // sentence below would spend its whole fade-out naming no connection at
+  // all. See hooks/useRetainedValue.ts.
+  const targetLabel = useRetainedValue(
+    targetId ? global.connections.find(c => c.id === targetId)?.label ?? targetId : null,
+  );
+
+  const handleCancel = () => global.cancelPendingConnectionSwitch();
+
+  const handleConfirm = async () => {
+    setSwitching(true);
+    try {
+      await global.confirmPendingConnectionSwitch();
+    } catch (e) {
+      console.error('[connections] switching failed ->', e);
+    } finally {
+      setSwitching(false);
+    }
+  };
+
+  return (
+    <ModalSurface open={Boolean(pending)} onClose={handleCancel} surfaceSx={{ width: 450, p: 3 }}>
+      <Typography
+        variant="h6"
+        component="h2"
+        sx={{
+          color: 'var(--text-color)',
+          fontWeight: 500,
+          mb: 2,
+        }}
+      >
+        Switch connection?
+      </Typography>
+
+      <Typography variant="body2" sx={{ color: 'var(--text-color)', mb: 3 }}>
+        This tab&apos;s query may not work on <strong>{targetLabel}</strong> -- some tables or
+        columns it uses might not exist there.
+      </Typography>
+
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+        <Button
+          onClick={handleCancel}
+          disabled={switching}
+          sx={{
+            color: 'var(--text-color)',
+            '&:hover': {
+              backgroundColor: 'var(--hover-color)',
+            },
+          }}
+        >
+          Cancel
+        </Button>
+        <Button
+          onClick={handleConfirm}
+          variant="contained"
+          disabled={switching}
+          sx={{
+            bgcolor: 'var(--primary-color)',
+            color: '#fff',
+            '&:hover': {
+              bgcolor: 'var(--primary-color)',
+              opacity: 0.9,
+            },
+          }}
+        >
+          Switch connection
+        </Button>
+      </Box>
+    </ModalSurface>
+  );
+});
+
+export default ChangeConnectionModal;

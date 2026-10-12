@@ -39,6 +39,17 @@ export const MIN_SETTINGS_PANEL_WIDTH = 420;
 export const DEFAULT_JSON_PANEL_WIDTH = 420;
 export const MIN_JSON_PANEL_WIDTH = 320;
 
+/* Results grid column sizing (Result.tsx, column-width.util.ts). Each
+ * column gets a fixed pixel width estimated from its own content rather
+ * than MUI DataGrid's `flex: 1`, which recalculates every column across
+ * every visible row on every container resize - expensive enough on its
+ * own to stutter a panel animation happening at the same time. These are
+ * the same bounds `flex: 1, minWidth: 100, maxWidth: 400` used to enforce,
+ * kept for continuity - only the sizing mechanism changed, not the range a
+ * column can land in. */
+export const MIN_RESULT_COLUMN_WIDTH = 100;
+export const MAX_RESULT_COLUMN_WIDTH = 400;
+
 /* Vertical tab rail (PineTabs.tsx, Appearance -> Tabs = Vertical). Fixed,
  * not resizable: the rail only ever holds session names, so there's no
  * content whose size would justify a drag handle -- and every other
@@ -48,7 +59,18 @@ export const MIN_JSON_PANEL_WIDTH = 320;
 export const VERTICAL_TAB_RAIL_WIDTH = 190;
 
 /* Pine Server */
-export const RequiredVersion = '0.44.0';
+export const RequiredVersion = '0.48.0';
+
+// The oldest pine-lang that can refuse an expression which changes data --
+// `allow-writes` on /api/v1/eval, see its docs/side-effects.md. Deliberately
+// NOT RequiredVersion: that one gates the whole app (GlobalStore sets
+// requiresUpgrade from it, which replaces the UI with the upgrade screen),
+// and only the MCP path needs this. Raising RequiredVersion instead would
+// black out the app for everyone on an older server to protect a surface
+// most of them aren't using -- and pine-lang's RELEASING.md calls out that
+// exact failure, since the playground deploys its UI and its server
+// separately. MCP alone refuses to run below this; see mcp-query.ts.
+export const McpWriteRefusalMinVersion = '0.46.0';
 
 /* Layout Constants */
 // Height calculations for main content areas

@@ -258,12 +258,24 @@ export const KEYBINDINGS: KeybindingConfig[] = [
     // Unlike new-tab/close-tab, Ctrl/Cmd+S's default ("Save Page As") is a
     // page-level browser action, not host-window chrome, so preventDefault()
     // on keydown reliably suppresses it in both the browser build and
-    // desktop -- no desktop-only gating needed here.
-    name: 'save-tab',
-    description: 'Save Tab',
+    // desktop -- no desktop-only gating needed here. In the browser the
+    // command itself is off (recipes need the desktop app), so Ctrl+S does
+    // nothing there rather than opening "Save Page As".
+    name: 'save-recipe',
+    description: 'Save as Recipe',
     display: createKeybindingDisplay(['ctrl'], 'S'),
     combos: [{ combo: { mod: true, shift: false, key: 's' } }],
-    commandId: 'save-tab',
+    commandId: 'save-recipe',
+  },
+  {
+    // Desktop only: in a browser, Ctrl+O is the browser's own "Open file".
+    // PineInput.tsx claims Mod-o ahead of Vim, which reads Ctrl+O as "jump
+    // back", so this reaches the document either way.
+    name: 'use-recipe',
+    description: 'Use a Recipe',
+    display: isDesktop() ? createKeybindingDisplay(['ctrl'], 'O') : '',
+    combos: [{ host: 'desktop', combo: { mod: true, shift: false, key: 'o' } }],
+    commandId: 'use-recipe',
   },
 
   // App-level keybindings
