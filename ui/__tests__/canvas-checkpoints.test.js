@@ -14,7 +14,12 @@ const {
   stageEnd,
   toText,
 } = require('../store/canvas/pine-text.ts');
-const { deleteCheckpoint, setLimit, setGroupColumns } = require('../store/canvas/pine-actions.ts');
+const {
+  deleteCheckpoint,
+  deleteNode,
+  setLimit,
+  setGroupColumns,
+} = require('../store/canvas/pine-actions.ts');
 
 const TWO =
   'company as c | employee as e .company_id | limit: 10 | = result_1 | document as d | limit: 5';
@@ -198,4 +203,29 @@ test('removing a checkpoint keeps the tables after it', () => {
   );
   assert.equal(deleteCheckpoint(base(AFTER), 'result_1'), 'company as c | where: id = 1');
   assert.equal(deleteCheckpoint(base(GROUP), 'result_1'), 'company as c');
+});
+
+test('a limit added from a table goes at the end, even when a group ends its stage', () => {
+  // Before the group would group only 5 rows, not give the first 5 groups.
+  assert.equal(setLimit(base(GROUP), 5, 'c'), 'company as c | group: c.name | limit: 5');
+});
+
+test('removing the only table before a checkpoint removes the checkpoint too', () => {
+  const seg = (text, kind, owner) => ({ text, start: -1, end: -1, kind, owner });
+  const plain = {
+    aliasMap: new Map(),
+    segments: [seg('company as c', 'table', 'c'), seg('limit: 10', 'limit', 'result_1')],
+  };
+  assert.equal(deleteNode(plain, 'c'), '');
+  assert.equal(deleteNode(base(GROUP), 'c'), '');
+  const pinned = {
+    aliasMap: new Map(),
+    segments: [
+      seg('company as c', 'table', 'c'),
+      seg('limit: 10', 'limit', 'result_1'),
+      seg('= result_1', 'assign', 'result_1'),
+      seg('employee as e', 'table', 'e'),
+    ],
+  };
+  assert.equal(deleteNode(pinned, 'c'), 'employee as e');
 });

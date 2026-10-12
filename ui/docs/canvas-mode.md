@@ -395,7 +395,7 @@ the live AST.
 
 Because a checkpoint's own segment belongs to its name, a gesture on a table
 lands in that table's stage: "after the last segment this table owns" is
-always before the checkpoint that seals it. A new join, `group:` or `limit:`
+always before the checkpoint that seals it. A new join or `group:`
 goes at the end of the stage it belongs to (`stageEnd` in `pine-text.ts`).
 Building a picker's hint probe (`CanvasStore.buildProbeExpression`) stops at
 the end of the target's stage, for the same reason: probing after a
@@ -522,7 +522,7 @@ smaller, independent model from the classic graph's
 - `appendTableSegment` — inserts a new table (optionally preceded by a
   `from:` reset) at the end of the stage of the node it joins from.
 - `stageEnd` — where an alias's stage ends: the next `group:`/`limit:` after
-  the last segment it owns. Shared by joins, `setLimit`/`setGroupColumns` and
+  the last segment it owns. Shared by joins, `setGroupColumns` and
   `CanvasStore.buildProbeExpression`.
 - `ensureExplicitCheckpointName` — pins `|= name` on every unnamed
   checkpoint, using the name pine-lang reports.

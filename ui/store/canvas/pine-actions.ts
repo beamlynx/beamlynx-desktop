@@ -315,9 +315,25 @@ export const removeOrderColumnAt = (base: PinnedBase, alias: string, index: numb
   );
 };
 
-/** Returns null when `alias` isn't the last table in the pipeline - see isRemovableNode. */
+/**
+ * Removes `alias`'s table (see removeNode). A checkpoint with no table left
+ * before it - `limit: 10` once `company as c | limit: 10` loses its only
+ * table - is removed with it, since it has nothing left to seal. Returns
+ * null when `alias` can't be removed - see isRemovableNode.
+ */
 export const deleteNode = (base: PinnedBase, alias: string): string | null =>
-  isRemovableNode(base.segments, alias) ? toText(removeNode(base.segments, alias)) : null;
+  isRemovableNode(base.segments, alias) ? toText(withoutOrphanCheckpoints(removeNode(base.segments, alias))) : null;
+
+const withoutOrphanCheckpoints = (segments: Segment[]): Segment[] => {
+  let out = segments;
+  for (;;) {
+    const firstTable = out.findIndex(s => s.kind === 'table');
+    const orphan = out.findIndex((s, i) => isCheckpointOp(s) && (firstTable < 0 || i < firstTable));
+    if (orphan < 0) return out;
+    const name = out[orphan].owner;
+    out = name ? withoutCheckpoint(out, name) : out.filter((_, i) => i !== orphan);
+  }
+};
 
 /**
  * Removes the checkpoint named `name`: its group:/limit:, its `= name`, and
@@ -326,13 +342,13 @@ export const deleteNode = (base: PinnedBase, alias: string): string | null =>
  * join from the table before the checkpoint, as if it had never been there.
  * Returns the text unchanged if no segment belongs to `name`.
  */
-export const deleteCheckpoint = (base: PinnedBase, name: string): string =>
-  toText(
-    base.segments.filter(s => {
-      if (s.kind === 'from') return !new RegExp(`^(?:from:|f:)\\s*${name}\\b`, 'i').test(s.text);
-      return s.owner !== name;
-    }),
-  );
+export const deleteCheckpoint = (base: PinnedBase, name: string): string => toText(withoutCheckpoint(base.segments, name));
+
+const withoutCheckpoint = (segments: Segment[], name: string): Segment[] =>
+  segments.filter(s => {
+    if (s.kind === 'from') return !new RegExp(`^(?:from:|f:)\\s*${name}\\b`, 'i').test(s.text);
+    return s.owner !== name;
+  });
 
 /**
  * The segments without the checkpoint op at `index`, and without the
@@ -369,9 +385,13 @@ const withLimitValue = (text: string, value: number): string => {
  * - `checkpoint` names the checkpoint whose own limit: is changed - the
  *   divider's label.
  * - Otherwise `alias` picks the limit: that ends `alias`'s stage (see
- *   stageLimitIndex). A new one goes at the end of that stage.
- * - With neither, the first limit: anywhere, or a new one at the end - the
- *   multi-select toolbar's pipeline-wide limit.
+ *   stageLimitIndex).
+ * - With neither, the first limit: anywhere - the multi-select toolbar.
+ *
+ * With no such limit, a new one goes at the very end, and limits the whole
+ * query's result. Not at the end of `alias`'s stage: when a group: ends that
+ * stage, a limit before it would group only the first N rows, a different
+ * question from "the first N groups", and nothing would say so.
  *
  * Changing a limit rewrites only its number, in place, so `per ...` and the
  * checkpoint's `= name` right after it stay where they are.
@@ -386,9 +406,8 @@ export const setLimit = (base: PinnedBase, value: number | null, alias?: string,
     next[index] = { ...next[index], text: withLimitValue(next[index].text, value) };
     return toText(next);
   }
-  const at = alias === undefined ? base.segments.length : stageEnd(base.segments, alias);
   const newSegment: Segment = { text: `limit: ${value}`, start: -1, end: -1, kind: 'limit', owner: null };
-  return toText([...base.segments.slice(0, at), newSegment, ...base.segments.slice(at)]);
+  return toText([...base.segments, newSegment]);
 };
 
 /**
