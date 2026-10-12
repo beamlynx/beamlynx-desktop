@@ -313,6 +313,9 @@ export class Session {
   // one of them until it is edited by hand in SQL mode.
   builtQuery: string = '';
   builtQueryWithoutHidden: string = '';
+  // Whether the server sent the SQL without the hidden columns at all
+  // (pine-lang after 0.48.1). An older one always includes them.
+  builtQueryHasWithoutHidden = false;
   /** Currently selected text in the SQL editor, if any. Running a query while text is
    * selected runs only the selection instead of the full query. */
   querySelection: string = '';
@@ -634,6 +637,7 @@ export class Session {
           this.builtQueryWithoutHidden = response['query-without-hidden']
             ? formatSql(response['query-without-hidden'])
             : this.builtQuery;
+          this.builtQueryHasWithoutHidden = Boolean(response['query-without-hidden']);
           // Not while the Pine is a translation of the SQL panel's text:
           // that text is what the user wrote, and the source of the Pine.
           // Once it shows the Pine's SQL again, there is no conversion to
@@ -1301,6 +1305,21 @@ export class Session {
         });
       }, autoClearMs);
     }
+  }
+
+  /**
+   * Whether the SQL panel's show/hide hidden columns button would change
+   * what the panel shows, and if not, why. The setting itself is global
+   * (GlobalStore.showHiddenSqlColumns); this is about this tab's SQL.
+   */
+  get hiddenColumnsToggle(): 'available' | 'own-sql' | 'none' | 'old-server' {
+    // The person's own SQL, typed or pasted (and converted to Pine), or
+    // edited by hand: it has no added columns to show or hide.
+    if (this.query !== this.builtQuery && this.query !== this.builtQueryWithoutHidden) return 'own-sql';
+    if (!this.builtQueryHasWithoutHidden) return this.builtQuery ? 'old-server' : 'none';
+    // count:, group:, or tables without a primary key add no columns.
+    if (this.builtQuery === this.builtQueryWithoutHidden) return 'none';
+    return 'available';
   }
 
   shownBuiltQuery(showHidden: boolean): string {
