@@ -19,10 +19,12 @@ import {
   CanvasEdge,
   CanvasGraph,
   CanvasHandle,
+  CanvasLineageNode,
   CanvasNode,
   CanvasTableNode,
   CanvasTableNodeData,
 } from './canvas.model';
+import { Lineage, LINEAGE_MAIN, usersOf } from './lineage';
 import { inProgressTable } from './pine-text';
 
 // Deliberately not importing store/graph.util.ts or store/node-layout.ts -
@@ -635,6 +637,65 @@ const layoutPipeline = (
   return { nodes, edges, containers, sealing, bottom: top, order };
 };
 
+// The lineage strip: one chip per query block, laid out left to right in
+// the order the blocks are made, above everything else.
+const lineageChipHeight = 26;
+const lineageDetailHeight = 14;
+const lineageGap = 36;
+export const lineageId = (name: string) => `lineage:${name || 'query'}`;
+
+/**
+ * The lineage strip's chips and arrows, at the top left from y = 0, and the
+ * strip's height. Nothing when the tab has a single query block: there is no
+ * derivation to show. A chip is as wide as its text.
+ */
+const layoutLineage = (
+  lineage: Lineage,
+  details: Record<string, string | undefined>,
+  expandedBlock: string | null,
+): { nodes: CanvasLineageNode[]; edges: CanvasEdge[]; height: number } => {
+  if (lineage.names.length === 0) return { nodes: [], edges: [], height: 0 };
+  const names = [...lineage.names, LINEAGE_MAIN];
+  const g = new dagre.graphlib.Graph();
+  g.setDefaultEdgeLabel(() => ({}));
+  g.setGraph({ rankdir: 'LR', nodesep: 10, ranksep: 40, marginx: 0, marginy: 0 });
+  const size = (name: string) => {
+    const text = name ? `|= ${name}` : 'query';
+    const detail = details[name];
+    const chars = Math.max(text.length, detail ? detail.length * 0.85 : 0);
+    return { width: Math.max(64, Math.round(chars * 7.2) + 24), height: lineageChipHeight + (detail ? lineageDetailHeight : 0) };
+  };
+  names.forEach(name => g.setNode(lineageId(name), size(name)));
+  lineage.edges.forEach(e => g.setEdge(lineageId(e.from), lineageId(e.to)));
+  dagre.layout(g);
+  const nodes: CanvasLineageNode[] = names.map(name => {
+    const p = g.node(lineageId(name));
+    const { width, height } = size(name);
+    return {
+      id: lineageId(name),
+      type: 'lineage-node',
+      position: { x: p.x - width / 2, y: p.y - height / 2 },
+      targetPosition: Position.Left,
+      sourcePosition: Position.Right,
+      draggable: false,
+      selectable: false,
+      focusable: false,
+      data: { name, detail: details[name], expanded: !!name && name === expandedBlock, width, height },
+    };
+  });
+  const minX = Math.min(...nodes.map(n => n.position.x));
+  const minY = Math.min(...nodes.map(n => n.position.y));
+  for (const n of nodes) n.position = { x: n.position.x - minX, y: n.position.y - minY };
+  const height = Math.max(...nodes.map(n => n.position.y + n.data.height));
+  const edges: CanvasEdge[] = lineage.edges.map(e => ({
+    id: `lineage:${e.from}->${e.to || 'query'}`,
+    source: lineageId(e.from),
+    target: lineageId(e.to),
+    derivation: e.use,
+  }));
+  return { nodes, edges, height };
+};
+
 type Rect = { x0: number; y0: number; x1: number; y1: number };
 
 /**
@@ -652,8 +713,13 @@ type Rect = { x0: number; y0: number; x1: number; y1: number };
  *
  * `blocks` are the tab's earlier query blocks ending in `|= name`. The node
  * that uses one (a table named after it) can expand it: the block is drawn
- * above, in a container. A block nothing joins is a standalone node beside
- * the graph.
+ * above, in a container. A block the last query doesn't join has no node
+ * until it is expanded; then a node for it is drawn beside the graph, under
+ * its container, saying what uses it.
+ *
+ * `lineage` says which block is made from which. It is drawn as a strip of
+ * chips at the top, with arrows, apart from the join graph: an arrow there
+ * means "is made from", not "joins".
  *
  * `positions` holds nodes the user has dragged: they keep that position.
  */
@@ -662,6 +728,7 @@ export const buildCanvasGraph = (
   positions: Record<string, { x: number; y: number }>,
   expanded?: string | null,
   blocks: NamedBlock[] = [],
+  lineage: Lineage = { names: [], edges: [] },
 ): CanvasGraph => {
   const stages = stagesOf(ast);
   const expansion = expansionOf(ast, blocks, expanded);
@@ -670,8 +737,20 @@ export const buildCanvasGraph = (
   const nodes: CanvasTableNode[] = [];
   const edges: CanvasEdge[] = [];
   const containers: ContainerSpec[] = [];
-  let top = 0;
   let order = 1;
+
+  // What each block ends in, for its chip and its node's label.
+  const endingOf = (b: NamedBlock) => {
+    const inner = b.ast.checkpoints ?? [];
+    const last = inner[inner.length - 1];
+    return last && !last.sealed && last.name === b.name ? checkpointLabel(last) : undefined;
+  };
+  const strip = layoutLineage(
+    lineage,
+    Object.fromEntries(blocks.map(b => [b.name, endingOf(b)])),
+    expansion.block?.name ?? null,
+  );
+  let top = strip.height ? strip.height + lineageGap : 0;
 
   // The expanded named block, above the last block.
   let blockLaid: ReturnType<typeof layoutPipeline> | null = null;
@@ -699,32 +778,32 @@ export const buildCanvasGraph = (
   edges.push(...main.edges);
   containers.push(...main.containers);
 
-  // Each node that uses a named block says so; a block nothing joins is a
-  // standalone node beside the graph.
+  // Each node that uses a named block says so. A block the last query
+  // doesn't join gets a node only while it is expanded, to hang its
+  // container on; the strip shows it the rest of the time.
   const usedInWhere = new Set(
     (ast.where ?? [])
       .flatMap(w => whereConditions(w))
       .flatMap(c => (c.value && !Array.isArray(c.value) && c.value.type === 'named-result' ? [String(c.value.value)] : [])),
   );
   const maxMainX = main.nodes.length ? Math.max(...main.nodes.map(n => n.position.x + nodeWidth)) : 0;
-  let standaloneY = top;
   for (const b of blocks) {
     const open = expansion.block === b;
-    const inner = b.ast.checkpoints ?? [];
-    const last = inner[inner.length - 1];
-    const label = last && !last.sealed && last.name === b.name ? `${checkpointLabel(last)} |= ${b.name}` : `|= ${b.name}`;
+    const ending = endingOf(b);
+    const label = ending ? `${ending} |= ${b.name}` : `|= ${b.name}`;
     const nested = { kind: 'named' as const, name: b.name, label, expanded: open };
     const using = main.nodes.find(n => n.data.table === b.name && !n.data.checkpoint);
     let nodeId: string;
     if (using) {
       using.data = { ...using.data, nested };
       nodeId = using.id;
-    } else {
+    } else if (open) {
       nodeId = `named:${b.name}`;
+      const users = usersOf(lineage, b.name).map(e => e.to);
       const node: CanvasTableNode = {
         id: nodeId,
         type: 'table-node',
-        position: { x: maxMainX + 80, y: standaloneY },
+        position: { x: maxMainX + 80, y: top },
         targetPosition: Position.Left,
         sourcePosition: Position.Right,
         data: {
@@ -739,16 +818,22 @@ export const buildCanvasGraph = (
           groupChips: [],
           leftHandles: [],
           rightHandles: [],
-          nested: { ...nested, standalone: true, usedInWhere: usedInWhere.has(b.name) },
+          nested: {
+            ...nested,
+            standalone: true,
+            usedInWhere: usedInWhere.has(b.name),
+            usedBy: users.filter(u => u !== LINEAGE_MAIN),
+          },
         },
       };
       nodes.push(node);
-      standaloneY = node.position.y + getNodeFootprintHeight(node) + verticalGap;
-      // Its block, when expanded, goes right above it.
-      if (open && blockLaid) {
+      // Its block goes right above it.
+      if (blockLaid) {
         const ids = new Set(blockLaid.nodes.map(n => n.id));
         for (const n of nodes) if (ids.has(n.id)) n.position = { x: n.position.x + node.position.x, y: n.position.y };
       }
+    } else {
+      continue;
     }
     if (open && blockLaid) {
       containers.push({ kind: 'named', name: b.name, label, nodeId, ...blockLaid.sealing });
@@ -814,5 +899,10 @@ export const buildCanvasGraph = (
     ];
   });
 
-  return { nodes: [...containerNodes, ...finalNodes], edges, parsing: true, singleBlock: true };
+  return {
+    nodes: [...strip.nodes, ...containerNodes, ...finalNodes],
+    edges: [...strip.edges, ...edges],
+    parsing: true,
+    singleBlock: true,
+  };
 };

@@ -23,6 +23,7 @@ import {
 } from './canvas.model';
 import { buildCanvasGraph, expansionOf, NamedBlock, newCheckpointName, whereEntriesFor } from './layout';
 import { contextFor, queryText, replaceQuery, TabBlocks, tabBlocks } from './tab-blocks';
+import { Lineage, lineageOf } from './lineage';
 import {
   Segment,
   stageLimitIndex,
@@ -591,7 +592,7 @@ export class CanvasStore {
     // A picked checkpoint missing from this ast falls back to the default
     // (buildCanvasGraph). It isn't cleared here: right after a commit the ast
     // can still be the one from before, without the checkpoint just added.
-    this.canvasGraph = buildCanvasGraph(ast, this.positions, this.expandedNested, this.namedBlocks);
+    this.canvasGraph = buildCanvasGraph(ast, this.positions, this.expandedNested, this.namedBlocks, this.lineage);
     if (!this.hasSeededHoverAlias && this.orderedFocusTargets.length > 0) {
       this.hasSeededHoverAlias = true;
       this.setHoveredAlias(this.focusedAlias);
@@ -672,6 +673,14 @@ export class CanvasStore {
       const ast = name ? this.astOf(k) : undefined;
       return name && ast ? [{ name, prefix: `b${k}/`, ast }] : [];
     });
+  }
+
+  /** Which of the tab's query blocks is made from which - see lineage.ts. */
+  private get lineage(): Lineage {
+    const tab = this.tab;
+    if (!tab || tab.queries.length < 2) return { names: [], edges: [] };
+    const named = tab.names.flatMap((name, k) => (name ? [{ name, text: this.textOf(k) }] : []));
+    return lineageOf(named, this.textOf(this.mainBlock));
   }
 
   /**
@@ -2006,6 +2015,13 @@ export class CanvasStore {
    * one down the chain, or none for the last. UI-only - the text doesn't
    * change, so no commit.
    */
+  /** Collapses whatever nested query is expanded - the lineage strip's `query` chip. UI-only. */
+  collapseNested() {
+    if (this.expandedNested === undefined) return;
+    this.expandedNested = undefined;
+    this.recompute();
+  }
+
   toggleNested(name: string) {
     const ast = this.mainAst;
     if (!ast) return;

@@ -50,9 +50,11 @@ export type CanvasTableNodeData = {
    * query holds (see layout.ts's buildCanvasGraph). `limit` makes the label
    * open the limit editor.
    *
-   * A named block nothing joins is a standalone node beside the graph
-   * (`standalone`; `usedInWhere` when a `where: ... in name` uses it). It has
-   * no actions of its own: it isn't in the query's text.
+   * A named block the last query doesn't join gets a standalone node beside
+   * the graph while it is expanded (`standalone`), to hang its container on.
+   * It says what uses it: `usedInWhere` when a `where: ... in name` of the
+   * last query does, `usedBy` for the other blocks made from it. It has no
+   * actions of its own: it isn't in the query's text.
    */
   nested?: {
     kind: 'checkpoint' | 'named';
@@ -62,6 +64,7 @@ export type CanvasTableNodeData = {
     expanded: boolean;
     standalone?: boolean;
     usedInWhere?: boolean;
+    usedBy?: string[];
   };
 };
 
@@ -89,10 +92,27 @@ export type CanvasContainerNodeData = {
   connector: number;
 };
 
+/**
+ * One query block in the lineage strip at the top of the canvas (see
+ * layout.ts's layoutLineage): a small chip, not a table. Arrows between
+ * chips say which block is made from which; joins stay in the graph below.
+ */
+export type CanvasLineageNodeData = {
+  /** The block's `|= name`, or '' for the last block - the query the canvas draws. */
+  name: string;
+  /** What the block ends in, when it's a checkpoint: `limit 1 per company_id`. */
+  detail?: string;
+  /** Its nested query is the one expanded on the canvas. */
+  expanded: boolean;
+  width: number;
+  height: number;
+};
+
 export type CanvasTableNode = Node<CanvasTableNodeData>;
 export type CanvasStartNode = Node<CanvasStartNodeData>;
 export type CanvasContainerNode = Node<CanvasContainerNodeData>;
-export type CanvasNode = CanvasTableNode | CanvasStartNode | CanvasContainerNode;
+export type CanvasLineageNode = Node<CanvasLineageNodeData>;
+export type CanvasNode = CanvasTableNode | CanvasStartNode | CanvasContainerNode | CanvasLineageNode;
 export type CanvasEdge = Edge & {
   unresolved?: boolean;
   uncertain?: boolean;
@@ -107,6 +127,11 @@ export type CanvasEdge = Edge & {
    * the pipeline - see pine-actions.ts's setJoinType).
    */
   joinTargetAlias?: string;
+  /**
+   * Set on an arrow of the lineage strip, not a join: one block reads
+   * another, as a table or after `in` (see lineage.ts).
+   */
+  derivation?: 'table' | 'in';
 };
 
 export type CanvasGraph = {
