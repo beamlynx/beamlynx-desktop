@@ -728,6 +728,24 @@ export class CanvasStore {
     this.positions[id] = position;
   }
 
+  /** Whether a node has been dragged since the layout was last reset: the toolbar then offers a reset. */
+  get hasMovedNodes(): boolean {
+    return Object.keys(this.positions).length > 0;
+  }
+
+  /**
+   * Bumped by resetLayout, so the canvas fits the view to the fresh layout:
+   * a reset changes no node or edge count, which is what normally refits it.
+   */
+  layoutResets = 0;
+
+  /** Forgets every dragged node's position and lays the canvas out again. UI-only. */
+  resetLayout() {
+    this.positions = {};
+    this.layoutResets += 1;
+    this.recompute();
+  }
+
   setSelectedAliases(aliases: string[]) {
     this.selectedAliases = aliases;
   }

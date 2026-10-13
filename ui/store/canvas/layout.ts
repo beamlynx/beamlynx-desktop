@@ -653,6 +653,7 @@ const layoutLineage = (
   lineage: Lineage,
   details: Record<string, string | undefined>,
   expandedBlock: string | null,
+  positions: Record<string, { x: number; y: number }>,
 ): { nodes: CanvasLineageNode[]; edges: CanvasEdge[]; height: number } => {
   if (lineage.names.length === 0) return { nodes: [], edges: [], height: 0 };
   const names = [...lineage.names, LINEAGE_MAIN];
@@ -677,7 +678,6 @@ const layoutLineage = (
       position: { x: p.x - width / 2, y: p.y - height / 2 },
       targetPosition: Position.Left,
       sourcePosition: Position.Right,
-      draggable: false,
       selectable: false,
       focusable: false,
       data: { name, detail: details[name], expanded: !!name && name === expandedBlock, width, height },
@@ -686,6 +686,19 @@ const layoutLineage = (
   const minX = Math.min(...nodes.map(n => n.position.x));
   const minY = Math.min(...nodes.map(n => n.position.y));
   for (const n of nodes) n.position = { x: n.position.x - minX, y: n.position.y - minY };
+  // A chip can be dragged, but only within the strip: as tall as its laid-out
+  // chips, or the tallest chip if that's taller, so a chip can't land on a
+  // table.
+  const laidHeight = Math.max(...nodes.map(n => n.position.y + n.data.height));
+  for (const n of nodes) {
+    const moved = positions[n.id];
+    const bottom = Math.max(laidHeight, n.data.height) - n.data.height;
+    if (moved) n.position = { x: moved.x, y: Math.min(Math.max(moved.y, 0), bottom) };
+    n.extent = [
+      [-Infinity, 0],
+      [Infinity, Math.max(laidHeight, n.data.height)],
+    ];
+  }
   const height = Math.max(...nodes.map(n => n.position.y + n.data.height));
   const edges: CanvasEdge[] = lineage.edges.map(e => ({
     id: `lineage:${e.from}->${e.to || 'query'}`,
@@ -749,6 +762,7 @@ export const buildCanvasGraph = (
     lineage,
     Object.fromEntries(blocks.map(b => [b.name, endingOf(b)])),
     expansion.block?.name ?? null,
+    positions,
   );
   let top = strip.height ? strip.height + lineageGap : 0;
 

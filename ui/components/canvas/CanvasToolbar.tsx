@@ -82,6 +82,19 @@ const TitleBlock = () => (
   </svg>
 );
 
+/**
+ * Four squares snapping back onto a grid: put the nodes back where the
+ * layout puts them. Straight lines only, like the icons above.
+ */
+const ResetLayout = () => (
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden>
+    <rect x="2" y="2" width="5" height="5" stroke="currentColor" strokeWidth="1.4" />
+    <rect x="9" y="2" width="5" height="5" stroke="currentColor" strokeWidth="1.4" />
+    <rect x="2" y="9" width="5" height="5" stroke="currentColor" strokeWidth="1.4" />
+    <rect x="9" y="9" width="5" height="5" stroke="currentColor" strokeWidth="1.4" strokeDasharray="2 1.5" />
+  </svg>
+);
+
 const iconButtonStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
@@ -226,6 +239,19 @@ const CanvasToolbar: React.FC<{ canvasStore: CanvasStore; extraAction?: CanvasTo
         >
           SQL
         </span>
+        {canvasStore.hasMovedNodes && (
+          <>
+            <Divider />
+            <span
+              data-testid="canvas-reset-layout"
+              title="Reset the layout: put moved nodes back"
+              style={iconButtonStyle}
+              onClick={() => canvasStore.resetLayout()}
+            >
+              <ResetLayout />
+            </span>
+          </>
+        )}
         {extraAction && (
           <>
             <Divider />
