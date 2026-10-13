@@ -11,7 +11,8 @@ const stroke = '1.5px dashed var(--canvas-container-border)';
  * An expanded nested query - a checkpoint, or a named result from an earlier
  * query block - drawn as a dashed box around what it holds, directly above
  * its node, with a short connector from the box's bottom edge down to the
- * node: this box becomes that node. See layout.ts's buildCanvasGraph.
+ * node: this box becomes that node. A named block the last query doesn't
+ * join has no node, and so no connector. See layout.ts's buildCanvasGraph.
  *
  * The box has no fill, so the tables inside read clearly, and it sits
  * behind them (zIndex -1), which stay fully interactive. Only the header -
@@ -41,17 +42,19 @@ const NestedContainerNode: React.FC<NodeProps<CanvasContainerNodeData>> = observ
           boxSizing: 'border-box',
         }}
       />
-      <div
-        aria-hidden
-        data-testid={`nested-connector-${data.name}`}
-        style={{
-          position: 'absolute',
-          left: data.connectorX - 0.75,
-          top: data.height,
-          height: data.connector,
-          borderLeft: stroke,
-        }}
-      />
+      {data.connector > 0 && (
+        <div
+          aria-hidden
+          data-testid={`nested-connector-${data.name}`}
+          style={{
+            position: 'absolute',
+            left: data.connectorX - 0.75,
+            top: data.height,
+            height: data.connector,
+            borderLeft: stroke,
+          }}
+        />
+      )}
       <div
         className="nodrag nopan"
         data-testid={`nested-container-header-${data.name}`}

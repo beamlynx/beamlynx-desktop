@@ -121,10 +121,8 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
       // (TableNode.tsx).
       const focused = canvasStore.canvasGraph.nodes.find(n => n.id === alias);
       const isCheckpoint = focused?.type === 'table-node' && !!(focused.data as CanvasTableNodeData).checkpoint;
-      // A nested query's node: a checkpoint's, a table that uses a named
-      // block from an earlier query block, or a standalone node for one
-      // nothing joins. A standalone node isn't in the query's text: only `e`
-      // (and moving focus) applies to it.
+      // A nested query's node: a checkpoint's, or a table that uses a named
+      // block from an earlier query block.
       const nested = focused?.type === 'table-node' ? (focused.data as CanvasTableNodeData).nested : undefined;
 
       // Synthesized anchor: there's no click event to read a position from
@@ -173,8 +171,6 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
             return;
         }
       }
-
-      if (nested?.standalone && e.key !== 'e') return;
 
       switch (e.key) {
         // The fine-grained counterpart to plain j/k (or ArrowUp/Down) above:

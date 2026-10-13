@@ -24,7 +24,7 @@ import {
   CanvasTableNode,
   CanvasTableNodeData,
 } from './canvas.model';
-import { Lineage, LINEAGE_MAIN, usersOf } from './lineage';
+import { Lineage, LINEAGE_MAIN } from './lineage';
 import { inProgressTable } from './pine-text';
 
 // Deliberately not importing store/graph.util.ts or store/node-layout.ts -
@@ -527,8 +527,11 @@ type ContainerSpec = {
   kind: 'checkpoint' | 'named';
   name: string;
   label: string;
-  /** The node below the box: the nested query's own node. */
-  nodeId: string;
+  /**
+   * The node below the box: the nested query's own node. A named block the
+   * last query doesn't join has none; its box has no connector.
+   */
+  nodeId?: string;
   members: string[];
   inner?: string;
 };
@@ -726,9 +729,9 @@ type Rect = { x0: number; y0: number; x1: number; y1: number };
  *
  * `blocks` are the tab's earlier query blocks ending in `|= name`. The node
  * that uses one (a table named after it) can expand it: the block is drawn
- * above, in a container. A block the last query doesn't join has no node
- * until it is expanded; then a node for it is drawn beside the graph, under
- * its container, saying what uses it.
+ * above, in a container. A block the last query doesn't join has no node;
+ * expanded, its container stands alone above the graph, with no connector.
+ * Its chip in the strip says what is made from it.
  *
  * `lineage` says which block is made from which. It is drawn as a strip of
  * chips at the top, with arrows, apart from the join graph: an arrow there
@@ -793,72 +796,24 @@ export const buildCanvasGraph = (
   containers.push(...main.containers);
 
   // Each node that uses a named block says so. A block the last query
-  // doesn't join gets a node only while it is expanded, to hang its
-  // container on; the strip shows it the rest of the time.
-  const usedInWhere = new Set(
-    (ast.where ?? [])
-      .flatMap(w => whereConditions(w))
-      .flatMap(c => (c.value && !Array.isArray(c.value) && c.value.type === 'named-result' ? [String(c.value.value)] : [])),
-  );
-  const maxMainX = main.nodes.length ? Math.max(...main.nodes.map(n => n.position.x + nodeWidth)) : 0;
+  // doesn't join has no node: its chip in the strip stands for it, and its
+  // container, while expanded, stands alone above the graph.
   for (const b of blocks) {
     const open = expansion.block === b;
     const ending = endingOf(b);
     const label = ending ? `${ending} |= ${b.name}` : `|= ${b.name}`;
-    const nested = { kind: 'named' as const, name: b.name, label, expanded: open };
     const using = main.nodes.find(n => n.data.table === b.name && !n.data.checkpoint);
-    let nodeId: string;
-    if (using) {
-      using.data = { ...using.data, nested };
-      nodeId = using.id;
-    } else if (open) {
-      nodeId = `named:${b.name}`;
-      const users = usersOf(lineage, b.name).map(e => e.to);
-      const node: CanvasTableNode = {
-        id: nodeId,
-        type: 'table-node',
-        position: { x: maxMainX + 80, y: top },
-        targetPosition: Position.Left,
-        sourcePosition: Position.Right,
-        data: {
-          alias: nodeId,
-          table: b.name,
-          schema: null,
-          order: 10_000 + nodes.length,
-          removable: false,
-          selectColumns: [],
-          whereChips: [],
-          orderChips: [],
-          groupChips: [],
-          leftHandles: [],
-          rightHandles: [],
-          nested: {
-            ...nested,
-            standalone: true,
-            usedInWhere: usedInWhere.has(b.name),
-            usedBy: users.filter(u => u !== LINEAGE_MAIN),
-          },
-        },
-      };
-      nodes.push(node);
-      // Its block goes right above it.
-      if (blockLaid) {
-        const ids = new Set(blockLaid.nodes.map(n => n.id));
-        for (const n of nodes) if (ids.has(n.id)) n.position = { x: n.position.x + node.position.x, y: n.position.y };
-      }
-    } else {
-      continue;
-    }
+    if (using) using.data = { ...using.data, nested: { kind: 'named', name: b.name, label, expanded: open } };
     if (open && blockLaid) {
-      containers.push({ kind: 'named', name: b.name, label, nodeId, ...blockLaid.sealing });
+      containers.push({ kind: 'named', name: b.name, label, nodeId: using?.id, ...blockLaid.sealing });
     }
   }
 
   const finalNodes = nodes.map(n => (positions[n.id] ? { ...n, position: positions[n.id] } : n));
 
   // Each container's box, from its members' final positions and the box of
-  // the container nested in it. It also spans its node's centre, so the
-  // connector starts on its bottom edge.
+  // the container nested in it. It also spans its node's centre, if it has
+  // one, so the connector starts on its bottom edge.
   const rects: Record<string, Rect> = {};
   const rectOf = (c: ContainerSpec): Rect | null => {
     if (rects[c.name]) return rects[c.name];
@@ -868,13 +823,13 @@ export const buildCanvasGraph = (
     const innerSpec = c.inner ? containers.find(i => i.name === c.inner) : undefined;
     const inner = innerSpec ? rectOf(innerSpec) : null;
     if (inner) boxes.push(inner);
-    const node = finalNodes.find(n => n.id === c.nodeId);
-    if (!boxes.length || !node) return null;
-    const centre = node.position.x + nodeWidth / 2;
+    const node = c.nodeId ? finalNodes.find(n => n.id === c.nodeId) : undefined;
+    if (!boxes.length || (c.nodeId && !node)) return null;
+    const centre = node ? [node.position.x + nodeWidth / 2] : [];
     const rect = {
-      x0: Math.min(...boxes.map(r => r.x0), centre - 30) - containerPad,
+      x0: Math.min(...boxes.map(r => r.x0), ...centre.map(x => x - 30)) - containerPad,
       y0: Math.min(...boxes.map(r => r.y0)) - containerPad - containerHeader,
-      x1: Math.max(...boxes.map(r => r.x1), centre + 30) + containerPad,
+      x1: Math.max(...boxes.map(r => r.x1), ...centre.map(x => x + 30)) + containerPad,
       y1: Math.max(...boxes.map(r => r.y1)) + containerPad,
     };
     rects[c.name] = rect;
@@ -883,8 +838,8 @@ export const buildCanvasGraph = (
 
   const containerNodes: CanvasContainerNode[] = containers.flatMap(c => {
     const rect = rectOf(c);
-    const node = finalNodes.find(n => n.id === c.nodeId);
-    if (!rect || !node) return [];
+    const node = c.nodeId ? finalNodes.find(n => n.id === c.nodeId) : undefined;
+    if (!rect) return [];
     return [
       {
         id: `container:${c.name}`,
@@ -905,9 +860,9 @@ export const buildCanvasGraph = (
           label: c.label,
           width: rect.x1 - rect.x0,
           height: rect.y1 - rect.y0,
-          connectorX: node.position.x + nodeWidth / 2 - rect.x0,
+          connectorX: node ? node.position.x + nodeWidth / 2 - rect.x0 : 0,
           // From the box's bottom edge to the node's box, past its action bar.
-          connector: Math.max(node.position.y + actionBarHeight - rect.y1, 0),
+          connector: node ? Math.max(node.position.y + actionBarHeight - rect.y1, 0) : 0,
         },
       },
     ];
