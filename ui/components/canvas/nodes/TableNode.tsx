@@ -421,6 +421,14 @@ const ChipRow = ({
 // choice (direct feedback: "if you change the theme, these nodes should
 // also change"). Falls back to the plain rounded card (borderRadius alone)
 // everywhere else.
+// What a standalone named block's node says about what uses it: the blocks
+// made from it, or the last query's `where: ... in name`.
+const standaloneUse = (nested: CanvasTableNodeData['nested']): string => {
+  const users = nested?.usedBy ?? [];
+  if (users.length) return `(used by ${users.join(', ')}${nested?.usedInWhere ? ' and in where' : ''})`;
+  return nested?.usedInWhere ? '(used in where)' : '(unused)';
+};
+
 const notchSize = 10;
 const cardClipPath = `polygon(0 0, 100% 0, 100% 100%, ${notchSize}px 100%, 0 calc(100% - ${notchSize}px))`;
 
@@ -737,11 +745,9 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
               >
                 {/* A node from an earlier query block shows its alias in that
                     block, without the block's prefix (see scopeOf); a
-                    standalone named block says how the query uses it. */}
+                    standalone named block says what uses it. */}
                 {standalone
-                  ? nested?.usedInWhere
-                    ? '(used in where)'
-                    : '(not joined)'
+                  ? standaloneUse(nested)
                   : `(${data.alias.replace(/^b\d+\//, '')})`}
               </span>
             )}

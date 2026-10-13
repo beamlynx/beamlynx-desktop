@@ -17,6 +17,7 @@ import { useStores } from '../../store/store-container';
 import { CanvasStore } from '../../store/canvas/canvas.store';
 import {
   CanvasContainerNodeData,
+  CanvasLineageNodeData,
   CanvasNode,
   CanvasStartNodeData,
   CanvasTableNodeData,
@@ -33,14 +34,17 @@ import MultiSelectToolbar from './MultiSelectToolbar';
 import CanvasToolbar, { CanvasModeIndicator, CanvasToolbarExtraAction } from './CanvasToolbar';
 import PineDoc from '../PineDoc';
 import CanvasVariables from './CanvasVariables';
+import LineageNode from './nodes/LineageNode';
+import LineageEdge from './edges/LineageEdge';
 
 const nodeTypes: NodeTypes = {
   'table-node': TableNode,
   'start-node': StartNode,
   'nested-container': NestedContainerNode,
+  'lineage-node': LineageNode,
 };
 
-const edgeTypes = { trace: TraceEdge };
+const edgeTypes = { trace: TraceEdge, lineage: LineageEdge };
 
 // How long a nested query's expand/collapse animation runs - the same as
 // the `canvas-entering`/`canvas-exiting` animations in styles/globals.css.
@@ -110,7 +114,7 @@ const Flow: React.FC<{
   // actually changes, mirroring Graph.box.tsx's layoutedNodes -> setNodes
   // pattern exactly.
   const [nodes, setNodes, onNodesChange] = useNodesState<
-    CanvasTableNodeData | CanvasStartNodeData | CanvasContainerNodeData
+    CanvasTableNodeData | CanvasStartNodeData | CanvasContainerNodeData | CanvasLineageNodeData
   >([]);
 
   // Expanding or collapsing a nested query animates (styles/globals.css): a
@@ -196,6 +200,12 @@ const Flow: React.FC<{
   // second look (broken, or a guess) or something clickable (the icon)
   // draws the eye.
   const edges = canvasGraph.edges.map(e => {
+    // The lineage strip's arrows: one block is made from another. A curve
+    // with an arrowhead, dashed in the nested-query colour, so it never
+    // reads as a join's square trace (see LineageEdge.tsx).
+    if (e.derivation) {
+      return { ...e, selectable: false, focusable: false, type: 'lineage', data: { use: e.derivation } };
+    }
     // Edges are a derived, read-only rendering of the joins in ast.joins -
     // there's no gesture that does anything with a ReactFlow-*selected*
     // edge, so letting them be clickable/selectable at all was just a way to
