@@ -157,21 +157,17 @@ test('the lineage strip sits above the join graph, its arrows apart from the joi
   assert.ok(!buildCanvasGraph(asts.main, {}).nodes.some(n => n.type === 'lineage-node'));
 });
 
-test('a dragged chip keeps its place, within the strip', () => {
+test('a dragged chip keeps its place, and the tables make room for it', () => {
   const lineage = lineageOf([{ name: 'top', text: 'company as c | limit: 10 |= top' }], 'top | employee as e');
   const laid = buildCanvasGraph(asts.main, {}, undefined, blocks, lineage);
-  const stripBottom = Math.max(...laid.nodes.filter(n => n.type === 'lineage-node').map(n => n.position.y + n.data.height));
-  // Along the strip: kept.
+  const tables = g => g.nodes.filter(n => n.type === 'table-node').map(n => n.position);
+  // Along the strip: kept, and nothing else moves.
   const along = buildCanvasGraph(asts.main, { 'lineage:top': { x: 300, y: 0 } }, undefined, blocks, lineage);
   assert.deepEqual(along.nodes.find(n => n.id === 'lineage:top').position, { x: 300, y: 0 });
-  // Down into the tables: held at the strip's bottom, and no table moves.
-  const down = buildCanvasGraph(asts.main, { 'lineage:top': { x: 300, y: 500 } }, undefined, blocks, lineage);
+  assert.deepEqual(tables(along), tables(laid));
+  // Well down: kept, and every table is below it.
+  const down = buildCanvasGraph(asts.main, { 'lineage:top': { x: 300, y: 200 } }, undefined, blocks, lineage);
   const chip = down.nodes.find(n => n.id === 'lineage:top');
-  assert.equal(chip.position.y + chip.data.height, stripBottom);
-  assert.deepEqual(chip.extent, [
-    [-Infinity, 0],
-    [Infinity, stripBottom],
-  ]);
-  const tables = g => g.nodes.filter(n => n.type === 'table-node').map(n => n.position);
-  assert.deepEqual(tables(down), tables(laid));
+  assert.deepEqual(chip.position, { x: 300, y: 200 });
+  for (const p of tables(down)) assert.ok(p.y > chip.position.y + chip.data.height);
 });

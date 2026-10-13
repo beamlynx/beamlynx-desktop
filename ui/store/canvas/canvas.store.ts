@@ -726,6 +726,9 @@ export class CanvasStore {
 
   setNodePosition(id: string, position: { x: number; y: number }) {
     this.positions[id] = position;
+    // A dropped strip chip can make the strip taller, and a dropped table
+    // can resize its container: lay the rest out again around it.
+    this.recompute();
   }
 
   /** Whether a node has been dragged since the layout was last reset: the toolbar then offers a reset. */

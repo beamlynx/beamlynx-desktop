@@ -686,18 +686,11 @@ const layoutLineage = (
   const minX = Math.min(...nodes.map(n => n.position.x));
   const minY = Math.min(...nodes.map(n => n.position.y));
   for (const n of nodes) n.position = { x: n.position.x - minX, y: n.position.y - minY };
-  // A chip can be dragged, but only within the strip: as tall as its laid-out
-  // chips, or the tallest chip if that's taller, so a chip can't land on a
-  // table.
-  const laidHeight = Math.max(...nodes.map(n => n.position.y + n.data.height));
+  // A dragged chip keeps its place, wherever it was dropped. The strip
+  // grows to fit it, so the tables below always start under its lowest chip.
   for (const n of nodes) {
     const moved = positions[n.id];
-    const bottom = Math.max(laidHeight, n.data.height) - n.data.height;
-    if (moved) n.position = { x: moved.x, y: Math.min(Math.max(moved.y, 0), bottom) };
-    n.extent = [
-      [-Infinity, 0],
-      [Infinity, Math.max(laidHeight, n.data.height)],
-    ];
+    if (moved) n.position = moved;
   }
   const height = Math.max(...nodes.map(n => n.position.y + n.data.height));
   const edges: CanvasEdge[] = lineage.edges.map(e => ({
