@@ -10,8 +10,21 @@ table_name | group: column_name => count
 ```
 
 `count` takes no colon here. That is the opposite of the standalone `count:` operation, which
-does — see the `count` topic. `count` is the only aggregate: `sum`, `avg`, `min`, `max` and
-`string_agg` are parse errors. A grouped query returns at most 10 000 groups.
+does — see the `count` topic. A grouped query returns at most 10 000 groups.
+
+After `=>`, list one or more aggregates, separated by commas:
+
+| Aggregate | What it gives for each group |
+|---|---|
+| `count` | The number of rows. Written bare, with no parentheses. |
+| `min(x)`, `max(x)` | The smallest, or largest, value. |
+| `sum(x)`, `avg(x)` | The total, or the average. |
+| `any(condition)` | True when the condition is true for at least one row. |
+| `all(condition)` | True when the condition is true for every row. |
+
+Every aggregate can take a filter: `min(a.id) where a.type = 'sharepoint'` reads only the rows
+where the condition is true. Name an aggregate with `as`. Without it, `min(a.id)` is `min_id`.
+`string_agg` and other aggregates aren't in Pine.
 
 ## Examples
 
@@ -40,6 +53,31 @@ customers as c | orders .customer_id | group: c.id, c.email => count
 ```
 
 Grouping by `id` as well as `email` keeps customers who share an email address distinct.
+
+### Several aggregates
+
+```
+customers as c | orders .customer_id | group: c.id => count, max(created_at) as latest, sum(total) as spent
+```
+
+One row per customer: how many orders, the latest one's date, and the total spent.
+
+### An aggregate over some of the rows
+
+```
+customers as c | orders .customer_id | group: c.id => count, count where status = 'refunded' as refunds
+```
+
+`where` after an aggregate filters the rows that aggregate reads. The plain `count` still counts
+every order.
+
+### Keep only some groups
+
+```
+customers as c | orders .customer_id | group: c.id => any(status = 'refunded') as had_refund | where: had_refund = true
+```
+
+A `where:` after `group:` filters the groups, by the aggregates' names.
 
 ### Name the aggregate
 

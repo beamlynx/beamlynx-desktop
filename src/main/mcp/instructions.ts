@@ -13,10 +13,11 @@
 // Keep this short. It is prepended to every session whether it gets used or
 // not, so it earns its place by covering the shape of the language and the
 // tool loop -- not by being a reference. get_pine_doc is the reference.
-export const SERVER_INSTRUCTIONS = `beamlynx queries databases with Pine, a pipe-based query language. run_sql_as_pine takes one
-SQL SELECT instead: it is converted to Pine, and only the Pine runs. The result starts with that
-Pine, so SQL is a fine way to start and to learn Pine. SQL that Pine can't say (OFFSET, DISTINCT,
-functions, subqueries, ...) is refused with the reason; write those in Pine with run_query.
+export const SERVER_INSTRUCTIONS = `beamlynx queries databases with Pine, a pipe-based query language. run_sql_as_pine takes SQL
+instead: it is converted to Pine, and only the Pine runs, under the same access policy. The result
+starts with that Pine, so SQL is a fine way to start and to learn Pine. SQL that Pine can't say is
+refused with the reason. An UPDATE or DELETE converts and shows in the user's tab, but never runs:
+only the user can run a change.
 
 SHAPE
 
@@ -36,6 +37,12 @@ Inside one where:, join conditions with \`or\`. To require several, add a where:
   user | where: status = 'active' | where: country = 'SE'    both conditions
 
 Operations: select: (s:), where: (w:), order: (o:), limit: (l:), group: (g:), count:, from: (f:)
+
+A value can be computed, and named with \`as\` (get_pine_doc "computed-values"):
+
+  document | select: id, coalesce(title, 'untitled') as label, if size > 0 then 'full' else 'empty' as state
+  order | group: customer_id => count, max(created_at) as latest
+  order | order: created_at desc | limit: 1 per customer_id       each customer's latest order
 
 A key inside a JSON column is a dotted path, used like a column (get_pine_doc "json"):
 
@@ -67,7 +74,7 @@ HOW TO WORK
    last table's columns are listed -- end with \`| select: u_0.\` (any alias, then a dot) to
    list an earlier one's.
 4. run_query -- execute. Opens a visible tab in the user's beamlynx app so they can see it.
-   run_sql_as_pine does the same for one SQL SELECT, run as its Pine.
+   run_sql_as_pine does the same for SQL, run as its Pine.
 
 SAY WHY
 

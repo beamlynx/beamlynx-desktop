@@ -342,18 +342,20 @@ async function registerTools(server: McpServer): Promise<void> {
     'run_sql_as_pine',
     {
       description:
-        'Run one SQL SELECT against a connection (must be one returned by list_connections) by converting it ' +
-        'to Pine. Only the Pine runs, exactly as run_query would run it: in a visible tab in the beamlynx app, ' +
-        'with the same access policy and no writes. The result starts with the Pine that ran -- read it, since ' +
-        'it is how to write the same query with run_query. Converts joins (inner, left, right), WHERE, ' +
-        'GROUP BY with COUNT(*), ORDER BY and LIMIT. Anything else (OFFSET, DISTINCT, functions, subqueries, ' +
-        'UNION, writes) runs nothing and says why; write that query in Pine with run_query instead. ' +
+        'Run SQL against a connection (must be one returned by list_connections) by converting it to Pine. ' +
+        'Only the Pine runs, exactly as run_query would run it: in a visible tab in the beamlynx app, with the ' +
+        'same access policy and no writes. The result starts with the Pine that ran -- read it, since it is how ' +
+        'to write the same query with run_query. SQL that Pine can\'t say runs nothing and says why; write that ' +
+        'query in Pine with run_query instead. An UPDATE or DELETE converts and is shown in the tab, but is ' +
+        'refused when it runs: only the user can run a change. ' +
         'Results are capped by the server at 250 rows. ' +
         sayWhy +
         'SQL `$name` placeholders are Pine variables: pass their values in `variables`.',
       inputSchema: {
         connection_id: z.string().describe('A connection id from list_connections'),
-        sql: z.string().describe('One SQL SELECT. It is converted to Pine, never run as SQL.'),
+        sql: z
+          .string()
+          .describe('SQL: a SELECT, or one UPDATE or DELETE, with WITH queries. It is converted to Pine, never run as SQL.'),
         variables: variablesInput,
       },
     },
@@ -366,7 +368,7 @@ async function registerTools(server: McpServer): Promise<void> {
       sql: string;
       variables?: Record<string, VariableValue>;
     }) => {
-      if (!sql.trim()) return errorResult('run_sql_as_pine needs a SQL SELECT in `sql`.');
+      if (!sql.trim()) return errorResult('run_sql_as_pine needs SQL in `sql`.');
       return runOnControlPlane({ profileId: connection_id, sql, variables });
     },
   );
