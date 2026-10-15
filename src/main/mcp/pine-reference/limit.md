@@ -7,6 +7,7 @@ Caps how many rows come back.
 **Syntax:**
 ```
 table_name | limit: number
+table_name | order: column desc | limit: number per column
 ```
 
 ## Examples
@@ -26,6 +27,17 @@ customers | where: status = 'active' | order: created_at desc | limit: 5
 ```
 
 The five most recently created active customers. `limit:` applies last, so put it at the end.
+
+### The first rows of each group: `per`
+
+```
+orders | order: created_at desc | limit: 1 per customer_id
+```
+
+Each customer's latest order. `limit: N per <columns>` keeps the first N rows of each group of
+rows that share those columns, ranked by the `order:` before it. Several columns are separated by
+commas: `limit: 3 per department_id, region`. A column after `per` can be one named in an earlier
+`select:`, like a computed value.
 
 ### Piping past a limit
 
