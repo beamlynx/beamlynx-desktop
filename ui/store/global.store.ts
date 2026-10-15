@@ -30,6 +30,7 @@ import { TEXT_SIZE_SCALE } from '../styles/text-size';
 import { DevState } from './dev-state';
 import { leadingDoc } from './canvas/pine-text';
 import { isValuesBlock, splitExpressions } from './blocks';
+import { AgentActivityStore } from './agent-activity';
 import { getCommandById } from '../utils/commands';
 import { normalizeServerVersion } from '../utils/version';
 import { CONNECTION_COLOR_PALETTE, isDesktop, isDevelopment, isPlayground, pineString } from './util';
@@ -191,6 +192,9 @@ export class GlobalStore {
   // small dot on that button, the only way to know a result landed while
   // looking at a different tab (mirrors NotificationBell's hasUnreadUpdates).
   mcpHasUnseenActivity = false;
+  // Every MCP tool call the agent makes, as it happens (desktop only, see
+  // McpBridge.tsx). McpActivityButton shows it.
+  agentActivity = new AgentActivityStore();
   // profileId -> live pine-lang connection-id, cached per app session so
   // every MCP query doesn't spin up a fresh Hikari pool. See
   // store/mcp-query.ts's ensureConnection.
@@ -2331,6 +2335,13 @@ export class GlobalStore {
     if (target === this.mcpSessionId) {
       this.mcpHasUnseenActivity = false;
     }
+  };
+
+  /** Shows the agent's query tab, the one its runs land in. */
+  focusMcpTab = () => {
+    if (!this.mcpSessionId) return;
+    this.activeSessionId = this.mcpSessionId;
+    this.mcpHasUnseenActivity = false;
   };
 
   setSettingsSection = (section: SettingsSection) => {
