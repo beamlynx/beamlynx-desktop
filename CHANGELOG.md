@@ -16,6 +16,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **Preferences in `beamlynx.db`.** The app's UI keeps its settings in the app's SQLite file instead of the browser's storage. It reads them all in one blocking call before the UI starts, because the UI reads settings synchronously. If the file can't be opened, the UI keeps using browser storage. Needs the beamlynx-ui release that adds this.
 
 ### Changed
+- The Pine reference AI agents read, and the instructions every session starts with, write a group with `with`, `group: status with count, total => max`, and explain the arrow: `x => f` is `f(x)`, and `x => f(a)` is `f(x, a)`. A new section of the `computed-values` topic covers the arrow and the date functions. Needs the bundled pine-lang to include pine-lang #131.
 - A dev build has its own `beamlynx.db`, in its own data folder, instead of sharing the installed app's. Experiments in a dev build, including new migrations, no longer touch the installed app's settings and recipes. Recipes saved from a dev build until now stay in the installed app's file. Saved connections are still shared.
 - Links the app opens in your browser must be `http`, `https` or `mailto`. Anything else is refused.
 - Results sent to an AI agent cut any cell longer than 2 000 characters, saying how much was left out, so one large text or JSON column can't flood the agent's context.

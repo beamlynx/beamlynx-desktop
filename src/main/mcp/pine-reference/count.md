@@ -37,10 +37,10 @@ Counts orders belonging to active customers, not customers.
 ### Count per group
 
 ```
-customers as c | orders .customer_id | group: c.email => count
+customers as c | orders .customer_id | group: c.email with count
 ```
 
 Use `group:` rather than `count:` when you want one count per value. See the `group` topic.
 
 Note the colon. `count:` is an operation and always carries one; the `count` inside a `group:`
-is an aggregate name and never does. `group: c.email => count:` is a parse error.
+is an aggregate name and never does. `group: c.email with count:` is a parse error.

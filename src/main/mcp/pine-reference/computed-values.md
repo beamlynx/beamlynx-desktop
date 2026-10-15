@@ -3,7 +3,7 @@
 A value that isn't just a column: a fallback when a column is empty, a flag that says whether a
 row is in some set, a label chosen by a condition.
 
-**Where:** in `select:` (named with `as`), after `=>` in `group:` (see the `group` topic), and on
+**Where:** in `select:` (named with `as`), after `with` in `group:` (see the `group` topic), and on
 the right of a comparison in `where:` and `update!`.
 
 **Syntax:**
@@ -18,7 +18,8 @@ A value is any of these, and they nest:
 | A column, with an optional cast | `a.id`, `a.id ::text` |
 | A literal | `'att:'`, `42`, `true`, `null`, `'2024-01-01'` |
 | A variable | `$prefix` |
-| A function | `coalesce(a, b)`, `concat('att:', a.id)`, `now()` |
+| A function | `coalesce(a, b)`, `concat('att:', a.id)`, `now()`, `month(created_at)` |
+| A function, applied with the arrow | `created_at => month`, `title => coalesce('untitled')` |
 | A condition, as true or false | `type = 'sharepoint'`, `deleted_at is null`, `id in (1, 2)`, `id in edited` |
 | A choice | `if x is null then 'none' else x` |
 
@@ -29,6 +30,24 @@ A value is any of these, and they nest:
   null when the condition isn't true. Chain branches with `else if`.
 
 These are the only functions. There is no arithmetic (`+`, `-`) and no date intervals.
+
+## The arrow
+
+`x => f` is `f(x)`, and `x => f(a, b)` is `f(x, a, b)`: the value on the left is the first
+argument. Both forms mean the same. The arrow appends a step to a value you already have:
+
+```
+created_at => month                       month(created_at)
+title => coalesce('untitled')             coalesce(title, 'untitled')
+title => coalesce('x') => concat('!')     concat(coalesce(title, 'x'), '!')
+```
+
+Use the arrow for a function of one value, and the call for anything else: `coalesce(a, b)` keeps
+the arguments in order, and `any(type = 'x')` keeps a condition whole. A condition before an arrow
+needs parentheses: `(type = 'x') => any`.
+
+The date functions are `minute`, `hour`, `day`, `week`, `month` and `year`. Each gives the date as
+text, cut to that unit: `created_at => month` is `'2024-05'`.
 
 ## Examples
 
