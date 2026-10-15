@@ -77,19 +77,21 @@ test('expanded: the block is drawn above, in a container, with its own node ids 
   );
 });
 
-test('a named block the last query does not join has a node only while expanded', () => {
+test('a named block the last query does not join has no node, only a container while expanded', () => {
   const blocks = [{ name: 'other', prefix: 'b0/', ast: asts.block }];
   const lineage = lineageOf([{ name: 'other', text: 'company |= other' }], 'company | where: id in other');
   const collapsed = buildCanvasGraph(asts.block, {}, undefined, blocks, lineage);
-  assert.ok(!collapsed.nodes.some(n => n.id === 'named:other'));
-  // The strip still shows it.
+  // The strip shows it.
   assert.ok(collapsed.nodes.some(n => n.id === 'lineage:other'));
+  assert.ok(!collapsed.nodes.some(n => n.id === 'container:other'));
   const open = buildCanvasGraph(asts.block, {}, 'other', blocks, lineage);
-  const node = open.nodes.find(n => n.id === 'named:other');
-  assert.equal(node.data.nested.standalone, true);
-  assert.deepEqual(node.data.nested.usedBy, []);
+  assert.ok(!open.nodes.some(n => n.id === 'named:other'));
+  const container = open.nodes.find(n => n.id === 'container:other');
+  assert.equal(container.data.connector, 0);
+  // It stands above the graph.
+  const below = open.nodes.filter(n => n.type === 'table-node' && !n.id.startsWith('b0/'));
+  for (const n of below) assert.ok(container.position.y + container.data.height < n.position.y);
 });
-
 const { blockUses, lineageOf } = require('../store/canvas/lineage.ts');
 
 test('a block reads an earlier one as a table, or as a set after in', () => {

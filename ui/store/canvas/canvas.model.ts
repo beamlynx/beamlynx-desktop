@@ -49,12 +49,6 @@ export type CanvasTableNodeData = {
    * expand toggle; expanded, a container above it holds what the nested
    * query holds (see layout.ts's buildCanvasGraph). `limit` makes the label
    * open the limit editor.
-   *
-   * A named block the last query doesn't join gets a standalone node beside
-   * the graph while it is expanded (`standalone`), to hang its container on.
-   * It says what uses it: `usedInWhere` when a `where: ... in name` of the
-   * last query does, `usedBy` for the other blocks made from it. It has no
-   * actions of its own: it isn't in the query's text.
    */
   nested?: {
     kind: 'checkpoint' | 'named';
@@ -62,9 +56,6 @@ export type CanvasTableNodeData = {
     label: string;
     limit?: number;
     expanded: boolean;
-    standalone?: boolean;
-    usedInWhere?: boolean;
-    usedBy?: string[];
   };
 };
 
@@ -88,7 +79,7 @@ export type CanvasContainerNodeData = {
   height: number;
   /** The connector's x in the box: its node's centre. */
   connectorX: number;
-  /** The connector's length, from the box's bottom edge to the node's box. */
+  /** The connector's length, from the box's bottom edge to the node's box. 0 when the box has no node. */
   connector: number;
 };
 

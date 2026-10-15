@@ -275,7 +275,7 @@ const legendKeysFor = (
   isStart: boolean,
   isCheckpoint: boolean,
   removable: boolean,
-  named?: { standalone?: boolean },
+  named?: CanvasTableNodeData['nested'],
 ): string[] => {
   // 'c' (write the canvas comment) leads every legend, including the empty
   // start node's - it needs no focused node, and is the one canvas-wide key
@@ -287,8 +287,6 @@ const legendKeysFor = (
   // memorizing it up front, and that need is real for 'c' in a way it
   // isn't for undo/redo.
   if (isStart) return ['c', 'i'];
-  // A named block nothing joins: not in the query's text, so only 'e'.
-  if (named?.standalone) return ['c', 'e'];
   // No 'g' - group isn't offered for a checkpoint's own sealed output. 'x'
   // removes the checkpoint itself (CanvasStore.deleteCheckpoint), as the ×
   // on its divider does.

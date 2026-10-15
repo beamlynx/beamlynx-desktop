@@ -421,14 +421,6 @@ const ChipRow = ({
 // choice (direct feedback: "if you change the theme, these nodes should
 // also change"). Falls back to the plain rounded card (borderRadius alone)
 // everywhere else.
-// What a standalone named block's node says about what uses it: the blocks
-// made from it, or the last query's `where: ... in name`.
-const standaloneUse = (nested: CanvasTableNodeData['nested']): string => {
-  const users = nested?.usedBy ?? [];
-  if (users.length) return `(used by ${users.join(', ')}${nested?.usedInWhere ? ' and in where' : ''})`;
-  return nested?.usedInWhere ? '(used in where)' : '(unused)';
-};
-
 const notchSize = 10;
 const cardClipPath = `polygon(0 0, 100% 0, 100% 100%, ${notchSize}px 100%, 0 calc(100% - ${notchSize}px))`;
 
@@ -510,10 +502,8 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
   // which it isn't. `hasConfigCursor` only suppresses the PLAIN-focus half
   // of this condition - hover and an actually-open picker both still show
   // it regardless, since neither of those is "just browsing".
-  // A named block nothing joins isn't in the query's text: no actions.
   const nested = data.nested;
-  const standalone = !!nested?.standalone;
-  const engaged = !standalone && (hovered || pickerOpenHere || (isFocusTarget && !hasConfigCursor));
+  const engaged = hovered || pickerOpenHere || (isFocusTarget && !hasConfigCursor);
 
   // The three always-visible operations, in their fixed display order - a
   // plain lookup (not derived from anywhere else) so both render paths below
@@ -731,10 +721,9 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
             >
               {data.table}
             </span>
-            {/* A nested query's node is named once - its name is its alias
-                (`result_1`, `top`) - except a standalone one, which says how
-                the query uses it. */}
-            {(!nested || standalone) && (
+            {/* A nested query's node is named once: its name is its alias
+                (`result_1`, `top`). */}
+            {!nested && (
               <span
                 style={{
                   flexShrink: 0,
@@ -744,11 +733,8 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
                 }}
               >
                 {/* A node from an earlier query block shows its alias in that
-                    block, without the block's prefix (see scopeOf); a
-                    standalone named block says what uses it. */}
-                {standalone
-                  ? standaloneUse(nested)
-                  : `(${data.alias.replace(/^b\d+\//, '')})`}
+                    block, without the block's prefix (see scopeOf). */}
+                {`(${data.alias.replace(/^b\d+\//, '')})`}
               </span>
             )}
           </div>

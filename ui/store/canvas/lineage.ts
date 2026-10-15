@@ -57,6 +57,3 @@ export const lineageOf = (blocks: { name: string; text: string }[], main: string
   });
   return { names: blocks.map(b => b.name), edges };
 };
-
-/** The blocks that read `name`, by name (`LINEAGE_MAIN` for the last block). */
-export const usersOf = (lineage: Lineage, name: string): LineageEdge[] => lineage.edges.filter(e => e.from === name);
