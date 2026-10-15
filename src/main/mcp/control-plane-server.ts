@@ -10,6 +10,7 @@
 import { BrowserWindow, dialog } from 'electron';
 import * as http from 'http';
 import { getMcpAccessStatus, listMcpEnabledConnections } from '../credential-store';
+import { readActivity } from './activity';
 import { authorizeControlPlaneRequest } from './control-plane-auth';
 import { runInRenderer } from './render-bridge';
 import { countPendingRevealRequests, createRevealRequest, waitForRevealRequest } from './reveal-requests';
@@ -121,6 +122,17 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
       const refusal = authorizeControlPlaneRequest(req.headers, options.token);
       if (refusal) {
         return sendJson(res, refusal.status, { error: refusal.error });
+      }
+
+      // What the agent is doing, from the relay (see activity.ts). Answered
+      // before it is passed on: the relay never waits on the window. With
+      // no window, or one still on the loading page, it is dropped.
+      if (req.method === 'POST' && req.url === '/activity') {
+        const event = readActivity(await readJsonBody(req));
+        if (!event) return sendJson(res, 400, { error: 'Not an activity event' });
+        sendJson(res, 200, {});
+        options.getMainWindow()?.webContents.send('mcp:activity', event);
+        return;
       }
 
       if (req.method === 'GET' && req.url === '/connections') {
