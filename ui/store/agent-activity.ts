@@ -31,6 +31,12 @@ export const MAX_ENTRIES = 100;
  * relay's 35 s request timeout.
  */
 export const STALE_MS = 60_000;
+/**
+ * An agent spends most of its time thinking between calls, and most calls
+ * end in milliseconds. So it counts as working until this long after its
+ * last call ends, not only while a call is in flight.
+ */
+export const LINGER_MS = 20_000;
 // Waiting for the person isn't the agent working: a pending approval has
 // its own badge.
 const WAITING_TOOLS = new Set(['check_reveal']);
@@ -76,9 +82,26 @@ export class AgentActivityStore {
     return this.entries.filter(e => e.endedAt === undefined && this.now - e.startedAt < STALE_MS);
   }
 
-  /** Whether the agent is doing something right now, not just waiting on the person. */
+  /** When the agent's last call ended, not counting waits on the person. */
+  get lastEndedAt(): number | undefined {
+    const ends = this.entries
+      .filter(e => e.endedAt !== undefined && !WAITING_TOOLS.has(e.tool))
+      .map(e => e.endedAt!);
+    return ends.length > 0 ? Math.max(...ends) : undefined;
+  }
+
+  /** Whether a call ended recently enough that the agent is likely thinking about its next one. */
+  get lingering(): boolean {
+    const last = this.lastEndedAt;
+    return last !== undefined && this.now - last < LINGER_MS;
+  }
+
+  /**
+   * Whether the agent is doing something right now, not just waiting on the
+   * person: a call in flight, or one that ended under LINGER_MS ago.
+   */
   get working(): boolean {
-    return this.running.some(e => !WAITING_TOOLS.has(e.tool));
+    return this.running.some(e => !WAITING_TOOLS.has(e.tool)) || this.lingering;
   }
 
   /** The newest call still going, for a one-line status. */
@@ -97,13 +120,19 @@ export class AgentActivityStore {
 
   tick(now = Date.now()) {
     this.now = now;
-    if (this.running.length === 0) this.stopTicking();
+    if (this.running.length === 0 && !this.lingering) this.stopTicking();
   }
 
-  // The clock only moves while a call runs, so a call that never ends stops
-  // counting as running, and nothing ticks when the agent is idle.
+  // The clock only moves while a call runs or just ended, so a call that
+  // never ends stops counting as running, the agent stops counting as
+  // working after LINGER_MS, and nothing ticks when the agent is idle.
   private keepTicking() {
-    if (this.timer || this.running.length === 0 || typeof setInterval === 'undefined') return;
+    if (
+      this.timer ||
+      (this.running.length === 0 && !this.lingering) ||
+      typeof setInterval === 'undefined'
+    )
+      return;
     this.timer = setInterval(() => this.tick(), 1000);
     // Node's timers keep a process alive (the tests); a browser's are numbers.
     (this.timer as { unref?: () => void }).unref?.();

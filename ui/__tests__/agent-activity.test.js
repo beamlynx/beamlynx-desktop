@@ -2,7 +2,7 @@
 // its start to its end, and when the agent counts as working.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { AgentActivityStore, MAX_ENTRIES, STALE_MS } = require('../store/agent-activity.ts');
+const { AgentActivityStore, MAX_ENTRIES, STALE_MS, LINGER_MS } = require('../store/agent-activity.ts');
 
 const start = (id, tool = 'find_tables', at = Date.now()) => ({ id, tool, phase: 'start', at, summary: `${tool} ${id}` });
 const end = (id, ok = true, at = Date.now(), tool = 'find_tables') => ({ id, tool, phase: 'end', at, summary: `${tool} ${id}`, ok });
@@ -14,17 +14,33 @@ test('a call runs from its start to its end, newest first', () => {
   assert.deepEqual(store.entries.map(e => e.id), ['b', 'a']);
   assert.equal(store.working, true);
   assert.equal(store.current.id, 'b');
-  store.apply(end('b', false));
-  store.apply(end('a'));
-  assert.equal(store.working, false);
+  const at = Date.now();
+  store.apply(end('b', false, at));
+  store.apply(end('a', true, at));
+  assert.equal(store.running.length, 0);
   assert.equal(store.entries[0].ok, false);
-  store.tick();
+  store.tick(at + LINGER_MS);
+  assert.equal(store.working, false);
+});
+
+test('the agent counts as working between calls, while it thinks', () => {
+  const store = new AgentActivityStore();
+  const at = Date.now();
+  store.apply(start('a', 'find_tables', at));
+  store.apply(end('a', true, at + 50));
+  store.tick(at + 5_000);
+  assert.equal(store.working, true);
+  assert.equal(store.current, undefined);
+  store.tick(at + 50 + LINGER_MS);
+  assert.equal(store.working, false);
 });
 
 test('an end with no start is still logged', () => {
   const store = new AgentActivityStore();
-  store.apply(end('x'));
+  const at = Date.now();
+  store.apply(end('x', true, at));
   assert.equal(store.entries.length, 1);
+  store.tick(at + LINGER_MS);
   assert.equal(store.working, false);
 });
 

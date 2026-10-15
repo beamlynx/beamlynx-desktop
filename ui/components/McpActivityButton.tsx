@@ -19,7 +19,8 @@ import type { AgentActivityEntry } from '../store/agent-activity';
  * bell/gear.
  *
  * While the agent is working the robot pulses, in the accent colour, and
- * its tooltip says what it is doing. Clicking it opens the activity log:
+ * its tooltip says what it is doing. Working includes the pauses between
+ * calls, while the agent thinks (AgentActivityStore's LINGER_MS). Clicking it opens the activity log:
  * every call, newest first, each opening to show what the agent sent and
  * how it went, with buttons to the agent's tab and any pending approval.
  *
@@ -168,7 +169,7 @@ const McpActivityButton = observer(() => {
         ref={anchor}
         onClick={() => setOpen(true)}
         color="inherit"
-        title={working && current ? `Agent: ${current.summary}` : undefined}
+        title={working ? (current ? `Agent: ${current.summary}` : 'Agent: working') : undefined}
         aria-label={
           needsDecision
             ? `Agent (${pendingApprovals} waiting for your approval)`
