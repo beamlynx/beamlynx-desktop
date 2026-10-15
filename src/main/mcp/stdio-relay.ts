@@ -30,6 +30,7 @@ import { readControlPlaneInfo } from '../launch-secrets';
 import { CONTROL_PLANE_PORT } from '../ports';
 import { getLaunchPath, getResourcesRoot } from '../resources';
 import { SERVER_INSTRUCTIONS } from './instructions';
+import { describeCall, outcomeOf, type AgentActivity } from './activity';
 import { MAX_LIST_ITEMS, MAX_STRING_LENGTH, MAX_VARIABLES, variablesSchema, type VariableValue } from './variables-schema';
 import {
   formatCompletion,
@@ -211,7 +212,39 @@ async function build(profileId: string, expression: string): Promise<BuildRespon
   return result ?? {};
 }
 
+// Tells the app what the agent is doing (see activity.ts). Never awaited and
+// never launches the app: a tool call must not wait on, or fail because of,
+// the person's view of it. With the app closed the event is dropped.
+function reportActivity(event: AgentActivity): void {
+  controlPlaneRequest('POST', '/activity', event).catch(() => undefined);
+}
+
+let activityCounter = 0;
+
+// Every tool registered on `server` reports its start and its end. Wrapping
+// registerTool covers every tool, including the ones that never reach the
+// app's window, like get_pine_doc.
+function reportEveryCall(server: McpServer): void {
+  const register = server.registerTool.bind(server) as (...args: any[]) => unknown;
+  (server as any).registerTool = (name: string, config: unknown, handler: (args: any, extra: any) => Promise<any>) =>
+    register(name, config, async (args: any, extra: any) => {
+      const id = `${process.pid}-${Date.now()}-${++activityCounter}`;
+      const call = describeCall(name, args ?? {});
+      reportActivity({ id, tool: name, phase: 'start', at: Date.now(), ...call });
+      try {
+        const result = await handler(args, extra);
+        reportActivity({ id, tool: name, phase: 'end', at: Date.now(), ...call, ...outcomeOf(result) });
+        return result;
+      } catch (e) {
+        const outcome = e instanceof Error ? e.message : String(e);
+        reportActivity({ id, tool: name, phase: 'end', at: Date.now(), ...call, ok: false, outcome });
+        throw e;
+      }
+    });
+}
+
 async function registerTools(server: McpServer): Promise<void> {
+  reportEveryCall(server);
   server.registerTool(
     'list_connections',
     {
