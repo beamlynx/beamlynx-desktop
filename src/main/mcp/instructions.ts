@@ -42,7 +42,6 @@ A value can be computed, and named with \`as\` (get_pine_doc "computed-values"):
 
   document | select: id, coalesce(title, 'untitled') as label, if size > 0 then 'full' else 'empty' as state
   order | group: customer_id => count, max(created_at) as latest
-  order | order: created_at desc | limit: 1 per customer_id       each customer's latest order
 
 A key inside a JSON column is a dotted path, used like a column (get_pine_doc "json"):
 
@@ -62,6 +61,18 @@ Traps that cost the most round trips, because SQL habits reach for them first:
 
   user | group: status => count
   user | count:
+
+ONE QUERY FOR EVERY GROUP
+
+A question about each group -- each customer's latest order, the top 3 in each department --
+is one query, not one query per group. \`limit: N per <columns>\` keeps the first N rows of each
+group, ranked by the \`order:\` before it (get_pine_doc "limit"):
+
+  order | order: created_at desc | limit: 1 per customer_id        each customer's latest order
+  employee | order: salary desc | limit: 3 per department_id       the top 3 in each department
+  order | group: customer_id => count, sum(total) as spent         a count and a total per customer
+
+Don't loop over the groups running one \`limit:\` query each. Every run opens in the user's tab.
 
 HOW TO WORK
 
