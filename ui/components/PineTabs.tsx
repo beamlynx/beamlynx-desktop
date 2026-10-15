@@ -796,7 +796,21 @@ const PineTabs = observer(() => {
                   {session.loading || session.connecting ? (
                     <CircularProgress size={14} sx={{ color: 'inherit', flexShrink: 0 }} />
                   ) : pinned.kind === 'mcp' ? (
-                    <SmartToyOutlined sx={{ fontSize: 14, flexShrink: 0 }} />
+                    // Pulses while the agent works, like the header's robot
+                    // (McpActivityButton.tsx), so both read the same.
+                    <SmartToyOutlined
+                      sx={{
+                        fontSize: 14,
+                        flexShrink: 0,
+                        ...(global.agentActivity.working
+                          ? {
+                              color: 'var(--canvas-trace)',
+                              animation: 'pine-agent-pulse 1.4s ease-in-out infinite',
+                              '@keyframes pine-agent-pulse': { '0%, 100%': { opacity: 1 }, '50%': { opacity: 0.35 } },
+                            }
+                          : {}),
+                      }}
+                    />
                   ) : (
                     <VisibilityOutlined
                       sx={{ fontSize: 14, flexShrink: 0, color: idleIconColor }}

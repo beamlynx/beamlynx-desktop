@@ -33,6 +33,13 @@ const McpBridge = () => {
     });
   }, [global]);
 
+  // What the agent is doing, call by call, for McpActivityButton. Optional:
+  // an older desktop app doesn't send it.
+  useEffect(() => {
+    if (!isDesktop() || typeof window === 'undefined') return;
+    return window.beamlynxDesktop?.mcp.onActivity?.(event => global.agentActivity.apply(event));
+  }, [global]);
+
   return null;
 };
 

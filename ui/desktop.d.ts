@@ -88,6 +88,19 @@ type McpQueryResult =
 // something the agent says it legitimately needs -- RevealRequestHandler.tsx
 // opens a real tab for the owner to review it in. See
 // beamlynx-desktop's src/main/mcp/reveal-requests.ts.
+// One MCP tool call starting or ending -- see beamlynx-desktop's
+// src/main/mcp/activity.ts, the source of truth for this shape.
+export type AgentActivity = {
+  id: string;
+  tool: string;
+  phase: 'start' | 'end';
+  at: number;
+  summary: string;
+  detail?: string;
+  ok?: boolean;
+  outcome?: string;
+};
+
 type RevealRequest = {
   id: string;
   profileId: string;
@@ -229,6 +242,9 @@ interface BeamlynxDesktopApi {
     // "beamlynx-dev" for a dev build, so both can be registered side by side.
     getSetupInfo: () => Promise<{ name: string; command: string; args: string[] }>;
     onQueryRequest: (handler: (request: McpQueryRequest) => Promise<unknown>) => () => void;
+    // Each MCP tool call as it starts and ends (store/agent-activity.ts).
+    // Optional: a desktop app older than the activity feed doesn't have it.
+    onActivity?: (callback: (event: AgentActivity) => void) => () => void;
   };
   // request_reveal/check_reveal's renderer half -- see
   // RevealRequestHandler.tsx and RevealRequestBanner.tsx. onRequest fires as
