@@ -98,7 +98,10 @@ test('stdio-relay.ts renders tool output through format.ts rather than JSON-dump
 // a Pine expression takes.
 test('run_sql_as_pine forwards SQL only to the control plane /query route', () => {
   const sends = [...STDIO_RELAY_SOURCE.matchAll(/controlPlaneRequest\(\s*'(\w+)',\s*'([^']+)'/g)].map(m => m[2]);
-  assert.ok(sends.every(route => ['/connections', '/explain', '/query', '/reveal', '/reveal-status'].some(r => route.startsWith(r))), sends.join(', '));
+  // /activity carries what the agent sent, SQL included, to be shown to the
+  // person (see src/main/mcp/activity.ts). The app only displays it: it
+  // never reaches pine-lang from there.
+  assert.ok(sends.every(route => ['/connections', '/explain', '/query', '/reveal', '/reveal-status', '/activity'].some(r => route.startsWith(r))), sends.join(', '));
   assert.ok(/runOnControlPlane\(\{ profileId: connection_id, sql, variables \}\)/.test(STDIO_RELAY_SOURCE));
   assert.ok(/controlPlaneRequest\('POST', '\/query', body\)/.test(STDIO_RELAY_SOURCE));
 });

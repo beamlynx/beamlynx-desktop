@@ -30,6 +30,19 @@ type McpQueryRequest = {
   sql?: string;
 };
 
+// Matches beamlynx-ui's desktop.d.ts AgentActivity -- see
+// src/main/mcp/activity.ts, the source of truth for the shape.
+type AgentActivity = {
+  id: string;
+  tool: string;
+  phase: 'start' | 'end';
+  at: number;
+  summary: string;
+  detail?: string;
+  ok?: boolean;
+  outcome?: string;
+};
+
 // Matches beamlynx-ui's desktop.d.ts RevealRequest/RevealOutcome -- see
 // src/main/mcp/reveal-requests.ts, the source of truth for both shapes.
 type RevealRequest = {
@@ -165,6 +178,13 @@ contextBridge.exposeInMainWorld('beamlynxDesktop', {
       };
       ipcRenderer.on('mcp:query-request', listener);
       return () => ipcRenderer.removeListener('mcp:query-request', listener);
+    },
+    // Each MCP tool call as it starts and ends (see src/main/mcp/activity.ts),
+    // so the app can show that an agent is working.
+    onActivity: (callback: (event: AgentActivity) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, activity: AgentActivity) => callback(activity);
+      ipcRenderer.on('mcp:activity', listener);
+      return () => ipcRenderer.removeListener('mcp:activity', listener);
     },
   },
   // control-plane-server.ts's POST /reveal (behind the MCP request_reveal
