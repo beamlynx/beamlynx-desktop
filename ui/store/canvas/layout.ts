@@ -653,6 +653,7 @@ const layoutLineage = (
   lineage: Lineage,
   details: Record<string, string | undefined>,
   expandedBlock: string | null,
+  positions: Record<string, { x: number; y: number }>,
 ): { nodes: CanvasLineageNode[]; edges: CanvasEdge[]; height: number } => {
   if (lineage.names.length === 0) return { nodes: [], edges: [], height: 0 };
   const names = [...lineage.names, LINEAGE_MAIN];
@@ -677,7 +678,6 @@ const layoutLineage = (
       position: { x: p.x - width / 2, y: p.y - height / 2 },
       targetPosition: Position.Left,
       sourcePosition: Position.Right,
-      draggable: false,
       selectable: false,
       focusable: false,
       data: { name, detail: details[name], expanded: !!name && name === expandedBlock, width, height },
@@ -686,6 +686,12 @@ const layoutLineage = (
   const minX = Math.min(...nodes.map(n => n.position.x));
   const minY = Math.min(...nodes.map(n => n.position.y));
   for (const n of nodes) n.position = { x: n.position.x - minX, y: n.position.y - minY };
+  // A dragged chip keeps its place, wherever it was dropped. The strip
+  // grows to fit it, so the tables below always start under its lowest chip.
+  for (const n of nodes) {
+    const moved = positions[n.id];
+    if (moved) n.position = moved;
+  }
   const height = Math.max(...nodes.map(n => n.position.y + n.data.height));
   const edges: CanvasEdge[] = lineage.edges.map(e => ({
     id: `lineage:${e.from}->${e.to || 'query'}`,
@@ -749,6 +755,7 @@ export const buildCanvasGraph = (
     lineage,
     Object.fromEntries(blocks.map(b => [b.name, endingOf(b)])),
     expansion.block?.name ?? null,
+    positions,
   );
   let top = strip.height ? strip.height + lineageGap : 0;
 

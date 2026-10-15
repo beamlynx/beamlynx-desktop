@@ -15,18 +15,26 @@ const hiddenHandle: React.CSSProperties = { opacity: 0, width: 1, height: 1, min
  * the join graph below.
  *
  * Clicking a block's chip expands its nested query on the canvas, or
- * collapses it; clicking `query` collapses whatever is expanded.
+ * collapses it; clicking `query` collapses whatever is expanded. A chip can
+ * also be dragged along the strip; a drag is not a click.
  */
 const LineageNode: React.FC<NodeProps<CanvasLineageNodeData>> = observer(({ data }) => {
   const canvasStore = useCanvasStore();
   const main = !data.name;
+  // Where the press started: a click after the pointer moved is the end of a drag.
+  const pressed = React.useRef<{ x: number; y: number } | null>(null);
   return (
     <div
-      className="nodrag nopan"
+      className="nopan"
       data-testid={`lineage-${data.name || 'query'}`}
       title={main ? 'The query the canvas draws' : data.expanded ? 'Collapse' : `Expand: show what ${data.name} holds`}
+      onMouseDown={e => {
+        pressed.current = { x: e.clientX, y: e.clientY };
+      }}
       onClick={e => {
         e.stopPropagation();
+        const from = pressed.current;
+        if (from && Math.hypot(e.clientX - from.x, e.clientY - from.y) > 3) return;
         if (main) canvasStore.collapseNested();
         else canvasStore.toggleNested(data.name);
       }}
@@ -53,7 +61,7 @@ const LineageNode: React.FC<NodeProps<CanvasLineageNodeData>> = observer(({ data
         cursor: 'pointer',
         lineHeight: 1.2,
         // ReactFlow turns pointer events off on a node that can't be
-        // selected or dragged; the chip takes its own clicks.
+        // selected; the chip takes its own clicks.
         pointerEvents: 'auto',
       }}
     >

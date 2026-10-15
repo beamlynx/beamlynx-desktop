@@ -153,10 +153,10 @@ const Flow: React.FC<{
     const t = setTimeout(() => reactFlowInstance.fitView({ duration: 200 }), 50);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [derivedNodes.length, canvasGraph.edges.length, recenterRequestCount]);
+  }, [derivedNodes.length, canvasGraph.edges.length, recenterRequestCount, canvasStore.layoutResets]);
 
   const onNodeDragStop = (_e: React.MouseEvent, node: CanvasNode) => {
-    if (node.type === 'table-node') {
+    if (node.type === 'table-node' || node.type === 'lineage-node') {
       canvasStore.setNodePosition(node.id, node.position);
     }
   };

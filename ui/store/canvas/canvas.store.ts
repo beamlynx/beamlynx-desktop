@@ -726,6 +726,27 @@ export class CanvasStore {
 
   setNodePosition(id: string, position: { x: number; y: number }) {
     this.positions[id] = position;
+    // A dropped strip chip can make the strip taller, and a dropped table
+    // can resize its container: lay the rest out again around it.
+    this.recompute();
+  }
+
+  /** Whether a node has been dragged since the layout was last reset: the toolbar then offers a reset. */
+  get hasMovedNodes(): boolean {
+    return Object.keys(this.positions).length > 0;
+  }
+
+  /**
+   * Bumped by resetLayout, so the canvas fits the view to the fresh layout:
+   * a reset changes no node or edge count, which is what normally refits it.
+   */
+  layoutResets = 0;
+
+  /** Forgets every dragged node's position and lays the canvas out again. UI-only. */
+  resetLayout() {
+    this.positions = {};
+    this.layoutResets += 1;
+    this.recompute();
   }
 
   setSelectedAliases(aliases: string[]) {
