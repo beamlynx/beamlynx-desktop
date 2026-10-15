@@ -473,11 +473,28 @@ const stageGroupIndex = (segments: Segment[], alias: string): number => {
   return segments[end]?.kind === 'group' ? end : -1;
 };
 
+/**
+ * A group: segment's body split into its keys and what follows `with`:
+ * `c.name, c.id with count, total => max` is ['c.name, c.id', 'count, total
+ * => max']. A `with` inside a string isn't one.
+ */
+export const splitGroupBody = (body: string): { keys: string; aggregates: string | null } => {
+  let inQuote = false;
+  for (let i = 0; i < body.length; i++) {
+    if (body[i] === "'") inQuote = !inQuote;
+    if (inQuote) continue;
+    const m = /^\s+with\s+/i.exec(body.slice(i));
+    if (m) return { keys: body.slice(0, i).trim(), aggregates: body.slice(i + m[0].length).trim() };
+  }
+  return { keys: body.trim(), aggregates: null };
+};
+
+const groupBody = (segment: Segment) => splitGroupBody(segment.text.replace(/^(group:|g:)\s*/i, ''));
+
 export const getGroupColumns = (base: PinnedBase, alias: string): string[] => {
   const index = stageGroupIndex(base.segments, alias);
   if (index < 0) return [];
-  const body = base.segments[index].text.replace(/^(group:|g:)\s*/i, '');
-  return splitTopLevel(body)
+  return splitTopLevel(groupBody(base.segments[index]).keys)
     .filter(part => part.startsWith(`${alias}.`))
     .map(part => part.slice(alias.length + 1));
 };
@@ -488,14 +505,17 @@ export const getGroupColumns = (base: PinnedBase, alias: string): string[] => {
 export const setGroupColumns = (base: PinnedBase, alias: string, columns: string[]): string => {
   const index = stageGroupIndex(base.segments, alias);
   const existing = index >= 0 ? base.segments[index] : undefined;
-  const priorAll = existing ? splitTopLevel(existing.text.replace(/^(group:|g:)\s*/i, '')) : [];
+  // Only the keys change; the aggregates after `with` stay as typed.
+  const prior = existing ? groupBody(existing) : { keys: '', aggregates: null };
+  const priorAll = splitTopLevel(prior.keys);
   const others = priorAll.filter(part => !part.startsWith(`${alias}.`));
   const mine = columns.map(c => `${alias}.${c}`);
   const nextAll = [...others, ...mine];
   if (nextAll.length === 0) return index < 0 ? toText(base.segments) : toText(withoutCheckpointOp(base.segments, index));
   if (index >= 0) {
     const next = [...base.segments];
-    next[index] = { ...next[index], text: `group: ${nextAll.join(', ')}` };
+    const tail = prior.aggregates ? ` with ${prior.aggregates}` : '';
+    next[index] = { ...next[index], text: `group: ${nextAll.join(', ')}${tail}` };
     return toText(next);
   }
   const at = stageEnd(base.segments, alias);

@@ -73,7 +73,7 @@ export type CanvasContainerNodeData = {
   kind: 'checkpoint' | 'named';
   /** The nested query's name - what its collapse toggle collapses. */
   name: string;
-  /** What it is, e.g. `limit 1 per c.id`, `group t.title → count`, `|= top`. */
+  /** What it is, e.g. `limit 1 per c.id`, `group t.title with count`, `|= top`. */
   label: string;
   width: number;
   height: number;

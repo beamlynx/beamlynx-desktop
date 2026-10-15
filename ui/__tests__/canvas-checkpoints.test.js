@@ -23,6 +23,7 @@ const {
   deleteNode,
   setLimit,
   setGroupColumns,
+  splitGroupBody,
 } = require('../store/canvas/pine-actions.ts');
 
 const TWO =
@@ -57,7 +58,7 @@ test('labels say what the checkpoint does', () => {
       group: [{ alias: 't', column: 'title' }],
       aggregates: ['count'],
     }),
-    'group t.title → count',
+    'group t.title with count',
   );
 });
 
@@ -175,7 +176,7 @@ test('a trailing checkpoint, expanded, holds the tables it groups', () => {
   assert.equal(node.data.nested.expanded, true);
   assert.deepEqual(
     graph.nodes.filter(n => n.type === 'nested-container').map(n => n.data.label),
-    ['group c.name → count'],
+    ['group c.name with count'],
   );
   // The group chip stays on the table it groups.
   assert.deepEqual(graph.nodes.find(n => n.id === 'c').data.groupChips, ['name']);
@@ -273,6 +274,19 @@ test('group: is per stage too', () => {
     'company as c | group: c.name, c.id',
   );
   assert.equal(setGroupColumns(base(GROUP), 'c', []), 'company as c');
+});
+
+test('a group: body splits into its keys and its aggregates at `with`', () => {
+  assert.deepEqual(splitGroupBody('c.name, c.id with count, total => max as top'), {
+    keys: 'c.name, c.id',
+    aggregates: 'count, total => max as top',
+  });
+  assert.deepEqual(splitGroupBody('c.name'), { keys: 'c.name', aggregates: null });
+  // A `with` inside a string is not the divider; a column named `width` isn't either.
+  assert.deepEqual(splitGroupBody("c.width with count where name = 'a with b'"), {
+    keys: 'c.width',
+    aggregates: "count where name = 'a with b'",
+  });
 });
 
 test('removing a checkpoint keeps the tables after it', () => {
