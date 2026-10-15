@@ -14,12 +14,10 @@
 // not, so it earns its place by covering the shape of the language and the
 // tool loop -- not by being a reference. get_pine_doc is the reference.
 export const SERVER_INSTRUCTIONS = `beamlynx queries databases with Pine, a pipe-based query language. run_sql_as_pine takes SQL
-instead: it is converted to Pine, and only the Pine runs. The result starts with that Pine, so SQL
-is a fine way to start and to learn Pine. Most of an analyst's SQL converts: joins, WITH queries,
-subqueries after IN, GROUP BY with COUNT/MIN/MAX/SUM/AVG and FILTER, HAVING, COALESCE, CASE,
-ROW_NUMBER() for the top N per group. SQL that Pine can't say (OFFSET, UNION, arithmetic, most
-functions, ...) is refused with the reason. An UPDATE or DELETE converts and shows in the user's
-tab, but never runs: only the user can run a change.
+instead: it is converted to Pine, and only the Pine runs, under the same access policy. The result
+starts with that Pine, so SQL is a fine way to start and to learn Pine. SQL that Pine can't say is
+refused with the reason. An UPDATE or DELETE converts and shows in the user's tab, but never runs:
+only the user can run a change.
 
 SHAPE
 

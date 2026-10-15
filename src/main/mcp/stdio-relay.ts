@@ -345,12 +345,9 @@ async function registerTools(server: McpServer): Promise<void> {
         'Run SQL against a connection (must be one returned by list_connections) by converting it to Pine. ' +
         'Only the Pine runs, exactly as run_query would run it: in a visible tab in the beamlynx app, with the ' +
         'same access policy and no writes. The result starts with the Pine that ran -- read it, since it is how ' +
-        'to write the same query with run_query. Converts joins (inner, left, right), WHERE, WITH queries, ' +
-        'subqueries in FROM, JOIN or after IN, GROUP BY with COUNT, MIN, MAX, SUM, AVG, BOOL_OR and BOOL_AND ' +
-        '(with FILTER), HAVING, COALESCE, CASE, NOW(), ROW_NUMBER() kept with rn <= N, ORDER BY and LIMIT. ' +
-        'An UPDATE or DELETE converts and is shown in the tab, but is refused when it runs: only the user can ' +
-        'run a change. Anything else (OFFSET, UNION, arithmetic, other functions) runs nothing and says why; ' +
-        'write that query in Pine with run_query instead. ' +
+        'to write the same query with run_query. SQL that Pine can\'t say runs nothing and says why; write that ' +
+        'query in Pine with run_query instead. An UPDATE or DELETE converts and is shown in the tab, but is ' +
+        'refused when it runs: only the user can run a change. ' +
         'Results are capped by the server at 250 rows. ' +
         sayWhy +
         'SQL `$name` placeholders are Pine variables: pass their values in `variables`.',
