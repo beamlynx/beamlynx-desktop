@@ -23,6 +23,275 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.66.0',
+    date: '2026-10-17',
+    breaking: [
+      {
+        title: "Needs pine-lang 0.49.0 or later (was 0.48.0)",
+        description:
+          "The canvas's checkpoints, limit: N per, groups written with with, SQL to Pine, JSON paths and the database-down message all need it. Connecting to an older server shows the upgrade-required screen.",
+      },
+      {
+        title: "A cell edit finds its row by the table's primary key, not by a column called id",
+        description:
+          "Tables keyed on another column, or on several columns, can now be edited from the grid. Tables and views without a primary key can't be edited, even when they have an id column, and the grid says why. Primary key columns can't be edited. Needs pine-lang after 0.48.1, which marks each primary key column in the result.",
+      },
+    ],
+    added: [
+      {
+        title: "See what an AI agent is doing, as it does it",
+        description:
+          "In the desktop app, the robot icon in the header appears with the agent's first call of any kind, not only its first query. While the agent works, the robot pulses, here and on the agent's tab. It keeps pulsing for 20 seconds after each call, while the agent thinks about its next one. Its tooltip says what the agent is doing, like \"Searching for tables like \\\"order\\\"\". Clicking it opens the agent's activity log: every call, newest first, with its time and how long it took. Click a call to see what the agent sent, like its SQL or Pine, and how it went. Buttons there open the agent's tab, or a pending approval. Clicking the robot used to jump straight to the agent's tab. Needs a desktop app that reports the calls (beamlynx-desktop after 0.19.0); with an older one, nothing changes.",
+      },
+      {
+        title: "Reset the canvas layout",
+        description:
+          "Once you have dragged a node or a strip chip, the canvas toolbar shows a refresh icon at its right end. Clicking it puts every node back where the layout places it. Dragged positions are kept in memory only, so reloading also resets them.",
+      },
+      {
+        title: "Checkpoints and named results open into containers",
+        description:
+          "A checkpoint's node, or a table that uses an earlier block's |= name, has an arrow to expand it. Expanded, a dashed box with no fill is drawn right above the node, around everything it holds, with a short line from the box to the node. The tables inside work as usual. Opening and closing is animated. Everything starts closed, and e on the node opens or closes it. Animation follows the system's reduced-motion setting.",
+      },
+      {
+        title: "Several query blocks on the canvas",
+        description:
+          "A query block above the last one that ends in |= name is drawn as a nested query of it. The table that uses name says |= name; its arrow, or e on the table, draws the block above it in a container. Changes made on that block's tables edit that block's text. A strip at the top of the canvas shows how the blocks are made from each other: one chip per block, like |= top with limit 10 under it, and query for the last block. An arrow goes from each block to the blocks that read it, labelled in when it's used in where: x in name. The arrows are dashed curves, unlike the square join lines below, so the join graph only shows joins. Clicking a chip expands that block; clicking query collapses it. A chip can be dragged anywhere; the tables below move down to make room for it. A block the last query doesn't join has no node: its chip stands for it, and expanded, its container stands alone above the graph. Only one nested query is expanded at a time, checkpoints and named blocks alike. A query block above the last without |= name still shows a banner.",
+      },
+      {
+        title: "per in the limit editor",
+        description:
+          "Besides the number, an optional \"per\" field takes columns of the stage's tables: the first N rows of each group of rows that share them. Opened from a checkpoint node's label, it shows the columns it already has.",
+      },
+      {
+        title: "Variables in the where editor",
+        description:
+          "Type $name as a value to use a variable: the tab's own are offered, and a new one gets a $name =  line in the values block, so the Variables list asks for its value. in and not in are in the operator list and take a list, 1, 2, or a list variable, $ids. On an existing condition, make variable turns status = 'shipped' into status = $status and moves 'shipped' into the values block, as $status_2 if $status is taken. A $name = line with no value needs pine-lang after 0.48.1.",
+      },
+      {
+        title: "Checkpoints on the canvas are drawn as stages",
+        description:
+          "A limit: or group: seals everything before it, and the steps after it work on that result. The canvas now draws the query top to bottom, one stage per checkpoint. Each checkpoint is a node named as pine-lang names it: the |= name, or result_1, result_2, and so on. It is drawn and works like any table: select, where, join, the \"+\" menu and the keyboard all act on the result. Tables joined after a checkpoint are drawn in its stage, joined to its node. The node says what the checkpoint does, like limit 10, limit 1 per c.id or group t.title with count. Click a limit's label to change the number and its per. Changing a group's columns keeps its aggregates after with as typed. Its × removes the checkpoint, and the tables after it stay. After you add a limit: or group:, the new checkpoint's node is focused, so the next step builds on it. Before, the tables before a checkpoint always sat in a dashed box on the main graph. Needs pine-lang's ast.checkpoints (pine-lang after 0.48.1).",
+      },
+      {
+        title: "Set the limit from any table on the canvas",
+        description:
+          "limit: is in each table's and checkpoint's \"+\" menu, and on the l key, as well as on the multi-select toolbar. It changes the limit at the end of that table's stage, if there is one. Otherwise it adds a limit at the end of the query. It opens with the current limit filled in, and clear removes it. l is in the shortcut list at the bottom of the canvas.",
+      },
+      {
+        title: "AI agents can send SQL, which runs as Pine",
+        description:
+          "The desktop app's run_sql_as_pine tool takes SQL. The app converts it to Pine, and only the Pine runs, the same way as any agent query: in a visible tab, with the connection's access policy, and with writes refused. SQL itself never runs. An UPDATE or DELETE converts and shows in the agent's tab, but never runs. The agent gets back the Pine that ran, so it learns Pine as it goes. SQL that doesn't convert runs nothing, and the agent is told why, like \"Line 3: OFFSET isn't in Pine.\" Needs beamlynx-desktop's matching release.",
+      },
+      {
+        title: "The SQL panel completes table and column names",
+        description:
+          "from the connected database. The hints open the way they do in the Pine panel: Tab opens them and moves to the next one, Shift-Tab moves back, and Ctrl/Cmd-Space opens them too. They no longer pop up while you type. After JOIN, the hints start with the tables that join to the ones already in the query, with the ON clause written in your aliases, like employee e ON e.company_id = c.id. They are the joins the Pine panel suggests, from foreign keys and column names like company_id. After FROM or JOIN it offers tables. After an alias and a dot, like e., it offers that table's columns. A name like tenantId is inserted in quotes where the database needs them. Tables in the default schema (public in Postgres) are offered without it. A reindex loads the names again. Needs pine-lang's /api/v1/sql-schema; with an older server there is no completion.",
+      },
+      {
+        title: "SQL becomes Pine as you type",
+        description:
+          "Typing or pasting a query in the SQL panel converts it to Pine after a short pause, and the canvas draws it: its tables, joins and conditions, editable by clicking. When the SQL doesn't convert, the canvas keeps the last query that converted, and a line under the SQL editor says so and why: \"The canvas isn't showing this query. Line 3: OFFSET isn't in Pine.\" It is marked in amber, not red, because that SQL can still run; red is kept for a query that can't. The line is empty while the canvas shows what you typed, and SQL that is only unfinished is mentioned only if it stays that way for a moment. The SQL you typed stays in the panel. A burst of typing is one undo step on the canvas, so one Ctrl+Z brings back the query from before. Converting runs nothing: in SQL mode, Run still runs the SQL. Needs pine-lang after 0.48.1, which adds /api/v1/sql-to-pine.",
+      },
+      {
+        title: "JSON paths on the canvas",
+        description:
+          "A key inside a JSON column, like data.address.city, shows as that name on the select, where, order and group chips. Editing a where chip writes the path back, and a value compared with a key reads SE, not \"SE\". Needs pine-lang after 0.48.1.",
+      },
+      {
+        title: "Edit a key inside a JSON column",
+        description:
+          "A cell like dp.companies[0].id can be edited in the grid, and the edit is saved into that key alone. It keeps the type the value had: in a number cell 12 is saved as a number and text that isn't a number is refused; in a string cell 5 stays the string \"5\"; a boolean cell takes true or false, or 1 or 0, which is how SQLite shows them. A JSON null takes what is typed as a string. A cell whose key is missing in that row, or that holds an object or an array, stays read-only and says why. Needs pine-lang after 0.48.1, which sends each value's JSON type.",
+      },
+      {
+        title: "Hidden columns in SQL",
+        description:
+          "The SQL panel shows the query without the columns beamlynx adds so results can be edited: each table's key and each JSON value's type. They are still fetched. To see them, turn on the switch in Settings > Preferences, or use Toggle Hidden Columns in SQL in the command palette. The setting applies to every tab. Copy SQL copies what is shown. With pine-lang 0.48.1 or older, the SQL always includes them.",
+      },
+      {
+        title: "Stop a running query",
+        description:
+          "While a query runs, Run becomes Stop. Escape in the Pine or SQL editor does the same when no completion list is open. With Vim mode on, Escape may stay with Vim; use the button. The database stops the statement, a write is rolled back, and the results pane says \"Query stopped.\" The command palette has Stop Query too. Needs pine-lang after 0.48.1.",
+      },
+      {
+        title: "SQLite",
+        description:
+          "in the desktop app. Pick SQLite as the database type in Settings > Database Connections, then choose the database file with Browse… or type its absolute path. There is no server, port, user or password to enter. A connection string takes the form sqlite:///path/to/file.db. It needs a pine-lang with SQLite support (after 0.48.1); an older one refuses the connection. The web build doesn't offer SQLite: it would read the server's disk, not yours.",
+      },
+      {
+        title: "Preferences in the desktop app's data file",
+        description:
+          "On desktop, theme, fonts, text size, panel sizes, open tabs and the other settings are kept in beamlynx.db, the app's SQLite file, instead of the browser's storage. The first time the app starts with this, it copies your current settings into the file, once. A dev build has a file of its own. Browser storage still gets every change for one more release, so going back to an older version keeps them. The web build still uses browser storage. Needs beamlynx-desktop after 0.19.0; an older one keeps using browser storage.",
+      },
+      {
+        title: "Column widths are remembered",
+        description:
+          "in the desktop app. A column you resize keeps that width the next time it shows up, in any tab, until you resize it again. Widths are kept per connection, by table and column heading, in the app's data file. A column that isn't from a table, like a count, is remembered by its heading. The web build doesn't remember widths.",
+      },
+    ],
+    changed: [
+      {
+        title: "Deleting through a traversal removes a table with more than 10 000 matching rows in batches of 10 000, because pine-lang now accepts limit: only up to 10 000",
+        description:
+          "Each table still loses no more rows than were counted in the plan. The copyable SQL script uses the same limit and says to repeat a statement that has more rows.",
+      },
+      {
+        title: "The canvas no longer makes up a checkpoint's name (agg, agg2, ...)",
+        description:
+          "When a gesture needs the name in the text, it writes the one pine-lang already gives the checkpoint, like |= result_1.",
+      },
+      {
+        title: "The canvas reads each where: condition from pine-lang as a map with alias, column, cast, operator and value, not as a list read by position",
+        description:
+          "With an older pine-lang, where chips don't show. Needs pine-lang after 0.48.1.",
+      },
+      {
+        title: "The canvas reads named results from /build's named-results, which pine-lang renamed from variables",
+        description:
+          "With an older pine-lang, the canvas no longer recognises a named result used as a table. Needs pine-lang after 0.48.1.",
+      },
+      {
+        title: "A beamlynx://run link opens a tab with the expression but no longer runs it",
+        description:
+          "A banner names the connection it would run on. Check both and press Run. Any web page or message can carry such a link, and the browser's prompt doesn't show what it would do.",
+      },
+    ],
+    removed: [
+      {
+        title: "Sign-in with Clerk on the hosted web build, and the middleware that enforced it",
+        description:
+          "The desktop app never had sign-in, and the web build is no longer deployed. The middleware also skipped sign-in for any hostname containing 'playground', and logged every request's hostname.",
+      },
+      {
+        title: "The unused marked library",
+      },
+    ],
+    fixed: [
+      {
+        title: "Opening the app while a database is down no longer leaves the tabs stuck",
+        description:
+          "The canvas said \"Not parsing - showing last valid graph\" while the results showed the connection error, and the canvas kept saying it after the database came back, on every tab, even once Run worked again. Now the tab shows one message, above the results, in plain text: \"Can't reach the database\", with the reason. The canvas shows no banner. The tab you're on tries again every 10 seconds. Other tabs don't, but switching to one tries it at once. When the database answers, every tab on it draws its graph again, and a successful run brings it back straight away. In the desktop app, a saved connection that can't connect at startup no longer pops an alert either. Needs pine-lang's matching release.",
+      },
+      {
+        title: "A canvas popover opened near the edge of the canvas could be cut off",
+        description:
+          "It now always stays inside the window.",
+      },
+      {
+        title: "A where:, join or group: on a table before a checkpoint could land after it, once the query had two checkpoints",
+        description:
+          "It now lands in the table's own stage.",
+      },
+      {
+        title: "Removing a query's only limit: or group: on the canvas no longer leaves a name behind, like | = agg",
+        description:
+          "It now goes when nothing is left for it to name, unless you wrote the name or later steps use it.",
+      },
+      {
+        title: "Copy result and CSV export included the hidden key columns beamlynx adds for editing, such as __c_0__id",
+        description:
+          "They now hold only the columns shown in the grid.",
+      },
+      {
+        title: "A result column worked out by the query, like a date bucket (created_at => month), could be edited in the grid or the JSON inspector",
+        description:
+          "Saving wrote the value into the stored column: 2024-01 into created_at. These columns are now read-only, and say why.",
+      },
+      {
+        title: "Pressing Tab right after an alias and a dot, as in s: t., offered nothing",
+        description:
+          "The editor took the dot for the word being typed, and no column contains a dot. It now offers the alias's columns and inserts the chosen one after the dot. Choosing a table after a schema prefix, as in public.te, replaces the whole prefix instead of repeating the schema.",
+      },
+      {
+        title: "Using a recipe (Ctrl+O) in a tab that already sets one of its $variables changed that tab's results",
+        description:
+          "The recipe's values block came last, and the last value wins across the whole tab. The tab's value is now kept, and the recipe's assignment of that name is left out. Using the same recipe twice no longer adds its values twice.",
+      },
+      {
+        title: "Approving a reveal request is disabled while the expression has been edited but not run, so the agent never receives rows the owner didn't look at",
+        description:
+          "If the run fails, the banner shows why instead of doing nothing.",
+      },
+      {
+        title: "Editing a cell to a value with an apostrophe, like O'Brien, saved it as O_Brien",
+        description:
+          "A row whose text id contained an apostrophe couldn't be edited at all. The value is now written with the apostrophe doubled, which Pine reads as one apostrophe. Needs pine-lang after 0.48.1.",
+      },
+      {
+        title: "A stored preference the app no longer understands, or browser storage that is blocked, could leave a blank page or an 'Application error' at start-up",
+        description:
+          "An unknown theme, font or text size, a non-version 'last read' marker, and a damaged list of saved tabs each did it. Every preference is now checked, an unusable one falls back to its default, and damaged saved tabs are skipped.",
+      },
+      {
+        title: "An unexpected error while drawing the app shows a page with Reload and 'Reset preferences and reload' buttons instead of a blank window",
+        description:
+          "Resetting keeps your open tabs.",
+      },
+      {
+        title: "A Pine server whose version isn't a plain x.y.z, such as dev or 0.48, showed as 'No connection to Pine server'",
+        description:
+          "It now connects. The upgrade-required screen also clears once the server is upgraded, instead of staying until a reload.",
+      },
+      {
+        title: "Auto-run on the canvas no longer runs an expression that changes data",
+        description:
+          "Adding a where chip to narrow an update! used to run the update 150 ms later. Such an expression now waits for Run, and the tab says why.",
+      },
+      {
+        title: "Pressing Enter in a cell checks that the row is still there before saving",
+        description:
+          "If it isn't, the save is refused and says so.",
+      },
+      {
+        title: "A ?query= share link containing %, such as like '%a%', was silently ignored",
+        description:
+          "It opens now.",
+      },
+      {
+        title: "The bar chart is offered only up to 2 000 rows; past that, its button is disabled with a tooltip",
+        description:
+          "A large result used to freeze the tab. Empty strings and Infinity no longer count as numbers to chart.",
+      },
+      {
+        title: "A tab whose saved connection was deleted showed a 'Failed to reconnect' alert on every switch to it",
+        description:
+          "It now forgets the connection once and asks you to pick one.",
+      },
+      {
+        title: "The Inspect dialog's Run shows why an update failed instead of 'Update execution failed'",
+        description:
+          "JSON values that the grid didn't recognise as JSON show as JSON instead of [object Object]. The connection monitor no longer logs an error every second while the server is down.",
+      },
+    ],
+    security: [
+      {
+        title: "The desktop app no longer writes the database password to the developer console when it connects to a saved connection",
+        description:
+          "Other connection details are logged only in development builds.",
+      },
+      {
+        title: "An expression an AI agent asks to reveal can no longer change data",
+        description:
+          "The review tab runs it read-only, and a reveal request whose expression would change data is declined automatically, with a comment saying why. Before, user | delete! sent as a reveal request deleted the rows the moment it arrived.",
+      },
+      {
+        title: "In the desktop app, every request to the bundled query server carries the secret the app makes at each launch, so no other program or web page can use the server",
+        description:
+          "If the server refuses the app anyway, the connection indicator says so and suggests restarting beamlynx. Needs beamlynx-desktop with launch tokens (after 0.19.0) and pine-lang after 0.48.1.",
+      },
+      {
+        title: "CSV export and copy neutralise a value a spreadsheet would run as a formula (one starting with =, +, -, @, a tab or a carriage return) by prefixing an apostrophe",
+        description:
+          "A value with a carriage return is quoted. JSON values are written as JSON, not [object Object].",
+      },
+      {
+        title: "Updated Next.js from 13.5.6 to 15.5.27, past every published Next.js advisory, including the middleware bypass (CVE-2025-29927)",
+        description:
+          "PostCSS, nanoid, source-map-js and yaml are lifted to fixed versions. npm audit --omit=dev reports no vulnerabilities. The lockfile is back in step with package.json.",
+      },
+    ],
+  },
+  {
     version: '0.65.0',
     date: '2026-10-06',
     breaking: [
@@ -2237,4 +2506,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.65.0';
+export const LATEST_VERSION = '0.66.0';
