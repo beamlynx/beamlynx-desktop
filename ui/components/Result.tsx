@@ -548,9 +548,13 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
       .map(c => c.label);
     const sharedWith = others.length ? `, which ${others.join(', ')} also ${others.length === 1 ? 'uses' : 'use'}` : '';
     // A tab that masks its own results still shows the old values until
-    // it runs again. The owner's unmasked tab only had its markers to
-    // update.
-    const rerun = session.accessPolicy.mode === 'enforce' ? ' Run the query again to see it.' : '';
+    // it runs again. An agent's tab only reads, so it gets a button for
+    // that. The owner's own masked tab gets a hint instead: running it
+    // again could repeat a change. The owner's unmasked tab only had its
+    // markers to update.
+    const masks = session.accessPolicy.mode === 'enforce';
+    const rerunButton = masks && session.isAgentSession;
+    const rerun = masks && !rerunButton ? ' Run the query again to update these results.' : '';
     setNotice({
       kind: 'success',
       text: `Agents ${hide ? 'can no longer' : 'can now'} see ${name}. Saved to the “${policy.name}” policy${sharedWith}.${rerun}`,
@@ -569,6 +573,17 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
             setNotice({ kind: 'success', text: `The “${policy.name}” policy is back as it was.` });
           },
         },
+        ...(rerunButton
+          ? [
+              {
+                label: 'Run again',
+                onClick: () => {
+                  setNotice(null);
+                  void session.evaluate();
+                },
+              },
+            ]
+          : []),
         {
           label: 'Open policy',
           onClick: () => {
