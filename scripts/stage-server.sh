@@ -34,4 +34,34 @@ mkdir -p "$DEST"
 cp -a "$APP_IMAGE_BASE/$APP_IMAGE_NAME" "$DEST/$APP_IMAGE_NAME"
 echo "$PINE_VERSION" > "$DEST/VERSION"
 
+# macOS: the SQLite driver packs its native libraries inside the jar
+# (org/sqlite/native/Mac/<arch>/libsqlitejdbc.dylib) and extracts one to a
+# temp folder when it first opens a database. Apple's notarization inspects
+# the jar, finds those two unsigned dylibs, and rejects the whole app:
+# electron-builder signs every binary in the bundle, but not ones inside a
+# jar. So take them out: put the one for this build's architecture next to
+# the jar, where electron-builder signs it with the rest, and point the
+# driver at it through the launcher's Java options. Without them in the
+# jar, the driver can only load the signed copy.
+if [ "$APP_IMAGE_NAME" = "pine-server.app" ]; then
+  APP_DIR="$DEST/pine-server.app/Contents/app"
+  JAR="$APP_DIR/pine-standalone.jar"
+  CFG="$APP_DIR/pine-server.cfg"
+  case "$(uname -m)" in
+    arm64) SQLITE_ARCH=aarch64 ;;
+    x86_64) SQLITE_ARCH=x86_64 ;;
+    *) echo "No SQLite native library for $(uname -m)" >&2; exit 1 ;;
+  esac
+  mkdir -p "$APP_DIR/sqlite-native"
+  unzip -p "$JAR" "org/sqlite/native/Mac/$SQLITE_ARCH/libsqlitejdbc.dylib" > "$APP_DIR/sqlite-native/libsqlitejdbc.dylib"
+  [ -s "$APP_DIR/sqlite-native/libsqlitejdbc.dylib" ] || { echo "libsqlitejdbc.dylib not found in $JAR" >&2; exit 1; }
+  zip -q -d "$JAR" 'org/sqlite/native/Mac/*'
+  grep -q '^\[JavaOptions\]$' "$CFG" || { echo "No [JavaOptions] in $CFG" >&2; exit 1; }
+  awk '{ print } /^\[JavaOptions\]$/ {
+    print "java-options=-Dorg.sqlite.lib.path=$APPDIR/sqlite-native"
+    print "java-options=-Dorg.sqlite.lib.name=libsqlitejdbc.dylib"
+  }' "$CFG" > "$CFG.new" && mv "$CFG.new" "$CFG"
+  echo "Moved the SQLite $SQLITE_ARCH native library out of the jar, for signing"
+fi
+
 echo "Staged pine-server $PINE_VERSION into $DEST"
