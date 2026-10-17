@@ -284,14 +284,14 @@ export const whereEntriesFor = (ast: Ast, alias: string): WhereEntry[] =>
     .flatMap(s => s.source.where)
     .filter(w => whereConditions(w)[0].alias === alias);
 
-/** What a checkpoint's divider says: `limit 10`, `limit 1 per c.id`, `group t.title → count`. */
+/** What a checkpoint's divider says: `limit 10`, `limit 1 per c.id`, `group t.title with count`. */
 const columnLabel = (c: CheckpointColumn): string => `${c.alias}.${columnName(c.column, c.path)}`;
 export const checkpointLabel = (checkpoint: Checkpoint): string => {
   if (checkpoint.kind === 'limit') {
     const per = checkpoint.per?.length ? ` per ${checkpoint.per.map(columnLabel).join(', ')}` : '';
     return `limit ${checkpoint.limit ?? ''}${per}`;
   }
-  const aggregates = checkpoint.aggregates?.length ? ` → ${checkpoint.aggregates.join(', ')}` : '';
+  const aggregates = checkpoint.aggregates?.length ? ` with ${checkpoint.aggregates.join(', ')}` : '';
   return `group ${(checkpoint.group ?? []).map(columnLabel).join(', ')}${aggregates}`;
 };
 
