@@ -169,7 +169,7 @@ export type SavedConnectionMeta = {
 
 type StoredConnectionRecord = SavedConnectionMeta & { dbPasswordEncrypted: string };
 
-type StoreFile = { version: 2; connections: StoredConnectionRecord[]; accessPolicies: AccessPolicy[] };
+type StoreFile = { version: number; connections: StoredConnectionRecord[]; accessPolicies: AccessPolicy[] };
 
 export type CredentialsStatus = {
   persistenceAvailable: boolean;
@@ -269,8 +269,7 @@ function readStore(): StoreFile {
       });
       writeStore(parsed as StoreFile);
     }
-    if (parsed.version !== 2) {
-      migrateToRuleIds(parsed);
+    if (migrateToRuleIds(parsed)) {
       writeStore(parsed as StoreFile);
     }
     return parsed as StoreFile;
@@ -279,24 +278,44 @@ function readStore(): StoreFile {
   }
 }
 
-// Version 1 stored at most one rule of each type per policy, addressed by
-// its type, and had no hide rules. Version 2 gives every rule an id, marks
-// the three show rules every policy started with as built-in, and adds the
-// starter hide rules to every policy, switched on. That only hides more
-// from agents, never less. It runs once: removing a starter rule later
-// sticks.
-function migrateToRuleIds(parsed: { version?: number; accessPolicies: { rules: Record<string, unknown>[] }[] }): void {
+// Before rule ids, a policy held at most one rule of each type, addressed
+// by its type, and had no hide rules. A policy whose rules lack ids gets
+// them, has the show rules it started with marked built-in, and gets the
+// starter hide rules, switched on. That only hides more from agents, never
+// less.
+//
+// Per policy, keyed on the missing ids rather than on the store's version:
+// an older app sharing this file (data-dir.ts) can still add a policy
+// without ids after this one has migrated the rest. A migrated policy has
+// ids, so removing a starter rule from it sticks. Returns whether anything
+// changed. The version is raised to 2, never lowered.
+function migrateToRuleIds(parsed: { version?: unknown; accessPolicies: { rules: Record<string, unknown>[] }[] }): boolean {
+  let changed = false;
   for (const policy of parsed.accessPolicies) {
-    const rules = (Array.isArray(policy.rules) ? policy.rules : []).map(rule => ({
+    const rules = Array.isArray(policy.rules) ? policy.rules : [];
+    if (Array.isArray(policy.rules) && rules.every(rule => typeof rule.id === 'string')) continue;
+    const migrated = rules.map(rule => ({
       ...rule,
       id: typeof rule.id === 'string' ? rule.id : randomUUID(),
       enabled: rule.enabled !== false,
       builtIn: rule.type !== 'hide' && rule.type !== 'column',
     }));
-    const hides = STARTER_HIDE_RULES.map(rule => ({ ...structuredClone(rule), id: randomUUID(), enabled: true }));
-    policy.rules = [...hides, ...rules];
+    const has = (rule: AccessPolicyRule) =>
+      migrated.some(({ id: _id, enabled: _enabled, builtIn: _builtIn, ...r }) => JSON.stringify(r) === JSON.stringify(rule));
+    const hides = STARTER_HIDE_RULES.filter(rule => !has(rule)).map(rule => ({
+      ...structuredClone(rule),
+      id: randomUUID(),
+      enabled: true,
+    }));
+    policy.rules = [...hides, ...migrated];
+    changed = true;
   }
-  parsed.version = 2;
+  const version = typeof parsed.version === 'number' ? parsed.version : 1;
+  if (version < 2) {
+    parsed.version = 2;
+    changed = true;
+  }
+  return changed;
 }
 
 // Write-to-temp-then-rename is atomic on POSIX and NTFS, so a hard kill

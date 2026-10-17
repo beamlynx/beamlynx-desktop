@@ -328,3 +328,36 @@ test('a version 1 store gets rule ids, built-in marks and the starter hide rules
   removeAccessPolicyRule('p1', policy.rules[0].id);
   assert.equal(listAccessPolicies()[0].rules.length, 5);
 });
+
+test('a policy without rule ids is migrated on its own, even in a version 2 store, and only once', () => {
+  // An older app sharing connections.json can add a policy after this one
+  // has migrated the store.
+  const storePath = path.join(userDataDir, 'connections.json');
+  fs.mkdirSync(userDataDir, { recursive: true });
+  const migrated = createAccessPolicy('Already migrated');
+  const store = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
+  store.accessPolicies.push({
+    id: 'old',
+    name: 'From the old app',
+    rules: [{ type: 'column-type', allow: ['integer'], enabled: true }],
+  });
+  fs.writeFileSync(storePath, JSON.stringify(store));
+
+  const policies = listAccessPolicies();
+  assert.deepEqual(policies.find(p => p.id === migrated.id), migrated);
+  const old = policies.find(p => p.id === 'old');
+  assert.equal(old.rules.length, 4);
+  assert.ok(old.rules.every(r => typeof r.id === 'string'));
+  assert.equal(new Set(old.rules.map(r => r.id)).size, 4);
+
+  // Nothing left to migrate: a second read changes nothing.
+  assert.deepEqual(listAccessPolicies(), policies);
+});
+
+test('a newer store version is never lowered', () => {
+  const storePath = path.join(userDataDir, 'connections.json');
+  fs.mkdirSync(userDataDir, { recursive: true });
+  fs.writeFileSync(storePath, JSON.stringify({ version: 3, connections: [], accessPolicies: [] }));
+  listAccessPolicies();
+  assert.equal(JSON.parse(fs.readFileSync(storePath, 'utf-8')).version, 3);
+});
