@@ -1,6 +1,7 @@
 import { Box, Typography } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
+import { UNREACHABLE_RETRY_MS } from '../store/global.store';
 
 interface ErrorMessageProps {
   sessionId: string;
@@ -20,13 +21,31 @@ interface ErrorMessageProps {
  * A parse error is shown without the 🚨: it comes back with a caret line
  * pointing at the offending character, and a prefix would shift the text
  * out from under it. A query stopped on purpose ("Query stopped.") is shown
- * without it too, and not in the error colour. So is a database that
- * can't be reached: the build is tried again until it's back (see
- * Session.retryBuildWhileUnreachable), and Run works again once it is.
+ * without it too, and not in the error colour.
+ *
+ * A database that can't be reached is the one message the tab shows for
+ * it, whether connecting or building failed: the canvas shows no banner.
+ * It isn't an error in the expression, so it's not in the error colour,
+ * and it says the tab is trying again (GlobalStore's UNREACHABLE_RETRY_MS).
  */
 const ErrorMessage = observer(({ sessionId }: ErrorMessageProps) => {
   const { global } = useStores();
   const session = global.getSession(sessionId);
+
+  if (session.unreachable !== null) {
+    return (
+      <Box sx={{ padding: 1 }}>
+        <Typography
+          variant="caption"
+          data-testid="database-unreachable"
+          sx={{ display: 'block', whiteSpace: 'break-spaces', lineHeight: 1.4, color: 'text.secondary' }}
+        >
+          {session.unreachable}
+          {`\nTrying again every ${UNREACHABLE_RETRY_MS / 1000} seconds while this tab is open.`}
+        </Typography>
+      </Box>
+    );
+  }
 
   if (!session.error) {
     return null;
@@ -35,8 +54,8 @@ const ErrorMessage = observer(({ sessionId }: ErrorMessageProps) => {
   const isParseError = session.errorType === 'parse';
   // Stopped with Stop or Escape: what the person asked for, not a failure.
   const isStopped = session.evalErrorType === 'cancelled';
-  const isUnreachable = session.databaseUnreachable || session.evalErrorType === 'database-unreachable';
-  const calm = isStopped || isUnreachable;
+  // A run that couldn't reach the database, while builds still can.
+  const calm = isStopped || session.evalErrorType === 'database-unreachable';
 
   // Padding, not margin. The band's height is measured from this subtree
   // (CollapsibleHeight -> useCollapseHeight), and a margin here collapses
@@ -89,7 +108,6 @@ const ErrorMessage = observer(({ sessionId }: ErrorMessageProps) => {
         }}
       >
         {isParseError || calm ? session.error : `🚨 ${session.error}`}
-        {session.databaseUnreachable && '\nTrying again…'}
       </Typography>
     </Box>
   );

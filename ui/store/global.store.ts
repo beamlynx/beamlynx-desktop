@@ -146,13 +146,14 @@ export type TabOrientation = 'horizontal' | 'vertical';
 export const stripRemovedDeleteOperation = (expression: string): string =>
   expression.replace(/\|\s*(?:delete:|d:)\s*$/i, '').trimEnd();
 
-/** What a tab says while its database can't be reached. */
-export const UNREACHABLE_MESSAGE = 'Can’t reach the database. Trying again…';
-const RECONNECT_RETRY_FIRST_MS = 2_000;
-const RECONNECT_RETRY_MAX_MS = 30_000;
-// Pending reconnect tries, by session id. Outside the store, so MobX
-// doesn't observe the timers.
-const reconnectRetries = new Map<string, { timer: ReturnType<typeof setTimeout>; delay: number }>();
+/**
+ * How often the open tab tries its database again while it can't be
+ * reached. Only the open tab: switching to another one tries that one at
+ * once (see the activeSessionId reaction).
+ */
+export const UNREACHABLE_RETRY_MS = 10_000;
+// The open tab's retry timer. Outside the store, so MobX doesn't observe it.
+let unreachableRetry: ReturnType<typeof setInterval> | null = null;
 
 export class GlobalStore {
   connecting = false;
@@ -727,6 +728,23 @@ export class GlobalStore {
       () => this.activeSessionId,
       sessionId => {
         this.ensureSessionConnected(sessionId);
+        // A tab whose last build drew nothing, say because the database
+        // was down when it was built, tries again when it's opened.
+        const session = this.sessions[sessionId];
+        if (session?.buildFailed && this.isConnectionLive(session.connectionId)) {
+          session.rebuild();
+        }
+      },
+    );
+    // While the open tab can't reach its database, try again every
+    // UNREACHABLE_RETRY_MS. Nothing runs while it can, or for other tabs.
+    reaction(
+      () => this.sessions[this.activeSessionId]?.databaseUnreachable ?? false,
+      unreachable => {
+        if (unreachableRetry) clearInterval(unreachableRetry);
+        unreachableRetry = unreachable ? setInterval(this.retryActiveDatabase, UNREACHABLE_RETRY_MS) : null;
+        // Node's timers keep a process alive (the tests); a browser's are numbers.
+        (unreachableRetry as { unref?: () => void } | null)?.unref?.();
       },
     );
     reaction(
@@ -1886,9 +1904,7 @@ export class GlobalStore {
         ({ id, version } = await client.useConnection(session.connectionId));
       }
       console.log(`[credentials] ensureSessionConnected(${sessionId}): reconnected -> id=${id}`);
-      reconnectRetries.delete(sessionId);
       runInAction(() => {
-        if (session.message === UNREACHABLE_MESSAGE) session.message = '';
         session.connectionId = id;
         this.assignConnectionColor(id);
         this.liveConnectionIds = Array.from(new Set([...this.liveConnectionIds, id]));
@@ -1924,12 +1940,13 @@ export class GlobalStore {
       if (e instanceof ConnectionError && e.errorType === 'database-unreachable') {
         // The database is down, or not reachable from here yet. Nothing is
         // wrong with the tab or its saved connection, so no alert: the tab
-        // says so, and connecting is tried again while the tab is open.
-        console.log(`[credentials] ensureSessionConnected(${sessionId}): database unreachable, retrying`);
+        // shows the one "can't reach the database" message, and connecting
+        // is tried again while the tab is open.
+        console.log(`[credentials] ensureSessionConnected(${sessionId}): database unreachable`);
+        const reason = e.message;
         runInAction(() => {
-          session.message = UNREACHABLE_MESSAGE;
+          session.unreachable = reason;
         });
-        this.retryReconnect(sessionId);
         return;
       }
       const message = (e as Error)?.message ?? 'Unknown error';
@@ -1953,22 +1970,30 @@ export class GlobalStore {
   };
 
   /**
-   * Tries ensureSessionConnected again, waiting twice as long each time, up
-   * to RECONNECT_RETRY_MAX_MS. Only while the tab is the active one:
-   * switching back to a tab connects it again anyway.
+   * The database `connectionId` answered again. Every tab on it whose last
+   * build drew nothing builds again, so switching to one shows its graph,
+   * not the old error.
    */
-  private retryReconnect = (sessionId: string) => {
-    const previous = reconnectRetries.get(sessionId);
-    if (previous) clearTimeout(previous.timer);
-    const delay = previous ? Math.min(previous.delay * 2, RECONNECT_RETRY_MAX_MS) : RECONNECT_RETRY_FIRST_MS;
-    const timer = setTimeout(() => {
-      if (this.activeSessionId !== sessionId) {
-        reconnectRetries.delete(sessionId);
-        return;
+  databaseReachable = (connectionId: string) => {
+    for (const session of Object.values(this.sessions)) {
+      if (session.connectionId === connectionId && session.buildFailed) {
+        session.rebuild();
       }
-      void this.ensureSessionConnected(sessionId);
-    }, delay);
-    reconnectRetries.set(sessionId, { timer, delay });
+    }
+  };
+
+  /**
+   * Tries the open tab's database again: connects it if it isn't connected,
+   * and builds again if it is.
+   */
+  private retryActiveDatabase = () => {
+    const session = this.sessions[this.activeSessionId];
+    if (!session?.databaseUnreachable) return;
+    if (this.isConnectionLive(session.connectionId)) {
+      session.rebuild();
+    } else {
+      void this.ensureSessionConnected(this.activeSessionId);
+    }
   };
 
   createSessionUsingId = (id: string) => {

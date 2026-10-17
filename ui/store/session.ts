@@ -35,11 +35,6 @@ import { generateGraph, getCandidateIndex, Graph } from './graph.util';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
 import { debounce } from './util';
 
-/** The first wait before building again while the database can't be reached. */
-export const BUILD_RETRY_FIRST_MS = 2_000;
-/** The longest wait between those tries. */
-export const BUILD_RETRY_MAX_MS = 30_000;
-
 // The editor text split into blocks, and which block is the query a build
 // works on: in store/blocks.ts, a module with no imports, so the canvas and
 // values-block helpers can use them without importing this store.
@@ -436,10 +431,9 @@ export class Session {
     // was assigned, so the object read back would never be identical to the
     // one handed to the walk -- which is exactly the bug that left a traversal
     // stuck on "walking" forever. Nothing renders it either.
-    makeAutoObservable<Session, 'traversalSignal' | 'runSignal' | 'buildRetry'>(this, {
+    makeAutoObservable<Session, 'traversalSignal' | 'runSignal'>(this, {
       traversalSignal: false,
       runSignal: false,
-      buildRetry: false,
       // A result is only ever replaced whole (plugin/default.plugin.tsx),
       // never edited in place, so nothing needs to observe inside it. Deep
       // observation wrapped every row of every result in a Proxy on the way
@@ -659,8 +653,15 @@ export class Session {
           const { error, errorType } = handleError(response);
           this.error = error;
           this.errorType = errorType;
+
+          // The database: unreachable, or back.
+          if (errorType === 'database-unreachable' && !response.ast) {
+            this.unreachable = error;
+          } else if (response.ast && this.unreachable) {
+            this.unreachable = null;
+            this.globalStore?.databaseReachable?.(this.connectionId);
+          }
         });
-        this.retryBuildWhileUnreachable(response);
       },
     );
 
@@ -1116,41 +1117,31 @@ export class Session {
   }
 
   /**
-   * Whether the last build couldn't reach the database. Not a problem with
-   * the expression: the build is tried again until the database is back.
+   * Why the database couldn't be reached on the last try, or null. Set by a
+   * build answered with pine-lang's "database-unreachable", or by connecting
+   * failing that way (GlobalStore.ensureSessionConnected). Cleared by the
+   * next build that gets an answer. While set, the tab shows this one
+   * reason, and GlobalStore tries again while the tab is open.
    */
+  unreachable: string | null = null;
+
+  /** Whether the database couldn't be reached on the last try. */
   get databaseUnreachable(): boolean {
-    return this.errorType === 'database-unreachable';
+    return this.unreachable !== null;
   }
 
-  // The build retry while the database can't be reached: the pending timer,
-  // and the wait before the next try. Not observable: nothing renders it.
-  private buildRetry: { timer: ReturnType<typeof setTimeout> | null; delay: number } = {
-    timer: null,
-    delay: BUILD_RETRY_FIRST_MS,
-  };
-
   /**
-   * A build that couldn't reach the database is tried again, waiting twice
-   * as long each time, up to BUILD_RETRY_MAX_MS. Nothing else would rebuild:
-   * the expression hasn't changed. Any build that gets an answer from the
-   * database stops it.
+   * Whether the last build drew nothing, so the canvas has no graph for the
+   * expression: it failed outright (no AST, unlike a parse error), or the
+   * database couldn't be reached. Not before the first build (ast is null).
    */
-  private retryBuildWhileUnreachable(response: Response) {
-    const retry = this.buildRetry;
-    if (retry.timer) clearTimeout(retry.timer);
-    retry.timer = null;
-    if (response['error-type'] !== 'database-unreachable' || response.ast) {
-      retry.delay = BUILD_RETRY_FIRST_MS;
-      return;
-    }
-    retry.timer = setTimeout(() => {
-      retry.timer = null;
-      runInAction(() => {
-        this.hintsRequestedCounter++;
-      });
-    }, retry.delay);
-    retry.delay = Math.min(retry.delay * 2, BUILD_RETRY_MAX_MS);
+  get buildFailed(): boolean {
+    return this.databaseUnreachable || (this.ast === undefined && this.expression.trim() !== '');
+  }
+
+  /** Builds the expression again, as it is. */
+  public rebuild() {
+    this.hintsRequestedCounter++;
   }
 
   public async evaluate(opts?: EvaluateOptions) {
@@ -1174,10 +1165,8 @@ export class Session {
     // A run reaches the database on its own. If the last build didn't, say
     // because the database was down when the tab opened, build again now
     // rather than waiting for the next retry.
-    if (!this.ast || this.databaseUnreachable) {
-      runInAction(() => {
-        this.hintsRequestedCounter++;
-      });
+    if (this.buildFailed) {
+      this.rebuild();
     }
     if (this.openedFromLink && !this.error) {
       runInAction(() => {

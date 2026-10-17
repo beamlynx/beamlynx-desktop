@@ -4,7 +4,8 @@
 // Every request is stubbed: these test the session, not pine-lang.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { Session, BUILD_RETRY_FIRST_MS } = require('../store/session.ts');
+const { Session } = require('../store/session.ts');
+const { GlobalStore } = require('../store/global.store.ts');
 
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
@@ -68,20 +69,31 @@ function newSession() {
   return session;
 }
 
-test('a build that cannot reach the database is tried again, until the database answers', async () => {
+test('a build that cannot reach the database marks the tab, and the next answer clears it', async () => {
   const { state, restore } = stubBuilds([unreachable, built]);
   try {
-    const session = newSession();
+    const reachable = [];
+    const session = new Session('unreachable', {
+      connections: [],
+      accessPolicies: [],
+      databaseReachable: id => reachable.push(id),
+    });
+    session.connectionId = 'db';
     session.expression = 'company';
     await wait(400);
     assert.equal(state.builds, 1);
     assert.equal(session.databaseUnreachable, true);
-    await wait(BUILD_RETRY_FIRST_MS + 400);
+    assert.equal(session.unreachable, unreachable.error);
+    assert.equal(session.buildFailed, true);
+    // Nothing polls on its own: the store asks for the next try.
+    await wait(400);
+    assert.equal(state.builds, 1);
+    session.rebuild();
+    await wait(400);
     assert.equal(state.builds, 2);
     assert.equal(session.databaseUnreachable, false);
-    assert.ok(session.ast);
-    await wait(BUILD_RETRY_FIRST_MS + 400);
-    assert.equal(state.builds, 2, 'no more tries once the database answered');
+    assert.equal(session.buildFailed, false);
+    assert.deepEqual(reachable, ['db'], 'tells the store the database is back');
   } finally {
     restore();
   }
@@ -120,4 +132,47 @@ test('a run builds again when the last build drew nothing', async () => {
   } finally {
     restore();
   }
+});
+
+test('when the database answers, the other stuck tabs on it build again, so switching to one shows its graph', async () => {
+  const { state, restore } = stubBuilds([unreachable]);
+  try {
+    const store = new GlobalStore();
+    const a = store.sessions[store.activeSessionId];
+    store.addTab();
+    const b = store.sessions[store.activeSessionId];
+    store.addTab();
+    const other = store.sessions[store.activeSessionId];
+    for (const [session, connectionId] of [
+      [a, 'db'],
+      [b, 'db'],
+      [other, 'elsewhere'],
+    ]) {
+      session.connectionId = connectionId;
+      session.unreachable = 'Can\u2019t reach the database.';
+    }
+    const rebuilt = [];
+    for (const session of [a, b, other]) session.rebuild = () => rebuilt.push(session.id);
+    store.databaseReachable('db');
+    assert.deepEqual(rebuilt.sort(), [a.id, b.id].sort());
+    assert.equal(state.builds, 0);
+  } finally {
+    restore();
+  }
+});
+
+test('switching to a tab whose last build drew nothing builds it again', () => {
+  const store = new GlobalStore();
+  const a = store.sessions[store.activeSessionId];
+  store.addTab();
+  const b = store.sessions[store.activeSessionId];
+  a.connectionId = 'db';
+  a.unreachable = 'Can’t reach the database.';
+  store.liveConnectionIds = ['db'];
+  let rebuilt = 0;
+  a.rebuild = () => rebuilt++;
+  store.activeSessionId = a.id;
+  assert.equal(rebuilt, 1);
+  store.activeSessionId = b.id;
+  assert.equal(rebuilt, 1);
 });
