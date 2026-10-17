@@ -83,15 +83,13 @@ const TitleBlock = () => (
 );
 
 /**
- * Four squares snapping back onto a grid: put the nodes back where the
- * layout puts them. Straight lines only, like the icons above.
+ * Refresh: a circular arrow, the glyph people know for "start over". The
+ * one curved icon here; a squared loop read as "share" instead.
  */
 const ResetLayout = () => (
   <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden>
-    <rect x="2" y="2" width="5" height="5" stroke="currentColor" strokeWidth="1.4" />
-    <rect x="9" y="2" width="5" height="5" stroke="currentColor" strokeWidth="1.4" />
-    <rect x="2" y="9" width="5" height="5" stroke="currentColor" strokeWidth="1.4" />
-    <rect x="9" y="9" width="5" height="5" stroke="currentColor" strokeWidth="1.4" strokeDasharray="2 1.5" />
+    <path d="M13.5 8 A5.5 5.5 0 1 1 11.9 4.1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    <path d="M12.6 1.4 V4.6 H9.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 
@@ -239,6 +237,16 @@ const CanvasToolbar: React.FC<{ canvasStore: CanvasStore; extraAction?: CanvasTo
         >
           SQL
         </span>
+        {extraAction && (
+          <>
+            <Divider />
+            <span title={extraAction.tooltip} style={iconButtonStyle} onClick={extraAction.onClick}>
+              {extraAction.icon}
+            </span>
+          </>
+        )}
+        {/* Rightmost: it only appears once a node has moved, so it
+            doesn't shift the other buttons along. */}
         {canvasStore.hasMovedNodes && (
           <>
             <Divider />
@@ -249,14 +257,6 @@ const CanvasToolbar: React.FC<{ canvasStore: CanvasStore; extraAction?: CanvasTo
               onClick={() => canvasStore.resetLayout()}
             >
               <ResetLayout />
-            </span>
-          </>
-        )}
-        {extraAction && (
-          <>
-            <Divider />
-            <span title={extraAction.tooltip} style={iconButtonStyle} onClick={extraAction.onClick}>
-              {extraAction.icon}
             </span>
           </>
         )}
