@@ -183,6 +183,9 @@ function openExternalIfSafe(url: string): void {
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
+    // The page has no <title>, so this is the window's name everywhere it
+    // shows: the title bar, the taskbar, Alt-Tab.
+    title: 'Beamlynx',
     width: 1200,
     height: 800,
     // A BrowserWindow shown immediately (Electron's default) paints blank/
@@ -354,7 +357,7 @@ function watchServer(handle: ServerHandle): void {
       title: 'The pine server stopped',
       message: 'The pine server stopped unexpectedly.',
       detail: `Exit code: ${code}, signal: ${signal}\n\n${stderrTail.trim().slice(-2000) || '(nothing was printed)'}`,
-      buttons: ['Restart server', 'Quit beamlynx'],
+      buttons: ['Restart server', 'Quit Beamlynx'],
       defaultId: 0,
       cancelId: 1,
     });
@@ -382,7 +385,7 @@ async function main(): Promise<void> {
   // instead of an uncaught EADDRINUSE. The pine server's port is checked in
   // startServer(), after it has reaped any server a crashed run left behind.
   if (await isPortInUse(CONTROL_PLANE_PORT)) {
-    dialog.showErrorBox("beamlynx can't start", await describePortInUse(CONTROL_PLANE_PORT));
+    dialog.showErrorBox("Beamlynx can't start", await describePortInUse(CONTROL_PLANE_PORT));
     app.quit();
     return;
   }
@@ -409,7 +412,7 @@ async function main(): Promise<void> {
   try {
     serverHandle = await startServer(pineToken);
   } catch (err) {
-    dialog.showErrorBox("beamlynx can't start", err instanceof Error ? err.message : String(err));
+    dialog.showErrorBox("Beamlynx can't start", err instanceof Error ? err.message : String(err));
     app.quit();
     return;
   }
@@ -477,8 +480,8 @@ function runDesktopApp(): void {
     app.whenReady().then(() => {
       dialog.showMessageBoxSync({
         type: 'info',
-        title: 'beamlynx is already running',
-        message: 'beamlynx is already open',
+        title: 'Beamlynx is already running',
+        message: 'Beamlynx is already open',
         detail: 'Switch to its window to keep working.',
         buttons: ['OK'],
       });

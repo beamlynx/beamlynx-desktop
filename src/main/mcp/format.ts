@@ -482,7 +482,7 @@ export function formatConnections(connections: ConnectionRecord[]): string {
   if (!connections.length) {
     return (
       'No connections are enabled for MCP access yet. Ask the user to toggle "Enable for MCP access" on a ' +
-      'connection in beamlynx Settings.'
+      'connection in Beamlynx Settings.'
     );
   }
   return [

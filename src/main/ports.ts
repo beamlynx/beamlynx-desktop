@@ -48,15 +48,15 @@ function isPineServer(port: number): Promise<boolean> {
 export async function describePortInUse(port: number): Promise<string> {
   if (port === CONTROL_PLANE_PORT) {
     return (
-      'Another copy of beamlynx seems to be running already. Close it and open beamlynx again.\n\n' +
-      `(beamlynx needs port ${port}, and something else is using it.)`
+      'Another copy of Beamlynx seems to be running already. Close it and open Beamlynx again.\n\n' +
+      `(Beamlynx needs port ${port}, and something else is using it.)`
     );
   }
   if (await isPineServer(port)) {
     return (
-      `A Pine server is already running on port ${port}. It is probably another copy of beamlynx, ` +
-      'or a server you started yourself, for example with Docker. Close it and open beamlynx again.'
+      `A Pine server is already running on port ${port}. It is probably another copy of Beamlynx, ` +
+      'or a server you started yourself, for example with Docker. Close it and open Beamlynx again.'
     );
   }
-  return `Another program is using port ${port}, which beamlynx needs for its server. Close that program and open beamlynx again.`;
+  return `Another program is using port ${port}, which Beamlynx needs for its server. Close that program and open Beamlynx again.`;
 }

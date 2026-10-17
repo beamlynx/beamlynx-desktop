@@ -62,7 +62,7 @@ function isControlPlaneUp(): Promise<boolean> {
 function controlPlaneToken(): string {
   const info = readControlPlaneInfo(app.getPath('userData'));
   if (!info) {
-    throw new Error('The beamlynx app is running but has not published its control-plane token. Restart beamlynx.');
+    throw new Error('The Beamlynx app is running but has not published its control-plane token. Restart Beamlynx.');
   }
   return info.token;
 }
@@ -144,7 +144,7 @@ async function ensureGuiRunning(): Promise<void> {
     if (await isControlPlaneUp()) return;
     await new Promise(resolve => setTimeout(resolve, GUI_POLL_INTERVAL_MS));
   }
-  throw new Error('Timed out waiting for the beamlynx app to start');
+  throw new Error('Timed out waiting for the Beamlynx app to start');
 }
 
 function textResult(text: string) {
@@ -250,7 +250,7 @@ async function registerTools(server: McpServer): Promise<void> {
     {
       description:
         'List the database connections the user has explicitly enabled for MCP access. ' +
-        'A connection not in this list does not exist as far as this tool is concerned, even if it exists in beamlynx.',
+        'A connection not in this list does not exist as far as this tool is concerned, even if it exists in Beamlynx.',
     },
     async () => {
       try {
@@ -343,7 +343,7 @@ async function registerTools(server: McpServer): Promise<void> {
     {
       description:
         'Run a Pine expression against a connection (must be one returned by list_connections) and return the ' +
-        'rows. Opens or updates a visible tab in the beamlynx app so the user can see what ran. Build the ' +
+        'rows. Opens or updates a visible tab in the Beamlynx app so the user can see what ran. Build the ' +
         'expression with find_tables and complete_query rather than guessing at table or column names. ' +
         'To run SQL, use run_sql_as_pine. Results are capped by the server at 250 rows. ' +
         sayWhy +
@@ -376,7 +376,7 @@ async function registerTools(server: McpServer): Promise<void> {
     {
       description:
         'Run SQL against a connection (must be one returned by list_connections) by converting it to Pine. ' +
-        'Only the Pine runs, exactly as run_query would run it: in a visible tab in the beamlynx app, with the ' +
+        'Only the Pine runs, exactly as run_query would run it: in a visible tab in the Beamlynx app, with the ' +
         'same access policy and no writes. The result starts with the Pine that ran -- read it, since it is how ' +
         'to write the same query with run_query. SQL that Pine can\'t say runs nothing and says why; write that ' +
         'query in Pine with run_query instead. An UPDATE or DELETE converts and is shown in the tab, but is ' +
@@ -444,7 +444,7 @@ async function registerTools(server: McpServer): Promise<void> {
         'Ask the user to reveal the real, unredacted results of a query the connection\'s access policy is ' +
         'currently redacting (shown as "xxxxx" in run_query output). Use this only when a redacted value is ' +
         'blocking something you legitimately need -- not as a default way around the policy. Opens the query in ' +
-        'a real, visible tab in the beamlynx app; the user can edit the expression, reveal the real results, or ' +
+        'a real, visible tab in the Beamlynx app; the user can edit the expression, reveal the real results, or ' +
         'decline (optionally explaining why). Returns immediately with a request id -- the user has not ' +
         'responded yet. Call check_reveal with that id to wait for what they decide.',
       inputSchema: {

@@ -157,7 +157,7 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
 
         const mainWindow = options.getMainWindow();
         if (!mainWindow) {
-          return sendJson(res, 503, { error: 'The beamlynx window is not available yet' });
+          return sendJson(res, 503, { error: 'The Beamlynx window is not available yet' });
         }
 
         const kind = req.url === '/explain' ? 'build' : 'eval';
@@ -189,7 +189,7 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
 
         const mainWindow = options.getMainWindow();
         if (!mainWindow) {
-          return sendJson(res, 503, { error: 'The beamlynx window is not available yet' });
+          return sendJson(res, 503, { error: 'The Beamlynx window is not available yet' });
         }
 
         if (countPendingRevealRequests(profileId) >= MAX_PENDING_REVEALS_PER_CONNECTION) {
@@ -256,8 +256,8 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
     console.error('[control-plane] server error:', err);
     dialog.showErrorBox(
       'AI agent access is unavailable',
-      `beamlynx couldn't start the local server AI agents connect through (port ${options.port}): ${err.message}\n\n` +
-        'Everything else works. Close other copies of beamlynx and open it again to use agents.',
+      `Beamlynx couldn't start the local server AI agents connect through (port ${options.port}): ${err.message}\n\n` +
+        'Everything else works. Close other copies of Beamlynx and open it again to use agents.',
     );
   });
   server.listen(options.port, '127.0.0.1');

@@ -1,4 +1,9 @@
 appId: com.beamlynx.desktop
+# Lowercase on purpose: productName names the files and folders, like
+# beamlynx.app, beamlynx.AppImage, /opt/beamlynx and the download names the
+# Homebrew cask and AI agents' MCP settings point at. The name people see
+# is set per platform below (CFBundleName, the .desktop entry, the Windows
+# shortcuts), as "Beamlynx".
 productName: beamlynx
 directories:
   output: release
@@ -69,6 +74,9 @@ linux:
     - AppImage
     - deb
   category: Development
+  desktop:
+    entry:
+      Name: Beamlynx
 
 # electron-updater's Linux AppImage updater replaces the running file
 # in-place with the new version -- and specifically preserves the original
@@ -98,8 +106,17 @@ mac:
     - dmg
     - zip
   category: public.app-category.developer-tools
+  # The menu bar, the Dock, About and the app switcher read these.
+  extendInfo:
+    CFBundleName: Beamlynx
+    CFBundleDisplayName: Beamlynx
 
 win:
   icon: icons/icon.ico
   target:
     - nsis
+
+# The Start menu and desktop shortcuts, and Apps & features.
+nsis:
+  shortcutName: Beamlynx
+  uninstallDisplayName: Beamlynx
