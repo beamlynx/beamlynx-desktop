@@ -1,6 +1,15 @@
 import { makeAutoObservable, reaction, runInAction } from 'mobx';
 import { lt } from 'semver';
-import { AccessPolicy, AccessPolicyRule, HttpClient, ConnectionInfo, effectiveAccessPolicyRules, ServerRejectedError, VariableValue } from './client';
+import {
+  AccessPolicy,
+  AccessPolicyRule,
+  HttpClient,
+  ConnectionError,
+  ConnectionInfo,
+  effectiveAccessPolicyRules,
+  ServerRejectedError,
+  VariableValue,
+} from './client';
 import type { CredentialsStatus, RevealOutcome } from '../desktop';
 import type { DbType } from '../utils/dbType';
 import { Session, Theme, InputMode } from './session';
@@ -136,6 +145,14 @@ export type TabOrientation = 'horizontal' | 'vertical';
  */
 export const stripRemovedDeleteOperation = (expression: string): string =>
   expression.replace(/\|\s*(?:delete:|d:)\s*$/i, '').trimEnd();
+
+/** What a tab says while its database can't be reached. */
+export const UNREACHABLE_MESSAGE = 'Can’t reach the database. Trying again…';
+const RECONNECT_RETRY_FIRST_MS = 2_000;
+const RECONNECT_RETRY_MAX_MS = 30_000;
+// Pending reconnect tries, by session id. Outside the store, so MobX
+// doesn't observe the timers.
+const reconnectRetries = new Map<string, { timer: ReturnType<typeof setTimeout>; delay: number }>();
 
 export class GlobalStore {
   connecting = false;
@@ -1869,7 +1886,9 @@ export class GlobalStore {
         ({ id, version } = await client.useConnection(session.connectionId));
       }
       console.log(`[credentials] ensureSessionConnected(${sessionId}): reconnected -> id=${id}`);
+      reconnectRetries.delete(sessionId);
       runInAction(() => {
+        if (session.message === UNREACHABLE_MESSAGE) session.message = '';
         session.connectionId = id;
         this.assignConnectionColor(id);
         this.liveConnectionIds = Array.from(new Set([...this.liveConnectionIds, id]));
@@ -1902,6 +1921,17 @@ export class GlobalStore {
         });
         return;
       }
+      if (e instanceof ConnectionError && e.errorType === 'database-unreachable') {
+        // The database is down, or not reachable from here yet. Nothing is
+        // wrong with the tab or its saved connection, so no alert: the tab
+        // says so, and connecting is tried again while the tab is open.
+        console.log(`[credentials] ensureSessionConnected(${sessionId}): database unreachable, retrying`);
+        runInAction(() => {
+          session.message = UNREACHABLE_MESSAGE;
+        });
+        this.retryReconnect(sessionId);
+        return;
+      }
       const message = (e as Error)?.message ?? 'Unknown error';
       console.error(`[credentials] ensureSessionConnected(${sessionId}): failed ->`, e);
       runInAction(() => {
@@ -1920,6 +1950,25 @@ export class GlobalStore {
         session.connecting = false;
       });
     }
+  };
+
+  /**
+   * Tries ensureSessionConnected again, waiting twice as long each time, up
+   * to RECONNECT_RETRY_MAX_MS. Only while the tab is the active one:
+   * switching back to a tab connects it again anyway.
+   */
+  private retryReconnect = (sessionId: string) => {
+    const previous = reconnectRetries.get(sessionId);
+    if (previous) clearTimeout(previous.timer);
+    const delay = previous ? Math.min(previous.delay * 2, RECONNECT_RETRY_MAX_MS) : RECONNECT_RETRY_FIRST_MS;
+    const timer = setTimeout(() => {
+      if (this.activeSessionId !== sessionId) {
+        reconnectRetries.delete(sessionId);
+        return;
+      }
+      void this.ensureSessionConnected(sessionId);
+    }, delay);
+    reconnectRetries.set(sessionId, { timer, delay });
   };
 
   createSessionUsingId = (id: string) => {

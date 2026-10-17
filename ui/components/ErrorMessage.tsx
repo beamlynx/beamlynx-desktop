@@ -20,7 +20,9 @@ interface ErrorMessageProps {
  * A parse error is shown without the 🚨: it comes back with a caret line
  * pointing at the offending character, and a prefix would shift the text
  * out from under it. A query stopped on purpose ("Query stopped.") is shown
- * without it too, and not in the error colour.
+ * without it too, and not in the error colour. So is a database that
+ * can't be reached: the build is tried again until it's back (see
+ * Session.retryBuildWhileUnreachable), and Run works again once it is.
  */
 const ErrorMessage = observer(({ sessionId }: ErrorMessageProps) => {
   const { global } = useStores();
@@ -33,6 +35,8 @@ const ErrorMessage = observer(({ sessionId }: ErrorMessageProps) => {
   const isParseError = session.errorType === 'parse';
   // Stopped with Stop or Escape: what the person asked for, not a failure.
   const isStopped = session.evalErrorType === 'cancelled';
+  const isUnreachable = session.databaseUnreachable || session.evalErrorType === 'database-unreachable';
+  const calm = isStopped || isUnreachable;
 
   // Padding, not margin. The band's height is measured from this subtree
   // (CollapsibleHeight -> useCollapseHeight), and a margin here collapses
@@ -81,10 +85,11 @@ const ErrorMessage = observer(({ sessionId }: ErrorMessageProps) => {
           '&::-webkit-scrollbar-thumb:hover': {
             background: 'var(--text-color)',
           },
-          color: isStopped ? 'text.secondary' : 'error.main',
+          color: calm ? 'text.secondary' : 'error.main',
         }}
       >
-        {isParseError || isStopped ? session.error : `🚨 ${session.error}`}
+        {isParseError || calm ? session.error : `🚨 ${session.error}`}
+        {session.databaseUnreachable && '\nTrying again…'}
       </Typography>
     </Box>
   );

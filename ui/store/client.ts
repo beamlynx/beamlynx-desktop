@@ -500,6 +500,20 @@ export const deleteOp = (columns: string[]): string =>
  * and the server came from different launches, or the UI is too old for the
  * server.
  */
+/**
+ * Connecting failed. errorType is pine-lang's `error-type`, like
+ * "database-unreachable" when the database didn't answer.
+ */
+export class ConnectionError extends Error {
+  constructor(
+    message: string,
+    readonly errorType?: string,
+  ) {
+    super(message);
+    this.name = 'ConnectionError';
+  }
+}
+
 export class ServerRejectedError extends Error {
   constructor() {
     super("The Pine server refused this app's requests: it requires a launch token this app didn't send. Restart beamlynx.");
@@ -899,7 +913,7 @@ export class HttpClient {
       throw new Error('No response when trying to create connection');
     }
     if (response.error) {
-      throw new Error(response.error);
+      throw new ConnectionError(response.error, response['error-type']);
     }
     return response['connection-id'] as string;
   }
@@ -913,7 +927,7 @@ export class HttpClient {
       throw new Error('No response when trying to test connection');
     }
     if (response.error) {
-      throw new Error(response.error);
+      throw new ConnectionError(response.error, response['error-type']);
     }
     return { id: response['connection-id'], version: response.version };
   }

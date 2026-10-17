@@ -35,6 +35,11 @@ import { generateGraph, getCandidateIndex, Graph } from './graph.util';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
 import { debounce } from './util';
 
+/** The first wait before building again while the database can't be reached. */
+export const BUILD_RETRY_FIRST_MS = 2_000;
+/** The longest wait between those tries. */
+export const BUILD_RETRY_MAX_MS = 30_000;
+
 // The editor text split into blocks, and which block is the query a build
 // works on: in store/blocks.ts, a module with no imports, so the canvas and
 // values-block helpers can use them without importing this store.
@@ -431,9 +436,10 @@ export class Session {
     // was assigned, so the object read back would never be identical to the
     // one handed to the walk -- which is exactly the bug that left a traversal
     // stuck on "walking" forever. Nothing renders it either.
-    makeAutoObservable<Session, 'traversalSignal' | 'runSignal'>(this, {
+    makeAutoObservable<Session, 'traversalSignal' | 'runSignal' | 'buildRetry'>(this, {
       traversalSignal: false,
       runSignal: false,
+      buildRetry: false,
       // A result is only ever replaced whole (plugin/default.plugin.tsx),
       // never edited in place, so nothing needs to observe inside it. Deep
       // observation wrapped every row of every result in a Proxy on the way
@@ -568,11 +574,13 @@ export class Session {
           );
           runInAction(() => {
             this.response = response;
-            // A build refused because the tab's connection isn't back yet
-            // built nothing. Recording its cursor would make requestHints
-            // skip the rebuild that runs once the connection is up, and the
-            // refusal would stay on screen.
-            if (response?.['error-type'] !== 'no-connection') {
+            // Only a build that produced an AST has fresh hints for this
+            // cursor. A parse error still has one. A build that failed
+            // outright, because the connection isn't back yet or the
+            // database can't be reached, built nothing: recording its
+            // cursor would make requestHints skip the rebuild that runs once
+            // the database is back, and the canvas would stay stuck.
+            if (response?.ast) {
               this.lastHintsCursorPosition = cursor;
             }
           });
@@ -652,6 +660,7 @@ export class Session {
           this.error = error;
           this.errorType = errorType;
         });
+        this.retryBuildWhileUnreachable(response);
       },
     );
 
@@ -1106,6 +1115,44 @@ export class Session {
     }
   }
 
+  /**
+   * Whether the last build couldn't reach the database. Not a problem with
+   * the expression: the build is tried again until the database is back.
+   */
+  get databaseUnreachable(): boolean {
+    return this.errorType === 'database-unreachable';
+  }
+
+  // The build retry while the database can't be reached: the pending timer,
+  // and the wait before the next try. Not observable: nothing renders it.
+  private buildRetry: { timer: ReturnType<typeof setTimeout> | null; delay: number } = {
+    timer: null,
+    delay: BUILD_RETRY_FIRST_MS,
+  };
+
+  /**
+   * A build that couldn't reach the database is tried again, waiting twice
+   * as long each time, up to BUILD_RETRY_MAX_MS. Nothing else would rebuild:
+   * the expression hasn't changed. Any build that gets an answer from the
+   * database stops it.
+   */
+  private retryBuildWhileUnreachable(response: Response) {
+    const retry = this.buildRetry;
+    if (retry.timer) clearTimeout(retry.timer);
+    retry.timer = null;
+    if (response['error-type'] !== 'database-unreachable' || response.ast) {
+      retry.delay = BUILD_RETRY_FIRST_MS;
+      return;
+    }
+    retry.timer = setTimeout(() => {
+      retry.timer = null;
+      runInAction(() => {
+        this.hintsRequestedCounter++;
+      });
+    }, retry.delay);
+    retry.delay = Math.min(retry.delay * 2, BUILD_RETRY_MAX_MS);
+  }
+
   public async evaluate(opts?: EvaluateOptions) {
     // An agent's tab never writes, whoever asked it to. runMcpQuery already
     // passes allowWrites: false, so for the MCP tab this is not what stops an
@@ -1124,6 +1171,14 @@ export class Session {
       ? { ...opts, allowWrites: false }
       : opts;
     const result = await this.plugins.default.evaluate(effectiveOpts);
+    // A run reaches the database on its own. If the last build didn't, say
+    // because the database was down when the tab opened, build again now
+    // rather than waiting for the next retry.
+    if (!this.ast || this.databaseUnreachable) {
+      runInAction(() => {
+        this.hintsRequestedCounter++;
+      });
+    }
     if (this.openedFromLink && !this.error) {
       runInAction(() => {
         this.openedFromLink = false;
