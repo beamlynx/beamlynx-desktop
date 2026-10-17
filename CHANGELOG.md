@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- **Arch Linux package.** The app is on the AUR as `beamlynx-bin`, and starts with the `beamlynx` command. The release checklist now updates it on every release.
 
 ## [0.20.0] - 2026-10-17
 ### Added
