@@ -35,7 +35,7 @@ export function getAppDb(): AppDb {
         openFailure = reason;
         console.error(`[app-db] couldn't open ${getAppDbPath()}: ${reason}`);
       }
-      throw new Error(`beamlynx couldn't open its data file (${getAppDbPath()}): ${reason}`);
+      throw new Error(`Beamlynx couldn't open its data file (${getAppDbPath()}): ${reason}`);
     }
     openFailure = null;
     console.log(`[app-db] opened ${getAppDbPath()}`);
