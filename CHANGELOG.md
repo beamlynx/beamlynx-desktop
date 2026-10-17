@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- **Access policy: hide rules.** A policy can now hide columns as well as show them. A hide rule wins over every show rule. Rules can name a column by what its name contains, ends with or equals, or name one exact column of one table. Every rule has an id, so a policy can hold any number of them. New IPC calls add, remove and switch one rule, and put a policy's rules back for Undo: `access-policy:add-rule`, `access-policy:remove-rule`, `access-policy:set-rule-enabled` and `access-policy:set-rules`. They replace `access-policy:set-module-enabled`.
+
+### Changed
+- **Every policy now hides columns whose name contains `token`, `password` or `secret`.** New policies start with these hide rules, and existing policies get them once, switched on. This only hides more from agents. Switch them off or remove them under Settings → Access Policy.
 
 ## [0.20.0] - 2026-10-17
 ### Added

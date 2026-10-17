@@ -93,7 +93,7 @@ function sendJson(res: http.ServerResponse, status: number, body: unknown): void
 // was never opted in to MCP at all, but 'no-active-policy' means it WAS
 // properly set up -- mcpEnabled with a real, *named* policy assigned -- and
 // that policy's last active rule was disabled afterward (see
-// credential-store.ts's setAccessPolicyModuleEnabled, which deliberately
+// credential-store.ts's setAccessPolicyRuleEnabled, which deliberately
 // doesn't guard against this at the rule-toggle level). This status never
 // fires for a connection whose policyId is null -- that's the deliberate
 // "None" choice (unrestricted access, e.g. a local/sandbox DB), not a drift

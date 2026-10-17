@@ -10,26 +10,34 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getSharedDataDir } from './data-dir';
 
-// Mirrors pine-lang's pine.access-policy rule shape 1:1 -- these travel
-// verbatim (minus `enabled`, stripped in effectiveAccessPolicyRules -- see
-// beamlynx-ui's client.ts) as the `access-policy` param on pine-lang's
-// /api/v1/build and /api/v1/eval. pine-lang carries no policy content of
-// its own; this is the only place it lives. Deliberately a closed set of
-// `type`s for now, but the shape is exactly what the Access Policy settings
-// section reads and writes -- adding a rule type later is a new union
-// member, a new row in that section, and a new pine.access-policy `case`
-// branch, not a reshape.
-export type AccessPolicyRule =
+// Mirrors pine-lang's pine.access-policy rule shape 1:1 (see its
+// docs/access-policy.md) -- these travel verbatim (minus `id`, `enabled` and
+// `builtIn`, stripped in beamlynx-ui's client.ts effectiveAccessPolicy) as
+// the `access-policy` param on pine-lang's /api/v1/build and /api/v1/eval.
+// pine-lang carries no policy content of its own; this is the only place it
+// lives.
+//
+// A matcher names some columns. On its own it is a show rule. Wrapped in a
+// `hide` rule it hides what it names, whatever any show rule says. Hiding is
+// a rule type of its own, not a flag on a matcher: an older pine-lang
+// ignores fields it doesn't know, and would read a flagged matcher as a
+// show rule.
+export type ColumnMatcher =
   | { type: 'column-type'; allow: string[] } // real Postgres type is in `allow`
   | { type: 'foreign-key' } // column is a source column of a detected FK/heuristic relation
-  | { type: 'column-name'; suffix: string }; // column name ends with `suffix` -- weaker, opt-in
+  // Column name ends with, contains, or equals a text, ignoring case. One of the three.
+  | { type: 'column-name'; suffix?: string; contains?: string; equals?: string }
+  // One column of one table. No schema matches the table in any schema.
+  | { type: 'column'; schema?: string | null; table: string; column: string };
 
-// One module of a named policy: a rule plus whether it's currently on. The
-// array actually sent to pine-lang is `policy.rules.filter(m => m.enabled)`
-// with `enabled` stripped (see beamlynx-ui's client.ts
-// effectiveAccessPolicyRules) -- pine-lang never sees this flag, it only
-// sees rules that are already active.
-export type AccessPolicyModule = AccessPolicyRule & { enabled: boolean };
+export type AccessPolicyRule = ColumnMatcher | { type: 'hide'; match: ColumnMatcher };
+
+// One rule of a named policy, as stored: the rule, an id to address it by,
+// and whether it's currently on. A built-in rule is one every policy starts
+// with; it can be switched off but not removed, since there's no form to
+// add it back. pine-lang never sees these three fields, only the rules that
+// are on.
+export type AccessPolicyModule = AccessPolicyRule & { id: string; enabled: boolean; builtIn?: boolean };
 
 // A named, user-creatable set of rule modules -- there can be several (see
 // AccessPolicySection.tsx), and each connection independently selects which
@@ -40,16 +48,11 @@ export type AccessPolicy = {
   rules: AccessPolicyModule[];
 };
 
-// The starting rule set for both the one policy seeded on first run
-// ("Default") and any policy created afterward (createAccessPolicy) -- the
-// same values pine-lang's access-policy POC originally hardcoded, now
-// living here as data instead. Not a global default in any other sense:
-// once seeded/created, a policy's rules are independently editable and
-// this constant is never consulted again for it.
-export const DEFAULT_ACCESS_POLICY: AccessPolicyModule[] = [
+// The show rules every policy starts with -- the same values pine-lang's
+// access-policy POC originally hardcoded, now living here as data instead.
+const BUILT_IN_SHOW_RULES: AccessPolicyRule[] = [
   {
     type: 'column-type',
-    enabled: true,
     allow: [
       'uuid',
       'boolean',
@@ -78,11 +81,29 @@ export const DEFAULT_ACCESS_POLICY: AccessPolicyModule[] = [
       'USER-DEFINED',
     ],
   },
-  { type: 'foreign-key', enabled: true },
-  { type: 'column-name', suffix: '_id', enabled: true },
+  { type: 'foreign-key' },
+  { type: 'column-name', suffix: '_id' },
 ];
 
-function makeDefaultPolicy(rules: AccessPolicyModule[] = DEFAULT_ACCESS_POLICY): AccessPolicy {
+// The hide rules every policy starts with. Ordinary rules, unlike the
+// built-in show rules: they can be removed, and added back by hand. A uuid
+// or integer column called `reset_token` would otherwise be shown by type.
+const STARTER_HIDE_RULES: AccessPolicyRule[] = ['token', 'password', 'secret'].map(word => ({
+  type: 'hide',
+  match: { type: 'column-name', contains: word },
+}));
+
+// The starting rules for both the policy seeded on first run ("Default")
+// and any policy created afterward (createAccessPolicy). A fresh copy with
+// fresh ids each time: once created, a policy's rules are its own.
+export function defaultAccessPolicyRules(): AccessPolicyModule[] {
+  return [
+    ...STARTER_HIDE_RULES.map(rule => ({ ...structuredClone(rule), id: randomUUID(), enabled: true })),
+    ...BUILT_IN_SHOW_RULES.map(rule => ({ ...structuredClone(rule), id: randomUUID(), enabled: true, builtIn: true })),
+  ];
+}
+
+function makeDefaultPolicy(rules: AccessPolicyModule[] = defaultAccessPolicyRules()): AccessPolicy {
   return { id: randomUUID(), name: 'Default', rules };
 }
 
@@ -148,7 +169,7 @@ export type SavedConnectionMeta = {
 
 type StoredConnectionRecord = SavedConnectionMeta & { dbPasswordEncrypted: string };
 
-type StoreFile = { version: 1; connections: StoredConnectionRecord[]; accessPolicies: AccessPolicy[] };
+type StoreFile = { version: 2; connections: StoredConnectionRecord[]; accessPolicies: AccessPolicy[] };
 
 export type CredentialsStatus = {
   persistenceAvailable: boolean;
@@ -210,7 +231,7 @@ function getStorePath(): string {
 }
 
 function emptyStore(): StoreFile {
-  return { version: 1, connections: [], accessPolicies: [makeDefaultPolicy()] };
+  return { version: 2, connections: [], accessPolicies: [makeDefaultPolicy()] };
 }
 
 // A corrupt or missing file must never block app boot -- default to empty
@@ -237,7 +258,7 @@ function readStore(): StoreFile {
       return emptyStore();
     }
     if (!Array.isArray(parsed.accessPolicies)) {
-      const migratedRules = Array.isArray(parsed.accessPolicy) ? parsed.accessPolicy : DEFAULT_ACCESS_POLICY;
+      const migratedRules = Array.isArray(parsed.accessPolicy) ? parsed.accessPolicy : BUILT_IN_SHOW_RULES;
       const defaultPolicy = makeDefaultPolicy(migratedRules);
       parsed.accessPolicies = [defaultPolicy];
       delete parsed.accessPolicy;
@@ -248,10 +269,34 @@ function readStore(): StoreFile {
       });
       writeStore(parsed as StoreFile);
     }
+    if (parsed.version !== 2) {
+      migrateToRuleIds(parsed);
+      writeStore(parsed as StoreFile);
+    }
     return parsed as StoreFile;
   } catch {
     return emptyStore();
   }
+}
+
+// Version 1 stored at most one rule of each type per policy, addressed by
+// its type, and had no hide rules. Version 2 gives every rule an id, marks
+// the three show rules every policy started with as built-in, and adds the
+// starter hide rules to every policy, switched on. That only hides more
+// from agents, never less. It runs once: removing a starter rule later
+// sticks.
+function migrateToRuleIds(parsed: { version?: number; accessPolicies: { rules: Record<string, unknown>[] }[] }): void {
+  for (const policy of parsed.accessPolicies) {
+    const rules = (Array.isArray(policy.rules) ? policy.rules : []).map(rule => ({
+      ...rule,
+      id: typeof rule.id === 'string' ? rule.id : randomUUID(),
+      enabled: rule.enabled !== false,
+      builtIn: rule.type !== 'hide' && rule.type !== 'column',
+    }));
+    const hides = STARTER_HIDE_RULES.map(rule => ({ ...structuredClone(rule), id: randomUUID(), enabled: true }));
+    policy.rules = [...hides, ...rules];
+  }
+  parsed.version = 2;
 }
 
 // Write-to-temp-then-rename is atomic on POSIX and NTFS, so a hard kill
@@ -514,10 +559,7 @@ export function createAccessPolicy(name: string): AccessPolicy {
   const policy: AccessPolicy = {
     id: randomUUID(),
     name: name.trim() || 'Untitled policy',
-    // A fresh copy of the same starting rules the seeded Default policy
-    // gets -- independently editable from that point on, not a live
-    // reference to any shared default.
-    rules: DEFAULT_ACCESS_POLICY.map(m => ({ ...m })),
+    rules: defaultAccessPolicyRules(),
   };
   store.accessPolicies.push(policy);
   writeStore(store);
@@ -559,11 +601,64 @@ export function deleteAccessPolicy(id: string): void {
   console.log(`[credentials] deleteAccessPolicy: id=${id}`);
 }
 
-// `type` identifies which module within the policy -- column-name is the
-// only rule with a second discriminating field (suffix), and there's
-// exactly one of each type per policy, so `type` alone is a stable enough
-// key for this small, fixed module set.
-//
+// The rule itself, without the fields only this store uses.
+function ruleOf(module: AccessPolicyModule): AccessPolicyRule {
+  const { id: _id, enabled: _enabled, builtIn: _builtIn, ...rule } = module;
+  return rule as AccessPolicyRule;
+}
+
+// The exact column a `column` rule names, show or hide, as a comparable key.
+function exactColumnKey(rule: AccessPolicyRule): string | null {
+  const matcher = rule.type === 'hide' ? rule.match : rule;
+  if (matcher?.type !== 'column') return null;
+  return JSON.stringify([matcher.schema ?? null, matcher.table, matcher.column]);
+}
+
+function updatePolicyRules(
+  policyId: string,
+  change: (rules: AccessPolicyModule[]) => AccessPolicyModule[],
+  log: string,
+): AccessPolicy | null {
+  const store = readStore();
+  const index = store.accessPolicies.findIndex(p => p.id === policyId);
+  if (index < 0) return null;
+  store.accessPolicies[index] = { ...store.accessPolicies[index], rules: change(store.accessPolicies[index].rules) };
+  writeStore(store);
+  console.log(`[credentials] ${log}: policyId=${policyId}`);
+  return store.accessPolicies[index];
+}
+
+// Adds a rule, switched on. A rule the policy already has, switched off or
+// on, is switched on instead of added twice. A rule for one exact column
+// replaces any other rule for that same column, so a column never has both
+// a show and a hide rule of its own -- the results grid's "Show to agents"
+// and "Hide from agents" each just write theirs.
+export function addAccessPolicyRule(policyId: string, rule: AccessPolicyRule): AccessPolicy | null {
+  const key = JSON.stringify(rule);
+  const column = exactColumnKey(rule);
+  return updatePolicyRules(
+    policyId,
+    rules => {
+      const existing = rules.find(m => JSON.stringify(ruleOf(m)) === key);
+      if (existing) return rules.map(m => (m === existing ? { ...m, enabled: true } : m));
+      const kept = column ? rules.filter(m => exactColumnKey(ruleOf(m)) !== column) : rules;
+      const added: AccessPolicyModule = { ...structuredClone(rule), id: randomUUID(), enabled: true };
+      // Hide rules first, as the settings list them: they're checked first.
+      return rule.type === 'hide' ? [added, ...kept] : [...kept, added];
+    },
+    'addAccessPolicyRule',
+  );
+}
+
+// A built-in rule can't be removed, only switched off.
+export function removeAccessPolicyRule(policyId: string, ruleId: string): AccessPolicy | null {
+  return updatePolicyRules(
+    policyId,
+    rules => rules.filter(m => m.id !== ruleId || m.builtIn),
+    `removeAccessPolicyRule ruleId=${ruleId}`,
+  );
+}
+
 // Deliberately does NOT check whether disabling the last active rule here
 // would strand an mcpEnabled connection pointing at this policy -- coupling
 // a rule toggle to every connection that happens to use its policy would be
@@ -571,19 +666,28 @@ export function deleteAccessPolicy(id: string): void {
 // is real (a policy can go inactive out from under an already-enabled
 // connection this way) but is caught at actual MCP call time instead -- see
 // getMcpAccessStatus, used by control-plane-server.ts's assertWhitelisted.
-export function setAccessPolicyModuleEnabled(
-  policyId: string,
-  type: AccessPolicyRule['type'],
-  enabled: boolean,
-): AccessPolicy | null {
-  const store = readStore();
-  const index = store.accessPolicies.findIndex(p => p.id === policyId);
-  if (index < 0) return null;
-  const rules = store.accessPolicies[index].rules.map(m => (m.type === type ? { ...m, enabled } : m));
-  store.accessPolicies[index] = { ...store.accessPolicies[index], rules };
-  writeStore(store);
-  console.log(`[credentials] setAccessPolicyModuleEnabled: policyId=${policyId} type=${type} enabled=${enabled}`);
-  return store.accessPolicies[index];
+export function setAccessPolicyRuleEnabled(policyId: string, ruleId: string, enabled: boolean): AccessPolicy | null {
+  return updatePolicyRules(
+    policyId,
+    rules => rules.map(m => (m.id === ruleId ? { ...m, enabled } : m)),
+    `setAccessPolicyRuleEnabled ruleId=${ruleId} enabled=${enabled}`,
+  );
+}
+
+// Puts back a policy's rules exactly as they were: the Undo of a change made
+// from the results grid. Keeps the built-in rules whatever is passed, so
+// undo can't lose one.
+export function setAccessPolicyRules(policyId: string, rules: AccessPolicyModule[]): AccessPolicy | null {
+  if (!Array.isArray(rules)) return null;
+  return updatePolicyRules(
+    policyId,
+    current => {
+      const restored = rules.filter(m => m && typeof m.id === 'string' && typeof m.type === 'string');
+      const missing = current.filter(m => m.builtIn && !restored.some(r => r.id === m.id));
+      return [...restored, ...missing];
+    },
+    'setAccessPolicyRules',
+  );
 }
 
 // A blank/whitespace-only label is a no-op rather than an error -- there's no
@@ -626,7 +730,7 @@ export type McpAccessStatus = 'ok' | 'not-found' | 'not-enabled' | 'no-active-po
 // tool call with a precise, distinct reason, rather than folding every
 // failure into one generic "not enabled for MCP access" message -- a
 // connection that WAS properly set up for MCP but whose policy later lost
-// its last active rule (see setAccessPolicyModuleEnabled's own comment on
+// its last active rule (see setAccessPolicyRuleEnabled's own comment on
 // why that isn't prevented at the rule-toggle level) needs a different,
 // clearer error than one that was simply never opted in to MCP at all.
 export function getMcpAccessStatus(id: string): McpAccessStatus {
@@ -676,9 +780,16 @@ export function registerCredentialIpc(): void {
   ipcMain.handle('access-policy:create', (_event, name: string) => createAccessPolicy(name));
   ipcMain.handle('access-policy:rename', (_event, id: string, name: string) => renameAccessPolicy(id, name));
   ipcMain.handle('access-policy:delete', (_event, id: string) => deleteAccessPolicy(id));
-  ipcMain.handle(
-    'access-policy:set-module-enabled',
-    (_event, policyId: string, type: AccessPolicyRule['type'], enabled: boolean) =>
-      setAccessPolicyModuleEnabled(policyId, type, enabled),
+  ipcMain.handle('access-policy:add-rule', (_event, policyId: string, rule: AccessPolicyRule) =>
+    addAccessPolicyRule(policyId, rule),
+  );
+  ipcMain.handle('access-policy:remove-rule', (_event, policyId: string, ruleId: string) =>
+    removeAccessPolicyRule(policyId, ruleId),
+  );
+  ipcMain.handle('access-policy:set-rule-enabled', (_event, policyId: string, ruleId: string, enabled: boolean) =>
+    setAccessPolicyRuleEnabled(policyId, ruleId, enabled),
+  );
+  ipcMain.handle('access-policy:set-rules', (_event, policyId: string, rules: AccessPolicyModule[]) =>
+    setAccessPolicyRules(policyId, rules),
   );
 }
