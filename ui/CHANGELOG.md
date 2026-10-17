@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.66.0] - 2026-10-17
+### Breaking
+- Needs pine-lang 0.49.0 or later (was 0.48.0). The canvas's checkpoints, `limit: N per`, groups written with `with`, SQL to Pine, JSON paths and the database-down message all need it. Connecting to an older server shows the upgrade-required screen.
+- A cell edit finds its row by the table's primary key, not by a column called `id`. Tables keyed on another column, or on several columns, can now be edited from the grid. Tables and views without a primary key can't be edited, even when they have an `id` column, and the grid says why. Primary key columns can't be edited. Needs pine-lang after 0.48.1, which marks each primary key column in the result.
+
 ### Added
 - **See what an AI agent is doing, as it does it.** In the desktop app, the robot icon in the header appears with the agent's first call of any kind, not only its first query. While the agent works, the robot pulses, here and on the agent's tab. It keeps pulsing for 20 seconds after each call, while the agent thinks about its next one. Its tooltip says what the agent is doing, like "Searching for tables like \"order\"". Clicking it opens the agent's activity log: every call, newest first, with its time and how long it took. Click a call to see what the agent sent, like its SQL or Pine, and how it went. Buttons there open the agent's tab, or a pending approval. Clicking the robot used to jump straight to the agent's tab. Needs a desktop app that reports the calls (beamlynx-desktop after 0.19.0); with an older one, nothing changes.
 - **Reset the canvas layout.** Once you have dragged a node or a strip chip, the canvas toolbar shows a refresh icon at its right end. Clicking it puts every node back where the layout places it. Dragged positions are kept in memory only, so reloading also resets them.
@@ -28,7 +34,6 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - Deleting through a traversal removes a table with more than 10 000 matching rows in batches of 10 000, because pine-lang now accepts `limit:` only up to 10 000. Each table still loses no more rows than were counted in the plan. The copyable SQL script uses the same limit and says to repeat a statement that has more rows.
 - The canvas no longer makes up a checkpoint's name (`agg`, `agg2`, ...). When a gesture needs the name in the text, it writes the one pine-lang already gives the checkpoint, like `|= result_1`.
 - The canvas reads each `where:` condition from pine-lang as a map with `alias`, `column`, `cast`, `operator` and `value`, not as a list read by position. With an older pine-lang, where chips don't show. Needs pine-lang after 0.48.1.
-- **Breaking:** a cell edit finds its row by the table's primary key, not by a column called `id`. Tables keyed on another column, or on several columns, can now be edited from the grid. Tables and views without a primary key can't be edited, even when they have an `id` column, and the grid says why. Primary key columns can't be edited. Needs pine-lang after 0.48.1, which marks each primary key column in the result.
 - The canvas reads named results from `/build`'s `named-results`, which pine-lang renamed from `variables`. With an older pine-lang, the canvas no longer recognises a named result used as a table. Needs pine-lang after 0.48.1.
 - A `beamlynx://run` link opens a tab with the expression but no longer runs it. A banner names the connection it would run on. Check both and press Run. Any web page or message can carry such a link, and the browser's prompt doesn't show what it would do.
 
