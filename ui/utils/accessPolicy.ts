@@ -3,9 +3,13 @@ import type { AccessPolicy, AccessPolicyModule, AccessPolicyRule, ColumnMatcher,
 /** One column of one real table: what a rule written from the results grid names. */
 export type PolicyColumn = { schema: string | null; table: string; column: string };
 
-/** `user.email`, or `auth.user.email` outside the public schema. */
+// The schema a table is in unless it says otherwise: Postgres's `public`
+// and SQLite's `main`. Naming it adds nothing.
+const DEFAULT_SCHEMAS = new Set(['public', 'main']);
+
+/** `user.email`, or `auth.user.email` outside the default schema. */
 export function columnName({ schema, table, column }: PolicyColumn): string {
-  return schema && schema !== 'public' ? `${schema}.${table}.${column}` : `${table}.${column}`;
+  return schema && !DEFAULT_SCHEMAS.has(schema) ? `${schema}.${table}.${column}` : `${table}.${column}`;
 }
 
 /** A matcher in words, as Settings and the right-click menu name it. */

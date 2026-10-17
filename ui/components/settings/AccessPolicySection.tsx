@@ -83,7 +83,8 @@ const AddRuleForm = ({ onAdd }: { onAdd: (matcher: ColumnMatcher) => Promise<voi
   };
 
   const fieldSx = {
-    '& .MuiInputBase-input': { fontFamily: 'var(--canvas-font)', fontSize: '13px', py: 0.75 },
+    '& .MuiInputBase-root': { height: 32 },
+    '& .MuiInputBase-input, & .MuiSelect-select': { fontFamily: 'var(--canvas-font)', fontSize: '13px', py: 0.75 },
   };
 
   return (
@@ -122,7 +123,7 @@ const AddRuleForm = ({ onAdd }: { onAdd: (matcher: ColumnMatcher) => Promise<voi
         sx={fieldSx}
         aria-label="Column name"
       />
-      <Button size="small" variant="outlined" onClick={() => void submit()} sx={{ flexShrink: 0, mt: '3px' }}>
+      <Button size="small" variant="outlined" onClick={() => void submit()} sx={{ flexShrink: 0, height: 32 }}>
         Add
       </Button>
     </Box>
@@ -153,13 +154,14 @@ const RuleRow = observer(
           alignItems: 'center',
           gap: 1,
           py: 0.5,
-          px: 1,
-          mx: -1,
+          // Indented only while picked out, so the text doesn't sit on the
+          // highlight's edge.
+          pl: focused ? 1 : 0,
           borderRadius: 1,
           borderBottom: '1px solid var(--border-color)',
           // Where the results grid's "Hidden from agents by a rule…" lands.
           backgroundColor: focused ? 'var(--node-column-bg)' : 'transparent',
-          transition: 'background-color 1.2s ease',
+          transition: 'background-color 1.2s ease, padding-left 0.2s ease',
         }}
       >
         <Typography
@@ -333,19 +335,21 @@ const AccessPolicySection = () => {
         right-click a column in the results to show or hide it.
       </Typography>
 
-      <Box sx={{ flex: 1, minHeight: 0, display: 'flex', gap: 3 }}>
+      {/* The policies as a strip above the rules, not a column beside
+          them: the settings panel is narrow, and the rules need its width. */}
+      <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
         <Box
           sx={{
-            width: 180,
             flexShrink: 0,
             display: 'flex',
-            flexDirection: 'column',
-            borderRight: '1px solid var(--border-color)',
-            pr: 2,
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: 0.5,
+            borderBottom: '1px solid var(--border-color)',
+            pb: 1.5,
           }}
         >
-          <Box className="styled-scrollbar" sx={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-            {global.accessPolicies.map(policy => (
+          {global.accessPolicies.map(policy => (
               <Box
                 key={policy.id}
                 onClick={() => setSelectedId(policy.id)}
@@ -357,6 +361,7 @@ const AccessPolicySection = () => {
                   py: 0.75,
                   cursor: 'pointer',
                   borderRadius: 1,
+                  maxWidth: '100%',
                   backgroundColor: policy.id === selected?.id ? 'var(--node-column-bg)' : 'transparent',
                   '&:hover': { backgroundColor: 'var(--node-column-bg)' },
                 }}
@@ -379,7 +384,7 @@ const AccessPolicySection = () => {
                       }
                     }}
                     sx={{
-                      flex: 1,
+                      width: 140,
                       '& .MuiInput-input': { py: 0, fontFamily: 'var(--canvas-font)', fontSize: '13px', color: 'var(--text-color)' },
                       '& .MuiInput-underline:before': { borderBottomColor: 'var(--border-color)' },
                     }}
@@ -389,7 +394,7 @@ const AccessPolicySection = () => {
                     component="span"
                     variant="body2"
                     sx={{
-                      flex: 1,
+                      minWidth: 0,
                       fontFamily: 'var(--canvas-font)',
                       fontSize: '13px',
                       color: policy.id === selected?.id ? 'var(--text-color)' : 'var(--canvas-text-dim)',
@@ -420,7 +425,6 @@ const AccessPolicySection = () => {
                 />
               </Box>
             ))}
-          </Box>
           <Box
             onClick={handleCreate}
             sx={{
@@ -429,7 +433,6 @@ const AccessPolicySection = () => {
               gap: 0.5,
               px: 1,
               py: 0.75,
-              mt: 1,
               cursor: 'pointer',
               color: 'var(--canvas-text-dim)',
               '&:hover': { color: 'var(--text-color)' },

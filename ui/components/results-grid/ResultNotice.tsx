@@ -68,29 +68,35 @@ const ResultNotice: React.FC<ResultNoticeProps> = ({ notice, onClose }) => (
       }}
     >
       <Box sx={{ display: 'flex', pt: '1px', flexShrink: 0 }}>{notice && ICON[notice.kind]}</Box>
-      <Box sx={{ py: '1px', overflowWrap: 'anywhere' }}>{notice?.text}</Box>
-      {notice?.actions?.map(action => (
-        <Button
-          key={action.label}
-          size="small"
-          onClick={action.onClick}
-          sx={{
-            flexShrink: 0,
-            minWidth: 0,
-            px: 0.75,
-            py: 0,
-            mt: '-1px',
-            color: 'var(--canvas-trace)',
-            fontFamily: 'inherit',
-            fontSize: 'inherit',
-            fontWeight: 600,
-            textTransform: 'none',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {action.label}
-        </Button>
-      ))}
+      <Box sx={{ py: '1px', minWidth: 0 }}>
+        <Box sx={{ overflowWrap: 'anywhere' }}>{notice?.text}</Box>
+        {/* Under the text, not beside it: beside it, a long message wraps
+            into a narrow column. */}
+        {!!notice?.actions?.length && (
+          <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5, ml: -0.75 }}>
+            {notice.actions.map(action => (
+              <Button
+                key={action.label}
+                size="small"
+                onClick={action.onClick}
+                sx={{
+                  minWidth: 0,
+                  px: 0.75,
+                  py: 0,
+                  color: 'var(--canvas-trace)',
+                  fontFamily: 'inherit',
+                  fontSize: 'inherit',
+                  fontWeight: 600,
+                  textTransform: 'none',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {action.label}
+              </Button>
+            ))}
+          </Box>
+        )}
+      </Box>
       {/* A success message goes by itself, quickly; only a message worth
           reading twice, or acting on, gets a way to dismiss it. */}
       {(notice?.kind !== 'success' || !!notice.actions?.length) && (

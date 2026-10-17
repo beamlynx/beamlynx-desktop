@@ -54,6 +54,10 @@ import {
   prettyJson,
 } from './json-cell.util';
 
+// Room for the crossed-out eye a column hidden from agents has before its
+// name (ResultsGrid's HEADER_ICONS), so the name isn't cut off.
+const HIDDEN_FROM_AGENTS_ICON_WIDTH = 24;
+
 interface ResultProps {
   sessionId: string;
 }
@@ -267,6 +271,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
         // spotlight shows whether or not the preference is on, and both use
         // the same alias -> color mapping so they never disagree.
         const spotlight = !!alias && alias === hoveredAlias;
+        const hiddenFromAgents = !!session.columnMetadata.colIndexToPolicyLookup?.[column.field]?.hidden;
         const tinted = (showResultColors && !!alias) || spotlight;
         return {
           field: column.field,
@@ -275,11 +280,14 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
           width:
             resizedColumnWidths[column.field] ??
             savedColumnWidths[widthKeyFor(column.field, column.headerName ?? column.field)] ??
-            estimateColumnWidth(rows, column.field, column.headerName ?? column.field, {
-              min: MIN_RESULT_COLUMN_WIDTH,
-              max: MAX_RESULT_COLUMN_WIDTH,
-              isJson: isJsonColumn,
-            }),
+            Math.min(
+              MAX_RESULT_COLUMN_WIDTH,
+              estimateColumnWidth(rows, column.field, column.headerName ?? column.field, {
+                min: MIN_RESULT_COLUMN_WIDTH,
+                max: MAX_RESULT_COLUMN_WIDTH,
+                isJson: isJsonColumn,
+              }) + (hiddenFromAgents ? HIDDEN_FROM_AGENTS_ICON_WIDTH : 0),
+            ),
           json: isJsonColumn,
           // A JSON cell is edited in JsonInspectorPanel, which a click on it
           // opens already in edit mode - never inline.
@@ -288,7 +296,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
           cellReadOnlyReason: readOnlyReason ? undefined : cellReadOnlyReasonFor(column.field),
           headerColor: tinted ? getColorForAlias(alias, ast, isDark) : undefined,
           spotlight,
-          hiddenFromAgents: session.columnMetadata.colIndexToPolicyLookup?.[column.field]?.hidden,
+          hiddenFromAgents,
         };
       }),
     // readOnlyReasonFor is rebuilt every render but reads only
@@ -561,7 +569,13 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
             setNotice({ kind: 'success', text: `The “${policy.name}” policy is back as it was.` });
           },
         },
-        { label: 'Open policy', onClick: () => global.openAccessPolicy(policy.id) },
+        {
+          label: 'Open policy',
+          onClick: () => {
+            setNotice(null);
+            global.openAccessPolicy(policy.id);
+          },
+        },
       ],
     });
   };
