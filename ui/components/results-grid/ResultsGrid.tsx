@@ -72,6 +72,11 @@ export interface ResultsGridColumn {
   headerColor?: string;
   /** This column's table is the one hovered on the canvas. */
   spotlight?: boolean;
+  /**
+   * The connection's access policy hides this column from agents. The
+   * header gets a crossed-out eye before its name.
+   */
+  hiddenFromAgents?: boolean;
 }
 
 export interface ResultsGridProps {
@@ -85,6 +90,8 @@ export interface ResultsGridProps {
   /** The cell editor's Inspect button: show the update instead of running it. */
   onInspectEdit: (row: Row, field: string, value: string) => void;
   onCellContextMenu: (row: Row, field: string, x: number, y: number) => void;
+  /** Right-click on a column's header. */
+  onHeaderContextMenu: (field: string, x: number, y: number) => void;
   /** Someone tried to edit a cell in a column with a readOnlyReason. */
   onReadOnlyEdit: (reason: string) => void;
   /**
@@ -101,6 +108,16 @@ const NO_SELECTION: GridSelection = {
 };
 
 const GRID_KEYBINDINGS = { paste: false, cut: false, delete: false } as const;
+
+// The header marker for a column agents can't see: a crossed-out eye, in
+// the header's icon color, with no box behind it. Glide draws a header
+// icon from an SVG string.
+const HEADER_ICONS = {
+  hiddenFromAgents: ({ fgColor }: { fgColor: string }) =>
+    `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="${fgColor}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">` +
+    '<path d="M3.5 10c1.6-2.9 3.8-4.4 6.5-4.4s4.9 1.5 6.5 4.4c-1.6 2.9-3.8 4.4-6.5 4.4S5.1 12.9 3.5 10z"/>' +
+    '<circle cx="10" cy="10" r="2"/><path d="M4 16L16 4"/></svg>',
+};
 const refuse = () => false as const;
 const onlySingleCellEdits = (edits: readonly unknown[]) => edits.length !== 1;
 
@@ -220,6 +237,7 @@ const ResultsGrid: React.FC<ResultsGridProps> = observer(props => {
         id: c.field,
         title: c.title,
         width: dragWidths[c.field] ?? c.width,
+        ...(c.hiddenFromAgents && { icon: 'hiddenFromAgents' }),
         ...(c.headerColor && {
           themeOverride: {
             bgHeader: c.headerColor,
@@ -457,6 +475,17 @@ const ResultsGrid: React.FC<ResultsGridProps> = observer(props => {
     if (target && parseJsonCellValue(target[column.field]) !== undefined) onJsonOpen(target, column.field);
   }, []);
 
+  const onHeaderContextMenu = useCallback(
+    (col: number, event: { preventDefault: () => void; bounds: { x: number; y: number }; localEventX: number; localEventY: number }) => {
+      event.preventDefault();
+      const { columns: currentColumns, onHeaderContextMenu: open } = latest.current;
+      const column = currentColumns[col];
+      if (!column) return;
+      open(column.field, event.bounds.x + event.localEventX, event.bounds.y + event.localEventY);
+    },
+    [],
+  );
+
   const onCellContextMenu = useCallback(
     ([col, row]: Item, event: { preventDefault: () => void; bounds: { x: number; y: number }; localEventX: number; localEventY: number }) => {
       event.preventDefault();
@@ -535,6 +564,8 @@ const ResultsGrid: React.FC<ResultsGridProps> = observer(props => {
         // editor on a second single click of the selected cell.
         cellActivationBehavior="double-click"
         onCellContextMenu={onCellContextMenu}
+        onHeaderContextMenu={onHeaderContextMenu}
+        headerIcons={HEADER_ICONS}
         onColumnResize={onColumnResize}
         onColumnResizeEnd={onColumnResizeEnd}
       />

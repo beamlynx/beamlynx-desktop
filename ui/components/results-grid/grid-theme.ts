@@ -63,6 +63,9 @@ export function resolveGridTheme(): ResolvedGridTheme {
       textBubble: text,
       textHeader: text,
       textHeaderSelected: text,
+      // The crossed-out eye on a column hidden from agents (ResultsGrid's
+      // HEADER_ICONS): there, not loud.
+      fgIconHeader: dim,
       textGroupHeader: text,
       // Row lines at full strength, column lines at half: a result reads
       // across rows, and the column lines are only there to show where a

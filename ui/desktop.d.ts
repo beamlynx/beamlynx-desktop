@@ -4,7 +4,7 @@
 // isDesktop() (store/util.ts) can be true in a plain browser dev-server run
 // (NEXT_PUBLIC_DESKTOP=1 without Electron) where this doesn't exist.
 import type { Recipe, SaveRecipeInput } from './utils/recipes';
-import type { AccessPolicy, AccessPolicyRule } from './store/client';
+import type { AccessPolicy, AccessPolicyModule, AccessPolicyRule } from './store/client';
 import type { DbType } from './utils/dbType';
 
 type DesktopUpdateStatus =
@@ -223,7 +223,12 @@ interface BeamlynxDesktopApi {
     create: (name: string) => Promise<AccessPolicy>;
     rename: (id: string, name: string) => Promise<AccessPolicy | null>;
     delete: (id: string) => Promise<void>;
-    setModuleEnabled: (policyId: string, type: AccessPolicyRule['type'], enabled: boolean) => Promise<AccessPolicy | null>;
+    // By rule id. A rule for one exact column replaces any other rule for
+    // that column; a built-in rule can't be removed. setRules is Undo.
+    addRule: (policyId: string, rule: AccessPolicyRule) => Promise<AccessPolicy | null>;
+    removeRule: (policyId: string, ruleId: string) => Promise<AccessPolicy | null>;
+    setRuleEnabled: (policyId: string, ruleId: string, enabled: boolean) => Promise<AccessPolicy | null>;
+    setRules: (policyId: string, rules: AccessPolicyModule[]) => Promise<AccessPolicy | null>;
   };
   // Registers the renderer's handler for MCP-driven query execution -- the
   // handler must resolve with the eventual result (or throw), the preload

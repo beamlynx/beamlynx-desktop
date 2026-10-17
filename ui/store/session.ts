@@ -18,8 +18,11 @@ import {
 } from './canvas/traversal';
 import {
   AccessPolicyRule,
+  AppliedAccessPolicy,
+  ColumnPolicy,
   Ast,
   ConnectionInfo,
+  effectiveAccessPolicy,
   effectiveAccessPolicyRules,
   Hints,
   HttpClient,
@@ -100,7 +103,17 @@ export type ColumnMetadata = {
   // the field of the hidden column holding each row's JSON type. Only for a
   // table whose rows can be edited; pine-lang sends no type otherwise.
   colIndexToPathLookup: Record<string, JsonPathTarget>;
+  // How the access policy treats each column, when a policy was sent: what
+  // the header marks and the right-click menu offers.
+  colIndexToPolicyLookup: Record<string, ColumnPolicyInfo>;
 };
+
+/**
+ * How the access policy treats one result column, with the column's own
+ * name. For a key inside a JSON column (isPath), that is the JSON column: a
+ * rule can only name a whole column.
+ */
+export type ColumnPolicyInfo = ColumnPolicy & { column: string; isPath: boolean };
 
 /** Where an edit of a JSON path cell is written. */
 export type JsonPathTarget = { column: string; path: JsonPathStep[]; typeField: string };
@@ -220,6 +233,7 @@ export class Session {
     aliasToKeyLookup: {},
     colIndexToColumnLookup: {},
     colIndexToPathLookup: {},
+    colIndexToPolicyLookup: {},
   };
   rows: Row[] = [];
 
@@ -379,6 +393,21 @@ export class Session {
     return effectiveAccessPolicyRules(
       connections?.find(c => c.id === this.profileId),
       policies,
+      this.isMcpSession,
+    );
+  }
+
+  /**
+   * What this session's requests carry: the rules above, enforced, or, on a
+   * human tab of a connection agents can query, its policy to annotate the
+   * results with (see effectiveAccessPolicy in client.ts). The MCP session
+   * always enforces.
+   */
+  get accessPolicy(): AppliedAccessPolicy {
+    const connections = this.globalStore?.connections as ConnectionInfo[] | undefined;
+    return effectiveAccessPolicy(
+      connections?.find(c => c.id === this.profileId),
+      this.globalStore?.accessPolicies ?? [],
       this.isMcpSession,
     );
   }
@@ -564,7 +593,7 @@ export class Session {
             activeExpressions,
             adjustedCursor,
             this.connectionId,
-            this.accessPolicyRules,
+            this.accessPolicy,
           );
           runInAction(() => {
             this.response = response;
@@ -802,7 +831,7 @@ export class Session {
     const response = await client.eval(
       [...blocks.slice(0, last), `${lastBlock} | count:`],
       this.connectionId,
-      this.accessPolicyRules,
+      this.accessPolicy,
       false,
     );
     if (response.error) throw new Error(response.error);
@@ -1188,7 +1217,7 @@ export class Session {
       [expression],
       this.cursorPosition,
       this.connectionId,
-      this.accessPolicyRules,
+      this.accessPolicy,
     );
     return response.ast;
   }

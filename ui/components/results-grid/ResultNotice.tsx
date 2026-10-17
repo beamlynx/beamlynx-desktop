@@ -1,10 +1,12 @@
 import { CheckCircleOutline, Close, ErrorOutline, InfoOutlined } from '@mui/icons-material';
-import { Box, IconButton, Snackbar } from '@mui/material';
+import { Box, Button, IconButton, Snackbar } from '@mui/material';
 import React from 'react';
 
 export interface Notice {
   kind: 'success' | 'error' | 'info';
   text: string;
+  /** Buttons after the text, such as Undo. A notice with any stays up longer. */
+  actions?: { label: string; onClick: () => void }[];
 }
 
 interface ResultNoticeProps {
@@ -15,6 +17,8 @@ interface ResultNoticeProps {
 // How long each kind stays up. An error is kept longest: it is the one
 // someone may need to read twice, or act on.
 const DURATION: Record<Notice['kind'], number> = { success: 2500, info: 4500, error: 9000 };
+// Long enough to read the message and reach for Undo.
+const WITH_ACTIONS_DURATION = 10000;
 
 const ICON: Record<Notice['kind'], React.ReactNode> = {
   success: <CheckCircleOutline fontSize="small" sx={{ color: 'var(--canvas-trace)' }} />,
@@ -34,7 +38,7 @@ const ResultNotice: React.FC<ResultNoticeProps> = ({ notice, onClose }) => (
     // its timer, instead of being swallowed while the first is still up.
     key={notice?.text}
     open={!!notice}
-    autoHideDuration={notice ? DURATION[notice.kind] : null}
+    autoHideDuration={notice ? (notice.actions?.length ? WITH_ACTIONS_DURATION : DURATION[notice.kind]) : null}
     onClose={(_, reason) => {
       // A click elsewhere is usually the next action, not "I've read this".
       if (reason === 'clickaway') return;
@@ -51,7 +55,7 @@ const ResultNotice: React.FC<ResultNoticeProps> = ({ notice, onClose }) => (
         gap: 1,
         maxWidth: 560,
         pl: 1.25,
-        pr: notice?.kind === 'success' ? 1.5 : 0.5,
+        pr: notice?.kind === 'success' && !notice.actions?.length ? 1.5 : 0.5,
         py: 0.75,
         backgroundColor: 'var(--canvas-picker-bg)',
         border: '1px solid var(--canvas-picker-border)',
@@ -65,9 +69,31 @@ const ResultNotice: React.FC<ResultNoticeProps> = ({ notice, onClose }) => (
     >
       <Box sx={{ display: 'flex', pt: '1px', flexShrink: 0 }}>{notice && ICON[notice.kind]}</Box>
       <Box sx={{ py: '1px', overflowWrap: 'anywhere' }}>{notice?.text}</Box>
+      {notice?.actions?.map(action => (
+        <Button
+          key={action.label}
+          size="small"
+          onClick={action.onClick}
+          sx={{
+            flexShrink: 0,
+            minWidth: 0,
+            px: 0.75,
+            py: 0,
+            mt: '-1px',
+            color: 'var(--canvas-trace)',
+            fontFamily: 'inherit',
+            fontSize: 'inherit',
+            fontWeight: 600,
+            textTransform: 'none',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {action.label}
+        </Button>
+      ))}
       {/* A success message goes by itself, quickly; only a message worth
-          reading twice gets a way to dismiss it. */}
-      {notice?.kind !== 'success' && (
+          reading twice, or acting on, gets a way to dismiss it. */}
+      {(notice?.kind !== 'success' || !!notice.actions?.length) && (
         <IconButton
           size="small"
           onClick={onClose}

@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Breaking
+- Needs pine-lang after 0.49.0. The owner's own tab asks pine-lang only to report which columns agents can't see, with `access-policy-mode: annotate`. Pine-lang 0.49.0 doesn't know that mode, so it would mask the owner's own results. The next release must raise `RequiredVersion`.
+
+### Added
+- **Hide columns from agents.** In the desktop app, an access policy can now hide columns as well as show them. A hide rule always wins over a show rule. Every policy starts with hide rules for names containing `token`, `password` and `secret`, so a uuid column called `reset_token` stays hidden even though uuids are shown. Settings → Access Policy lists the Hide rules first, then the Show rules. Each list has a form to add a rule: a name that contains, equals or ends with a text, or one exact column.
+- **Change the access policy from the results.** Right-click a cell or a column header and choose **Hide from agents** or **Show to agents**. The change is saved to the policy of that tab's connection. A message says what changed, which policy it was saved to, and which other connections use that policy, with **Undo** and **Open policy**. A column a broader hide rule covers offers that rule instead, opened in Settings. A connection agents can query with no policy offers to choose one.
+- **See which columns agents can't see.** On a connection agents can query, a column hidden from them has a crossed-out eye in its header, in your own tabs as well as the agent's. Your own tabs still show the real values.
 
 ## [0.66.0] - 2026-10-17
 ### Breaking

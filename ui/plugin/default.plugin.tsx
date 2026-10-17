@@ -49,7 +49,7 @@ export class DefaultPlugin implements PluginInterface {
         : await this.client.eval(
             session.expressions,
             session.connectionId,
-            session.accessPolicyRules,
+            session.accessPolicy,
             opts?.allowWrites,
             // Only the MCP path passes values here; a tab's own values are
             // written in its values blocks, which pine-lang reads.
@@ -111,6 +111,13 @@ export class DefaultPlugin implements PluginInterface {
           if (!column['path'] && !column['col-fn']) {
             acc.colIndexToColumnLookup[index.toString()] = column['column'];
           }
+          if (column.policy) {
+            acc.colIndexToPolicyLookup[index.toString()] = {
+              ...column.policy,
+              column: column['column'],
+              isPath: !!column['path'],
+            };
+          }
           // The hidden key columns pine-lang adds, not any column called
           // `id`: a row is found by its table's primary key.
           if (!column['auto-id']) {
@@ -127,6 +134,7 @@ export class DefaultPlugin implements PluginInterface {
           aliasToKeyLookup: {},
           colIndexToColumnLookup: {},
           colIndexToPathLookup: {},
+          colIndexToPolicyLookup: {},
         },
       );
       // A path column whose table can be edited has a hidden type column,
