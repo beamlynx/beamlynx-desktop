@@ -568,11 +568,13 @@ export class Session {
           );
           runInAction(() => {
             this.response = response;
-            // A build refused because the tab's connection isn't back yet
-            // built nothing. Recording its cursor would make requestHints
-            // skip the rebuild that runs once the connection is up, and the
-            // refusal would stay on screen.
-            if (response?.['error-type'] !== 'no-connection') {
+            // Only a build that produced an AST has fresh hints for this
+            // cursor. A parse error still has one. A build that failed
+            // outright, because the connection isn't back yet or the
+            // database can't be reached, built nothing: recording its
+            // cursor would make requestHints skip the rebuild that runs once
+            // the database is back, and the canvas would stay stuck.
+            if (response?.ast) {
               this.lastHintsCursorPosition = cursor;
             }
           });
@@ -651,6 +653,14 @@ export class Session {
           const { error, errorType } = handleError(response);
           this.error = error;
           this.errorType = errorType;
+
+          // The database: unreachable, or back.
+          if (errorType === 'database-unreachable' && !response.ast) {
+            this.unreachable = error;
+          } else if (response.ast && this.unreachable) {
+            this.unreachable = null;
+            this.globalStore?.databaseReachable?.(this.connectionId);
+          }
         });
       },
     );
@@ -1106,6 +1116,34 @@ export class Session {
     }
   }
 
+  /**
+   * Why the database couldn't be reached on the last try, or null. Set by a
+   * build answered with pine-lang's "database-unreachable", or by connecting
+   * failing that way (GlobalStore.ensureSessionConnected). Cleared by the
+   * next build that gets an answer. While set, the tab shows this one
+   * reason, and GlobalStore tries again while the tab is open.
+   */
+  unreachable: string | null = null;
+
+  /** Whether the database couldn't be reached on the last try. */
+  get databaseUnreachable(): boolean {
+    return this.unreachable !== null;
+  }
+
+  /**
+   * Whether the last build drew nothing, so the canvas has no graph for the
+   * expression: it failed outright (no AST, unlike a parse error), or the
+   * database couldn't be reached. Not before the first build (ast is null).
+   */
+  get buildFailed(): boolean {
+    return this.databaseUnreachable || (this.ast === undefined && this.expression.trim() !== '');
+  }
+
+  /** Builds the expression again, as it is. */
+  public rebuild() {
+    this.hintsRequestedCounter++;
+  }
+
   public async evaluate(opts?: EvaluateOptions) {
     // An agent's tab never writes, whoever asked it to. runMcpQuery already
     // passes allowWrites: false, so for the MCP tab this is not what stops an
@@ -1124,6 +1162,12 @@ export class Session {
       ? { ...opts, allowWrites: false }
       : opts;
     const result = await this.plugins.default.evaluate(effectiveOpts);
+    // A run reaches the database on its own. If the last build didn't, say
+    // because the database was down when the tab opened, build again now
+    // rather than waiting for the next retry.
+    if (this.buildFailed) {
+      this.rebuild();
+    }
     if (this.openedFromLink && !this.error) {
       runInAction(() => {
         this.openedFromLink = false;

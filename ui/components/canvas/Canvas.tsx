@@ -258,9 +258,13 @@ const Flow: React.FC<{
       {canvasGraph.singleBlock && !canvasGraph.parsing && canvasStore.isConnecting && (
         <Banner variant="info">Connecting…</Banner>
       )}
-      {canvasGraph.singleBlock && !canvasGraph.parsing && !canvasStore.isConnecting && (
-        <Banner>Not parsing - showing last valid graph</Banner>
-      )}
+      {/* No banner while the database can't be reached: nothing is wrong
+          with the expression, and the band above the results says why, once
+          (ErrorMessage.tsx). */}
+      {canvasGraph.singleBlock &&
+        !canvasGraph.parsing &&
+        !canvasStore.isConnecting &&
+        !canvasStore.session.databaseUnreachable && <Banner>Not parsing - showing last valid graph</Banner>}
       {/* What this query is for, in the author's own words - see PineDoc.tsx.
           Outside the graph wrapper below on purpose, so it stays legible at
           full opacity even while the graph is dimmed for a parse failure:

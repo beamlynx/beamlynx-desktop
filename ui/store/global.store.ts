@@ -1,6 +1,15 @@
 import { makeAutoObservable, reaction, runInAction } from 'mobx';
 import { lt } from 'semver';
-import { AccessPolicy, AccessPolicyRule, HttpClient, ConnectionInfo, effectiveAccessPolicyRules, ServerRejectedError, VariableValue } from './client';
+import {
+  AccessPolicy,
+  AccessPolicyRule,
+  HttpClient,
+  ConnectionError,
+  ConnectionInfo,
+  effectiveAccessPolicyRules,
+  ServerRejectedError,
+  VariableValue,
+} from './client';
 import type { CredentialsStatus, RevealOutcome } from '../desktop';
 import type { DbType } from '../utils/dbType';
 import { Session, Theme, InputMode } from './session';
@@ -136,6 +145,15 @@ export type TabOrientation = 'horizontal' | 'vertical';
  */
 export const stripRemovedDeleteOperation = (expression: string): string =>
   expression.replace(/\|\s*(?:delete:|d:)\s*$/i, '').trimEnd();
+
+/**
+ * How often the open tab tries its database again while it can't be
+ * reached. Only the open tab: switching to another one tries that one at
+ * once (see the activeSessionId reaction).
+ */
+export const UNREACHABLE_RETRY_MS = 10_000;
+// The open tab's retry timer. Outside the store, so MobX doesn't observe it.
+let unreachableRetry: ReturnType<typeof setInterval> | null = null;
 
 export class GlobalStore {
   connecting = false;
@@ -710,6 +728,23 @@ export class GlobalStore {
       () => this.activeSessionId,
       sessionId => {
         this.ensureSessionConnected(sessionId);
+        // A tab whose last build drew nothing, say because the database
+        // was down when it was built, tries again when it's opened.
+        const session = this.sessions[sessionId];
+        if (session?.buildFailed && this.isConnectionLive(session.connectionId)) {
+          session.rebuild();
+        }
+      },
+    );
+    // While the open tab can't reach its database, try again every
+    // UNREACHABLE_RETRY_MS. Nothing runs while it can, or for other tabs.
+    reaction(
+      () => this.sessions[this.activeSessionId]?.databaseUnreachable ?? false,
+      unreachable => {
+        if (unreachableRetry) clearInterval(unreachableRetry);
+        unreachableRetry = unreachable ? setInterval(this.retryActiveDatabase, UNREACHABLE_RETRY_MS) : null;
+        // Node's timers keep a process alive (the tests); a browser's are numbers.
+        (unreachableRetry as { unref?: () => void } | null)?.unref?.();
       },
     );
     reaction(
@@ -1902,6 +1937,18 @@ export class GlobalStore {
         });
         return;
       }
+      if (e instanceof ConnectionError && e.errorType === 'database-unreachable') {
+        // The database is down, or not reachable from here yet. Nothing is
+        // wrong with the tab or its saved connection, so no alert: the tab
+        // shows the one "can't reach the database" message, and connecting
+        // is tried again while the tab is open.
+        console.log(`[credentials] ensureSessionConnected(${sessionId}): database unreachable`);
+        const reason = e.message;
+        runInAction(() => {
+          session.unreachable = reason;
+        });
+        return;
+      }
       const message = (e as Error)?.message ?? 'Unknown error';
       console.error(`[credentials] ensureSessionConnected(${sessionId}): failed ->`, e);
       runInAction(() => {
@@ -1919,6 +1966,33 @@ export class GlobalStore {
       runInAction(() => {
         session.connecting = false;
       });
+    }
+  };
+
+  /**
+   * The database `connectionId` answered again. Every tab on it whose last
+   * build drew nothing builds again, so switching to one shows its graph,
+   * not the old error.
+   */
+  databaseReachable = (connectionId: string) => {
+    for (const session of Object.values(this.sessions)) {
+      if (session.connectionId === connectionId && session.buildFailed) {
+        session.rebuild();
+      }
+    }
+  };
+
+  /**
+   * Tries the open tab's database again: connects it if it isn't connected,
+   * and builds again if it is.
+   */
+  private retryActiveDatabase = () => {
+    const session = this.sessions[this.activeSessionId];
+    if (!session?.databaseUnreachable) return;
+    if (this.isConnectionLive(session.connectionId)) {
+      session.rebuild();
+    } else {
+      void this.ensureSessionConnected(this.activeSessionId);
     }
   };
 
