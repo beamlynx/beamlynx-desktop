@@ -48,7 +48,7 @@ customer | where: data.plan in ('pro', 'team')
 
 ```
 customer | order: data.signup.score desc | limit: 10
-customer | group: data.plan => count
+customer | group: data.plan with count
 ```
 
 Sorting compares the values themselves, so numbers sort as numbers.

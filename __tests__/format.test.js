@@ -256,10 +256,12 @@ test('an expression that simply ran out of suggestions still gets the generic me
 // The aggregate is a bare word; the standalone operation carries the colon.
 // The footer printed `=> count:` -- a parse error -- on every completion
 // call, which made it the most repeated wrong instruction in the server.
+// `with` divides a group's keys from its aggregates since pine-lang #131.
 test('the operations footer prints the group aggregate without a colon', () => {
   const out = formatCompletion('user | ', JOIN_RESPONSE, noDocs);
-  assert.match(out, /\| group: <col> => count {2,}/);
-  assert.ok(!/=> count:/.test(out), '`group: <col> => count:` does not parse');
+  assert.match(out, /\| group: <col> with count {2,}/);
+  assert.ok(!/with count:/.test(out), '`group: <col> with count:` does not parse');
+  assert.ok(!/group: <col> =>/.test(out), '`=>` no longer divides a group');
   assert.match(out, /\| count: {2,}/);
 });
 

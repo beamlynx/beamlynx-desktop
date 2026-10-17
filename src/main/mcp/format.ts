@@ -90,7 +90,7 @@ const OPERATIONS_CHEATSHEET = [
   "    | where: <col> = 'value'     filter rows",
   '    | order: <col> desc          sort',
   '    | limit: <n>                 cap rows',
-  '    | group: <col> => count      one row per value, with a count -- no colon after `count`',
+  '    | group: <col> with count    one row per value, with a count -- no colon after `count`',
   '    | count:                     one number, the row count -- colon here',
 ].join('\n');
 

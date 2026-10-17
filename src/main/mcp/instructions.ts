@@ -38,10 +38,11 @@ Inside one where:, join conditions with \`or\`. To require several, add a where:
 
 Operations: select: (s:), where: (w:), order: (o:), limit: (l:), group: (g:), count:, from: (f:)
 
-A value can be computed, and named with \`as\` (get_pine_doc "computed-values"):
+A value can be computed, and named with \`as\` (get_pine_doc "computed-values"). \`x => f\` applies
+a function, the same as \`f(x)\`. In group:, the keys come first, then \`with\` and the aggregates:
 
-  document | select: id, coalesce(title, 'untitled') as label, if size > 0 then 'full' else 'empty' as state
-  order | group: customer_id => count, max(created_at) as latest
+  document | select: id, coalesce(title, 'untitled') as label, created_at => month as m
+  order | group: customer_id with count, created_at => max as latest
 
 A key inside a JSON column is a dotted path, used like a column (get_pine_doc "json"):
 
@@ -59,7 +60,7 @@ Traps that cost the most round trips, because SQL habits reach for them first:
 
 \`count\` and \`count:\` differ. As an aggregate it takes no colon, as an operation it does:
 
-  user | group: status => count
+  user | group: status with count
   user | count:
 
 ONE QUERY FOR EVERY GROUP
@@ -70,7 +71,7 @@ group, ranked by the \`order:\` before it (get_pine_doc "limit"):
 
   order | order: created_at desc | limit: 1 per customer_id        each customer's latest order
   employee | order: salary desc | limit: 3 per department_id       the top 3 in each department
-  order | group: customer_id => count, sum(total) as spent         a count and a total per customer
+  order | group: customer_id with count, total => sum as spent     a count and a total per customer
 
 Don't loop over the groups running one \`limit:\` query each. Every run opens in the user's tab.
 
