@@ -77,6 +77,9 @@ type McpQueryRequest = {
   // run_sql_as_pine's SQL, in place of an expression. runMcpQuery converts it to
   // Pine; it never runs as SQL. Absent from a desktop app older than this.
   sql?: string;
+  // The Claude session it comes from (store/investigations.ts). Absent from
+  // a desktop app older than investigations.
+  investigationId?: string;
 };
 
 type McpQueryResult =
@@ -99,6 +102,8 @@ export type AgentActivity = {
   detail?: string;
   ok?: boolean;
   outcome?: string;
+  // The Claude session the call came from (store/investigations.ts).
+  investigationId?: string;
 };
 
 type RevealRequest = {
@@ -108,6 +113,9 @@ type RevealRequest = {
   reason?: string;
   createdAt: number;
   status: 'pending' | 'revealed' | 'declined';
+  // The Claude session that asked (store/investigations.ts). Absent from a
+  // desktop app older than investigations.
+  investigationId?: string;
 };
 
 // What RevealRequestBanner.tsx reports back once the owner decides --
@@ -250,6 +258,11 @@ interface BeamlynxDesktopApi {
     // Each MCP tool call as it starts and ends (store/agent-activity.ts).
     // Optional: a desktop app older than the activity feed doesn't have it.
     onActivity?: (callback: (event: AgentActivity) => void) => () => void;
+    // Investigations (store/investigations.ts). Optional: absent from a
+    // desktop app older than them. A note waits for the agent's next call.
+    addNote?: (investigationId: string, text: string) => Promise<{ id: string; text: string; at: number } | null>;
+    onNotesDelivered?: (callback: (event: { investigationId: string; ids: string[] }) => void) => () => void;
+    resolveApproval?: (id: string, outcome: { allowed: boolean; comment?: string }) => Promise<boolean>;
   };
   // request_reveal/check_reveal's renderer half -- see
   // RevealRequestHandler.tsx and RevealRequestBanner.tsx. onRequest fires as

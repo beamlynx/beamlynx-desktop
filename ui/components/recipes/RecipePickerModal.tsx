@@ -73,7 +73,7 @@ const RecipePickerModal = observer(() => {
     // The Agent and Needs approval tabs belong to the agent, and the next
     // agent query overwrites them, so a recipe goes into a new tab instead.
     const activeId = global.activeSessionId;
-    if (activeId === global.mcpSessionId || global.pendingRevealSessionIds.includes(activeId)) global.addTab();
+    if (global.agentSessionIds.includes(activeId)) global.addTab();
     const session = global.sessions[global.activeSessionId];
     if (!session) return;
     const existing = session.expression.replace(/\s+$/, '');

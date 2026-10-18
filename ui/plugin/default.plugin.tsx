@@ -20,6 +20,7 @@ export class DefaultPlugin implements PluginInterface {
       // session.message = '⏳ Fetching rows ...';
       session.error = '';
       session.evalErrorType = '';
+      session.evalHiddenColumn = null;
       session.loading = true;
       // Running a query means the results pane is showing that query now, not
       // whatever traversal was last in it. Non-null `traversal` is what makes
@@ -78,6 +79,7 @@ export class DefaultPlugin implements PluginInterface {
           session.message = '';
           session.error = response.error;
           session.evalErrorType = response['error-type'] || '';
+          session.evalHiddenColumn = response['hidden-column'] ?? null;
         });
         return [];
       }

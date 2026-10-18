@@ -332,6 +332,10 @@ export type Response = {
   version: string;
   error: string;
   'error-type': string;
+  // A refusal for a hidden column (error-type "policy") names it: the
+  // column, its real table, and the rule that hid it, if any. Absent from a
+  // pine-lang older than in-call approvals.
+  'hidden-column'?: ColumnPolicy & { alias?: string; column: string };
   // build
   ast: Ast;
   query: string;

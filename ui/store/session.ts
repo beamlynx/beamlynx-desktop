@@ -37,6 +37,7 @@ import {
 import { generateGraph, getCandidateIndex, Graph } from './graph.util';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
 import { debounce } from './util';
+import type { HiddenColumn, QuerySnapshot } from './investigations';
 
 // The editor text split into blocks, and which block is the query a build
 // works on: in store/blocks.ts, a module with no imports, so the canvas and
@@ -190,17 +191,12 @@ export class Session {
   connecting: boolean = false;
 
   /**
-   * Desktop-only: set when this tab was opened to review an MCP agent's
-   * request_reveal call (see RevealRequestHandler.tsx) -- the id the agent's
-   * matching check_reveal poll is waiting on. Cleared once the owner
-   * reveals or declines (RevealRequestBanner.tsx), at which point this goes
-   * back to being an ordinary tab. A normal tab opened any other way never
-   * has this set.
+   * Desktop-only: set on the session that runs an MCP agent's request_reveal
+   * query for the user to look at (GlobalStore.handleRevealRequest) -- the
+   * id the agent's check_reveal poll is waiting on. That session is never a
+   * tab. With this set, it never writes (Session.isAgentSession).
    */
   pendingRevealRequestId?: string;
-
-  /** The agent-supplied reason for the request_reveal call this tab is reviewing, if any. */
-  revealReason?: string;
 
   /**
    * Set when a beamlynx://run link opened this tab (DeepLinkHandler.tsx).
@@ -278,6 +274,9 @@ export class Session {
    * reaction sets and which decides how a build error is shown.
    */
   evalErrorType: string = '';
+  // The column the last /eval was refused for (evalErrorType "policy"), as
+  // pine-lang names it. null otherwise. See store/investigations.ts.
+  evalHiddenColumn: HiddenColumn | null = null;
 
   /** Ast */
   operation: Operation = { type: 'table' };
@@ -420,6 +419,10 @@ export class Session {
    * recreated. Read by accessPolicyRules above and by evaluate() below.
    */
   get isMcpSession(): boolean {
+    // Any investigation's tab (GlobalStore.agentSessionIds). A store without
+    // investigations, like the tests' fakes, names one tab in mcpSessionId.
+    const agentSessionIds: string[] | undefined = this.globalStore?.agentSessionIds;
+    if (agentSessionIds) return agentSessionIds.includes(this.id);
     return !!this.globalStore?.mcpSessionId && this.id === this.globalStore.mcpSessionId;
   }
 
@@ -1202,7 +1205,28 @@ export class Session {
         this.openedFromLink = false;
       });
     }
+    this.globalStore?.onSessionEvaluated?.(this);
     return result;
+  }
+
+  /**
+   * Shows a result this tab had before, without running anything: an older
+   * step of an investigation (store/investigations.ts). Setting the
+   * expression rebuilds the canvas, as typing would; only a canvas gesture
+   * runs a query on its own.
+   */
+  public showSnapshot(snapshot: QuerySnapshot) {
+    runInAction(() => {
+      this.expression = snapshot.expression;
+      this.expressionAtLastEval = snapshot.expression;
+      this.columns = snapshot.columns;
+      this.rows = snapshot.rows;
+      this.columnMetadata = snapshot.columnMetadata;
+      this.columnVisibilityModel = snapshot.columnVisibilityModel;
+      this.error = snapshot.error;
+      this.evalErrorType = '';
+      this.evalHiddenColumn = null;
+    });
   }
 
   /**
