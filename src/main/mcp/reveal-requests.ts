@@ -37,6 +37,9 @@ export type RevealRequest = {
   createdAt: number;
   status: 'pending' | 'revealed' | 'declined';
   outcome?: RevealOutcome;
+  // The Claude session that asked (see investigations.ts): the request is a
+  // card in that investigation's timeline in beamlynx-ui.
+  investigationId?: string;
 };
 
 const requests = new Map<string, RevealRequest>();
@@ -53,7 +56,12 @@ const requests = new Map<string, RevealRequest>();
 const resolutionEvents = new EventEmitter();
 resolutionEvents.setMaxListeners(50);
 
-export function createRevealRequest(profileId: string, expression: string, reason?: string): RevealRequest {
+export function createRevealRequest(
+  profileId: string,
+  expression: string,
+  reason?: string,
+  investigationId?: string,
+): RevealRequest {
   const request: RevealRequest = {
     id: randomUUID(),
     profileId,
@@ -61,6 +69,7 @@ export function createRevealRequest(profileId: string, expression: string, reaso
     reason,
     createdAt: Date.now(),
     status: 'pending',
+    ...(investigationId ? { investigationId } : {}),
   };
   requests.set(request.id, request);
   return request;

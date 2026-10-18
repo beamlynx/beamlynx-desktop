@@ -23,6 +23,11 @@ export type AgentActivity = {
   ok?: boolean;
   /** On `end`: one line saying how it went, or the error. */
   outcome?: string;
+  /**
+   * The Claude session the call came from (see investigations.ts). Set by the
+   * control plane from the request, never taken from the body.
+   */
+  investigationId?: string;
 };
 
 const MAX_ID = 64;
@@ -56,6 +61,10 @@ export function describeCall(tool: string, args: Record<string, unknown>): { sum
       return { summary: 'Asking you to reveal hidden values', detail: text('reason') ?? text('expression') };
     case 'check_reveal':
       return { summary: 'Waiting for your decision on a reveal request' };
+    case 'set_question':
+      return { summary: 'Naming the question it is investigating', detail: text('question') };
+    case 'note_finding':
+      return { summary: 'Noting what it found', detail: text('finding') };
     default:
       return { summary: `Calling ${tool}` };
   }

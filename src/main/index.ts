@@ -7,6 +7,7 @@ import { closeAppDb, registerAppDbIpc } from './app-db-ipc';
 import { registerCredentialIpc } from './credential-store';
 import { useSeparateDevDataDir } from './data-dir';
 import { startControlPlaneServer } from './mcp/control-plane-server';
+import { registerInvestigationIpc } from './mcp/investigations';
 import { registerRevealIpc } from './mcp/reveal-requests';
 import { startMcpRelay } from './mcp/stdio-relay';
 import { CONTROL_PLANE_PORT, describePortInUse, isPortInUse, PINE_PORT } from './ports';
@@ -379,6 +380,7 @@ async function main(): Promise<void> {
   Menu.setApplicationMenu(buildMenu());
   registerCredentialIpc();
   registerRevealIpc();
+  registerInvestigationIpc();
   registerAppDbIpc();
 
   // Checked before anything opens, so a taken port gets a plain explanation

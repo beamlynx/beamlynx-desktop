@@ -11,6 +11,7 @@ import { BrowserWindow, dialog } from 'electron';
 import * as http from 'http';
 import { getMcpAccessStatus, listMcpEnabledConnections } from '../credential-store';
 import { readActivity } from './activity';
+import { readInvestigationId, takeNotes, waitForApproval } from './investigations';
 import { authorizeControlPlaneRequest } from './control-plane-auth';
 import { runInRenderer } from './render-bridge';
 import { countPendingRevealRequests, createRevealRequest, waitForRevealRequest } from './reveal-requests';
@@ -127,12 +128,38 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
       // What the agent is doing, from the relay (see activity.ts). Answered
       // before it is passed on: the relay never waits on the window. With
       // no window, or one still on the loading page, it is dropped.
+      const investigationId = readInvestigationId(req.headers);
+
       if (req.method === 'POST' && req.url === '/activity') {
         const event = readActivity(await readJsonBody(req));
         if (!event) return sendJson(res, 400, { error: 'Not an activity event' });
         sendJson(res, 200, {});
-        options.getMainWindow()?.webContents.send('mcp:activity', event);
+        options.getMainWindow()?.webContents.send('mcp:activity', { ...event, investigationId });
         return;
+      }
+
+      // The notes the user typed for this investigation's agent (see
+      // investigations.ts). The relay asks after every call and puts them at
+      // the top of its result. The window is told they were delivered.
+      if (req.method === 'POST' && req.url === '/investigation/notes') {
+        if (!investigationId) return sendJson(res, 200, { notes: [] });
+        const notes = takeNotes(investigationId);
+        if (notes.length) {
+          options.getMainWindow()?.webContents.send('mcp:notes-delivered', {
+            investigationId,
+            ids: notes.map(n => n.id),
+          });
+        }
+        return sendJson(res, 200, { notes });
+      }
+
+      // A query waiting on the user to allow a hidden column (see
+      // investigations.ts). Held open up to 25 s; the relay asks again
+      // while the answer is still `pending`.
+      const approval = req.method === 'GET' ? req.url?.match(/^\/approval\/([A-Za-z0-9-]{1,64})$/) : null;
+      if (approval) {
+        const outcome = await waitForApproval(approval[1], 25000);
+        return sendJson(res, 200, outcome ? { status: 'resolved', outcome } : { status: 'pending' });
       }
 
       if (req.method === 'GET' && req.url === '/connections') {
@@ -169,6 +196,7 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
           expression: hasSql ? '' : expression,
           ...(hasSql ? { sql } : {}),
           variables: variables && typeof variables === 'object' && !Array.isArray(variables) ? variables : undefined,
+          investigationId,
         });
         return sendJson(res, 200, { result });
       }
@@ -216,7 +244,12 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
           });
         }
 
-        const request = createRevealRequest(profileId, expression, typeof reason === 'string' ? reason : undefined);
+        const request = createRevealRequest(
+          profileId,
+          expression,
+          typeof reason === 'string' ? reason : undefined,
+          investigationId,
+        );
         // Fire-and-forget: RevealRequestHandler.tsx (beamlynx-ui) opens a
         // real tab for the owner to review. Nothing here awaits that --
         // the whole point is that this HTTP call returns right away.

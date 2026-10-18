@@ -19,6 +19,7 @@
 // the other way too: no tool output may contain SQL either (format.ts).
 import { app } from 'electron';
 import { spawn } from 'child_process';
+import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as http from 'http';
 import * as net from 'net';
@@ -31,6 +32,8 @@ import { CONTROL_PLANE_PORT } from '../ports';
 import { getLaunchPath, getResourcesRoot } from '../resources';
 import { SERVER_INSTRUCTIONS } from './instructions';
 import { describeCall, outcomeOf, type AgentActivity } from './activity';
+import { INVESTIGATION_HEADER } from './investigations';
+import { runWithApprovals } from './approval-wait';
 import { MAX_LIST_ITEMS, MAX_STRING_LENGTH, MAX_VARIABLES, variablesSchema, type VariableValue } from './variables-schema';
 import {
   formatCompletion,
@@ -43,6 +46,16 @@ import {
 import type { BuildResponse } from './format';
 
 const GUI_LAUNCH_TIMEOUT_MS = 30000;
+
+// This Claude session, as beamlynx knows it: made up when the relay starts,
+// sent on every control-plane request. The app shows everything that comes
+// with one id as one investigation (see investigations.ts). One relay process
+// serves exactly one MCP client, so the id lasts as long as that session.
+const INVESTIGATION_ID = randomUUID();
+
+// How long run_query waits for the user to allow a hidden column before it
+// gives the agent the refusal after all.
+const APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
 const GUI_POLL_INTERVAL_MS = 300;
 
 function isControlPlaneUp(): Promise<boolean> {
@@ -85,6 +98,7 @@ function controlPlaneRequest(method: 'GET' | 'POST', path: string, body?: unknow
         method,
         headers: {
           Authorization: `Bearer ${token}`,
+          [INVESTIGATION_HEADER]: INVESTIGATION_ID,
           ...(payload ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) } : {}),
         },
         timeout: 35000,
@@ -221,6 +235,19 @@ function reportActivity(event: AgentActivity): void {
 
 let activityCounter = 0;
 
+// Notes the user typed in this investigation's tab go at the top of the next
+// result, whatever the tool: beamlynx can't send the agent a message, only
+// answer its calls. Never fails the call: without the app, there are none.
+async function withUserNotes<T extends { content?: unknown[] }>(result: T): Promise<T> {
+  const { notes } = await controlPlaneRequest('POST', '/investigation/notes').catch(() => ({ notes: [] }));
+  if (!Array.isArray(notes) || notes.length === 0) return result;
+  const text =
+    'The user wrote to you from beamlynx, while you worked:\n' +
+    notes.map((n: { text: string }) => `- ${n.text}`).join('\n') +
+    '\n\nTake this into account before you go on. The result of your call follows.';
+  return { ...result, content: [{ type: 'text' as const, text }, ...(result.content ?? [])] };
+}
+
 // Every tool registered on `server` reports its start and its end. Wrapping
 // registerTool covers every tool, including the ones that never reach the
 // app's window, like get_pine_doc.
@@ -234,7 +261,7 @@ function reportEveryCall(server: McpServer): void {
       try {
         const result = await handler(args, extra);
         reportActivity({ id, tool: name, phase: 'end', at: Date.now(), ...call, ...outcomeOf(result) });
-        return result;
+        return withUserNotes(result);
       } catch (e) {
         const outcome = e instanceof Error ? e.message : String(e);
         reportActivity({ id, tool: name, phase: 'end', at: Date.now(), ...call, ok: false, outcome });
@@ -331,8 +358,15 @@ async function registerTools(server: McpServer): Promise<void> {
   async function runOnControlPlane(body: Record<string, unknown>) {
     try {
       await ensureGuiRunning();
-      const { result } = await controlPlaneRequest('POST', '/query', body);
-      return textResult(formatRows(result ?? {}));
+      // A query refused for a hidden column the user could allow waits here
+      // for their answer (see approval-wait.ts).
+      const { text, isError } = await runWithApprovals(
+        controlPlaneRequest,
+        body,
+        result => formatRows(result),
+        APPROVAL_TIMEOUT_MS,
+      );
+      return isError ? errorResult(text) : textResult(text);
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }
@@ -406,6 +440,37 @@ async function registerTools(server: McpServer): Promise<void> {
     },
   );
 
+  // The investigation's question and findings, for the user watching in
+  // beamlynx (see investigations.ts). Nothing else happens: the activity
+  // event every call reports already carries them to the app.
+  server.registerTool(
+    'set_question',
+    {
+      description:
+        'Tell the user, in beamlynx, what you are investigating. It becomes the title of the beamlynx tab that ' +
+        'shows your queries and their results. Call it once, before your first query, in the user\'s terms: ' +
+        '"Logins per tenant over the last 30 days". Call it again if the question changes.',
+      inputSchema: {
+        question: z.string().min(1).max(300).describe('The question, in one line'),
+      },
+    },
+    async () => textResult('Shown to the user in beamlynx.'),
+  );
+
+  server.registerTool(
+    'note_finding',
+    {
+      description:
+        'Record something you found, so the user sees it in beamlynx next to the queries that led to it. Use it ' +
+        'for what matters to the answer, from this database or from another source: "public.activity is the ' +
+        'only table that records logins", "Sentry shows auth errors for tenant 12 since Tuesday".',
+      inputSchema: {
+        finding: z.string().min(1).max(2000).describe('What you found, in a sentence or two'),
+      },
+    },
+    async () => textResult('Shown to the user in beamlynx.'),
+  );
+
   // Listing the topics in the description itself, rather than behind a
   // separate list_pine_docs tool, removes a round trip: an agent that needs
   // `where:` can fetch it directly instead of calling one tool to learn the
@@ -443,9 +508,9 @@ async function registerTools(server: McpServer): Promise<void> {
       description:
         'Ask the user to reveal the real, unredacted results of a query the connection\'s access policy is ' +
         'currently redacting (shown as "xxxxx" in run_query output). Use this only when a redacted value is ' +
-        'blocking something you legitimately need -- not as a default way around the policy. Opens the query in ' +
-        'a real, visible tab in the Beamlynx app; the user can edit the expression, reveal the real results, or ' +
-        'decline (optionally explaining why). Returns immediately with a request id -- the user has not ' +
+        'blocking something you legitimately need -- not as a default way around the policy. The request shows ' +
+        'in Beamlynx, in the investigation that follows your work, where the user can look at the real results, ' +
+        'then reveal them to you or decline (optionally explaining why). Returns immediately with a request id -- the user has not ' +
         'responded yet. Call check_reveal with that id to wait for what they decide.',
       inputSchema: {
         connection_id: z.string().describe('A connection id from list_connections'),
@@ -479,7 +544,7 @@ async function registerTools(server: McpServer): Promise<void> {
         'Wait for the outcome of a request_reveal call. Blocks for up to 25 seconds for the user to respond, ' +
         'so just call it once and wait -- no need for your own delay between calls. If it comes back still ' +
         'pending, the user simply hasn\'t decided yet; call it again to keep waiting. Returns the real rows if ' +
-        'revealed (note: the user may have edited the expression before running it), or a decline, with the ' +
+        'revealed, or a decline, with the ' +
         'user\'s comment if they left one, if not.',
       inputSchema: {
         request_id: z.string().describe('The request id returned by request_reveal'),
