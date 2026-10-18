@@ -4,8 +4,16 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.22.0] - 2026-10-19
 ### Added
-- **Copy an access policy.** A new IPC call, `access-policy:duplicate`, makes a policy with the same rules, each with an id of its own. beamlynx-ui uses it to change what one connection's agents see when its policy is shared with other connections, instead of changing it for all of them.
+- **A shared policy can be copied instead of changed for everyone.** When you show or hide a column for agents and the connection's access policy is also used by other connections, beamlynx asks first: copy the policy for this connection and change only the copy, or change it for all of them. The Allow card in an agent's investigation offers the same choice. A new IPC call, `access-policy:duplicate`, makes the copy (bundled beamlynx-ui 0.68.0).
+
+### Changed
+- **The agent sits at the bottom of the sidebar,** and only once an agent has started an investigation (bundled beamlynx-ui 0.68.0).
+
+### Fixed
+- **"Also restrict my own queries" now applies in an agent's investigation tab too.** A query you ran there was always masked. Now only the agent's own queries are, while they run (bundled beamlynx-ui 0.68.0).
 
 ## [0.21.0] - 2026-10-18
 ### Added
