@@ -33,6 +33,7 @@ import { getLaunchPath, getResourcesRoot } from '../resources';
 import { SERVER_INSTRUCTIONS } from './instructions';
 import { describeCall, outcomeOf, type AgentActivity } from './activity';
 import { INVESTIGATION_HEADER } from './investigations';
+import { runWithApprovals } from './approval-wait';
 import { MAX_LIST_ITEMS, MAX_STRING_LENGTH, MAX_VARIABLES, variablesSchema, type VariableValue } from './variables-schema';
 import {
   formatCompletion,
@@ -357,40 +358,18 @@ async function registerTools(server: McpServer): Promise<void> {
   async function runOnControlPlane(body: Record<string, unknown>) {
     try {
       await ensureGuiRunning();
-      const { result } = await controlPlaneRequest('POST', '/query', body);
-      // A query refused for a hidden column the user could allow: beamlynx
-      // shows them a card, and this call waits for their answer.
-      const approval = result?.approval;
-      if (approval?.id) return await afterApproval(body, result, approval);
-      return textResult(formatRows(result ?? {}));
+      // A query refused for a hidden column the user could allow waits here
+      // for their answer (see approval-wait.ts).
+      const { text, isError } = await runWithApprovals(
+        controlPlaneRequest,
+        body,
+        result => formatRows(result),
+        APPROVAL_TIMEOUT_MS,
+      );
+      return isError ? errorResult(text) : textResult(text);
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }
-  }
-
-  async function afterApproval(
-    body: Record<string, unknown>,
-    refused: Record<string, unknown>,
-    approval: { id: string; column?: string; table?: { schema?: string | null; table?: string } },
-  ) {
-    const name = [approval.table?.table, approval.column].filter(Boolean).join('.') || 'the hidden column';
-    const deadline = Date.now() + APPROVAL_TIMEOUT_MS;
-    while (Date.now() < deadline) {
-      const answer = await controlPlaneRequest('GET', `/approval/${encodeURIComponent(approval.id)}`);
-      if (answer?.status !== 'resolved') continue;
-      if (answer.outcome?.allowed) {
-        const { result } = await controlPlaneRequest('POST', '/query', body);
-        return textResult(`The user allowed you to see ${name}, and the query ran again.\n\n${formatRows(result ?? {})}`);
-      }
-      const comment = typeof answer.outcome?.comment === 'string' && answer.outcome.comment.trim();
-      return errorResult(
-        `${formatRows(refused)}\n\nThe user declined to show you ${name}` + (comment ? `: "${comment}"` : '.'),
-      );
-    }
-    return errorResult(
-      `${formatRows(refused)}\n\nThe user was asked in beamlynx to allow ${name}, and hasn't answered yet. ` +
-        'Run the query again to keep waiting, or carry on without it.',
-    );
   }
 
   server.registerTool(
