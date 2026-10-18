@@ -240,11 +240,15 @@ const AppView = observer(() => {
           </Grid>
 
           <Grid item xs={3}>
+            {/* Level with the search box beside it: the icon buttons that
+                used to sit here gave this row its height, and without them
+                the chips were pressed against the window's top edge. */}
             <Box
               sx={{
                 m: 1,
-                mt: 0,
+                mr: 2,
                 mb: 0,
+                minHeight: 43,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'flex-end',

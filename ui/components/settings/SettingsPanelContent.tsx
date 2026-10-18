@@ -1,9 +1,8 @@
 import { useMemo } from 'react';
-import { Box, Typography, IconButton, ThemeProvider } from '@mui/material';
+import { Box, IconButton, ThemeProvider } from '@mui/material';
 import { Close } from '@mui/icons-material';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../../store/store-container';
-import { isDesktop } from '../../store/util';
 import { SettingsSection } from '../../store/global.store';
 import { createSettingsTheme } from '../../styles/theme';
 import { TEXT_SIZE_SCALE } from '../../styles/text-size';
@@ -38,10 +37,12 @@ export const RAIL_ITEMS: { id: SettingsSection; label: string }[] = [
 export const DESKTOP_ONLY_SECTIONS: SettingsSection[] = ['access-policy', 'mcp'];
 
 /**
- * Rail nav + section content -- the entire "what Settings actually shows"
- * surface. Its shell (SettingsDockedPanel.tsx) contributes nothing but its
- * own outer positioning/chrome. Fills whatever box its shell gives it
- * (`height: 100%`).
+ * The open section's content -- the entire "what Settings actually shows"
+ * surface. The list of sections (RAIL_ITEMS) is in the sidebar
+ * (SideRail.tsx), under Settings, so there is one column of navigation, not
+ * two side by side. Its shell (SettingsDockedPanel.tsx) contributes nothing
+ * but its own outer positioning/chrome. Fills whatever box its shell gives
+ * it (`height: 100%`).
  */
 const SettingsPanelContent = () => {
   const { global } = useStores();
@@ -96,67 +97,6 @@ const SettingsPanelContent = () => {
         >
           <Close fontSize="small" />
         </IconButton>
-
-        <Box
-          sx={{
-            width: 210,
-            flexShrink: 0,
-            borderRight: '1px solid var(--border-color)',
-            bgcolor: 'var(--node-column-bg)',
-            py: 2,
-          }}
-        >
-          <Typography
-            variant="caption"
-            sx={{
-              display: 'block',
-              px: 2,
-              mb: 1,
-              color: 'var(--canvas-text-dim)',
-              fontFamily: 'var(--canvas-font)',
-              letterSpacing: '0.05em',
-            }}
-          >
-            SETTINGS
-          </Typography>
-          {RAIL_ITEMS.map(item => {
-            const disabled = DESKTOP_ONLY_SECTIONS.includes(item.id) && !isDesktop();
-            const active = item.id === activeSection;
-            return (
-              <Box
-                key={item.id}
-                onClick={() => global.setSettingsSection(item.id)}
-                sx={{
-                  px: 2,
-                  py: 1,
-                  cursor: 'pointer',
-                  fontFamily: 'var(--canvas-font)',
-                  // Fixed px, not rem -- see settingsTheme's comment above.
-                  fontSize: '13.6px',
-                  color: active ? 'var(--text-color)' : 'var(--canvas-text-dim)',
-                  opacity: disabled ? 0.55 : 1,
-                  borderLeft: active ? '2px solid var(--primary-color)' : '2px solid transparent',
-                  backgroundColor: active ? 'var(--background-color)' : 'transparent',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  '&:hover': { color: 'var(--text-color)' },
-                }}
-              >
-                {item.label}
-                {disabled && (
-                  <Typography
-                    variant="caption"
-                    component="span"
-                    sx={{ opacity: 0.7, fontSize: '10.4px' }}
-                  >
-                    desktop
-                  </Typography>
-                )}
-              </Box>
-            );
-          })}
-        </Box>
 
         {/* Each section owns its own fixed-header/scrollable-body split
             (see e.g. PreferencesSection.tsx) rather than this pane scrolling

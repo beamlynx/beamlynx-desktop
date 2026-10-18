@@ -11,10 +11,14 @@ import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
 import { isDesktop } from '../store/util';
 import type { Investigation } from '../store/investigations';
+import { DESKTOP_ONLY_SECTIONS, RAIL_ITEMS } from './settings/SettingsPanelContent';
 
 /**
  * The sidebar on the left, like Slack's: icons only by default, with labels
- * and the agent's investigations once expanded. It holds what used to sit in
+ * and the agent's investigations once expanded. While Settings is open, its
+ * sections are listed here under Settings, and the sidebar shows its labels
+ * for as long as it stays open: one column of navigation, with the open
+ * section beside it. It holds what used to sit in
  * the header's right corner -- the agent, what's new, and settings -- so they
  * open on the same side as what they show: the settings panel and an
  * investigation's timeline both open on the left.
@@ -130,7 +134,9 @@ const InvestigationItem = observer(({ investigation }: { investigation: Investig
 
 const SideRail = observer(({ hasUnreadUpdates, onOpenChangelog }: { hasUnreadUpdates: boolean; onOpenChangelog: () => void }) => {
   const { global } = useStores();
-  const expanded = global.sideRailExpanded;
+  // Settings' sections need their names, so the sidebar shows them while
+  // Settings is open, then goes back to however the user left it.
+  const expanded = global.sideRailExpanded || global.showSettings;
   const activity = global.agentActivity;
   const waiting = global.agentDecisionsWaiting;
   const working = activity.working;
@@ -239,10 +245,46 @@ const SideRail = observer(({ hasUnreadUpdates, onOpenChangelog }: { hasUnreadUpd
       <RailItem
         icon={<Settings sx={{ fontSize: 20 }} />}
         label="Settings"
+        ariaLabel={global.showSettings ? 'Close settings' : 'Settings'}
         expanded={expanded}
-        active={global.showSettings}
+        active={global.showSettings && !expanded}
         onClick={() => global.setShowSettings(!global.showSettings)}
       />
+      {global.showSettings &&
+        RAIL_ITEMS.map(item => {
+          const active = item.id === global.settingsSection;
+          const desktopOnly = DESKTOP_ONLY_SECTIONS.includes(item.id) && !isDesktop();
+          return (
+            <ButtonBase
+              key={item.id}
+              onClick={() => global.setSettingsSection(item.id)}
+              aria-current={active ? 'page' : undefined}
+              sx={{
+                width: '100%',
+                justifyContent: 'space-between',
+                pl: 4.5,
+                pr: 1.25,
+                py: 0.5,
+                borderRadius: 1,
+                fontSize: 13,
+                fontFamily: 'var(--canvas-font)',
+                color: active ? 'var(--text-color)' : 'var(--canvas-text-dim)',
+                backgroundColor: active ? 'var(--node-column-bg)' : 'transparent',
+                opacity: desktopOnly ? 0.55 : 1,
+                '&:hover': { backgroundColor: 'var(--node-column-bg)', color: 'var(--text-color)' },
+              }}
+            >
+              <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {item.label}
+              </Box>
+              {desktopOnly && (
+                <Box component="span" sx={{ fontSize: 10.4, opacity: 0.7 }}>
+                  desktop
+                </Box>
+              )}
+            </ButtonBase>
+          );
+        })}
     </Box>
   );
 });
