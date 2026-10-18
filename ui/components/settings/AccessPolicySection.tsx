@@ -1,4 +1,6 @@
 import AddIcon from '@mui/icons-material/Add';
+import BlockIcon from '@mui/icons-material/Block';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import CloseIcon from '@mui/icons-material/Close';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import EditIcon from '@mui/icons-material/Edit';
@@ -23,8 +25,10 @@ const REMOVE_CONFIRM_TIMEOUT_MS = 3000;
  * active rule. See GlobalStore.setMcpEnabled's refusal path and
  * ConnectionsSection's disabled MCP toggle.
  *
- * A policy's rules are shown as two lists: Hide, then Show, the order
- * pine-lang checks them in. A hide rule always wins.
+ * A policy's rules are shown as two lists that read as one sentence: agents
+ * see what the Allow rules match, except what the Except rules match. An
+ * Except rule is a `hide` rule underneath, and always wins: pine-lang
+ * checks those first, whatever order they're listed in here.
  */
 
 // The built-in show rules, in words. Every policy has these three; they can
@@ -66,7 +70,14 @@ function matcherFromForm(kind: MatcherKind, text: string): ColumnMatcher | strin
   return { type: 'column', schema, table: table!, column: column! };
 }
 
-const AddRuleForm = ({ onAdd }: { onAdd: (matcher: ColumnMatcher) => Promise<void> }) => {
+const AddRuleForm = ({
+  onAdd,
+  examples,
+}: {
+  onAdd: (matcher: ColumnMatcher) => Promise<void>;
+  // A name that fits the list the form adds to, as each kind's placeholder.
+  examples: Partial<Record<MatcherKind, string>>;
+}) => {
   const [kind, setKind] = useState<MatcherKind>('contains');
   const [text, setText] = useState('');
   const [error, setError] = useState('');
@@ -107,7 +118,7 @@ const AddRuleForm = ({ onAdd }: { onAdd: (matcher: ColumnMatcher) => Promise<voi
         size="small"
         fullWidth
         value={text}
-        placeholder={MATCHER_KINDS.find(k => k.value === kind)?.placeholder}
+        placeholder={examples[kind] ?? MATCHER_KINDS.find(k => k.value === kind)?.placeholder}
         onChange={e => {
           setText(e.target.value);
           setError('');
@@ -143,7 +154,7 @@ const RuleRow = observer(
     const { global } = useStores();
     const ref = useRef<HTMLDivElement>(null);
     useEffect(() => {
-      if (focused) ref.current?.scrollIntoView({ block: 'center' });
+      if (focused) ref.current?.scrollIntoView({ block: 'nearest' });
     }, [focused]);
     const matcher = module.type === 'hide' ? module.match : module;
     return (
@@ -198,15 +209,42 @@ const RuleRow = observer(
   },
 );
 
-const RuleList = ({ title, caption, children }: { title: string; caption: string; children: React.ReactNode }) => (
-  <Box sx={{ mb: 3 }}>
-    <Typography variant="subtitle2" sx={{ color: 'var(--text-color)', fontFamily: 'var(--canvas-font)' }}>
-      {title}
-    </Typography>
-    <Typography variant="caption" component="p" sx={{ color: 'var(--canvas-text-dim)', mb: 0.5 }}>
+// One list of rules: a heading that reads as one, with an icon for what the
+// list does, and its rules in a card of their own. The two lists used to be
+// set in the same type as the rules, and didn't read as headings.
+const RuleList = ({
+  title,
+  caption,
+  icon,
+  children,
+}: {
+  title: string;
+  caption: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) => (
+  <Box component="section" sx={{ mb: 3 }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, color: 'var(--text-color)' }}>
+      {icon}
+      <Typography component="h3" sx={{ fontFamily: 'var(--canvas-font)', fontSize: '15px', fontWeight: 600 }}>
+        {title}
+      </Typography>
+    </Box>
+    <Typography variant="caption" component="p" sx={{ color: 'var(--canvas-text-dim)', mt: 0.25, mb: 1 }}>
       {caption}
     </Typography>
-    {children}
+    <Box
+      sx={{
+        border: '1px solid var(--border-color)',
+        borderRadius: 1,
+        px: 1.5,
+        pb: 1.25,
+        // The last rule's own bottom border would double the card's.
+        '& > :not(:last-child)': { borderBottom: '1px solid var(--border-color)' },
+      }}
+    >
+      {children}
+    </Box>
   </Box>
 );
 
@@ -218,14 +256,11 @@ const PolicyRules = observer(({ policy, focusedRuleId }: { policy: AccessPolicy;
 
   return (
     <>
-      <RuleList title="Hide" caption="Agents never see these columns, even when a Show rule matches them.">
-        {hides.map(m => (
-          <RuleRow key={m.id} policy={policy} module={m} focused={m.id === focusedRuleId} />
-        ))}
-        <AddRuleForm onAdd={async match => void (await global.addAccessPolicyRule(policy.id, { type: 'hide', match }))} />
-      </RuleList>
-
-      <RuleList title="Show" caption="Agents see these columns. Every other column is hidden.">
+      <RuleList
+        title="Allow"
+        caption="Agents see the columns these match. Every other column is hidden."
+        icon={<CheckCircleOutlineIcon sx={{ fontSize: 18, color: 'var(--canvas-trace)' }} />}
+      >
         {builtIns.map(m => {
           const text = BUILT_IN_DESCRIPTIONS[m.type] ?? { label: describeMatcher(m as ColumnMatcher), description: '' };
           return (
@@ -241,7 +276,23 @@ const PolicyRules = observer(({ policy, focusedRuleId }: { policy: AccessPolicy;
         {shows.map(m => (
           <RuleRow key={m.id} policy={policy} module={m} focused={m.id === focusedRuleId} />
         ))}
-        <AddRuleForm onAdd={async matcher => void (await global.addAccessPolicyRule(policy.id, matcher))} />
+        <AddRuleForm
+          examples={{ contains: 'code', equals: 'status', suffix: '_code' }}
+          onAdd={async matcher => void (await global.addAccessPolicyRule(policy.id, matcher))}
+        />
+      </RuleList>
+      <RuleList
+        title="Except"
+        caption="Never shown, even when an Allow rule matches."
+        icon={<BlockIcon sx={{ fontSize: 18, color: 'var(--text-warning-color)' }} />}
+      >
+        {hides.map(m => (
+          <RuleRow key={m.id} policy={policy} module={m} focused={m.id === focusedRuleId} />
+        ))}
+        <AddRuleForm
+          examples={{ contains: 'token', equals: 'email', suffix: '_key' }}
+          onAdd={async match => void (await global.addAccessPolicyRule(policy.id, { type: 'hide', match }))}
+        />
       </RuleList>
     </>
   );
@@ -330,9 +381,10 @@ const AccessPolicySection = () => {
       </Typography>
 
       <Typography variant="body2" sx={{ flexShrink: 0, color: 'var(--canvas-text-dim)', mb: 2 }}>
-        A policy decides which columns an agent can see. A column is hidden unless a Show rule matches it, and a
-        Hide rule always wins. Pick a policy for each connection under Database Connections. You can also
-        right-click a column in the results to show or hide it.
+        A policy decides which columns an agent can see. Every column is hidden unless an Allow rule matches it.
+        Except rules take columns back out: a column they match stays hidden, even when an Allow rule matches it.
+        Pick a policy for each connection under Database Connections. You can also right-click a column in the
+        results to show or hide it.
       </Typography>
 
       {/* The policies as a strip above the rules, not a column beside

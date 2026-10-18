@@ -633,7 +633,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
                 <PolicyOutlined fontSize="small" />
               </ListItemIcon>
               <ListItemText
-                primary="Hidden from agents by a rule…"
+                primary="Hidden from agents by an exception…"
                 secondary={action.rule.type === 'hide' ? describeMatcher(action.rule.match) : undefined}
                 secondaryTypographyProps={{ sx: secondarySx }}
               />
