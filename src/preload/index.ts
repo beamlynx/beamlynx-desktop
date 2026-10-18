@@ -134,6 +134,10 @@ contextBridge.exposeInMainWorld('beamlynxDesktop', {
   accessPolicy: {
     list: (): Promise<AccessPolicy[]> => ipcRenderer.invoke('access-policy:list'),
     create: (name: string): Promise<AccessPolicy> => ipcRenderer.invoke('access-policy:create', name),
+    // A copy of a policy, with the same rules: for changing what one
+    // connection's agents see when its policy is shared with others.
+    duplicate: (id: string, name: string): Promise<AccessPolicy | null> =>
+      ipcRenderer.invoke('access-policy:duplicate', id, name),
     rename: (id: string, name: string): Promise<AccessPolicy | null> =>
       ipcRenderer.invoke('access-policy:rename', id, name),
     delete: (id: string): Promise<void> => ipcRenderer.invoke('access-policy:delete', id),
