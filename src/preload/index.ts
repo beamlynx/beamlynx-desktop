@@ -10,6 +10,7 @@ import type { AppDbStatus, Recipe, RecipeInputDef, StartupState } from '../main/
 import type { UpdateStatus } from '../main/auto-update';
 import type {
   AccessPolicy,
+  AccessPolicyModule,
   AccessPolicyRule,
   CredentialsStatus,
   GetConnectionResult,
@@ -133,8 +134,14 @@ contextBridge.exposeInMainWorld('beamlynxDesktop', {
     rename: (id: string, name: string): Promise<AccessPolicy | null> =>
       ipcRenderer.invoke('access-policy:rename', id, name),
     delete: (id: string): Promise<void> => ipcRenderer.invoke('access-policy:delete', id),
-    setModuleEnabled: (policyId: string, type: AccessPolicyRule['type'], enabled: boolean): Promise<AccessPolicy | null> =>
-      ipcRenderer.invoke('access-policy:set-module-enabled', policyId, type, enabled),
+    addRule: (policyId: string, rule: AccessPolicyRule): Promise<AccessPolicy | null> =>
+      ipcRenderer.invoke('access-policy:add-rule', policyId, rule),
+    removeRule: (policyId: string, ruleId: string): Promise<AccessPolicy | null> =>
+      ipcRenderer.invoke('access-policy:remove-rule', policyId, ruleId),
+    setRuleEnabled: (policyId: string, ruleId: string, enabled: boolean): Promise<AccessPolicy | null> =>
+      ipcRenderer.invoke('access-policy:set-rule-enabled', policyId, ruleId, enabled),
+    setRules: (policyId: string, rules: AccessPolicyModule[]): Promise<AccessPolicy | null> =>
+      ipcRenderer.invoke('access-policy:set-rules', policyId, rules),
   },
   // See src/main/mcp/render-bridge.ts -- main sends the request, this
   // process runs `handler` and reports the result back correlated by

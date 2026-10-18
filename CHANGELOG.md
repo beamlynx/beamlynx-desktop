@@ -5,7 +5,11 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 ### Added
+- **Access policy: exceptions.** Besides its Allow rules, a policy can now list Except rules: a column they match stays hidden from agents, even when an Allow rule matches it. (In pine-lang's rules they are `hide` rules.) Rules can name a column by what its name contains, ends with or equals, or name one exact column of one table. Every rule has an id, so a policy can hold any number of them. New IPC calls add, remove and switch one rule, and put a policy's rules back for Undo: `access-policy:add-rule`, `access-policy:remove-rule`, `access-policy:set-rule-enabled` and `access-policy:set-rules`. They replace `access-policy:set-module-enabled`.
 - **Arch Linux package.** The app is on the AUR as `beamlynx-bin`, and starts with the `beamlynx` command. The release checklist now updates it on every release.
+
+### Changed
+- **Every policy now hides columns whose name contains `token`, `password` or `secret`.** New policies start with these exceptions, and existing policies get them once, switched on. This only hides more from agents. Switch them off or remove them under Settings → Access Policy.
 
 ## [0.20.0] - 2026-10-17
 ### Added

@@ -64,7 +64,11 @@ const {
   setApplyPolicyToOwnQueries,
   listConnections,
   createAccessPolicy,
-  setAccessPolicyModuleEnabled,
+  listAccessPolicies,
+  addAccessPolicyRule,
+  removeAccessPolicyRule,
+  setAccessPolicyRuleEnabled,
+  setAccessPolicyRules,
   deleteAccessPolicy,
   listMcpEnabledConnections,
   getMcpAccessStatus,
@@ -88,9 +92,13 @@ function addConnection(overrides = {}) {
   return result.profile;
 }
 
+function policyById(policyId) {
+  return listAccessPolicies().find(p => p.id === policyId);
+}
+
 function disableAllRules(policyId) {
-  for (const type of ['column-type', 'foreign-key', 'column-name']) {
-    setAccessPolicyModuleEnabled(policyId, type, false);
+  for (const rule of policyById(policyId).rules) {
+    setAccessPolicyRuleEnabled(policyId, rule.id, false);
   }
 }
 
@@ -117,7 +125,7 @@ test('setMcpEnabled(id, false) always succeeds, even if the connection\'s policy
   const conn = addConnection();
   assert.equal(setMcpEnabled(conn.id, true).ok, true);
   // Disabling a policy's rules doesn't touch any connection using it --
-  // deliberately, see setAccessPolicyModuleEnabled's own comment -- so this
+  // deliberately, see setAccessPolicyRuleEnabled's own comment -- so this
   // reaches the exact "mcpEnabled: true, but no rule active" edge state.
   disableAllRules(conn.policyId);
   const result = setMcpEnabled(conn.id, false);
@@ -208,3 +216,148 @@ test('listMcpEnabledConnections requires each connection\'s OWN policy to be act
   assert.ok(!result.some(c => c.id === wentInactive.id || c.id === neverEnabled.id));
 });
 
+
+// Rules as pine-lang receives them, in order, for comparing.
+function plain(policy) {
+  return policy.rules.map(({ id: _id, enabled: _enabled, builtIn: _builtIn, ...rule }) => rule);
+}
+
+const email = { type: 'column', schema: 'public', table: 'user', column: 'email' };
+
+test('a new policy starts with the starter hide rules, then the built-in show rules', () => {
+  const policy = createAccessPolicy('Fresh');
+  assert.deepEqual(
+    policy.rules.filter(r => r.type === 'hide').map(r => r.match.contains),
+    ['token', 'password', 'secret'],
+  );
+  assert.deepEqual(
+    policy.rules.filter(r => r.builtIn).map(r => r.type),
+    ['column-type', 'foreign-key', 'column-name'],
+  );
+  assert.ok(policy.rules.every(r => r.enabled && typeof r.id === 'string'));
+  assert.equal(new Set(policy.rules.map(r => r.id)).size, policy.rules.length);
+});
+
+test('a column gets one rule of its own: Hide replaces Show, and Show replaces Hide', () => {
+  const policy = createAccessPolicy('Columns');
+  addAccessPolicyRule(policy.id, email);
+  let rules = plain(policyById(policy.id));
+  assert.deepEqual(rules.at(-1), email);
+
+  addAccessPolicyRule(policy.id, { type: 'hide', match: email });
+  rules = plain(policyById(policy.id));
+  assert.deepEqual(rules[0], { type: 'hide', match: email });
+  assert.ok(!rules.some(r => r.type === 'column'));
+
+  addAccessPolicyRule(policy.id, email);
+  rules = plain(policyById(policy.id));
+  assert.ok(!rules.some(r => r.type === 'hide' && r.match.type === 'column'));
+  assert.equal(rules.filter(r => r.type === 'column').length, 1);
+});
+
+test('adding a rule the policy already has switches it on instead of adding it twice', () => {
+  const policy = createAccessPolicy('Twice');
+  const token = policy.rules.find(r => r.type === 'hide' && r.match.contains === 'token');
+  setAccessPolicyRuleEnabled(policy.id, token.id, false);
+  addAccessPolicyRule(policy.id, { type: 'hide', match: { type: 'column-name', contains: 'token' } });
+  const after = policyById(policy.id);
+  assert.equal(after.rules.length, policy.rules.length);
+  assert.equal(after.rules.find(r => r.id === token.id).enabled, true);
+});
+
+test('a built-in rule can be switched off but not removed; other rules can be removed', () => {
+  const policy = createAccessPolicy('Remove');
+  const builtIn = policy.rules.find(r => r.builtIn);
+  const starter = policy.rules.find(r => r.type === 'hide');
+  removeAccessPolicyRule(policy.id, builtIn.id);
+  removeAccessPolicyRule(policy.id, starter.id);
+  const ids = policyById(policy.id).rules.map(r => r.id);
+  assert.ok(ids.includes(builtIn.id));
+  assert.ok(!ids.includes(starter.id));
+});
+
+test('setAccessPolicyRules puts rules back for Undo, and never drops a built-in rule', () => {
+  const policy = createAccessPolicy('Undo');
+  const before = policyById(policy.id).rules;
+  addAccessPolicyRule(policy.id, email);
+  setAccessPolicyRules(policy.id, before);
+  assert.deepEqual(policyById(policy.id).rules, before);
+
+  setAccessPolicyRules(policy.id, []);
+  assert.deepEqual(
+    policyById(policy.id).rules.map(r => r.id),
+    before.filter(r => r.builtIn).map(r => r.id),
+  );
+});
+
+test('a version 1 store gets rule ids, built-in marks and the starter hide rules, once', () => {
+  const storePath = path.join(userDataDir, 'connections.json');
+  fs.mkdirSync(userDataDir, { recursive: true });
+  fs.writeFileSync(
+    storePath,
+    JSON.stringify({
+      version: 1,
+      connections: [],
+      accessPolicies: [
+        {
+          id: 'p1',
+          name: 'Default',
+          rules: [
+            { type: 'column-type', allow: ['integer'], enabled: true },
+            { type: 'foreign-key', enabled: false },
+            { type: 'column-name', suffix: '_id', enabled: true },
+          ],
+        },
+      ],
+    }),
+  );
+  const [policy] = listAccessPolicies();
+  assert.deepEqual(plain(policy), [
+    { type: 'hide', match: { type: 'column-name', contains: 'token' } },
+    { type: 'hide', match: { type: 'column-name', contains: 'password' } },
+    { type: 'hide', match: { type: 'column-name', contains: 'secret' } },
+    { type: 'column-type', allow: ['integer'] },
+    { type: 'foreign-key' },
+    { type: 'column-name', suffix: '_id' },
+  ]);
+  assert.deepEqual(policy.rules.map(r => r.enabled), [true, true, true, true, false, true]);
+  assert.deepEqual(policy.rules.map(r => !!r.builtIn), [false, false, false, true, true, true]);
+  assert.equal(JSON.parse(fs.readFileSync(storePath, 'utf-8')).version, 2);
+
+  // Removing a starter rule sticks: the migration doesn't run again.
+  removeAccessPolicyRule('p1', policy.rules[0].id);
+  assert.equal(listAccessPolicies()[0].rules.length, 5);
+});
+
+test('a policy without rule ids is migrated on its own, even in a version 2 store, and only once', () => {
+  // An older app sharing connections.json can add a policy after this one
+  // has migrated the store.
+  const storePath = path.join(userDataDir, 'connections.json');
+  fs.mkdirSync(userDataDir, { recursive: true });
+  const migrated = createAccessPolicy('Already migrated');
+  const store = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
+  store.accessPolicies.push({
+    id: 'old',
+    name: 'From the old app',
+    rules: [{ type: 'column-type', allow: ['integer'], enabled: true }],
+  });
+  fs.writeFileSync(storePath, JSON.stringify(store));
+
+  const policies = listAccessPolicies();
+  assert.deepEqual(policies.find(p => p.id === migrated.id), migrated);
+  const old = policies.find(p => p.id === 'old');
+  assert.equal(old.rules.length, 4);
+  assert.ok(old.rules.every(r => typeof r.id === 'string'));
+  assert.equal(new Set(old.rules.map(r => r.id)).size, 4);
+
+  // Nothing left to migrate: a second read changes nothing.
+  assert.deepEqual(listAccessPolicies(), policies);
+});
+
+test('a newer store version is never lowered', () => {
+  const storePath = path.join(userDataDir, 'connections.json');
+  fs.mkdirSync(userDataDir, { recursive: true });
+  fs.writeFileSync(storePath, JSON.stringify({ version: 3, connections: [], accessPolicies: [] }));
+  listAccessPolicies();
+  assert.equal(JSON.parse(fs.readFileSync(storePath, 'utf-8')).version, 3);
+});

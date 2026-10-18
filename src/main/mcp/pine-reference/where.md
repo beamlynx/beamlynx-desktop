@@ -120,5 +120,5 @@ literal you are comparing it against.
 
 A column the policy hides comes back as `xxxxx`. It also can't be used in `where:`, `order:` or
 `group:`: such a query is refused, since filtering on a hidden value would reveal it through the
-rows that match. Filter on the `id`, or on a column the policy shows. A table the connection
+rows that match. Filter on a column the policy shows, which is usually the `id`. A table the connection
 hasn't indexed yet is refused too, until the owner refreshes its schema.
