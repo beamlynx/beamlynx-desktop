@@ -1,5 +1,5 @@
 {
-  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang bumped to its tagged 0.49.0 and beamlynx-ui to its tagged 0.66.0, a pair that has to move together: beamlynx-ui 0.66.0 needs pine-lang 0.49 (its RequiredVersion) for checkpoints, limit: N per, group: ... with, SQL to Pine, JSON paths and the launch token this app sends.",
-  "pineLangRef": "0.49.0",
-  "beamlynxUiRef": "0.66.0"
+  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang bumped to its tagged 0.50.0 and beamlynx-ui to its tagged 0.67.0, a pair that has to move together: beamlynx-ui 0.67.0 needs pine-lang 0.50 (its RequiredVersion) for access policy annotations and refusals that name the hidden column, which agent investigations rely on.",
+  "pineLangRef": "0.50.0",
+  "beamlynxUiRef": "0.67.0"
 }

@@ -4,16 +4,23 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.21.0] - 2026-10-18
 ### Added
-- **Agent investigations.** Each Claude session that uses beamlynx is now an investigation of its own. The MCP relay sends an id with every call, so the app can give each session its own tab (bundled beamlynx-ui).
+- **Agent investigations.** Each Claude session that uses beamlynx is now an investigation of its own. The MCP relay sends an id with every call, so the app can give each session its own tab, opened from the robot in the sidebar. A timeline beside the canvas keeps every step: each query with the agent's reason and what came back, failures included. Click a query to see its rows again, exactly as the agent saw them (bundled beamlynx-ui 0.67.0).
 - **Steering an agent from beamlynx.** Notes the user types in an investigation's tab reach the agent at the top of its next beamlynx call. beamlynx can't send the agent a message, only answer its calls, so a note waits for that call.
-- **Allowing a hidden column while the agent waits.** A query refused for a hidden column now waits inside the agent's `run_query` call while beamlynx asks the user. If they allow the column, the query runs again and the agent gets the rows. If they decline, it gets their answer. The call gives up after 10 minutes. Needs pine-lang with `hidden-column` in its refusals.
-- **Reveal requests belong to their investigation.** A `request_reveal` call carries the id of the Claude session that made it, so the app shows it as a card in that investigation instead of a tab of its own (bundled beamlynx-ui).
+- **Allowing a hidden column while the agent waits.** A query refused for a hidden column now waits inside the agent's `run_query` call while beamlynx asks the user. If they allow the column, the query runs again and the agent gets the rows. If they decline, it gets their answer. The call gives up after 10 minutes. The card that asks is in the investigation's timeline (bundled pine-lang 0.50.0, beamlynx-ui 0.67.0).
+- **Reveal requests belong to their investigation.** A `request_reveal` call carries the id of the Claude session that made it, so the app shows it as a card in that investigation instead of a tab of its own. You can look at the real rows before revealing them (bundled beamlynx-ui 0.67.0).
 - **Two new MCP tools:** `set_question` names what the agent is investigating, which becomes the tab's title. `note_finding` records what it found, from beamlynx or another source, shown next to its queries.
-- **Access policy: exceptions.** Besides its Allow rules, a policy can now list Except rules: a column they match stays hidden from agents, even when an Allow rule matches it. (In pine-lang's rules they are `hide` rules.) Rules can name a column by what its name contains, ends with or equals, or name one exact column of one table. Every rule has an id, so a policy can hold any number of them. New IPC calls add, remove and switch one rule, and put a policy's rules back for Undo: `access-policy:add-rule`, `access-policy:remove-rule`, `access-policy:set-rule-enabled` and `access-policy:set-rules`. They replace `access-policy:set-module-enabled`.
+- **Access policy: exceptions.** Besides its Allow rules, a policy can now list Except rules: a column they match stays hidden from agents, even when an Allow rule matches it. (In pine-lang's rules they are `hide` rules.) Rules can name a column by what its name contains, ends with or equals, or name one exact column of one table. Every rule has an id, so a policy can hold any number of them. New IPC calls add, remove and switch one rule, and put a policy's rules back for Undo: `access-policy:add-rule`, `access-policy:remove-rule`, `access-policy:set-rule-enabled` and `access-policy:set-rules`. They replace `access-policy:set-module-enabled`. Settings → Access Policy lists the Allow rules, then the exceptions (bundled pine-lang 0.50.0, beamlynx-ui 0.67.0).
+- **Change the access policy from the results.** Right-click a cell or a column header and choose **Show to agents** or **Hide from agents**. A message says which policy changed and which other connections use it, with Undo. A column agents can't see has a crossed-out eye in its header, in your own tabs too, where you still see its values (bundled pine-lang 0.50.0, beamlynx-ui 0.67.0).
+- **A sidebar on the left.** The database connection is at its top, then the agent, the settings sections and What's new. It shows icons only, or expands to show labels and the agent's investigations (bundled beamlynx-ui 0.67.0).
 
 ### Changed
 - **Every policy now hides columns whose name contains `token`, `password` or `secret`.** New policies start with these exceptions, and existing policies get them once, switched on. This only hides more from agents. Switch them off or remove them under Settings → Access Policy.
+
+### Fixed
+- **SQL to Pine: a column without its table, in a query with a join,** now belongs to the one table that has it, as in SQL. It used to be refused (bundled pine-lang 0.50.0).
 
 ## [0.20.0] - 2026-10-17
 ### Added
