@@ -23,6 +23,31 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.68.0',
+    date: '2026-10-19',
+    added: [
+      {
+        title: "A shared policy is copied, not changed for everyone, if you choose",
+        description:
+          "When you show or hide a column for agents from the results, and the connection's access policy is also used by other connections, beamlynx asks first. **Copy for (this connection)** gives the connection a copy of the policy and changes only the copy; the other connections keep the original. **Change (policy)** changes it for all of them, as before. Undo after a copy puts the connection back on the original and removes the copy. The Allow card in an agent's investigation offers the same two choices. Needs the desktop app's new `access-policy:duplicate`.",
+      },
+    ],
+    changed: [
+      {
+        title: "The agent sits at the bottom of the sidebar",
+        description:
+          "and only once an agent has started an investigation, since until then there's nothing to open. The connection and the settings stay at the top.",
+      },
+    ],
+    fixed: [
+      {
+        title: "\"Also restrict my own queries\" now applies in an agent's investigation tab too",
+        description:
+          "A query you ran there was always masked, whatever the setting said, because the whole tab counted as the agent's. Now only the agent's own queries are always masked, while they run. Your own runs in that tab follow the setting, as in any other tab, and the agent's results in the timeline stay as it saw them.",
+      },
+    ],
+  },
+  {
     version: '0.67.0',
     date: '2026-10-18',
     breaking: [
@@ -2559,4 +2584,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.67.0';
+export const LATEST_VERSION = '0.68.0';
