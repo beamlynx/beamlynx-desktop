@@ -226,11 +226,6 @@ export class GlobalStore {
   setInvestigationPanelCollapsed = (collapsed: boolean) => {
     this.investigationPanelCollapsed = collapsed;
   };
-  // How many of the agent's runs (runMcpQuery) are evaluating in each tab
-  // right now, so onSessionEvaluated can tell them from the user pressing
-  // Run. A count, not a flag: an agent can make calls in parallel, and the
-  // first to finish must not unmark the others.
-  private agentEvaluating = new Map<string, number>();
   // True from the moment an MCP-driven query finishes until its
   // investigation is next opened (openInvestigationTab clears it). It turns
   // the sidebar's robot amber: the only way to know a result landed while
@@ -1546,8 +1541,11 @@ export class GlobalStore {
   }) => {
     const investigation = this.getOrCreateInvestigation(investigationId);
     const stepId = investigation.startQuery(args.sql ?? args.expression, 'agent');
-    const sessionId = investigation.sessionId;
-    this.agentEvaluating.set(sessionId, (this.agentEvaluating.get(sessionId) ?? 0) + 1);
+    // Marks the tab's requests as the agent's for exactly as long as this
+    // query runs (Session.runsAsAgent): they are enforced, and the run isn't
+    // taken for the user's own (onSessionEvaluated).
+    const running = this.sessions[investigation.sessionId];
+    runInAction(() => running.agentRunsInFlight++);
     let result: Awaited<ReturnType<typeof runMcpQueryImpl>>;
     try {
       result = await runMcpQueryImpl(this.mcpQueryDeps(investigation.id), args);
@@ -1555,9 +1553,7 @@ export class GlobalStore {
       investigation.finishQuery(stepId, emptySnapshot(args.expression, e instanceof Error ? e.message : String(e)));
       throw e;
     } finally {
-      const left = (this.agentEvaluating.get(sessionId) ?? 1) - 1;
-      if (left > 0) this.agentEvaluating.set(sessionId, left);
-      else this.agentEvaluating.delete(sessionId);
+      runInAction(() => running.agentRunsInFlight--);
     }
     const session = this.sessions[investigation.sessionId];
     // No tab id: the SQL didn't convert, so nothing ran in the tab.
@@ -1608,14 +1604,25 @@ export class GlobalStore {
    * results grid's "Show to agents", before the agent's waiting call runs
    * the query again. False when the rule couldn't be written.
    */
-  answerApproval = async (investigationId: string, approvalId: string, allowed: boolean, comment?: string) => {
+  answerApproval = async (
+    investigationId: string,
+    approvalId: string,
+    allowed: boolean,
+    comment?: string,
+    // Allow it in a copy of the policy for this connection alone
+    // (copyPolicyForConnection), not in the policy it shares with others.
+    inCopy = false,
+  ) => {
     const investigation = this.investigations.find(i => i.id === investigationId);
     const step = investigation?.steps.find(s => s.kind === 'approval' && s.approvalId === approvalId);
     if (!investigation || !step || step.kind !== 'approval' || step.status !== 'pending') return false;
     if (allowed) {
       const session = this.sessions[investigation.sessionId];
       const connection = this.connections.find(c => c.id === session?.profileId);
-      const policy = this.accessPolicies.find(p => p.id === connection?.policyId);
+      const policy =
+        inCopy && connection
+          ? await this.copyPolicyForConnection(connection.id)
+          : this.accessPolicies.find(p => p.id === connection?.policyId);
       const table = step.column.table;
       if (!policy || !table) return false;
       const rule = exactColumnRule({ schema: table.schema, table: table.table, column: step.column.column }, false);
@@ -1634,11 +1641,52 @@ export class GlobalStore {
   investigationPolicy = (investigationId: string) => {
     const investigation = this.investigations.find(i => i.id === investigationId);
     const session = investigation && this.sessions[investigation.sessionId];
-    const connection = this.connections.find(c => c.id === session?.profileId);
+    const sharing = this.policySharing(session?.profileId);
+    return sharing && { name: sharing.policy.name, others: sharing.others, connection: sharing.connection.label };
+  };
+
+  /** A saved connection's access policy, and the labels of the other connections that use it too. */
+  policySharing = (profileId: string | undefined) => {
+    const connection = this.connections.find(c => c.id === profileId);
     const policy = this.accessPolicies.find(p => p.id === connection?.policyId);
-    if (!policy) return undefined;
-    const others = this.connections.filter(c => c.policyId === policy.id && c.id !== connection?.id).map(c => c.label);
-    return { name: policy.name, others };
+    if (!connection || !policy) return undefined;
+    const others = this.connections.filter(c => c.policyId === policy.id && c.id !== connection.id).map(c => c.label);
+    return { connection, policy, others };
+  };
+
+  /**
+   * Gives a connection a copy of its access policy, named for it, so a
+   * change meant for it alone doesn't change what agents see on the other
+   * connections that shared the policy. Null if that couldn't be done; then
+   * nothing changed.
+   */
+  copyPolicyForConnection = async (profileId: string): Promise<AccessPolicy | null> => {
+    const sharing = this.policySharing(profileId);
+    const desktop = typeof window === 'undefined' ? undefined : window.beamlynxDesktop;
+    if (!sharing || !desktop?.accessPolicy.duplicate) return null;
+    const copy = await desktop.accessPolicy.duplicate(
+      sharing.policy.id,
+      `${sharing.policy.name} for ${sharing.connection.label}`,
+    );
+    if (!copy) return null;
+    runInAction(() => {
+      this.accessPolicies = [...this.accessPolicies, copy];
+    });
+    const switched = await desktop.credentials.setConnectionPolicy(profileId, copy.id);
+    if (!switched.ok) {
+      await this.deleteAccessPolicy(copy.id);
+      return null;
+    }
+    runInAction(() => {
+      this.connections = this.connections.map(c => (c.id === profileId ? { ...c, policyId: copy.id } : c));
+    });
+    return copy;
+  };
+
+  /** Undoes copyPolicyForConnection: the connection back on its old policy, and the copy gone. */
+  undoPolicyCopy = async (profileId: string, previousPolicyId: string, copyId: string) => {
+    await this.setConnectionPolicy(profileId, previousPolicyId);
+    await this.deleteAccessPolicy(copyId);
   };
 
   /** A tool call's start or end, from beamlynx-desktop (McpBridge.tsx). */
@@ -1665,7 +1713,7 @@ export class GlobalStore {
    * goes in the timeline, and the agent is told with its next call.
    */
   onSessionEvaluated = (session: Session) => {
-    if (this.agentEvaluating.has(session.id)) return;
+    if (session.agentRunsInFlight > 0) return;
     const investigation = this.investigationForSession(session.id);
     if (!investigation) return;
     const snapshot = snapshotOf(session);

@@ -229,6 +229,8 @@ interface BeamlynxDesktopApi {
   accessPolicy: {
     list: () => Promise<AccessPolicy[]>;
     create: (name: string) => Promise<AccessPolicy>;
+    // A copy with the same rules. Optional: absent from an older desktop app.
+    duplicate?: (id: string, name: string) => Promise<AccessPolicy | null>;
     rename: (id: string, name: string) => Promise<AccessPolicy | null>;
     delete: (id: string) => Promise<void>;
     // By rule id. A rule for one exact column replaces any other rule for

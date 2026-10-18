@@ -133,20 +133,30 @@ const ApprovalStep = observer(
       ? columnName({ schema: table.schema, table: table.table, column: step.column.column })
       : step.column.column;
 
-    const answer = async (allowed: boolean) => {
+    const answer = async (allowed: boolean, inCopy = false) => {
       setBusy(true);
       setError('');
-      const ok = await global.answerApproval(investigation.id, step.approvalId, allowed, comment.trim() || undefined);
+      const ok = await global.answerApproval(
+        investigation.id,
+        step.approvalId,
+        allowed,
+        comment.trim() || undefined,
+        inCopy,
+      );
       setBusy(false);
       if (!ok) setError("Couldn't save that to the access policy.");
     };
 
     const pending = step.status === 'pending';
     const policy = global.investigationPolicy(investigation.id);
-    const where = policy
-      ? `Adds it to the Allow rules of the “${policy.name}” policy` +
-        (policy.others.length ? `, which ${policy.others.join(', ')} also ${policy.others.length === 1 ? 'uses' : 'use'}.` : '.')
-      : undefined;
+    // A policy other connections use too: Allow changes what their agents
+    // see as well, so a copy for this connection alone is offered first.
+    const shared = !!policy && policy.others.length > 0;
+    const where = !policy
+      ? undefined
+      : shared
+        ? `“${policy.name}” is also used by ${policy.others.join(', ')}. Allowing it there changes what agents see on ${policy.others.length === 1 ? 'it' : 'them'} too. A copy for ${policy.connection} changes only ${policy.connection}.`
+        : `Adds it to the Allow rules of the “${policy.name}” policy.`;
     return (
       <Box
         sx={{
@@ -207,10 +217,21 @@ const ApprovalStep = observer(
         ) : (
           <>
             {where && <Typography sx={{ fontSize: 12, color: dim, mb: 1, lineHeight: 1.4 }}>{where}</Typography>}
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button size="small" variant="contained" disabled={busy} onClick={() => answer(true)}>
-                Allow
-              </Button>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+              {shared ? (
+                <>
+                  <Button size="small" variant="contained" disabled={busy} onClick={() => answer(true, true)}>
+                    Allow in a copy for {policy!.connection}
+                  </Button>
+                  <Button size="small" disabled={busy} onClick={() => answer(true)}>
+                    Allow in “{policy!.name}”
+                  </Button>
+                </>
+              ) : (
+                <Button size="small" variant="contained" disabled={busy} onClick={() => answer(true)}>
+                  Allow
+                </Button>
+              )}
               <Button size="small" color="error" disabled={busy} onClick={() => setDeclining(true)}>
                 Decline…
               </Button>
