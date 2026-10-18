@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.68.0] - 2026-10-19
 ### Added
 - **A shared policy is copied, not changed for everyone, if you choose.** When you show or hide a column for agents from the results, and the connection's access policy is also used by other connections, beamlynx asks first. **Copy for (this connection)** gives the connection a copy of the policy and changes only the copy; the other connections keep the original. **Change (policy)** changes it for all of them, as before. Undo after a copy puts the connection back on the original and removes the copy. The Allow card in an agent's investigation offers the same two choices. Needs the desktop app's new `access-policy:duplicate`.
 
