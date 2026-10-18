@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Box, Button, CircularProgress, IconButton, TextField, Tooltip, Typography } from '@mui/material';
+import { Box, Button, CircularProgress, IconButton, TextField, Typography } from '@mui/material';
 import {
   ArrowDownward,
+  ChevronLeft,
+  ChevronRight,
   CheckCircleOutline,
   ErrorOutline,
   LightbulbOutlined,
@@ -140,6 +142,11 @@ const ApprovalStep = observer(
     };
 
     const pending = step.status === 'pending';
+    const policy = global.investigationPolicy(investigation.id);
+    const where = policy
+      ? `Adds it to the Allow rules of the “${policy.name}” policy` +
+        (policy.others.length ? `, which ${policy.others.join(', ')} also ${policy.others.length === 1 ? 'uses' : 'use'}.` : '.')
+      : undefined;
     return (
       <Box
         sx={{
@@ -163,7 +170,11 @@ const ApprovalStep = observer(
         {!pending ? (
           <Typography sx={{ fontSize: 12, color: dim, display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <CheckCircleOutline sx={{ fontSize: 14 }} />
-            {step.status === 'allowed' ? 'Allowed. The query ran again.' : 'Declined.'}
+            {step.status === 'allowed'
+              ? 'Allowed. The query ran again.'
+              : step.status === 'expired'
+                ? 'The agent stopped waiting for an answer.'
+                : 'Declined.'}
           </Typography>
         ) : declining ? (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
@@ -194,18 +205,17 @@ const ApprovalStep = observer(
             </Box>
           </Box>
         ) : (
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <Tooltip title={`Adds “${name}” to the Allow rules of this connection's access policy`}>
-              <span>
-                <Button size="small" variant="contained" disabled={busy} onClick={() => answer(true)}>
-                  Allow
-                </Button>
-              </span>
-            </Tooltip>
-            <Button size="small" color="error" disabled={busy} onClick={() => setDeclining(true)}>
-              Decline…
-            </Button>
-          </Box>
+          <>
+            {where && <Typography sx={{ fontSize: 12, color: dim, mb: 1, lineHeight: 1.4 }}>{where}</Typography>}
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button size="small" variant="contained" disabled={busy} onClick={() => answer(true)}>
+                Allow
+              </Button>
+              <Button size="small" color="error" disabled={busy} onClick={() => setDeclining(true)}>
+                Decline…
+              </Button>
+            </Box>
+          </>
         )}
         {error && <Typography sx={{ fontSize: 12, color: failed, mt: 0.5 }}>{error}</Typography>}
       </Box>
@@ -354,6 +364,35 @@ const InvestigationPanel = observer(({ investigation }: { investigation: Investi
         ? 'Last call just now'
         : `Last call ${ago(sinceLastCall)}. The agent may be working in another tool.`;
 
+  if (global.investigationPanelCollapsed) {
+    const waiting = investigation.pendingApprovals.length > 0;
+    return (
+      <Box
+        sx={{
+          width: 36,
+          flexShrink: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          pt: 1,
+          borderRight: '1px solid var(--border-color)',
+          backgroundColor: 'var(--background-color)',
+        }}
+        data-testid="investigation-panel"
+      >
+        <IconButton
+          size="small"
+          onClick={() => global.setInvestigationPanelCollapsed(false)}
+          aria-label={waiting ? 'Show the timeline: the agent is waiting for your answer' : 'Show the timeline'}
+          title={waiting ? 'The agent is waiting for your answer' : 'Show the timeline'}
+          sx={{ color: waiting ? 'var(--notification-color)' : dim }}
+        >
+          <ChevronRight sx={{ fontSize: 20 }} />
+        </IconButton>
+      </Box>
+    );
+  }
+
   return (
     <Box
       sx={{
@@ -368,12 +407,23 @@ const InvestigationPanel = observer(({ investigation }: { investigation: Investi
       data-testid="investigation-panel"
     >
       <Box sx={{ px: 1.5, pt: 1.25, pb: 1, borderBottom: '1px solid var(--border-color)' }}>
-        <Typography
-          component="h2"
-          sx={{ fontSize: 15, fontWeight: 600, color: 'var(--text-color)', lineHeight: 1.35 }}
-        >
-          {investigation.question ?? 'Agent investigation'}
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
+          <Typography
+            component="h2"
+            sx={{ flex: 1, fontSize: 15, fontWeight: 600, color: 'var(--text-color)', lineHeight: 1.35 }}
+          >
+            {investigation.question ?? 'Agent investigation'}
+          </Typography>
+          <IconButton
+            size="small"
+            onClick={() => global.setInvestigationPanelCollapsed(true)}
+            aria-label="Hide the timeline"
+            title="Hide the timeline"
+            sx={{ color: dim, mt: '-2px', mr: '-6px' }}
+          >
+            <ChevronLeft sx={{ fontSize: 20 }} />
+          </IconButton>
+        </Box>
         <Typography sx={{ fontSize: 12, color: working ? 'var(--canvas-trace)' : dim, mt: 0.25 }}>{status}</Typography>
       </Box>
 

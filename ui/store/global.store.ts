@@ -41,7 +41,14 @@ import { DevState } from './dev-state';
 import { leadingDoc } from './canvas/pine-text';
 import { isValuesBlock, splitExpressions } from './blocks';
 import { AgentActivityStore } from './agent-activity';
-import { DEFAULT_INVESTIGATION, emptySnapshot, Investigation, queryReason, snapshotOf } from './investigations';
+import {
+  APPROVAL_WAIT_MS,
+  DEFAULT_INVESTIGATION,
+  emptySnapshot,
+  Investigation,
+  queryReason,
+  snapshotOf,
+} from './investigations';
 import { exactColumnRule } from '../utils/accessPolicy';
 import type { AgentActivity } from '../desktop';
 import { getCommandById } from '../utils/commands';
@@ -211,9 +218,19 @@ export class GlobalStore {
   // of Ctrl+Tab cycling (see visibleSessionIds). Closing one drops the
   // investigation; the agent's next call starts it again.
   investigations: Investigation[] = [];
-  // Sessions whose evaluation right now is the agent's (runMcpQuery), not
-  // the user pressing Run. onSessionEvaluated tells them apart by this.
-  private agentEvaluating = new Set<string>();
+  // The timeline beside an investigation's canvas, folded to a slim rail to
+  // give the canvas and results the width. One setting for every
+  // investigation tab.
+  investigationPanelCollapsed = false;
+
+  setInvestigationPanelCollapsed = (collapsed: boolean) => {
+    this.investigationPanelCollapsed = collapsed;
+  };
+  // How many of the agent's runs (runMcpQuery) are evaluating in each tab
+  // right now, so onSessionEvaluated can tell them from the user pressing
+  // Run. A count, not a flag: an agent can make calls in parallel, and the
+  // first to finish must not unmark the others.
+  private agentEvaluating = new Map<string, number>();
   // True from the moment an MCP-driven query finishes until that tab is next
   // activated (McpActivityButton.tsx's onClick clears it) -- drives the
   // small dot on that button, the only way to know a result landed while
@@ -1512,7 +1529,8 @@ export class GlobalStore {
   }) => {
     const investigation = this.getOrCreateInvestigation(investigationId);
     const stepId = investigation.startQuery(args.sql ?? args.expression, 'agent');
-    this.agentEvaluating.add(investigation.sessionId);
+    const sessionId = investigation.sessionId;
+    this.agentEvaluating.set(sessionId, (this.agentEvaluating.get(sessionId) ?? 0) + 1);
     let result: Awaited<ReturnType<typeof runMcpQueryImpl>>;
     try {
       result = await runMcpQueryImpl(this.mcpQueryDeps(investigation.id), args);
@@ -1520,7 +1538,9 @@ export class GlobalStore {
       investigation.finishQuery(stepId, emptySnapshot(args.expression, e instanceof Error ? e.message : String(e)));
       throw e;
     } finally {
-      this.agentEvaluating.delete(investigation.sessionId);
+      const left = (this.agentEvaluating.get(sessionId) ?? 1) - 1;
+      if (left > 0) this.agentEvaluating.set(sessionId, left);
+      else this.agentEvaluating.delete(sessionId);
     }
     const session = this.sessions[investigation.sessionId];
     // No tab id: the SQL didn't convert, so nothing ran in the tab.
@@ -1557,6 +1577,11 @@ export class GlobalStore {
     if (!this.accessPolicies.some(p => p.id === connection?.policyId)) return undefined;
     const approvalId = crypto.randomUUID();
     investigation.addApproval(approvalId, hidden, queryReason(session.expression));
+    // The agent's call stops waiting after this long; the card then says so
+    // instead of offering an answer nobody would receive.
+    const expiry = setTimeout(() => investigation.setApproval(approvalId, 'expired'), APPROVAL_WAIT_MS);
+    // Node's timers (tests) would otherwise keep the process alive for it.
+    (expiry as { unref?: () => void }).unref?.();
     return { id: approvalId, column: hidden.column, table: hidden.table };
   };
 
@@ -1569,7 +1594,7 @@ export class GlobalStore {
   answerApproval = async (investigationId: string, approvalId: string, allowed: boolean, comment?: string) => {
     const investigation = this.investigations.find(i => i.id === investigationId);
     const step = investigation?.steps.find(s => s.kind === 'approval' && s.approvalId === approvalId);
-    if (!investigation || !step || step.kind !== 'approval') return false;
+    if (!investigation || !step || step.kind !== 'approval' || step.status !== 'pending') return false;
     if (allowed) {
       const session = this.sessions[investigation.sessionId];
       const connection = this.connections.find(c => c.id === session?.profileId);
@@ -1582,6 +1607,21 @@ export class GlobalStore {
     await desktopMcp()?.resolveApproval?.(approvalId, { allowed, comment });
     investigation.setApproval(approvalId, allowed ? 'allowed' : 'declined');
     return true;
+  };
+
+  /**
+   * The access policy an investigation's queries run under, and the other
+   * connections that share it: an Allow on the approval card changes it for
+   * all of them, and the card says so.
+   */
+  investigationPolicy = (investigationId: string) => {
+    const investigation = this.investigations.find(i => i.id === investigationId);
+    const session = investigation && this.sessions[investigation.sessionId];
+    const connection = this.connections.find(c => c.id === session?.profileId);
+    const policy = this.accessPolicies.find(p => p.id === connection?.policyId);
+    if (!policy) return undefined;
+    const others = this.connections.filter(c => c.policyId === policy.id && c.id !== connection?.id).map(c => c.label);
+    return { name: policy.name, others };
   };
 
   /** A tool call's start or end, from beamlynx-desktop (McpBridge.tsx). */

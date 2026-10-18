@@ -87,7 +87,9 @@ export type InvestigationStep =
       approvalId: string;
       column: HiddenColumn;
       reason?: string;
-      status: 'pending' | 'allowed' | 'declined';
+      // expired: the agent's call stopped waiting (beamlynx-desktop's
+      // APPROVAL_TIMEOUT_MS) before anyone answered.
+      status: 'pending' | 'allowed' | 'declined' | 'expired';
     }
   // A note the user wrote to the agent.
   | { id: string; kind: 'note'; at: number; text: string; delivered: boolean };
@@ -97,6 +99,9 @@ export type InvestigationStep =
 const QUERY_TOOLS = new Set(['run_query', 'run_sql_as_pine']);
 // Waiting is shown as the approval or reveal it waits on.
 const QUIET_TOOLS = new Set(['check_reveal']);
+
+/** How long an agent's run_query waits for an answer (beamlynx-desktop's APPROVAL_TIMEOUT_MS). */
+export const APPROVAL_WAIT_MS = 10 * 60 * 1000;
 
 /** Investigations from a relay too old to send an id share this one. */
 export const DEFAULT_INVESTIGATION = 'default';
@@ -194,9 +199,11 @@ export class Investigation {
     return id;
   }
 
-  setApproval(approvalId: string, status: 'allowed' | 'declined') {
+  setApproval(approvalId: string, status: 'allowed' | 'declined' | 'expired') {
     const step = this.steps.find(s => s.kind === 'approval' && s.approvalId === approvalId);
-    if (step && step.kind === 'approval') step.status = status;
+    // Only a pending card changes: an answer after the agent stopped
+    // waiting is no answer.
+    if (step && step.kind === 'approval' && step.status === 'pending') step.status = status;
   }
 
   addNote(id: string, text: string) {

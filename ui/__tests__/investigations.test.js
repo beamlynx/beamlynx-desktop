@@ -46,7 +46,7 @@ function storeWithFakeDatabase(results) {
     getOrCreateMcpSession: () => {
       const session = store.getOrCreateMcpSession(investigationId);
       session.plugins.default.evaluate = async () => {
-        const result = results(session.expression);
+        const result = await results(session.expression);
         runInAction(() => {
           session.expressionAtLastEval = session.expression;
           session.rows = result.rows ?? [];
@@ -231,4 +231,42 @@ test('a query\'s reason is its leading comment', () => {
   assert.equal(queryReason('/* Logins\n   per tenant */\nactivity'), 'Logins per tenant');
   assert.equal(queryReason('-- Why\nactivity'), 'Why');
   assert.equal(queryReason('activity'), undefined);
+});
+
+test('overlapping agent runs in one tab are all the agent\'s, never told back as the user\'s', async () => {
+  let release;
+  const gate = new Promise(resolve => (release = resolve));
+  // The first query is held in the database while a second one starts and ends.
+  const store = storeWithFakeDatabase(async expression => {
+    if (expression === 'user') await gate;
+    return { rows: [{ id: 1 }] };
+  });
+  const sent = stubBridge();
+  const first = run(store, 'claude-a', 'user');
+  await run(store, 'claude-a', 'tenant');
+  release();
+  await first;
+  assert.deepEqual(store.investigations[0].steps.map(s => s.by), ['agent', 'agent']);
+  assert.equal(sent.notes.length, 0);
+});
+
+test('a card the agent stopped waiting on can no longer be answered', async () => {
+  const store = storeWithFakeDatabase(() => ({ error: 'hidden', errorType: 'policy', hidden: hiddenType }));
+  const added = withPolicy(store);
+  stubBridge();
+  const result = await run(store, 'claude-a', 'activity | where: type = \'x\'');
+  store.investigations[0].setApproval(result.approval.id, 'expired');
+  assert.equal(await store.answerApproval('claude-a', result.approval.id, true), false);
+  assert.equal(added.length, 0);
+  assert.equal(store.agentDecisionsWaiting, 0);
+});
+
+test('the card says which policy Allow changes, and who else uses it', async () => {
+  const store = storeWithFakeDatabase(() => ({ rows: [] }));
+  withPolicy(store);
+  runInAction(() => {
+    store.connections = [...store.connections, { id: 'p2', label: 'Staging', mcpEnabled: true, policyId: 'pol' }];
+  });
+  await run(store, 'claude-a', 'user');
+  assert.deepEqual(store.investigationPolicy('claude-a'), { name: 'Default', others: ['Staging'] });
 });
