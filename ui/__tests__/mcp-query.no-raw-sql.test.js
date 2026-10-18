@@ -26,7 +26,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { runMcpQuery, explainMcpQuery } = require('../store/mcp-query.ts');
-const { effectiveAccessPolicyRules } = require('../store/client.ts');
+const { effectiveAccessPolicy, effectiveAccessPolicyRules, HttpClient } = require('../store/client.ts');
 const { Session } = require('../store/session.ts');
 const { GlobalStore } = require('../store/global.store.ts');
 const { McpWriteRefusalMinVersion } = require('../constants.ts');
@@ -217,7 +217,7 @@ test("explainMcpQuery passes the connection's freshly-resolved accessPolicyRules
     ['user'],
     undefined,
     'conn-1',
-    [{ type: 'column-name', suffix: '_id' }],
+    { rules: [{ type: 'column-name', suffix: '_id' }], mode: 'enforce' },
   ]);
 });
 
@@ -492,4 +492,75 @@ test('an expression run carries no pine/warnings fields', async () => {
   const { deps } = makeFakeDeps();
   const result = await runMcpQuery(deps, { profileId: 'p1', expression: 'company' });
   assert.ok(!('pine' in result));
+});
+
+// effectiveAccessPolicy adds `annotate`: on the owner's own tab, report which
+// columns an agent can't see without hiding them. An agent's query must
+// never get it, or the agent would see every value.
+test('effectiveAccessPolicy: an agent\'s query always enforces, whatever the connection looks like', () => {
+  const policies = [{ id: 'p1', name: 'X', rules: [{ id: 'r', type: 'foreign-key', enabled: true }] }];
+  for (const conn of [
+    { policyId: 'p1', mcpEnabled: true },
+    { policyId: 'p1', mcpEnabled: true, applyPolicyToOwnQueries: false },
+    { policyId: 'p1', mcpEnabled: false },
+    { policyId: null, mcpEnabled: true },
+    { policyId: 'gone', mcpEnabled: true },
+    undefined,
+  ]) {
+    assert.equal(effectiveAccessPolicy(conn, policies, true).mode, 'enforce', JSON.stringify(conn));
+  }
+  assert.deepEqual(effectiveAccessPolicy({ policyId: 'p1', mcpEnabled: true }, policies, true), {
+    rules: [{ type: 'foreign-key' }],
+    mode: 'enforce',
+  });
+});
+
+test('effectiveAccessPolicy: the owner\'s tab annotates only when agents can query the connection', () => {
+  const policies = [{ id: 'p1', name: 'X', rules: [{ id: 'r', type: 'foreign-key', enabled: true }] }];
+  assert.deepEqual(effectiveAccessPolicy({ policyId: 'p1', mcpEnabled: true }, policies, false), {
+    rules: [{ type: 'foreign-key' }],
+    mode: 'annotate',
+  });
+  // Applied to the owner's own queries: enforced, as before.
+  assert.equal(
+    effectiveAccessPolicy({ policyId: 'p1', mcpEnabled: true, applyPolicyToOwnQueries: true }, policies, false).mode,
+    'enforce',
+  );
+  // Agents can't query it, or there's no policy: nothing at all.
+  for (const conn of [{ policyId: 'p1', mcpEnabled: false }, { policyId: null, mcpEnabled: true }]) {
+    assert.deepEqual(effectiveAccessPolicy(conn, policies, false), { rules: [], mode: 'enforce' });
+  }
+});
+
+test('the MCP session enforces and a human tab on the same connection annotates', () => {
+  const fakeGlobalStore = {
+    connections: [{ id: 'c1', mcpEnabled: true, policyId: 'p1' }],
+    accessPolicies: [{ id: 'p1', name: 'X', rules: [{ id: 'r', type: 'foreign-key', enabled: true }] }],
+    mcpSessionId: 'session-mcp',
+  };
+  const mcpSession = new Session('mcp', fakeGlobalStore);
+  mcpSession.profileId = 'c1';
+  assert.equal(mcpSession.accessPolicy.mode, 'enforce');
+  const humanSession = new Session('human-tab', fakeGlobalStore);
+  humanSession.profileId = 'c1';
+  assert.equal(humanSession.accessPolicy.mode, 'annotate');
+});
+
+test('a request carries access-policy-mode only when annotating, and nothing without rules', async () => {
+  const client = new HttpClient();
+  const bodies = [];
+  client.post = async (_path, body) => {
+    bodies.push(body);
+    return { ast: {} };
+  };
+  const rules = [{ type: 'foreign-key' }];
+  await client.eval(['user'], undefined, { rules, mode: 'enforce' });
+  await client.eval(['user'], undefined, { rules, mode: 'annotate' });
+  await client.build(['user'], undefined, undefined, { rules, mode: 'annotate' });
+  await client.eval(['user'], undefined, { rules: [], mode: 'annotate' });
+  assert.deepEqual(bodies[0]['access-policy'], rules);
+  assert.equal(bodies[0]['access-policy-mode'], undefined);
+  assert.equal(bodies[1]['access-policy-mode'], 'annotate');
+  assert.equal(bodies[2]['access-policy-mode'], 'annotate');
+  assert.ok(!('access-policy' in bodies[3]) && !('access-policy-mode' in bodies[3]));
 });

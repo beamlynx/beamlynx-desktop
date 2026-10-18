@@ -225,6 +225,8 @@ export type Column = {
   // A hidden column holding the JSON type of a path column's value in each
   // row, named after that column's 'column-alias'.
   'json-type-of'?: string;
+  // How the access policy treats this column. Only when a policy was sent.
+  policy?: ColumnPolicy;
 };
 
 /** Range returned by the build endpoint mapping segments to table aliases */
@@ -367,21 +369,45 @@ export type ConnectionStatsResponse = {
   time: Date;
 };
 
-// Mirrors pine-lang's pine.access-policy rule shape and beamlynx-desktop's
-// credential-store.ts AccessPolicyRule 1:1 -- sent verbatim (minus
-// `enabled`, see AccessPolicyModule below) as the `access-policy` param
+// Mirrors pine-lang's pine.access-policy rule shape (its
+// docs/access-policy.md) and beamlynx-desktop's credential-store.ts
+// AccessPolicyRule 1:1 -- sent verbatim (minus `id`, `enabled` and
+// `builtIn`, see AccessPolicyModule below) as the `access-policy` param
 // below. See access_policy.clj's docstring for why pine-lang itself
 // carries no default of this.
-export type AccessPolicyRule =
+//
+// A matcher names some columns. On its own it is a show rule; wrapped in a
+// `hide` rule it hides them, whatever any show rule says.
+export type ColumnMatcher =
   | { type: 'column-type'; allow: string[] }
   | { type: 'foreign-key' }
-  | { type: 'column-name'; suffix: string };
+  | { type: 'column-name'; suffix?: string; contains?: string; equals?: string }
+  | { type: 'column'; schema?: string | null; table: string; column: string };
 
-// One module of a named policy -- see AccessPolicy below. A module is a
-// rule plus whether it's currently on; effectiveAccessPolicyRules strips
-// `enabled` before this ever reaches pine-lang, which only ever sees rules
-// that are already active.
-export type AccessPolicyModule = AccessPolicyRule & { enabled: boolean };
+export type AccessPolicyRule = ColumnMatcher | { type: 'hide'; match: ColumnMatcher };
+
+// One rule of a named policy -- see AccessPolicy below: the rule, an id,
+// and whether it's currently on. A built-in rule can be switched off but
+// not removed. effectiveAccessPolicyRules strips all three before this ever
+// reaches pine-lang, which only ever sees rules that are already active.
+export type AccessPolicyModule = AccessPolicyRule & { id: string; enabled: boolean; builtIn?: boolean };
+
+// How pine-lang treated one result column, when a policy was sent (see its
+// docs/access-policy.md): hidden or not, the rule that decided, and the
+// column's real table, which a `column` rule names. A computed value has
+// `hidden` only.
+export type ColumnPolicy = {
+  hidden: boolean;
+  by?: AccessPolicyRule;
+  table?: { schema: string | null; table: string };
+};
+
+// The policy a request carries. `enforce` masks what the rules hide.
+// `annotate` masks nothing and only reports each column's ColumnPolicy, so
+// the owner's own tab can mark what an agent can't see. Decided in one
+// place, effectiveAccessPolicy below, which never returns `annotate` for an
+// agent's query.
+export type AppliedAccessPolicy = { rules: AccessPolicyRule[]; mode: 'enforce' | 'annotate' };
 
 // A named, user-creatable set of rule modules (Settings -> Access Policy) --
 // there can be several; each connection independently selects which one
@@ -457,7 +483,43 @@ export function effectiveAccessPolicyRules(
   if (forMcp ? !connection.mcpEnabled : connection.applyPolicyToOwnQueries !== true) return [];
   const policy = policies.find(p => p.id === connection.policyId);
   if (!policy) return [];
-  return policy.rules.filter(m => m.enabled).map(({ enabled: _enabled, ...rule }) => rule);
+  return activeRules(policy);
+}
+
+function activeRules(policy: AccessPolicy): AccessPolicyRule[] {
+  return policy.rules
+    .filter(m => m.enabled)
+    .map(({ id: _id, enabled: _enabled, builtIn: _builtIn, ...rule }) => rule as AccessPolicyRule);
+}
+
+// What a request from this tab carries: the rules effectiveAccessPolicyRules
+// enforces, if any. Otherwise, on a human tab of a connection agents can
+// query, its policy to annotate with, so the tab can show which columns an
+// agent can't see without hiding them from the owner. An agent's query
+// (forMcp) is always `enforce`.
+export function effectiveAccessPolicy(
+  connection: ConnectionInfo | undefined,
+  policies: AccessPolicy[],
+  forMcp: boolean,
+): AppliedAccessPolicy {
+  const rules = effectiveAccessPolicyRules(connection, policies, forMcp);
+  if (rules.length || forMcp || !connection?.mcpEnabled || !connection.policyId) {
+    return { rules, mode: 'enforce' };
+  }
+  const policy = policies.find(p => p.id === connection.policyId);
+  return policy ? { rules: activeRules(policy), mode: 'annotate' } : { rules: [], mode: 'enforce' };
+}
+
+// The request body's policy fields. Nothing at all without rules, so a
+// request without a policy is the one it always was.
+function policyParams(policy?: AppliedAccessPolicy): {
+  'access-policy'?: AccessPolicyRule[];
+  'access-policy-mode'?: 'annotate';
+} {
+  if (!policy?.rules.length) return {};
+  return policy.mode === 'annotate'
+    ? { 'access-policy': policy.rules, 'access-policy-mode': 'annotate' }
+    : { 'access-policy': policy.rules };
 }
 
 export type ConnectionsListResult = {
@@ -702,7 +764,7 @@ export class HttpClient {
   public async eval(
     expressions: string[],
     connectionId?: string,
-    accessPolicyRules?: AccessPolicyRule[],
+    accessPolicy?: AppliedAccessPolicy,
     // false asks pine-lang to refuse an expression that changes data
     // (delete!/update!, and their d!/u! short forms) rather than run it -- see
     // its docs/side-effects.md. Sent only when explicitly false, so an
@@ -720,18 +782,16 @@ export class HttpClient {
     const body: {
       expressions: string[];
       'access-policy'?: AccessPolicyRule[];
+      'access-policy-mode'?: 'annotate';
       'allow-writes'?: boolean;
       variables?: Record<string, { value: VariableValue }>;
       'run-id'?: string;
-    } = { expressions };
+    } = { expressions, ...policyParams(accessPolicy) };
     if (runId) {
       body['run-id'] = runId;
     }
     if (variables && Object.keys(variables).length) {
       body.variables = Object.fromEntries(Object.entries(variables).map(([name, value]) => [name, { value }]));
-    }
-    if (accessPolicyRules?.length) {
-      body['access-policy'] = accessPolicyRules;
     }
     if (allowWrites === false) {
       body['allow-writes'] = false;
@@ -766,20 +826,19 @@ export class HttpClient {
     expressions: string[],
     cursor?: CursorPosition,
     connectionId?: string,
-    accessPolicyRules?: AccessPolicyRule[],
+    accessPolicy?: AppliedAccessPolicy,
   ): Promise<Response> {
     const body: {
       expressions: string[];
       cursor?: CursorPosition;
       'access-policy'?: AccessPolicyRule[];
+      'access-policy-mode'?: 'annotate';
     } = {
       expressions,
+      ...policyParams(accessPolicy),
     };
     if (cursor) {
       body.cursor = cursor;
-    }
-    if (accessPolicyRules?.length) {
-      body['access-policy'] = accessPolicyRules;
     }
     const response = await this.post('build', this.withConnectionId(body, connectionId));
     if (!response) {

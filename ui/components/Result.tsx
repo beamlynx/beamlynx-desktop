@@ -12,13 +12,26 @@ import {
   MenuItem,
   ListItemIcon,
   ListItemText,
+  Divider,
 } from '@mui/material';
 import {
   FileDownload,
   ContentCopy,
   FilterAlt,
   BarChart as BarChartIcon,
+  VisibilityOutlined,
+  VisibilityOffOutlined,
+  PolicyOutlined,
 } from '@mui/icons-material';
+import {
+  columnName as policyColumnName,
+  columnPolicyAction,
+  describeMatcher,
+  exactColumnRule,
+  findModule,
+  type ColumnPolicyAction,
+  type PolicyColumn,
+} from '../utils/accessPolicy';
 import UpdateModal from './UpdateModal';
 import { useRetainedValue } from '../hooks/useRetainedValue';
 import DownloadResultsModal from './DownloadResultsModal';
@@ -41,6 +54,10 @@ import {
   prettyJson,
 } from './json-cell.util';
 
+// Room for the crossed-out eye a column hidden from agents has before its
+// name (ResultsGrid's HEADER_ICONS), so the name isn't cut off.
+const HIDDEN_FROM_AGENTS_ICON_WIDTH = 24;
+
 interface ResultProps {
   sessionId: string;
 }
@@ -50,6 +67,9 @@ interface ContextMenuState {
   mouseY: number;
   cellValue: any;
   fieldIndex: string;
+  // Opened on the column's header: there is no cell to copy or filter by,
+  // only the column itself.
+  fromHeader?: boolean;
 }
 
 /** The value of one primary key column in the row being edited. */
@@ -251,6 +271,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
         // spotlight shows whether or not the preference is on, and both use
         // the same alias -> color mapping so they never disagree.
         const spotlight = !!alias && alias === hoveredAlias;
+        const hiddenFromAgents = !!session.columnMetadata.colIndexToPolicyLookup?.[column.field]?.hidden;
         const tinted = (showResultColors && !!alias) || spotlight;
         return {
           field: column.field,
@@ -259,11 +280,14 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
           width:
             resizedColumnWidths[column.field] ??
             savedColumnWidths[widthKeyFor(column.field, column.headerName ?? column.field)] ??
-            estimateColumnWidth(rows, column.field, column.headerName ?? column.field, {
-              min: MIN_RESULT_COLUMN_WIDTH,
-              max: MAX_RESULT_COLUMN_WIDTH,
-              isJson: isJsonColumn,
-            }),
+            Math.min(
+              MAX_RESULT_COLUMN_WIDTH,
+              estimateColumnWidth(rows, column.field, column.headerName ?? column.field, {
+                min: MIN_RESULT_COLUMN_WIDTH,
+                max: MAX_RESULT_COLUMN_WIDTH,
+                isJson: isJsonColumn,
+              }) + (hiddenFromAgents ? HIDDEN_FROM_AGENTS_ICON_WIDTH : 0),
+            ),
           json: isJsonColumn,
           // A JSON cell is edited in JsonInspectorPanel, which a click on it
           // opens already in edit mode - never inline.
@@ -272,6 +296,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
           cellReadOnlyReason: readOnlyReason ? undefined : cellReadOnlyReasonFor(column.field),
           headerColor: tinted ? getColorForAlias(alias, ast, isDark) : undefined,
           spotlight,
+          hiddenFromAgents,
         };
       }),
     // readOnlyReasonFor is rebuilt every render but reads only
@@ -459,6 +484,185 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
 
   const handleContextMenuClose = () => {
     setContextMenu(null);
+  };
+
+  const handleHeaderContextMenu = (field: string, x: number, y: number) => {
+    // A header has nothing to offer but the access policy.
+    if (!policyActionFor(field)) return;
+    setContextMenu({ mouseX: x + 2, mouseY: y - 6, cellValue: undefined, fieldIndex: field, fromHeader: true });
+  };
+
+  // The saved connection this tab runs on, and its access policy: where a
+  // change made from the grid is written. Desktop only.
+  const policyConnection = global.connections.find(c => c.id === session.profileId);
+  const connectionPolicy = global.accessPolicies.find(p => p.id === policyConnection?.policyId);
+
+  const policyActionFor = (field: string): ColumnPolicyAction => {
+    const info = session.columnMetadata.colIndexToPolicyLookup?.[field];
+    return columnPolicyAction(info, info?.column, info?.isPath ?? false, policyConnection);
+  };
+
+  // Every column in this grid that is the given real column, marked as the
+  // policy now treats it. A rule changes nothing in the rows already shown,
+  // so the header markers are updated here rather than by running again.
+  const markColumn = (target: PolicyColumn, hide: boolean, by: ReturnType<typeof exactColumnRule>) => {
+    runInAction(() => {
+      const lookup = { ...session.columnMetadata.colIndexToPolicyLookup };
+      for (const [field, info] of Object.entries(lookup)) {
+        if (
+          info.column === target.column &&
+          info.table?.table === target.table &&
+          (info.table?.schema ?? null) === target.schema
+        ) {
+          lookup[field] = { ...info, hidden: hide, by };
+        }
+      }
+      session.columnMetadata = { ...session.columnMetadata, colIndexToPolicyLookup: lookup };
+    });
+  };
+
+  const handlePolicyChange = async (action: Extract<ColumnPolicyAction, { kind: 'hide' | 'show' }>) => {
+    handleContextMenuClose();
+    const policy = connectionPolicy;
+    if (!policy) return;
+    const hide = action.kind === 'hide';
+    const before = policy.rules;
+    const beforeLookup = session.columnMetadata.colIndexToPolicyLookup;
+    const rule = exactColumnRule(action.target, hide);
+    // Showing a column its own exact-column hide rule hides: take that rule
+    // out first. It may name the table without a schema, and then the new
+    // rule wouldn't replace it, and it would still win.
+    const info = session.columnMetadata.colIndexToPolicyLookup?.[contextMenu?.fieldIndex ?? ''];
+    const ownHide = !hide && info?.by?.type === 'hide' ? findModule(policy, info.by) : undefined;
+    if (ownHide) await global.removeAccessPolicyRule(policy.id, ownHide.id);
+    const updated = await global.addAccessPolicyRule(policy.id, rule);
+    if (!updated) {
+      setNotice({ kind: 'error', text: "Couldn't change the access policy." });
+      return;
+    }
+    markColumn(action.target, hide, rule);
+
+    const name = policyColumnName(action.target) + (action.isPath ? ' (the whole column)' : '');
+    const others = global.connections
+      .filter(c => c.policyId === policy.id && c.id !== policyConnection?.id)
+      .map(c => c.label);
+    const sharedWith = others.length ? `, which ${others.join(', ')} also ${others.length === 1 ? 'uses' : 'use'}` : '';
+    // A tab that masks its own results still shows the old values until
+    // it runs again. An agent's tab only reads, so it gets a button for
+    // that. The owner's own masked tab gets a hint instead: running it
+    // again could repeat a change. The owner's unmasked tab only had its
+    // markers to update.
+    const masks = session.accessPolicy.mode === 'enforce';
+    const rerunButton = masks && session.isAgentSession;
+    const rerun = masks && !rerunButton ? ' Run the query again to update these results.' : '';
+    setNotice({
+      kind: 'success',
+      text: `Agents ${hide ? 'can no longer' : 'can now'} see ${name}. Saved to the “${policy.name}” policy${sharedWith}.${rerun}`,
+      actions: [
+        {
+          label: 'Undo',
+          onClick: async () => {
+            const restored = await global.setAccessPolicyRules(policy.id, before);
+            if (!restored) {
+              setNotice({ kind: 'error', text: "Couldn't undo the change to the access policy." });
+              return;
+            }
+            runInAction(() => {
+              session.columnMetadata = { ...session.columnMetadata, colIndexToPolicyLookup: beforeLookup };
+            });
+            setNotice({ kind: 'success', text: `The “${policy.name}” policy is back as it was.` });
+          },
+        },
+        ...(rerunButton
+          ? [
+              {
+                label: 'Run again',
+                onClick: () => {
+                  setNotice(null);
+                  void session.evaluate();
+                },
+              },
+            ]
+          : []),
+        {
+          label: 'Open policy',
+          onClick: () => {
+            setNotice(null);
+            global.openAccessPolicy(policy.id);
+          },
+        },
+      ],
+    });
+  };
+
+  // The access policy's items in the right-click menu: one item, saying
+  // what it does to agents, with the column it acts on underneath. MUI's
+  // Menu takes an array of items, not a Fragment.
+  const renderPolicyItems = (action: ColumnPolicyAction, divider: boolean): React.ReactNode[] => {
+    if (!action) return [];
+    const itemSx = { '&:hover': { backgroundColor: 'var(--canvas-chip-bg)' } };
+    const secondarySx = { color: 'var(--canvas-text-dim)', fontFamily: 'var(--canvas-font)' };
+    const item = (() => {
+      switch (action.kind) {
+        case 'hide':
+        case 'show':
+          return (
+            <MenuItem key="policy" onClick={() => handlePolicyChange(action)} sx={itemSx}>
+              <ListItemIcon sx={{ color: 'var(--canvas-trace)' }}>
+                {action.kind === 'hide' ? <VisibilityOffOutlined fontSize="small" /> : <VisibilityOutlined fontSize="small" />}
+              </ListItemIcon>
+              <ListItemText
+                primary={action.kind === 'hide' ? 'Hide from agents' : 'Show to agents'}
+                secondary={policyColumnName(action.target) + (action.isPath ? ' · whole column' : '')}
+                secondaryTypographyProps={{ sx: secondarySx }}
+              />
+            </MenuItem>
+          );
+        case 'hidden-by-rule': {
+          const deciding = connectionPolicy && findModule(connectionPolicy, action.rule);
+          return (
+            <MenuItem
+              key="policy"
+              onClick={() => {
+                handleContextMenuClose();
+                if (connectionPolicy) global.openAccessPolicy(connectionPolicy.id, deciding?.id);
+              }}
+              sx={itemSx}
+            >
+              <ListItemIcon sx={{ color: 'var(--canvas-text-dim)' }}>
+                <PolicyOutlined fontSize="small" />
+              </ListItemIcon>
+              <ListItemText
+                primary="Hidden from agents by an exception…"
+                secondary={action.rule.type === 'hide' ? describeMatcher(action.rule.match) : undefined}
+                secondaryTypographyProps={{ sx: secondarySx }}
+              />
+            </MenuItem>
+          );
+        }
+        case 'no-policy':
+          return (
+            <MenuItem
+              key="policy"
+              onClick={() => {
+                handleContextMenuClose();
+                global.setShowSettings(true, 'connections');
+              }}
+              sx={itemSx}
+            >
+              <ListItemIcon sx={{ color: 'var(--canvas-text-dim)' }}>
+                <PolicyOutlined fontSize="small" />
+              </ListItemIcon>
+              <ListItemText
+                primary="Choose an access policy…"
+                secondary="Agents see every column of this connection"
+                secondaryTypographyProps={{ sx: secondarySx }}
+              />
+            </MenuItem>
+          );
+      }
+    })();
+    return divider ? [<Divider key="policy-divider" sx={{ borderColor: 'var(--canvas-picker-border)' }} />, item] : [item];
   };
 
   const handleCellContextMenu = (row: Row, field: string, x: number, y: number) => {
@@ -905,6 +1109,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
               onCommitEdit={commitEdit}
               onInspectEdit={inspectEdit}
               onCellContextMenu={handleCellContextMenu}
+              onHeaderContextMenu={handleHeaderContextMenu}
             />
           </Box>
         ) : (
@@ -966,24 +1171,29 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
             },
           }}
         >
-          <MenuItem
-            onClick={handleCopyAction}
-            sx={{ '&:hover': { backgroundColor: 'var(--canvas-chip-bg)' } }}
-          >
-            <ListItemIcon sx={{ color: 'var(--canvas-trace)' }}>
-              <ContentCopy fontSize="small" />
-            </ListItemIcon>
-            <ListItemText primary="Copy" />
-          </MenuItem>
-          <MenuItem
-            onClick={handleFilterAction}
-            sx={{ '&:hover': { backgroundColor: 'var(--canvas-chip-bg)' } }}
-          >
-            <ListItemIcon sx={{ color: 'var(--canvas-trace)' }}>
-              <FilterAlt fontSize="small" />
-            </ListItemIcon>
-            <ListItemText primary="Filter" />
-          </MenuItem>
+          {!contextMenu.fromHeader && (
+            <MenuItem
+              onClick={handleCopyAction}
+              sx={{ '&:hover': { backgroundColor: 'var(--canvas-chip-bg)' } }}
+            >
+              <ListItemIcon sx={{ color: 'var(--canvas-trace)' }}>
+                <ContentCopy fontSize="small" />
+              </ListItemIcon>
+              <ListItemText primary="Copy" />
+            </MenuItem>
+          )}
+          {!contextMenu.fromHeader && (
+            <MenuItem
+              onClick={handleFilterAction}
+              sx={{ '&:hover': { backgroundColor: 'var(--canvas-chip-bg)' } }}
+            >
+              <ListItemIcon sx={{ color: 'var(--canvas-trace)' }}>
+                <FilterAlt fontSize="small" />
+              </ListItemIcon>
+              <ListItemText primary="Filter" />
+            </MenuItem>
+          )}
+          {renderPolicyItems(policyActionFor(contextMenu.fieldIndex), !contextMenu.fromHeader)}
         </Menu>
       )}
 

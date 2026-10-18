@@ -261,7 +261,8 @@ export async function explainMcpQuery(
     [expression],
     undefined,
     connectionId,
-    accessPolicyRules,
+    // Always enforced: an agent's query never only annotates.
+    { rules: accessPolicyRules, mode: 'enforce' },
   );
   return response;
 }

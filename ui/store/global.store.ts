@@ -1,7 +1,8 @@
-import { makeAutoObservable, reaction, runInAction } from 'mobx';
+import { makeAutoObservable, reaction, runInAction, toJS } from 'mobx';
 import { lt } from 'semver';
 import {
   AccessPolicy,
+  AccessPolicyModule,
   AccessPolicyRule,
   HttpClient,
   ConnectionError,
@@ -190,6 +191,9 @@ export class GlobalStore {
   // getter reads this same shared array, so an edit here is visible to
   // every open tab on its next read.
   accessPolicies: AccessPolicy[] = [];
+  // Which policy, and which of its rules, Settings -> Access Policy should
+  // show when it next opens. See openAccessPolicy.
+  accessPolicyFocus: { policyId: string; ruleId?: string } | null = null;
   credentialsStatus: CredentialsStatus | null = null;
 
   // Desktop-only: the one dedicated session MCP-driven queries run in (see
@@ -1040,17 +1044,54 @@ export class GlobalStore {
     await this.refreshConnections();
   };
 
-  setAccessPolicyModuleEnabled = async (
-    policyId: string,
-    type: AccessPolicyRule['type'],
-    enabled: boolean,
-  ): Promise<void> => {
-    if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
-    const updated = await window.beamlynxDesktop.accessPolicy.setModuleEnabled(policyId, type, enabled);
-    if (!updated) return;
+  // Each of these writes through beamlynx-desktop's credential-store.ts and
+  // takes back the policy as stored, so this list always shows what agents
+  // actually get on their next query.
+  private replaceAccessPolicy = (updated: AccessPolicy | null): AccessPolicy | null => {
+    if (!updated) return null;
     runInAction(() => {
-      this.accessPolicies = this.accessPolicies.map(p => (p.id === policyId ? updated : p));
+      this.accessPolicies = this.accessPolicies.map(p => (p.id === updated.id ? updated : p));
     });
+    return updated;
+  };
+
+  setAccessPolicyRuleEnabled = async (policyId: string, ruleId: string, enabled: boolean) => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) return null;
+    return this.replaceAccessPolicy(
+      await window.beamlynxDesktop.accessPolicy.setRuleEnabled(policyId, ruleId, enabled),
+    );
+  };
+
+  addAccessPolicyRule = async (policyId: string, rule: AccessPolicyRule) => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) return null;
+    return this.replaceAccessPolicy(await window.beamlynxDesktop.accessPolicy.addRule(policyId, rule));
+  };
+
+  removeAccessPolicyRule = async (policyId: string, ruleId: string) => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) return null;
+    return this.replaceAccessPolicy(await window.beamlynxDesktop.accessPolicy.removeRule(policyId, ruleId));
+  };
+
+  // Undo of a change made from the results grid: the rules exactly as they
+  // were. toJS because the rules came out of this observable store, and IPC
+  // can't send a MobX proxy.
+  setAccessPolicyRules = async (policyId: string, rules: AccessPolicyModule[]) => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) return null;
+    return this.replaceAccessPolicy(await window.beamlynxDesktop.accessPolicy.setRules(policyId, toJS(rules)));
+  };
+
+  /**
+   * Opens Settings -> Access Policy at one policy, with one of its rules
+   * picked out: where the results grid sends someone to change a rule that
+   * isn't about a single column.
+   */
+  openAccessPolicy = (policyId: string, ruleId?: string) => {
+    this.accessPolicyFocus = { policyId, ruleId };
+    this.setShowSettings(true, 'access-policy');
+  };
+
+  clearAccessPolicyFocus = () => {
+    this.accessPolicyFocus = null;
   };
 
   consumeReconnectHint = () => {
