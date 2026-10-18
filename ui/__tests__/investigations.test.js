@@ -17,7 +17,7 @@ afterEach(() => {
 
 /** A fake desktop bridge, recording what the store sends it. */
 function stubBridge() {
-  const sent = { notes: [], approvals: [], reveals: [] };
+  const sent = { notes: [], approvals: [], reveals: [], duplicates: [], switched: [], deleted: [] };
   globalThis.window = {
     beamlynxDesktop: {
       mcp: {
@@ -28,6 +28,21 @@ function stubBridge() {
         resolveApproval: async (id, outcome) => {
           sent.approvals.push({ id, outcome });
           return true;
+        },
+      },
+      accessPolicy: {
+        duplicate: async (id, name) => {
+          sent.duplicates.push({ id, name });
+          return { id: 'pol-copy', name, rules: [] };
+        },
+        delete: async id => {
+          sent.deleted.push(id);
+        },
+      },
+      credentials: {
+        setConnectionPolicy: async (id, policyId) => {
+          sent.switched.push({ id, policyId });
+          return { ok: true, profile: { id, policyId, mcpEnabled: true } };
         },
       },
       mcpReveal: {
@@ -296,7 +311,7 @@ test('the card says which policy Allow changes, and who else uses it', async () 
     store.connections = [...store.connections, { id: 'p2', label: 'Staging', mcpEnabled: true, policyId: 'pol' }];
   });
   await run(store, 'claude-a', 'user');
-  assert.deepEqual(store.investigationPolicy('claude-a'), { name: 'Default', others: ['Staging'] });
+  assert.deepEqual(store.investigationPolicy('claude-a'), { name: 'Default', others: ['Staging'], connection: 'Prod' });
 });
 
 /**
@@ -384,4 +399,33 @@ test('declining a reveal sends the user\'s reason', async () => {
   } finally {
     restore();
   }
+});
+
+test('Allow in a copy: the connection gets a copy of its shared policy, and only the copy changes', async () => {
+  const store = storeWithFakeDatabase(() => ({ error: 'hidden', errorType: 'policy', hidden: hiddenType }));
+  const added = withPolicy(store);
+  runInAction(() => {
+    store.connections = [...store.connections, { id: 'p2', label: 'Staging', mcpEnabled: true, policyId: 'pol' }];
+  });
+  const sent = stubBridge();
+  const result = await run(store, 'claude-a', 'activity | where: type = \'x\'');
+  assert.equal(await store.answerApproval('claude-a', result.approval.id, true, undefined, true), true);
+  assert.deepEqual(sent.duplicates, [{ id: 'pol', name: 'Default for Prod' }]);
+  assert.deepEqual(sent.switched, [{ id: 'p1', policyId: 'pol-copy' }]);
+  assert.equal(store.connections.find(c => c.id === 'p1').policyId, 'pol-copy');
+  assert.equal(store.connections.find(c => c.id === 'p2').policyId, 'pol', 'Staging keeps the shared policy');
+  assert.equal(added[0].policyId, 'pol-copy', 'the Allow rule goes to the copy');
+});
+
+test('undoing a copy puts the connection back on the shared policy and deletes the copy', async () => {
+  const store = storeWithFakeDatabase(() => ({ rows: [] }));
+  withPolicy(store);
+  const sent = stubBridge();
+  // Deleting a policy refreshes the connection list from the app; not here.
+  store.refreshConnections = async () => store.connections;
+  const copy = await store.copyPolicyForConnection('p1');
+  assert.equal(copy.id, 'pol-copy');
+  await store.undoPolicyCopy('p1', 'pol', 'pol-copy');
+  assert.deepEqual(sent.switched.at(-1), { id: 'p1', policyId: 'pol' });
+  assert.deepEqual(sent.deleted, ['pol-copy']);
 });

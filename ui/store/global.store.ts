@@ -1604,14 +1604,25 @@ export class GlobalStore {
    * results grid's "Show to agents", before the agent's waiting call runs
    * the query again. False when the rule couldn't be written.
    */
-  answerApproval = async (investigationId: string, approvalId: string, allowed: boolean, comment?: string) => {
+  answerApproval = async (
+    investigationId: string,
+    approvalId: string,
+    allowed: boolean,
+    comment?: string,
+    // Allow it in a copy of the policy for this connection alone
+    // (copyPolicyForConnection), not in the policy it shares with others.
+    inCopy = false,
+  ) => {
     const investigation = this.investigations.find(i => i.id === investigationId);
     const step = investigation?.steps.find(s => s.kind === 'approval' && s.approvalId === approvalId);
     if (!investigation || !step || step.kind !== 'approval' || step.status !== 'pending') return false;
     if (allowed) {
       const session = this.sessions[investigation.sessionId];
       const connection = this.connections.find(c => c.id === session?.profileId);
-      const policy = this.accessPolicies.find(p => p.id === connection?.policyId);
+      const policy =
+        inCopy && connection
+          ? await this.copyPolicyForConnection(connection.id)
+          : this.accessPolicies.find(p => p.id === connection?.policyId);
       const table = step.column.table;
       if (!policy || !table) return false;
       const rule = exactColumnRule({ schema: table.schema, table: table.table, column: step.column.column }, false);
@@ -1630,11 +1641,52 @@ export class GlobalStore {
   investigationPolicy = (investigationId: string) => {
     const investigation = this.investigations.find(i => i.id === investigationId);
     const session = investigation && this.sessions[investigation.sessionId];
-    const connection = this.connections.find(c => c.id === session?.profileId);
+    const sharing = this.policySharing(session?.profileId);
+    return sharing && { name: sharing.policy.name, others: sharing.others, connection: sharing.connection.label };
+  };
+
+  /** A saved connection's access policy, and the labels of the other connections that use it too. */
+  policySharing = (profileId: string | undefined) => {
+    const connection = this.connections.find(c => c.id === profileId);
     const policy = this.accessPolicies.find(p => p.id === connection?.policyId);
-    if (!policy) return undefined;
-    const others = this.connections.filter(c => c.policyId === policy.id && c.id !== connection?.id).map(c => c.label);
-    return { name: policy.name, others };
+    if (!connection || !policy) return undefined;
+    const others = this.connections.filter(c => c.policyId === policy.id && c.id !== connection.id).map(c => c.label);
+    return { connection, policy, others };
+  };
+
+  /**
+   * Gives a connection a copy of its access policy, named for it, so a
+   * change meant for it alone doesn't change what agents see on the other
+   * connections that shared the policy. Null if that couldn't be done; then
+   * nothing changed.
+   */
+  copyPolicyForConnection = async (profileId: string): Promise<AccessPolicy | null> => {
+    const sharing = this.policySharing(profileId);
+    const desktop = typeof window === 'undefined' ? undefined : window.beamlynxDesktop;
+    if (!sharing || !desktop?.accessPolicy.duplicate) return null;
+    const copy = await desktop.accessPolicy.duplicate(
+      sharing.policy.id,
+      `${sharing.policy.name} for ${sharing.connection.label}`,
+    );
+    if (!copy) return null;
+    runInAction(() => {
+      this.accessPolicies = [...this.accessPolicies, copy];
+    });
+    const switched = await desktop.credentials.setConnectionPolicy(profileId, copy.id);
+    if (!switched.ok) {
+      await this.deleteAccessPolicy(copy.id);
+      return null;
+    }
+    runInAction(() => {
+      this.connections = this.connections.map(c => (c.id === profileId ? { ...c, policyId: copy.id } : c));
+    });
+    return copy;
+  };
+
+  /** Undoes copyPolicyForConnection: the connection back on its old policy, and the copy gone. */
+  undoPolicyCopy = async (profileId: string, previousPolicyId: string, copyId: string) => {
+    await this.setConnectionPolicy(profileId, previousPolicyId);
+    await this.deleteAccessPolicy(copyId);
   };
 
   /** A tool call's start or end, from beamlynx-desktop (McpBridge.tsx). */

@@ -31,8 +31,9 @@ import ActiveConnection from './ActiveConnection';
  * open on the same side as what they show: the settings panel and an
  * investigation's timeline both open on the left.
  *
- * The agent's robot pulses while it works and carries a count of the
- * decisions it is waiting on. Clicking it opens what most needs you, or else
+ * The agent's robot sits at the bottom, from the agent's first
+ * investigation on. It pulses while the agent works and carries a count of
+ * the decisions it is waiting on. Clicking it opens what most needs you, or else
  * the current investigation (GlobalStore.focusAgentTab). Expanded, each
  * investigation is listed by its question.
  */
@@ -190,7 +191,32 @@ const SideRail = observer(({ hasUnreadUpdates, onOpenChangelog }: { hasUnreadUpd
       <ActiveConnection expanded={expanded} />
       <Divider sx={{ my: 0.5, borderColor: 'var(--border-color)' }} />
 
-      {isDesktop() && (
+      {/* Settings' sections, each an item of its own: one opens Settings at
+          that section, and the open one closes it again. */}
+      {RAIL_ITEMS.map(item => {
+        const open = global.showSettings && item.id === global.settingsSection;
+        const desktopOnly = DESKTOP_ONLY_SECTIONS.includes(item.id) && !isDesktop();
+        const Icon = SECTION_ICONS[item.id];
+        return (
+          <RailItem
+            key={item.id}
+            icon={<Icon sx={{ fontSize: 20, opacity: desktopOnly ? 0.55 : 1 }} />}
+            label={desktopOnly ? `${item.label} (desktop)` : item.label}
+            ariaLabel={open ? `Close ${item.label}` : item.label}
+            tooltip={desktopOnly ? `${item.label} (desktop app only)` : item.label}
+            expanded={expanded}
+            active={open}
+            onClick={() => (open ? global.setShowSettings(false) : global.setShowSettings(true, item.id))}
+          />
+        );
+      })}
+
+      <Box sx={{ flex: 1 }} />
+
+      {/* The agent: only once one has started an investigation, since
+          until then there is nothing here to open, and at the bottom, so
+          the items above never move when it appears. */}
+      {isDesktop() && global.investigations.length > 0 && (
         <>
           <RailItem
             icon={
@@ -230,40 +256,12 @@ const SideRail = observer(({ hasUnreadUpdates, onOpenChangelog }: { hasUnreadUpd
             onClick={() => global.focusAgentTab()}
           />
           {expanded &&
-            (global.investigations.length > 0 ? (
-              global.investigations.map(investigation => (
-                <InvestigationItem key={investigation.id} investigation={investigation} />
-              ))
-            ) : (
-              <Typography sx={{ pl: 4.5, pr: 1, fontSize: 12, color: 'var(--canvas-text-dim)', lineHeight: 1.4 }}>
-                When an agent uses beamlynx, its investigation shows here.
-              </Typography>
+            global.investigations.map(investigation => (
+              <InvestigationItem key={investigation.id} investigation={investigation} />
             ))}
         </>
       )}
 
-      {/* Settings' sections, each an item of its own: one opens Settings at
-          that section, and the open one closes it again. */}
-      <Divider sx={{ my: 0.5, borderColor: 'var(--border-color)' }} />
-      {RAIL_ITEMS.map(item => {
-        const open = global.showSettings && item.id === global.settingsSection;
-        const desktopOnly = DESKTOP_ONLY_SECTIONS.includes(item.id) && !isDesktop();
-        const Icon = SECTION_ICONS[item.id];
-        return (
-          <RailItem
-            key={item.id}
-            icon={<Icon sx={{ fontSize: 20, opacity: desktopOnly ? 0.55 : 1 }} />}
-            label={desktopOnly ? `${item.label} (desktop)` : item.label}
-            ariaLabel={open ? `Close ${item.label}` : item.label}
-            tooltip={desktopOnly ? `${item.label} (desktop app only)` : item.label}
-            expanded={expanded}
-            active={open}
-            onClick={() => (open ? global.setShowSettings(false) : global.setShowSettings(true, item.id))}
-          />
-        );
-      })}
-
-      <Box sx={{ flex: 1 }} />
 
       <RailItem
         icon={
