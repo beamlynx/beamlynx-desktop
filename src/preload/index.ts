@@ -29,6 +29,7 @@ type McpQueryRequest = {
   expression: string;
   variables?: Record<string, unknown>;
   sql?: string;
+  investigationId?: string;
 };
 
 // Matches beamlynx-ui's desktop.d.ts AgentActivity -- see
@@ -42,6 +43,7 @@ type AgentActivity = {
   detail?: string;
   ok?: boolean;
   outcome?: string;
+  investigationId?: string;
 };
 
 // Matches beamlynx-ui's desktop.d.ts RevealRequest/RevealOutcome -- see
@@ -193,6 +195,20 @@ contextBridge.exposeInMainWorld('beamlynxDesktop', {
       ipcRenderer.on('mcp:activity', listener);
       return () => ipcRenderer.removeListener('mcp:activity', listener);
     },
+    // A note for one investigation's agent, delivered with its next call
+    // (see src/main/mcp/investigations.ts). Null for an empty note.
+    addNote: (investigationId: string, text: string): Promise<{ id: string; text: string; at: number } | null> =>
+      ipcRenderer.invoke('mcp:investigation-note', investigationId, text),
+    // Which notes the agent has now received.
+    onNotesDelivered: (callback: (event: { investigationId: string; ids: string[] }) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, delivered: { investigationId: string; ids: string[] }) =>
+        callback(delivered);
+      ipcRenderer.on('mcp:notes-delivered', listener);
+      return () => ipcRenderer.removeListener('mcp:notes-delivered', listener);
+    },
+    // The user's answer to a query waiting on a hidden column.
+    resolveApproval: (id: string, outcome: { allowed: boolean; comment?: string }): Promise<boolean> =>
+      ipcRenderer.invoke('mcp:approval-resolve', id, outcome),
   },
   // control-plane-server.ts's POST /reveal (behind the MCP request_reveal
   // tool) creates a request and fires 'mcp:reveal-request' here rather than

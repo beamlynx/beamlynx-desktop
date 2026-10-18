@@ -5,6 +5,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 ### Added
+- **Agent investigations.** Each Claude session that uses beamlynx is now an investigation of its own. The MCP relay sends an id with every call, so the app can give each session its own tab (bundled beamlynx-ui).
+- **Steering an agent from beamlynx.** Notes the user types in an investigation's tab reach the agent at the top of its next beamlynx call. beamlynx can't send the agent a message, only answer its calls, so a note waits for that call.
+- **Allowing a hidden column while the agent waits.** A query refused for a hidden column now waits inside the agent's `run_query` call while beamlynx asks the user. If they allow the column, the query runs again and the agent gets the rows. If they decline, it gets their answer. The call gives up after 10 minutes. Needs pine-lang with `hidden-column` in its refusals.
+- **Two new MCP tools:** `set_question` names what the agent is investigating, which becomes the tab's title. `note_finding` records what it found, from beamlynx or another source, shown next to its queries.
 - **Access policy: exceptions.** Besides its Allow rules, a policy can now list Except rules: a column they match stays hidden from agents, even when an Allow rule matches it. (In pine-lang's rules they are `hide` rules.) Rules can name a column by what its name contains, ends with or equals, or name one exact column of one table. Every rule has an id, so a policy can hold any number of them. New IPC calls add, remove and switch one rule, and put a policy's rules back for Undo: `access-policy:add-rule`, `access-policy:remove-rule`, `access-policy:set-rule-enabled` and `access-policy:set-rules`. They replace `access-policy:set-module-enabled`.
 
 ### Changed

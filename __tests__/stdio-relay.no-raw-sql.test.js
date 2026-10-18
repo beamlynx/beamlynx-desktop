@@ -41,10 +41,12 @@ test('stdio-relay.ts registers exactly the expected tool set', () => {
       'find_tables',
       'get_pine_doc',
       'list_connections',
+      'note_finding',
       'open_in_desktop',
       'request_reveal',
       'run_query',
       'run_sql_as_pine',
+      'set_question',
     ].sort(),
     'Registered tool set changed -- if this was intentional, update this test; if not, something was added ' +
       '(or removed) unexpectedly. Keep this an exact-set assertion: the point is that a raw-SQL tool cannot be ' +
@@ -100,8 +102,9 @@ test('run_sql_as_pine forwards SQL only to the control plane /query route', () =
   const sends = [...STDIO_RELAY_SOURCE.matchAll(/controlPlaneRequest\(\s*'(\w+)',\s*'([^']+)'/g)].map(m => m[2]);
   // /activity carries what the agent sent, SQL included, to be shown to the
   // person (see src/main/mcp/activity.ts). The app only displays it: it
-  // never reaches pine-lang from there.
-  assert.ok(sends.every(route => ['/connections', '/explain', '/query', '/reveal', '/reveal-status', '/activity'].some(r => route.startsWith(r))), sends.join(', '));
+  // never reaches pine-lang from there. /investigation/notes only hands
+  // over what the user typed for the agent.
+  assert.ok(sends.every(route => ['/connections', '/explain', '/query', '/reveal', '/reveal-status', '/activity', '/investigation/notes'].some(r => route.startsWith(r))), sends.join(', '));
   assert.ok(/runOnControlPlane\(\{ profileId: connection_id, sql, variables \}\)/.test(STDIO_RELAY_SOURCE));
   assert.ok(/controlPlaneRequest\('POST', '\/query', body\)/.test(STDIO_RELAY_SOURCE));
 });

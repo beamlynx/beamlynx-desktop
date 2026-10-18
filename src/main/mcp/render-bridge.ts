@@ -23,6 +23,9 @@ export type McpQueryRequestPayload = {
   // run_sql_as_pine's SQL, in place of an expression (then ''). beamlynx-ui
   // converts it to Pine and runs only the Pine.
   sql?: string;
+  // Which Claude session this comes from (see investigations.ts). beamlynx-ui
+  // runs each investigation's queries in that investigation's own tab.
+  investigationId?: string;
 };
 
 type PendingEntry = {

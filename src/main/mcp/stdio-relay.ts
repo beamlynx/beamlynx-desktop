@@ -19,6 +19,7 @@
 // the other way too: no tool output may contain SQL either (format.ts).
 import { app } from 'electron';
 import { spawn } from 'child_process';
+import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as http from 'http';
 import * as net from 'net';
@@ -31,6 +32,7 @@ import { CONTROL_PLANE_PORT } from '../ports';
 import { getLaunchPath, getResourcesRoot } from '../resources';
 import { SERVER_INSTRUCTIONS } from './instructions';
 import { describeCall, outcomeOf, type AgentActivity } from './activity';
+import { INVESTIGATION_HEADER } from './investigations';
 import { MAX_LIST_ITEMS, MAX_STRING_LENGTH, MAX_VARIABLES, variablesSchema, type VariableValue } from './variables-schema';
 import {
   formatCompletion,
@@ -43,6 +45,16 @@ import {
 import type { BuildResponse } from './format';
 
 const GUI_LAUNCH_TIMEOUT_MS = 30000;
+
+// This Claude session, as beamlynx knows it: made up when the relay starts,
+// sent on every control-plane request. The app shows everything that comes
+// with one id as one investigation (see investigations.ts). One relay process
+// serves exactly one MCP client, so the id lasts as long as that session.
+const INVESTIGATION_ID = randomUUID();
+
+// How long run_query waits for the user to allow a hidden column before it
+// gives the agent the refusal after all.
+const APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
 const GUI_POLL_INTERVAL_MS = 300;
 
 function isControlPlaneUp(): Promise<boolean> {
@@ -85,6 +97,7 @@ function controlPlaneRequest(method: 'GET' | 'POST', path: string, body?: unknow
         method,
         headers: {
           Authorization: `Bearer ${token}`,
+          [INVESTIGATION_HEADER]: INVESTIGATION_ID,
           ...(payload ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) } : {}),
         },
         timeout: 35000,
@@ -221,6 +234,19 @@ function reportActivity(event: AgentActivity): void {
 
 let activityCounter = 0;
 
+// Notes the user typed in this investigation's tab go at the top of the next
+// result, whatever the tool: beamlynx can't send the agent a message, only
+// answer its calls. Never fails the call: without the app, there are none.
+async function withUserNotes<T extends { content?: unknown[] }>(result: T): Promise<T> {
+  const { notes } = await controlPlaneRequest('POST', '/investigation/notes').catch(() => ({ notes: [] }));
+  if (!Array.isArray(notes) || notes.length === 0) return result;
+  const text =
+    'The user wrote to you from beamlynx, while you worked:\n' +
+    notes.map((n: { text: string }) => `- ${n.text}`).join('\n') +
+    '\n\nTake this into account before you go on. The result of your call follows.';
+  return { ...result, content: [{ type: 'text' as const, text }, ...(result.content ?? [])] };
+}
+
 // Every tool registered on `server` reports its start and its end. Wrapping
 // registerTool covers every tool, including the ones that never reach the
 // app's window, like get_pine_doc.
@@ -234,7 +260,7 @@ function reportEveryCall(server: McpServer): void {
       try {
         const result = await handler(args, extra);
         reportActivity({ id, tool: name, phase: 'end', at: Date.now(), ...call, ...outcomeOf(result) });
-        return result;
+        return withUserNotes(result);
       } catch (e) {
         const outcome = e instanceof Error ? e.message : String(e);
         reportActivity({ id, tool: name, phase: 'end', at: Date.now(), ...call, ok: false, outcome });
@@ -332,10 +358,39 @@ async function registerTools(server: McpServer): Promise<void> {
     try {
       await ensureGuiRunning();
       const { result } = await controlPlaneRequest('POST', '/query', body);
+      // A query refused for a hidden column the user could allow: beamlynx
+      // shows them a card, and this call waits for their answer.
+      const approval = result?.approval;
+      if (approval?.id) return await afterApproval(body, result, approval);
       return textResult(formatRows(result ?? {}));
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }
+  }
+
+  async function afterApproval(
+    body: Record<string, unknown>,
+    refused: Record<string, unknown>,
+    approval: { id: string; column?: string; table?: { schema?: string | null; table?: string } },
+  ) {
+    const name = [approval.table?.table, approval.column].filter(Boolean).join('.') || 'the hidden column';
+    const deadline = Date.now() + APPROVAL_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      const answer = await controlPlaneRequest('GET', `/approval/${encodeURIComponent(approval.id)}`);
+      if (answer?.status !== 'resolved') continue;
+      if (answer.outcome?.allowed) {
+        const { result } = await controlPlaneRequest('POST', '/query', body);
+        return textResult(`The user allowed you to see ${name}, and the query ran again.\n\n${formatRows(result ?? {})}`);
+      }
+      const comment = typeof answer.outcome?.comment === 'string' && answer.outcome.comment.trim();
+      return errorResult(
+        `${formatRows(refused)}\n\nThe user declined to show you ${name}` + (comment ? `: "${comment}"` : '.'),
+      );
+    }
+    return errorResult(
+      `${formatRows(refused)}\n\nThe user was asked in beamlynx to allow ${name}, and hasn't answered yet. ` +
+        'Run the query again to keep waiting, or carry on without it.',
+    );
   }
 
   server.registerTool(
@@ -404,6 +459,37 @@ async function registerTools(server: McpServer): Promise<void> {
       if (!sql.trim()) return errorResult('run_sql_as_pine needs SQL in `sql`.');
       return runOnControlPlane({ profileId: connection_id, sql, variables });
     },
+  );
+
+  // The investigation's question and findings, for the user watching in
+  // beamlynx (see investigations.ts). Nothing else happens: the activity
+  // event every call reports already carries them to the app.
+  server.registerTool(
+    'set_question',
+    {
+      description:
+        'Tell the user, in beamlynx, what you are investigating. It becomes the title of the beamlynx tab that ' +
+        'shows your queries and their results. Call it once, before your first query, in the user\'s terms: ' +
+        '"Logins per tenant over the last 30 days". Call it again if the question changes.',
+      inputSchema: {
+        question: z.string().min(1).max(300).describe('The question, in one line'),
+      },
+    },
+    async () => textResult('Shown to the user in beamlynx.'),
+  );
+
+  server.registerTool(
+    'note_finding',
+    {
+      description:
+        'Record something you found, so the user sees it in beamlynx next to the queries that led to it. Use it ' +
+        'for what matters to the answer, from this database or from another source: "public.activity is the ' +
+        'only table that records logins", "Sentry shows auth errors for tenant 12 since Tuesday".',
+      inputSchema: {
+        finding: z.string().min(1).max(2000).describe('What you found, in a sentence or two'),
+      },
+    },
+    async () => textResult('Shown to the user in beamlynx.'),
   );
 
   // Listing the topics in the description itself, rather than behind a
