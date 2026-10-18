@@ -44,6 +44,8 @@ merging, rather than via a PR.
     - Commit (e.g. `Bump to X.Y.Z`) and push directly — like this repo, the tap has no PR-review flow.
     - This step is mandatory on every release, not just ones that touch macOS-specific code — the tap always points at the latest dmg regardless of what changed.
 
+12. **Update the AUR package** (`beamlynx-bin`) so Arch users get this release. Follow "Publish a new version" in `packaging/README.md`: bump `pkgver`, update the checksums, test with `makepkg -si`, regenerate `.SRCINFO`, push to the AUR repo, and commit the same change here. Like the Homebrew tap, this is mandatory on every release.
+
 ## Local dev/test workflow
 
 See `DEVELOPMENT.md` for how to iterate on changes before cutting a release — it covers the fast browser-based path for most UI changes, and how to run the real Electron shell (menu, native window, bundled server) when that's what's actually being changed.
