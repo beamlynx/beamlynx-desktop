@@ -106,7 +106,7 @@ const RailItem = ({ icon, label, expanded, active, onClick, ariaLabel, tooltip }
 const InvestigationItem = observer(({ investigation }: { investigation: Investigation }) => {
   const { global } = useStores();
   const active = global.activeSessionId === investigation.sessionId;
-  const waiting = investigation.pendingApprovals.length;
+  const waiting = investigation.pendingDecisions.length;
   return (
     <ButtonBase
       onClick={() => global.openInvestigationTab(investigation)}

@@ -1,10 +1,8 @@
 import { Box } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
-import CollapsibleHeight from './CollapsibleHeight';
 import NewLayoutView from './NewLayoutView';
 import LinkOpenedBanner from './LinkOpenedBanner';
-import RevealRequestBanner from './RevealRequestBanner';
 import SaveRecipeBar from './recipes/SaveRecipeBar';
 import InvestigationPanel from './InvestigationPanel';
 
@@ -18,24 +16,6 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
   const investigation = global.investigationForSession(sessionId);
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0 }}>
-      {/* Slides down into place rather than appearing. This is the one
-          surface in the app the USER didn't ask for - an agent raised it,
-          possibly while they were looking at something else entirely - so
-          it's worth spending a moment of motion saying "this just
-          arrived" rather than having it be there as though it always had
-          been. The translate is what carries that; height alone would
-          just be the layout reflowing. */}
-      <CollapsibleHeight
-        expanded={Boolean(session.pendingRevealRequestId)}
-        contentSx={{
-          opacity: session.pendingRevealRequestId ? 1 : 0,
-          transform: session.pendingRevealRequestId ? 'translateY(0)' : 'translateY(-100%)',
-          transition:
-            'opacity var(--motion-enter) var(--motion-ease-enter), transform var(--motion-enter) var(--motion-ease-enter)',
-        }}
-      >
-        <RevealRequestBanner session={session} />
-      </CollapsibleHeight>
       {/* A beamlynx://run link put an expression here without running it. */}
       <LinkOpenedBanner session={session} />
       {/* Same flex-column/flex:1/minHeight:0 combination PineTabs' TabPanel

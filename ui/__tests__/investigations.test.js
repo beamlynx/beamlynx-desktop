@@ -9,6 +9,7 @@ const { runInAction } = require('mobx');
 const { GlobalStore } = require('../store/global.store.ts');
 const { Investigation, queryReason } = require('../store/investigations.ts');
 const { McpWriteRefusalMinVersion } = require('../constants.ts');
+const { DefaultPlugin } = require('../plugin/default.plugin.tsx');
 
 afterEach(() => {
   delete globalThis.window;
@@ -16,7 +17,7 @@ afterEach(() => {
 
 /** A fake desktop bridge, recording what the store sends it. */
 function stubBridge() {
-  const sent = { notes: [], approvals: [] };
+  const sent = { notes: [], approvals: [], reveals: [] };
   globalThis.window = {
     beamlynxDesktop: {
       mcp: {
@@ -27,6 +28,12 @@ function stubBridge() {
         resolveApproval: async (id, outcome) => {
           sent.approvals.push({ id, outcome });
           return true;
+        },
+      },
+      mcpReveal: {
+        resolve: async (id, outcome) => {
+          sent.reveals.push({ id, outcome });
+          return null;
         },
       },
     },
@@ -290,4 +297,91 @@ test('the card says which policy Allow changes, and who else uses it', async () 
   });
   await run(store, 'claude-a', 'user');
   assert.deepEqual(store.investigationPolicy('claude-a'), { name: 'Default', others: ['Staging'] });
+});
+
+/**
+ * A store whose reveal previews run against a fake database: every
+ * DefaultPlugin.evaluate answers with `result`, and records its options.
+ */
+function storeForReveals(result) {
+  const store = storeWithFakeDatabase(() => ({ rows: [] }));
+  store.ensureProfileConnection = async () => 'conn-1';
+  const runs = [];
+  const original = DefaultPlugin.prototype.evaluate;
+  DefaultPlugin.prototype.evaluate = async function (opts) {
+    runs.push(opts);
+    const session = this.session;
+    runInAction(() => {
+      session.rows = result.rows ?? [];
+      session.columns = [];
+      session.error = result.error ?? '';
+      session.evalErrorType = result.errorType ?? '';
+    });
+    return result.raw ?? [];
+  };
+  return { store, runs, restore: () => (DefaultPlugin.prototype.evaluate = original) };
+}
+
+const revealRequest = {
+  id: 'rv-1',
+  profileId: 'p1',
+  expression: '/* Ada\'s email */\ncustomer | where: id = 1 | s: email',
+  reason: 'To match her support ticket',
+  createdAt: 0,
+  status: 'pending',
+  investigationId: 'claude-a',
+};
+
+test('a reveal request is a card in its investigation: previewed read-only, then revealed as previewed', async () => {
+  const { store, runs, restore } = storeForReveals({ rows: [{ email: 'ada@example.com' }], raw: [['email'], ['ada@example.com']] });
+  try {
+    const sent = stubBridge();
+    const tabsBefore = Object.keys(store.sessions).length;
+    await store.handleRevealRequest(revealRequest);
+    const investigation = store.investigations.find(i => i.id === 'claude-a');
+    const step = investigation.reveal('rv-1');
+    assert.equal(step.status, 'pending');
+    assert.equal(step.reason, 'To match her support ticket');
+    assert.deepEqual(step.preview.rows, [{ email: 'ada@example.com' }]);
+    assert.equal(runs[0].allowWrites, false);
+    // The preview's session is never a tab: only the investigation's is new.
+    assert.equal(Object.keys(store.sessions).length, tabsBefore + 1);
+    assert.equal(store.agentDecisionsWaiting, 1);
+
+    assert.equal(await store.answerReveal('claude-a', 'rv-1', true), true);
+    assert.equal(sent.reveals.length, 1);
+    assert.equal(sent.reveals[0].outcome.ok, true);
+    assert.deepEqual(sent.reveals[0].outcome.rows, [['email'], ['ada@example.com']]);
+    assert.equal(step.status, 'revealed');
+    assert.equal(store.agentDecisionsWaiting, 0);
+  } finally {
+    restore();
+  }
+});
+
+test('a reveal request whose query changes data is declined without asking', async () => {
+  const { store, restore } = storeForReveals({ error: 'refused', errorType: 'write-refused' });
+  try {
+    const sent = stubBridge();
+    await store.handleRevealRequest({ ...revealRequest, id: 'rv-2', expression: 'customer | delete! .id' });
+    const step = store.investigations[0].reveal('rv-2');
+    assert.equal(step.status, 'declined');
+    assert.match(step.note, /changes data/);
+    assert.equal(sent.reveals[0].outcome.ok, false);
+  } finally {
+    restore();
+  }
+});
+
+test('declining a reveal sends the user\'s reason', async () => {
+  const { store, restore } = storeForReveals({ rows: [{ email: 'x' }] });
+  try {
+    const sent = stubBridge();
+    await store.handleRevealRequest({ ...revealRequest, id: 'rv-3' });
+    await store.answerReveal('claude-a', 'rv-3', false, 'Not in production');
+    assert.deepEqual(sent.reveals[0].outcome, { ok: false, comment: 'Not in production' });
+    assert.equal(store.investigations[0].reveal('rv-3').status, 'declined');
+  } finally {
+    restore();
+  }
 });

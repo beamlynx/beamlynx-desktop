@@ -113,6 +113,9 @@ type RevealRequest = {
   reason?: string;
   createdAt: number;
   status: 'pending' | 'revealed' | 'declined';
+  // The Claude session that asked (store/investigations.ts). Absent from a
+  // desktop app older than investigations.
+  investigationId?: string;
 };
 
 // What RevealRequestBanner.tsx reports back once the owner decides --

@@ -223,8 +223,133 @@ const ApprovalStep = observer(
   },
 );
 
+const RevealStep = observer(
+  ({ investigation, step }: { investigation: Investigation; step: Extract<InvestigationStep, { kind: 'reveal' }> }) => {
+    const { global } = useStores();
+    const [declining, setDeclining] = useState(false);
+    const [comment, setComment] = useState('');
+    const [busy, setBusy] = useState(false);
+    const pending = step.status === 'pending';
+    const shown = investigation.selectedStepId === step.id;
+    const rows = step.preview?.rows.length ?? 0;
+    const pine = step.expression.replace(/^\s*\/\*[\s\S]*?\*\/\s*/, '').trim();
+
+    const answer = async (reveal: boolean) => {
+      setBusy(true);
+      await global.answerReveal(investigation.id, step.requestId, reveal, comment.trim() || undefined);
+      setBusy(false);
+    };
+
+    return (
+      <Box
+        sx={{
+          border: '1px solid',
+          borderColor: pending || step.status === 'running' ? 'var(--notification-color)' : 'var(--border-color)',
+          borderRadius: 1,
+          px: 1.25,
+          py: 1,
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
+          <VisibilityOutlined sx={{ fontSize: 16, color: pending ? 'var(--notification-color)' : dim }} />
+          <Typography sx={{ fontSize: 13, fontWeight: 600, color: 'var(--text-color)' }}>
+            The agent asks to see the real values
+          </Typography>
+        </Box>
+        <Typography sx={{ fontSize: 12, color: dim, mb: 0.5, lineHeight: 1.4 }}>
+          Your access policy masks some of what this query returns.
+          {step.reason ? ` Its reason: “${step.reason}”` : ''}
+        </Typography>
+        <Box
+          component="pre"
+          sx={{
+            m: 0,
+            mb: 1,
+            fontFamily: 'var(--code-font)',
+            fontSize: 12,
+            color: dim,
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            display: '-webkit-box',
+            WebkitLineClamp: 3,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+          }}
+        >
+          {pine}
+        </Box>
+        {step.status === 'running' && (
+          <Typography sx={{ fontSize: 12, color: dim, display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            <CircularProgress size={11} thickness={6} sx={{ color: 'var(--canvas-trace)' }} />
+            Running it, so you can look first…
+          </Typography>
+        )}
+        {(step.status === 'revealed' || step.status === 'declined') && (
+          <Typography sx={{ fontSize: 12, color: dim, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <CheckCircleOutline sx={{ fontSize: 14 }} />
+            {step.status === 'revealed' ? `Revealed: the agent has these ${rows} rows.` : step.note ?? 'Declined.'}
+          </Typography>
+        )}
+        {pending && (
+          <>
+            <Button
+              size="small"
+              onClick={() =>
+                global.showInvestigationStep(investigation.id, shown ? null : step.id)
+              }
+              sx={{ mb: 1, px: 0, textTransform: 'none' }}
+            >
+              {shown ? 'Back to the latest' : `Look at the ${rows} row${rows === 1 ? '' : 's'} first`}
+            </Button>
+            {declining ? (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+                <TextField
+                  size="small"
+                  autoFocus
+                  placeholder="Why not? Optional, but it helps the agent."
+                  value={comment}
+                  onChange={e => setComment(e.target.value)}
+                  onKeyDown={e => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter' && !busy) {
+                      e.preventDefault();
+                      void answer(false);
+                    } else if (e.key === 'Escape') {
+                      setDeclining(false);
+                    }
+                  }}
+                  sx={{ '& .MuiInputBase-input': { fontSize: 13 } }}
+                />
+                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+                  <Button size="small" disabled={busy} onClick={() => setDeclining(false)}>
+                    Cancel
+                  </Button>
+                  <Button size="small" color="error" disabled={busy} onClick={() => answer(false)}>
+                    Decline
+                  </Button>
+                </Box>
+              </Box>
+            ) : (
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Button size="small" variant="contained" disabled={busy} onClick={() => answer(true)}>
+                  Reveal to the agent
+                </Button>
+                <Button size="small" color="error" disabled={busy} onClick={() => setDeclining(true)}>
+                  Decline…
+                </Button>
+              </Box>
+            )}
+          </>
+        )}
+      </Box>
+    );
+  },
+);
+
 const Step = observer(({ investigation, step }: { investigation: Investigation; step: InvestigationStep }) => {
   switch (step.kind) {
+    case 'reveal':
+      return <RevealStep investigation={investigation} step={step} />;
     case 'query':
       return <QueryStep investigation={investigation} step={step} />;
     case 'approval':
@@ -365,7 +490,7 @@ const InvestigationPanel = observer(({ investigation }: { investigation: Investi
         : `Last call ${ago(sinceLastCall)}. The agent may be working in another tool.`;
 
   if (global.investigationPanelCollapsed) {
-    const waiting = investigation.pendingApprovals.length > 0;
+    const waiting = investigation.pendingDecisions.length > 0;
     return (
       <Box
         sx={{

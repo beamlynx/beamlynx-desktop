@@ -191,17 +191,12 @@ export class Session {
   connecting: boolean = false;
 
   /**
-   * Desktop-only: set when this tab was opened to review an MCP agent's
-   * request_reveal call (see RevealRequestHandler.tsx) -- the id the agent's
-   * matching check_reveal poll is waiting on. Cleared once the owner
-   * reveals or declines (RevealRequestBanner.tsx), at which point this goes
-   * back to being an ordinary tab. A normal tab opened any other way never
-   * has this set.
+   * Desktop-only: set on the session that runs an MCP agent's request_reveal
+   * query for the user to look at (GlobalStore.handleRevealRequest) -- the
+   * id the agent's check_reveal poll is waiting on. That session is never a
+   * tab. With this set, it never writes (Session.isAgentSession).
    */
   pendingRevealRequestId?: string;
-
-  /** The agent-supplied reason for the request_reveal call this tab is reviewing, if any. */
-  revealReason?: string;
 
   /**
    * Set when a beamlynx://run link opened this tab (DeepLinkHandler.tsx).

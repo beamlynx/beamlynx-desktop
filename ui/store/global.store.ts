@@ -11,7 +11,7 @@ import {
   ServerRejectedError,
   VariableValue,
 } from './client';
-import type { CredentialsStatus, RevealOutcome } from '../desktop';
+import type { CredentialsStatus, RevealOutcome, RevealRequest } from '../desktop';
 import type { DbType } from '../utils/dbType';
 import { Session, Theme, InputMode } from './session';
 import { THEME_MODE, ThemeId } from '../styles/palette/tokens';
@@ -803,7 +803,7 @@ export class GlobalStore {
   private snapshotSessions = (): PersistedSessionsState => {
     // An agent's tabs belong to a conversation that ends with the app, so
     // they are not restored as tabs of the user's own.
-    const agentTabs = new Set([...this.agentSessionIds, ...this.pendingRevealSessionIds]);
+    const agentTabs = new Set(this.agentSessionIds);
     const ids = Object.keys(this.sessions).filter(id => !agentTabs.has(id));
     return {
       sessions: ids.map(id => {
@@ -1687,9 +1687,12 @@ export class GlobalStore {
     const step = stepId
       ? investigation.steps.find(s => s.id === stepId)
       : investigation.latestQuery;
-    if (!step || step.kind !== 'query' || !step.snapshot) return;
+    // A query's result as the agent saw it, or a reveal request's real
+    // values, for the user to look at before deciding.
+    const snapshot = step?.kind === 'query' ? step.snapshot : step?.kind === 'reveal' ? step.preview : undefined;
+    if (!snapshot) return;
     investigation.select(stepId);
-    session.showSnapshot(step.snapshot);
+    session.showSnapshot(snapshot);
   };
 
   /** Backing call for the `complete_query` MCP tool -- parse/build only, no execution. */
@@ -1799,12 +1802,9 @@ export class GlobalStore {
 
   /**
    * Reports what the connection owner decided on a pending request_reveal
-   * (see RevealRequestHandler.tsx/RevealRequestBanner.tsx) -- a plain,
-   * side-effect-free forward to main's in-memory queue
-   * (reveal-requests.ts's resolveRevealRequest), which is what the agent's
-   * matching check_reveal poll reads. Never touches GlobalStore/Session
-   * state itself; the caller clears the session's own
-   * pendingRevealRequestId once this resolves.
+   * (answerReveal, handleRevealRequest) -- a plain, side-effect-free forward
+   * to main's in-memory queue (reveal-requests.ts's resolveRevealRequest),
+   * which is what the agent's matching check_reveal poll reads.
    */
   resolveRevealRequest = async (id: string, outcome: RevealOutcome): Promise<void> => {
     if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
@@ -1820,25 +1820,68 @@ export class GlobalStore {
   };
 
   /**
-   * Removes a reveal-request tab once there's no more reason to keep it
-   * pinned: RevealRequestBanner.tsx calls this right after Reveal/Decline
-   * actually resolves the request (a pinned tab only exists while pending),
-   * and RevealRequestHandler.tsx calls it if connecting failed before a
-   * banner ever had a chance to render. Unlike closeTab's own reveal-request
-   * branch, this never itself calls resolveRevealRequest -- the request is
-   * already resolved (or about to be, by RevealRequestHandler's own
-   * decline) by the time either caller reaches this.
+   * An agent's request_reveal, as a card in its investigation
+   * (store/investigations.ts). The query runs once, read-only and unmasked,
+   * so the user can look at the real values before deciding; Approve sends
+   * exactly those rows. The run happens in a session of its own that is
+   * never a tab: not the investigation's, whose queries are the agent's and
+   * masked. pendingRevealRequestId makes that session refuse writes
+   * (Session.isAgentSession). A query that changes data is declined without
+   * asking, and so is one whose connection can't be reached.
    */
-  finishRevealSession = (sessionId: string) => {
-    this.deleteSession(sessionId);
-    if (this.activeSessionId === sessionId) {
-      // Land on another still-pending reveal request first, if there is
-      // one -- the whole point of one pinned tab per request is to work
-      // through them one at a time, and falling through to a regular tab
-      // first would lose that thread.
-      this.activeSessionId =
-        this.pendingRevealSessionIds[0] ?? this.visibleSessionIds[0] ?? this.activeSessionId;
+  handleRevealRequest = async (request: RevealRequest) => {
+    const investigation = this.getOrCreateInvestigation(request.investigationId);
+    investigation.addReveal(request.id, request.expression, request.reason);
+    const decline = async (note: string) => {
+      investigation.setReveal(request.id, 'declined', note);
+      await this.resolveRevealRequest(request.id, { ok: false, comment: note });
+    };
+    let connectionId: string;
+    try {
+      connectionId = await this.ensureProfileConnection(request.profileId);
+    } catch (e) {
+      await decline(`Could not connect to this database: ${e instanceof Error ? e.message : String(e)}`);
+      return;
     }
+    const preview = new Session(`reveal-${request.id}`, this);
+    runInAction(() => {
+      preview.connectionId = connectionId;
+      preview.profileId = request.profileId;
+      preview.expression = request.expression;
+      preview.pendingRevealRequestId = request.id;
+    });
+    let rows: unknown;
+    try {
+      rows = await preview.evaluate({ applyServerPrettified: true, allowWrites: false });
+    } catch (e) {
+      await decline(`The query failed: ${e instanceof Error ? e.message : String(e)}`);
+      return;
+    }
+    if (preview.evalErrorType === 'write-refused') {
+      await decline('Refused: the expression changes data. Reveal requests are read-only.');
+      return;
+    }
+    investigation.setRevealPreview(request.id, snapshotOf(preview), toJS(rows));
+  };
+
+  /** The user's answer to a reveal card: the previewed rows, or a decline with their reason. */
+  answerReveal = async (investigationId: string, requestId: string, reveal: boolean, comment?: string) => {
+    const investigation = this.investigations.find(i => i.id === investigationId);
+    const step = investigation?.reveal(requestId);
+    if (!investigation || step?.status !== 'pending') return false;
+    if (reveal && step.preview) {
+      await this.resolveRevealRequest(requestId, {
+        ok: true,
+        expression: step.preview.expression,
+        columns: step.preview.columns,
+        rows: step.rows,
+      });
+      investigation.setReveal(requestId, 'revealed');
+    } else {
+      await this.resolveRevealRequest(requestId, { ok: false, comment });
+      investigation.setReveal(requestId, 'declined');
+    }
+    return true;
   };
 
   /**
@@ -2251,23 +2294,6 @@ export class GlobalStore {
     return this.createSessionUsingId(id);
   };
 
-  /**
-   * Creates a session already tagged as a pending reveal-request tab, in one
-   * MobX action -- RevealRequestHandler.tsx must never do this as two
-   * separate statements (create, then a later `runInAction` to set
-   * pendingRevealRequestId), since `sessions` is itself observable: between
-   * those two statements the session would exist with no
-   * pendingRevealRequestId yet, landing in visibleSessionIds (and briefly
-   * flashing as a regular tab in the user's own strip) for however long
-   * React takes to react to the first change.
-   */
-  createRevealSession = (requestId: string, reason: string | undefined): Session => {
-    const session = this.createSession();
-    session.pendingRevealRequestId = requestId;
-    session.revealReason = reason;
-    return session;
-  };
-
   deleteSession = (sessionId: string) => {
     delete this.sessions[sessionId];
   };
@@ -2339,32 +2365,13 @@ export class GlobalStore {
     this.activeSessionId = session.id;
   };
 
-  // Every session with a reveal request awaiting the owner's decision (see
-  // RevealRequestHandler.tsx and Session.pendingRevealRequestId's own
-  // comment) -- each one gets its own pinned tab in PineTabs.tsx, clustered
-  // with the MCP tab at the strip's end, same reasoning as mcpSessionId:
-  // one of these is never just "one of your own tabs" the way a regular
-  // session is.
-  get pendingRevealSessionIds(): string[] {
-    return Object.keys(this.sessions).filter(id => this.sessions[id].pendingRevealRequestId);
-  }
-
-  // The user's OWN tabs -- every open session except the pinned ones above
-  // (the one dedicated MCP session, and any pending reveal-request
-  // sessions), which PineTabs.tsx renders separately, pinned at the end of
-  // the same strip. Reorder and cycling read this instead of
-  // `Object.keys(sessions)` directly, so a pinned tab can't be dragged out
-  // of its end position or show up in Ctrl+Tab cycling (confirmed live:
-  // without this exclusion, closing a user's only other tab handed
-  // `activeSessionId` to the MCP session instead of resetting it in place,
-  // since `sessions` always had 2+ entries even with one of the user's own
-  // tabs open).
+  // The tabs in the strip: every session except an investigation's whose
+  // tab isn't open (openInvestigationTab). Reorder and cycling read this
+  // instead of `Object.keys(sessions)` directly, so a hidden investigation
+  // can't be dragged or reached with Ctrl+Tab, and closing the user's only
+  // other tab can't hand activeSessionId to it.
   get visibleSessionIds(): string[] {
-    // An investigation's tab is one of these once opened, and hidden before.
-    const hidden = new Set([
-      ...this.investigations.filter(i => !i.tabOpen).map(i => i.sessionId),
-      ...this.pendingRevealSessionIds,
-    ]);
+    const hidden = new Set(this.investigations.filter(i => !i.tabOpen).map(i => i.sessionId));
     return Object.keys(this.sessions).filter(id => !hidden.has(id));
   }
 
@@ -2409,16 +2416,6 @@ export class GlobalStore {
         const remaining = this.visibleSessionIds;
         this.activeSessionId = remaining[Math.max(0, index - 1)] ?? remaining[0] ?? this.activeSessionId;
       }
-      return;
-    }
-
-    const pendingRequestId = this.sessions[sessionId]?.pendingRevealRequestId;
-    if (pendingRequestId) {
-      this.finishRevealSession(sessionId);
-      this.resolveRevealRequest(pendingRequestId, {
-        ok: false,
-        comment: 'Closed without review.',
-      }).catch(e => console.error('[reveal-request] failed to decline on close ->', e));
       return;
     }
 
@@ -2661,28 +2658,19 @@ export class GlobalStore {
     }
   };
 
-  /** Decisions an agent is blocked on: reveal requests and in-call approvals. */
+  /** Decisions an agent is blocked on: in-call approvals and reveal requests. */
   get agentDecisionsWaiting(): number {
-    return (
-      this.pendingRevealSessionIds.length +
-      this.investigations.reduce((n, i) => n + i.pendingApprovals.length, 0)
-    );
+    return this.investigations.reduce((n, i) => n + i.pendingDecisions.length, 0);
   }
 
   /**
    * Jumps to whichever agent tab most needs the owner right now -- what the
    * agent's robot in the sidebar (SideRail) does on click.
-   * A decision an agent is blocked on wins: a pending reveal request, then
-   * an investigation with an approval waiting. Otherwise the current
-   * investigation. A no-op when the agent has none.
+   * An investigation with a decision its agent is blocked on wins.
+   * Otherwise the current investigation. A no-op when the agent has none.
    */
   focusAgentTab = () => {
-    const reveal = this.pendingRevealSessionIds[0];
-    if (reveal) {
-      this.activeSessionId = reveal;
-      return;
-    }
-    const waiting = this.investigations.find(i => i.pendingApprovals.length > 0);
+    const waiting = this.investigations.find(i => i.pendingDecisions.length > 0);
     const current = this.mcpSessionId ? this.investigationForSession(this.mcpSessionId) : undefined;
     const target = waiting ?? current;
     if (target) this.openInvestigationTab(target);

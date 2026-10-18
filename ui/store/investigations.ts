@@ -92,7 +92,23 @@ export type InvestigationStep =
       status: 'pending' | 'allowed' | 'declined' | 'expired';
     }
   // A note the user wrote to the agent.
-  | { id: string; kind: 'note'; at: number; text: string; delivered: boolean };
+  | { id: string; kind: 'note'; at: number; text: string; delivered: boolean }
+  // The agent asking to see a query's real values (request_reveal). The
+  // query runs once, read-only and unmasked, for the user to look at:
+  // `preview`, and `rows`, the run's rows as Approve sends them.
+  | {
+      id: string;
+      kind: 'reveal';
+      at: number;
+      requestId: string;
+      expression: string;
+      reason?: string;
+      status: 'running' | 'pending' | 'revealed' | 'declined';
+      preview?: QuerySnapshot;
+      rows?: unknown;
+      // Why it was declined without asking, such as a query that changes data.
+      note?: string;
+    };
 
 // These tools are shown as the query they ran, or as the question and
 // findings they carry. Their activity events add nothing else.
@@ -209,6 +225,33 @@ export class Investigation {
     if (step && step.kind === 'approval' && step.status === 'pending') step.status = status;
   }
 
+  addReveal(requestId: string, expression: string, reason: string | undefined): string {
+    const id = stepId();
+    this.steps.push({ id, kind: 'reveal', at: Date.now(), requestId, expression, reason, status: 'running' });
+    return id;
+  }
+
+  /** The reveal's read-only run is done: ready for the user's decision, or declined already. */
+  setRevealPreview(requestId: string, preview: QuerySnapshot, rows: unknown) {
+    const step = this.reveal(requestId);
+    if (step?.status !== 'running') return;
+    step.preview = preview;
+    step.rows = rows;
+    step.status = 'pending';
+  }
+
+  setReveal(requestId: string, status: 'revealed' | 'declined', note?: string) {
+    const step = this.reveal(requestId);
+    if (!step || step.status === 'revealed' || step.status === 'declined') return;
+    step.status = status;
+    if (note) step.note = note;
+  }
+
+  reveal(requestId: string) {
+    const step = this.steps.find(s => s.kind === 'reveal' && s.requestId === requestId);
+    return step?.kind === 'reveal' ? step : undefined;
+  }
+
   addNote(id: string, text: string) {
     this.steps.push({ id, kind: 'note', at: Date.now(), text, delivered: false });
   }
@@ -238,5 +281,14 @@ export class Investigation {
 
   get pendingApprovals() {
     return this.steps.filter(s => s.kind === 'approval' && s.status === 'pending');
+  }
+
+  /** Everything the agent is waiting on the user for: approvals and reveal requests. */
+  get pendingDecisions() {
+    return this.steps.filter(
+      s =>
+        (s.kind === 'approval' && s.status === 'pending') ||
+        (s.kind === 'reveal' && (s.status === 'pending' || s.status === 'running')),
+    );
   }
 }
