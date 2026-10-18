@@ -4,7 +4,6 @@ import { runInAction } from 'mobx';
 import { useStores } from '../store/store-container';
 import PineTabs from './PineTabs';
 import { UpgradeRequired } from './docs/UpgradeRequired';
-import ActiveConnection from './ActiveConnection';
 import Message from './Message';
 import { isDesktop, isPlayground } from '../store/util';
 import { useState, useEffect, useCallback } from 'react';
@@ -181,156 +180,160 @@ const AppView = observer(() => {
           about. The contents hold their size inside the clip while the
           wrapper closes over them, so the header slides up out of view
           instead of each control reflowing on its way to nothing. */}
-      <CollapsibleHeight
-        expanded={!global.isZenModeActive}
-        transition={
-          global.isZenModeActive
-            ? 'height var(--motion-exit) var(--motion-ease-exit)'
-            : 'height var(--motion-enter) var(--motion-ease-enter)'
-        }
-        contentSx={{
-          opacity: global.isZenModeActive ? 0 : 1,
-          transition: global.isZenModeActive
-            ? 'opacity var(--motion-fast) var(--motion-ease-exit)'
-            : 'opacity var(--motion-enter) var(--motion-ease-enter)',
-        }}
-      >
-        <Grid container>
-          <Grid item xs={3}>
-            <Box sx={{ m: 2, mt: 1, mb: 0 }}>
-              <ActiveConnection />
-            </Box>
-          </Grid>
-
-          <Grid item xs={6}>
-            <Box sx={{ m: 1, mt: 1, mb: 0, display: 'flex', justifyContent: 'center' }}>
-              <Box
-                onClick={() => global.setShowCommandPalette(true)}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  width: 600,
-                  maxWidth: '90vw',
-                  padding: '10px 16px',
-                  backgroundColor: 'var(--node-column-bg)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: 1,
-                  cursor: 'pointer',
-                  visibility: global.showCommandPalette ? 'hidden' : 'visible',
-                  '&:hover': {
-                    borderColor: 'var(--primary-color)',
-                    backgroundColor: 'var(--background-color)',
-                  },
-                }}
-              >
-                <Typography
-                  variant="body2"
-                  sx={{
-                    color: 'var(--text-color)',
-                    opacity: 0.6,
-                    userSelect: 'none',
-                    lineHeight: 1.5,
-                  }}
-                >
-                  Search commands... ({getKeybindingDisplayForCommand('command-palette')})
-                </Typography>
-              </Box>
-              {/* <Message /> */}
-            </Box>
-          </Grid>
-
-          <Grid item xs={3}>
-            {/* Level with the search box beside it: the icon buttons that
-                used to sit here gave this row its height, and without them
-                the chips were pressed against the window's top edge. */}
-            <Box
-              sx={{
-                m: 1,
-                mr: 2,
-                mb: 0,
-                minHeight: 43,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'flex-end',
-                gap: 1,
-                flexWrap: 'wrap',
-                rowGap: 0,
-              }}
-            >
-              {!isDesktop() && global.version && (
-                <Typography variant="caption" color="gray" component="code">
-                  [{global.version}]
-                </Typography>
-              )}
-              <DevModeChip />
-              {UserContent}
-            </Box>
-          </Grid>
-        </Grid>
-      </CollapsibleHeight>
-      {/* mt: 1 (not 0) - the header row above and the tab row below both
-          have their own solid background now (previously neither did, so
-          zero margin was invisible); with no gap the search box's bottom
-          edge visually touched the tab row's top edge.
-
-          flex: 1, minHeight: 0 - this is what makes the tab content fill
-          exactly the rest of the viewport below the header, however tall
-          the header actually renders (font metrics, connection-name
-          wrapping, OS chrome, etc. all vary this in ways a hardcoded
-          `calc(100vh - Npx)` guess can't track - see constants.ts's
-          LAYOUT_HEIGHTS comment for the drift this used to cause).
-          Flexbox's own `flex: 1` already accounts for its own margin and
-          every sibling's natural size automatically - no pixel arithmetic
-          needed. Requires pages/index.tsx's Container to be the
-          `display:flex, flexDirection:column, height:100vh` ancestor this
-          box measures against (it is), and every box down the chain to
-          Session/NewLayoutView's own root to keep passing that sizing
-          through the same way (flex:1 for a flex child with siblings,
-          height:'100%' for a single/only child) rather than reintroducing
-          a calc(100vh - ...) guess at some new layer. This row wrapper is
-          that flex:1/minHeight:0 child now (rather than the PineTabs box
-          directly) so the docked Settings panel can be its sibling and
-          span the same full height, tab strip included.
-
-          mt/ml/mr live on the ROW itself, not on the PineTabs box below --
-          they used to live there, which put the inset only on PineTabs'
-          side. That left two bugs once Settings became this row's other
-          child: Settings had no top margin of its own, so its top sat 8px
-          above the tab strip instead of level with it: and PineTabs' own
-          8px LEFT margin added on top of the divider's own 8px gap
-          doubled the visual gap between Settings and Canvas to 16px,
-          versus the plain 8px gap every other pane boundary in New Layout
-          uses. Applying the inset once, to the row, makes Settings and
-          PineTabs start flush and top-aligned with each other, with
-          exactly the divider's own width between them -- matching every
-          other docked pane. */}
-      <Box
-        sx={{
-          display: 'flex',
-          flexDirection: 'row',
-          flex: 1,
-          minHeight: 0,
-          mt: global.isZenModeActive ? 0 : 1,
-          ml: global.isZenModeActive ? 0 : 1,
-          mr: global.isZenModeActive ? 0 : 1,
-        }}
-      >
-        {/* The sidebar (agent, what's new, settings) goes with the rest of
-            the chrome in Zen mode. */}
+      {/* The sidebar runs the window's full height, beside the header and
+          the tabs: the database connection is at its top, as a workspace is
+          in Slack's. It goes with the rest of the chrome in Zen mode. */}
+      <Box sx={{ display: 'flex', flexDirection: 'row', flex: 1, minHeight: 0 }}>
         {!global.isZenModeActive && (
           <SideRail hasUnreadUpdates={hasUnreadUpdates} onOpenChangelog={handleOpenChangelog} />
         )}
-        <SettingsDock />
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            flex: 1,
-            minWidth: 0,
-            minHeight: 0,
-          }}
-        >
-          <PineTabs></PineTabs>
+        <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: 0 }}>
+          <CollapsibleHeight
+            expanded={!global.isZenModeActive}
+            transition={
+              global.isZenModeActive
+                ? 'height var(--motion-exit) var(--motion-ease-exit)'
+                : 'height var(--motion-enter) var(--motion-ease-enter)'
+            }
+            contentSx={{
+              opacity: global.isZenModeActive ? 0 : 1,
+              transition: global.isZenModeActive
+                ? 'opacity var(--motion-fast) var(--motion-ease-exit)'
+                : 'opacity var(--motion-enter) var(--motion-ease-enter)',
+            }}
+          >
+            <Grid container>
+              {/* The database connection is at the top of the sidebar now
+                  (SideRail.tsx); this keeps the search box centred. */}
+              <Grid item xs={3} />
+
+              <Grid item xs={6}>
+                <Box sx={{ m: 1, mt: 1, mb: 0, display: 'flex', justifyContent: 'center' }}>
+                  <Box
+                    onClick={() => global.setShowCommandPalette(true)}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      width: 600,
+                      maxWidth: '90vw',
+                      padding: '10px 16px',
+                      backgroundColor: 'var(--node-column-bg)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 1,
+                      cursor: 'pointer',
+                      visibility: global.showCommandPalette ? 'hidden' : 'visible',
+                      '&:hover': {
+                        borderColor: 'var(--primary-color)',
+                        backgroundColor: 'var(--background-color)',
+                      },
+                    }}
+                  >
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        color: 'var(--text-color)',
+                        opacity: 0.6,
+                        userSelect: 'none',
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      Search commands... ({getKeybindingDisplayForCommand('command-palette')})
+                    </Typography>
+                  </Box>
+                  {/* <Message /> */}
+                </Box>
+              </Grid>
+
+              <Grid item xs={3}>
+                {/* Level with the search box beside it: the icon buttons that
+                    used to sit here gave this row its height, and without them
+                    the chips were pressed against the window's top edge. */}
+                <Box
+                  sx={{
+                    m: 1,
+                    mr: 2,
+                    mb: 0,
+                    minHeight: 43,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'flex-end',
+                    gap: 1,
+                    flexWrap: 'wrap',
+                    rowGap: 0,
+                  }}
+                >
+                  {!isDesktop() && global.version && (
+                    <Typography variant="caption" color="gray" component="code">
+                      [{global.version}]
+                    </Typography>
+                  )}
+                  <DevModeChip />
+                  {UserContent}
+                </Box>
+              </Grid>
+            </Grid>
+          </CollapsibleHeight>
+          {/* mt: 1 (not 0) - the header row above and the tab row below both
+              have their own solid background now (previously neither did, so
+              zero margin was invisible); with no gap the search box's bottom
+              edge visually touched the tab row's top edge.
+
+              flex: 1, minHeight: 0 - this is what makes the tab content fill
+              exactly the rest of the viewport below the header, however tall
+              the header actually renders (font metrics, connection-name
+              wrapping, OS chrome, etc. all vary this in ways a hardcoded
+              `calc(100vh - Npx)` guess can't track - see constants.ts's
+              LAYOUT_HEIGHTS comment for the drift this used to cause).
+              Flexbox's own `flex: 1` already accounts for its own margin and
+              every sibling's natural size automatically - no pixel arithmetic
+              needed. Requires pages/index.tsx's Container to be the
+              `display:flex, flexDirection:column, height:100vh` ancestor this
+              box measures against (it is), and every box down the chain to
+              Session/NewLayoutView's own root to keep passing that sizing
+              through the same way (flex:1 for a flex child with siblings,
+              height:'100%' for a single/only child) rather than reintroducing
+              a calc(100vh - ...) guess at some new layer. This row wrapper is
+              that flex:1/minHeight:0 child now (rather than the PineTabs box
+              directly) so the docked Settings panel can be its sibling and
+              span the same full height, tab strip included.
+
+              mt/ml/mr live on the ROW itself, not on the PineTabs box below --
+              they used to live there, which put the inset only on PineTabs'
+              side. That left two bugs once Settings became this row's other
+              child: Settings had no top margin of its own, so its top sat 8px
+              above the tab strip instead of level with it: and PineTabs' own
+              8px LEFT margin added on top of the divider's own 8px gap
+              doubled the visual gap between Settings and Canvas to 16px,
+              versus the plain 8px gap every other pane boundary in New Layout
+              uses. Applying the inset once, to the row, makes Settings and
+              PineTabs start flush and top-aligned with each other, with
+              exactly the divider's own width between them -- matching every
+              other docked pane. */}
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'row',
+              flex: 1,
+              minHeight: 0,
+              mt: global.isZenModeActive ? 0 : 1,
+              // The sidebar's own margin is the gap on the left.
+              ml: 0,
+              mr: global.isZenModeActive ? 0 : 1,
+            }}
+          >
+            <SettingsDock />
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                flex: 1,
+                minWidth: 0,
+                minHeight: 0,
+              }}
+            >
+              <PineTabs></PineTabs>
+            </Box>
+          </Box>
         </Box>
       </Box>
     </>

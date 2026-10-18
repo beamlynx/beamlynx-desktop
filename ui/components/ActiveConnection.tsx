@@ -1,5 +1,6 @@
 import CheckIcon from '@mui/icons-material/Check';
-import { Box, Divider, Menu, MenuItem, Typography } from '@mui/material';
+import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
+import { Box, ButtonBase, Divider, Menu, MenuItem, Tooltip, Typography } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useState, type MouseEvent } from 'react';
 import { useStores } from '../store/store-container';
@@ -15,7 +16,13 @@ import { DecryptionFailedError } from '../store/global.store';
  * is just "pick a connection" -- "Manage database connections…" below opens Settings
  * instead of duplicating that UI in two places.
  */
-const ActiveConnection = () => {
+/**
+ * It sits at the top of the sidebar (SideRail.tsx), as a workspace does in
+ * Slack's: a tile in the connection's colour with its initial, and, with the
+ * sidebar expanded, its name and whether it's connected. The connection is
+ * the active tab's: picking another switches this tab, as it always has.
+ */
+const ActiveConnection = ({ expanded }: { expanded: boolean }) => {
   const { global } = useStores();
   const [connectionMenuAnchor, setConnectionMenuAnchor] = useState<null | HTMLElement>(null);
   const [switchingConnection, setSwitchingConnection] = useState(false);
@@ -113,62 +120,85 @@ const ActiveConnection = () => {
     }
   };
 
-  return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-      {connectionId && (
-        <Box
-          title="Change this connection's color in Settings"
-          sx={{
-            width: 10,
-            height: 10,
-            borderRadius: '50%',
-            // Solid once the connection actually has a live pool;
-            // outline-only while it's just this tab's assigned
-            // connection but not connected yet (or currently
-            // reconnecting) -- same color either way, so it's still
-            // obvious which connection this is.
-            backgroundColor: isConnectionLive ? connectionColor : 'transparent',
-            border: isConnectionLive
-              ? 'none'
-              : `1.5px solid ${connectionColor || 'var(--border-color)'}`,
-            boxSizing: 'border-box',
-            flexShrink: 0,
-          }}
-        />
-      )}
-      <Typography
-        variant="caption"
-        component="code"
-        sx={{ color: 'var(--canvas-text-dim)', fontFamily: 'var(--canvas-font)' }}
-        {...(global.pineConnected && {
-          onClick: (e: MouseEvent<HTMLElement>) => {
-            setConnectionMenuAnchor(e.currentTarget);
-          },
-          style: { cursor: 'pointer' },
-        })}
+  const initial = connectionLabel.trim().charAt(0).toUpperCase();
+  const state = !global.pineConnected
+    ? displayText
+    : !connectionId
+      ? 'Pick a database'
+      : activeSession?.connecting
+        ? 'Connecting…'
+        : isConnectionLive
+          ? 'Connected'
+          : 'Not connected';
+
+  const trigger = (
+    <ButtonBase
+      onClick={(e: MouseEvent<HTMLElement>) => global.pineConnected && setConnectionMenuAnchor(e.currentTarget)}
+      aria-label={`Database connection: ${displayText}. Switch connection`}
+      sx={{
+        width: '100%',
+        justifyContent: expanded ? 'flex-start' : 'center',
+        gap: 1,
+        px: expanded ? 0.75 : 0,
+        py: 0.5,
+        borderRadius: 1,
+        textAlign: 'left',
+        '&:hover': { backgroundColor: 'var(--node-column-bg)' },
+      }}
+    >
+      {/* The connection's tile: its colour, filled when connected and only
+          outlined when not, with its initial. Empty with no connection. */}
+      <Box
+        sx={{
+          width: 30,
+          height: 30,
+          flexShrink: 0,
+          borderRadius: 1,
+          boxSizing: 'border-box',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 14,
+          fontWeight: 700,
+          fontFamily: 'var(--canvas-font)',
+          color: isConnectionLive ? 'var(--background-color)' : connectionColor || 'var(--canvas-text-dim)',
+          backgroundColor: isConnectionLive ? connectionColor || 'var(--canvas-trace)' : 'transparent',
+          border: isConnectionLive ? 'none' : `1.5px dashed ${connectionColor || 'var(--border-color)'}`,
+        }}
       >
-        {displayText}
-      </Typography>
-      {showReconnect && (
-        <Typography
-          variant="caption"
-          component="code"
-          onClick={handleReconnect}
-          sx={{
-            color: 'var(--primary-color)',
-            fontFamily: 'var(--canvas-font)',
-            cursor: 'pointer',
-            '&:hover': { textDecoration: 'underline' },
-          }}
-        >
-          ↻ Reconnect
-        </Typography>
+        {connectionId ? initial : ''}
+      </Box>
+      {expanded && (
+        <>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography noWrap sx={{ fontSize: 13, fontWeight: 600, color: 'var(--text-color)', fontFamily: 'var(--canvas-font)' }}>
+              {connectionId ? connectionLabel : 'No database'}
+            </Typography>
+            <Typography noWrap sx={{ fontSize: 11, color: 'var(--canvas-text-dim)' }}>
+              {state}
+            </Typography>
+          </Box>
+          <UnfoldMoreIcon sx={{ fontSize: 16, color: 'var(--canvas-text-dim)', flexShrink: 0 }} />
+        </>
+      )}
+    </ButtonBase>
+  );
+
+  return (
+    <Box>
+      {expanded ? (
+        trigger
+      ) : (
+        <Tooltip title={displayText} placement="right">
+          {trigger}
+        </Tooltip>
       )}
       <Menu
         anchorEl={connectionMenuAnchor}
         open={Boolean(connectionMenuAnchor)}
         onClose={() => setConnectionMenuAnchor(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        // Beside the sidebar, not over it.
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'left' }}
         slotProps={{
           paper: {
@@ -189,6 +219,18 @@ const ActiveConnection = () => {
           },
         }}
       >
+        {showReconnect && (
+          <MenuItem
+            onClick={e => {
+              handleReconnect(e);
+              setConnectionMenuAnchor(null);
+            }}
+            sx={{ fontSize: '0.85rem', fontFamily: 'var(--canvas-font)', color: 'var(--primary-color)' }}
+          >
+            ↻ Reconnect {truncatedLabel}
+          </MenuItem>
+        )}
+        {showReconnect && <Divider sx={{ borderColor: 'var(--border-color)' }} />}
         {global.connections.map(({ id, label }) => (
           <MenuItem
             key={id}

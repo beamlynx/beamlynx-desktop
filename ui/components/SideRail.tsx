@@ -19,6 +19,7 @@ import { useStores } from '../store/store-container';
 import { isDesktop } from '../store/util';
 import type { Investigation } from '../store/investigations';
 import { DESKTOP_ONLY_SECTIONS, RAIL_ITEMS } from './settings/SettingsPanelContent';
+import ActiveConnection from './ActiveConnection';
 
 /**
  * The sidebar on the left, like Slack's: icons only by default, with labels
@@ -175,7 +176,8 @@ const SideRail = observer(({ hasUnreadUpdates, onOpenChangelog }: { hasUnreadUpd
         display: 'flex',
         flexDirection: 'column',
         gap: 0.5,
-        py: 0.5,
+        pt: 1,
+        pb: 0.5,
         px: 0.5,
         mr: 1,
         borderRight: '1px solid var(--border-color)',
@@ -183,14 +185,10 @@ const SideRail = observer(({ hasUnreadUpdates, onOpenChangelog }: { hasUnreadUpd
         overflow: 'hidden',
       }}
     >
-      <RailItem
-        icon={expanded ? <MenuOpen sx={{ fontSize: 20 }} /> : <MenuIcon sx={{ fontSize: 20 }} />}
-        label="Collapse"
-        ariaLabel={expanded ? 'Collapse the sidebar' : 'Expand the sidebar'}
-        tooltip="Expand"
-        expanded={expanded}
-        onClick={() => global.setSideRailExpanded(!expanded)}
-      />
+      {/* The active tab's database connection, at the top like a
+          workspace in Slack: click it to switch. */}
+      <ActiveConnection expanded={expanded} />
+      <Divider sx={{ my: 0.5, borderColor: 'var(--border-color)' }} />
 
       {isDesktop() && (
         <>
@@ -278,6 +276,15 @@ const SideRail = observer(({ hasUnreadUpdates, onOpenChangelog }: { hasUnreadUpd
         expanded={expanded}
         onClick={onOpenChangelog}
       />
+      <RailItem
+        icon={expanded ? <MenuOpen sx={{ fontSize: 20 }} /> : <MenuIcon sx={{ fontSize: 20 }} />}
+        label="Collapse"
+        ariaLabel={expanded ? 'Collapse the sidebar' : 'Expand the sidebar'}
+        tooltip="Expand"
+        expanded={expanded}
+        onClick={() => global.setSideRailExpanded(!expanded)}
+      />
+
     </Box>
   );
 });
