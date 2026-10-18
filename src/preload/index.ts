@@ -55,6 +55,7 @@ type RevealRequest = {
   reason?: string;
   createdAt: number;
   status: 'pending' | 'revealed' | 'declined';
+  investigationId?: string;
 };
 type RevealOutcome =
   | { ok: true; expression: string; columns: unknown; rows: unknown }

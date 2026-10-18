@@ -244,7 +244,12 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
           });
         }
 
-        const request = createRevealRequest(profileId, expression, typeof reason === 'string' ? reason : undefined);
+        const request = createRevealRequest(
+          profileId,
+          expression,
+          typeof reason === 'string' ? reason : undefined,
+          investigationId,
+        );
         // Fire-and-forget: RevealRequestHandler.tsx (beamlynx-ui) opens a
         // real tab for the owner to review. Nothing here awaits that --
         // the whole point is that this HTTP call returns right away.
