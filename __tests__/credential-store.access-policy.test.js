@@ -72,6 +72,7 @@ const {
   deleteAccessPolicy,
   listMcpEnabledConnections,
   getMcpAccessStatus,
+  duplicateAccessPolicy,
 } = require(DIST);
 
 beforeEach(() => {
@@ -360,4 +361,19 @@ test('a newer store version is never lowered', () => {
   fs.writeFileSync(storePath, JSON.stringify({ version: 3, connections: [], accessPolicies: [] }));
   listAccessPolicies();
   assert.equal(JSON.parse(fs.readFileSync(storePath, 'utf-8')).version, 3);
+});
+
+test('a duplicated policy has the same rules, with ids of its own, and changing it leaves the original alone', () => {
+  const original = createAccessPolicy('Shared');
+  addAccessPolicyRule(original.id, email);
+  const source = policyById(original.id);
+  const copy = duplicateAccessPolicy(original.id, 'Shared for Prod');
+  assert.equal(copy.name, 'Shared for Prod');
+  assert.deepEqual(plain(copy), plain(source));
+  assert.deepEqual(copy.rules.map(r => r.builtIn), source.rules.map(r => r.builtIn));
+  assert.ok(copy.rules.every(r => !source.rules.some(s => s.id === r.id)));
+
+  addAccessPolicyRule(copy.id, { type: 'hide', match: email });
+  assert.deepEqual(plain(policyById(original.id)), plain(source));
+  assert.equal(duplicateAccessPolicy('missing', 'x'), null);
 });

@@ -586,6 +586,24 @@ export function createAccessPolicy(name: string): AccessPolicy {
   return policy;
 }
 
+// A new policy with the same rules as an existing one, each with a fresh id:
+// where a change meant for one connection goes, when its policy is shared
+// with others. Null if there is no such policy.
+export function duplicateAccessPolicy(id: string, name: string): AccessPolicy | null {
+  const store = readStore();
+  const source = store.accessPolicies.find(p => p.id === id);
+  if (!source) return null;
+  const policy: AccessPolicy = {
+    id: randomUUID(),
+    name: name.trim() || `${source.name} (copy)`,
+    rules: source.rules.map(rule => ({ ...structuredClone(rule), id: randomUUID() })),
+  };
+  store.accessPolicies.push(policy);
+  writeStore(store);
+  console.log(`[credentials] duplicateAccessPolicy: from=${id} id=${policy.id} name=${policy.name}`);
+  return policy;
+}
+
 // A blank/whitespace-only name is a no-op rather than an error -- same
 // convention as renameConnection below.
 export function renameAccessPolicy(id: string, name: string): AccessPolicy | null {
@@ -797,6 +815,7 @@ export function registerCredentialIpc(): void {
   ipcMain.handle('credentials:rename', (_event, id: string, label: string) => renameConnection(id, label));
   ipcMain.handle('access-policy:list', () => listAccessPolicies());
   ipcMain.handle('access-policy:create', (_event, name: string) => createAccessPolicy(name));
+  ipcMain.handle('access-policy:duplicate', (_event, id: string, name: string) => duplicateAccessPolicy(id, name));
   ipcMain.handle('access-policy:rename', (_event, id: string, name: string) => renameAccessPolicy(id, name));
   ipcMain.handle('access-policy:delete', (_event, id: string) => deleteAccessPolicy(id));
   ipcMain.handle('access-policy:add-rule', (_event, policyId: string, rule: AccessPolicyRule) =>

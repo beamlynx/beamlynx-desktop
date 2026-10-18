@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- **Copy an access policy.** A new IPC call, `access-policy:duplicate`, makes a policy with the same rules, each with an id of its own. beamlynx-ui uses it to change what one connection's agents see when its policy is shared with other connections, instead of changing it for all of them.
 
 ## [0.21.0] - 2026-10-18
 ### Added
