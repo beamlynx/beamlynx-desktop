@@ -226,11 +226,6 @@ export class GlobalStore {
   setInvestigationPanelCollapsed = (collapsed: boolean) => {
     this.investigationPanelCollapsed = collapsed;
   };
-  // How many of the agent's runs (runMcpQuery) are evaluating in each tab
-  // right now, so onSessionEvaluated can tell them from the user pressing
-  // Run. A count, not a flag: an agent can make calls in parallel, and the
-  // first to finish must not unmark the others.
-  private agentEvaluating = new Map<string, number>();
   // True from the moment an MCP-driven query finishes until its
   // investigation is next opened (openInvestigationTab clears it). It turns
   // the sidebar's robot amber: the only way to know a result landed while
@@ -1546,8 +1541,11 @@ export class GlobalStore {
   }) => {
     const investigation = this.getOrCreateInvestigation(investigationId);
     const stepId = investigation.startQuery(args.sql ?? args.expression, 'agent');
-    const sessionId = investigation.sessionId;
-    this.agentEvaluating.set(sessionId, (this.agentEvaluating.get(sessionId) ?? 0) + 1);
+    // Marks the tab's requests as the agent's for exactly as long as this
+    // query runs (Session.runsAsAgent): they are enforced, and the run isn't
+    // taken for the user's own (onSessionEvaluated).
+    const running = this.sessions[investigation.sessionId];
+    runInAction(() => running.agentRunsInFlight++);
     let result: Awaited<ReturnType<typeof runMcpQueryImpl>>;
     try {
       result = await runMcpQueryImpl(this.mcpQueryDeps(investigation.id), args);
@@ -1555,9 +1553,7 @@ export class GlobalStore {
       investigation.finishQuery(stepId, emptySnapshot(args.expression, e instanceof Error ? e.message : String(e)));
       throw e;
     } finally {
-      const left = (this.agentEvaluating.get(sessionId) ?? 1) - 1;
-      if (left > 0) this.agentEvaluating.set(sessionId, left);
-      else this.agentEvaluating.delete(sessionId);
+      runInAction(() => running.agentRunsInFlight--);
     }
     const session = this.sessions[investigation.sessionId];
     // No tab id: the SQL didn't convert, so nothing ran in the tab.
@@ -1665,7 +1661,7 @@ export class GlobalStore {
    * goes in the timeline, and the agent is told with its next call.
    */
   onSessionEvaluated = (session: Session) => {
-    if (this.agentEvaluating.has(session.id)) return;
+    if (session.agentRunsInFlight > 0) return;
     const investigation = this.investigationForSession(session.id);
     if (!investigation) return;
     const snapshot = snapshotOf(session);

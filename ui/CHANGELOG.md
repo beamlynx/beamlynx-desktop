@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Fixed
+- **"Also restrict my own queries" now applies in an agent's investigation tab too.** A query you ran there was always masked, whatever the setting said, because the whole tab counted as the agent's. Now only the agent's own queries are always masked, while they run. Your own runs in that tab follow the setting, as in any other tab, and the agent's results in the timeline stay as it saw them.
 
 ## [0.67.0] - 2026-10-18
 ### Breaking

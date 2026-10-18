@@ -392,22 +392,41 @@ export class Session {
     return effectiveAccessPolicyRules(
       connections?.find(c => c.id === this.profileId),
       policies,
-      this.isMcpSession,
+      this.runsAsAgent,
     );
+  }
+
+  /**
+   * The agent's queries evaluating in this tab right now
+   * (GlobalStore.runMcpQuery raises it for exactly the length of each). A
+   * count, not a flag: an agent can make calls in parallel, and the first to
+   * finish must not unmark the others.
+   */
+  agentRunsInFlight = 0;
+
+  /**
+   * Whether what this tab sends now is an agent's: an investigation's tab
+   * while one of its agent's queries is running. Everything it sends then is
+   * enforced. Any other run in that tab is the user's own, and follows the
+   * connection's "Also restrict my own queries", as in any other tab. The
+   * agent's results stay masked in the timeline either way.
+   */
+  get runsAsAgent(): boolean {
+    return this.isMcpSession && this.agentRunsInFlight > 0;
   }
 
   /**
    * What this session's requests carry: the rules above, enforced, or, on a
    * human tab of a connection agents can query, its policy to annotate the
-   * results with (see effectiveAccessPolicy in client.ts). The MCP session
-   * always enforces.
+   * results with (see effectiveAccessPolicy in client.ts). An agent's query
+   * always enforces (runsAsAgent).
    */
   get accessPolicy(): AppliedAccessPolicy {
     const connections = this.globalStore?.connections as ConnectionInfo[] | undefined;
     return effectiveAccessPolicy(
       connections?.find(c => c.id === this.profileId),
       this.globalStore?.accessPolicies ?? [],
-      this.isMcpSession,
+      this.runsAsAgent,
     );
   }
 
