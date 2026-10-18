@@ -4,9 +4,10 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.67.0] - 2026-10-18
 ### Breaking
-- An agent's queries need pine-lang with `hidden-column` in its policy refusals (after 0.49.0) for the user to be asked to allow a column. With an older pine-lang, the refusal goes to the agent as before.
-- Needs pine-lang after 0.49.0. The owner's own tab asks pine-lang only to report which columns agents can't see, with `access-policy-mode: annotate`. Pine-lang 0.49.0 doesn't know that mode, so it would mask the owner's own results. The next release must raise `RequiredVersion`.
+- Needs pine-lang 0.50.0 or later (was 0.49.0). Your own tabs ask pine-lang only to report which columns agents can't see (`access-policy-mode: annotate`), and an agent's refused query names the hidden column, so you can be asked to allow it. Pine-lang 0.49.0 knows neither, and would mask the results in your own tabs. Connecting to an older server shows the upgrade-required screen.
 
 ### Added
 - **A sidebar on the left.** The agent, What's new and the settings moved from the header's right corner to a sidebar on the left, next to where Settings and an investigation's timeline open. It runs the window's full height. The database connection moved to its top, as a workspace is in Slack: a tile in the connection's colour with its initial, filled when connected. Click it to switch the tab's connection, or to reconnect. It shows icons only, and expands to show labels and the agent's investigations by their questions. It remembers which you chose. Settings' sections are items of their own, each with an icon: Database Connections, Appearance, Preferences, Access Policy, MCP and About. One opens Settings at that section, and clicking it again closes it. The panel beside it shows only the open section, so it's narrower by default (520 px).

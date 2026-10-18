@@ -23,6 +23,59 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.67.0',
+    date: '2026-10-18',
+    breaking: [
+      {
+        title: "Needs pine-lang 0.50.0 or later (was 0.49.0)",
+        description:
+          "Your own tabs ask pine-lang only to report which columns agents can't see (`access-policy-mode: annotate`), and an agent's refused query names the hidden column, so you can be asked to allow it. Pine-lang 0.49.0 knows neither, and would mask the results in your own tabs. Connecting to an older server shows the upgrade-required screen.",
+      },
+    ],
+    added: [
+      {
+        title: "A sidebar on the left",
+        description:
+          "The agent, What's new and the settings moved from the header's right corner to a sidebar on the left, next to where Settings and an investigation's timeline open. It runs the window's full height. The database connection moved to its top, as a workspace is in Slack: a tile in the connection's colour with its initial, filled when connected. Click it to switch the tab's connection, or to reconnect. It shows icons only, and expands to show labels and the agent's investigations by their questions. It remembers which you chose. Settings' sections are items of their own, each with an icon: Database Connections, Appearance, Preferences, Access Policy, MCP and About. One opens Settings at that section, and clicking it again closes it. The panel beside it shows only the open section, so it's narrower by default (520 px).",
+      },
+      {
+        title: "Agent investigations",
+        description:
+          "In the desktop app, each Claude session that uses beamlynx gets an investigation of its own, named for the question the agent says it is investigating. The robot in the sidebar opens it as a tab at the end of yours. Closing the tab only puts it away: the robot opens it again with everything the agent did. An agent's tabs are no longer restored as your own tabs when the app restarts. A timeline beside the canvas keeps every step: the tables it looked for, each query with the reason the agent gave and what came back, and what it found, including from other tools. Click a query to see its rows again, exactly as the agent saw them, without running anything. The tab follows the newest query until you pick an older one. A failed query is marked in the timeline, with its error. The robot opens the current investigation, or a decision an agent is waiting on. Its activity log is replaced by the timeline.",
+      },
+      {
+        title: "Allow a hidden column while the agent waits",
+        description:
+          "When an agent's query is refused because it filters, sorts or groups on a column the access policy hides, the timeline shows a card: which column, and the agent's reason. **Allow** adds that column to the Allow rules of the connection's policy, and the agent's query runs again in the same call. **Decline** sends your reason to the agent. A column hidden by an Except rule isn't offered, since the Except rule would win.",
+      },
+      {
+        title: "Reveal requests are cards in the investigation",
+        description:
+          "When an agent asks to see a query's real values (`request_reveal`), the request is a card in its investigation, with the agent's reason, instead of a \"Needs approval\" tab. The query runs once, read-only, so you can look at the real rows in the grid before deciding. **Reveal to the agent** sends exactly those rows. **Decline** sends your reason. A query that changes data is declined without asking, as before. You can no longer edit the agent's query before revealing it.",
+      },
+      {
+        title: "Write to the agent from beamlynx",
+        description:
+          "A box at the bottom of the timeline sends a note to the agent. It arrives with the agent's next call to beamlynx, and the timeline shows when it has. A query you run yourself in the agent's tab is added to the timeline, and the agent is told what you ran and what came back.",
+      },
+      {
+        title: "Exceptions to what agents may see",
+        description:
+          "In the desktop app, every column is hidden from agents unless an access policy's **Allow** rule matches it. Now a policy can also list **Except** rules: a column they match stays hidden, even when an Allow rule matches it. Every policy starts with exceptions for names containing `token`, `password` and `secret`, so a uuid column called `reset_token` stays hidden even though uuids are allowed. Settings \u2192 Access Policy lists the Allow rules, then the exceptions. Each list has a form to add a rule: a name that contains, equals or ends with a text, or one exact column. The rules that used to be called \"Allow \u2026\" are now plain names, such as \"Standard data types\", under Allow.",
+      },
+      {
+        title: "Change the access policy from the results",
+        description:
+          "Right-click a cell or a column header and choose **Hide from agents** or **Show to agents**. The change is saved to the policy of that tab's connection. A message says what changed, which policy it was saved to, and which other connections use that policy, with **Undo** and **Open policy**. A column a broader exception covers, such as \"name contains token\", offers that exception instead, opened in Settings. A connection agents can query with no policy offers to choose one.",
+      },
+      {
+        title: "See which columns agents can't see",
+        description:
+          "On a connection agents can query, a column hidden from them has a crossed-out eye in its header, in your own tabs as well as the agent's. Your own tabs still show the real values.",
+      },
+    ],
+  },
+  {
     version: '0.66.0',
     date: '2026-10-17',
     breaking: [
@@ -2506,4 +2559,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.66.0';
+export const LATEST_VERSION = '0.67.0';
