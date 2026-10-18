@@ -38,9 +38,9 @@ export const DESKTOP_ONLY_SECTIONS: SettingsSection[] = ['access-policy', 'mcp']
 
 /**
  * The open section's content -- the entire "what Settings actually shows"
- * surface. The list of sections (RAIL_ITEMS) is in the sidebar
- * (SideRail.tsx), under Settings, so there is one column of navigation, not
- * two side by side. Its shell (SettingsDockedPanel.tsx) contributes nothing
+ * surface. The sections (RAIL_ITEMS) are items in the sidebar
+ * (SideRail.tsx), so there is one column of navigation, not two side by
+ * side. Its shell (SettingsDockedPanel.tsx) contributes nothing
  * but its own outer positioning/chrome. Fills whatever box its shell gives
  * it (`height: 100%`).
  */

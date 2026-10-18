@@ -1,10 +1,9 @@
 import React from 'react';
-import { Badge, Box, ButtonBase, Tooltip, Typography } from '@mui/material';
+import { Badge, Box, ButtonBase, Divider, Tooltip, Typography } from '@mui/material';
 import {
   MenuOpen,
   Menu as MenuIcon,
   Notifications,
-  Settings,
   SmartToyOutlined,
   StorageOutlined,
   PaletteOutlined,
@@ -13,6 +12,7 @@ import {
   HubOutlined,
   InfoOutlined,
 } from '@mui/icons-material';
+import type { SvgIconComponent } from '@mui/icons-material';
 import type { SettingsSection } from '../store/global.store';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
@@ -22,10 +22,10 @@ import { DESKTOP_ONLY_SECTIONS, RAIL_ITEMS } from './settings/SettingsPanelConte
 
 /**
  * The sidebar on the left, like Slack's: icons only by default, with labels
- * and the agent's investigations once expanded. Settings is a heading like
- * Agent: while it's open, its sections are listed under it, or shown as
- * icons when the sidebar is collapsed. One column of navigation, with the
- * open section beside it. It holds what used to sit in
+ * and the agent's investigations once expanded. Settings' sections are
+ * items of their own, each with its icon: one opens Settings at that
+ * section, beside the sidebar. One column of navigation, with no Settings
+ * heading in between. It holds what used to sit in
  * the header's right corner -- the agent, what's new, and settings -- so they
  * open on the same side as what they show: the settings panel and an
  * investigation's timeline both open on the left.
@@ -36,8 +36,8 @@ import { DESKTOP_ONLY_SECTIONS, RAIL_ITEMS } from './settings/SettingsPanelConte
  * investigation is listed by its question.
  */
 
-// Each settings section's icon, for the collapsed sidebar.
-const SECTION_ICONS: Record<SettingsSection, typeof Settings> = {
+// Each settings section's icon: the item's only mark when collapsed.
+const SECTION_ICONS: Record<SettingsSection, SvgIconComponent> = {
   connections: StorageOutlined,
   theme: PaletteOutlined,
   preferences: TuneOutlined,
@@ -244,65 +244,26 @@ const SideRail = observer(({ hasUnreadUpdates, onOpenChangelog }: { hasUnreadUpd
         </>
       )}
 
-      {/* Settings, a heading like Agent: its sections are listed under it
-          while it's open. Collapsed, each section is an icon. */}
-      <RailItem
-        icon={<Settings sx={{ fontSize: 20 }} />}
-        label="Settings"
-        ariaLabel={global.showSettings ? 'Close settings' : 'Settings'}
-        expanded={expanded}
-        active={global.showSettings && !expanded}
-        onClick={() => global.setShowSettings(!global.showSettings)}
-      />
-      {global.showSettings &&
-        RAIL_ITEMS.map(item => {
-          const active = item.id === global.settingsSection;
-          const desktopOnly = DESKTOP_ONLY_SECTIONS.includes(item.id) && !isDesktop();
-          const Icon = SECTION_ICONS[item.id];
-          if (!expanded) {
-            return (
-              <RailItem
-                key={item.id}
-                icon={<Icon sx={{ fontSize: 18, opacity: desktopOnly ? 0.55 : 1 }} />}
-                label={item.label}
-                tooltip={desktopOnly ? `${item.label} (desktop app only)` : item.label}
-                expanded={false}
-                active={active}
-                onClick={() => global.setSettingsSection(item.id)}
-              />
-            );
-          }
-          return (
-            <ButtonBase
-              key={item.id}
-              onClick={() => global.setSettingsSection(item.id)}
-              aria-current={active ? 'page' : undefined}
-              sx={{
-                width: '100%',
-                justifyContent: 'space-between',
-                pl: 4.5,
-                pr: 1.25,
-                py: 0.5,
-                borderRadius: 1,
-                fontSize: 13,
-                fontFamily: 'var(--canvas-font)',
-                color: active ? 'var(--text-color)' : 'var(--canvas-text-dim)',
-                backgroundColor: active ? 'var(--node-column-bg)' : 'transparent',
-                opacity: desktopOnly ? 0.55 : 1,
-                '&:hover': { backgroundColor: 'var(--node-column-bg)', color: 'var(--text-color)' },
-              }}
-            >
-              <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {item.label}
-              </Box>
-              {desktopOnly && (
-                <Box component="span" sx={{ fontSize: 10.4, opacity: 0.7 }}>
-                  desktop
-                </Box>
-              )}
-            </ButtonBase>
-          );
-        })}
+      {/* Settings' sections, each an item of its own: one opens Settings at
+          that section, and the open one closes it again. */}
+      <Divider sx={{ my: 0.5, borderColor: 'var(--border-color)' }} />
+      {RAIL_ITEMS.map(item => {
+        const open = global.showSettings && item.id === global.settingsSection;
+        const desktopOnly = DESKTOP_ONLY_SECTIONS.includes(item.id) && !isDesktop();
+        const Icon = SECTION_ICONS[item.id];
+        return (
+          <RailItem
+            key={item.id}
+            icon={<Icon sx={{ fontSize: 20, opacity: desktopOnly ? 0.55 : 1 }} />}
+            label={desktopOnly ? `${item.label} (desktop)` : item.label}
+            ariaLabel={open ? `Close ${item.label}` : item.label}
+            tooltip={desktopOnly ? `${item.label} (desktop app only)` : item.label}
+            expanded={expanded}
+            active={open}
+            onClick={() => (open ? global.setShowSettings(false) : global.setShowSettings(true, item.id))}
+          />
+        );
+      })}
 
       <Box sx={{ flex: 1 }} />
 
