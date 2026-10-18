@@ -127,6 +127,9 @@ export class Investigation {
   // The step shown in the tab, when the user picked an older one. null
   // follows the newest query.
   selectedStepId: string | null = null;
+  // Whether its tab is in the strip. It isn't until the user opens it from
+  // the robot; closing it only hides it again, and the investigation goes on.
+  tabOpen = false;
 
   constructor(
     readonly id: string,
@@ -214,6 +217,10 @@ export class Investigation {
     for (const step of this.steps) {
       if (step.kind === 'note' && ids.includes(step.id)) step.delivered = true;
     }
+  }
+
+  setTabOpen(open: boolean) {
+    this.tabOpen = open;
   }
 
   select(stepId: string | null) {

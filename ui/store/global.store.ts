@@ -211,12 +211,12 @@ export class GlobalStore {
   credentialsStatus: CredentialsStatus | null = null;
 
   // Desktop-only: one investigation per Claude session that uses beamlynx
-  // (store/investigations.ts), each with its own tab that its MCP-driven
-  // queries run in. Never the tab the human is looking at: a finished query
-  // doesn't switch focus to it on its own. Each is a real tab in `sessions`,
-  // which PineTabs.tsx pins at the end of the strip, not draggable and out
-  // of Ctrl+Tab cycling (see visibleSessionIds). Closing one drops the
-  // investigation; the agent's next call starts it again.
+  // (store/investigations.ts), each with its own session that its
+  // MCP-driven queries run in. Never the tab the human is looking at: a
+  // finished query doesn't switch focus to it on its own. Its session is
+  // out of the tab strip until the user opens it from the robot
+  // (openInvestigationTab); then it is an ordinary tab, at the end of
+  // theirs. Closing it only takes it out of the strip again.
   investigations: Investigation[] = [];
   // The timeline beside an investigation's canvas, folded to a slim rail to
   // give the canvas and results the width. One setting for every
@@ -231,13 +231,13 @@ export class GlobalStore {
   // Run. A count, not a flag: an agent can make calls in parallel, and the
   // first to finish must not unmark the others.
   private agentEvaluating = new Map<string, number>();
-  // True from the moment an MCP-driven query finishes until that tab is next
-  // activated (McpActivityButton.tsx's onClick clears it) -- drives the
-  // small dot on that button, the only way to know a result landed while
-  // looking at a different tab (mirrors NotificationBell's hasUnreadUpdates).
+  // True from the moment an MCP-driven query finishes until its
+  // investigation is next opened (openInvestigationTab clears it). It turns
+  // the sidebar's robot amber: the only way to know a result landed while
+  // looking at a different tab.
   mcpHasUnseenActivity = false;
   // Every MCP tool call the agent makes, as it happens (desktop only, see
-  // McpBridge.tsx). McpActivityButton shows it.
+  // McpBridge.tsx). SideRail shows it.
   agentActivity = new AgentActivityStore();
   // profileId -> live pine-lang connection-id, cached per app session so
   // every MCP query doesn't spin up a fresh Hikari pool. See
@@ -419,6 +419,19 @@ export class GlobalStore {
   // can be edited: each table's key, each JSON value's type. They are
   // fetched either way. Off by default: they make the SQL longer to read.
   _showHiddenSqlColumns: boolean;
+
+  // The sidebar on the left (SideRail.tsx): icons only, or with labels and
+  // the list of investigations. Remembered between launches.
+  _sideRailExpanded: boolean;
+
+  get sideRailExpanded(): boolean {
+    return this._sideRailExpanded;
+  }
+
+  setSideRailExpanded = (expanded: boolean) => {
+    this._sideRailExpanded = expanded;
+    setUserPreference(STORAGE_KEYS.SIDE_RAIL_EXPANDED, expanded);
+  };
 
   get showHiddenSqlColumns(): boolean {
     return this._showHiddenSqlColumns;
@@ -688,6 +701,7 @@ export class GlobalStore {
     this._pineTableColorsEnabled = getUserPreference(STORAGE_KEYS.PINE_TABLE_COLORS, false, isBoolean);
     this._autoRunEnabled = getUserPreference(STORAGE_KEYS.AUTO_RUN_ENABLED, true, isBoolean);
     this._showHiddenSqlColumns = getUserPreference(STORAGE_KEYS.SHOW_HIDDEN_SQL_COLUMNS, false, isBoolean);
+    this._sideRailExpanded = getUserPreference(STORAGE_KEYS.SIDE_RAIL_EXPANDED, false, isBoolean);
     this._newLayoutPanelVisible = getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_VISIBLE, false, isBoolean);
     this._newLayoutOrientation = getUserPreference<'horizontal' | 'vertical'>(
       STORAGE_KEYS.NEW_LAYOUT_ORIENTATION,
@@ -787,7 +801,10 @@ export class GlobalStore {
    * Build the persisted shape of the current tabs -- see PersistedSessionsState.
    */
   private snapshotSessions = (): PersistedSessionsState => {
-    const ids = Object.keys(this.sessions);
+    // An agent's tabs belong to a conversation that ends with the app, so
+    // they are not restored as tabs of the user's own.
+    const agentTabs = new Set([...this.agentSessionIds, ...this.pendingRevealSessionIds]);
+    const ids = Object.keys(this.sessions).filter(id => !agentTabs.has(id));
     return {
       sessions: ids.map(id => {
         const session = this.sessions[id];
@@ -1549,7 +1566,7 @@ export class GlobalStore {
       session && result.tabId ? snapshotOf(session) : emptySnapshot(args.sql ?? args.expression, result.error),
     );
     const approval = session && result.tabId ? this.openApproval(investigation, session) : undefined;
-    // Flag McpActivityButton's badge regardless of `result.error` -- a
+    // Flag SideRail's badge regardless of `result.error` -- a
     // failed MCP query is still activity worth surfacing, not something to
     // swallow silently. Not wrapped into runMcpQueryImpl itself: that file
     // is deliberately isolated (see its own top comment) to keep
@@ -2343,9 +2360,28 @@ export class GlobalStore {
   // since `sessions` always had 2+ entries even with one of the user's own
   // tabs open).
   get visibleSessionIds(): string[] {
-    const pinned = new Set([...this.agentSessionIds, ...this.pendingRevealSessionIds]);
-    return Object.keys(this.sessions).filter(id => !pinned.has(id));
+    // An investigation's tab is one of these once opened, and hidden before.
+    const hidden = new Set([
+      ...this.investigations.filter(i => !i.tabOpen).map(i => i.sessionId),
+      ...this.pendingRevealSessionIds,
+    ]);
+    return Object.keys(this.sessions).filter(id => !hidden.has(id));
   }
+
+  /**
+   * Puts an investigation's tab at the end of the user's tabs, if it isn't
+   * there already, and shows it: what the robot does.
+   */
+  openInvestigationTab = (investigation: Investigation) => {
+    if (!this.sessions[investigation.sessionId]) return;
+    if (!investigation.tabOpen) {
+      const { [investigation.sessionId]: session, ...others } = this.sessions;
+      this.sessions = { ...others, [investigation.sessionId]: session };
+      investigation.setTabOpen(true);
+    }
+    this.activeSessionId = investigation.sessionId;
+    this.mcpHasUnseenActivity = false;
+  };
 
   /**
    * Close a tab with proper cleanup and switching logic.
@@ -2363,21 +2399,15 @@ export class GlobalStore {
    * @param sessionId The session ID to close
    */
   closeTab = (sessionId: string) => {
+    // An investigation's tab only leaves the strip: the agent may still be
+    // working, and the robot opens it again with everything it did.
     const investigation = this.investigationForSession(sessionId);
     if (investigation) {
-      // An agent waiting on an answer here would otherwise wait out its
-      // timeout for a card nobody can see any more.
-      for (const step of investigation.pendingApprovals) {
-        if (step.kind !== 'approval') continue;
-        void desktopMcp()?.resolveApproval?.(step.approvalId, {
-          allowed: false,
-          comment: 'The user closed the tab without answering.',
-        });
-      }
-      this.deleteSession(sessionId);
-      this.investigations = this.investigations.filter(i => i !== investigation);
+      const index = this.visibleSessionIds.indexOf(sessionId);
+      investigation.setTabOpen(false);
       if (this.activeSessionId === sessionId) {
-        this.activeSessionId = this.visibleSessionIds[0] ?? this.activeSessionId;
+        const remaining = this.visibleSessionIds;
+        this.activeSessionId = remaining[Math.max(0, index - 1)] ?? remaining[0] ?? this.activeSessionId;
       }
       return;
     }
@@ -2597,6 +2627,12 @@ export class GlobalStore {
   // this name, so what this returns for it is never actually shown, but it
   // still needs to not throw.
   getSessionName = (sessionId: string) => {
+    // An investigation's tab is named for the agent's question.
+    const investigation = this.investigationForSession(sessionId);
+    if (investigation) {
+      const question = investigation.question ?? 'Agent';
+      return question.length > 20 ? `${question.slice(0, 19).trimEnd()}…` : question;
+    }
     const session = this.getSession(sessionId);
     // A doc comment at the top of the expression is prose about the query,
     // not the query - naming the tab from it produced things like "Checki..."
@@ -2635,25 +2671,21 @@ export class GlobalStore {
 
   /**
    * Jumps to whichever agent tab most needs the owner right now -- what the
-   * single agent icon in the header (McpActivityButton) does on click.
+   * agent's robot in the sidebar (SideRail) does on click.
    * A decision an agent is blocked on wins: a pending reveal request, then
    * an investigation with an approval waiting. Otherwise the current
    * investigation. A no-op when the agent has none.
    */
   focusAgentTab = () => {
-    const waitingInvestigation = this.investigations.find(i => i.pendingApprovals.length > 0);
-    const target =
-      this.pendingRevealSessionIds[0] ?? waitingInvestigation?.sessionId ?? this.mcpSessionId;
-    if (!target) return;
-    this.activeSessionId = target;
-    // Only counts as having "seen" the query activity when that's actually
-    // where this landed -- jumping to an approval instead leaves an unread
-    // result unread, which it still is. There's no per-result read/unread
-    // list either way, just the one flag for "something changed since you
-    // last looked."
-    if (this.investigationForSession(target)) {
-      this.mcpHasUnseenActivity = false;
+    const reveal = this.pendingRevealSessionIds[0];
+    if (reveal) {
+      this.activeSessionId = reveal;
+      return;
     }
+    const waiting = this.investigations.find(i => i.pendingApprovals.length > 0);
+    const current = this.mcpSessionId ? this.investigationForSession(this.mcpSessionId) : undefined;
+    const target = waiting ?? current;
+    if (target) this.openInvestigationTab(target);
   };
 
   setSettingsSection = (section: SettingsSection) => {

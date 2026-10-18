@@ -33,7 +33,7 @@ const McpBridge = () => {
     });
   }, [global]);
 
-  // What the agent is doing, call by call, for McpActivityButton. Optional:
+  // What the agent is doing, call by call, for SideRail.tsx. Optional:
   // an older desktop app doesn't send it.
   useEffect(() => {
     if (!isDesktop() || typeof window === 'undefined') return;

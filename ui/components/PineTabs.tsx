@@ -43,8 +43,9 @@ const PineTabs = observer(() => {
   // props onto every child it's given, which none of these can take either
   // way). See GlobalStore.mcpSessionId's and pendingRevealSessionIds' own
   // comments for why each exists.
+  // An investigation's tab is an ordinary tab once opened (see
+  // GlobalStore.openInvestigationTab); only reveal requests are pinned.
   const pinnedTabs = [
-    ...global.agentSessionIds.map(sessionId => ({ sessionId, kind: 'mcp' as const })),
     ...global.pendingRevealSessionIds.map(sessionId => ({ sessionId, kind: 'reveal' as const })),
   ];
   const sessionId = global.activeSessionId;
@@ -576,6 +577,11 @@ const PineTabs = observer(() => {
                         {(session.loading || session.connecting) && (
                           <CircularProgress size={12} sx={{ color: 'inherit' }} />
                         )}
+                        {/* An agent's investigation: marked as the agent's,
+                            in the colour the robot uses while it works. */}
+                        {global.investigationForSession(tab.sessionId) && (
+                          <SmartToyOutlined sx={{ fontSize: 14, flexShrink: 0, color: 'var(--canvas-trace)' }} />
+                        )}
                         {/* Truncation is vertical-only: the rail has a fixed
                             width a long name has to give way to, whereas the
                             horizontal strip has always let MUI size and wrap
@@ -683,23 +689,15 @@ const PineTabs = observer(() => {
               const session = global.getSession(pinned.sessionId);
               const isActive = pinned.sessionId === sessionId;
               const isFirstPinned = pinnedIndex === 0;
-              // An investigation's tab is named for its question, once the
-              // agent has said what it is (set_question).
-              const investigation = global.investigationForSession(pinned.sessionId);
-              const label = pinned.kind === 'mcp' ? investigation?.question ?? 'Agent' : 'Needs approval';
-              const title =
-                pinned.kind === 'mcp'
-                  ? `${investigation?.question ? `${investigation.question}. ` : ''}An agent's investigation: what it ran and saw. Closing it ends the investigation here; the agent's next call starts it again.`
-                  : `An agent wants to see something hidden by your access policy on ${global.getConnectionLabel(
-                      session.connectionId,
-                    )}${
-                      session.revealReason ? `: "${session.revealReason}"` : ''
-                    }. Closing this tab declines the request.`;
+              const label = 'Needs approval';
+              const title = `An agent wants to see something hidden by your access policy on ${global.getConnectionLabel(
+                session.connectionId,
+              )}${session.revealReason ? `: "${session.revealReason}"` : ''}. Closing this tab declines the request.`;
               // Both use the tab strip's normal dim/active text treatment --
               // this isn't an error state, just something waiting on you, so
               // it shouldn't read as one. The icon alone carries "this needs
               // your attention" (idleIconColor below), the same amber token
-              // NotificationBell and McpActivityButton's own unseen-activity
+              // the sidebar's (SideRail.tsx) unseen-activity
               // dot already use for that, rather than borrowing the app's
               // actual error/warning color.
               const idleColor = 'var(--canvas-text-dim)';
@@ -798,34 +796,12 @@ const PineTabs = observer(() => {
                       way, so the tab's width never changes. */}
                   {session.loading || session.connecting ? (
                     <CircularProgress size={14} sx={{ color: 'inherit', flexShrink: 0 }} />
-                  ) : pinned.kind === 'mcp' ? (
-                    // Pulses while the agent works, like the header's robot
-                    // (McpActivityButton.tsx), so both read the same.
-                    <SmartToyOutlined
-                      sx={{
-                        fontSize: 14,
-                        flexShrink: 0,
-                        ...(global.agentActivity.working
-                          ? {
-                              color: 'var(--canvas-trace)',
-                              animation: 'pine-agent-pulse 1.4s ease-in-out infinite',
-                              '@keyframes pine-agent-pulse': { '0%, 100%': { opacity: 1 }, '50%': { opacity: 0.35 } },
-                            }
-                          : {}),
-                      }}
-                    />
                   ) : (
                     <VisibilityOutlined
                       sx={{ fontSize: 14, flexShrink: 0, color: idleIconColor }}
                     />
                   )}
-                  {/* A question can be a sentence: cut to the tab's width,
-                      in full in the title. */}
-                  <span
-                    style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                  >
-                    {label}
-                  </span>
+                  <span>{label}</span>
                   <IconButton
                     className="pine-tab-close"
                     style={{ marginLeft: '5px' }}

@@ -32,6 +32,9 @@ export const STORAGE_KEYS = {
   TAB_ORIENTATION: 'pine-tab-orientation',
   // Whether the SQL panel shows the columns pine-lang adds for editing.
   SHOW_HIDDEN_SQL_COLUMNS: 'pine-show-hidden-sql-columns',
+  // Whether the sidebar on the left (SideRail.tsx) shows its labels and
+  // lists, or only its icons. Collapsed by default.
+  SIDE_RAIL_EXPANDED: 'pine-side-rail-expanded',
 } as const;
 
 /** Whether a stored value is usable. A value that isn't falls back to the default. */

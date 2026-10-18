@@ -15,10 +15,8 @@ import ChangelogModal from './ChangelogModal';
 import CommandPalette from './CommandPalette';
 import RecipePickerModal from './recipes/RecipePickerModal';
 import ChangeConnectionModal from './ChangeConnectionModal';
-import NotificationBell from './NotificationBell';
-import SettingsButton from './SettingsButton';
+import SideRail from './SideRail';
 import SettingsDock from './settings/SettingsDock';
-import McpActivityButton from './McpActivityButton';
 import CollapsibleHeight from './CollapsibleHeight';
 import DevModeChip from './DevModeChip';
 import { useGlobalKeybindings } from '../hooks/useGlobalKeybindings';
@@ -262,9 +260,6 @@ const AppView = observer(() => {
               )}
               <DevModeChip />
               {UserContent}
-              <NotificationBell hasUnreadUpdates={hasUnreadUpdates} onClick={handleOpenChangelog} />
-              <McpActivityButton />
-              <SettingsButton onClick={() => global.setShowSettings(!global.showSettings)} />
             </Box>
           </Grid>
         </Grid>
@@ -316,6 +311,11 @@ const AppView = observer(() => {
           mr: global.isZenModeActive ? 0 : 1,
         }}
       >
+        {/* The sidebar (agent, what's new, settings) goes with the rest of
+            the chrome in Zen mode. */}
+        {!global.isZenModeActive && (
+          <SideRail hasUnreadUpdates={hasUnreadUpdates} onOpenChangelog={handleOpenChangelog} />
+        )}
         <SettingsDock />
         <Box
           sx={{

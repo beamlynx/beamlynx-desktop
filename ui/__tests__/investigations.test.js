@@ -200,14 +200,35 @@ test('a note is shown as waiting, then as received', async () => {
   assert.equal(note.delivered, true);
 });
 
-test('closing an investigation\'s tab declines what its agent is waiting on', async () => {
+test('an investigation\'s tab is out of the strip until the robot opens it, at the end', async () => {
+  const store = storeWithFakeDatabase(() => ({ rows: [] }));
+  const own = store.createSession();
+  runInAction(() => (store.activeSessionId = own.id));
+  await run(store, 'claude-a', 'user');
+  const investigation = store.investigations[0];
+  assert.ok(!store.visibleSessionIds.includes(investigation.sessionId), 'not shown on its own');
+  assert.equal(store.activeSessionId, own.id, 'never takes focus on its own');
+
+  store.focusAgentTab();
+  assert.equal(store.visibleSessionIds.at(-1), investigation.sessionId);
+  assert.equal(store.activeSessionId, investigation.sessionId);
+});
+
+test('closing an investigation\'s tab only hides it: the agent goes on, and the robot brings it back', async () => {
   const store = storeWithFakeDatabase(() => ({ error: 'hidden', errorType: 'policy', hidden: hiddenType }));
   withPolicy(store);
   const sent = stubBridge();
-  const result = await run(store, 'claude-a', 'activity | where: type = \'x\'');
-  store.closeTab(store.investigations[0].sessionId);
-  assert.equal(store.investigations.length, 0);
-  assert.deepEqual(sent.approvals.map(a => [a.id, a.outcome.allowed]), [[result.approval.id, false]]);
+  await run(store, 'claude-a', 'activity | where: type = \'x\'');
+  store.focusAgentTab();
+  const investigation = store.investigations[0];
+  store.closeTab(investigation.sessionId);
+  assert.ok(!store.visibleSessionIds.includes(investigation.sessionId));
+  assert.equal(store.investigations.length, 1);
+  assert.equal(sent.approvals.length, 0, 'the agent is still waiting for an answer');
+  assert.equal(store.agentDecisionsWaiting, 1);
+  store.focusAgentTab();
+  assert.equal(store.activeSessionId, investigation.sessionId);
+  assert.equal(investigation.steps.length, 2);
 });
 
 test('the activity feed fills the timeline: question, findings and calls, but not queries twice', () => {
