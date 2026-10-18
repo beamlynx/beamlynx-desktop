@@ -24,12 +24,12 @@ const McpBridge = () => {
     // registered. See preload/index.ts's onQueryRequest for what that
     // caused in practice.
     return window.beamlynxDesktop.mcp.onQueryRequest(async (request: McpQueryRequest) => {
-      const { kind, profileId, expression, sql, variables } = request;
+      const { kind, profileId, expression, sql, variables, investigationId } = request;
       if (kind === 'build') {
         return global.explainMcpQuery({ profileId, expression });
       }
       // sql: run_sql_as_pine's SQL, which runMcpQuery converts to Pine and never runs.
-      return global.runMcpQuery({ profileId, expression, sql, variables });
+      return global.runMcpQuery({ profileId, expression, sql, variables, investigationId });
     });
   }, [global]);
 
@@ -37,7 +37,15 @@ const McpBridge = () => {
   // an older desktop app doesn't send it.
   useEffect(() => {
     if (!isDesktop() || typeof window === 'undefined') return;
-    return window.beamlynxDesktop?.mcp.onActivity?.(event => global.agentActivity.apply(event));
+    return window.beamlynxDesktop?.mcp.onActivity?.(event => global.applyAgentActivity(event));
+  }, [global]);
+
+  // Notes the user wrote to an investigation's agent, now received by it.
+  useEffect(() => {
+    if (!isDesktop() || typeof window === 'undefined') return;
+    return window.beamlynxDesktop?.mcp.onNotesDelivered?.(({ investigationId, ids }) =>
+      global.markNotesDelivered(investigationId, ids),
+    );
   }, [global]);
 
   return null;

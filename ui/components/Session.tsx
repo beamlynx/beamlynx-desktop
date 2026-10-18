@@ -6,6 +6,7 @@ import NewLayoutView from './NewLayoutView';
 import LinkOpenedBanner from './LinkOpenedBanner';
 import RevealRequestBanner from './RevealRequestBanner';
 import SaveRecipeBar from './recipes/SaveRecipeBar';
+import InvestigationPanel from './InvestigationPanel';
 
 interface SessionProps {
   sessionId: string;
@@ -14,6 +15,7 @@ interface SessionProps {
 const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
   const { global } = useStores();
   const session = global.getSession(sessionId);
+  const investigation = global.investigationForSession(sessionId);
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0 }}>
       {/* Slides down into place rather than appearing. This is the one
@@ -48,8 +50,13 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
           tab rather than in a dialog, so the query stays in view while it's
           named. Only on the active tab. */}
       {global.showSaveRecipe && sessionId === global.activeSessionId && <SaveRecipeBar session={session} />}
-      <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0 }}>
-        <NewLayoutView sessionId={sessionId} />
+      {/* An agent's investigation: its timeline beside the canvas and the
+          results (store/investigations.ts). */}
+      <Box sx={{ display: 'flex', flexDirection: 'row', flex: 1, minHeight: 0, minWidth: 0 }}>
+        {investigation && <InvestigationPanel investigation={investigation} />}
+        <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0 }}>
+          <NewLayoutView sessionId={sessionId} />
+        </Box>
       </Box>
     </Box>
   );

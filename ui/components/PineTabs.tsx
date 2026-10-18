@@ -44,7 +44,7 @@ const PineTabs = observer(() => {
   // way). See GlobalStore.mcpSessionId's and pendingRevealSessionIds' own
   // comments for why each exists.
   const pinnedTabs = [
-    ...(global.mcpSessionId ? [{ sessionId: global.mcpSessionId, kind: 'mcp' as const }] : []),
+    ...global.agentSessionIds.map(sessionId => ({ sessionId, kind: 'mcp' as const })),
     ...global.pendingRevealSessionIds.map(sessionId => ({ sessionId, kind: 'reveal' as const })),
   ];
   const sessionId = global.activeSessionId;
@@ -683,10 +683,13 @@ const PineTabs = observer(() => {
               const session = global.getSession(pinned.sessionId);
               const isActive = pinned.sessionId === sessionId;
               const isFirstPinned = pinnedIndex === 0;
-              const label = pinned.kind === 'mcp' ? 'Agent activity' : 'Needs approval';
+              // An investigation's tab is named for its question, once the
+              // agent has said what it is (set_question).
+              const investigation = global.investigationForSession(pinned.sessionId);
+              const label = pinned.kind === 'mcp' ? investigation?.question ?? 'Agent' : 'Needs approval';
               const title =
                 pinned.kind === 'mcp'
-                  ? 'Agent activity -- safe to close, the next agent query recreates it'
+                  ? `${investigation?.question ? `${investigation.question}. ` : ''}An agent's investigation: what it ran and saw. Closing it ends the investigation here; the agent's next call starts it again.`
                   : `An agent wants to see something hidden by your access policy on ${global.getConnectionLabel(
                       session.connectionId,
                     )}${
@@ -816,7 +819,13 @@ const PineTabs = observer(() => {
                       sx={{ fontSize: 14, flexShrink: 0, color: idleIconColor }}
                     />
                   )}
-                  <span>{label}</span>
+                  {/* A question can be a sentence: cut to the tab's width,
+                      in full in the title. */}
+                  <span
+                    style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                  >
+                    {label}
+                  </span>
                   <IconButton
                     className="pine-tab-close"
                     style={{ marginLeft: '5px' }}

@@ -41,6 +41,9 @@ import { DevState } from './dev-state';
 import { leadingDoc } from './canvas/pine-text';
 import { isValuesBlock, splitExpressions } from './blocks';
 import { AgentActivityStore } from './agent-activity';
+import { DEFAULT_INVESTIGATION, emptySnapshot, Investigation, queryReason, snapshotOf } from './investigations';
+import { exactColumnRule } from '../utils/accessPolicy';
+import type { AgentActivity } from '../desktop';
 import { getCommandById } from '../utils/commands';
 import { normalizeServerVersion } from '../utils/version';
 import { CONNECTION_COLOR_PALETTE, isDesktop, isDevelopment, isPlayground, pineString } from './util';
@@ -88,6 +91,10 @@ export class DecryptionFailedError extends Error {
 }
 
 const client = new HttpClient();
+
+// The desktop app's MCP bridge, or undefined: in the browser, in tests, and
+// before the preload ran.
+const desktopMcp = () => (typeof window === 'undefined' ? undefined : window.beamlynxDesktop?.mcp);
 type ConnectionParams = {
   dbHost: string;
   dbPort: string;
@@ -196,19 +203,17 @@ export class GlobalStore {
   accessPolicyFocus: { policyId: string; ruleId?: string } | null = null;
   credentialsStatus: CredentialsStatus | null = null;
 
-  // Desktop-only: the one dedicated session MCP-driven queries run in (see
-  // runMcpQuery/explainMcpQuery below and store/mcp-query.ts). Deliberately
-  // separate from activeSessionId -- MCP-driven queries must never hijack
-  // whatever tab the human is currently looking at, so a finished query
-  // doesn't switch focus to it on its own. It IS a real tab in `sessions`
-  // (getOrCreateMcpSession/session.evaluate both need a real Session to work
-  // against) and PineTabs.tsx does render it in the strip -- pinned at the
-  // end, not draggable, and excluded from Ctrl+Tab cycling (see
-  // visibleSessionIds) -- but excluded from `getSessionName`'s treatment and
-  // marked with its own icon instead, so it still reads as "the agent's
-  // tab" rather than one of yours. It's still always safe to close: the
-  // agent's next query just recreates it (getOrCreateMcpSession below).
-  mcpSessionId: string | null = null;
+  // Desktop-only: one investigation per Claude session that uses beamlynx
+  // (store/investigations.ts), each with its own tab that its MCP-driven
+  // queries run in. Never the tab the human is looking at: a finished query
+  // doesn't switch focus to it on its own. Each is a real tab in `sessions`,
+  // which PineTabs.tsx pins at the end of the strip, not draggable and out
+  // of Ctrl+Tab cycling (see visibleSessionIds). Closing one drops the
+  // investigation; the agent's next call starts it again.
+  investigations: Investigation[] = [];
+  // Sessions whose evaluation right now is the agent's (runMcpQuery), not
+  // the user pressing Run. onSessionEvaluated tells them apart by this.
+  private agentEvaluating = new Set<string>();
   // True from the moment an MCP-driven query finishes until that tab is next
   // activated (McpActivityButton.tsx's onClick clears it) -- drives the
   // small dot on that button, the only way to know a result landed while
@@ -1427,22 +1432,45 @@ export class GlobalStore {
     return this.connect(params, id);
   };
 
-  private getOrCreateMcpSession = (): Session => {
-    let mcpSession = this.mcpSessionId ? this.sessions[this.mcpSessionId] : undefined;
-    if (!mcpSession) {
-      mcpSession = this.createSession();
-      runInAction(() => {
-        mcpSession!.inputMode = 'pine';
-        this.mcpSessionId = mcpSession!.id;
-      });
+  /**
+   * The current investigation's tab: the one whose agent called last. What
+   * the header's robot opens. null when there is none.
+   */
+  get mcpSessionId(): string | null {
+    let latest: Investigation | undefined;
+    for (const investigation of this.investigations) {
+      if (!latest || (investigation.lastCallAt ?? 0) >= (latest.lastCallAt ?? 0)) latest = investigation;
     }
-    return mcpSession;
+    return latest?.sessionId ?? null;
+  }
+
+  /** Every investigation's tab. */
+  get agentSessionIds(): string[] {
+    return this.investigations.map(i => i.sessionId);
+  }
+
+  investigationForSession = (sessionId: string): Investigation | undefined =>
+    this.investigations.find(i => i.sessionId === sessionId);
+
+  getOrCreateInvestigation = (id: string = DEFAULT_INVESTIGATION): Investigation => {
+    const existing = this.investigations.find(i => i.id === id);
+    if (existing && this.sessions[existing.sessionId]) return existing;
+    const session = this.createSession();
+    const investigation = new Investigation(id, session.id);
+    runInAction(() => {
+      session.inputMode = 'pine';
+      this.investigations = [...this.investigations.filter(i => i.id !== id), investigation];
+    });
+    return investigation;
   };
 
-  private mcpQueryDeps = () => ({
+  private getOrCreateMcpSession = (investigationId: string = DEFAULT_INVESTIGATION): Session =>
+    this.sessions[this.getOrCreateInvestigation(investigationId).sessionId];
+
+  private mcpQueryDeps = (investigationId: string = DEFAULT_INVESTIGATION) => ({
     client,
     getSavedProfileCredentials: this.getSavedProfileCredentials,
-    getOrCreateMcpSession: this.getOrCreateMcpSession,
+    getOrCreateMcpSession: () => this.getOrCreateMcpSession(investigationId),
     getServerVersion: () => this.version,
     getMcpConnectionId: (profileId: string) => this.mcpConnectionsByProfile[profileId],
     setMcpConnectionId: (profileId: string, connectionId: string) => {
@@ -1472,13 +1500,35 @@ export class GlobalStore {
    * human's active tab. See store/mcp-query.ts for the safety rules this
    * enforces (no raw SQL, no delete!, connection-id always explicit).
    */
-  runMcpQuery = async (args: {
+  runMcpQuery = async ({
+    investigationId,
+    ...args
+  }: {
     profileId: string;
     expression: string;
     sql?: string;
     variables?: Record<string, VariableValue>;
+    investigationId?: string;
   }) => {
-    const result = await runMcpQueryImpl(this.mcpQueryDeps(), args);
+    const investigation = this.getOrCreateInvestigation(investigationId);
+    const stepId = investigation.startQuery(args.sql ?? args.expression, 'agent');
+    this.agentEvaluating.add(investigation.sessionId);
+    let result: Awaited<ReturnType<typeof runMcpQueryImpl>>;
+    try {
+      result = await runMcpQueryImpl(this.mcpQueryDeps(investigation.id), args);
+    } catch (e) {
+      investigation.finishQuery(stepId, emptySnapshot(args.expression, e instanceof Error ? e.message : String(e)));
+      throw e;
+    } finally {
+      this.agentEvaluating.delete(investigation.sessionId);
+    }
+    const session = this.sessions[investigation.sessionId];
+    // No tab id: the SQL didn't convert, so nothing ran in the tab.
+    investigation.finishQuery(
+      stepId,
+      session && result.tabId ? snapshotOf(session) : emptySnapshot(args.sql ?? args.expression, result.error),
+    );
+    const approval = session && result.tabId ? this.openApproval(investigation, session) : undefined;
     // Flag McpActivityButton's badge regardless of `result.error` -- a
     // failed MCP query is still activity worth surfacing, not something to
     // swallow silently. Not wrapped into runMcpQueryImpl itself: that file
@@ -1488,7 +1538,101 @@ export class GlobalStore {
     runInAction(() => {
       this.mcpHasUnseenActivity = true;
     });
-    return result;
+    return approval ? { ...result, approval } : result;
+  };
+
+  /**
+   * A query refused for a hidden column the user could allow: an approval
+   * card in the investigation, which the agent's run_query call waits on
+   * (see beamlynx-desktop's src/main/mcp/investigations.ts). None when an
+   * Except rule hid the column, since it would win over any Allow rule, or
+   * when the desktop app is too old to wait.
+   */
+  private openApproval = (investigation: Investigation, session: Session) => {
+    const hidden = session.evalHiddenColumn;
+    if (session.evalErrorType !== 'policy' || !hidden?.table) return undefined;
+    if (hidden.by?.type === 'hide') return undefined;
+    if (!desktopMcp()?.resolveApproval) return undefined;
+    const connection = this.connections.find(c => c.id === session.profileId);
+    if (!this.accessPolicies.some(p => p.id === connection?.policyId)) return undefined;
+    const approvalId = crypto.randomUUID();
+    investigation.addApproval(approvalId, hidden, queryReason(session.expression));
+    return { id: approvalId, column: hidden.column, table: hidden.table };
+  };
+
+  /**
+   * The user's answer to an approval card. Allow writes an Allow rule for
+   * that one column to the connection's policy, the same rule as the
+   * results grid's "Show to agents", before the agent's waiting call runs
+   * the query again. False when the rule couldn't be written.
+   */
+  answerApproval = async (investigationId: string, approvalId: string, allowed: boolean, comment?: string) => {
+    const investigation = this.investigations.find(i => i.id === investigationId);
+    const step = investigation?.steps.find(s => s.kind === 'approval' && s.approvalId === approvalId);
+    if (!investigation || !step || step.kind !== 'approval') return false;
+    if (allowed) {
+      const session = this.sessions[investigation.sessionId];
+      const connection = this.connections.find(c => c.id === session?.profileId);
+      const policy = this.accessPolicies.find(p => p.id === connection?.policyId);
+      const table = step.column.table;
+      if (!policy || !table) return false;
+      const rule = exactColumnRule({ schema: table.schema, table: table.table, column: step.column.column }, false);
+      if (!(await this.addAccessPolicyRule(policy.id, rule))) return false;
+    }
+    await desktopMcp()?.resolveApproval?.(approvalId, { allowed, comment });
+    investigation.setApproval(approvalId, allowed ? 'allowed' : 'declined');
+    return true;
+  };
+
+  /** A tool call's start or end, from beamlynx-desktop (McpBridge.tsx). */
+  applyAgentActivity = (event: AgentActivity) => {
+    this.agentActivity.apply(event);
+    this.getOrCreateInvestigation(event.investigationId).apply(event);
+  };
+
+  /** A note for an investigation's agent, delivered with its next beamlynx call. */
+  sendInvestigationNote = async (investigationId: string, text: string) => {
+    const note = await desktopMcp()?.addNote?.(investigationId, text);
+    if (!note) return false;
+    this.investigations.find(i => i.id === investigationId)?.addNote(note.id, note.text);
+    return true;
+  };
+
+  markNotesDelivered = (investigationId: string, ids: string[]) => {
+    this.investigations.find(i => i.id === investigationId)?.markDelivered(ids);
+  };
+
+  /**
+   * Called when any tab finishes running (Session.evaluate). In an
+   * investigation's tab, a run that isn't the agent's is the user's own: it
+   * goes in the timeline, and the agent is told with its next call.
+   */
+  onSessionEvaluated = (session: Session) => {
+    if (this.agentEvaluating.has(session.id)) return;
+    const investigation = this.investigationForSession(session.id);
+    if (!investigation) return;
+    const snapshot = snapshotOf(session);
+    investigation.finishQuery(investigation.startQuery(snapshot.expression, 'user'), snapshot);
+    const outcome = snapshot.error
+      ? `It failed: ${snapshot.error}`
+      : `It returned ${snapshot.rows.length} row${snapshot.rows.length === 1 ? '' : 's'}.`;
+    void desktopMcp()?.addNote?.(
+      investigation.id,
+      `They ran this query themselves, in the tab that shows your work:\n${snapshot.expression}\n${outcome}`,
+    );
+  };
+
+  /** Shows one step's result in its investigation's tab, without running anything. */
+  showInvestigationStep = (investigationId: string, stepId: string | null) => {
+    const investigation = this.investigations.find(i => i.id === investigationId);
+    const session = investigation && this.sessions[investigation.sessionId];
+    if (!investigation || !session) return;
+    const step = stepId
+      ? investigation.steps.find(s => s.id === stepId)
+      : investigation.latestQuery;
+    if (!step || step.kind !== 'query' || !step.snapshot) return;
+    investigation.select(stepId);
+    session.showSnapshot(step.snapshot);
   };
 
   /** Backing call for the `complete_query` MCP tool -- parse/build only, no execution. */
@@ -2159,7 +2303,7 @@ export class GlobalStore {
   // since `sessions` always had 2+ entries even with one of the user's own
   // tabs open).
   get visibleSessionIds(): string[] {
-    const pinned = new Set([this.mcpSessionId, ...this.pendingRevealSessionIds]);
+    const pinned = new Set([...this.agentSessionIds, ...this.pendingRevealSessionIds]);
     return Object.keys(this.sessions).filter(id => !pinned.has(id));
   }
 
@@ -2179,9 +2323,19 @@ export class GlobalStore {
    * @param sessionId The session ID to close
    */
   closeTab = (sessionId: string) => {
-    if (sessionId === this.mcpSessionId) {
+    const investigation = this.investigationForSession(sessionId);
+    if (investigation) {
+      // An agent waiting on an answer here would otherwise wait out its
+      // timeout for a card nobody can see any more.
+      for (const step of investigation.pendingApprovals) {
+        if (step.kind !== 'approval') continue;
+        void desktopMcp()?.resolveApproval?.(step.approvalId, {
+          allowed: false,
+          comment: 'The user closed the tab without answering.',
+        });
+      }
       this.deleteSession(sessionId);
-      this.mcpSessionId = null;
+      this.investigations = this.investigations.filter(i => i !== investigation);
       if (this.activeSessionId === sessionId) {
         this.activeSessionId = this.visibleSessionIds[0] ?? this.activeSessionId;
       }
@@ -2431,15 +2585,25 @@ export class GlobalStore {
     }
   };
 
+  /** Decisions an agent is blocked on: reveal requests and in-call approvals. */
+  get agentDecisionsWaiting(): number {
+    return (
+      this.pendingRevealSessionIds.length +
+      this.investigations.reduce((n, i) => n + i.pendingApprovals.length, 0)
+    );
+  }
+
   /**
    * Jumps to whichever agent tab most needs the owner right now -- what the
    * single agent icon in the header (McpActivityButton) does on click.
-   * A pending reveal request wins over the MCP activity tab: an agent is
-   * blocked waiting on a decision there, where a query result has already
-   * landed and nothing is waiting on it. A no-op when the agent has neither.
+   * A decision an agent is blocked on wins: a pending reveal request, then
+   * an investigation with an approval waiting. Otherwise the current
+   * investigation. A no-op when the agent has none.
    */
   focusAgentTab = () => {
-    const target = this.pendingRevealSessionIds[0] ?? this.mcpSessionId;
+    const waitingInvestigation = this.investigations.find(i => i.pendingApprovals.length > 0);
+    const target =
+      this.pendingRevealSessionIds[0] ?? waitingInvestigation?.sessionId ?? this.mcpSessionId;
     if (!target) return;
     this.activeSessionId = target;
     // Only counts as having "seen" the query activity when that's actually
@@ -2447,16 +2611,9 @@ export class GlobalStore {
     // result unread, which it still is. There's no per-result read/unread
     // list either way, just the one flag for "something changed since you
     // last looked."
-    if (target === this.mcpSessionId) {
+    if (this.investigationForSession(target)) {
       this.mcpHasUnseenActivity = false;
     }
-  };
-
-  /** Shows the agent's query tab, the one its runs land in. */
-  focusMcpTab = () => {
-    if (!this.mcpSessionId) return;
-    this.activeSessionId = this.mcpSessionId;
-    this.mcpHasUnseenActivity = false;
   };
 
   setSettingsSection = (section: SettingsSection) => {
