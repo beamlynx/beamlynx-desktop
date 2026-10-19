@@ -106,9 +106,17 @@ mac:
     - dmg
     - zip
   category: public.app-category.developer-tools
-  # The menu bar, the Dock, About and the app switcher read these.
+  # Finder, the Dock and the app switcher show CFBundleDisplayName.
+  #
+  # Don't set CFBundleName to "Beamlynx". Electron finds its helper apps
+  # (beamlynx Helper (GPU).app and the others, named from productName) by
+  # CFBundleName. macOS ignores case when it looks for "Beamlynx Helper",
+  # so the lookup succeeds, but Electron then compares the path exactly
+  # before it launches the GPU helper, and aborts at launch
+  # ("Aborted from launching unexpected helper executable"). That is what
+  # crashed 0.20.0 to 0.22.0 on every Mac. The bold app menu title reads
+  # CFBundleName, so it stays lowercase.
   extendInfo:
-    CFBundleName: Beamlynx
     CFBundleDisplayName: Beamlynx
 
 win:

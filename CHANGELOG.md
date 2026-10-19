@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Fixed
+- **The app no longer crashes at launch on macOS.** Since 0.20.0 it quit within seconds of opening, on every launch. The app's name in `Info.plist` (`CFBundleName`) was "Beamlynx", but its helper apps are named "beamlynx Helper". Electron finds the helpers through that name, and aborted when the capital B didn't match the path on disk. `CFBundleName` is back to the lowercase default. Finder, the Dock and the app switcher still show "Beamlynx", but the bold app menu title in the menu bar shows "beamlynx".
 
 ## [0.22.0] - 2026-10-19
 ### Added
