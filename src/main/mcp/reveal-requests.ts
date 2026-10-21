@@ -90,7 +90,7 @@ export function getRevealRequest(id: string): RevealRequest | undefined {
 
 // Never refuses re-resolving an already-resolved request -- the owner's tab
 // is the only caller, and there's nothing to protect against here (unlike
-// credential-store.ts's setMcpEnabled/setConnectionPolicy guards, which
+// credential-store.ts's setMcpEnabled/attachTemplate guards, which
 // exist because *different* callers could otherwise fight over one
 // invariant). A second call just overwrites the first outcome.
 export function resolveRevealRequest(id: string, outcome: RevealOutcome): RevealRequest | null {

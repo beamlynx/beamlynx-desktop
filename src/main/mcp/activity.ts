@@ -59,6 +59,10 @@ export function describeCall(tool: string, args: Record<string, unknown>): { sum
       return { summary: 'Opening a query in a tab', detail: text('expression') };
     case 'request_reveal':
       return { summary: 'Asking you to reveal hidden values', detail: text('reason') ?? text('expression') };
+    case 'get_access_policy':
+      return { summary: 'Reading the access policy' };
+    case 'propose_policy_change':
+      return { summary: 'Proposing a change to the access policy', detail: text('reason') };
     case 'check_reveal':
       return { summary: 'Waiting for your decision on a reveal request' };
     case 'set_question':

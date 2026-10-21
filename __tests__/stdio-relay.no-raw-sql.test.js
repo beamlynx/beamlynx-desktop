@@ -19,10 +19,12 @@ function stripComments(source) {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 }
 
-// run_query's waiting on an approval lives in its own file, and sends the
-// same body to the same route.
-const APPROVAL_WAIT_SOURCE = stripComments(
-  fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'mcp', 'approval-wait.ts'), 'utf-8'),
+// propose_policy_change's waiting lives in its own file.
+const PROPOSAL_SOURCE = stripComments(
+  fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'mcp', 'policy-proposals.ts'), 'utf-8'),
+);
+const CONTROL_PLANE_SOURCE = stripComments(
+  fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'mcp', 'control-plane-server.ts'), 'utf-8'),
 );
 const STDIO_RELAY_SOURCE = stripComments(
   fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'mcp', 'stdio-relay.ts'), 'utf-8'),
@@ -44,10 +46,12 @@ test('stdio-relay.ts registers exactly the expected tool set', () => {
       'check_reveal',
       'complete_query',
       'find_tables',
+      'get_access_policy',
       'get_pine_doc',
       'list_connections',
       'note_finding',
       'open_in_desktop',
+      'propose_policy_change',
       'request_reveal',
       'run_query',
       'run_sql_as_pine',
@@ -109,11 +113,23 @@ test('run_sql_as_pine forwards SQL only to the control plane /query route', () =
   // person (see src/main/mcp/activity.ts). The app only displays it: it
   // never reaches pine-lang from there. /investigation/notes only hands
   // over what the user typed for the agent.
-  assert.ok(sends.every(route => ['/connections', '/explain', '/query', '/reveal', '/reveal-status', '/activity', '/investigation/notes'].some(r => route.startsWith(r))), sends.join(', '));
+  // /policy only reads the connection's own rules.
+  assert.ok(sends.every(route => ['/connections', '/explain', '/query', '/reveal', '/reveal-status', '/activity', '/investigation/notes', '/policy'].some(r => route.startsWith(r))), sends.join(', '));
   assert.ok(/runOnControlPlane\(\{ profileId: connection_id, sql, variables \}\)/.test(STDIO_RELAY_SOURCE));
-  assert.ok(/runWithApprovals\(\s*controlPlaneRequest,\s*body,/.test(STDIO_RELAY_SOURCE));
-  // approval-wait.ts posts the body only to /query, and otherwise only asks
-  // for an approval's answer.
-  const waitSends = [...APPROVAL_WAIT_SOURCE.matchAll(/request\(\s*'(\w+)',\s*[`']([^`']+)[`']/g)].map(m => m[2]);
-  assert.ok(waitSends.length > 0 && waitSends.every(route => route === '/query' || route.startsWith('/approval/')), waitSends.join(', '));
+  assert.ok(/controlPlaneRequest\('POST', '\/query', body\)/.test(STDIO_RELAY_SOURCE));
+  // policy-proposals.ts sends a proposal, and asks for the user's answer.
+  const waitSends = [...PROPOSAL_SOURCE.matchAll(/request\(\s*'(\w+)',\s*[`']([^`']+)[`']/g)].map(m => m[2]);
+  assert.ok(waitSends.length > 0 && waitSends.every(route => route.startsWith('/policy-proposal')), waitSends.join(', '));
+});
+
+// An agent may propose a policy change, but only the user's click in the
+// renderer applies it. No route an agent can reach writes a rule, a policy
+// or a connection it chose. (Reading the store can still repair the file,
+// see credential-store.ts's ensureOwnPolicies, but never with anything an
+// agent sent.)
+test('no control-plane route or relay code calls a policy or connection writer', () => {
+  const writers = /\b(addAccessPolicyRule|removeAccessPolicyRule|setAccessPolicyRuleEnabled|setAccessPolicyRules|attachTemplate|createAccessPolicy|deleteAccessPolicy|renameAccessPolicy|setMcpEnabled|saveConnection|writeStore)\b/;
+  assert.ok(!writers.test(CONTROL_PLANE_SOURCE), 'control-plane-server.ts must not call a policy or connection writer');
+  assert.ok(!writers.test(PROPOSAL_SOURCE), 'policy-proposals.ts must not call a policy or connection writer');
+  assert.ok(!writers.test(STDIO_RELAY_SOURCE), 'stdio-relay.ts must not call a policy or connection writer');
 });

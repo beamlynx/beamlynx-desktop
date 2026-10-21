@@ -60,7 +60,8 @@ require.cache[electronPath] = {
 const {
   saveConnection,
   setMcpEnabled,
-  setConnectionPolicy,
+  attachTemplate,
+  forgetConnection,
   setApplyPolicyToOwnQueries,
   listConnections,
   createAccessPolicy,
@@ -72,7 +73,6 @@ const {
   deleteAccessPolicy,
   listMcpEnabledConnections,
   getMcpAccessStatus,
-  duplicateAccessPolicy,
 } = require(DIST);
 
 beforeEach(() => {
@@ -115,10 +115,7 @@ test('setMcpEnabled(id, true) refuses turning MCP on when the connection\'s own 
   const policy = createAccessPolicy('Empty');
   disableAllRules(policy.id);
   const conn = addConnection();
-  assert.deepEqual(setConnectionPolicy(conn.id, policy.id), {
-    ok: true,
-    profile: { ...conn, policyId: policy.id },
-  });
+  assert.equal(attachTemplate(conn.id, policy.id).ok, true);
   assert.deepEqual(setMcpEnabled(conn.id, true), { ok: false, reason: 'no-active-policy' });
 });
 
@@ -133,25 +130,35 @@ test('setMcpEnabled(id, false) always succeeds, even if the connection\'s policy
   assert.deepEqual(result, { ok: true, profile: { ...conn, mcpEnabled: false } });
 });
 
-test('setConnectionPolicy refuses an inactive named policy while mcpEnabled is true, but allows null ("None")', () => {
+test('attachTemplate refuses an inactive template while mcpEnabled is true, but allows null ("None")', () => {
   const conn = addConnection();
   assert.equal(setMcpEnabled(conn.id, true).ok, true);
 
-  const emptyPolicy = createAccessPolicy('Empty');
-  disableAllRules(emptyPolicy.id);
-  assert.deepEqual(setConnectionPolicy(conn.id, emptyPolicy.id), { ok: false, reason: 'mcp-requires-policy' });
+  const emptyTemplate = createAccessPolicy('Empty');
+  disableAllRules(emptyTemplate.id);
+  assert.deepEqual(attachTemplate(conn.id, emptyTemplate.id), { ok: false, reason: 'mcp-requires-policy' });
 
   // null is the deliberate "None" choice, not an undecided/blank state --
   // valid even while MCP is already on.
-  assert.deepEqual(setConnectionPolicy(conn.id, null), {
+  assert.deepEqual(attachTemplate(conn.id, null), {
     ok: true,
     profile: { ...conn, mcpEnabled: true, policyId: null },
   });
+  // Its own policy went with it.
+  assert.equal(policyById(conn.policyId), undefined);
+});
+
+test('attachTemplate refuses an unknown template, and another connection\'s policy', () => {
+  const conn = addConnection();
+  const other = addConnection();
+  assert.deepEqual(attachTemplate(conn.id, 'missing'), { ok: false, reason: 'not-found' });
+  assert.deepEqual(attachTemplate(conn.id, other.policyId), { ok: false, reason: 'not-found' });
+  assert.deepEqual(attachTemplate('missing', null), { ok: false, reason: 'not-found' });
 });
 
 test('setMcpEnabled(id, true) succeeds when the connection\'s policy is null ("None" -- deliberate, unrestricted access)', () => {
   const conn = addConnection();
-  assert.equal(setConnectionPolicy(conn.id, null).ok, true);
+  assert.equal(attachTemplate(conn.id, null).ok, true);
   const result = setMcpEnabled(conn.id, true);
   assert.deepEqual(result, { ok: true, profile: { ...conn, policyId: null, mcpEnabled: true } });
   assert.equal(getMcpAccessStatus(conn.id), 'ok');
@@ -161,12 +168,13 @@ test('setMcpEnabled(id, true) succeeds when the connection\'s policy is null ("N
   );
 });
 
-test('setConnectionPolicy never itself changes mcpEnabled', () => {
+test('attachTemplate never itself changes mcpEnabled', () => {
   const conn = addConnection();
   assert.equal(setMcpEnabled(conn.id, true).ok, true);
-  const otherPolicy = createAccessPolicy('Other');
-  const result = setConnectionPolicy(conn.id, otherPolicy.id);
-  assert.deepEqual(result, { ok: true, profile: { ...conn, mcpEnabled: true, policyId: otherPolicy.id } });
+  const other = createAccessPolicy('Other');
+  const result = attachTemplate(conn.id, other.id);
+  assert.equal(result.ok, true);
+  assert.equal(result.profile.mcpEnabled, true);
 });
 
 test('setApplyPolicyToOwnQueries never reads or writes mcpEnabled or policyId', () => {
@@ -176,12 +184,20 @@ test('setApplyPolicyToOwnQueries never reads or writes mcpEnabled or policyId', 
   assert.deepEqual(updated, { ...conn, mcpEnabled: true, applyPolicyToOwnQueries: true });
 });
 
-test('deleteAccessPolicy sets both policyId: null and mcpEnabled: false on every connection that pointed at it', () => {
+test('deleting a template leaves the connections made from it alone; a connection\'s own policy is not deleted', () => {
+  const template = createAccessPolicy('Team');
   const conn = addConnection();
+  assert.equal(attachTemplate(conn.id, template.id).ok, true);
+  const own = listConnections().find(c => c.id === conn.id).policyId;
   assert.equal(setMcpEnabled(conn.id, true).ok, true);
-  deleteAccessPolicy(conn.policyId);
-  assert.deepEqual(getMcpAccessStatus(conn.id), 'not-enabled');
-  assert.deepEqual(listMcpEnabledConnections(), []);
+
+  assert.equal(deleteAccessPolicy(template.id), true);
+  assert.equal(policyById(template.id), undefined);
+  assert.equal(getMcpAccessStatus(conn.id), 'ok');
+  assert.deepEqual(policyById(own).template, { id: template.id, name: 'Team' });
+
+  assert.equal(deleteAccessPolicy(own), false);
+  assert.ok(policyById(own));
 });
 
 test('getMcpAccessStatus distinguishes not-found, not-enabled, no-active-policy, and ok', () => {
@@ -198,14 +214,11 @@ test('listMcpEnabledConnections requires each connection\'s OWN policy to be act
   const active = addConnection();
   assert.equal(setMcpEnabled(active.id, true).ok, true);
 
-  // Its own separate policy -- addConnection defaults every new connection
-  // to the same first-created policy, so reusing that one here would also
-  // deactivate `active`'s policy once disableAllRules runs.
-  const ownPolicy = createAccessPolicy('WentInactive');
+  // Every connection has a policy of its own, so turning off all of one's
+  // rules doesn't touch the other's.
   const wentInactive = addConnection();
-  assert.equal(setConnectionPolicy(wentInactive.id, ownPolicy.id).ok, true);
   assert.equal(setMcpEnabled(wentInactive.id, true).ok, true);
-  disableAllRules(ownPolicy.id);
+  disableAllRules(wentInactive.policyId);
 
   const neverEnabled = addConnection();
 
@@ -323,7 +336,7 @@ test('a version 1 store gets rule ids, built-in marks and the starter hide rules
   ]);
   assert.deepEqual(policy.rules.map(r => r.enabled), [true, true, true, true, false, true]);
   assert.deepEqual(policy.rules.map(r => !!r.builtIn), [false, false, false, true, true, true]);
-  assert.equal(JSON.parse(fs.readFileSync(storePath, 'utf-8')).version, 2);
+  assert.equal(JSON.parse(fs.readFileSync(storePath, 'utf-8')).version, 3);
 
   // Removing a starter rule sticks: the migration doesn't run again.
   removeAccessPolicyRule('p1', policy.rules[0].id);
@@ -358,22 +371,102 @@ test('a policy without rule ids is migrated on its own, even in a version 2 stor
 test('a newer store version is never lowered', () => {
   const storePath = path.join(userDataDir, 'connections.json');
   fs.mkdirSync(userDataDir, { recursive: true });
-  fs.writeFileSync(storePath, JSON.stringify({ version: 3, connections: [], accessPolicies: [] }));
+  fs.writeFileSync(storePath, JSON.stringify({ version: 4, connections: [], accessPolicies: [] }));
   listAccessPolicies();
-  assert.equal(JSON.parse(fs.readFileSync(storePath, 'utf-8')).version, 3);
+  assert.equal(JSON.parse(fs.readFileSync(storePath, 'utf-8')).version, 4);
 });
 
-test('a duplicated policy has the same rules, with ids of its own, and changing it leaves the original alone', () => {
-  const original = createAccessPolicy('Shared');
-  addAccessPolicyRule(original.id, email);
-  const source = policyById(original.id);
-  const copy = duplicateAccessPolicy(original.id, 'Shared for Prod');
-  assert.equal(copy.name, 'Shared for Prod');
-  assert.deepEqual(plain(copy), plain(source));
-  assert.deepEqual(copy.rules.map(r => r.builtIn), source.rules.map(r => r.builtIn));
-  assert.ok(copy.rules.every(r => !source.rules.some(s => s.id === r.id)));
+test('a new connection gets its own copy of the first template', () => {
+  const a = addConnection({ label: 'Prod' });
+  const b = addConnection({ label: 'Staging' });
+  const template = listAccessPolicies().find(p => !p.connectionId);
+  const own = policyById(a.policyId);
+  assert.notEqual(a.policyId, template.id);
+  assert.notEqual(a.policyId, b.policyId);
+  assert.equal(own.connectionId, a.id);
+  assert.equal(own.name, 'Default for Prod');
+  assert.deepEqual(own.template, { id: template.id, name: 'Default' });
+  assert.deepEqual(plain(own), plain(template));
+  assert.ok(own.rules.every(r => !template.rules.some(t => t.id === r.id)));
+});
 
-  addAccessPolicyRule(copy.id, { type: 'hide', match: email });
-  assert.deepEqual(plain(policyById(original.id)), plain(source));
-  assert.equal(duplicateAccessPolicy('missing', 'x'), null);
+test('changing one connection\'s policy changes neither another connection\'s nor the template', () => {
+  const a = addConnection();
+  const b = addConnection();
+  const template = listAccessPolicies().find(p => !p.connectionId);
+  addAccessPolicyRule(a.policyId, email);
+  assert.ok(plain(policyById(a.policyId)).some(r => r.column === 'email'));
+  assert.ok(!plain(policyById(b.policyId)).some(r => r.column === 'email'));
+  assert.ok(!plain(policyById(template.id)).some(r => r.column === 'email'));
+
+  // And the other way: a template edited later doesn't reach connections.
+  addAccessPolicyRule(template.id, { type: 'hide', match: email });
+  assert.ok(!plain(policyById(b.policyId)).some(r => r.type === 'hide' && r.match.column === 'email'));
+});
+
+test('forgetting a connection removes its own policy', () => {
+  const conn = addConnection();
+  forgetConnection(conn.id);
+  assert.equal(policyById(conn.policyId), undefined);
+});
+
+// A store as 0.68.0 and older wrote it: two connections sharing one policy.
+function writeSharedStore(overrides = {}) {
+  const storePath = path.join(userDataDir, 'connections.json');
+  fs.mkdirSync(userDataDir, { recursive: true });
+  const rule = (r, extra = {}) => ({ ...r, id: Math.random().toString(36).slice(2), enabled: true, ...extra });
+  const shared = { id: 'shared', name: 'Team', rules: [rule(email), rule({ type: 'foreign-key' }, { builtIn: true })] };
+  const connection = (id, label, policyId) => ({
+    id, label, dbHost: id, dbPort: '5432', dbName: 'db', dbUser: 'u', dbType: 'postgres',
+    createdAt: '', lastUsedAt: '', dbPasswordEncrypted: '', mcpEnabled: true, policyId, applyPolicyToOwnQueries: false,
+  });
+  fs.writeFileSync(
+    storePath,
+    JSON.stringify({
+      version: 2,
+      connections: [connection('c1', 'Prod', 'shared'), connection('c2', 'Staging', 'shared'), connection('c3', 'Gone', 'missing')],
+      accessPolicies: [shared],
+      ...overrides,
+    }),
+  );
+  return { storePath, shared };
+}
+
+test('connections that shared a policy each get their own copy, and the shared one becomes a template', () => {
+  const { storePath, shared } = writeSharedStore();
+  const [c1, c2, c3] = listConnections();
+  assert.notEqual(c1.policyId, c2.policyId);
+  for (const c of [c1, c2]) {
+    const own = policyById(c.policyId);
+    assert.equal(own.connectionId, c.id);
+    assert.deepEqual(own.template, { id: 'shared', name: 'Team' });
+    assert.deepEqual(plain(own), plain(shared));
+    assert.deepEqual(own.rules.map(r => r.builtIn), shared.rules.map(r => r.builtIn));
+    assert.equal(c.mcpEnabled, true);
+  }
+  assert.equal(policyById('shared').connectionId, undefined, 'the shared policy stays, as a template');
+  // A policy that no longer exists: none, with MCP off, as before.
+  assert.equal(c3.policyId, null);
+  assert.equal(c3.mcpEnabled, false);
+
+  const written = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
+  assert.equal(written.version, 3);
+  // Only once: reading again changes nothing.
+  listConnections();
+  assert.deepEqual(JSON.parse(fs.readFileSync(storePath, 'utf-8')), written);
+});
+
+test('a file an older app wrote back is repaired: shared again means copied again, and an unused copy goes', () => {
+  writeSharedStore();
+  const [c1] = listConnections();
+  const storePath = path.join(userDataDir, 'connections.json');
+  // An older app moves Prod onto the template, as its policy picker did.
+  const file = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
+  file.connections[0].policyId = 'shared';
+  fs.writeFileSync(storePath, JSON.stringify(file));
+
+  const repaired = listConnections()[0];
+  assert.notEqual(repaired.policyId, 'shared');
+  assert.equal(policyById(repaired.policyId).connectionId, c1.id);
+  assert.equal(policyById(c1.policyId), undefined, 'the copy nothing uses any more is removed');
 });

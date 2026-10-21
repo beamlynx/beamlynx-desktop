@@ -9,9 +9,16 @@
 // beamlynx-plans/completed/2026-08-15-mcp-server-and-url-scheme.md.
 import { BrowserWindow, dialog } from 'electron';
 import * as http from 'http';
-import { getMcpAccessStatus, listMcpEnabledConnections } from '../credential-store';
+import { getConnectionPolicy, getMcpAccessStatus, listMcpEnabledConnections } from '../credential-store';
 import { readActivity } from './activity';
-import { readInvestigationId, takeNotes, waitForApproval } from './investigations';
+import { readInvestigationId, takeNotes } from './investigations';
+import {
+  checkChanges,
+  countPendingProposals,
+  createProposal,
+  expireProposal,
+  waitForProposal,
+} from './policy-proposals';
 import { authorizeControlPlaneRequest } from './control-plane-auth';
 import { runInRenderer } from './render-bridge';
 import { countPendingRevealRequests, createRevealRequest, waitForRevealRequest } from './reveal-requests';
@@ -30,6 +37,11 @@ const MAX_PENDING_REVEALS_PER_CONNECTION = 3;
 // this stays comfortably under it with margin to spare for this call's own
 // (much smaller) IPC/JSON overhead.
 const REVEAL_LONG_POLL_TIMEOUT_MS = 25000;
+
+// How long a proposed policy change stays on offer. stdio-relay.ts's
+// propose_policy_change waits as long (PROPOSAL_TIMEOUT_MS there).
+export const PROPOSAL_EXPIRY_MS = 10 * 60 * 1000;
+const MAX_PENDING_PROPOSALS_PER_CONNECTION = 3;
 
 type StartControlPlaneServerOptions = {
   getMainWindow: () => BrowserWindow | null;
@@ -100,7 +112,7 @@ function sendJson(res: http.ServerResponse, status: number, body: unknown): void
 // "None" choice (unrestricted access, e.g. a local/sandbox DB), not a drift
 // case to catch. MCP never runs a query behind a policy decision that's
 // gone stale; this is the explicit runtime check that throws instead,
-// matching the enable-time guard (setMcpEnabled/setConnectionPolicy) rather
+// matching the enable-time guard (setMcpEnabled/attachTemplate) rather
 // than silently succeeding against a policy that quietly went inactive.
 function assertWhitelisted(profileId: string): void {
   const status = getMcpAccessStatus(profileId);
@@ -153,13 +165,58 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
         return sendJson(res, 200, { notes });
       }
 
-      // A query waiting on the user to allow a hidden column (see
-      // investigations.ts). Held open up to 25 s; the relay asks again
-      // while the answer is still `pending`.
-      const approval = req.method === 'GET' ? req.url?.match(/^\/approval\/([A-Za-z0-9-]{1,64})$/) : null;
-      if (approval) {
-        const outcome = await waitForApproval(approval[1], 25000);
-        return sendJson(res, 200, outcome ? { status: 'resolved', outcome } : { status: 'pending' });
+      // get_access_policy: the connection's own rules. Read-only.
+      if (req.method === 'POST' && req.url === '/policy') {
+        const { profileId } = (await readJsonBody(req)) ?? {};
+        if (typeof profileId !== 'string') return sendJson(res, 400, { error: 'profileId is required' });
+        assertWhitelisted(profileId);
+        return sendJson(res, 200, getConnectionPolicy(profileId));
+      }
+
+      // propose_policy_change (see policy-proposals.ts). Checked here, then
+      // shown to the user as a card. Nothing here writes the policy: only
+      // the renderer does, when the user clicks Apply.
+      if (req.method === 'POST' && req.url === '/policy-proposal') {
+        const { profileId, reason, changes } = (await readJsonBody(req)) ?? {};
+        if (typeof profileId !== 'string') return sendJson(res, 400, { error: 'profileId is required' });
+        assertWhitelisted(profileId);
+        const mainWindow = options.getMainWindow();
+        if (!mainWindow) return sendJson(res, 503, { error: 'The Beamlynx window is not available yet' });
+        if (countPendingProposals(profileId) >= MAX_PENDING_PROPOSALS_PER_CONNECTION) {
+          return sendJson(res, 429, {
+            error: `There are already ${MAX_PENDING_PROPOSALS_PER_CONNECTION} proposed changes waiting for this connection. Wait for the user to answer them.`,
+          });
+        }
+        const policy = getConnectionPolicy(profileId)?.policy ?? null;
+        const checked = checkChanges(policy, changes);
+        if ('error' in checked) return sendJson(res, 400, { error: checked.error });
+        const proposal = createProposal({
+          profileId,
+          policyId: policy!.id,
+          reason,
+          changes: checked.changes,
+          investigationId,
+        });
+        const expiry = setTimeout(() => {
+          expireProposal(proposal.id);
+          options.getMainWindow()?.webContents.send('mcp:policy-proposal-expired', proposal.id);
+        }, PROPOSAL_EXPIRY_MS);
+        expiry.unref();
+        mainWindow.webContents.send('mcp:policy-proposal', proposal);
+        return sendJson(res, 200, { proposalId: proposal.id });
+      }
+
+      // The user's answer to a proposal. Held open up to 25 s; the relay
+      // asks again while it is `pending`.
+      const proposalAnswer = req.method === 'GET' ? req.url?.match(/^\/policy-proposal\/([A-Za-z0-9-]{1,64})$/) : null;
+      if (proposalAnswer) {
+        const outcome = await waitForProposal(proposalAnswer[1], 25000);
+        if (outcome === 'pending' || outcome === 'unknown') return sendJson(res, 200, { status: outcome });
+        return sendJson(
+          res,
+          200,
+          outcome.applied ? { status: 'applied' } : { status: 'declined', comment: outcome.comment },
+        );
       }
 
       if (req.method === 'GET' && req.url === '/connections') {

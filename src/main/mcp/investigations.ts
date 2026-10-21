@@ -4,15 +4,14 @@
 // beamlynx-ui gives each investigation its own tab, with a timeline of what
 // the agent did and saw.
 //
-// Two things wait here, in this process's memory, for the agent's next call:
-// - notes the user typed in the investigation's tab (takeNotes), which the
-//   relay puts at the top of that call's result;
-// - approvals: a query refused for a hidden column waits, inside the agent's
-//   call, for the user to allow the column or decline (waitForApproval).
-// Neither survives a restart. Both belong to one conversation with one agent.
+// Notes the user typed in the investigation's tab wait here, in this
+// process's memory, for the agent's next call (takeNotes), which the relay
+// puts at the top of that call's result. They don't survive a restart. They
+// belong to one conversation with one agent. An agent's proposed policy
+// change waits for the user's answer in policy-proposals.ts.
 import { randomUUID } from 'crypto';
-import { EventEmitter } from 'events';
 import { ipcMain } from 'electron';
+import { resolveProposal } from './policy-proposals';
 
 export const INVESTIGATION_HEADER = 'x-beamlynx-investigation';
 
@@ -48,53 +47,15 @@ export function takeNotes(investigationId: string): InvestigationNote[] {
   return waiting;
 }
 
-// --- Approvals ----------------------------------------------------------
-
-export type ApprovalOutcome = { allowed: true } | { allowed: false; comment?: string };
-
-// An approval exists from the moment either side mentions it: the renderer
-// may resolve it before the relay starts waiting, or the other way round.
-const outcomes = new Map<string, ApprovalOutcome>();
-const resolved = new EventEmitter();
-resolved.setMaxListeners(50);
-
-export function resolveApproval(id: string, outcome: ApprovalOutcome): void {
-  outcomes.set(id, outcome);
-  resolved.emit(id, outcome);
-}
-
-/**
- * Resolves with the user's answer once there is one, or with undefined after
- * timeoutMs. The relay calls this again until it gets an answer, since one
- * control-plane request may not stay open longer than its own timeout.
- */
-export function waitForApproval(id: string, timeoutMs: number): Promise<ApprovalOutcome | undefined> {
-  const known = outcomes.get(id);
-  if (known) {
-    outcomes.delete(id);
-    return Promise.resolve(known);
-  }
-  return new Promise(resolve => {
-    const onResolve = (outcome: ApprovalOutcome) => {
-      clearTimeout(timer);
-      outcomes.delete(id);
-      resolve(outcome);
-    };
-    const timer = setTimeout(() => {
-      resolved.off(id, onResolve);
-      resolve(undefined);
-    }, timeoutMs);
-    resolved.once(id, onResolve);
-  });
-}
-
 export function registerInvestigationIpc(): void {
   ipcMain.handle('mcp:investigation-note', (_event, investigationId: string, text: string) =>
     typeof investigationId === 'string' ? addNote(investigationId, text) : null,
   );
-  ipcMain.handle('mcp:approval-resolve', (_event, id: string, outcome: ApprovalOutcome) => {
-    if (typeof id !== 'string' || !outcome || typeof outcome.allowed !== 'boolean') return false;
-    resolveApproval(id, outcome.allowed ? { allowed: true } : { allowed: false, comment: outcome.comment });
-    return true;
+  // The user's answer to an agent's proposed policy change, after the
+  // renderer applied it, or not. False for a proposal nobody waits on.
+  ipcMain.handle('mcp:policy-proposal-resolve', (_event, id: string, outcome: { applied?: unknown; comment?: unknown }) => {
+    if (typeof id !== 'string' || !outcome || typeof outcome.applied !== 'boolean') return false;
+    const comment = typeof outcome.comment === 'string' ? outcome.comment.slice(0, 2000) : undefined;
+    return resolveProposal(id, outcome.applied ? { applied: true } : { applied: false, comment });
   });
 }
