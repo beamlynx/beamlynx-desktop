@@ -34,20 +34,30 @@ const ago = (ms: number) => {
 const dim = 'var(--canvas-text-dim)';
 const failed = 'var(--canvas-trace-unresolved)';
 
+// One line of text, cut with an ellipsis. The whole text is in its tooltip.
+const oneLine = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } as const;
+
+/**
+ * A query as two short lines: why the agent ran it and how it went, then
+ * the query itself. Without a reason the query is the first line.
+ */
 const QueryStep = observer(
   ({ investigation, step }: { investigation: Investigation; step: Extract<InvestigationStep, { kind: 'query' }> }) => {
     const { global } = useStores();
     const selected =
       investigation.selectedStepId === step.id ||
       (investigation.selectedStepId === null && investigation.latestQuery?.id === step.id);
-    // The reason is shown above; the query without its leading comment. An
+    // The query without its leading comment, which is the reason. An
     // agent's SQL is shown, marked as SQL, only until it is Pine, or when it
     // never became Pine.
     const asSql = !step.expression && step.sql !== undefined;
     const query = (asSql ? step.sql! : step.expression)
       .replace(/^\s*\/\*[\s\S]*?\*\/\s*/, '')
       .replace(/^\s*--.*\n/, '')
+      .replace(/\s+/g, ' ')
       .trim();
+    const prefix = step.by === 'user' ? 'You: ' : asSql ? 'SQL: ' : '';
+    const code = { fontFamily: 'var(--code-font)', fontSize: 12 } as const;
     return (
       <Box
         role="button"
@@ -59,66 +69,42 @@ const QueryStep = observer(
             global.showInvestigationStep(investigation.id, step.id);
           }
         }}
+        title={query}
         sx={{
-          border: '1px solid',
-          borderColor: selected ? 'var(--canvas-trace)' : 'var(--border-color)',
-          borderRadius: 1,
-          px: 1.25,
-          py: 1,
+          borderLeft: '2px solid',
+          borderColor: selected ? 'var(--canvas-trace)' : 'transparent',
+          borderRadius: '0 4px 4px 0',
+          px: 1,
+          py: 0.5,
           cursor: step.snapshot ? 'pointer' : 'default',
           backgroundColor: selected ? 'var(--canvas-chip-bg)' : 'transparent',
           '&:hover': { backgroundColor: 'var(--canvas-chip-bg)' },
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
-          <Typography sx={{ fontSize: 11, fontWeight: 600, color: dim, textTransform: 'uppercase', letterSpacing: 0.4 }}>
-            {step.by === 'user' ? 'You ran' : asSql ? 'SQL' : 'Query'}
+        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
+          <Typography
+            sx={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--text-color)', ...oneLine, ...(step.reason ? {} : code) }}
+          >
+            {step.reason ?? `${prefix}${query}`}
           </Typography>
-          <Box sx={{ flex: 1 }} />
           {step.running ? (
-            <CircularProgress size={11} thickness={6} sx={{ color: 'var(--canvas-trace)' }} />
+            <CircularProgress size={10} thickness={6} sx={{ color: 'var(--canvas-trace)', flexShrink: 0 }} />
           ) : step.error ? (
-            <Typography sx={{ fontSize: 12, color: failed, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-              <ErrorOutline sx={{ fontSize: 14 }} /> Failed
-            </Typography>
+            <ErrorOutline sx={{ fontSize: 14, color: failed, flexShrink: 0, alignSelf: 'center' }} />
           ) : (
-            <Typography sx={{ fontSize: 12, color: dim }}>
+            <Typography sx={{ fontSize: 11, color: dim, flexShrink: 0 }}>
               {step.rowCount} row{step.rowCount === 1 ? '' : 's'}
             </Typography>
           )}
         </Box>
         {step.reason && (
-          <Typography sx={{ fontSize: 13, color: 'var(--text-color)', mb: 0.5, lineHeight: 1.4 }}>{step.reason}</Typography>
+          <Typography sx={{ ...code, color: dim, ...oneLine }}>
+            {prefix}
+            {query}
+          </Typography>
         )}
-        <Box
-          component="pre"
-          sx={{
-            m: 0,
-            fontFamily: 'var(--code-font)',
-            fontSize: 12,
-            color: dim,
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-            display: '-webkit-box',
-            WebkitLineClamp: 3,
-            WebkitBoxOrient: 'vertical',
-            overflow: 'hidden',
-          }}
-        >
-          {query}
-        </Box>
         {step.error && (
-          <Typography
-            sx={{
-              fontSize: 12,
-              color: failed,
-              mt: 0.5,
-              display: '-webkit-box',
-              WebkitLineClamp: 3,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
-            }}
-          >
+          <Typography sx={{ fontSize: 12, color: failed, ...oneLine }} title={step.error}>
             {step.error}
           </Typography>
         )}
@@ -411,26 +397,78 @@ const Step = observer(({ investigation, step }: { investigation: Investigation; 
         </Box>
       );
     case 'call':
-      return (
-        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75, px: 0.25 }}>
-          <Typography
-            sx={{
-              fontSize: 12,
-              color: step.ok === false ? failed : dim,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-            title={step.ok === false && step.outcome ? step.outcome : step.detail}
-          >
-            {step.endedAt === undefined ? '… ' : ''}
-            {step.summary}
-            {step.ok === false ? ': failed' : ''}
-          </Typography>
-        </Box>
-      );
+      return <CallLine step={step} />;
   }
 });
+
+type CallStep = Extract<InvestigationStep, { kind: 'call' }>;
+
+const CallLine = observer(({ step }: { step: CallStep }) => (
+  <Typography
+    sx={{ fontSize: 12, color: step.ok === false ? failed : dim, px: 1, ...oneLine }}
+    title={step.ok === false && step.outcome ? step.outcome : step.detail}
+  >
+    {step.endedAt === undefined ? '… ' : ''}
+    {step.summary}
+    {step.ok === false ? ': failed' : ''}
+  </Typography>
+));
+
+/**
+ * Lookups in a row, like a run of table searches and completions, as one
+ * line: the latest, and how many came before it. Clicking opens them all.
+ */
+const CallGroup = observer(({ steps }: { steps: CallStep[] }) => {
+  const [open, setOpen] = useState(false);
+  if (steps.length === 1 || open) {
+    return (
+      <Box
+        onClick={steps.length > 1 ? () => setOpen(false) : undefined}
+        sx={{ cursor: steps.length > 1 ? 'pointer' : 'default' }}
+      >
+        {steps.map(step => (
+          <CallLine key={step.id} step={step} />
+        ))}
+      </Box>
+    );
+  }
+  const last = steps[steps.length - 1];
+  const failures = steps.filter(s => s.ok === false).length;
+  return (
+    <Box
+      role="button"
+      tabIndex={0}
+      onClick={() => setOpen(true)}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          setOpen(true);
+        }
+      }}
+      sx={{ display: 'flex', alignItems: 'baseline', cursor: 'pointer', '&:hover': { color: 'var(--text-color)' } }}
+    >
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <CallLine step={last} />
+      </Box>
+      <Typography sx={{ fontSize: 11, color: failures ? failed : dim, flexShrink: 0, pr: 1 }}>
+        +{steps.length - 1}
+        {failures ? `, ${failures} failed` : ''}
+      </Typography>
+    </Box>
+  );
+});
+
+/** The steps, with each run of lookup calls in one group. */
+function grouped(steps: InvestigationStep[]): (InvestigationStep | CallStep[])[] {
+  const items: (InvestigationStep | CallStep[])[] = [];
+  for (const step of steps) {
+    const previous = items[items.length - 1];
+    if (step.kind !== 'call') items.push(step);
+    else if (Array.isArray(previous)) previous.push(step);
+    else items.push([step]);
+  }
+  return items;
+}
 
 const NoteComposer = observer(({ investigation }: { investigation: Investigation }) => {
   const { global } = useStores();
@@ -492,15 +530,43 @@ const InvestigationPanel = observer(({ investigation }: { investigation: Investi
     return () => clearInterval(timer);
   }, []);
 
-  // Keep the newest step in view while following, and always bring a note
-  // the user just sent into view.
-  const count = investigation.steps.length;
-  const lastIsNote = investigation.steps.at(-1)?.kind === 'note';
+  // Follow the newest step, as it arrives and as it grows, until the user
+  // scrolls up. Scrolling back to the bottom follows again. A note the user
+  // just sent is always brought into view.
+  const content = useRef<HTMLDivElement>(null);
+  const following = useRef(true);
+  const [behind, setBehind] = useState(false);
+  const toBottom = () => {
+    if (list.current) list.current.scrollTop = list.current.scrollHeight;
+  };
+  const onScroll = () => {
+    const el = list.current;
+    if (!el) return;
+    following.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+    if (following.current) setBehind(false);
+  };
   useEffect(() => {
-    if ((investigation.selectedStepId === null || lastIsNote) && list.current) {
-      list.current.scrollTop = list.current.scrollHeight;
-    }
-  }, [count, investigation.selectedStepId, lastIsNote]);
+    if (!content.current || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      if (following.current) toBottom();
+      else setBehind(true);
+    });
+    observer.observe(content.current);
+    return () => observer.disconnect();
+  }, []);
+  const lastStep = investigation.steps.at(-1);
+  const lastNote = lastStep?.kind === 'note' ? lastStep.id : undefined;
+  useEffect(() => {
+    if (!lastNote) return;
+    following.current = true;
+    toBottom();
+  }, [lastNote]);
+  const backToLatest = () => {
+    following.current = true;
+    setBehind(false);
+    toBottom();
+    global.showInvestigationStep(investigation.id, null);
+  };
 
   // The activity feed is shared: it says what the agent of the latest
   // investigation is doing, so only that investigation's tab shows it.
@@ -581,27 +647,30 @@ const InvestigationPanel = observer(({ investigation }: { investigation: Investi
 
       <Box
         ref={list}
+        onScroll={onScroll}
         className="styled-scrollbar"
-        sx={{ flex: 1, minHeight: 0, overflowY: 'auto', p: 1.25, display: 'flex', flexDirection: 'column', gap: 1 }}
+        sx={{ flex: 1, minHeight: 0, overflowY: 'auto' }}
       >
-        {investigation.steps.length === 0 && (
-          <Typography sx={{ fontSize: 13, color: dim }}>
-            Each step the agent takes here shows up as it happens, with what it saw.
-          </Typography>
-        )}
-        {investigation.steps.map(step => (
-          <Step key={step.id} investigation={investigation} step={step} />
-        ))}
+        <Box ref={content} sx={{ p: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+          {investigation.steps.length === 0 && (
+            <Typography sx={{ fontSize: 13, color: dim }}>
+              Each step the agent takes here shows up as it happens, with what it saw.
+            </Typography>
+          )}
+          {grouped(investigation.steps).map(item =>
+            Array.isArray(item) ? (
+              <CallGroup key={item[0].id} steps={item} />
+            ) : (
+              <Step key={item.id} investigation={investigation} step={item} />
+            ),
+          )}
+        </Box>
       </Box>
 
-      {investigation.selectedStepId !== null && (
+      {(behind || investigation.selectedStepId !== null) && (
         <Box sx={{ px: 1.25, pb: 0.75, display: 'flex', justifyContent: 'center' }}>
-          <Button
-            size="small"
-            startIcon={<ArrowDownward sx={{ fontSize: 16 }} />}
-            onClick={() => global.showInvestigationStep(investigation.id, null)}
-          >
-            Back to the latest
+          <Button size="small" startIcon={<ArrowDownward sx={{ fontSize: 16 }} />} onClick={backToLatest}>
+            {behind ? 'New steps below' : 'Back to the latest'}
           </Button>
         </Box>
       )}
