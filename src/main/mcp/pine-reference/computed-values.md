@@ -18,7 +18,7 @@ A value is any of these, and they nest:
 | A column, with an optional cast | `a.id`, `a.id ::text` |
 | A literal | `'att:'`, `42`, `true`, `null`, `'2024-01-01'` |
 | A variable | `$prefix` |
-| A function | `coalesce(a, b)`, `concat('att:', a.id)`, `now()`, `month(created_at)` |
+| A function | `coalesce(a, b)`, `concat('att:', a.id)`, `now()`, `month(created_at)`, `jsonb_typeof(data)` |
 | A function, applied with the arrow | `created_at => month`, `title => coalesce('untitled')` |
 | A condition, as true or false | `type = 'sharepoint'`, `deleted_at is null`, `id in (1, 2)`, `id in edited` |
 | A choice | `if x is null then 'none' else x` |
@@ -26,10 +26,14 @@ A value is any of these, and they nest:
 - `coalesce(a, b, ...)` gives the first argument that isn't null.
 - `concat(a, b, ...)` joins the arguments as text. It is null when any argument is null.
 - `now()` is the current date and time.
+- `jsonb_typeof(x)` gives the type of a JSON value: `object`, `array`, `string`, `number`, `boolean`
+  or `null`. `jsonb_array_length(x)` gives the number of items in a JSON array. Both work on every
+  database (see the `json` topic).
 - `if <condition> then <value> else <value>`. The `else` is optional; without it the value is
   null when the condition isn't true. Chain branches with `else if`.
 
-These are the only functions. There is no arithmetic (`+`, `-`) and no date intervals.
+These are the only functions, with the date buckets (`month`, `year`, ...). There is no arithmetic
+(`+`, `-`) and no date intervals.
 
 ## The arrow
 
@@ -67,6 +71,15 @@ document as d | select: d.id, d.deleted_at is null as live, d.id in edited as wa
 
 A condition in `select:` is a true or false column. `edited` here is a named result from an
 earlier block (see the `named-results` topic).
+
+### A function on the left of a condition
+
+```
+customer | select: id, if jsonb_typeof(data) = 'array' then 'list' else 'other' as kind
+```
+
+A condition can start with a function of a column, here and in `where:`. With the arrow it is the
+same: `data => jsonb_typeof = 'array'`.
 
 ### A label chosen by a condition
 

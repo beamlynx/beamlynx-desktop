@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Changed
+- **The Pine reference agents read covers newer Pine.** `order:` with `nulls first` and `nulls last`, the functions `jsonb_typeof()` and `jsonb_array_length()`, and a condition that starts with a function, like `where: jsonb_typeof(data) = 'array'`. They need the pine-lang that adds them (pine-lang #142 to #145). The order topic also said Pine sorts ascending by default. It sorts descending: write `asc` for ascending.
 
 ## [0.22.1] - 2026-10-19
 ### Fixed
