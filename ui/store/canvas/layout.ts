@@ -344,7 +344,9 @@ const deriveStage = (
         })
         .join(' or '),
     ),
-    orderChips: (orderByAlias[alias] ?? []).map(o => `${columnName(o.column, o.path)} ${o.direction}`),
+    orderChips: (orderByAlias[alias] ?? []).map(
+      o => `${columnName(o.column, o.path)} ${o.direction}${o.nulls ? ` nulls ${o.nulls.toLowerCase()}` : ''}`,
+    ),
     groupChips: (groupByAlias[alias] ?? []).map(g => columnName(g.column, g.path)),
     leftHandles: toHandles(handles.left[alias]),
     rightHandles: toHandles(handles.right[alias]),

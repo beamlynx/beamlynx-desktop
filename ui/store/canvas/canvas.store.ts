@@ -288,7 +288,7 @@ export class CanvasStore {
     const items: ConfigItem[] = [];
     (node?.data.selectColumns ?? []).forEach(column => items.push({ kind: 'select', column }));
     (node?.data.whereChips ?? []).forEach((_, index) => items.push({ kind: 'where', index }));
-    (node?.data.orderChips ?? []).forEach(chip => items.push({ kind: 'order', column: chip.replace(/\s+(asc|desc)$/i, '') }));
+    (node?.data.orderChips ?? []).forEach(chip => items.push({ kind: 'order', column: actions.splitOrderItem(chip).column }));
     (node?.data.groupChips ?? []).forEach(column => items.push({ kind: 'group', column }));
     return items;
   }
@@ -431,9 +431,9 @@ export class CanvasStore {
           (n): n is CanvasTableNode => n.type === 'table-node' && n.id === alias,
         );
         const chips = node?.data.orderChips ?? [];
-        const index = chips.findIndex(chip => chip.replace(/\s+(asc|desc)$/i, '') === item.column);
+        const index = chips.findIndex(chip => actions.splitOrderItem(chip).column === item.column);
         if (index < 0) return;
-        const current = /\bdesc$/i.test(chips[index]) ? 'desc' : 'asc';
+        const current = actions.splitOrderItem(chips[index]).direction === 'desc' ? 'desc' : 'asc';
         this.openOrderEditor(alias, index, item.column, current, anchor);
         return;
       }
@@ -475,7 +475,7 @@ export class CanvasStore {
           (n): n is CanvasTableNode => n.type === 'table-node' && n.id === alias,
         );
         const index = (node?.data.orderChips ?? []).findIndex(
-          chip => chip.replace(/\s+(asc|desc)$/i, '') === item.column,
+          chip => actions.splitOrderItem(chip).column === item.column,
         );
         if (index >= 0) await this.removeOrderAt(alias, index);
         return;
@@ -1565,7 +1565,7 @@ export class CanvasStore {
               ? node?.data.selectColumns ?? []
               : kind === 'group'
                 ? node?.data.groupChips ?? []
-                : (node?.data.orderChips ?? []).map(c => c.replace(/\s+(asc|desc)$/i, ''));
+                : (node?.data.orderChips ?? []).map(c => actions.splitOrderItem(c).column);
           const present = new Set(items.map(i => i.value));
           for (const column of existing) {
             if (!present.has(column)) items.push({ id: column, label: column, value: column });

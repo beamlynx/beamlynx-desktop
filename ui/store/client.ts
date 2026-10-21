@@ -282,6 +282,8 @@ export type OrderColumn = {
   column: string;
   path?: JsonPathStep[];
   direction: 'ASC' | 'DESC';
+  // Where NULLs go, when the order: item says: `nulls first`.
+  nulls?: 'FIRST' | 'LAST';
   'operation-index'?: number;
 };
 

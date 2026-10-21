@@ -240,8 +240,16 @@ export const addWhereCondition = (base: PinnedBase, alias: string, conditions: W
 /** `where: c.a = 1 or c.b = 'x'` - each condition qualified by its own alias. */
 export const whereSegmentText = (conditions: WhereConditionDraft[]): string =>
   `where: ${conditions
-    .map(({ alias, column, operator, value }) => `${alias}.${column} ${operator} ${buildWhereLiteral(value, operator)}`)
+    .map(
+      ({ alias, column, operator, value }) =>
+        `${whereLeft(alias, column)} ${operator} ${buildWhereLiteral(value, operator)}`,
+    )
     .join(' or ')}`;
+
+// A function on the left, `jsonb_typeof(c_0.data)`, comes back from
+// pine-lang already written as Pine with its own aliases, so it isn't
+// prefixed with one.
+const whereLeft = (alias: string, column: string): string => (column.includes('(') ? column : `${alias}.${column}`);
 
 // `index` is this alias's where-conditions in pipeline order - the same
 // order `ast.where` reports them in (see layout.ts's whereChips), since a new
@@ -308,14 +316,29 @@ export const addOrderColumn = (
   return toText(upsertOwnedSegment(base.segments, alias, 'order', `order: ${text}`));
 };
 
+/**
+ * One `order:` item split into its column, direction and null ordering:
+ * `c.name desc nulls first`. A chip's text has the same shape.
+ */
+export const splitOrderItem = (
+  text: string,
+): { column: string; direction?: 'asc' | 'desc'; nulls?: 'first' | 'last' } => {
+  const match = /^(.*?)(?:\s+(asc|desc))?(?:\s+nulls\s+(first|last))?$/i.exec(text.trim());
+  const [, column, direction, nulls] = match ?? [text, text];
+  return {
+    column,
+    ...(direction ? { direction: direction.toLowerCase() as 'asc' | 'desc' } : {}),
+    ...(nulls ? { nulls: nulls.toLowerCase() as 'first' | 'last' } : {}),
+  };
+};
+
 /** Reads the columns `alias` is currently ordered by (direction stripped) - see getSelectColumns for why this reads from `base.segments`, not the rendered canvasGraph. */
 export const getOrderColumns = (base: PinnedBase, alias: string): string[] => {
   const existing = base.segments.find(s => s.owner === alias && s.kind === 'order');
   if (!existing) return [];
   const body = existing.text.replace(/^(order:|o:)\s*/i, '');
   return splitTopLevel(body).map(part => {
-    const withoutDirection = part.replace(/\s+(asc|desc)$/i, '');
-    return columnAfterAlias(withoutDirection, alias);
+    return columnAfterAlias(splitOrderItem(part).column, alias);
   });
 };
 
@@ -331,7 +354,9 @@ export const setOrderDirectionAt = (
   const columns = splitTopLevel(existing.text.replace(/^(order:|o:)\s*/i, ''));
   const target = columns[index];
   if (target === undefined) return toText(base.segments);
-  columns[index] = `${target.replace(/\s+(asc|desc)$/i, '')} ${direction}`;
+  // `nulls first` stays: only the direction flips.
+  const { column, nulls } = splitOrderItem(target);
+  columns[index] = `${column} ${direction}${nulls ? ` nulls ${nulls}` : ''}`;
   return toText(upsertOwnedSegment(base.segments, alias, 'order', `order: ${columns.join(', ')}`));
 };
 

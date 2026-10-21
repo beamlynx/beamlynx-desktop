@@ -9,6 +9,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **The timeline follows the agent.** It stays scrolled to the newest step, also as a step grows, such as when a query finishes. Scroll up and it stays where you are. **New steps below** then takes you back, and so does scrolling to the bottom.
 
 ### Fixed
+- **Sort and filter chips keep what newer Pine writes.** pine-lang can now sort with `nulls first` or `nulls last` after a column, and filter on a function of a column, like `jsonb_typeof(data) = 'array'`. SQL to Pine writes both. Flipping a sort chip's direction used to drop the text after `asc` or `desc`, and write Pine that doesn't parse. It now keeps `nulls first`, and the chip shows it. Editing a filter chip with a function on the left used to put the table's alias in front of the function. It now writes the function as it was.
 - **An agent's SQL no longer appears in the Pine editor.** When an agent sent SQL that doesn't convert to Pine, its step in the investigation kept the SQL. Clicking that step, or going back to the latest query, then put the SQL in the agent's tab as if it were Pine. Nothing ran. Now such a step can't be clicked, because nothing ran in the tab. Its card shows the SQL, marked as SQL, with the reason it didn't convert. While SQL is still converting, its card is marked as SQL too.
 
 ## [0.68.0] - 2026-10-19
