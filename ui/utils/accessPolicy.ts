@@ -52,6 +52,23 @@ export function findModule(policy: AccessPolicy, rule: AccessPolicyRule): Access
   return policy.rules.find(({ id: _id, enabled: _enabled, builtIn: _builtIn, ...stored }) => canonical(stored) === wanted);
 }
 
+/**
+ * The Except rules of its own that hide the column a show rule names: the
+ * ones showing it has to take out, or they would still win. A rule without
+ * a schema names the table in any schema, so either side may lack one.
+ */
+export function ownHideRules(rules: AccessPolicyModule[], show: AccessPolicyRule): AccessPolicyModule[] {
+  if (show.type !== 'column') return [];
+  return rules.filter(
+    m =>
+      m.type === 'hide' &&
+      m.match.type === 'column' &&
+      m.match.table === show.table &&
+      m.match.column === show.column &&
+      (!m.match.schema || !show.schema || m.match.schema === show.schema),
+  );
+}
+
 export function exactColumnRule(target: PolicyColumn, hide: boolean): AccessPolicyRule {
   const matcher: ColumnMatcher = { type: 'column', schema: target.schema, table: target.table, column: target.column };
   return hide ? { type: 'hide', match: matcher } : matcher;

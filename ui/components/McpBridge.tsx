@@ -40,6 +40,19 @@ const McpBridge = () => {
     return window.beamlynxDesktop?.mcp.onActivity?.(event => global.applyAgentActivity(event));
   }, [global]);
 
+  // An agent's proposed policy change: a card in its investigation, and
+  // the card expiring once the agent stops waiting for it.
+  useEffect(() => {
+    if (!isDesktop() || typeof window === 'undefined') return;
+    const mcp = window.beamlynxDesktop?.mcp;
+    const offProposal = mcp?.onPolicyProposal?.(proposal => global.handlePolicyProposal(proposal));
+    const offExpired = mcp?.onPolicyProposalExpired?.(id => global.expirePolicyProposal(id));
+    return () => {
+      offProposal?.();
+      offExpired?.();
+    };
+  }, [global]);
+
   // Notes the user wrote to an investigation's agent, now received by it.
   useEffect(() => {
     if (!isDesktop() || typeof window === 'undefined') return;

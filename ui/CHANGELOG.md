@@ -4,9 +4,21 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Breaking
+- Needs the matching beamlynx-desktop release. It uses the desktop app's new `credentials.attachTemplate` and its policy proposal events, and no longer uses `access-policy:duplicate` or `credentials.setConnectionPolicy`.
+
+### Added
+- **An agent can propose a change to the access policy.** It reads its connection's policy, then proposes changes, such as showing one column, or hiding one it noticed should stay hidden. The proposal is a card in the agent's investigation: the agent's reason, then each change in plain words, like "Show public.activity.type". Turning off or removing an Except rule is marked in the warning colour. Nothing changes until you click **Apply**. **Decline…** sends the agent your reason, if you give one. After Apply, **Undo** puts the rules back. The agent isn't told about an Undo. A card the agent stopped waiting on can no longer be answered. This replaces the Allow card.
+
 ### Changed
+- **Each connection has its own access policy.** Changing it never changes another connection. Under Database Connections, a connection's row shows which template its rules came from, and **Edit rules** opens them there. Picking another template replaces the connection's rules with a copy of that template, after asking. **Show to agents** and **Hide from agents** in the results change the connection's policy only, so they no longer ask whether to copy a shared policy.
+- **Settings → Access Policy is now Policy templates.** A template is where a connection's policy starts. Changing a template doesn't change connections already made from it.
+- **A query that uses a hidden column is refused at once.** The agent's call no longer waits for you to allow the column. The agent can propose a change instead.
 - **An agent's timeline is shorter.** Each query is two lines: the agent's reason with its row count, then the query. A query that failed adds one line with the error. Hover a line to read all of it. Lookups in a row, like table searches and completions, are one line showing the latest, with a count of the others. Click it to see them all. Questions waiting for your answer keep their full cards.
 - **The timeline follows the agent.** It stays scrolled to the newest step, also as a step grows, such as when a query finishes. Scroll up and it stays where you are. **New steps below** then takes you back, and so does scrolling to the bottom.
+
+### Removed
+- The choice to copy a shared policy, in the results and on the Allow card. No policy is shared any more.
 
 ### Fixed
 - **Sort and filter chips keep what newer Pine writes.** pine-lang can now sort with `nulls first` or `nulls last` after a column, and filter on a function of a column, like `jsonb_typeof(data) = 'array'`. SQL to Pine writes both. Flipping a sort chip's direction used to drop the text after `asc` or `desc`, and write Pine that doesn't parse. It now keeps `nulls first`, and the chip shows it. Editing a filter chip with a function on the left used to put the table's alias in front of the function. It now writes the function as it was.

@@ -415,14 +415,18 @@ export type ColumnPolicy = {
 // agent's query.
 export type AppliedAccessPolicy = { rules: AccessPolicyRule[]; mode: 'enforce' | 'annotate' };
 
-// A named, user-creatable set of rule modules (Settings -> Access Policy) --
-// there can be several; each connection independently selects which one
-// applies to it (ConnectionInfo.policyId below), or none. See
-// GlobalStore.accessPolicies.
+// A named set of rule modules: a connection's own policy, which it points
+// at by ConnectionInfo.policyId below and shares with no other connection,
+// or a template (Settings -> Policy templates), copied into a connection
+// when attached. See GlobalStore.accessPolicies.
 export type AccessPolicy = {
   id: string;
   name: string;
   rules: AccessPolicyModule[];
+  // The connection this policy belongs to. None on a template.
+  connectionId?: string;
+  // The template a connection's policy was copied from.
+  template?: { id: string; name: string };
 };
 
 export type ConnectionInfo = {

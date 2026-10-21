@@ -7,13 +7,16 @@ import {
   CheckCircleOutline,
   ErrorOutline,
   LightbulbOutlined,
+  PolicyOutlined,
   Send,
   VisibilityOutlined,
 } from '@mui/icons-material';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
 import type { Investigation, InvestigationStep } from '../store/investigations';
-import { columnName } from '../utils/accessPolicy';
+import { describeMatcher, ownHideRules } from '../utils/accessPolicy';
+import type { AccessPolicyModule, AccessPolicyRule } from '../store/client';
+import type { PolicyChange } from '../desktop';
 
 /**
  * The timeline of an agent's investigation (store/investigations.ts), beside
@@ -113,42 +116,56 @@ const QueryStep = observer(
   },
 );
 
-const ApprovalStep = observer(
-  ({ investigation, step }: { investigation: Investigation; step: Extract<InvestigationStep, { kind: 'approval' }> }) => {
+/** One proposed change, in the words the results grid uses, and whether it loosens an Except rule. */
+function describeChange(change: PolicyChange, rules: AccessPolicyModule[]): { text: string; loosens: boolean } {
+  // Mid-sentence: "hide name contains …", not "hide Name contains …".
+  const what = (rule: AccessPolicyRule) =>
+    describeMatcher(rule.type === 'hide' ? rule.match : rule).replace(/^[A-Z](?=[a-z])/, c => c.toLowerCase());
+  if ('add' in change) {
+    const replaces = ownHideRules(rules, change.add).length > 0;
+    const text = `${change.add.type === 'hide' ? 'Hide' : 'Show'} ${what(change.add)}`;
+    return { text: replaces ? `${text}, in place of the Except rule hiding it` : text, loosens: replaces };
+  }
+  const id = 'remove' in change ? change.remove : 'enable' in change ? change.enable : change.disable;
+  const rule = rules.find(m => m.id === id);
+  if (!rule) return { text: `${Object.keys(change)[0]} a rule that no longer exists`, loosens: false };
+  const hide = rule.type === 'hide';
+  const kind = hide ? 'hiding' : 'showing';
+  const except = hide ? ' (an Except rule)' : '';
+  if ('remove' in change) return { text: `Stop ${kind} ${what(rule)}${except}`, loosens: hide };
+  if ('enable' in change) return { text: `Turn on: ${hide ? 'hide' : 'show'} ${what(rule)}`, loosens: false };
+  return { text: `Turn off: ${hide ? 'hide' : 'show'} ${what(rule)}${except}`, loosens: hide };
+}
+
+const ProposalStep = observer(
+  ({ investigation, step }: { investigation: Investigation; step: Extract<InvestigationStep, { kind: 'proposal' }> }) => {
     const { global } = useStores();
     const [declining, setDeclining] = useState(false);
     const [comment, setComment] = useState('');
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
-    const table = step.column.table;
-    const name = table
-      ? columnName({ schema: table.schema, table: table.table, column: step.column.column })
-      : step.column.column;
+    const { proposal } = step;
+    const pending = step.status === 'pending';
+    const connection = global.connections.find(c => c.id === proposal.profileId);
+    // Rules a change names by id: as they are now, or as they were before
+    // Apply removed them.
+    const rules = step.before ?? global.connectionPolicy(proposal.profileId)?.rules ?? [];
+    const changes = proposal.changes.map(change => describeChange(change, rules));
 
-    const answer = async (allowed: boolean, inCopy = false) => {
+    const answer = async (apply: boolean) => {
       setBusy(true);
       setError('');
-      const ok = await global.answerApproval(
-        investigation.id,
-        step.approvalId,
-        allowed,
-        comment.trim() || undefined,
-        inCopy,
-      );
+      const ok = await global.answerPolicyProposal(investigation.id, proposal.id, apply, comment.trim() || undefined);
       setBusy(false);
-      if (!ok) setError("Couldn't save that to the access policy.");
+      if (!ok) setError("Couldn't save that to the access policy, so nothing changed.");
+    };
+    const undo = async () => {
+      setBusy(true);
+      const ok = await global.undoPolicyProposal(investigation.id, proposal.id);
+      setBusy(false);
+      if (!ok) setError("Couldn't put the access policy back.");
     };
 
-    const pending = step.status === 'pending';
-    const policy = global.investigationPolicy(investigation.id);
-    // A policy other connections use too: Allow changes what their agents
-    // see as well, so a copy for this connection alone is offered first.
-    const shared = !!policy && policy.others.length > 0;
-    const where = !policy
-      ? undefined
-      : shared
-        ? `“${policy.name}” is also used by ${policy.others.join(', ')}. Allowing it there changes what agents see on ${policy.others.length === 1 ? 'it' : 'them'} too. A copy for ${policy.connection} changes only ${policy.connection}.`
-        : `Adds it to the Allow rules of the “${policy.name}” policy.`;
     return (
       <Box
         sx={{
@@ -160,24 +177,50 @@ const ApprovalStep = observer(
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
-          <VisibilityOutlined sx={{ fontSize: 16, color: pending ? 'var(--notification-color)' : dim }} />
+          <PolicyOutlined sx={{ fontSize: 16, color: pending ? 'var(--notification-color)' : dim }} />
           <Typography sx={{ fontSize: 13, fontWeight: 600, color: 'var(--text-color)' }}>
-            The agent needs to see <Box component="code" sx={{ fontFamily: 'var(--code-font)' }}>{name}</Box>
+            The agent proposes a policy change
           </Typography>
         </Box>
-        <Typography sx={{ fontSize: 12, color: dim, mb: 1, lineHeight: 1.4 }}>
-          Your access policy hides it, and the agent&apos;s query uses it.
-          {step.reason ? ` Its reason: “${step.reason}”` : ''}
-        </Typography>
-        {!pending ? (
-          <Typography sx={{ fontSize: 12, color: dim, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <CheckCircleOutline sx={{ fontSize: 14 }} />
-            {step.status === 'allowed'
-              ? 'Allowed. The query ran again.'
-              : step.status === 'expired'
-                ? 'The agent stopped waiting for an answer.'
-                : 'Declined.'}
+        {proposal.reason && (
+          <Typography sx={{ fontSize: 13, color: 'var(--text-color)', mb: 0.5, lineHeight: 1.4 }}>
+            {proposal.reason}
           </Typography>
+        )}
+        <Box component="ul" sx={{ m: 0, mb: 0.75, pl: 2.25 }}>
+          {changes.map((change, i) => (
+            <Typography
+              component="li"
+              key={i}
+              sx={{
+                fontSize: 12,
+                fontFamily: 'var(--code-font)',
+                color: change.loosens ? 'var(--text-warning-color)' : 'var(--text-color)',
+                lineHeight: 1.5,
+              }}
+            >
+              {change.text}
+            </Typography>
+          ))}
+        </Box>
+        {!pending ? (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <CheckCircleOutline sx={{ fontSize: 14, color: dim }} />
+            <Typography sx={{ fontSize: 12, color: dim, flex: 1 }}>
+              {step.status === 'applied'
+                ? 'Applied.'
+                : step.status === 'undone'
+                  ? 'Applied, then undone.'
+                  : step.status === 'expired'
+                    ? 'The agent stopped waiting for an answer.'
+                    : 'Declined.'}
+            </Typography>
+            {step.status === 'applied' && (
+              <Button size="small" disabled={busy} onClick={undo} sx={{ minWidth: 0, py: 0 }}>
+                Undo
+              </Button>
+            )}
+          </Box>
         ) : declining ? (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
             <TextField
@@ -208,22 +251,14 @@ const ApprovalStep = observer(
           </Box>
         ) : (
           <>
-            {where && <Typography sx={{ fontSize: 12, color: dim, mb: 1, lineHeight: 1.4 }}>{where}</Typography>}
+            <Typography sx={{ fontSize: 12, color: dim, mb: 1, lineHeight: 1.4 }}>
+              Changes {connection ? `${connection.label}'s` : "this connection's"} access policy. No other connection
+              changes.
+            </Typography>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-              {shared ? (
-                <>
-                  <Button size="small" variant="contained" disabled={busy} onClick={() => answer(true, true)}>
-                    Allow in a copy for {policy!.connection}
-                  </Button>
-                  <Button size="small" disabled={busy} onClick={() => answer(true)}>
-                    Allow in “{policy!.name}”
-                  </Button>
-                </>
-              ) : (
-                <Button size="small" variant="contained" disabled={busy} onClick={() => answer(true)}>
-                  Allow
-                </Button>
-              )}
+              <Button size="small" variant="contained" disabled={busy} onClick={() => answer(true)}>
+                Apply
+              </Button>
               <Button size="small" color="error" disabled={busy} onClick={() => setDeclining(true)}>
                 Decline…
               </Button>
@@ -365,8 +400,8 @@ const Step = observer(({ investigation, step }: { investigation: Investigation; 
       return <RevealStep investigation={investigation} step={step} />;
     case 'query':
       return <QueryStep investigation={investigation} step={step} />;
-    case 'approval':
-      return <ApprovalStep investigation={investigation} step={step} />;
+    case 'proposal':
+      return <ProposalStep investigation={investigation} step={step} />;
     case 'finding':
       return (
         <Box sx={{ display: 'flex', gap: 0.75, px: 0.25 }}>

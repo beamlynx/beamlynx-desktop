@@ -24,7 +24,7 @@ export const RAIL_ITEMS: { id: SettingsSection; label: string }[] = [
   { id: 'preferences', label: 'Preferences' },
   // Just before 'mcp' -- it's a prerequisite for MCP access (see
   // AccessPolicySection.tsx), not an unrelated setting placed nearby.
-  { id: 'access-policy', label: 'Access Policy' },
+  { id: 'access-policy', label: 'Policy templates' },
   { id: 'mcp', label: 'MCP' },
   { id: 'about', label: 'About' },
 ];
