@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Changed
+- **An agent's timeline is shorter.** Each query is two lines: the agent's reason with its row count, then the query. A query that failed adds one line with the error. Hover a line to read all of it. Lookups in a row, like table searches and completions, are one line showing the latest, with a count of the others. Click it to see them all. Questions waiting for your answer keep their full cards.
+- **The timeline follows the agent.** It stays scrolled to the newest step, also as a step grows, such as when a query finishes. Scroll up and it stays where you are. **New steps below** then takes you back, and so does scrolling to the bottom.
+
 ### Fixed
 - **An agent's SQL no longer appears in the Pine editor.** When an agent sent SQL that doesn't convert to Pine, its step in the investigation kept the SQL. Clicking that step, or going back to the latest query, then put the SQL in the agent's tab as if it were Pine. Nothing ran. Now such a step can't be clicked, because nothing ran in the tab. Its card shows the SQL, marked as SQL, with the reason it didn't convert. While SQL is still converting, its card is marked as SQL too.
 
