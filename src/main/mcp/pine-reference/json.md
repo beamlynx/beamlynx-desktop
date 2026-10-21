@@ -63,6 +63,24 @@ customer | select: data.'home address', data.'it''s'
 `[0]` is the first element. Quote a key that has spaces or other characters, and write an
 apostrophe inside it twice. A key with `-` needs no quotes: `data.first-name`.
 
+### The type or length of a value
+
+```
+customer | select: id, jsonb_typeof(data.tags) as tags_type, data.tags => jsonb_array_length as tag_count
+customer | where: jsonb_typeof(data) = 'array'
+```
+
+`jsonb_typeof` gives `object`, `array`, `string`, `number`, `boolean` or `null`, on every database.
+`jsonb_array_length` counts an array's items. On Postgres it is an error for a value that isn't an
+array, so check the type first when it may not be one:
+
+```
+customer | select: id, jsonb_array_length(if jsonb_typeof(data) = 'array' then data else data.nodes) as n
+```
+
+Inside these two, a key is read as JSON, not as text. Elsewhere it is text, so an `if` that gives a
+JSON column in one branch and a key in another fails on Postgres. Put it inside one of these two.
+
 ### Change one value
 
 ```

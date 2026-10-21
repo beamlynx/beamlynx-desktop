@@ -105,6 +105,15 @@ customers | where: deleted_at is not null
 `not` only attaches to `like`, `ilike` and `in`. It is not a standalone prefix, so
 `where: not status = 'archived'` does not parse — use `!=`.
 
+### A function of a column
+
+```
+customer | where: jsonb_typeof(data) = 'array'
+attachment | where: coalesce(name, title) ilike '%report%'
+```
+
+The left side can be a function of a column. It is compared with a value, not with another column.
+
 ### Cast the column before comparing
 
 ```
