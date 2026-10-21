@@ -37,17 +37,6 @@ export function snapshotOf(session: Session): QuerySnapshot {
   };
 }
 
-/** A step that ran nothing in the tab, such as SQL that didn't convert. */
-export function emptySnapshot(expression: string, error: string): QuerySnapshot {
-  return {
-    expression,
-    columns: [],
-    rows: [],
-    columnMetadata: { colIndexToAliasLookup: {}, aliasToKeyLookup: {}, colIndexToColumnLookup: {}, colIndexToPathLookup: {}, colIndexToPolicyLookup: {} },
-    columnVisibilityModel: {},
-    error,
-  };
-}
 
 /** The column a query was refused for, as pine-lang names it (`hidden-column`). */
 export type HiddenColumn = ColumnPolicy & { alias?: string; column: string };
@@ -71,11 +60,17 @@ export type InvestigationStep =
       kind: 'query';
       by: 'agent' | 'user';
       at: number;
+      // The Pine. Empty until an agent's SQL has converted, and for good if
+      // it didn't.
       expression: string;
+      // The SQL an agent sent with run_sql_as_pine. It is never shown as
+      // Pine, and never put in the tab.
+      sql?: string;
       reason?: string;
       running: boolean;
       rowCount?: number;
       error?: string;
+      // None when nothing ran in the tab, so there is nothing to show again.
       snapshot?: QuerySnapshot;
     }
   | { id: string; kind: 'finding'; at: number; text: string }
@@ -186,15 +181,16 @@ export class Investigation {
     }
   }
 
-  startQuery(expression: string, by: 'agent' | 'user'): string {
+  startQuery(expression: string, by: 'agent' | 'user', sql?: string): string {
     const id = stepId();
     this.steps.push({
       id,
       kind: 'query',
       by,
       at: Date.now(),
-      expression,
-      reason: queryReason(expression),
+      expression: sql === undefined ? expression : '',
+      ...(sql === undefined ? {} : { sql }),
+      reason: queryReason(sql ?? expression),
       running: true,
     });
     if (by === 'agent') this.selectedStepId = null;
@@ -210,6 +206,14 @@ export class Investigation {
     step.snapshot = snapshot;
     step.error = snapshot.error || undefined;
     step.rowCount = snapshot.error ? undefined : snapshot.rows.length;
+  }
+
+  /** A query that ran nothing in the tab, such as SQL that didn't convert. */
+  failQuery(id: string, error: string) {
+    const step = this.steps.find(s => s.id === id);
+    if (!step || step.kind !== 'query') return;
+    step.running = false;
+    step.error = error;
   }
 
   addApproval(approvalId: string, column: HiddenColumn, reason: string | undefined): string {

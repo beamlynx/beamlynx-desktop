@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Fixed
+- **An agent's SQL no longer appears in the Pine editor.** When an agent sent SQL that doesn't convert to Pine, its step in the investigation kept the SQL. Clicking that step, or going back to the latest query, then put the SQL in the agent's tab as if it were Pine. Nothing ran. Now such a step can't be clicked, because nothing ran in the tab. Its card shows the SQL, marked as SQL, with the reason it didn't convert. While SQL is still converting, its card is marked as SQL too.
 
 ## [0.68.0] - 2026-10-19
 ### Added
