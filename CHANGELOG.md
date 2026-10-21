@@ -4,8 +4,17 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- **Agents can read and propose changes to a connection's access policy.** Two new MCP tools. `get_access_policy` lists the connection's rules, each with an id. It shows rules only, never data. `propose_policy_change` takes a reason and a list of changes: add a rule, or remove, turn on or turn off one by its id. The app checks the changes first. It refuses an unknown rule id, removing a built-in rule, a malformed rule, and changes that would leave no rule on, since the agent would then be locked out. A valid proposal shows as a card in the agent's investigation (bundled beamlynx-ui). The call waits up to 10 minutes for the user to apply or decline it, then withdraws it. Nothing an agent can reach writes a policy: only the window does, after the user clicks Apply.
+
 ### Changed
+- **Each connection has its own access policy.** No two connections share one, so changing one connection's policy never changes another's. The policies listed under Settings are templates. Attaching one copies its rules into the connection, with the new IPC call `credentials:attach-template`. The first time this version reads `connections.json`, connections that shared a policy each get their own copy, with the same rules. Every existing policy stays as a template. An older app reading the same file still applies each connection's own rules. If it makes two connections share a policy again, the next read gives them separate copies again.
+- **A query that uses a hidden column is refused at once.** `run_query` no longer waits for the user to allow the column. The refusal tells the agent to read the policy and propose a change.
 - **The Pine reference agents read covers newer Pine.** `order:` with `nulls first` and `nulls last`, the functions `jsonb_typeof()` and `jsonb_array_length()`, and a condition that starts with a function, like `where: jsonb_typeof(data) = 'array'`. They need the pine-lang that adds them (pine-lang #142 to #145). The order topic also said Pine sorts ascending by default. It sorts descending: write `asc` for ascending.
+
+### Removed
+- `access-policy:duplicate` and `credentials:set-connection-policy`. A connection gets a policy only by attaching a template.
+- The approval wait in `run_query`, and its `/approval/:id` route and `mcp:approval-resolve` IPC call.
 
 ## [0.22.1] - 2026-10-19
 ### Fixed

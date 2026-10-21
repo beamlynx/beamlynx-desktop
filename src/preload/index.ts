@@ -5,6 +5,7 @@
 // UI genuinely can't do itself is know about Electron's auto-update
 // lifecycle (see src/main/auto-update.ts) -- that's exposed here so
 // beamlynx-ui can show it in-app instead of it being silent/console-only.
+import type { PolicyProposal } from '../main/mcp/policy-proposals';
 import { contextBridge, ipcRenderer } from 'electron';
 import type { AppDbStatus, Recipe, RecipeInputDef, StartupState } from '../main/app-db';
 import type { UpdateStatus } from '../main/auto-update';
@@ -17,7 +18,7 @@ import type {
   SaveConnectionInput,
   SaveConnectionResult,
   SavedConnectionMeta,
-  SetConnectionPolicyResult,
+  AttachTemplateResult,
   SetMcpEnabledResult,
 } from '../main/credential-store';
 // Matches beamlynx-ui's desktop.d.ts McpQueryRequest -- kept as a hand-mirrored
@@ -120,27 +121,24 @@ contextBridge.exposeInMainWorld('beamlynxDesktop', {
     delete: (id: string): Promise<void> => ipcRenderer.invoke('credentials:delete', id),
     setMcpEnabled: (id: string, enabled: boolean): Promise<SetMcpEnabledResult> =>
       ipcRenderer.invoke('credentials:set-mcp-enabled', id, enabled),
-    setConnectionPolicy: (id: string, policyId: string | null): Promise<SetConnectionPolicyResult> =>
-      ipcRenderer.invoke('credentials:set-connection-policy', id, policyId),
+    // A fresh copy of a template as the connection's own policy, or none.
+    attachTemplate: (id: string, templateId: string | null): Promise<AttachTemplateResult> =>
+      ipcRenderer.invoke('credentials:attach-template', id, templateId),
     setApplyPolicyToOwnQueries: (id: string, apply: boolean): Promise<SavedConnectionMeta | null> =>
       ipcRenderer.invoke('credentials:set-apply-policy-for-own-queries', id, apply),
     rename: (id: string, label: string): Promise<SavedConnectionMeta | null> =>
       ipcRenderer.invoke('credentials:rename', id, label),
   },
-  // Named, user-creatable access policies -- each connection independently
-  // selects which one applies to it (credentials.setConnectionPolicy above),
-  // or none. Separate top-level namespace from `credentials`: this isn't
-  // about any one saved connection. See credential-store.ts.
+  // Access policies: templates, and each connection's own policy (the one
+  // with its connectionId). The rule calls work on both. create and delete
+  // are for templates; credentials.attachTemplate above gives a connection
+  // its own copy of one. See credential-store.ts.
   accessPolicy: {
     list: (): Promise<AccessPolicy[]> => ipcRenderer.invoke('access-policy:list'),
     create: (name: string): Promise<AccessPolicy> => ipcRenderer.invoke('access-policy:create', name),
-    // A copy of a policy, with the same rules: for changing what one
-    // connection's agents see when its policy is shared with others.
-    duplicate: (id: string, name: string): Promise<AccessPolicy | null> =>
-      ipcRenderer.invoke('access-policy:duplicate', id, name),
     rename: (id: string, name: string): Promise<AccessPolicy | null> =>
       ipcRenderer.invoke('access-policy:rename', id, name),
-    delete: (id: string): Promise<void> => ipcRenderer.invoke('access-policy:delete', id),
+    delete: (id: string): Promise<boolean> => ipcRenderer.invoke('access-policy:delete', id),
     addRule: (policyId: string, rule: AccessPolicyRule): Promise<AccessPolicy | null> =>
       ipcRenderer.invoke('access-policy:add-rule', policyId, rule),
     removeRule: (policyId: string, ruleId: string): Promise<AccessPolicy | null> =>
@@ -211,9 +209,25 @@ contextBridge.exposeInMainWorld('beamlynxDesktop', {
       ipcRenderer.on('mcp:notes-delivered', listener);
       return () => ipcRenderer.removeListener('mcp:notes-delivered', listener);
     },
-    // The user's answer to a query waiting on a hidden column.
-    resolveApproval: (id: string, outcome: { allowed: boolean; comment?: string }): Promise<boolean> =>
-      ipcRenderer.invoke('mcp:approval-resolve', id, outcome),
+    // An agent's proposed change to its connection's access policy (see
+    // src/main/mcp/policy-proposals.ts), already checked against that
+    // policy. beamlynx-ui shows it as a card and applies it, through
+    // accessPolicy.* above, only when the user clicks Apply.
+    onPolicyProposal: (callback: (proposal: PolicyProposal) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, proposal: PolicyProposal) => callback(proposal);
+      ipcRenderer.on('mcp:policy-proposal', listener);
+      return () => ipcRenderer.removeListener('mcp:policy-proposal', listener);
+    },
+    // A proposal nobody answered in time. The agent stopped waiting.
+    onPolicyProposalExpired: (callback: (id: string) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, id: string) => callback(id);
+      ipcRenderer.on('mcp:policy-proposal-expired', listener);
+      return () => ipcRenderer.removeListener('mcp:policy-proposal-expired', listener);
+    },
+    // The user's answer, after the changes were applied, or not. False when
+    // the agent no longer waits for it.
+    resolvePolicyProposal: (id: string, outcome: { applied: boolean; comment?: string }): Promise<boolean> =>
+      ipcRenderer.invoke('mcp:policy-proposal-resolve', id, outcome),
   },
   // control-plane-server.ts's POST /reveal (behind the MCP request_reveal
   // tool) creates a request and fires 'mcp:reveal-request' here rather than

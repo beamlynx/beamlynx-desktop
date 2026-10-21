@@ -20,6 +20,7 @@
 // that's what lets __tests__/format.test.js require the compiled output
 // under plain `node --test` (this repo's Node is v20, which has no
 // TypeScript stripping, so tests run against dist/).
+import type { AccessPolicy, AccessPolicyModule, ColumnMatcher } from '../credential-store';
 
 export type TableHint = {
   // null schema identifies a variable/checkpoint rather than a real table.
@@ -360,6 +361,12 @@ export function formatTableMatches(query: string, response: BuildResponse): stri
 // All three were reproduced live on 2026-09-19 (see beamlynx-plans/
 // completed/2026-09-19-mcp-pine-usability-feedback.md).
 const EVAL_ERROR_GUIDANCE: { pattern: RegExp; guidance: string }[] = [
+  {
+    pattern: /is hidden by the access policy/,
+    guidance:
+      'If you need this column, read the connection\'s rules with get_access_policy, then propose the ' +
+      'narrowest change that shows it with propose_policy_change. The user decides.',
+  },
   {
     // e.g. `customers | orders .customer_id | select: customers.email`
     pattern: /invalid reference to .*entry for table/i,
@@ -754,4 +761,51 @@ export function formatExpressionError(
   }
 
   return sections.join('\n\n');
+}
+
+/** What a policy rule matches, in words. */
+function describeMatcher(m: ColumnMatcher): string {
+  switch (m.type) {
+    case 'column-type':
+      return `columns of type ${m.allow.join(', ')}`;
+    case 'foreign-key':
+      return 'foreign key columns';
+    case 'column-name':
+      return m.suffix !== undefined
+        ? `names ending in "${m.suffix}"`
+        : m.contains !== undefined
+          ? `names containing "${m.contains}"`
+          : `names equal to "${m.equals}"`;
+    case 'column':
+      return `${m.schema ? `${m.schema}.` : ''}${m.table}.${m.column}`;
+  }
+}
+
+/**
+ * get_access_policy's answer: a connection's own rules, each with the id a
+ * proposal names it by. Rules only, never data.
+ */
+export function formatPolicy(label: string, policy: AccessPolicy | null): string {
+  if (!policy) {
+    return `"${label}" has no access policy: you see every column. There is nothing to propose.`;
+  }
+  const line = (m: AccessPolicyModule) => {
+    const notes = [m.builtIn ? 'built in' : '', m.enabled ? '' : 'off'].filter(Boolean);
+    const what = m.type === 'hide' ? describeMatcher(m.match) : describeMatcher(m as ColumnMatcher);
+    return `- [${m.id}] ${what}${notes.length ? ` (${notes.join(', ')})` : ''}`;
+  };
+  const shows = policy.rules.filter(m => m.type !== 'hide');
+  const hides = policy.rules.filter(m => m.type === 'hide');
+  return [
+    `The access policy of "${label}"${policy.template ? `, first copied from the "${policy.template.name}" template` : ''}. ` +
+      'It is this connection\'s alone: changing it changes no other connection.',
+    'A column is hidden unless an Allow rule matches it. An Except rule hides what it matches, even when an ' +
+      'Allow rule matches it too. A rule that is off does nothing.',
+    '',
+    'Allow:',
+    ...(shows.length ? shows.map(line) : ['- (none)']),
+    '',
+    'Except:',
+    ...(hides.length ? hides.map(line) : ['- (none)']),
+  ].join('\n');
 }

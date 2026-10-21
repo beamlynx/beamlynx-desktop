@@ -33,11 +33,12 @@ import { getLaunchPath, getResourcesRoot } from '../resources';
 import { SERVER_INSTRUCTIONS } from './instructions';
 import { describeCall, outcomeOf, type AgentActivity } from './activity';
 import { INVESTIGATION_HEADER } from './investigations';
-import { runWithApprovals } from './approval-wait';
+import { proposeAndWait } from './policy-proposals';
 import { MAX_LIST_ITEMS, MAX_STRING_LENGTH, MAX_VARIABLES, variablesSchema, type VariableValue } from './variables-schema';
 import {
   formatCompletion,
   formatConnections,
+  formatPolicy,
   formatRevealCreated,
   formatRevealStatus,
   formatRows,
@@ -53,9 +54,9 @@ const GUI_LAUNCH_TIMEOUT_MS = 30000;
 // serves exactly one MCP client, so the id lasts as long as that session.
 const INVESTIGATION_ID = randomUUID();
 
-// How long run_query waits for the user to allow a hidden column before it
-// gives the agent the refusal after all.
-const APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
+// How long propose_policy_change waits for the user's answer. The control
+// plane withdraws the proposal after as long (PROPOSAL_EXPIRY_MS there).
+const PROPOSAL_TIMEOUT_MS = 10 * 60 * 1000;
 const GUI_POLL_INTERVAL_MS = 300;
 
 function isControlPlaneUp(): Promise<boolean> {
@@ -358,15 +359,8 @@ async function registerTools(server: McpServer): Promise<void> {
   async function runOnControlPlane(body: Record<string, unknown>) {
     try {
       await ensureGuiRunning();
-      // A query refused for a hidden column the user could allow waits here
-      // for their answer (see approval-wait.ts).
-      const { text, isError } = await runWithApprovals(
-        controlPlaneRequest,
-        body,
-        result => formatRows(result),
-        APPROVAL_TIMEOUT_MS,
-      );
-      return isError ? errorResult(text) : textResult(text);
+      const { result } = await controlPlaneRequest('POST', '/query', body);
+      return result?.error ? errorResult(formatRows(result)) : textResult(formatRows(result ?? {}));
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
     }
@@ -499,6 +493,69 @@ async function registerTools(server: McpServer): Promise<void> {
         );
       }
       return textResult(content);
+    },
+  );
+
+  server.registerTool(
+    'get_access_policy',
+    {
+      description:
+        'Read the access policy of a connection: which columns you may see. Each connection has a policy of its ' +
+        'own. Lists its Allow rules (a column is hidden unless one matches) and its Except rules (hide what they ' +
+        'match, even when an Allow rule matches too), each with the id propose_policy_change names it by. Rules ' +
+        'only, never data. Read it before proposing a change, so the change fits what is there.',
+      inputSchema: {
+        connection_id: z.string().describe('A connection id from list_connections'),
+      },
+    },
+    async ({ connection_id }: { connection_id: string }) => {
+      try {
+        await ensureGuiRunning();
+        const found = await controlPlaneRequest('POST', '/policy', { profileId: connection_id });
+        if (!found) return errorResult(`There is no connection "${connection_id}".`);
+        return textResult(formatPolicy(found.label, found.policy));
+      } catch (e) {
+        return errorResult(e instanceof Error ? e.message : String(e));
+      }
+    },
+  );
+
+  const matcherShapes =
+    '{"type":"column","schema":"public","table":"order","column":"status"} (one column; schema optional), ' +
+    '{"type":"column-name","contains":"status"} (or "suffix" or "equals"; names ignore case), ' +
+    '{"type":"column-type","allow":["text"]}, {"type":"foreign-key"}';
+  server.registerTool(
+    'propose_policy_change',
+    {
+      description:
+        'Propose a change to a connection\'s access policy, for the user to apply or decline. Nothing changes ' +
+        'until they click Apply, in beamlynx, where they follow your work. The call waits for their answer, up ' +
+        'to 10 minutes, and says what they decided. Then run your query again. Propose the narrowest change that ' +
+        'answers the question -- one column rather than every text column -- and say why in reason. You may ' +
+        'also propose hiding something you noticed should not be visible. Each change is one of: ' +
+        '{"add": <rule>}, {"remove": "<rule id>"}, {"enable": "<rule id>"}, {"disable": "<rule id>"}. Rule ids ' +
+        'come from get_access_policy. A rule is a matcher, which shows what it matches, or ' +
+        '{"type":"hide","match":<matcher>}, which hides it. A matcher is one of: ' +
+        matcherShapes +
+        '. Built-in rules can be turned off but not removed. A proposal that would leave no rule on is refused.',
+      inputSchema: {
+        connection_id: z.string().describe('A connection id from list_connections'),
+        reason: z.string().describe('Why you need this, in plain words. The user reads it before deciding.'),
+        changes: z.array(z.record(z.string(), z.unknown())).describe('The changes, in order. At most 20.'),
+      },
+    },
+    async ({ connection_id, reason, changes }: { connection_id: string; reason: string; changes: unknown[] }) => {
+      try {
+        await ensureGuiRunning();
+        const { text, isError } = await proposeAndWait(
+          controlPlaneRequest,
+          { profileId: connection_id, reason, changes },
+          PROPOSAL_TIMEOUT_MS,
+        );
+        return isError ? errorResult(text) : textResult(text);
+      } catch (e) {
+        return errorResult(e instanceof Error ? e.message : String(e));
+      }
     },
   );
 

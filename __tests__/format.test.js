@@ -568,3 +568,12 @@ test('SQL sent as an expression is pointed at run_sql_as_pine', () => {
   const out = formatRows({ error: 'This looks like SQL. Paste it in the SQL panel, and it converts to Pine as you type.' });
   assert.match(out, /To run SQL, use run_sql_as_pine/);
 });
+
+test('a query refused for a hidden column points the agent at the policy tools', () => {
+  const text = formatRows({
+    error: "`a_0.type` is hidden by the access policy, so it can't be used in where:, order:, group: or per.",
+  });
+  assert.match(text, /hidden by the access policy/);
+  assert.match(text, /get_access_policy/);
+  assert.match(text, /propose_policy_change/);
+});
