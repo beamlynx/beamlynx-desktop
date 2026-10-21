@@ -135,6 +135,34 @@ test('every query keeps what the agent saw, and an older one shows again without
   assert.equal(investigation.selectedStepId, null);
 });
 
+test('an agent\'s SQL never shows in the tab as Pine, converted or not', async () => {
+  const store = storeWithFakeDatabase(() => ({ rows: [{ id: 1 }] }));
+  const sqlToPine = async sql =>
+    sql.includes('OFFSET') ? { error: "Line 1: OFFSET isn't in Pine." } : { expression: 'user | limit: 1' };
+  const deps = store.mcpQueryDeps;
+  store.mcpQueryDeps = id => ({ ...deps(id), client: { ...deps(id).client, sqlToPine } });
+  const runSql = sql => store.runMcpQuery({ profileId: 'p1', expression: '', sql, investigationId: 'claude-a' });
+
+  await runSql('/* One user */ SELECT * FROM "user" LIMIT 1');
+  await runSql('SELECT * FROM "user" OFFSET 5');
+  const investigation = store.investigations[0];
+  const session = store.sessions[investigation.sessionId];
+  const [converted, refused] = investigation.steps;
+
+  assert.ok(converted.expression.includes('user | limit: 1'));
+  assert.equal(converted.reason, 'One user');
+  assert.equal(refused.expression, '', 'SQL that did not convert has no Pine');
+  assert.equal(refused.sql, 'SELECT * FROM "user" OFFSET 5');
+  assert.match(refused.error, /OFFSET isn't in Pine/);
+  assert.equal(refused.snapshot, undefined, 'nothing ran, so there is nothing to show again');
+
+  // Showing either step, or the latest, never puts SQL in the Pine editor.
+  store.showInvestigationStep('claude-a', refused.id);
+  store.showInvestigationStep('claude-a', null);
+  store.showInvestigationStep('claude-a', converted.id);
+  assert.ok(!/SELECT/.test(session.expression), session.expression);
+});
+
 const hiddenType = {
   alias: 'a_0',
   column: 'type',

@@ -40,8 +40,14 @@ const QueryStep = observer(
     const selected =
       investigation.selectedStepId === step.id ||
       (investigation.selectedStepId === null && investigation.latestQuery?.id === step.id);
-    // The reason is shown above; the Pine without its leading comment.
-    const pine = step.expression.replace(/^\s*\/\*[\s\S]*?\*\/\s*/, '').replace(/^\s*--.*\n/, '').trim();
+    // The reason is shown above; the query without its leading comment. An
+    // agent's SQL is shown, marked as SQL, only until it is Pine, or when it
+    // never became Pine.
+    const asSql = !step.expression && step.sql !== undefined;
+    const query = (asSql ? step.sql! : step.expression)
+      .replace(/^\s*\/\*[\s\S]*?\*\/\s*/, '')
+      .replace(/^\s*--.*\n/, '')
+      .trim();
     return (
       <Box
         role="button"
@@ -66,7 +72,7 @@ const QueryStep = observer(
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
           <Typography sx={{ fontSize: 11, fontWeight: 600, color: dim, textTransform: 'uppercase', letterSpacing: 0.4 }}>
-            {step.by === 'user' ? 'You ran' : 'Query'}
+            {step.by === 'user' ? 'You ran' : asSql ? 'SQL' : 'Query'}
           </Typography>
           <Box sx={{ flex: 1 }} />
           {step.running ? (
@@ -99,7 +105,7 @@ const QueryStep = observer(
             overflow: 'hidden',
           }}
         >
-          {pine}
+          {query}
         </Box>
         {step.error && (
           <Typography

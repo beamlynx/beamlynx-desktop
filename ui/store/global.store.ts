@@ -44,7 +44,6 @@ import { AgentActivityStore } from './agent-activity';
 import {
   APPROVAL_WAIT_MS,
   DEFAULT_INVESTIGATION,
-  emptySnapshot,
   Investigation,
   queryReason,
   snapshotOf,
@@ -1540,7 +1539,7 @@ export class GlobalStore {
     investigationId?: string;
   }) => {
     const investigation = this.getOrCreateInvestigation(investigationId);
-    const stepId = investigation.startQuery(args.sql ?? args.expression, 'agent');
+    const stepId = investigation.startQuery(args.expression, 'agent', args.sql);
     // Marks the tab's requests as the agent's for exactly as long as this
     // query runs (Session.runsAsAgent): they are enforced, and the run isn't
     // taken for the user's own (onSessionEvaluated).
@@ -1550,17 +1549,16 @@ export class GlobalStore {
     try {
       result = await runMcpQueryImpl(this.mcpQueryDeps(investigation.id), args);
     } catch (e) {
-      investigation.finishQuery(stepId, emptySnapshot(args.expression, e instanceof Error ? e.message : String(e)));
+      investigation.failQuery(stepId, e instanceof Error ? e.message : String(e));
       throw e;
     } finally {
       runInAction(() => running.agentRunsInFlight--);
     }
     const session = this.sessions[investigation.sessionId];
-    // No tab id: the SQL didn't convert, so nothing ran in the tab.
-    investigation.finishQuery(
-      stepId,
-      session && result.tabId ? snapshotOf(session) : emptySnapshot(args.sql ?? args.expression, result.error),
-    );
+    // No tab id: the SQL didn't convert, so nothing ran in the tab, and
+    // there is no Pine to show there again.
+    if (session && result.tabId) investigation.finishQuery(stepId, snapshotOf(session));
+    else investigation.failQuery(stepId, result.error);
     const approval = session && result.tabId ? this.openApproval(investigation, session) : undefined;
     // Flag SideRail's badge regardless of `result.error` -- a
     // failed MCP query is still activity worth surfacing, not something to
