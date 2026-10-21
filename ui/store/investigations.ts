@@ -1,6 +1,7 @@
 import { makeAutoObservable, toJS } from 'mobx';
 import type { AgentActivity } from '../desktop';
-import type { ColumnPolicy } from './client';
+import type { AccessPolicyModule, ColumnPolicy } from './client';
+import type { PolicyProposal } from '../desktop';
 import type { ColumnMetadata, ResultColumn, Row, Session } from './session';
 
 /**
@@ -74,17 +75,19 @@ export type InvestigationStep =
       snapshot?: QuerySnapshot;
     }
   | { id: string; kind: 'finding'; at: number; text: string }
-  // A query waiting on the user to allow a hidden column.
+  // The agent proposing a change to its connection's access policy
+  // (propose_policy_change), waiting for the user to apply or decline it.
   | {
       id: string;
-      kind: 'approval';
+      kind: 'proposal';
       at: number;
-      approvalId: string;
-      column: HiddenColumn;
-      reason?: string;
+      proposal: PolicyProposal;
       // expired: the agent's call stopped waiting (beamlynx-desktop's
-      // APPROVAL_TIMEOUT_MS) before anyone answered.
-      status: 'pending' | 'allowed' | 'declined' | 'expired';
+      // PROPOSAL_EXPIRY_MS) before anyone answered. undone: applied, then
+      // put back by the user.
+      status: 'pending' | 'applied' | 'declined' | 'expired' | 'undone';
+      // The policy's rules before Apply, for Undo.
+      before?: AccessPolicyModule[];
     }
   // A note the user wrote to the agent.
   | { id: string; kind: 'note'; at: number; text: string; delivered: boolean }
@@ -107,12 +110,10 @@ export type InvestigationStep =
 
 // These tools are shown as the query they ran, or as the question and
 // findings they carry. Their activity events add nothing else.
-const QUERY_TOOLS = new Set(['run_query', 'run_sql_as_pine']);
-// Waiting is shown as the approval or reveal it waits on.
+const QUERY_TOOLS = new Set(['run_query', 'run_sql_as_pine', 'propose_policy_change']);
+// Waiting is shown as the proposal or reveal it waits on.
 const QUIET_TOOLS = new Set(['check_reveal']);
 
-/** How long an agent's run_query waits for an answer (beamlynx-desktop's APPROVAL_TIMEOUT_MS). */
-export const APPROVAL_WAIT_MS = 10 * 60 * 1000;
 
 /** Investigations from a relay too old to send an id share this one. */
 export const DEFAULT_INVESTIGATION = 'default';
@@ -216,17 +217,24 @@ export class Investigation {
     step.error = error;
   }
 
-  addApproval(approvalId: string, column: HiddenColumn, reason: string | undefined): string {
-    const id = stepId();
-    this.steps.push({ id, kind: 'approval', at: Date.now(), approvalId, column, reason, status: 'pending' });
-    return id;
+  addProposal(proposal: PolicyProposal): void {
+    if (this.proposal(proposal.id)) return;
+    this.steps.push({ id: `proposal-${proposal.id}`, kind: 'proposal', at: Date.now(), proposal, status: 'pending' });
   }
 
-  setApproval(approvalId: string, status: 'allowed' | 'declined' | 'expired') {
-    const step = this.steps.find(s => s.kind === 'approval' && s.approvalId === approvalId);
-    // Only a pending card changes: an answer after the agent stopped
-    // waiting is no answer.
-    if (step && step.kind === 'approval' && step.status === 'pending') step.status = status;
+  proposal(proposalId: string) {
+    const step = this.steps.find(s => s.kind === 'proposal' && s.proposal.id === proposalId);
+    return step?.kind === 'proposal' ? step : undefined;
+  }
+
+  setProposal(proposalId: string, status: 'applied' | 'declined' | 'expired' | 'undone', before?: AccessPolicyModule[]) {
+    const step = this.proposal(proposalId);
+    if (!step) return;
+    // Only a pending card is answered, or expires: an answer after the
+    // agent stopped waiting is no answer. Only an applied one is undone.
+    if (status === 'undone' ? step.status !== 'applied' : step.status !== 'pending') return;
+    step.status = status;
+    if (before) step.before = before;
   }
 
   addReveal(requestId: string, expression: string, reason: string | undefined): string {
@@ -283,15 +291,11 @@ export class Investigation {
     return undefined;
   }
 
-  get pendingApprovals() {
-    return this.steps.filter(s => s.kind === 'approval' && s.status === 'pending');
-  }
-
-  /** Everything the agent is waiting on the user for: approvals and reveal requests. */
+  /** Everything the agent is waiting on the user for: proposals and reveal requests. */
   get pendingDecisions() {
     return this.steps.filter(
       s =>
-        (s.kind === 'approval' && s.status === 'pending') ||
+        (s.kind === 'proposal' && s.status === 'pending') ||
         (s.kind === 'reveal' && (s.status === 'pending' || s.status === 'running')),
     );
   }

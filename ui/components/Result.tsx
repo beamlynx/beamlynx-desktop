@@ -498,10 +498,11 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     setContextMenu({ mouseX: x + 2, mouseY: y - 6, cellValue: undefined, fieldIndex: field, fromHeader: true });
   };
 
-  // The saved connection this tab runs on, and its access policy: where a
-  // change made from the grid is written. Desktop only.
+  // The saved connection this tab runs on, and its own access policy: where
+  // a change made from the grid is written. It changes no other
+  // connection. Desktop only.
   const policyConnection = global.connections.find(c => c.id === session.profileId);
-  const connectionPolicy = global.accessPolicies.find(p => p.id === policyConnection?.policyId);
+  const connectionPolicy = global.connectionPolicy(session.profileId);
 
   const policyActionFor = (field: string): ColumnPolicyAction => {
     const info = session.columnMetadata.colIndexToPolicyLookup?.[field];
@@ -527,40 +528,11 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     });
   };
 
-  // A change from the right-click menu to a policy that other connections
-  // also use: asked first whether to change it for all of them, or copy it
-  // for this connection alone (the safer choice, offered first).
-  const [policyChoice, setPolicyChoice] = useState<{
-    action: Extract<ColumnPolicyAction, { kind: 'hide' | 'show' }>;
-    fieldIndex: string;
-    others: string[];
-  } | null>(null);
-
   const handlePolicyChange = async (action: Extract<ColumnPolicyAction, { kind: 'hide' | 'show' }>) => {
     const fieldIndex = contextMenu?.fieldIndex ?? '';
     handleContextMenuClose();
-    const others = global.policySharing(session.profileId)?.others ?? [];
-    if (others.length > 0) {
-      setPolicyChoice({ action, fieldIndex, others });
-      return;
-    }
-    await applyPolicyChange(action, fieldIndex, false);
-  };
-
-  const applyPolicyChange = async (
-    action: Extract<ColumnPolicyAction, { kind: 'hide' | 'show' }>,
-    fieldIndex: string,
-    inCopy: boolean,
-  ) => {
-    const original = connectionPolicy;
-    const profileId = session.profileId;
-    if (!original || !profileId) return;
-    const sharedWithOthers = global.policySharing(profileId)?.others ?? [];
-    const policy = inCopy ? await global.copyPolicyForConnection(profileId) : original;
-    if (!policy) {
-      setNotice({ kind: 'error', text: "Couldn't copy the access policy, so nothing changed." });
-      return;
-    }
+    const policy = connectionPolicy;
+    if (!policy) return;
     const hide = action.kind === 'hide';
     const before = policy.rules;
     const beforeLookup = session.columnMetadata.colIndexToPolicyLookup;
@@ -579,14 +551,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     markColumn(action.target, hide, rule);
 
     const name = policyColumnName(action.target) + (action.isPath ? ' (the whole column)' : '');
-    const others = global.connections
-      .filter(c => c.policyId === policy.id && c.id !== policyConnection?.id)
-      .map(c => c.label);
-    const sharedWith = inCopy
-      ? `, a copy of “${original.name}” for ${policyConnection?.label ?? 'this connection'}. ${sharedWithOthers.join(', ')} ${sharedWithOthers.length === 1 ? 'keeps' : 'keep'} “${original.name}”`
-      : others.length
-        ? `, which ${others.join(', ')} also ${others.length === 1 ? 'uses' : 'use'}`
-        : '';
+    const connection = policyConnection?.label ?? 'this connection';
     // A tab that masks its own results still shows the old values until
     // it runs again. An agent's tab only reads, so it gets a button for
     // that. The owner's own masked tab gets a hint instead: running it
@@ -597,27 +562,19 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     const rerun = masks && !rerunButton ? ' Run the query again to update these results.' : '';
     setNotice({
       kind: 'success',
-      text: `Agents ${hide ? 'can no longer' : 'can now'} see ${name}. Saved to the “${policy.name}” policy${sharedWith}.${rerun}`,
+      text: `Agents on ${connection} ${hide ? 'can no longer' : 'can now'} see ${name}.${rerun}`,
       actions: [
         {
           label: 'Undo',
           onClick: async () => {
-            if (inCopy) {
-              // Back on the shared policy, and the copy gone.
-              await global.undoPolicyCopy(profileId, original.id, policy.id);
-            } else if (!(await global.setAccessPolicyRules(policy.id, before))) {
+            if (!(await global.setAccessPolicyRules(policy.id, before))) {
               setNotice({ kind: 'error', text: "Couldn't undo the change to the access policy." });
               return;
             }
             runInAction(() => {
               session.columnMetadata = { ...session.columnMetadata, colIndexToPolicyLookup: beforeLookup };
             });
-            setNotice({
-              kind: 'success',
-              text: inCopy
-                ? `${policyConnection?.label ?? 'This connection'} is back on the “${original.name}” policy.`
-                : `The “${policy.name}” policy is back as it was.`,
-            });
+            setNotice({ kind: 'success', text: `${connection}'s access policy is back as it was.` });
           },
         },
         ...(rerunButton
@@ -1256,47 +1213,6 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
         open={Boolean(updateData)}
         onClose={handleModalClose}
       />
-
-      <Dialog open={!!policyChoice} onClose={() => setPolicyChoice(null)} maxWidth="xs">
-        {policyChoice && connectionPolicy && (
-          <>
-            <DialogTitle sx={{ fontSize: 16 }}>
-              “{connectionPolicy.name}” is also used by {policyChoice.others.join(', ')}
-            </DialogTitle>
-            <DialogContent>
-              <DialogContentText sx={{ fontSize: 14 }}>
-                {policyChoice.action.kind === 'show' ? 'Showing' : 'Hiding'}{' '}
-                {policyColumnName(policyChoice.action.target)} in “{connectionPolicy.name}” changes what agents see on{' '}
-                {policyChoice.others.join(', ')} too. You can make a copy of the policy for{' '}
-                {policyConnection?.label ?? 'this connection'} instead, and change only the copy.
-              </DialogContentText>
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={() => setPolicyChoice(null)}>Cancel</Button>
-              <Button
-                onClick={() => {
-                  const choice = policyChoice;
-                  setPolicyChoice(null);
-                  void applyPolicyChange(choice.action, choice.fieldIndex, false);
-                }}
-              >
-                Change “{connectionPolicy.name}”
-              </Button>
-              <Button
-                variant="contained"
-                autoFocus
-                onClick={() => {
-                  const choice = policyChoice;
-                  setPolicyChoice(null);
-                  void applyPolicyChange(choice.action, choice.fieldIndex, true);
-                }}
-              >
-                Copy for {policyConnection?.label ?? 'this connection'}
-              </Button>
-            </DialogActions>
-          </>
-        )}
-      </Dialog>
 
       <ResultNotice notice={notice} onClose={() => setNotice(null)} />
 

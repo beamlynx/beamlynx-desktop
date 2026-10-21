@@ -54,13 +54,28 @@ type SetMcpEnabledResult =
   | { ok: false; reason: 'no-active-policy' };
 
 // Same shape of problem as SetMcpEnabledResult, from the other direction:
-// refuses clearing/blanking policyId (to null, or to a policy with no
-// active rule) while mcpEnabled is already true on that connection -- MCP
-// must never end up pointing at nothing.
-type SetConnectionPolicyResult =
+// refuses attaching a template with no active rule while mcpEnabled is
+// already true on that connection -- MCP must never end up behind a policy
+// that decides nothing. not-found: no such connection, or no such template.
+type AttachTemplateResult =
   | { ok: true; profile: SavedConnectionMeta }
   | { ok: false; reason: 'not-found' }
   | { ok: false; reason: 'mcp-requires-policy' };
+
+// One change in an agent's proposal, as beamlynx-desktop's
+// src/main/mcp/policy-proposals.ts checked it: a rule to add, or the id of
+// one of the policy's rules to remove, turn on or turn off.
+type PolicyChange = { add: AccessPolicyRule } | { remove: string } | { enable: string } | { disable: string };
+
+type PolicyProposal = {
+  id: string;
+  investigationId?: string;
+  profileId: string;
+  // The connection's own policy the changes were checked against.
+  policyId: string;
+  reason: string;
+  changes: PolicyChange[];
+};
 
 // Sent by the main process (control-plane-server.ts) when an MCP client calls
 // the run_query or complete_query MCP tool -- the renderer is the only place
@@ -214,7 +229,8 @@ interface BeamlynxDesktopApi {
     get: (id: string) => Promise<GetConnectionResult>;
     delete: (id: string) => Promise<void>;
     setMcpEnabled: (id: string, enabled: boolean) => Promise<SetMcpEnabledResult>;
-    setConnectionPolicy: (id: string, policyId: string | null) => Promise<SetConnectionPolicyResult>;
+    // A fresh copy of a template as the connection's own policy, or none (null).
+    attachTemplate: (id: string, templateId: string | null) => Promise<AttachTemplateResult>;
     setApplyPolicyToOwnQueries: (id: string, apply: boolean) => Promise<SavedConnectionMeta | null>;
     rename: (id: string, label: string) => Promise<SavedConnectionMeta | null>;
     // Opens the OS file chooser for a SQLite database; resolves with the
@@ -222,17 +238,16 @@ interface BeamlynxDesktopApi {
     // build that predates SQLite, so callers hide their Browse button then.
     pickSqliteFile?: () => Promise<string | null>;
   };
-  // Named, user-creatable access policies -- each connection independently
-  // selects which one applies (credentials.setConnectionPolicy above), or
-  // none. See credential-store.ts and store/client.ts's
+  // Access policies: each connection's own (with its connectionId), and the
+  // templates. The rule calls work on both; create and delete are for
+  // templates. See credential-store.ts and store/client.ts's
   // effectiveAccessPolicyRules.
   accessPolicy: {
     list: () => Promise<AccessPolicy[]>;
     create: (name: string) => Promise<AccessPolicy>;
-    // A copy with the same rules. Optional: absent from an older desktop app.
-    duplicate?: (id: string, name: string) => Promise<AccessPolicy | null>;
     rename: (id: string, name: string) => Promise<AccessPolicy | null>;
-    delete: (id: string) => Promise<void>;
+    // Whether a template was deleted. A connection's own policy isn't.
+    delete: (id: string) => Promise<boolean>;
     // By rule id. A rule for one exact column replaces any other rule for
     // that column; a built-in rule can't be removed. setRules is Undo.
     addRule: (policyId: string, rule: AccessPolicyRule) => Promise<AccessPolicy | null>;
@@ -264,7 +279,14 @@ interface BeamlynxDesktopApi {
     // desktop app older than them. A note waits for the agent's next call.
     addNote?: (investigationId: string, text: string) => Promise<{ id: string; text: string; at: number } | null>;
     onNotesDelivered?: (callback: (event: { investigationId: string; ids: string[] }) => void) => () => void;
-    resolveApproval?: (id: string, outcome: { allowed: boolean; comment?: string }) => Promise<boolean>;
+    // An agent's proposed change to its connection's access policy,
+    // already checked against it by the desktop app. Shown as a card;
+    // applied here, through accessPolicy.*, only when the user clicks Apply.
+    onPolicyProposal?: (callback: (proposal: PolicyProposal) => void) => () => void;
+    // A proposal nobody answered in time. The agent stopped waiting.
+    onPolicyProposalExpired?: (callback: (id: string) => void) => () => void;
+    // False when the agent no longer waits for the answer.
+    resolvePolicyProposal?: (id: string, outcome: { applied: boolean; comment?: string }) => Promise<boolean>;
   };
   // request_reveal/check_reveal's renderer half -- see
   // RevealRequestHandler.tsx and RevealRequestBanner.tsx. onRequest fires as
@@ -294,7 +316,9 @@ export type {
   DesktopUpdateStatus,
   SavedConnectionMeta,
   SetMcpEnabledResult,
-  SetConnectionPolicyResult,
+  AttachTemplateResult,
+  PolicyChange,
+  PolicyProposal,
   BeamlynxDesktopApi,
   AppDbStartupState,
   CredentialsStatus,

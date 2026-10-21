@@ -37,9 +37,9 @@ export const STALE_MS = 60_000;
  * last call ends, not only while a call is in flight.
  */
 export const LINGER_MS = 20_000;
-// Waiting for the person isn't the agent working: a pending approval has
-// its own badge.
-const WAITING_TOOLS = new Set(['check_reveal']);
+// Waiting for the person isn't the agent working: a pending proposal or
+// reveal has its own badge.
+const WAITING_TOOLS = new Set(['check_reveal', 'propose_policy_change']);
 
 export class AgentActivityStore {
   entries: AgentActivityEntry[] = [];

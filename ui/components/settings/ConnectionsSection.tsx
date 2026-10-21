@@ -26,6 +26,7 @@ import { CONNECTION_COLOR_PALETTE, isDesktop, isPlayground } from '../../store/u
 import type { GlobalStore } from '../../store/global.store';
 import { buildConnectionString, parseConnectionString } from '../../utils/connectionString';
 import ToggleRow from './ToggleRow';
+import { PolicyRules } from './AccessPolicySection';
 
 const REMOVE_CONFIRM_TIMEOUT_MS = 3000;
 
@@ -646,13 +647,34 @@ const ConnectionRow = observer(
       );
     };
 
-    const selectedPolicy = global.accessPolicies.find(p => p.id === policyId);
+    // This connection's own policy. No other connection uses it.
+    const ownPolicy = global.connectionPolicy(id);
+    const fromTemplate = ownPolicy?.template;
+    const templateLive = !!fromTemplate && global.policyTemplates.some(t => t.id === fromTemplate.id);
+    const pickerValue = !ownPolicy ? '__none__' : templateLive ? fromTemplate!.id : '__own__';
+    // A template picked in the menu, waiting for Replace: it replaces this
+    // connection's rules. undefined is nothing picked; null is "None".
+    const [pendingTemplate, setPendingTemplate] = useState<string | null | undefined>(undefined);
+    const pendingName =
+      pendingTemplate === null ? null : global.policyTemplates.find(t => t.id === pendingTemplate)?.name;
+    const [showRules, setShowRules] = useState(false);
+    const [focusedRuleId, setFocusedRuleId] = useState<string | undefined>();
+    // Opened from the results grid at this connection's policy
+    // (openAccessPolicy): open the row at its rules.
+    const focus = global.accessPolicyFocus;
+    useEffect(() => {
+      if (!focus || !ownPolicy || focus.policyId !== ownPolicy.id) return;
+      setExpanded(true);
+      setShowRules(true);
+      setFocusedRuleId(focus.ruleId);
+      global.clearAccessPolicyFocus();
+    }, [focus, ownPolicy, global]);
     // MCP always uses this connection's own assigned policy the moment it's
     // enabled -- there is no "on but undecided" state (setMcpEnabled
     // refuses turning it on otherwise). policyId === null is "None", a
     // deliberate choice of unrestricted access (e.g. a local/sandbox DB),
     // not a missing policy -- it counts as decided same as an active one.
-    const isConnPolicyActive = policyId == null ? true : !!selectedPolicy?.rules.some(m => m.enabled);
+    const isConnPolicyActive = policyId == null ? true : !!ownPolicy?.rules.some(m => m.enabled);
     // Only refuse *turning on* -- switching an already-enabled connection
     // off must never be blocked by its policy going inactive later; that's
     // a separate, always-available action (see GlobalStore.setMcpEnabled,
@@ -980,28 +1002,83 @@ const ConnectionRow = observer(
               fullWidth
               size="small"
               label="Access policy"
-              value={policyId ?? '__none__'}
+              value={pickerValue}
               onChange={e => {
-                const value = e.target.value === '__none__' ? null : e.target.value;
-                global.setConnectionPolicy(id, value);
+                const value = e.target.value;
+                if (value === pickerValue || value === '__own__') return;
+                setPendingTemplate(value === '__none__' ? null : value);
               }}
               helperText={
-                selectedPolicy && !isConnPolicyActive
-                  ? `"${selectedPolicy.name}" has no active rules -- add one in Settings -> Access Policy, or MCP can't turn on.`
-                  : policyId == null
+                ownPolicy && !isConnPolicyActive
+                  ? "This connection's policy has no active rules -- turn one on below, or MCP can't turn on."
+                  : !ownPolicy
                     ? 'No redaction -- MCP and your own queries see full, unrestricted data on this connection.'
-                    : 'Redacts columns per the selected policy. MCP access below requires one with an active rule.'
+                    : `This connection's own rules${fromTemplate ? `, first copied from the “${fromTemplate.name}” template` : ''}. Changing them changes no other connection.`
               }
               sx={{ ...fieldSx, minWidth: 0 }}
             >
               <MenuItem value="__none__">None</MenuItem>
-              {global.accessPolicies.map(p => (
+              {pickerValue === '__own__' && (
+                <MenuItem value="__own__" disabled>
+                  {fromTemplate ? `From “${fromTemplate.name}”, since deleted` : 'Its own rules'}
+                </MenuItem>
+              )}
+              {global.policyTemplates.map(p => (
                 <MenuItem key={p.id} value={p.id}>
                   {p.name}
                   {!p.rules.some(m => m.enabled) ? ' (no active rules)' : ''}
                 </MenuItem>
               ))}
             </TextField>
+
+            {pendingTemplate !== undefined && (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Typography variant="body2" sx={{ color: 'var(--text-color)' }}>
+                  {pendingName
+                    ? `Replace ${label}'s rules with a copy of the “${pendingName}” template?`
+                    : `Remove ${label}'s access policy? Agents on it will see everything.`}
+                  {ownPolicy ? " Its current rules are lost." : ''}
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    onClick={async () => {
+                      const templateId = pendingTemplate;
+                      setPendingTemplate(undefined);
+                      await global.attachTemplate(id, templateId);
+                    }}
+                  >
+                    {pendingName ? 'Replace' : 'Remove'}
+                  </Button>
+                  <Button size="small" onClick={() => setPendingTemplate(undefined)}>
+                    Cancel
+                  </Button>
+                </Box>
+              </Box>
+            )}
+
+            {ownPolicy && (
+              <Box>
+                <Button
+                  size="small"
+                  startIcon={
+                    <ExpandMoreIcon
+                      sx={{ fontSize: 18, transform: showRules ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }}
+                    />
+                  }
+                  onClick={() => setShowRules(!showRules)}
+                  sx={{ color: 'var(--text-color)', textTransform: 'none', px: 0.5 }}
+                >
+                  {showRules ? 'Hide rules' : `Edit rules (${ownPolicy.rules.filter(m => m.enabled).length} on)`}
+                </Button>
+                {showRules && (
+                  <Box sx={{ mt: 1.5 }}>
+                    <PolicyRules policy={ownPolicy} focusedRuleId={focusedRuleId} />
+                  </Box>
+                )}
+              </Box>
+            )}
 
             <ToggleRow
               label="MCP access"

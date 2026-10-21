@@ -11,7 +11,7 @@ import {
   ServerRejectedError,
   VariableValue,
 } from './client';
-import type { CredentialsStatus, RevealOutcome, RevealRequest } from '../desktop';
+import type { CredentialsStatus, PolicyProposal, RevealOutcome, RevealRequest } from '../desktop';
 import type { DbType } from '../utils/dbType';
 import { Session, Theme, InputMode } from './session';
 import { THEME_MODE, ThemeId } from '../styles/palette/tokens';
@@ -42,13 +42,12 @@ import { leadingDoc } from './canvas/pine-text';
 import { isValuesBlock, splitExpressions } from './blocks';
 import { AgentActivityStore } from './agent-activity';
 import {
-  APPROVAL_WAIT_MS,
   DEFAULT_INVESTIGATION,
   Investigation,
   queryReason,
   snapshotOf,
 } from './investigations';
-import { exactColumnRule } from '../utils/accessPolicy';
+import { exactColumnRule, ownHideRules } from '../utils/accessPolicy';
 import type { AgentActivity } from '../desktop';
 import { getCommandById } from '../utils/commands';
 import { normalizeServerVersion } from '../utils/version';
@@ -196,16 +195,16 @@ export class GlobalStore {
   // profile" apart from "haven't checked yet" and would flash the raw
   // connection id (e.g. "localhost:5432") as if it were the name.
   connectionsLoaded = false;
-  // Every named access policy (Settings -> Access Policy, credential-store.ts)
-  // -- each connection independently selects one by id (ConnectionInfo.policyId),
-  // or none. Loaded alongside connections at boot (refreshAccessPolicies)
+  // Every access policy (credential-store.ts): each connection's own, which
+  // it points at by ConnectionInfo.policyId and shares with no other
+  // connection, and the templates (policyTemplates), which no query uses. Loaded alongside connections at boot (refreshAccessPolicies)
   // and re-read fresh before every MCP query (mcpQueryDeps'
   // resolveAccessPolicyRules); every session's own accessPolicyRules
   // getter reads this same shared array, so an edit here is visible to
   // every open tab on its next read.
   accessPolicies: AccessPolicy[] = [];
-  // Which policy, and which of its rules, Settings -> Access Policy should
-  // show when it next opens. See openAccessPolicy.
+  // Which policy, and which of its rules, Settings should show when it next
+  // opens. See openAccessPolicy.
   accessPolicyFocus: { policyId: string; ruleId?: string } | null = null;
   credentialsStatus: CredentialsStatus | null = null;
 
@@ -1046,6 +1045,18 @@ export class GlobalStore {
     return this.accessPolicies;
   };
 
+  /** The templates: Settings -> Policy templates. Copied into a connection when attached. */
+  get policyTemplates(): AccessPolicy[] {
+    return this.accessPolicies.filter(p => !p.connectionId);
+  }
+
+  /** A saved connection's own access policy, if it has one. */
+  connectionPolicy = (profileId: string | undefined): AccessPolicy | undefined => {
+    const connection = this.connections.find(c => c.id === profileId);
+    return this.accessPolicies.find(p => p.id === connection?.policyId && p.connectionId === connection?.id);
+  };
+
+  /** A new template, with the starting rules. */
   createAccessPolicy = async (name: string): Promise<AccessPolicy | undefined> => {
     if (typeof window === 'undefined' || !window.beamlynxDesktop) return undefined;
     const policy = await window.beamlynxDesktop.accessPolicy.create(name);
@@ -1064,17 +1075,13 @@ export class GlobalStore {
     });
   };
 
-  // Any connection that had this policy selected falls back to "None"
-  // server-side (credential-store.ts's deleteAccessPolicy) -- refresh
-  // connections too, so a connection row showing this policy's name
-  // doesn't keep showing it after it no longer exists.
+  // Deletes a template. Connections made from it keep their own copies.
   deleteAccessPolicy = async (id: string): Promise<void> => {
     if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
-    await window.beamlynxDesktop.accessPolicy.delete(id);
+    if (!(await window.beamlynxDesktop.accessPolicy.delete(id))) return;
     runInAction(() => {
       this.accessPolicies = this.accessPolicies.filter(p => p.id !== id);
     });
-    await this.refreshConnections();
   };
 
   // Each of these writes through beamlynx-desktop's credential-store.ts and
@@ -1114,13 +1121,15 @@ export class GlobalStore {
   };
 
   /**
-   * Opens Settings -> Access Policy at one policy, with one of its rules
-   * picked out: where the results grid sends someone to change a rule that
-   * isn't about a single column.
+   * Opens Settings at one policy, with one of its rules picked out: where
+   * the results grid sends someone to change a rule that isn't about a
+   * single column. A connection's own policy is under Database
+   * Connections, a template under Policy templates.
    */
   openAccessPolicy = (policyId: string, ruleId?: string) => {
     this.accessPolicyFocus = { policyId, ruleId };
-    this.setShowSettings(true, 'access-policy');
+    const own = this.accessPolicies.find(p => p.id === policyId)?.connectionId;
+    this.setShowSettings(true, own ? 'connections' : 'access-policy');
   };
 
   clearAccessPolicyFocus = () => {
@@ -1559,7 +1568,7 @@ export class GlobalStore {
     // there is no Pine to show there again.
     if (session && result.tabId) investigation.finishQuery(stepId, snapshotOf(session));
     else investigation.failQuery(stepId, result.error);
-    const approval = session && result.tabId ? this.openApproval(investigation, session) : undefined;
+
     // Flag SideRail's badge regardless of `result.error` -- a
     // failed MCP query is still activity worth surfacing, not something to
     // swallow silently. Not wrapped into runMcpQueryImpl itself: that file
@@ -1569,122 +1578,81 @@ export class GlobalStore {
     runInAction(() => {
       this.mcpHasUnseenActivity = true;
     });
-    return approval ? { ...result, approval } : result;
+    return result;
   };
 
-  /**
-   * A query refused for a hidden column the user could allow: an approval
-   * card in the investigation, which the agent's run_query call waits on
-   * (see beamlynx-desktop's src/main/mcp/investigations.ts). None when an
-   * Except rule hid the column, since it would win over any Allow rule, or
-   * when the desktop app is too old to wait.
-   */
-  private openApproval = (investigation: Investigation, session: Session) => {
-    const hidden = session.evalHiddenColumn;
-    if (session.evalErrorType !== 'policy' || !hidden?.table) return undefined;
-    if (hidden.by?.type === 'hide') return undefined;
-    if (!desktopMcp()?.resolveApproval) return undefined;
-    const connection = this.connections.find(c => c.id === session.profileId);
-    if (!this.accessPolicies.some(p => p.id === connection?.policyId)) return undefined;
-    const approvalId = crypto.randomUUID();
-    investigation.addApproval(approvalId, hidden, queryReason(session.expression));
-    // The agent's call stops waiting after this long; the card then says so
-    // instead of offering an answer nobody would receive.
-    const expiry = setTimeout(() => investigation.setApproval(approvalId, 'expired'), APPROVAL_WAIT_MS);
-    // Node's timers (tests) would otherwise keep the process alive for it.
-    (expiry as { unref?: () => void }).unref?.();
-    return { id: approvalId, column: hidden.column, table: hidden.table };
+  /** An agent's proposed policy change, from beamlynx-desktop (McpBridge.tsx): a card in its investigation. */
+  handlePolicyProposal = (proposal: PolicyProposal) => {
+    this.getOrCreateInvestigation(proposal.investigationId).addProposal(proposal);
+    runInAction(() => {
+      this.mcpHasUnseenActivity = true;
+    });
   };
 
+  /** A proposal the agent stopped waiting on: its card can no longer be answered. */
+  expirePolicyProposal = (proposalId: string) => {
+    for (const investigation of this.investigations) investigation.setProposal(proposalId, 'expired');
+  };
+
+  private proposalStep = (investigationId: string, proposalId: string) =>
+    this.investigations.find(i => i.id === investigationId)?.proposal(proposalId);
+
   /**
-   * The user's answer to an approval card. Allow writes an Allow rule for
-   * that one column to the connection's policy, the same rule as the
-   * results grid's "Show to agents", before the agent's waiting call runs
-   * the query again. False when the rule couldn't be written.
+   * The user's answer to a proposal card. Apply makes the changes to the
+   * connection's own policy, through the same calls as Settings, then tells
+   * the agent's waiting call. Only a pending card is answered, and only
+   * while the connection still has the policy the changes were checked
+   * against. False when nothing was saved.
    */
-  answerApproval = async (
-    investigationId: string,
-    approvalId: string,
-    allowed: boolean,
-    comment?: string,
-    // Allow it in a copy of the policy for this connection alone
-    // (copyPolicyForConnection), not in the policy it shares with others.
-    inCopy = false,
-  ) => {
-    const investigation = this.investigations.find(i => i.id === investigationId);
-    const step = investigation?.steps.find(s => s.kind === 'approval' && s.approvalId === approvalId);
-    if (!investigation || !step || step.kind !== 'approval' || step.status !== 'pending') return false;
-    if (allowed) {
-      const session = this.sessions[investigation.sessionId];
-      const connection = this.connections.find(c => c.id === session?.profileId);
-      const policy =
-        inCopy && connection
-          ? await this.copyPolicyForConnection(connection.id)
-          : this.accessPolicies.find(p => p.id === connection?.policyId);
-      const table = step.column.table;
-      if (!policy || !table) return false;
-      const rule = exactColumnRule({ schema: table.schema, table: table.table, column: step.column.column }, false);
-      if (!(await this.addAccessPolicyRule(policy.id, rule))) return false;
+  answerPolicyProposal = async (investigationId: string, proposalId: string, apply: boolean, comment?: string) => {
+    const step = this.proposalStep(investigationId, proposalId);
+    if (!step || step.status !== 'pending') return false;
+    const { proposal } = step;
+    const investigation = this.investigations.find(i => i.id === investigationId)!;
+    if (!apply) {
+      await desktopMcp()?.resolvePolicyProposal?.(proposal.id, { applied: false, comment });
+      investigation.setProposal(proposal.id, 'declined');
+      return true;
     }
-    await desktopMcp()?.resolveApproval?.(approvalId, { allowed, comment });
-    investigation.setApproval(approvalId, allowed ? 'allowed' : 'declined');
+    const policy = this.connectionPolicy(proposal.profileId);
+    if (!policy || policy.id !== proposal.policyId) return false;
+    const before = toJS(policy.rules);
+    for (const change of proposal.changes) {
+      // Showing a column takes out its own Except rules first, as the
+      // results grid's "Show to agents" does. The card says so.
+      for (const hide of 'add' in change ? ownHideRules(policy.rules, change.add) : []) {
+        await this.removeAccessPolicyRule(policy.id, hide.id);
+      }
+      const done =
+        'add' in change
+          ? await this.addAccessPolicyRule(policy.id, change.add)
+          : 'remove' in change
+            ? await this.removeAccessPolicyRule(policy.id, change.remove)
+            : await this.setAccessPolicyRuleEnabled(policy.id, 'enable' in change ? change.enable : change.disable, 'enable' in change);
+      if (!done) {
+        await this.setAccessPolicyRules(policy.id, before);
+        return false;
+      }
+    }
+    await desktopMcp()?.resolvePolicyProposal?.(proposal.id, { applied: true });
+    investigation.setProposal(proposal.id, 'applied', before);
     return true;
   };
 
-  /**
-   * The access policy an investigation's queries run under, and the other
-   * connections that share it: an Allow on the approval card changes it for
-   * all of them, and the card says so.
-   */
-  investigationPolicy = (investigationId: string) => {
+  /** Puts the policy back as it was before an applied proposal. The agent isn't told. */
+  undoPolicyProposal = async (investigationId: string, proposalId: string) => {
+    const step = this.proposalStep(investigationId, proposalId);
+    if (!step || step.status !== 'applied' || !step.before) return false;
+    if (!(await this.setAccessPolicyRules(step.proposal.policyId, step.before))) return false;
+    this.investigations.find(i => i.id === investigationId)!.setProposal(proposalId, 'undone');
+    return true;
+  };
+
+  /** The connection an investigation's queries run on, by its label. */
+  investigationConnection = (investigationId: string) => {
     const investigation = this.investigations.find(i => i.id === investigationId);
     const session = investigation && this.sessions[investigation.sessionId];
-    const sharing = this.policySharing(session?.profileId);
-    return sharing && { name: sharing.policy.name, others: sharing.others, connection: sharing.connection.label };
-  };
-
-  /** A saved connection's access policy, and the labels of the other connections that use it too. */
-  policySharing = (profileId: string | undefined) => {
-    const connection = this.connections.find(c => c.id === profileId);
-    const policy = this.accessPolicies.find(p => p.id === connection?.policyId);
-    if (!connection || !policy) return undefined;
-    const others = this.connections.filter(c => c.policyId === policy.id && c.id !== connection.id).map(c => c.label);
-    return { connection, policy, others };
-  };
-
-  /**
-   * Gives a connection a copy of its access policy, named for it, so a
-   * change meant for it alone doesn't change what agents see on the other
-   * connections that shared the policy. Null if that couldn't be done; then
-   * nothing changed.
-   */
-  copyPolicyForConnection = async (profileId: string): Promise<AccessPolicy | null> => {
-    const sharing = this.policySharing(profileId);
-    const desktop = typeof window === 'undefined' ? undefined : window.beamlynxDesktop;
-    if (!sharing || !desktop?.accessPolicy.duplicate) return null;
-    const copy = await desktop.accessPolicy.duplicate(
-      sharing.policy.id,
-      `${sharing.policy.name} for ${sharing.connection.label}`,
-    );
-    if (!copy) return null;
-    runInAction(() => {
-      this.accessPolicies = [...this.accessPolicies, copy];
-    });
-    const switched = await desktop.credentials.setConnectionPolicy(profileId, copy.id);
-    if (!switched.ok) {
-      await this.deleteAccessPolicy(copy.id);
-      return null;
-    }
-    runInAction(() => {
-      this.connections = this.connections.map(c => (c.id === profileId ? { ...c, policyId: copy.id } : c));
-    });
-    return copy;
-  };
-
-  /** Undoes copyPolicyForConnection: the connection back on its old policy, and the copy gone. */
-  undoPolicyCopy = async (profileId: string, previousPolicyId: string, copyId: string) => {
-    await this.setConnectionPolicy(profileId, previousPolicyId);
-    await this.deleteAccessPolicy(copyId);
+    return this.connections.find(c => c.id === session?.profileId);
   };
 
   /** A tool call's start or end, from beamlynx-desktop (McpBridge.tsx). */
@@ -1798,33 +1766,34 @@ export class GlobalStore {
   };
 
   /**
-   * Selects which access policy (if any) applies to this connection's
-   * queries -- null means "None" (unrestricted access), which is a valid
-   * choice even while mcpEnabled is already true. Refused (not silently
-   * ignored) only if it would set a real, named policy with no active rule
-   * while mcpEnabled is already true: MCP must never end up pointing at a
-   * policy that decides nothing. The ConnectionsSection UI is expected to
-   * disable any such inactive policy in that state (see its own picker),
-   * but this still surfaces connectionError on the refusal path the same
-   * way setMcpEnabled does. See credential-store.ts's setConnectionPolicy.
+   * Gives a connection a fresh copy of a template's rules as its own policy,
+   * in place of the rules it had, or no policy (null, "None" -- unrestricted
+   * access, a valid choice even while mcpEnabled is already true). Refused
+   * only for a template with no active rule while mcpEnabled is true: MCP
+   * must never end up behind a policy that decides nothing. Surfaces
+   * connectionError on refusal the same way setMcpEnabled does. See
+   * credential-store.ts's attachTemplate.
    */
-  setConnectionPolicy = async (id: string, policyId: string | null): Promise<void> => {
-    if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
-    const result = await window.beamlynxDesktop.credentials.setConnectionPolicy(id, policyId);
+  attachTemplate = async (id: string, templateId: string | null): Promise<boolean> => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) return false;
+    const result = await window.beamlynxDesktop.credentials.attachTemplate(id, templateId);
     if (!result.ok) {
       runInAction(() => {
         this.connectionError =
           result.reason === 'mcp-requires-policy'
-            ? 'MCP access is on for this connection -- pick "None" or a policy with an active rule, or turn MCP off first.'
-            : 'That connection no longer exists.';
+            ? 'MCP access is on for this connection -- pick "None" or a template with an active rule, or turn MCP off first.'
+            : 'That connection or template no longer exists.';
       });
-      return;
+      return false;
     }
     runInAction(() => {
       this.connections = this.connections.map(c =>
         c.id === id ? { ...c, mcpEnabled: result.profile.mcpEnabled, policyId: result.profile.policyId } : c,
       );
     });
+    // The connection's new policy, and its old one gone.
+    await this.refreshAccessPolicies();
+    return true;
   };
 
   /**
@@ -1984,6 +1953,8 @@ export class GlobalStore {
     if (useDesktop && desktopApi) {
       try {
         await desktopApi.credentials.delete(id);
+        // Its own policy went with it.
+        await this.refreshAccessPolicies();
       } catch {
         // Best effort -- nothing more useful to do if this fails.
       }
@@ -2104,6 +2075,9 @@ export class GlobalStore {
         const saveResult = await window.beamlynxDesktop.credentials.save(params);
         if (isDevelopment()) console.log('[credentials] connect: save result ->', saveResult);
         profileId = saveResult.persisted ? saveResult.profile.id : '';
+        // A new connection gets its own copy of the first template, which
+        // this list doesn't have yet.
+        if (saveResult.persisted) await this.refreshAccessPolicies();
       } catch (e) {
         console.error('[credentials] connect: credentials.save threw ->', e);
         profileId = '';
@@ -2704,7 +2678,7 @@ export class GlobalStore {
     }
   };
 
-  /** Decisions an agent is blocked on: in-call approvals and reveal requests. */
+  /** Decisions an agent is blocked on: proposed policy changes and reveal requests. */
   get agentDecisionsWaiting(): number {
     return this.investigations.reduce((n, i) => n + i.pendingDecisions.length, 0);
   }

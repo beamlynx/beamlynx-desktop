@@ -17,7 +17,7 @@ afterEach(() => {
 
 /** A fake desktop bridge, recording what the store sends it. */
 function stubBridge() {
-  const sent = { notes: [], approvals: [], reveals: [], duplicates: [], switched: [], deleted: [] };
+  const sent = { notes: [], proposals: [], reveals: [] };
   globalThis.window = {
     beamlynxDesktop: {
       mcp: {
@@ -25,24 +25,9 @@ function stubBridge() {
           sent.notes.push({ investigationId, text });
           return { id: `note-${sent.notes.length}`, text, at: Date.now() };
         },
-        resolveApproval: async (id, outcome) => {
-          sent.approvals.push({ id, outcome });
+        resolvePolicyProposal: async (id, outcome) => {
+          sent.proposals.push({ id, outcome });
           return true;
-        },
-      },
-      accessPolicy: {
-        duplicate: async (id, name) => {
-          sent.duplicates.push({ id, name });
-          return { id: 'pol-copy', name, rules: [] };
-        },
-        delete: async id => {
-          sent.deleted.push(id);
-        },
-      },
-      credentials: {
-        setConnectionPolicy: async (id, policyId) => {
-          sent.switched.push({ id, policyId });
-          return { ok: true, profile: { id, policyId, mcpEnabled: true } };
         },
       },
       mcpReveal: {
@@ -173,52 +158,101 @@ const hiddenType = {
 function withPolicy(store) {
   runInAction(() => {
     store.connections = [{ id: 'p1', label: 'Prod', mcpEnabled: true, policyId: 'pol' }];
-    store.accessPolicies = [{ id: 'pol', name: 'Default', rules: [] }];
+    store.accessPolicies = [
+      {
+        id: 'pol',
+        name: 'Default for Prod',
+        connectionId: 'p1',
+        rules: [
+          { id: 'h1', type: 'hide', match: { type: 'column-name', contains: 'token' }, enabled: true },
+          { id: 'fk', type: 'foreign-key', enabled: true, builtIn: true },
+        ],
+      },
+    ];
   });
-  const added = [];
-  store.addAccessPolicyRule = async (policyId, rule) => {
-    added.push({ policyId, rule });
-    return { id: policyId, name: 'Default', rules: [] };
-  };
-  return added;
+  const calls = [];
+  const ok = policyId => ({ id: policyId, name: 'Default for Prod', rules: [] });
+  store.addAccessPolicyRule = async (policyId, rule) => (calls.push(['add', policyId, rule]), ok(policyId));
+  store.removeAccessPolicyRule = async (policyId, id) => (calls.push(['remove', policyId, id]), ok(policyId));
+  store.setAccessPolicyRuleEnabled = async (policyId, id, on) => (calls.push(['enabled', policyId, id, on]), ok(policyId));
+  store.setAccessPolicyRules = async (policyId, rules) => (calls.push(['set', policyId, rules.map(r => r.id)]), ok(policyId));
+  return calls;
 }
 
-test('a query refused for a hidden column asks the user, and Allow writes an Allow rule', async () => {
-  const store = storeWithFakeDatabase(() => ({ error: 'hidden', errorType: 'policy', hidden: hiddenType }));
-  const added = withPolicy(store);
-  const sent = stubBridge();
-
-  const result = await run(store, 'claude-a', '/* Which rows are logins */\nactivity | where: type = \'x\'');
-  assert.ok(result.approval?.id, 'the agent\'s call is told to wait');
-  assert.equal(result.approval.column, 'type');
-  const investigation = store.investigations[0];
-  assert.equal(investigation.pendingApprovals.length, 1);
-  assert.equal(investigation.pendingApprovals[0].reason, 'Which rows are logins');
-  assert.equal(store.agentDecisionsWaiting, 1);
-
-  assert.equal(await store.answerApproval('claude-a', result.approval.id, true), true);
-  assert.deepEqual(added, [
-    { policyId: 'pol', rule: { type: 'column', schema: 'public', table: 'activity', column: 'type' } },
-  ]);
-  assert.deepEqual(sent.approvals, [{ id: result.approval.id, outcome: { allowed: true, comment: undefined } }]);
-  assert.equal(investigation.pendingApprovals.length, 0);
+const proposal = (changes, extra = {}) => ({
+  id: 'pp-1',
+  investigationId: 'claude-a',
+  profileId: 'p1',
+  policyId: 'pol',
+  reason: 'Logins are told apart by type',
+  changes,
+  ...extra,
 });
 
-test('a column an Except rule hides is not offered: the Except rule would win anyway', async () => {
-  const byExcept = { ...hiddenType, by: { type: 'hide', match: { type: 'column-name', contains: 'type' } } };
-  const store = storeWithFakeDatabase(() => ({ error: 'hidden', errorType: 'policy', hidden: byExcept }));
+test('a query refused for a hidden column is refused at once: no card, nothing waits', async () => {
+  const store = storeWithFakeDatabase(() => ({ error: 'hidden', errorType: 'policy', hidden: hiddenType }));
   withPolicy(store);
   stubBridge();
-  const result = await run(store, 'claude-a', 'activity | where: type = \'x\'');
+  const result = await run(store, 'claude-a', "activity | where: type = 'x'");
+  assert.equal(result.error, 'hidden');
   assert.equal(result.approval, undefined);
-  assert.equal(store.investigations[0].pendingApprovals.length, 0);
+  assert.equal(store.investigations[0].pendingDecisions.length, 0);
 });
 
-test('without a desktop app that can wait, nothing is asked', async () => {
-  const store = storeWithFakeDatabase(() => ({ error: 'hidden', errorType: 'policy', hidden: hiddenType }));
-  withPolicy(store);
-  const result = await run(store, 'claude-a', 'activity | where: type = \'x\'');
-  assert.equal(result.approval, undefined);
+test('a proposal is a card, and Apply makes each change to the connection\'s own policy, then tells the agent', async () => {
+  const store = new GlobalStore();
+  const calls = withPolicy(store);
+  const sent = stubBridge();
+  const column = { type: 'column', schema: 'public', table: 'activity', column: 'type' };
+  store.handlePolicyProposal(proposal([{ add: column }, { disable: 'h1' }, { enable: 'fk' }, { remove: 'h1' }]));
+  const investigation = store.investigations[0];
+  assert.equal(investigation.id, 'claude-a');
+  assert.equal(investigation.pendingDecisions.length, 1);
+  assert.equal(store.agentDecisionsWaiting, 1);
+
+  assert.equal(await store.answerPolicyProposal('claude-a', 'pp-1', true), true);
+  assert.deepEqual(calls, [
+    ['add', 'pol', column],
+    ['enabled', 'pol', 'h1', false],
+    ['enabled', 'pol', 'fk', true],
+    ['remove', 'pol', 'h1'],
+  ]);
+  assert.deepEqual(sent.proposals, [{ id: 'pp-1', outcome: { applied: true } }]);
+  assert.equal(investigation.proposal('pp-1').status, 'applied');
+  assert.equal(investigation.pendingDecisions.length, 0);
+  // An answered card can't be answered again.
+  assert.equal(await store.answerPolicyProposal('claude-a', 'pp-1', true), false);
+
+  // Undo puts the rules back as they were, without telling the agent.
+  assert.equal(await store.undoPolicyProposal('claude-a', 'pp-1'), true);
+  assert.deepEqual(calls.at(-1), ['set', 'pol', ['h1', 'fk']]);
+  assert.equal(investigation.proposal('pp-1').status, 'undone');
+  assert.equal(sent.proposals.length, 1);
+});
+
+test('declining a proposal changes nothing and sends the user\'s reason', async () => {
+  const store = new GlobalStore();
+  const calls = withPolicy(store);
+  const sent = stubBridge();
+  store.handlePolicyProposal(proposal([{ disable: 'h1' }]));
+  assert.equal(await store.answerPolicyProposal('claude-a', 'pp-1', false, 'tokens stay hidden'), true);
+  assert.deepEqual(calls, []);
+  assert.deepEqual(sent.proposals, [{ id: 'pp-1', outcome: { applied: false, comment: 'tokens stay hidden' } }]);
+  assert.equal(store.investigations[0].proposal('pp-1').status, 'declined');
+});
+
+test('a proposal the agent stopped waiting on, or for a policy the connection no longer has, is not applied', async () => {
+  const store = new GlobalStore();
+  const calls = withPolicy(store);
+  stubBridge();
+  store.handlePolicyProposal(proposal([{ disable: 'h1' }]));
+  store.expirePolicyProposal('pp-1');
+  assert.equal(store.investigations[0].proposal('pp-1').status, 'expired');
+  assert.equal(await store.answerPolicyProposal('claude-a', 'pp-1', true), false);
+
+  store.handlePolicyProposal(proposal([{ disable: 'h1' }], { id: 'pp-2', policyId: 'old-policy' }));
+  assert.equal(await store.answerPolicyProposal('claude-a', 'pp-2', true), false);
+  assert.deepEqual(calls, []);
 });
 
 test('the user running a query in the agent\'s tab goes in the timeline and is told to the agent', async () => {
@@ -269,12 +303,13 @@ test('closing an investigation\'s tab only hides it: the agent goes on, and the 
   withPolicy(store);
   const sent = stubBridge();
   await run(store, 'claude-a', 'activity | where: type = \'x\'');
+  store.handlePolicyProposal(proposal([{ disable: 'h1' }]));
   store.focusAgentTab();
   const investigation = store.investigations[0];
   store.closeTab(investigation.sessionId);
   assert.ok(!store.visibleSessionIds.includes(investigation.sessionId));
   assert.equal(store.investigations.length, 1);
-  assert.equal(sent.approvals.length, 0, 'the agent is still waiting for an answer');
+  assert.equal(sent.proposals.length, 0, 'the agent is still waiting for an answer');
   assert.equal(store.agentDecisionsWaiting, 1);
   store.focusAgentTab();
   assert.equal(store.activeSessionId, investigation.sessionId);
@@ -319,27 +354,6 @@ test('overlapping agent runs in one tab are all the agent\'s, never told back as
   await first;
   assert.deepEqual(store.investigations[0].steps.map(s => s.by), ['agent', 'agent']);
   assert.equal(sent.notes.length, 0);
-});
-
-test('a card the agent stopped waiting on can no longer be answered', async () => {
-  const store = storeWithFakeDatabase(() => ({ error: 'hidden', errorType: 'policy', hidden: hiddenType }));
-  const added = withPolicy(store);
-  stubBridge();
-  const result = await run(store, 'claude-a', 'activity | where: type = \'x\'');
-  store.investigations[0].setApproval(result.approval.id, 'expired');
-  assert.equal(await store.answerApproval('claude-a', result.approval.id, true), false);
-  assert.equal(added.length, 0);
-  assert.equal(store.agentDecisionsWaiting, 0);
-});
-
-test('the card says which policy Allow changes, and who else uses it', async () => {
-  const store = storeWithFakeDatabase(() => ({ rows: [] }));
-  withPolicy(store);
-  runInAction(() => {
-    store.connections = [...store.connections, { id: 'p2', label: 'Staging', mcpEnabled: true, policyId: 'pol' }];
-  });
-  await run(store, 'claude-a', 'user');
-  assert.deepEqual(store.investigationPolicy('claude-a'), { name: 'Default', others: ['Staging'], connection: 'Prod' });
 });
 
 /**
@@ -429,31 +443,85 @@ test('declining a reveal sends the user\'s reason', async () => {
   }
 });
 
-test('Allow in a copy: the connection gets a copy of its shared policy, and only the copy changes', async () => {
-  const store = storeWithFakeDatabase(() => ({ error: 'hidden', errorType: 'policy', hidden: hiddenType }));
-  const added = withPolicy(store);
+
+test('a connection\'s policy is its own: a template is never taken for it, and attaching one refreshes both', async () => {
+  const store = new GlobalStore();
+  const attached = [];
+  let policies = [
+    { id: 'tpl', name: 'Default', rules: [] },
+    { id: 'own', name: 'Default for Prod', rules: [], connectionId: 'p1', template: { id: 'tpl', name: 'Default' } },
+  ];
+  globalThis.window = {
+    beamlynxDesktop: {
+      credentials: {
+        attachTemplate: async (id, templateId) => {
+          attached.push({ id, templateId });
+          policies = [policies[0], { id: 'own-2', name: 'Default for Prod', rules: [], connectionId: 'p1' }];
+          return { ok: true, profile: { id, policyId: 'own-2', mcpEnabled: true } };
+        },
+      },
+      accessPolicy: { list: async () => policies },
+    },
+  };
   runInAction(() => {
-    store.connections = [...store.connections, { id: 'p2', label: 'Staging', mcpEnabled: true, policyId: 'pol' }];
+    store.connections = [
+      { id: 'p1', label: 'Prod', mcpEnabled: true, policyId: 'own' },
+      // As an older app could leave it: pointing at a template.
+      { id: 'p2', label: 'Staging', mcpEnabled: true, policyId: 'tpl' },
+    ];
+    store.accessPolicies = policies;
   });
-  const sent = stubBridge();
-  const result = await run(store, 'claude-a', 'activity | where: type = \'x\'');
-  assert.equal(await store.answerApproval('claude-a', result.approval.id, true, undefined, true), true);
-  assert.deepEqual(sent.duplicates, [{ id: 'pol', name: 'Default for Prod' }]);
-  assert.deepEqual(sent.switched, [{ id: 'p1', policyId: 'pol-copy' }]);
-  assert.equal(store.connections.find(c => c.id === 'p1').policyId, 'pol-copy');
-  assert.equal(store.connections.find(c => c.id === 'p2').policyId, 'pol', 'Staging keeps the shared policy');
-  assert.equal(added[0].policyId, 'pol-copy', 'the Allow rule goes to the copy');
+  assert.equal(store.connectionPolicy('p1').id, 'own');
+  assert.equal(store.connectionPolicy('p2'), undefined);
+  assert.deepEqual(store.policyTemplates.map(p => p.id), ['tpl']);
+
+  assert.equal(await store.attachTemplate('p1', 'tpl'), true);
+  assert.deepEqual(attached, [{ id: 'p1', templateId: 'tpl' }]);
+  assert.equal(store.connectionPolicy('p1').id, 'own-2');
+  assert.ok(!store.accessPolicies.some(p => p.id === 'own'));
 });
 
-test('undoing a copy puts the connection back on the shared policy and deletes the copy', async () => {
-  const store = storeWithFakeDatabase(() => ({ rows: [] }));
-  withPolicy(store);
-  const sent = stubBridge();
-  // Deleting a policy refreshes the connection list from the app; not here.
-  store.refreshConnections = async () => store.connections;
-  const copy = await store.copyPolicyForConnection('p1');
-  assert.equal(copy.id, 'pol-copy');
-  await store.undoPolicyCopy('p1', 'pol', 'pol-copy');
-  assert.deepEqual(sent.switched.at(-1), { id: 'p1', policyId: 'pol' });
-  assert.deepEqual(sent.deleted, ['pol-copy']);
+test('a new connection\'s own policy is loaded as soon as it is saved', async () => {
+  const store = new GlobalStore();
+  store.establishConnection = async () => ({ id: 'pine-1', version: '1.0.0' });
+  const own = { id: 'own-new', name: 'Default for db', rules: [], connectionId: 'p-new' };
+  const previous = process.env.NEXT_PUBLIC_DESKTOP;
+  process.env.NEXT_PUBLIC_DESKTOP = '1';
+  globalThis.window = {
+    beamlynxDesktop: {
+      credentials: {
+        save: async () => ({ persisted: true, profile: { id: 'p-new', label: 'db', policyId: 'own-new' } }),
+        list: async () => [{ id: 'p-new', label: 'db', policyId: 'own-new', mcpEnabled: false }],
+      },
+      accessPolicy: { list: async () => [own] },
+    },
+  };
+  try {
+    await store.connect({ dbHost: 'h', dbPort: '1', dbName: 'db', dbUser: 'u', dbPassword: 'p' }).catch(() => {});
+    assert.ok(store.accessPolicies.some(p => p.id === 'own-new'));
+  } finally {
+    if (previous === undefined) delete process.env.NEXT_PUBLIC_DESKTOP;
+    else process.env.NEXT_PUBLIC_DESKTOP = previous;
+  }
+});
+
+test('showing a column the user hid takes out their own Except rule first, whatever schema either names', async () => {
+  const store = new GlobalStore();
+  const calls = withPolicy(store);
+  stubBridge();
+  runInAction(() => {
+    store.accessPolicies[0].rules.push({
+      id: 'hx',
+      type: 'hide',
+      match: { type: 'column', schema: 'public', table: 'activity', column: 'type' },
+      enabled: true,
+    });
+  });
+  const show = { type: 'column', schema: null, table: 'activity', column: 'type' };
+  store.handlePolicyProposal(proposal([{ add: show }]));
+  assert.equal(await store.answerPolicyProposal('claude-a', 'pp-1', true), true);
+  assert.deepEqual(calls, [
+    ['remove', 'pol', 'hx'],
+    ['add', 'pol', show],
+  ]);
 });
