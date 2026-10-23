@@ -352,13 +352,44 @@ function copyForConnection(source: AccessPolicy, connection: { id: string; label
 
 // Every connection's policy is its own. A connection that points at a
 // template, or at another connection's policy, gets a copy of it, so it
-// keeps exactly the rules it had. That is the migration from shared
+// keeps exactly the rules it had. (The first time, a policy only it uses
+// becomes its own instead, see below.) That is the migration from shared
 // policies (store version 3), and it also repairs a file an older app
 // wrote. A connection pointing at a policy that no longer exists gets none,
 // with MCP off, as deleting its policy always did. A connection's policy
 // that nothing uses any more is removed. Returns whether anything changed.
 function ensureOwnPolicies(store: StoreFile): boolean {
   let changed = false;
+  const version = typeof store.version === 'number' ? store.version : 1;
+  // The first time only (store version 3): a policy just one connection
+  // uses becomes that connection's own, as it is, rather than a copy next
+  // to it. 0.68.0's "Copy for this connection" made such policies, and
+  // copying them again would leave them in the template list as well.
+  // Later reads only copy, so a template an older app points one
+  // connection at stays a template.
+  if (version < 3) {
+    const users = new Map<string, string[]>();
+    for (const c of store.connections) {
+      if (c.policyId) users.set(c.policyId, [...(users.get(c.policyId) ?? []), c.id]);
+    }
+    const moved: AccessPolicy[] = [];
+    store.accessPolicies = store.accessPolicies.map(policy => {
+      const by = users.get(policy.id);
+      if (!isTemplate(policy) || by?.length !== 1) return policy;
+      moved.push(policy);
+      return { ...policy, connectionId: by[0] };
+    });
+    // Moving mustn't leave nothing for a new connection to start from.
+    if (moved.length && !store.accessPolicies.some(isTemplate)) {
+      const first = moved[0];
+      store.accessPolicies.push({
+        id: randomUUID(),
+        name: first.name,
+        rules: first.rules.map(rule => ({ ...structuredClone(rule), id: randomUUID() })),
+      });
+    }
+    changed = changed || moved.length > 0;
+  }
   store.connections = store.connections.map(connection => {
     const policyId = connection.policyId ?? null;
     if (policyId === null) return connection;
@@ -376,7 +407,6 @@ function ensureOwnPolicies(store: StoreFile): boolean {
     store.accessPolicies = kept;
     changed = true;
   }
-  const version = typeof store.version === 'number' ? store.version : 1;
   if (version < 3) {
     store.version = 3;
     changed = true;
