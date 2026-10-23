@@ -1018,7 +1018,57 @@ const ConnectionRow = observer(
               gap: 1.5,
             }}
           >
-            {ownPolicy ? (
+            <ToggleRow
+              label="MCP access"
+              description="Let an AI agent query this connection over MCP."
+              checked={!!mcpEnabled || askingForPolicy}
+              onChange={value => {
+                // Turned on without a policy, it asks for one first.
+                if (value && !ownPolicy && global.policyTemplates.length) {
+                  setAskingForPolicy(true);
+                  return;
+                }
+                setAskingForPolicy(false);
+                void global.setMcpEnabled(id, value);
+              }}
+              disabled={mcpToggleDisabled}
+            />
+
+            {askingForPolicy && !ownPolicy && (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Typography variant="body2" sx={{ color: 'var(--text-color)' }}>
+                  Pick an access policy. It decides which columns the agent can see, and masks the rest.
+                </Typography>
+                {templatePicker(true)}
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      setAskingForPolicy(false);
+                      void global.setMcpEnabled(id, true);
+                    }}
+                    sx={{ textTransform: 'none' }}
+                  >
+                    Continue without a policy
+                  </Button>
+                  <Button size="small" onClick={() => setAskingForPolicy(false)} sx={{ textTransform: 'none' }}>
+                    Cancel
+                  </Button>
+                </Box>
+              </Box>
+            )}
+
+            {mcpEnabled && !ownPolicy && (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Alert severity="warning" sx={{ py: 0.25, '& .MuiAlert-message': { fontSize: 13 } }}>
+                  No access policy. The agent can read every column of this database, unmasked. Nothing here limits
+                  what it sees.
+                </Alert>
+                {templatePicker(false)}
+              </Box>
+            )}
+
+            {ownPolicy && (mcpEnabled || applyPolicyToOwnQueries) && (
               <Box>
                 <Typography variant="body2" sx={{ color: 'var(--text-color)', fontWeight: 600 }}>
                   Access policy
@@ -1047,16 +1097,15 @@ const ConnectionRow = observer(
                       onClick={() => setConfirmingPolicyRemove(true)}
                       sx={{ color: 'var(--canvas-text-dim)', textTransform: 'none' }}
                     >
-                      Remove…
+                      Allow every column…
                     </Button>
                   )}
                 </Box>
                 {confirmingPolicyRemove && (
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 1 }}>
                     <Typography variant="body2" sx={{ color: 'var(--text-color)' }}>
-                      Remove {label}&apos;s access policy? Its rules are lost
-                      {mcpEnabled ? ', and agents on it will read every column' : ''}. You can start again from a
-                      template.
+                      Agents on {label} will read every column, unmasked. This policy&apos;s rules are lost. You can start
+                      again from a template.
                     </Typography>
                     <Box sx={{ display: 'flex', gap: 1 }}>
                       <Button
@@ -1069,7 +1118,7 @@ const ConnectionRow = observer(
                           await global.attachTemplate(id, null);
                         }}
                       >
-                        Remove
+                        Allow every column
                       </Button>
                       <Button size="small" onClick={() => setConfirmingPolicyRemove(false)}>
                         Cancel
@@ -1083,60 +1132,16 @@ const ConnectionRow = observer(
                   </Box>
                 )}
               </Box>
-            ) : (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                <Typography variant="body2" sx={{ color: mcpEnabled ? 'var(--text-warning-color)' : 'var(--canvas-text-dim)' }}>
-                  {mcpEnabled
-                    ? 'No access policy. Agents can read every column of this database.'
-                    : 'No access policy. Agents would read every column.'}
-                </Typography>
-                {!askingForPolicy && templatePicker(false)}
-              </Box>
             )}
 
-            {askingForPolicy && !ownPolicy && (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                <Typography variant="body2" sx={{ color: 'var(--text-color)' }}>
-                  An access policy decides what agents see. Start from a template:
-                </Typography>
-                {templatePicker(true)}
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                  <Button
-                    size="small"
-                    onClick={() => {
-                      setAskingForPolicy(false);
-                      void global.setMcpEnabled(id, true);
-                    }}
-                    sx={{ textTransform: 'none' }}
-                  >
-                    Turn on without a policy
-                  </Button>
-                  <Button size="small" onClick={() => setAskingForPolicy(false)} sx={{ textTransform: 'none' }}>
-                    Cancel
-                  </Button>
-                </Box>
-              </Box>
+            {ownPolicy && (
+              <ToggleRow
+                label="Also restrict my own queries"
+                description="The policy always applies to agents. Turn this on to have it mask your own queries on this connection too."
+                checked={!!applyPolicyToOwnQueries}
+                onChange={value => global.setApplyPolicyToOwnQueries(id, value)}
+              />
             )}
-
-            <ToggleRow
-              label="MCP access"
-              description="Let an AI agent query this connection over MCP."
-              checked={!!mcpEnabled}
-              onChange={value => {
-                // The first time, with no policy yet, pick one first.
-                if (value && !ownPolicy && global.policyTemplates.length) setAskingForPolicy(true);
-                else void global.setMcpEnabled(id, value);
-              }}
-              disabled={mcpToggleDisabled}
-            />
-
-            <ToggleRow
-              label="Also restrict my own queries"
-              description="This policy always protects the MCP agent. Turn this on to have it redact your own queries on this connection too."
-              checked={!!applyPolicyToOwnQueries}
-              onChange={value => global.setApplyPolicyToOwnQueries(id, value)}
-              disabled={!policyId}
-            />
 
 
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 0.5 }}>
