@@ -248,7 +248,7 @@ function getStorePath(): string {
 }
 
 function emptyStore(): StoreFile {
-  return { version: 3, connections: [], accessPolicies: [makeDefaultPolicy()] };
+  return { version: 4, connections: [], accessPolicies: [makeDefaultPolicy()] };
 }
 
 // A corrupt or missing file must never block app boot -- default to empty
@@ -407,8 +407,19 @@ function ensureOwnPolicies(store: StoreFile): boolean {
     store.accessPolicies = kept;
     changed = true;
   }
-  if (version < 3) {
-    store.version = 3;
+  // Once (store version 4): while every policy was shared, "Show to
+  // agents" wrote its Allow rules into the policy a connection used, which
+  // was often Default. Each connection now has those rules in its own
+  // copy. Default is a template again, so the Allow rules added to it go:
+  // a new connection starts from what Default always started with. Except
+  // rules stay, so the template never hides less than it did.
+  if (version < 4) {
+    store.accessPolicies = store.accessPolicies.map(policy =>
+      isTemplate(policy) && policy.name === 'Default'
+        ? { ...policy, rules: policy.rules.filter(m => m.builtIn || m.type === 'hide') }
+        : policy,
+    );
+    store.version = 4;
     changed = true;
   }
   return changed;
@@ -543,19 +554,12 @@ export function saveConnection(input: SaveConnectionInput): SaveConnectionResult
       lastUsedAt: now,
       dbPasswordEncrypted,
       mcpEnabled: false,
-      // Set just below: protected by default from creation, independent of
-      // mcpEnabled -- a copy of the first template, so by the time MCP is
-      // ever turned on for this connection, a policy is already applying.
-      // Stays null only if every template has been deleted.
+      // No policy until MCP is turned on for it: the app asks for one then
+      // (beamlynx-ui's ConnectionsSection). Until then MCP is off, so no
+      // agent can reach it.
       policyId: null,
       applyPolicyToOwnQueries: false,
     };
-    const template = store.accessPolicies.find(isTemplate);
-    if (template) {
-      const own = copyForConnection(template, record);
-      store.accessPolicies.push(own);
-      record.policyId = own.id;
-    }
     store.connections.push(record);
   }
 
