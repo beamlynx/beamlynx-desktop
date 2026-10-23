@@ -470,3 +470,64 @@ test('a file an older app wrote back is repaired: shared again means copied agai
   assert.equal(policyById(repaired.policyId).connectionId, c1.id);
   assert.equal(policyById(c1.policyId), undefined, 'the copy nothing uses any more is removed');
 });
+
+// A store as 0.68.0 left it, shaped like a real one: Default shared by two
+// connections, Test used by none, and a copy that 0.68.0's "Copy for this
+// connection" made for one connection.
+function writeStoreWithACopy() {
+  const storePath = path.join(userDataDir, 'connections.json');
+  fs.mkdirSync(userDataDir, { recursive: true });
+  const rule = (r, extra = {}) => ({ ...r, id: Math.random().toString(36).slice(2), enabled: true, ...extra });
+  const policy = (id, name) => ({ id, name, rules: [rule(email), rule({ type: 'foreign-key' }, { builtIn: true })] });
+  const connection = (id, label, policyId, mcpEnabled = true) => ({
+    id, label, dbHost: id, dbPort: '5432', dbName: 'db', dbUser: 'u', dbType: 'postgres',
+    createdAt: '', lastUsedAt: '', dbPasswordEncrypted: '', mcpEnabled, policyId, applyPolicyToOwnQueries: false,
+  });
+  fs.writeFileSync(storePath, JSON.stringify({
+    version: 2,
+    connections: [
+      connection('local', 'Localhost', 'default'),
+      connection('staging', 'Staging', 'default'),
+      connection('prod', 'Production Read-Only', 'copy'),
+      connection('fga', 'Production Read-Only (Open FGA)', null),
+    ],
+    accessPolicies: [policy('default', 'Default'), policy('test', 'Test'), policy('copy', 'Default for Production Read-Only')],
+  }));
+  return storePath;
+}
+
+test('a policy only one connection uses becomes its own, as it is; a shared one is copied; the template list keeps only real templates', () => {
+  writeStoreWithACopy();
+  const connections = Object.fromEntries(listConnections().map(c => [c.id, c]));
+  const policies = listAccessPolicies();
+  // The copy 0.68.0 made is moved, not copied again: same id, now owned.
+  assert.equal(connections.prod.policyId, 'copy');
+  assert.equal(policyById('copy').connectionId, 'prod');
+  // Default, used by two, gives each its own copy and stays a template.
+  for (const id of ['local', 'staging']) {
+    const own = policyById(connections[id].policyId);
+    assert.equal(own.connectionId, id);
+    assert.deepEqual(own.template, { id: 'default', name: 'Default' });
+  }
+  assert.deepEqual(policies.filter(p => !p.connectionId).map(p => p.name).sort(), ['Default', 'Test']);
+  // No policy stays no policy.
+  assert.equal(connections.fga.policyId, null);
+  assert.equal(connections.fga.mcpEnabled, true);
+});
+
+test('moving the only template to its one connection leaves a copy as a template, for new connections', () => {
+  const storePath = path.join(userDataDir, 'connections.json');
+  fs.mkdirSync(userDataDir, { recursive: true });
+  fs.writeFileSync(storePath, JSON.stringify({
+    version: 2,
+    connections: [{ id: 'one', label: 'One', dbHost: 'h', dbPort: '1', dbName: 'd', dbUser: 'u', dbType: 'postgres',
+      createdAt: '', lastUsedAt: '', dbPasswordEncrypted: '', mcpEnabled: true, policyId: 'default', applyPolicyToOwnQueries: false }],
+    accessPolicies: [{ id: 'default', name: 'Default', rules: [{ ...email, id: 'r1', enabled: true }] }],
+  }));
+  const [one] = listConnections();
+  assert.equal(one.policyId, 'default');
+  assert.equal(policyById('default').connectionId, 'one');
+  const templates = listAccessPolicies().filter(p => !p.connectionId);
+  assert.deepEqual(templates.map(p => p.name), ['Default']);
+  assert.deepEqual(plain(templates[0]), plain(policyById('default')));
+});
