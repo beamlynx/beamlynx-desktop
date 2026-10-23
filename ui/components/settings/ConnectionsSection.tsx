@@ -647,16 +647,15 @@ const ConnectionRow = observer(
       );
     };
 
-    // This connection's own policy. No other connection uses it.
+    // This connection's own policy. No other connection uses it. Once it
+    // has one, it is edited, or removed and started again from a
+    // template, never swapped for another in place.
     const ownPolicy = global.connectionPolicy(id);
     const fromTemplate = ownPolicy?.template;
-    const templateLive = !!fromTemplate && global.policyTemplates.some(t => t.id === fromTemplate.id);
-    const pickerValue = !ownPolicy ? '__none__' : templateLive ? fromTemplate!.id : '__own__';
-    // A template picked in the menu, waiting for Replace: it replaces this
-    // connection's rules. undefined is nothing picked; null is "None".
-    const [pendingTemplate, setPendingTemplate] = useState<string | null | undefined>(undefined);
-    const pendingName =
-      pendingTemplate === null ? null : global.policyTemplates.find(t => t.id === pendingTemplate)?.name;
+    const rulesOn = ownPolicy?.rules.filter(m => m.enabled).length ?? 0;
+    const [confirmingPolicyRemove, setConfirmingPolicyRemove] = useState(false);
+    // Turning MCP on without a policy asks for one first.
+    const [askingForPolicy, setAskingForPolicy] = useState(false);
     const [showRules, setShowRules] = useState(false);
     const [focusedRuleId, setFocusedRuleId] = useState<string | undefined>();
     // Opened from the results grid at this connection's policy
@@ -680,6 +679,28 @@ const ConnectionRow = observer(
     // a separate, always-available action (see GlobalStore.setMcpEnabled,
     // which only ever refuses an `enabled: true` call).
     const mcpToggleDisabled = !mcpEnabled && !isConnPolicyActive;
+    const startFromTemplate = async (templateId: string, thenMcp: boolean) => {
+      setAskingForPolicy(false);
+      if ((await global.attachTemplate(id, templateId)) && thenMcp) await global.setMcpEnabled(id, true);
+    };
+    const templatePicker = (thenMcp: boolean) => (
+      <TextField
+        select
+        fullWidth
+        size="small"
+        label="Start from a template"
+        value=""
+        onChange={e => void startFromTemplate(e.target.value, thenMcp)}
+        sx={{ ...fieldSx, minWidth: 0 }}
+      >
+        {global.policyTemplates.map(p => (
+          <MenuItem key={p.id} value={p.id} disabled={!p.rules.some(m => m.enabled)}>
+            {p.name}
+            {!p.rules.some(m => m.enabled) ? ' (no active rules)' : ''}
+          </MenuItem>
+        ))}
+      </TextField>
+    );
     const disabledWhileBusy = switchDisabled || removing;
 
     return (
@@ -997,86 +1018,103 @@ const ConnectionRow = observer(
               gap: 1.5,
             }}
           >
-            <TextField
-              select
-              fullWidth
-              size="small"
-              label="Access policy"
-              value={pickerValue}
-              onChange={e => {
-                const value = e.target.value;
-                if (value === pickerValue || value === '__own__') return;
-                setPendingTemplate(value === '__none__' ? null : value);
-              }}
-              helperText={
-                ownPolicy && !isConnPolicyActive
-                  ? "This connection's policy has no active rules -- turn one on below, or MCP can't turn on."
-                  : !ownPolicy
-                    ? 'No redaction -- MCP and your own queries see full, unrestricted data on this connection.'
-                    : `This connection's own rules${fromTemplate ? `, first copied from the “${fromTemplate.name}” template` : ''}. Changing them changes no other connection.`
-              }
-              sx={{ ...fieldSx, minWidth: 0 }}
-            >
-              <MenuItem value="__none__">None</MenuItem>
-              {pickerValue === '__own__' && (
-                <MenuItem value="__own__" disabled>
-                  {fromTemplate ? `From “${fromTemplate.name}”, since deleted` : 'Its own rules'}
-                </MenuItem>
-              )}
-              {global.policyTemplates.map(p => (
-                <MenuItem key={p.id} value={p.id}>
-                  {p.name}
-                  {!p.rules.some(m => m.enabled) ? ' (no active rules)' : ''}
-                </MenuItem>
-              ))}
-            </TextField>
-
-            {pendingTemplate !== undefined && (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                <Typography variant="body2" sx={{ color: 'var(--text-color)' }}>
-                  {pendingName
-                    ? `Replace ${label}'s rules with a copy of the “${pendingName}” template?`
-                    : `Remove ${label}'s access policy? Agents on it will see everything.`}
-                  {ownPolicy ? " Its current rules are lost." : ''}
+            {ownPolicy ? (
+              <Box>
+                <Typography variant="body2" sx={{ color: 'var(--text-color)', fontWeight: 600 }}>
+                  Access policy
                 </Typography>
-                <Box sx={{ display: 'flex', gap: 1 }}>
+                <Typography variant="body2" sx={{ color: 'var(--canvas-text-dim)', mt: 0.25 }}>
+                  {rulesOn === 0
+                    ? "No rule is on, so MCP can't turn on. Turn one on in its rules."
+                    : `${rulesOn} rule${rulesOn === 1 ? '' : 's'} on${fromTemplate ? `, from the “${fromTemplate.name}” template` : ''}. It belongs to this connection alone.`}
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, mt: 0.75 }}>
                   <Button
                     size="small"
-                    variant="contained"
-                    onClick={async () => {
-                      const templateId = pendingTemplate;
-                      setPendingTemplate(undefined);
-                      await global.attachTemplate(id, templateId);
-                    }}
+                    startIcon={
+                      <ExpandMoreIcon
+                        sx={{ fontSize: 18, transform: showRules ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }}
+                      />
+                    }
+                    onClick={() => setShowRules(!showRules)}
+                    sx={{ color: 'var(--text-color)', textTransform: 'none', px: 0.5 }}
                   >
-                    {pendingName ? 'Replace' : 'Remove'}
+                    {showRules ? 'Hide rules' : 'Edit rules'}
                   </Button>
-                  <Button size="small" onClick={() => setPendingTemplate(undefined)}>
-                    Cancel
-                  </Button>
+                  {!confirmingPolicyRemove && (
+                    <Button
+                      size="small"
+                      onClick={() => setConfirmingPolicyRemove(true)}
+                      sx={{ color: 'var(--canvas-text-dim)', textTransform: 'none' }}
+                    >
+                      Remove…
+                    </Button>
+                  )}
                 </Box>
-              </Box>
-            )}
-
-            {ownPolicy && (
-              <Box>
-                <Button
-                  size="small"
-                  startIcon={
-                    <ExpandMoreIcon
-                      sx={{ fontSize: 18, transform: showRules ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }}
-                    />
-                  }
-                  onClick={() => setShowRules(!showRules)}
-                  sx={{ color: 'var(--text-color)', textTransform: 'none', px: 0.5 }}
-                >
-                  {showRules ? 'Hide rules' : `Edit rules (${ownPolicy.rules.filter(m => m.enabled).length} on)`}
-                </Button>
+                {confirmingPolicyRemove && (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 1 }}>
+                    <Typography variant="body2" sx={{ color: 'var(--text-color)' }}>
+                      Remove {label}&apos;s access policy? Its rules are lost
+                      {mcpEnabled ? ', and agents on it will read every column' : ''}. You can start again from a
+                      template.
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        color="error"
+                        onClick={async () => {
+                          setConfirmingPolicyRemove(false);
+                          setShowRules(false);
+                          await global.attachTemplate(id, null);
+                        }}
+                      >
+                        Remove
+                      </Button>
+                      <Button size="small" onClick={() => setConfirmingPolicyRemove(false)}>
+                        Cancel
+                      </Button>
+                    </Box>
+                  </Box>
+                )}
                 {showRules && (
                   <Box sx={{ mt: 1.5 }}>
                     <PolicyRules policy={ownPolicy} focusedRuleId={focusedRuleId} />
                   </Box>
                 )}
+              </Box>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Typography variant="body2" sx={{ color: mcpEnabled ? 'var(--text-warning-color)' : 'var(--canvas-text-dim)' }}>
+                  {mcpEnabled
+                    ? 'No access policy. Agents can read every column of this database.'
+                    : 'No access policy. Agents would read every column.'}
+                </Typography>
+                {!askingForPolicy && templatePicker(false)}
+              </Box>
+            )}
+
+            {askingForPolicy && !ownPolicy && (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Typography variant="body2" sx={{ color: 'var(--text-color)' }}>
+                  An access policy decides what agents see. Start from a template:
+                </Typography>
+                {templatePicker(true)}
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      setAskingForPolicy(false);
+                      void global.setMcpEnabled(id, true);
+                    }}
+                    sx={{ textTransform: 'none' }}
+                  >
+                    Turn on without a policy
+                  </Button>
+                  <Button size="small" onClick={() => setAskingForPolicy(false)} sx={{ textTransform: 'none' }}>
+                    Cancel
+                  </Button>
+                </Box>
               </Box>
             )}
 
@@ -1084,7 +1122,11 @@ const ConnectionRow = observer(
               label="MCP access"
               description="Let an AI agent query this connection over MCP."
               checked={!!mcpEnabled}
-              onChange={value => global.setMcpEnabled(id, value)}
+              onChange={value => {
+                // The first time, with no policy yet, pick one first.
+                if (value && !ownPolicy && global.policyTemplates.length) setAskingForPolicy(true);
+                else void global.setMcpEnabled(id, value);
+              }}
               disabled={mcpToggleDisabled}
             />
 
