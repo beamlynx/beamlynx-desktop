@@ -291,8 +291,10 @@ export const checkpointLabel = (checkpoint: Checkpoint): string => {
     const per = checkpoint.per?.length ? ` per ${checkpoint.per.map(columnLabel).join(', ')}` : '';
     return `limit ${checkpoint.limit ?? ''}${per}`;
   }
-  const aggregates = checkpoint.aggregates?.length ? ` with ${checkpoint.aggregates.join(', ')}` : '';
-  return `group ${(checkpoint.group ?? []).map(columnLabel).join(', ')}${aggregates}`;
+  const keys = (checkpoint.group ?? []).map(columnLabel).join(', ');
+  const aggregates = checkpoint.aggregates?.length ? `with ${checkpoint.aggregates.join(', ')}` : '';
+  // No keys: one group, the whole table, `group with count as n`.
+  return ['group', keys, aggregates].filter(Boolean).join(' ');
 };
 
 /**

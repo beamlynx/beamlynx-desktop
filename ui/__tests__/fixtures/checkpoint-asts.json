@@ -421,5 +421,83 @@
       }
     } ],
     "prettified" : "company as c\n | limit: 5"
+  },
+  "company as c | group: with count as n": {
+    "where": [],
+    "selected-tables": [
+      {
+        "schema": null,
+        "table": "company",
+        "alias": "c"
+      }
+    ],
+    "group": [],
+    "columns": [
+      {
+        "symbol": "COUNT(1)",
+        "column-alias": "n"
+      }
+    ],
+    "operation": {
+      "type": "group",
+      "value": {
+        "columns": [],
+        "functions": [
+          {
+            "kind": "aggregate",
+            "fn": "count",
+            "arg": null,
+            "filter": null,
+            "column-alias": "n"
+          }
+        ]
+      }
+    },
+    "joins": [],
+    "checkpoints": [
+      {
+        "name": "result_1",
+        "sealed": false,
+        "index": 1,
+        "kind": "group",
+        "tables": [
+          "c"
+        ],
+        "columns": [
+          "n"
+        ],
+        "group": [],
+        "aggregates": [
+          "n"
+        ]
+      }
+    ],
+    "pending-assignments": {},
+    "current": "c",
+    "order": [],
+    "ranges": [
+      {
+        "alias": "c",
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 12
+        }
+      },
+      {
+        "alias": "c",
+        "start": {
+          "line": 0,
+          "character": 15
+        },
+        "end": {
+          "line": 0,
+          "character": 37
+        }
+      }
+    ]
   }
 }

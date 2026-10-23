@@ -289,6 +289,22 @@ test('a group: body splits into its keys and its aggregates at `with`', () => {
   });
 });
 
+test('a group: with no keys is one group: its body is all aggregates, and its label has no gap', () => {
+  assert.deepEqual(splitGroupBody('with count as n, total => sum as revenue'), {
+    keys: '',
+    aggregates: 'count as n, total => sum as revenue',
+  });
+  assert.equal(
+    checkpointLabel({ kind: 'group', group: [], aggregates: ['count as n'] }),
+    'group with count as n',
+  );
+  // Grouping it by a column keeps the aggregates.
+  assert.equal(
+    setGroupColumns(base('company as c | group: with count as n'), 'c', ['name']),
+    'company as c | group: c.name with count as n',
+  );
+});
+
 test('removing a checkpoint keeps the tables after it', () => {
   assert.equal(
     deleteCheckpoint(base(TWO), 'result_1'),
