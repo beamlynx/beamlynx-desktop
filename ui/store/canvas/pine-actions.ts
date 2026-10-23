@@ -501,9 +501,12 @@ const stageGroupIndex = (segments: Segment[], alias: string): number => {
 /**
  * A group: segment's body split into its keys and what follows `with`:
  * `c.name, c.id with count, total => max` is ['c.name, c.id', 'count, total
- * => max']. A `with` inside a string isn't one.
+ * => max']. A `with` inside a string isn't one. With no keys, `with count as
+ * n` is ['', 'count as n']: one group, the whole table.
  */
 export const splitGroupBody = (body: string): { keys: string; aggregates: string | null } => {
+  const keyless = /^\s*with\s+/i.exec(body);
+  if (keyless) return { keys: '', aggregates: body.slice(keyless[0].length).trim() };
   let inQuote = false;
   for (let i = 0; i < body.length; i++) {
     if (body[i] === "'") inQuote = !inQuote;
