@@ -1050,10 +1050,15 @@ export class GlobalStore {
     return this.accessPolicies.filter(p => !p.connectionId);
   }
 
-  /** A saved connection's own access policy, if it has one. */
+  /**
+   * A saved connection's access policy, if it has one: its own. A desktop
+   * app older than per-connection policies hasn't marked it as the
+   * connection's yet, and it is still the policy the connection uses, so
+   * it is never shown as "None".
+   */
   connectionPolicy = (profileId: string | undefined): AccessPolicy | undefined => {
     const connection = this.connections.find(c => c.id === profileId);
-    return this.accessPolicies.find(p => p.id === connection?.policyId && p.connectionId === connection?.id);
+    return connection?.policyId ? this.accessPolicies.find(p => p.id === connection.policyId) : undefined;
   };
 
   /** A new template, with the starting rules. */

@@ -444,7 +444,7 @@ test('declining a reveal sends the user\'s reason', async () => {
 });
 
 
-test('a connection\'s policy is its own: a template is never taken for it, and attaching one refreshes both', async () => {
+test('a connection\'s policy is the one it points at, never "None", and attaching a template refreshes both', async () => {
   const store = new GlobalStore();
   const attached = [];
   let policies = [
@@ -466,13 +466,15 @@ test('a connection\'s policy is its own: a template is never taken for it, and a
   runInAction(() => {
     store.connections = [
       { id: 'p1', label: 'Prod', mcpEnabled: true, policyId: 'own' },
-      // As an older app could leave it: pointing at a template.
+      // As a desktop app older than per-connection policies leaves it: its
+      // policy isn't marked as its own yet.
       { id: 'p2', label: 'Staging', mcpEnabled: true, policyId: 'tpl' },
     ];
     store.accessPolicies = policies;
   });
   assert.equal(store.connectionPolicy('p1').id, 'own');
-  assert.equal(store.connectionPolicy('p2'), undefined);
+  // Still the policy it uses: never shown as "None".
+  assert.equal(store.connectionPolicy('p2').id, 'tpl');
   assert.deepEqual(store.policyTemplates.map(p => p.id), ['tpl']);
 
   assert.equal(await store.attachTemplate('p1', 'tpl'), true);
