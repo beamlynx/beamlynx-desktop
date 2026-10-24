@@ -643,7 +643,7 @@ const ConnectionRow = observer(
     const fromTemplate = ownPolicy?.template;
     const rulesOn = ownPolicy?.rules.filter(m => m.enabled).length ?? 0;
     const access = agentAccessOf(global.connections.find(c => c.id === id));
-    const [asking, setAsking] = useState<'template' | 'every-column' | null>(null);
+    const [asking, setAsking] = useState<'template' | 'every-column' | 'start-over' | null>(null);
     const [templateId, setTemplateId] = useState<string>('');
     const [showRules, setShowRules] = useState(false);
     const [focusedRuleId, setFocusedRuleId] = useState<string | undefined>();
@@ -657,11 +657,36 @@ const ConnectionRow = observer(
       setFocusedRuleId(focus.ruleId);
       global.clearAccessPolicyFocus();
     }, [focus, ownPolicy, global]);
+    const builtInId = global.policyTemplates.find(t => t.builtIn)?.id ?? global.policyTemplates[0]?.id ?? '';
+    const startOver = () => {
+      setTemplateId(builtInId);
+      setAsking('start-over');
+    };
+    // The templates to start a policy from: the built-in Default first, then
+    // your own (Settings -> Policy templates).
+    const templateSelect = (
+      <TextField
+        select
+        fullWidth
+        size="small"
+        value={templateId}
+        onChange={e => setTemplateId(e.target.value)}
+        sx={{ ...fieldSx, mt: 1 }}
+      >
+        {global.policyTemplates.map(p => (
+          <MenuItem key={p.id} value={p.id} disabled={!p.rules.some(m => m.enabled)}>
+            {p.name}
+            {p.builtIn ? ' (built in)' : ''}
+            {!p.rules.some(m => m.enabled) ? ' (no rule on)' : ''}
+          </MenuItem>
+        ))}
+      </TextField>
+    );
     const chooseAccess = (next: AgentAccess | null) => {
       if (!next || next === access) return;
       if (next === 'every-column') return setAsking('every-column');
       if (next === 'masked' && !ownPolicy) {
-        setTemplateId(global.policyTemplates.find(t => t.builtIn)?.id ?? global.policyTemplates[0]?.id ?? '');
+        setTemplateId(builtInId);
         return setAsking('template');
       }
       void global.setAgentAccess(id, next);
@@ -1031,6 +1056,13 @@ const ConnectionRow = observer(
                   >
                     {showRules ? 'Hide rules' : 'Edit rules'}
                   </Button>
+                  <Button
+                    size="small"
+                    onClick={startOver}
+                    sx={{ color: 'var(--canvas-text-dim)', textTransform: 'none', mt: 0.5 }}
+                  >
+                    Start over from a template…
+                  </Button>
                   {showRules && (
                     <Box sx={{ mt: 1.5 }}>
                       <PolicyRules policy={ownPolicy} focusedRuleId={focusedRuleId} />
@@ -1059,6 +1091,21 @@ const ConnectionRow = observer(
             )}
 
             <ConfirmDialog
+              open={asking === 'start-over'}
+              title={`Start ${label}'s policy over?`}
+              confirmLabel="Start over"
+              confirmDisabled={!templateId}
+              onConfirm={() => global.attachTemplate(id, templateId)}
+              onClose={() => setAsking(null)}
+            >
+              <p>
+                Its {ownPolicy?.rules.length ?? 0} current rules are replaced by a copy of the template you pick, including
+                any rule you added. No other connection changes.
+              </p>
+              {templateSelect}
+            </ConfirmDialog>
+
+            <ConfirmDialog
               open={asking === 'template'}
               title="Mask columns for agents"
               confirmLabel="Mask columns"
@@ -1070,22 +1117,7 @@ const ConnectionRow = observer(
                 {label} gets an access policy of its own. Agents see the columns its rules allow, and the rest come back
                 masked. Start it from a template:
               </p>
-              <TextField
-                select
-                fullWidth
-                size="small"
-                value={templateId}
-                onChange={e => setTemplateId(e.target.value)}
-                sx={{ ...fieldSx, mt: 1 }}
-              >
-                {global.policyTemplates.map(p => (
-                  <MenuItem key={p.id} value={p.id} disabled={!p.rules.some(m => m.enabled)}>
-                    {p.name}
-                    {p.builtIn ? ' (built in)' : ''}
-                    {!p.rules.some(m => m.enabled) ? ' (no rule on)' : ''}
-                  </MenuItem>
-                ))}
-              </TextField>
+              {templateSelect}
             </ConfirmDialog>
 
             <ConfirmDialog
