@@ -51,7 +51,7 @@ test('a proposal is refused for an unknown rule, a built-in removal, a bad rule,
   assert.match(checkChanges(policy, [{ add: {}, remove: 'h1' }]).error, /exactly one/);
   assert.match(checkChanges(policy, [{ rename: 'h1' }]).error, /isn't a change/);
   assert.match(checkChanges(policy, []).error, /at least one/);
-  assert.match(checkChanges(null, [{ disable: 'h1' }]).error, /no access policy/);
+  assert.match(checkChanges(null, [{ disable: 'h1' }]).error, /already see every column/);
 });
 
 test('a proposal that would leave no rule on is refused: the agent would lock itself out', () => {
@@ -118,5 +118,5 @@ test('the agent reads the policy as rules with ids, never data', () => {
   assert.match(text, /- \[fk\] foreign key columns \(built in\)/);
   assert.match(text, /- \[c1\] public\.order\.status \(off\)/);
   assert.match(text, /Except:\n- \[h1\] names containing "token"/);
-  assert.match(formatPolicy('Local', null), /no access policy: you see every column/);
+  assert.match(formatPolicy('Local', null), /you see every column, unmasked/);
 });

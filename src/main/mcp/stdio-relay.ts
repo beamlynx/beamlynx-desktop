@@ -513,7 +513,7 @@ async function registerTools(server: McpServer): Promise<void> {
         await ensureGuiRunning();
         const found = await controlPlaneRequest('POST', '/policy', { profileId: connection_id });
         if (!found) return errorResult(`There is no connection "${connection_id}".`);
-        return textResult(formatPolicy(found.label, found.policy));
+        return textResult(formatPolicy(found.label, found.everyColumn ? null : found.policy));
       } catch (e) {
         return errorResult(e instanceof Error ? e.message : String(e));
       }

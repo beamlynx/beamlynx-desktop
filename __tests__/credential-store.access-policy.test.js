@@ -73,6 +73,8 @@ const {
   deleteAccessPolicy,
   listMcpEnabledConnections,
   getMcpAccessStatus,
+  setAgentAccess,
+  defaultAccessPolicyRules,
 } = require(DIST);
 
 beforeEach(() => {
@@ -321,7 +323,7 @@ test('a version 1 store gets rule ids, built-in marks and the starter hide rules
       accessPolicies: [
         {
           id: 'p1',
-          name: 'Default',
+          name: 'Mine',
           rules: [
             { type: 'column-type', allow: ['integer'], enabled: true },
             { type: 'foreign-key', enabled: false },
@@ -331,7 +333,7 @@ test('a version 1 store gets rule ids, built-in marks and the starter hide rules
       ],
     }),
   );
-  const [policy] = listAccessPolicies();
+  const policy = policyById('p1');
   assert.deepEqual(plain(policy), [
     { type: 'hide', match: { type: 'column-name', contains: 'token' } },
     { type: 'hide', match: { type: 'column-name', contains: 'password' } },
@@ -342,11 +344,11 @@ test('a version 1 store gets rule ids, built-in marks and the starter hide rules
   ]);
   assert.deepEqual(policy.rules.map(r => r.enabled), [true, true, true, true, false, true]);
   assert.deepEqual(policy.rules.map(r => !!r.builtIn), [false, false, false, true, true, true]);
-  assert.equal(JSON.parse(fs.readFileSync(storePath, 'utf-8')).version, 4);
+  assert.equal(JSON.parse(fs.readFileSync(storePath, 'utf-8')).version, 5);
 
   // Removing a starter rule sticks: the migration doesn't run again.
   removeAccessPolicyRule('p1', policy.rules[0].id);
-  assert.equal(listAccessPolicies()[0].rules.length, 5);
+  assert.equal(policyById('p1').rules.length, 5);
 });
 
 test('a policy without rule ids is migrated on its own, even in a version 2 store, and only once', () => {
@@ -377,9 +379,9 @@ test('a policy without rule ids is migrated on its own, even in a version 2 stor
 test('a newer store version is never lowered', () => {
   const storePath = path.join(userDataDir, 'connections.json');
   fs.mkdirSync(userDataDir, { recursive: true });
-  fs.writeFileSync(storePath, JSON.stringify({ version: 5, connections: [], accessPolicies: [] }));
+  fs.writeFileSync(storePath, JSON.stringify({ version: 6, connections: [], accessPolicies: [] }));
   listAccessPolicies();
-  assert.equal(JSON.parse(fs.readFileSync(storePath, 'utf-8')).version, 5);
+  assert.equal(JSON.parse(fs.readFileSync(storePath, 'utf-8')).version, 6);
 });
 
 test('a new connection has no policy until one is picked; attaching gives it its own copy of the template', () => {
@@ -459,7 +461,7 @@ test('connections that shared a policy each get their own copy, and the shared o
   assert.equal(c3.mcpEnabled, false);
 
   const written = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
-  assert.equal(written.version, 4);
+  assert.equal(written.version, 5);
   // Only once: reading again changes nothing.
   listConnections();
   assert.deepEqual(JSON.parse(fs.readFileSync(storePath, 'utf-8')), written);
@@ -524,7 +526,7 @@ test('a policy only one connection uses becomes its own, as it is; a shared one 
   assert.equal(connections.fga.mcpEnabled, true);
 });
 
-test('moving the only template to its one connection leaves a copy as a template, for new connections', () => {
+test('moving the only template to its one connection leaves the built-in Default for new connections', () => {
   const storePath = path.join(userDataDir, 'connections.json');
   fs.mkdirSync(userDataDir, { recursive: true });
   fs.writeFileSync(storePath, JSON.stringify({
@@ -537,20 +539,19 @@ test('moving the only template to its one connection leaves a copy as a template
   assert.equal(one.policyId, 'default');
   assert.equal(policyById('default').connectionId, 'one');
   const templates = listAccessPolicies().filter(p => !p.connectionId);
-  assert.deepEqual(templates.map(p => p.name), ['Default']);
-  // The connection keeps its Allow rule. Default, a template again, starts
-  // without it.
+  // The connection keeps its Allow rule. Default is the built-in one, as
+  // every Default is now.
   assert.deepEqual(plain(policyById('default')), [email]);
-  assert.deepEqual(plain(templates[0]), []);
+  assert.deepEqual(templates.map(p => [p.name, !!p.builtIn]), [['Default', true]]);
+  assert.deepEqual(plain(templates[0]), plain({ rules: defaultAccessPolicyRules() }));
 });
 
-test('once, the Default template loses the Allow rules added while it was shared, and keeps its Except rules', () => {
+test('once, a stored Default template goes: Default is built in, and connections keep every rule they had', () => {
   const storePath = path.join(userDataDir, 'connections.json');
   fs.mkdirSync(userDataDir, { recursive: true });
   const r = (rule, extra = {}) => ({ ...rule, id: Math.random().toString(36).slice(2), enabled: true, ...extra });
   const added = { type: 'column', schema: 'public', table: 'tenant', column: 'title' };
-  const hidden = { type: 'hide', match: { type: 'column-name', contains: 'ssn' } };
-  const rules = [r({ type: 'hide', match: { type: 'column-name', contains: 'token' } }), r(hidden), r({ type: 'foreign-key' }, { builtIn: true }), r(added)];
+  const rules = [r({ type: 'hide', match: { type: 'column-name', contains: 'token' } }), r({ type: 'foreign-key' }, { builtIn: true }), r(added)];
   fs.writeFileSync(storePath, JSON.stringify({
     version: 3,
     connections: [{ id: 'c', label: 'C', dbHost: 'h', dbPort: '1', dbName: 'd', dbUser: 'u', dbType: 'postgres', createdAt: '', lastUsedAt: '',
@@ -558,18 +559,52 @@ test('once, the Default template loses the Allow rules added while it was shared
     accessPolicies: [
       { id: 'default', name: 'Default', rules },
       { id: 'mine', name: 'Mine', rules },
-      { id: 'own', name: 'Default for C', connectionId: 'c', rules },
+      { id: 'own', name: 'Default for C', connectionId: 'c', template: { id: 'default', name: 'Default' }, rules },
     ],
   }));
-  listConnections();
-  const types = id => plain(policyById(id)).map(x => (x.type === 'hide' ? `hide ${x.match.contains}` : x.type));
-  assert.deepEqual(types('default'), ['hide token', 'hide ssn', 'foreign-key']);
-  // Other templates, and a connection's own policy, keep every rule.
-  assert.deepEqual(types('mine'), ['hide token', 'hide ssn', 'foreign-key', 'column']);
-  assert.deepEqual(types('own'), ['hide token', 'hide ssn', 'foreign-key', 'column']);
-  assert.equal(JSON.parse(fs.readFileSync(storePath, 'utf-8')).version, 4);
-  // Only once: an Allow rule added to Default later stays.
-  addAccessPolicyRule('default', added);
-  listConnections();
-  assert.ok(types('default').includes('column'));
+  const templates = listAccessPolicies().filter(p => !p.connectionId);
+  assert.deepEqual(templates.map(p => [p.id, p.name]), [['builtin:default', 'Default'], ['mine', 'Mine']]);
+  assert.equal(policyById('default'), undefined);
+  assert.deepEqual(plain(policyById('own')), plain({ rules }));
+  assert.deepEqual(plain(policyById('mine')), plain({ rules }));
+  assert.equal(JSON.parse(fs.readFileSync(storePath, 'utf-8')).version, 5);
+});
+
+test('the built-in Default can\'t be changed, renamed or deleted', () => {
+  const before = plain(policyById('builtin:default'));
+  assert.equal(addAccessPolicyRule('builtin:default', email), null);
+  assert.equal(removeAccessPolicyRule('builtin:default', 'builtin:default:0'), null);
+  assert.equal(setAccessPolicyRuleEnabled('builtin:default', 'builtin:default:0', false), null);
+  assert.equal(setAccessPolicyRules('builtin:default', []), null);
+  assert.equal(deleteAccessPolicy('builtin:default'), false);
+  assert.deepEqual(plain(policyById('builtin:default')), before);
+  assert.deepEqual(policyById('builtin:default').rules.map(r => r.id), policyById('builtin:default').rules.map((_, i) => `builtin:default:${i}`));
+});
+
+test('agent access: off, masked by the policy, or every column with the policy kept', () => {
+  const conn = addConnection({ noPolicy: true });
+  // Masked needs a policy: without one, a template to start from.
+  assert.deepEqual(setAgentAccess(conn.id, 'masked'), { ok: false, reason: 'needs-template' });
+  const masked = setAgentAccess(conn.id, 'masked', 'builtin:default');
+  assert.equal(masked.ok, true);
+  assert.equal(masked.profile.mcpEnabled, true);
+  assert.equal(masked.profile.agentsSeeEveryColumn, false);
+  const policyId = masked.profile.policyId;
+  addAccessPolicyRule(policyId, email);
+
+  // Every column keeps the policy and its rules, to apply again later.
+  const all = setAgentAccess(conn.id, 'every-column');
+  assert.equal(all.profile.agentsSeeEveryColumn, true);
+  assert.equal(all.profile.policyId, policyId);
+  assert.ok(plain(policyById(policyId)).some(r => r.column === 'email'));
+  // Even a policy with no rule on doesn't stop every-column access.
+  disableAllRules(policyId);
+  assert.equal(getMcpAccessStatus(conn.id), 'ok');
+  // But it can't go back to masked behind a policy that decides nothing.
+  assert.deepEqual(setAgentAccess(conn.id, 'masked'), { ok: false, reason: 'no-active-policy' });
+
+  const off = setAgentAccess(conn.id, 'off');
+  assert.equal(off.profile.mcpEnabled, false);
+  assert.equal(getMcpAccessStatus(conn.id), 'not-enabled');
+  assert.deepEqual(setAgentAccess('missing', 'off'), { ok: false, reason: 'not-found' });
 });
