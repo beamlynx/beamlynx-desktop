@@ -2,6 +2,7 @@ import { Box, Typography } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../../store/store-container';
 import ToggleRow from './ToggleRow';
+import useAccountStatus from '../../hooks/useAccountStatus';
 
 /**
  * Previously these toggles only existed as command-palette entries
@@ -13,6 +14,7 @@ import ToggleRow from './ToggleRow';
 const PreferencesSection = () => {
   const { global } = useStores();
   const session = global.getSession(global.activeSessionId);
+  const account = useAccountStatus();
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -67,6 +69,14 @@ const PreferencesSection = () => {
           checked={global.vimMode}
           onChange={() => global.toggleVimMode()}
         />
+        {account?.available && (
+          <ToggleRow
+            label="Send usage stats"
+            description="Anonymous counts, like how often queries run and which database types are used. Never your queries, connections or data."
+            checked={account.usageStats}
+            onChange={checked => window.beamlynxDesktop?.account?.setUsageStats(checked)}
+          />
+        )}
       </Box>
     </Box>
   );

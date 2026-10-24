@@ -8,6 +8,7 @@ import ConnectionErrorSnackbar from '../components/ConnectionErrorSnackbar';
 import McpBridge from '../components/McpBridge';
 import DeepLinkHandler from '../components/DeepLinkHandler';
 import RevealRequestHandler from '../components/RevealRequestHandler';
+import FirstRunScreen from '../components/FirstRunScreen';
 import { useStores } from '../store/store-container';
 import { isDesktop } from '../store/util';
 
@@ -82,6 +83,7 @@ const Home: NextPage = () => {
       <McpBridge />
       <DeepLinkHandler />
       <RevealRequestHandler />
+      <FirstRunScreen />
     </Container>
   );
 
