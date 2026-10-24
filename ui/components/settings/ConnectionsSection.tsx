@@ -5,6 +5,9 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SecurityIcon from '@mui/icons-material/Security';
 import SmartToyOutlined from '@mui/icons-material/SmartToyOutlined';
+import BoltIcon from '@mui/icons-material/Bolt';
+import AddIcon from '@mui/icons-material/Add';
+import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import {
@@ -33,6 +36,12 @@ import ToggleRow from './ToggleRow';
 import ConfirmDialog from '../ConfirmDialog';
 import { agentAccessOf, type AgentAccess } from '../../store/client';
 import { PolicyRules } from './AccessPolicySection';
+
+// Every action that is a text button: in the accent colour, so it reads as
+// something to click, with its standard icon before the label where it has
+// one. Delete too: its red lives in the dialog it opens.
+const actionSx = { textTransform: 'none', color: 'var(--primary-color)', px: 0.75, fontSize: 13 } as const;
+const actionIconSx = { fontSize: 16 } as const;
 
 const DB_TYPES = [
   { value: 'postgres', label: 'PostgreSQL', defaultPort: '5432' },
@@ -746,6 +755,20 @@ const ConnectionRow = observer(
             '&:hover': { backgroundColor: 'var(--node-column-bg)' },
           }}
         >
+          {/* The tab's connection: a zap in a slot every row keeps, so
+              the names line up whether or not it's this one. */}
+          {desktop && (
+            <Box sx={{ width: 16, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
+              {isActive && (
+                <Tooltip title="This tab's connection">
+                  <BoltIcon
+                    aria-label="This tab's connection"
+                    sx={{ fontSize: 16, color: 'var(--primary-color)' }}
+                  />
+                </Tooltip>
+              )}
+            </Box>
+          )}
           <Box
             title={isLive ? 'Click to change color' : 'Not connected yet -- click to change color'}
             onClick={e => {
@@ -931,26 +954,27 @@ const ConnectionRow = observer(
               }}
             />
           )}
-          {desktop &&
-            (isActive ? (
-              <Typography variant="caption" sx={{ color: 'var(--canvas-text-dim)', flexShrink: 0, px: 0.75 }}>
-                Connected
-              </Typography>
-            ) : (
-              <Button
-                size="small"
-                disabled={disabledWhileBusy}
-                onClick={e => {
-                  e.stopPropagation();
-                  onSwitch();
-                }}
-                onKeyDown={e => e.stopPropagation()}
-                aria-label={`Connect to ${label}`}
-                sx={{ textTransform: 'none', minWidth: 0, px: 0.75, py: 0, flexShrink: 0, fontSize: 13 }}
-              >
-                Connect
-              </Button>
-            ))}
+          {/* Connect in a fixed slot, empty on the tab's own connection
+              (the zap marks it), so the icons after it line up. */}
+          {desktop && (
+            <Box sx={{ width: 64, flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>
+              {!isActive && (
+                <Button
+                  size="small"
+                  disabled={disabledWhileBusy}
+                  onClick={e => {
+                    e.stopPropagation();
+                    onSwitch();
+                  }}
+                  onKeyDown={e => e.stopPropagation()}
+                  aria-label={`Connect to ${label}`}
+                  sx={{ ...actionSx, minWidth: 0, py: 0 }}
+                >
+                  Connect
+                </Button>
+              )}
+            </Box>
+          )}
           {desktop ? (
             <IconButton
               size="small"
@@ -1090,14 +1114,15 @@ const ConnectionRow = observer(
                       />
                     }
                     onClick={() => setShowRules(!showRules)}
-                    sx={{ color: 'var(--text-color)', textTransform: 'none', px: 0.5, mt: 0.5 }}
+                    sx={{ ...actionSx, mt: 0.5 }}
                   >
                     {showRules ? 'Hide rules' : 'Edit rules'}
                   </Button>
                   <Button
                     size="small"
                     onClick={startOver}
-                    sx={{ color: 'var(--canvas-text-dim)', textTransform: 'none', mt: 0.5 }}
+                    startIcon={<RestartAltIcon sx={actionIconSx} />}
+                    sx={{ ...actionSx, mt: 0.5 }}
                   >
                     Start over from a template…
                   </Button>
@@ -1121,6 +1146,7 @@ const ConnectionRow = observer(
                 label="Mask my own queries too"
                 description="See what agents see: the policy masks your own queries on this connection as well."
                 descriptionInTooltip
+                divider={false}
                 checked={!!applyPolicyToOwnQueries}
                 onChange={value => global.setApplyPolicyToOwnQueries(id, value)}
               />
@@ -1185,8 +1211,7 @@ const ConnectionRow = observer(
             </ConfirmDialog>
 
 
-            {/* The row's other actions, in the same quiet text buttons as
-                Connect and Edit rules. Delete opens a dialog, hence the
+            {/* The row's other actions. Delete opens a dialog, hence the
                 ellipsis; its red lives there, next to the consequence. */}
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 0.5, ml: -0.75 }}>
               <Button
@@ -1194,7 +1219,20 @@ const ConnectionRow = observer(
                 disabled={!isLive || reindexing}
                 onClick={handleReindexClick}
                 title="Pick up tables or columns added since this connection last loaded them"
-                sx={{ textTransform: 'none', color: 'var(--text-color)', px: 0.75 }}
+                startIcon={
+                  reindexed ? (
+                    <CheckIcon sx={actionIconSx} />
+                  ) : (
+                    <RefreshIcon
+                      sx={{
+                        ...actionIconSx,
+                        '@keyframes pine-reindex-spin': { from: { transform: 'rotate(0deg)' }, to: { transform: 'rotate(360deg)' } },
+                        animation: reindexing ? 'pine-reindex-spin 0.8s linear infinite' : 'none',
+                      }}
+                    />
+                  )
+                }
+                sx={actionSx}
               >
                 {reindexing ? 'Refreshing…' : reindexed ? 'Schema refreshed' : 'Refresh schema'}
               </Button>
@@ -1202,7 +1240,8 @@ const ConnectionRow = observer(
                 <Button
                   size="small"
                   onClick={handleRemoveClick}
-                  sx={{ textTransform: 'none', color: 'var(--text-color)', px: 0.75 }}
+                  startIcon={<DeleteOutlineIcon sx={actionIconSx} />}
+                  sx={actionSx}
                 >
                   Delete connection…
                 </Button>
@@ -1309,15 +1348,19 @@ const ConnectionsSection = () => {
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }}>
       {/* The section's main action sits beside its title, always in view,
           however long the list below gets. */}
-      <Box sx={{ ...headerSx, display: 'flex', alignItems: 'center', gap: 1 }}>
+      {/* Right padding keeps Add connection clear of the panel's own close
+          button in its top-right corner (SettingsPanelContent). */}
+      <Box sx={{ ...headerSx, display: 'flex', alignItems: 'center', gap: 1, pr: 5 }}>
         <Typography variant="h6" component="h2" sx={{ flex: 1, minWidth: 0, color: 'var(--text-color)' }}>
           Database Connections
         </Typography>
         {global.connections.length > 0 && (
           <Button
             size="small"
+            variant="outlined"
             onClick={() => openForm(null)}
-            sx={{ textTransform: 'none', color: 'var(--text-color)', flexShrink: 0 }}
+            startIcon={<AddIcon sx={actionIconSx} />}
+            sx={{ ...actionSx, px: 1.25, flexShrink: 0, borderColor: 'var(--primary-color)' }}
           >
             Add connection
           </Button>

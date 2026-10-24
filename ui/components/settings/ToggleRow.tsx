@@ -9,9 +9,12 @@ type ToggleRowProps = {
   // The description in a tooltip on the label, not a line under it, where
   // the label says enough on its own.
   descriptionInTooltip?: boolean;
+  // A line under the row, between it and the next. Off inside a group that
+  // has its own edges, like an expanded connection.
+  divider?: boolean;
 };
 
-const ToggleRow = ({ label, description, checked, onChange, disabled, descriptionInTooltip }: ToggleRowProps) => (
+const ToggleRow = ({ label, description, checked, onChange, disabled, descriptionInTooltip, divider = true }: ToggleRowProps) => (
   <Box
     sx={{
       display: 'flex',
@@ -19,7 +22,7 @@ const ToggleRow = ({ label, description, checked, onChange, disabled, descriptio
       justifyContent: 'space-between',
       gap: 2,
       py: 1.25,
-      borderBottom: '1px solid var(--border-color)',
+      borderBottom: divider ? '1px solid var(--border-color)' : 'none',
       opacity: disabled ? 0.6 : 1,
     }}
   >
