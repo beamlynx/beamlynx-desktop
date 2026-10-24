@@ -4,6 +4,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SecurityIcon from '@mui/icons-material/Security';
+import SmartToyOutlined from '@mui/icons-material/SmartToyOutlined';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import {
@@ -19,6 +20,7 @@ import {
   TextField,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import { observer } from 'mobx-react-lite';
@@ -676,7 +678,6 @@ const ConnectionRow = observer(
         {global.policyTemplates.map(p => (
           <MenuItem key={p.id} value={p.id} disabled={!p.rules.some(m => m.enabled)}>
             {p.name}
-            {p.builtIn ? ' (built in)' : ''}
             {!p.rules.some(m => m.enabled) ? ' (no rule on)' : ''}
           </MenuItem>
         ))}
@@ -810,7 +811,7 @@ const ConnectionRow = observer(
               ))}
             </Popover>
           )}
-          {/* Name (or its rename field) and the MCP chip share this flexible
+          {/* Name (or its rename field) and the agent icon share this flexible
               region, rather than the chip sitting in the fixed trailing
               cluster below -- a chip that came and went between the pencil
               and the chevron dragged the pencil sideways with it (the name
@@ -879,30 +880,33 @@ const ConnectionRow = observer(
                 {label}
               </Typography>
             )}
-            {desktop && mcpEnabled && !expanded && (
-              <Box
-                title="MCP access is on -- an AI agent can query this connection"
-                sx={{
-                  fontSize: 10,
-                  fontFamily: 'var(--canvas-font)',
-                  letterSpacing: '0.02em',
-                  color: 'var(--icon-color-highlight)',
-                  border: '1px solid var(--icon-color-highlight)',
-                  borderRadius: '3px',
-                  px: 0.5,
-                  py: '1px',
-                  flexShrink: 0,
-                }}
+            {/* What agents can do here, at rest and when expanded alike: the
+                sidebar's robot, dim when masked, in the warning colour when
+                agents read every column, absent when off. */}
+            {desktop && access !== 'off' && (
+              <Tooltip
+                title={
+                  access === 'every-column'
+                    ? 'Agents read every column, unmasked'
+                    : `Agents: masked by its policy${ownPolicy ? `, ${rulesOn} rule${rulesOn === 1 ? '' : 's'} on` : ''}`
+                }
               >
-                MCP
-              </Box>
+                <SmartToyOutlined
+                  aria-label={access === 'every-column' ? 'Agents read every column' : 'Agents: masked'}
+                  sx={{
+                    fontSize: 16,
+                    flexShrink: 0,
+                    color: access === 'every-column' ? 'var(--text-warning-color)' : 'var(--canvas-text-dim)',
+                  }}
+                />
+              </Tooltip>
             )}
           </Box>
           {desktop && (
             // Always mounted (hidden via visibility, not conditionally
             // unmounted) while renaming -- unmounting it freed up its own
             // width, which the flex:1 name/chip wrapper next to it
-            // absorbed, dragging the MCP chip sideways with it the same
+            // absorbed, dragging the agent icon sideways with it the same
             // way the chip itself used to drag the pencil (reported
             // directly). Reserving its space keeps that wrapper's
             // available width constant across every state.

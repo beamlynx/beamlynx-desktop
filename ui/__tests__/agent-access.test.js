@@ -57,3 +57,15 @@ test('setting agent access updates the connection and reloads its policy', async
   assert.equal(agentAccessOf(store.connections[0]), 'every-column');
   assert.deepEqual(calls, [['p1', 'masked', 'builtin:default'], ['p1', 'every-column', undefined]]);
 });
+
+test('templates list the built-in Default first, then your own', () => {
+  const store = new GlobalStore();
+  runInAction(() => {
+    store.accessPolicies = [
+      { id: 'mine', name: 'Mine', rules: [] },
+      { id: 'own', name: 'x', rules: [], connectionId: 'p1' },
+      { id: 'builtin:default', name: 'Default', builtIn: true, rules: [] },
+    ];
+  });
+  assert.deepEqual(store.policyTemplates.map(p => p.name), ['Default', 'Mine']);
+});
