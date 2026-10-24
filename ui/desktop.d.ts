@@ -43,6 +43,9 @@ type SavedConnectionMeta = {
   // session sees real data on this connection unless they opt in.
   // Undefined (older saved connections) also means false.
   applyPolicyToOwnQueries?: boolean;
+  // Agent access set to "Every column": the policy stays, unapplied.
+  // Undefined (an older desktop app) means false.
+  agentsSeeEveryColumn?: boolean;
 };
 
 // `null` (SavedConnectionMeta's other failure shape) already means
@@ -57,6 +60,10 @@ type SetMcpEnabledResult =
 // refuses attaching a template with no active rule while mcpEnabled is
 // already true on that connection -- MCP must never end up behind a policy
 // that decides nothing. not-found: no such connection, or no such template.
+type SetAgentAccessResult =
+  | { ok: true; profile: SavedConnectionMeta }
+  | { ok: false; reason: 'not-found' | 'needs-template' | 'no-active-policy' };
+
 type AttachTemplateResult =
   | { ok: true; profile: SavedConnectionMeta }
   | { ok: false; reason: 'not-found' }
@@ -229,6 +236,13 @@ interface BeamlynxDesktopApi {
     get: (id: string) => Promise<GetConnectionResult>;
     delete: (id: string) => Promise<void>;
     setMcpEnabled: (id: string, enabled: boolean) => Promise<SetMcpEnabledResult>;
+    // What agents can do on a connection. Masked without a policy needs the
+    // template to start from. Optional: absent from an older desktop app.
+    setAgentAccess?: (
+      id: string,
+      access: 'off' | 'masked' | 'every-column',
+      templateId?: string,
+    ) => Promise<SetAgentAccessResult>;
     // A fresh copy of a template as the connection's own policy, or none (null).
     attachTemplate: (id: string, templateId: string | null) => Promise<AttachTemplateResult>;
     setApplyPolicyToOwnQueries: (id: string, apply: boolean) => Promise<SavedConnectionMeta | null>;
@@ -317,6 +331,7 @@ export type {
   SavedConnectionMeta,
   SetMcpEnabledResult,
   AttachTemplateResult,
+  SetAgentAccessResult,
   PolicyChange,
   PolicyProposal,
   BeamlynxDesktopApi,

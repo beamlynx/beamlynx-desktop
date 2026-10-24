@@ -138,7 +138,7 @@ const McpSection = () => (
       }}
     >
       <Typography variant="h6" component="h2" gutterBottom sx={{ color: 'var(--text-color)' }}>
-        MCP
+        Connect an agent
       </Typography>
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
         Experimental -- setup and behavior may change.

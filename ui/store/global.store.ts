@@ -4,6 +4,7 @@ import {
   AccessPolicy,
   AccessPolicyModule,
   AccessPolicyRule,
+  AgentAccess,
   HttpClient,
   ConnectionError,
   ConnectionInfo,
@@ -999,6 +1000,7 @@ export class GlobalStore {
           mcpEnabled: p.mcpEnabled,
           policyId: p.policyId,
           applyPolicyToOwnQueries: p.applyPolicyToOwnQueries,
+          agentsSeeEveryColumn: p.agentsSeeEveryColumn,
         }));
         this.connections.forEach(c => this.assignConnectionColor(c.id));
         // Keep the active pine connection's own color alive even though it's
@@ -1768,6 +1770,45 @@ export class GlobalStore {
         c.id === id ? { ...c, mcpEnabled: result.profile.mcpEnabled, policyId: result.profile.policyId } : c,
       );
     });
+  };
+
+  /**
+   * Sets what agents can do on a connection: off, masked by its policy, or
+   * every column (the policy kept, unapplied). Masked without a policy
+   * needs `templateId`, the template its policy starts from. False, with
+   * connectionError set, when refused. See credential-store.ts's
+   * setAgentAccess.
+   */
+  setAgentAccess = async (id: string, access: AgentAccess, templateId?: string): Promise<boolean> => {
+    const desktop = typeof window === 'undefined' ? undefined : window.beamlynxDesktop;
+    if (!desktop?.credentials.setAgentAccess) return false;
+    const result = await desktop.credentials.setAgentAccess(id, access, templateId);
+    if (!result.ok) {
+      runInAction(() => {
+        this.connectionError =
+          result.reason === 'no-active-policy'
+            ? "This connection's policy has no rule on, so it would mask nothing. Turn a rule on first."
+            : result.reason === 'needs-template'
+              ? 'Pick a template to start the access policy from.'
+              : 'That connection no longer exists.';
+      });
+      return false;
+    }
+    runInAction(() => {
+      this.connections = this.connections.map(c =>
+        c.id === id
+          ? {
+              ...c,
+              mcpEnabled: result.profile.mcpEnabled,
+              policyId: result.profile.policyId,
+              agentsSeeEveryColumn: result.profile.agentsSeeEveryColumn,
+            }
+          : c,
+      );
+    });
+    // A connection that started from a template has a new policy.
+    await this.refreshAccessPolicies();
+    return true;
   };
 
   /**

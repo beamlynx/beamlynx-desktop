@@ -22,10 +22,9 @@ export const RAIL_ITEMS: { id: SettingsSection; label: string }[] = [
   { id: 'connections', label: 'Database Connections' },
   { id: 'theme', label: 'Appearance' },
   { id: 'preferences', label: 'Preferences' },
-  // Just before 'mcp' -- it's a prerequisite for MCP access (see
-  // AccessPolicySection.tsx), not an unrelated setting placed nearby.
   { id: 'access-policy', label: 'Policy templates' },
-  { id: 'mcp', label: 'MCP' },
+  // No 'mcp' item: connecting an agent opens from the sidebar's Agent item
+  // (SideRail.tsx), where agents' work shows too. The section stays.
   { id: 'about', label: 'About' },
 ];
 

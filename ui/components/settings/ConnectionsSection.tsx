@@ -17,6 +17,8 @@ import {
   Tab,
   Tabs,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@mui/material';
 import { observer } from 'mobx-react-lite';
@@ -26,9 +28,9 @@ import { CONNECTION_COLOR_PALETTE, isDesktop, isPlayground } from '../../store/u
 import type { GlobalStore } from '../../store/global.store';
 import { buildConnectionString, parseConnectionString } from '../../utils/connectionString';
 import ToggleRow from './ToggleRow';
+import ConfirmDialog from '../ConfirmDialog';
+import { agentAccessOf, type AgentAccess } from '../../store/client';
 import { PolicyRules } from './AccessPolicySection';
-
-const REMOVE_CONFIRM_TIMEOUT_MS = 3000;
 
 const DB_TYPES = [
   { value: 'postgres', label: 'PostgreSQL', defaultPort: '5432' },
@@ -577,7 +579,6 @@ const ConnectionRow = observer(
     const [renameValue, setRenameValue] = useState(label);
     const [renameSaving, setRenameSaving] = useState(false);
     const [colorPickerAnchor, setColorPickerAnchor] = useState<HTMLElement | null>(null);
-    const confirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const reindexedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Keeps the draft in sync with a rename committed elsewhere (there's no
@@ -587,7 +588,6 @@ const ConnectionRow = observer(
 
     useEffect(() => {
       return () => {
-        if (confirmTimeoutRef.current) clearTimeout(confirmTimeoutRef.current);
         if (reindexedTimeoutRef.current) clearTimeout(reindexedTimeoutRef.current);
       };
     }, []);
@@ -629,33 +629,22 @@ const ConnectionRow = observer(
         .finally(() => setReindexing(false));
     };
 
-    const handleRemoveClick = () => {
-      if (confirmTimeoutRef.current) {
-        clearTimeout(confirmTimeoutRef.current);
-        confirmTimeoutRef.current = null;
-      }
-      if (confirmingRemove) {
-        setConfirmingRemove(false);
-        setRemoving(true);
-        global.deleteConnection(id).finally(() => setRemoving(false));
-        return;
-      }
-      setConfirmingRemove(true);
-      confirmTimeoutRef.current = setTimeout(
-        () => setConfirmingRemove(false),
-        REMOVE_CONFIRM_TIMEOUT_MS,
-      );
+    // Deleting asks in a dialog, like every other choice that can't be undone.
+    const handleRemoveClick = () => setConfirmingRemove(true);
+    const deleteConnection = async () => {
+      setRemoving(true);
+      await global.deleteConnection(id).finally(() => setRemoving(false));
     };
 
-    // This connection's own policy. No other connection uses it. Once it
-    // has one, it is edited, or removed and started again from a
-    // template, never swapped for another in place.
+    // What agents can do here, and the policy behind it: the connection's
+    // own, never shared. A choice that weakens protection, or starts a
+    // policy, asks in a dialog (ConfirmDialog); the others apply at once.
     const ownPolicy = global.connectionPolicy(id);
     const fromTemplate = ownPolicy?.template;
     const rulesOn = ownPolicy?.rules.filter(m => m.enabled).length ?? 0;
-    const [confirmingPolicyRemove, setConfirmingPolicyRemove] = useState(false);
-    // Turning MCP on without a policy asks for one first.
-    const [askingForPolicy, setAskingForPolicy] = useState(false);
+    const access = agentAccessOf(global.connections.find(c => c.id === id));
+    const [asking, setAsking] = useState<'template' | 'every-column' | null>(null);
+    const [templateId, setTemplateId] = useState<string>('');
     const [showRules, setShowRules] = useState(false);
     const [focusedRuleId, setFocusedRuleId] = useState<string | undefined>();
     // Opened from the results grid at this connection's policy
@@ -668,39 +657,15 @@ const ConnectionRow = observer(
       setFocusedRuleId(focus.ruleId);
       global.clearAccessPolicyFocus();
     }, [focus, ownPolicy, global]);
-    // MCP always uses this connection's own assigned policy the moment it's
-    // enabled -- there is no "on but undecided" state (setMcpEnabled
-    // refuses turning it on otherwise). policyId === null is "None", a
-    // deliberate choice of unrestricted access (e.g. a local/sandbox DB),
-    // not a missing policy -- it counts as decided same as an active one.
-    const isConnPolicyActive = policyId == null ? true : !!ownPolicy?.rules.some(m => m.enabled);
-    // Only refuse *turning on* -- switching an already-enabled connection
-    // off must never be blocked by its policy going inactive later; that's
-    // a separate, always-available action (see GlobalStore.setMcpEnabled,
-    // which only ever refuses an `enabled: true` call).
-    const mcpToggleDisabled = !mcpEnabled && !isConnPolicyActive;
-    const startFromTemplate = async (templateId: string, thenMcp: boolean) => {
-      setAskingForPolicy(false);
-      if ((await global.attachTemplate(id, templateId)) && thenMcp) await global.setMcpEnabled(id, true);
+    const chooseAccess = (next: AgentAccess | null) => {
+      if (!next || next === access) return;
+      if (next === 'every-column') return setAsking('every-column');
+      if (next === 'masked' && !ownPolicy) {
+        setTemplateId(global.policyTemplates.find(t => t.builtIn)?.id ?? global.policyTemplates[0]?.id ?? '');
+        return setAsking('template');
+      }
+      void global.setAgentAccess(id, next);
     };
-    const templatePicker = (thenMcp: boolean) => (
-      <TextField
-        select
-        fullWidth
-        size="small"
-        label="Start from a template"
-        value=""
-        onChange={e => void startFromTemplate(e.target.value, thenMcp)}
-        sx={{ ...fieldSx, minWidth: 0 }}
-      >
-        {global.policyTemplates.map(p => (
-          <MenuItem key={p.id} value={p.id} disabled={!p.rules.some(m => m.enabled)}>
-            {p.name}
-            {!p.rules.some(m => m.enabled) ? ' (no active rules)' : ''}
-          </MenuItem>
-        ))}
-      </TextField>
-    );
     const disabledWhileBusy = switchDisabled || removing;
 
     return (
@@ -989,7 +954,7 @@ const ConnectionRow = observer(
                     e.stopPropagation();
                     handleRemoveClick();
                   }}
-                  titleAccess={confirmingRemove ? 'Click again to remove' : 'Remove connection'}
+                  titleAccess="Delete connection"
                   sx={{
                     fontSize: 16,
                     cursor: 'pointer',
@@ -1018,67 +983,42 @@ const ConnectionRow = observer(
               gap: 1.5,
             }}
           >
-            <ToggleRow
-              label="MCP access"
-              description="Let an AI agent query this connection over MCP."
-              checked={!!mcpEnabled || askingForPolicy}
-              onChange={value => {
-                // Turned on without a policy, it asks for one first.
-                if (value && !ownPolicy && global.policyTemplates.length) {
-                  setAskingForPolicy(true);
-                  return;
-                }
-                setAskingForPolicy(false);
-                void global.setMcpEnabled(id, value);
-              }}
-              disabled={mcpToggleDisabled}
-            />
+            <Box>
+              <Typography variant="body2" sx={{ color: 'var(--text-color)', fontWeight: 600, mb: 0.75 }}>
+                Agent access
+              </Typography>
+              <ToggleButtonGroup
+                exclusive
+                size="small"
+                value={access}
+                onChange={(_e, next) => chooseAccess(next)}
+                aria-label="Agent access"
+                sx={{
+                  '& .MuiToggleButton-root': { textTransform: 'none', px: 1.5, py: 0.25, fontSize: 13 },
+                  '& .MuiToggleButton-root.Mui-selected[value="every-column"]': {
+                    color: 'var(--text-warning-color)',
+                    borderColor: 'var(--text-warning-color)',
+                  },
+                }}
+              >
+                <ToggleButton value="off">Off</ToggleButton>
+                <ToggleButton value="masked">Masked</ToggleButton>
+                <ToggleButton value="every-column">Every column</ToggleButton>
+              </ToggleButtonGroup>
 
-            {askingForPolicy && !ownPolicy && (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                <Typography variant="body2" sx={{ color: 'var(--text-color)' }}>
-                  Pick an access policy. It decides which columns the agent can see, and masks the rest.
+              {access === 'off' && (
+                <Typography variant="body2" sx={{ color: 'var(--canvas-text-dim)', mt: 1 }}>
+                  Agents can&apos;t use this connection.
                 </Typography>
-                {templatePicker(true)}
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                  <Button
-                    size="small"
-                    onClick={() => {
-                      setAskingForPolicy(false);
-                      void global.setMcpEnabled(id, true);
-                    }}
-                    sx={{ textTransform: 'none' }}
-                  >
-                    Continue without a policy
-                  </Button>
-                  <Button size="small" onClick={() => setAskingForPolicy(false)} sx={{ textTransform: 'none' }}>
-                    Cancel
-                  </Button>
-                </Box>
-              </Box>
-            )}
+              )}
 
-            {mcpEnabled && !ownPolicy && (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                <Alert severity="warning" sx={{ py: 0.25, '& .MuiAlert-message': { fontSize: 13 } }}>
-                  No access policy. The agent can read every column of this database, unmasked. Nothing here limits
-                  what it sees.
-                </Alert>
-                {templatePicker(false)}
-              </Box>
-            )}
-
-            {ownPolicy && (mcpEnabled || applyPolicyToOwnQueries) && (
-              <Box>
-                <Typography variant="body2" sx={{ color: 'var(--text-color)', fontWeight: 600 }}>
-                  Access policy
-                </Typography>
-                <Typography variant="body2" sx={{ color: 'var(--canvas-text-dim)', mt: 0.25 }}>
-                  {rulesOn === 0
-                    ? "No rule is on, so MCP can't turn on. Turn one on in its rules."
-                    : `${rulesOn} rule${rulesOn === 1 ? '' : 's'} on${fromTemplate ? `, from the “${fromTemplate.name}” template` : ''}. It belongs to this connection alone.`}
-                </Typography>
-                <Box sx={{ display: 'flex', gap: 1, mt: 0.75 }}>
+              {access === 'masked' && ownPolicy && (
+                <Box sx={{ mt: 1 }}>
+                  <Typography variant="body2" sx={{ color: 'var(--canvas-text-dim)' }}>
+                    {rulesOn === 0
+                      ? "Its policy has no rule on, so it masks nothing. Turn a rule on."
+                      : `Agents see what this connection's policy allows: ${rulesOn} rule${rulesOn === 1 ? '' : 's'} on${fromTemplate ? `, from the “${fromTemplate.name}” template` : ''}.`}
+                  </Typography>
                   <Button
                     size="small"
                     startIcon={
@@ -1087,61 +1027,94 @@ const ConnectionRow = observer(
                       />
                     }
                     onClick={() => setShowRules(!showRules)}
-                    sx={{ color: 'var(--text-color)', textTransform: 'none', px: 0.5 }}
+                    sx={{ color: 'var(--text-color)', textTransform: 'none', px: 0.5, mt: 0.5 }}
                   >
                     {showRules ? 'Hide rules' : 'Edit rules'}
                   </Button>
-                  {!confirmingPolicyRemove && (
-                    <Button
-                      size="small"
-                      onClick={() => setConfirmingPolicyRemove(true)}
-                      sx={{ color: 'var(--canvas-text-dim)', textTransform: 'none' }}
-                    >
-                      Allow every column…
-                    </Button>
+                  {showRules && (
+                    <Box sx={{ mt: 1.5 }}>
+                      <PolicyRules policy={ownPolicy} focusedRuleId={focusedRuleId} />
+                    </Box>
                   )}
                 </Box>
-                {confirmingPolicyRemove && (
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 1 }}>
-                    <Typography variant="body2" sx={{ color: 'var(--text-color)' }}>
-                      Agents on {label} will read every column, unmasked. This policy&apos;s rules are lost. You can start
-                      again from a template.
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      <Button
-                        size="small"
-                        variant="contained"
-                        color="error"
-                        onClick={async () => {
-                          setConfirmingPolicyRemove(false);
-                          setShowRules(false);
-                          await global.attachTemplate(id, null);
-                        }}
-                      >
-                        Allow every column
-                      </Button>
-                      <Button size="small" onClick={() => setConfirmingPolicyRemove(false)}>
-                        Cancel
-                      </Button>
-                    </Box>
-                  </Box>
-                )}
-                {showRules && (
-                  <Box sx={{ mt: 1.5 }}>
-                    <PolicyRules policy={ownPolicy} focusedRuleId={focusedRuleId} />
-                  </Box>
-                )}
-              </Box>
-            )}
+              )}
 
-            {ownPolicy && (
+              {access === 'every-column' && (
+                <Alert severity="warning" sx={{ mt: 1, py: 0.25, '& .MuiAlert-message': { fontSize: 13 } }}>
+                  Agents read every column of this database, unmasked.
+                  {ownPolicy && rulesOn > 0
+                    ? ` Its policy's ${rulesOn} rule${rulesOn === 1 ? ' is' : 's are'} kept, and apply again under Masked.`
+                    : ''}
+                </Alert>
+              )}
+            </Box>
+
+            {access === 'masked' && ownPolicy && (
               <ToggleRow
-                label="Also restrict my own queries"
-                description="The policy always applies to agents. Turn this on to have it mask your own queries on this connection too."
+                label="Mask my own queries too"
+                description="See what agents see: the policy masks your own queries on this connection as well."
                 checked={!!applyPolicyToOwnQueries}
                 onChange={value => global.setApplyPolicyToOwnQueries(id, value)}
               />
             )}
+
+            <ConfirmDialog
+              open={asking === 'template'}
+              title="Mask columns for agents"
+              confirmLabel="Mask columns"
+              confirmDisabled={!templateId}
+              onConfirm={() => global.setAgentAccess(id, 'masked', templateId)}
+              onClose={() => setAsking(null)}
+            >
+              <p>
+                {label} gets an access policy of its own. Agents see the columns its rules allow, and the rest come back
+                masked. Start it from a template:
+              </p>
+              <TextField
+                select
+                fullWidth
+                size="small"
+                value={templateId}
+                onChange={e => setTemplateId(e.target.value)}
+                sx={{ ...fieldSx, mt: 1 }}
+              >
+                {global.policyTemplates.map(p => (
+                  <MenuItem key={p.id} value={p.id} disabled={!p.rules.some(m => m.enabled)}>
+                    {p.name}
+                    {p.builtIn ? ' (built in)' : ''}
+                    {!p.rules.some(m => m.enabled) ? ' (no rule on)' : ''}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </ConfirmDialog>
+
+            <ConfirmDialog
+              open={asking === 'every-column'}
+              title="Let agents read every column?"
+              confirmLabel="Allow every column"
+              danger
+              onConfirm={() => global.setAgentAccess(id, 'every-column')}
+              onClose={() => setAsking(null)}
+            >
+              <p>
+                Agents on {label} will read every column of this database, unmasked, including any column your access
+                policy hides today. Nothing here will limit what they see.
+              </p>
+              {ownPolicy && (
+                <p>Its policy and its rules are kept. Switch back to Masked to apply them again.</p>
+              )}
+            </ConfirmDialog>
+
+            <ConfirmDialog
+              open={confirmingRemove}
+              title={`Delete ${label}?`}
+              confirmLabel="Delete connection"
+              danger
+              onConfirm={deleteConnection}
+              onClose={() => setConfirmingRemove(false)}
+            >
+              <p>Its saved details and its access policy are deleted. This can&apos;t be undone.</p>
+            </ConfirmDialog>
 
 
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 0.5 }}>
@@ -1197,7 +1170,7 @@ const ConnectionRow = observer(
                     },
                   }}
                 >
-                  {confirmingRemove ? 'Click again to delete' : 'Delete connection'}
+                  Delete connection
                 </Button>
               )}
             </Box>
