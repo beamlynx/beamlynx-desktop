@@ -12,6 +12,28 @@ on:
   pull_request:
 
 jobs:
+  # The live database is shared by every released app, so a migration must
+  # never break one. See supabase/README.md.
+  supabase:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Migrations only add
+        run: node scripts/check-supabase-migrations.js
+
+      - name: Start a local database with every migration
+        run: npx -y supabase@2.120.0 db start
+
+      - name: Released apps' calls still work
+        run: ./scripts/test-supabase-compat.sh
+
   validate:
     runs-on: ubuntu-latest
     steps:

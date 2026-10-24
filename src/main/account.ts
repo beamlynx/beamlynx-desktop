@@ -33,6 +33,9 @@ export type AccountStatus = {
   onboarding: 'signed-in' | 'skipped' | null;
   usageStats: boolean;
   signingIn: boolean;
+  // Whether the machine has a network connection. The first-run screen waits
+  // for one: offline, sign-in can't work and nothing could be sent anyway.
+  online: boolean;
 };
 
 export type SignInResult = { ok: true; status: AccountStatus } | { ok: false; reason: 'cancelled' | 'failed'; message: string };
@@ -174,6 +177,7 @@ export function getAccountStatus(): AccountStatus {
     onboarding: stats.onboarding(),
     usageStats: stats.isEnabled(),
     signingIn: pendingSignIn !== null,
+    online: net.isOnline(),
   };
 }
 
@@ -196,17 +200,14 @@ function userFrom(session: Session): AccountUser {
 
 // ---------- the profile row ----------
 
-// The person's row in the profiles table, which is our list of users.
-// Row-level security lets each person write only their own row.
-async function syncProfile(client: SupabaseClient, user: AccountUser): Promise<void> {
-  const { error } = await client.from('profiles').upsert({
-    user_id: user.id,
-    email: user.email,
-    name: user.name,
-    provider: user.provider,
-    last_seen: new Date().toISOString(),
-    app_version: app.getVersion(),
-    os: process.platform,
+// The person's row in the profiles table, which is our list of users. The
+// app never touches the table: it calls record_profile, which reads who the
+// person is from their sign-in. Old apps keep calling the same function
+// while the table changes (supabase/README.md). Each new shape of this
+// payload needs a file in supabase/tests/payloads/.
+async function syncProfile(client: SupabaseClient): Promise<void> {
+  const { error } = await client.rpc('record_profile', {
+    profile: { app_version: app.getVersion(), os: process.platform },
   });
   if (error) throw new Error(error.message);
   metaStore.setMeta(META_PROFILE_SYNCED_AT, String(Date.now()));
@@ -224,7 +225,7 @@ async function syncProfileDaily(): Promise<void> {
   try {
     const { data } = await client.auth.getSession();
     if (data.session?.user.id !== user.id) return;
-    await syncProfile(client, user);
+    await syncProfile(client);
   } catch (e) {
     console.error('[account] profile sync skipped:', e instanceof Error ? e.message : e);
   }
@@ -266,7 +267,7 @@ export async function signIn(provider: Provider): Promise<SignInResult> {
     stats.setOnboarding('signed-in');
     stats.identify(user);
     stats.capture('sign_in_completed', { provider });
-    syncProfile(client, user).catch(e => console.error('[account] profile sync failed:', e));
+    syncProfile(client).catch(e => console.error('[account] profile sync failed:', e));
     return { ok: true, status: getAccountStatus() };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

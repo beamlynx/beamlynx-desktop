@@ -14,7 +14,14 @@ on:
   workflow_dispatch:
 
 jobs:
+  # The database first, before anything is built: a release may need a
+  # migration, and migrations never break an app already out there.
+  migrate:
+    uses: ./.github/workflows/supabase-migrate.yml
+    secrets: inherit
+
   read-pins:
+    needs: migrate
     runs-on: ubuntu-latest
     outputs:
       pine_ref: ${{ steps.pins.outputs.pine_ref }}

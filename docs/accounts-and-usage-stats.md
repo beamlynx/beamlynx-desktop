@@ -16,7 +16,7 @@ Do this once. All of it is in EU regions.
 ### Supabase
 
 1. Create a project in an EU region, such as Frankfurt or Stockholm. The region can't be changed later.
-2. Run `supabase/migrations/20261024000000_profiles.sql` in the SQL editor, or with `supabase db push`.
+2. Add the repository secrets `SUPABASE_ACCESS_TOKEN` (a personal access token, from supabase.com → Account → Access Tokens), `SUPABASE_PROJECT_REF` (the ID in the project's URL) and `SUPABASE_DB_PASSWORD`. Then run the **Supabase migrations** workflow by hand (Actions → Supabase migrations → Run workflow). From then on, migrations deploy themselves; see `supabase/README.md`.
 3. Under **Authentication → Sign In / Providers**:
    - Turn on **GitHub**. Create an OAuth app at github.com → Settings → Developer settings → OAuth Apps. Its callback URL is the one Supabase shows, ending in `/auth/v1/callback`.
    - Turn on **Google**. Create an OAuth client (type: Web application) in Google Cloud Console → APIs & Services → Credentials, with the same Supabase callback URL.
@@ -45,6 +45,15 @@ Add these as **repository variables** (Settings → Secrets and variables → Ac
 
 The release workflow writes them to `dist/main/service-config.json` (`scripts/write-service-config.js`). A build without them has no first-run screen, no sign-in and no usage stats.
 
+## When the services are unreachable
+
+The app never waits for Supabase or PostHog. Every call to them can fail without the app noticing:
+
+- **Offline at launch:** the first-run screen waits for a launch with a connection.
+- **Offline after signing in:** the person stays signed in. Who they are is stored locally, and the daily profile update waits.
+- **Supabase or PostHog down:** the same as offline. Failures are logged, nothing more.
+- **Sign-in fails:** a one-line message, and the person can try again or skip.
+
 ## Trying it from a dev build
 
 A dev build has no service config, so it sends nothing. To try it, set the same variables before starting:
@@ -61,7 +70,7 @@ A dev build has its own data folder, so its sign-in and install ID are separate 
 
 ## Reading the list of users
 
-- **Who signed in:** the `profiles` table, in the Supabase dashboard, or from Beamlynx itself with the database connection string. Use the `postgres` user, which bypasses row-level security.
+- **Who signed in:** the `profiles` table, in the Supabase dashboard, or from Beamlynx itself with the database connection string. Use the `postgres` user: apps can't read the table at all, only call `record_profile`.
 - **What they do:** PostHog. A signed-in person is a PostHog person with their email. Everyone else is an anonymous install ID.
 
 ## Removing someone
