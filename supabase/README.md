@@ -45,6 +45,8 @@ When an app starts sending something new, add a new payload file. Never edit or 
 
 Because migrations only add, applying them never breaks an app that is already out there. A migration therefore goes live before any app that needs it.
 
+Migrations only deploy from `main` or a release tag. A manual run from any other branch skips the deploy. Each deploy runs the migration guard again first, because a PR can merge while CI is failing.
+
 It needs three repository secrets: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF` and `SUPABASE_DB_PASSWORD`. Until they exist, the workflow skips itself with a notice.
 
 ## Trying it locally
