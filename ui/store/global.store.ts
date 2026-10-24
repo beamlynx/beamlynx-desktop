@@ -1049,7 +1049,9 @@ export class GlobalStore {
 
   /** The templates: Settings -> Policy templates. Copied into a connection when attached. */
   get policyTemplates(): AccessPolicy[] {
-    return this.accessPolicies.filter(p => !p.connectionId);
+    // The built-in Default first, then your own in the order they were made.
+    const templates = this.accessPolicies.filter(p => !p.connectionId);
+    return [...templates.filter(p => p.builtIn), ...templates.filter(p => !p.builtIn)];
   }
 
   /**
