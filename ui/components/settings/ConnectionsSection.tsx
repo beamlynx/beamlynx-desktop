@@ -703,12 +703,15 @@ const ConnectionRow = observer(
         }}
       >
         <Box
-          onClick={() => !disabledWhileBusy && onSwitch()}
-          // A real Tab stop for the row's own primary action (switch to
-          // this connection, same as a click).
+          // On desktop a click opens the row's settings, and connecting is
+          // its own Connect button: switching the tab's database is too big
+          // a side effect for a click meant to look inside. The web build
+          // has no settings to open, so a click there connects.
+          onClick={() => !disabledWhileBusy && (desktop ? setExpanded(v => !v) : onSwitch())}
           tabIndex={disabledWhileBusy ? -1 : 0}
           role="button"
-          aria-label={`Switch to connection ${label}`}
+          aria-label={desktop ? `${label}: ${expanded ? 'hide' : 'show'} its settings` : `Switch to connection ${label}`}
+          aria-expanded={desktop ? expanded : undefined}
           onKeyDown={e => {
             // A keydown on the rename TextField (a real descendant of this
             // row, not a separate stop) bubbles up to this handler same as
@@ -721,7 +724,8 @@ const ConnectionRow = observer(
             if (target.closest('input, textarea, [contenteditable="true"]')) return;
             if ((e.key === 'Enter' || e.key === ' ') && !disabledWhileBusy) {
               e.preventDefault();
-              onSwitch();
+              if (desktop) setExpanded(v => !v);
+              else onSwitch();
             }
           }}
           sx={{
@@ -927,6 +931,26 @@ const ConnectionRow = observer(
               }}
             />
           )}
+          {desktop &&
+            (isActive ? (
+              <Typography variant="caption" sx={{ color: 'var(--canvas-text-dim)', flexShrink: 0, px: 0.75 }}>
+                Connected
+              </Typography>
+            ) : (
+              <Button
+                size="small"
+                disabled={disabledWhileBusy}
+                onClick={e => {
+                  e.stopPropagation();
+                  onSwitch();
+                }}
+                onKeyDown={e => e.stopPropagation()}
+                aria-label={`Connect to ${label}`}
+                sx={{ textTransform: 'none', minWidth: 0, px: 0.75, py: 0, flexShrink: 0, fontSize: 13 }}
+              >
+                Connect
+              </Button>
+            ))}
           {desktop ? (
             <IconButton
               size="small"
@@ -1030,23 +1054,33 @@ const ConnectionRow = observer(
                   },
                 }}
               >
-                <ToggleButton value="off">Off</ToggleButton>
-                <ToggleButton value="masked">Masked</ToggleButton>
-                <ToggleButton value="every-column">Every column</ToggleButton>
+                {/* What each choice means, on hover: the line below says
+                    what is set, and the warning stays visible. */}
+                {/* The tooltip sits on each label: ToggleButtonGroup passes its
+                    selected state to its direct children only. */}
+                <ToggleButton value="off">
+                  <Tooltip title="Agents can't use this connection.">
+                    <span>Off</span>
+                  </Tooltip>
+                </ToggleButton>
+                <ToggleButton value="masked">
+                  <Tooltip title="Agents see the columns this connection's access policy allows. The rest come back masked.">
+                    <span>Masked</span>
+                  </Tooltip>
+                </ToggleButton>
+                <ToggleButton value="every-column">
+                  <Tooltip title="Agents read every column, unmasked. The policy is kept for when you switch back.">
+                    <span>Every column</span>
+                  </Tooltip>
+                </ToggleButton>
               </ToggleButtonGroup>
-
-              {access === 'off' && (
-                <Typography variant="body2" sx={{ color: 'var(--canvas-text-dim)', mt: 1 }}>
-                  Agents can&apos;t use this connection.
-                </Typography>
-              )}
 
               {access === 'masked' && ownPolicy && (
                 <Box sx={{ mt: 1 }}>
                   <Typography variant="body2" sx={{ color: 'var(--canvas-text-dim)' }}>
                     {rulesOn === 0
-                      ? "Its policy has no rule on, so it masks nothing. Turn a rule on."
-                      : `Agents see what this connection's policy allows: ${rulesOn} rule${rulesOn === 1 ? '' : 's'} on${fromTemplate ? `, from the “${fromTemplate.name}” template` : ''}.`}
+                      ? 'No rule is on, so nothing is masked. Turn a rule on.'
+                      : `${rulesOn} rule${rulesOn === 1 ? '' : 's'} on${fromTemplate ? `, from the “${fromTemplate.name}” template` : ''}.`}
                   </Typography>
                   <Button
                     size="small"
@@ -1078,9 +1112,6 @@ const ConnectionRow = observer(
               {access === 'every-column' && (
                 <Alert severity="warning" sx={{ mt: 1, py: 0.25, '& .MuiAlert-message': { fontSize: 13 } }}>
                   Agents read every column of this database, unmasked.
-                  {ownPolicy && rulesOn > 0
-                    ? ` Its policy's ${rulesOn} rule${rulesOn === 1 ? ' is' : 's are'} kept, and apply again under Masked.`
-                    : ''}
                 </Alert>
               )}
             </Box>
@@ -1089,6 +1120,7 @@ const ConnectionRow = observer(
               <ToggleRow
                 label="Mask my own queries too"
                 description="See what agents see: the policy masks your own queries on this connection as well."
+                descriptionInTooltip
                 checked={!!applyPolicyToOwnQueries}
                 onChange={value => global.setApplyPolicyToOwnQueries(id, value)}
               />
@@ -1153,60 +1185,26 @@ const ConnectionRow = observer(
             </ConfirmDialog>
 
 
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 0.5 }}>
+            {/* The row's other actions, in the same quiet text buttons as
+                Connect and Edit rules. Delete opens a dialog, hence the
+                ellipsis; its red lives there, next to the consequence. */}
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 0.5, ml: -0.75 }}>
               <Button
                 size="small"
-                variant="outlined"
-                startIcon={
-                  reindexed ? (
-                    <CheckIcon sx={{ fontSize: 16, color: 'var(--icon-color-highlight)' }} />
-                  ) : (
-                    <RefreshIcon
-                      sx={{
-                        fontSize: 16,
-                        '@keyframes pine-reindex-spin': {
-                          from: { transform: 'rotate(0deg)' },
-                          to: { transform: 'rotate(360deg)' },
-                        },
-                        animation: reindexing ? 'pine-reindex-spin 0.8s linear infinite' : 'none',
-                      }}
-                    />
-                  )
-                }
                 disabled={!isLive || reindexing}
                 onClick={handleReindexClick}
                 title="Pick up tables or columns added since this connection last loaded them"
-                sx={{
-                  whiteSpace: 'nowrap',
-                  borderColor: 'var(--border-color)',
-                  color: 'var(--text-color)',
-                  '&:hover': {
-                    borderColor: 'var(--primary-color)',
-                    backgroundColor: 'var(--node-column-bg)',
-                  },
-                }}
+                sx={{ textTransform: 'none', color: 'var(--text-color)', px: 0.75 }}
               >
-                Refresh schema
+                {reindexing ? 'Refreshing…' : reindexed ? 'Schema refreshed' : 'Refresh schema'}
               </Button>
               {!isPlayground() && (
                 <Button
                   size="small"
-                  variant="outlined"
-                  startIcon={<DeleteOutlineIcon sx={{ fontSize: 16 }} />}
                   onClick={handleRemoveClick}
-                  sx={{
-                    whiteSpace: 'nowrap',
-                    borderColor: confirmingRemove
-                      ? 'var(--text-warning-color)'
-                      : 'var(--border-color)',
-                    color: confirmingRemove ? 'var(--text-warning-color)' : 'var(--text-color)',
-                    '&:hover': {
-                      borderColor: 'var(--text-warning-color)',
-                      backgroundColor: 'var(--node-column-bg)',
-                    },
-                  }}
+                  sx={{ textTransform: 'none', color: 'var(--text-color)', px: 0.75 }}
                 >
-                  Delete connection
+                  Delete connection…
                 </Button>
               )}
             </Box>
