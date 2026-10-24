@@ -34,6 +34,8 @@ merging, rather than via a PR.
    ```
    This triggers `.github/workflows/release.yml` — builds Linux/macOS/Windows installers and publishes them to a GitHub Release.
 
+   Its first job applies any new Supabase migrations to the live database (`.github/workflows/supabase-migrate.yml`). Nothing is built until that succeeds, so the database is always ahead of the app. If it fails, fix the migration in a new PR and push the tag again. See `supabase/README.md` for why a migration can never break an app that is already out there.
+
 9. Watch the release workflow through to completion (`gh run watch <run-id> --exit-status`) — it takes longer than CI (full matrix build + sequential publish job).
 
 10. Verify the published release before announcing: `gh release view X.Y.Z` — confirm the expected assets are present: `beamlynx.AppImage` (stable, unversioned filename), `beamlynx-X.Y.Z.deb`, `beamlynx-X.Y.Z.dmg` + `.blockmap`, `beamlynx-X.Y.Z.exe` + `.blockmap`, `latest.yml`/`latest-mac.yml`/`latest-linux.yml`.

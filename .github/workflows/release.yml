@@ -14,7 +14,14 @@ on:
   workflow_dispatch:
 
 jobs:
+  # The database first, before anything is built: a release may need a
+  # migration, and migrations never break an app already out there.
+  migrate:
+    uses: ./.github/workflows/supabase-migrate.yml
+    secrets: inherit
+
   read-pins:
+    needs: migrate
     runs-on: ubuntu-latest
     outputs:
       pine_ref: ${{ steps.pins.outputs.pine_ref }}
@@ -180,6 +187,19 @@ jobs:
         shell: bash
         working-directory: beamlynx-desktop
         run: npm run build
+
+      # Where usage stats and sign-in go (src/main/service-config.ts). These
+      # are public keys, kept as repository variables, not secrets. Without
+      # them the build has no usage stats and no sign-in.
+      - name: Write service config
+        shell: bash
+        working-directory: beamlynx-desktop
+        run: node scripts/write-service-config.js
+        env:
+          BEAMLYNX_POSTHOG_KEY: ${{ vars.BEAMLYNX_POSTHOG_KEY }}
+          BEAMLYNX_POSTHOG_HOST: ${{ vars.BEAMLYNX_POSTHOG_HOST }}
+          BEAMLYNX_SUPABASE_URL: ${{ vars.BEAMLYNX_SUPABASE_URL }}
+          BEAMLYNX_SUPABASE_KEY: ${{ vars.BEAMLYNX_SUPABASE_KEY }}
 
       - name: Package with electron-builder
         shell: bash

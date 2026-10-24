@@ -204,6 +204,10 @@ export type AppDb = {
   // A null width forgets the column. Prunes past COLUMN_WIDTH_CAP.
   setColumnWidths(connection: string, changes: Record<string, number | null>): void;
   markImportedFromLocalStorage(): void;
+  // Small values the main process keeps for itself, such as the install ID
+  // (usage-stats.ts). The renderer never reads these. A null value deletes.
+  getMeta(key: string): string | null;
+  setMeta(key: string, value: string | null): void;
 
   // Every recipe, most recently changed first.
   listRecipes(): Recipe[];
@@ -255,6 +259,7 @@ export function openAppDb(file: string, now: () => number = Date.now): AppDb {
 
   const getMeta = db.prepare('SELECT value FROM meta WHERE key = ?');
   const setMeta = db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)');
+  const deleteMeta = db.prepare('DELETE FROM meta WHERE key = ?');
   const allPreferences = db.prepare('SELECT key, value FROM preference');
   const upsertPreference = db.prepare(
     'INSERT INTO preference (key, value, updated_at) VALUES (?, ?, ?) ' +
@@ -352,6 +357,21 @@ export function openAppDb(file: string, now: () => number = Date.now): AppDb {
 
     markImportedFromLocalStorage: () => {
       setMeta.run('importedFromLocalStorage', String(now()));
+    },
+
+    getMeta: key => {
+      checkKey(key);
+      const row = getMeta.get(key) as { value: string } | undefined;
+      return row ? row.value : null;
+    },
+
+    setMeta: (key, value) => {
+      checkKey(key);
+      if (value === null) deleteMeta.run(key);
+      else {
+        checkValue(value);
+        setMeta.run(key, value);
+      }
     },
 
     listRecipes: () => (allRecipes.all() as RecipeRow[]).map(toRecipe),

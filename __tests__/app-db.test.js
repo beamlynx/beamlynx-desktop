@@ -249,3 +249,17 @@ test('a file that cannot be opened gives a failed startup state, not an exceptio
   });
   assert.deepEqual(state, { ok: false, reason: 'database is locked' });
 });
+
+test('meta values are kept across reopen, and a null deletes one', () => {
+  let db = openAppDb(file);
+  assert.equal(db.getMeta('usageStats.installId'), null);
+  db.setMeta('usageStats.installId', 'abc');
+  db.setMeta('account.userId', 'user-1');
+  db.close();
+
+  db = openAppDb(file);
+  assert.equal(db.getMeta('usageStats.installId'), 'abc');
+  db.setMeta('account.userId', null);
+  assert.equal(db.getMeta('account.userId'), null);
+  db.close();
+});
