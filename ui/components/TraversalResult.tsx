@@ -165,7 +165,6 @@ const TraversalResult: React.FC<{ session: Session }> = observer(({ session }) =
             slotProps={expressionTooltipSlotProps}
             // Long enough not to fire while running the cursor down the list,
             // short enough to feel like an answer rather than a delay.
-            enterDelay={400}
           >
             <Box
               data-testid={`traversal-node-${node.table}`}

@@ -73,6 +73,15 @@ export const createAppTheme = (
       },
     },
     components: {
+      // Every tooltip waits before it shows, so passing over something on
+      // the way to somewhere else doesn't put text over what you're reading.
+      // Moving from one tooltip to the next shows the next one sooner.
+      MuiTooltip: {
+        defaultProps: {
+          enterDelay: 600,
+          enterNextDelay: 300,
+        },
+      },
       MuiCssBaseline: {
         // Motion tokens ride along in the same :root block as the color
         // tokens, but come from their own emitter (styles/motion.ts) rather
