@@ -19,6 +19,7 @@ import type {
   SaveConnectionResult,
   SavedConnectionMeta,
   AttachTemplateResult,
+  SetAgentAccessResult,
   SetMcpEnabledResult,
 } from '../main/credential-store';
 // Matches beamlynx-ui's desktop.d.ts McpQueryRequest -- kept as a hand-mirrored
@@ -122,6 +123,14 @@ contextBridge.exposeInMainWorld('beamlynxDesktop', {
     setMcpEnabled: (id: string, enabled: boolean): Promise<SetMcpEnabledResult> =>
       ipcRenderer.invoke('credentials:set-mcp-enabled', id, enabled),
     // A fresh copy of a template as the connection's own policy, or none.
+    // What agents can do on a connection: off, masked by its policy, or
+    // every column. Masked without a policy needs the template to start
+    // from.
+    setAgentAccess: (
+      id: string,
+      access: 'off' | 'masked' | 'every-column',
+      templateId?: string,
+    ): Promise<SetAgentAccessResult> => ipcRenderer.invoke('credentials:set-agent-access', id, access, templateId),
     attachTemplate: (id: string, templateId: string | null): Promise<AttachTemplateResult> =>
       ipcRenderer.invoke('credentials:attach-template', id, templateId),
     setApplyPolicyToOwnQueries: (id: string, apply: boolean): Promise<SavedConnectionMeta | null> =>

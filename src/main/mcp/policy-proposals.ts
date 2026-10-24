@@ -92,7 +92,7 @@ export function checkChanges(
   raw: unknown,
 ): { changes: PolicyChange[] } | { error: string } {
   if (!policy) {
-    return { error: 'This connection has no access policy, so the agent already sees every column. There is nothing to change.' };
+    return { error: 'Agents already see every column on this connection, so there is nothing to change.' };
   }
   if (!Array.isArray(raw) || raw.length === 0) return { error: 'changes must be a list of at least one change.' };
   if (raw.length > MAX_CHANGES) return { error: `At most ${MAX_CHANGES} changes in one proposal.` };

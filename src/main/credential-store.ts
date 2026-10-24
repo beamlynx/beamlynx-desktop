@@ -62,6 +62,9 @@ export type AccessPolicy = {
   connectionId?: string;
   // The template a connection's policy was copied from, for display only.
   template?: { id: string; name: string };
+  // Set on the built-in Default template only: it lives in this code, not
+  // in the file, and nothing can change it.
+  builtIn?: boolean;
 };
 
 const isTemplate = (policy: AccessPolicy) => policy.connectionId === undefined;
@@ -121,6 +124,19 @@ export function defaultAccessPolicyRules(): AccessPolicyModule[] {
   ];
 }
 
+// The Default template. Built in: kept here, never stored, so it can't be
+// edited, renamed or deleted, and every new policy made from it starts the
+// same. Its rule ids are fixed, so the window can list them stably.
+export const BUILT_IN_TEMPLATE_ID = 'builtin:default';
+export function builtInTemplate(): AccessPolicy {
+  return {
+    id: BUILT_IN_TEMPLATE_ID,
+    name: 'Default',
+    builtIn: true,
+    rules: defaultAccessPolicyRules().map((rule, i) => ({ ...rule, id: `${BUILT_IN_TEMPLATE_ID}:${i}` })),
+  };
+}
+
 function makeDefaultPolicy(rules: AccessPolicyModule[] = defaultAccessPolicyRules()): AccessPolicy {
   return { id: randomUUID(), name: 'Default', rules };
 }
@@ -170,6 +186,11 @@ export type SavedConnectionMeta = {
   // state for the former because a connection can't reach mcpEnabled: true
   // without someone having looked at its policy.
   policyId: string | null;
+  // Agent access set to "Every column": agents see every column, unmasked,
+  // while the policy and its rules stay, to apply again when access goes
+  // back to "Masked". Only the window sets it (setAgentAccess). An older
+  // app ignores it and applies the policy, which hides more, never less.
+  agentsSeeEveryColumn: boolean;
   // Whether the connection owner has switched the assigned policy ON for
   // their own queries too, from any of their own (non-MCP) tabs -- independent
   // of MCP, which always applies the policy unconditionally and never reads
@@ -248,7 +269,7 @@ function getStorePath(): string {
 }
 
 function emptyStore(): StoreFile {
-  return { version: 4, connections: [], accessPolicies: [makeDefaultPolicy()] };
+  return { version: 5, connections: [], accessPolicies: [] };
 }
 
 // A corrupt or missing file must never block app boot -- default to empty
@@ -407,19 +428,13 @@ function ensureOwnPolicies(store: StoreFile): boolean {
     store.accessPolicies = kept;
     changed = true;
   }
-  // Once (store version 4): while every policy was shared, "Show to
-  // agents" wrote its Allow rules into the policy a connection used, which
-  // was often Default. Each connection now has those rules in its own
-  // copy. Default is a template again, so the Allow rules added to it go:
-  // a new connection starts from what Default always started with. Except
-  // rules stay, so the template never hides less than it did.
-  if (version < 4) {
-    store.accessPolicies = store.accessPolicies.map(policy =>
-      isTemplate(policy) && policy.name === 'Default'
-        ? { ...policy, rules: policy.rules.filter(m => m.builtIn || m.type === 'hide') }
-        : policy,
-    );
-    store.version = 4;
+  // Once (store version 5): Default is built in now (builtInTemplate), so
+  // a stored template called Default goes. It was editable, and while every
+  // policy was shared, "Show to agents" wrote Allow rules into it. Each
+  // connection that used it keeps its own copy, made above, with every rule.
+  if (version < 5) {
+    store.accessPolicies = store.accessPolicies.filter(p => !(isTemplate(p) && p.name === 'Default'));
+    store.version = 5;
     changed = true;
   }
   return changed;
@@ -460,8 +475,9 @@ function toMeta(record: StoredConnectionRecord): SavedConnectionMeta {
   const mcpEnabled = meta.mcpEnabled ?? false;
   const policyId = meta.policyId ?? null;
   const applyPolicyToOwnQueries = meta.applyPolicyToOwnQueries ?? false;
+  const agentsSeeEveryColumn = meta.agentsSeeEveryColumn ?? false;
   const dbType = meta.dbType ?? 'postgres';
-  return { ...meta, mcpEnabled, policyId, applyPolicyToOwnQueries, dbType };
+  return { ...meta, mcpEnabled, policyId, applyPolicyToOwnQueries, agentsSeeEveryColumn, dbType };
 }
 
 function makeLabel(
@@ -559,6 +575,7 @@ export function saveConnection(input: SaveConnectionInput): SaveConnectionResult
       // agent can reach it.
       policyId: null,
       applyPolicyToOwnQueries: false,
+      agentsSeeEveryColumn: false,
     };
     store.connections.push(record);
   }
@@ -613,8 +630,11 @@ function policyIsActive(policy: AccessPolicy | undefined): boolean {
 // reflects a decision someone made, never a stale/undecided id. Per
 // connection, not global: each connection is checked against the specific
 // policy it points at, not against "does any policy anywhere have a rule on."
-function isConnectionPolicyActive(store: StoreFile, connection: { policyId: string | null }): boolean {
-  if (connection.policyId === null) return true;
+function isConnectionPolicyActive(
+  store: StoreFile,
+  connection: { policyId: string | null; agentsSeeEveryColumn?: boolean },
+): boolean {
+  if (connection.policyId === null || connection.agentsSeeEveryColumn) return true;
   return policyIsActive(store.accessPolicies.find(p => p.id === connection.policyId));
 }
 
@@ -649,7 +669,12 @@ export function attachTemplate(id: string, templateId: string | null): AttachTem
   const store = readStore();
   const index = store.connections.findIndex(c => c.id === id);
   if (index < 0) return { ok: false, reason: 'not-found' };
-  const template = templateId === null ? null : store.accessPolicies.find(p => p.id === templateId && isTemplate(p));
+  const template =
+    templateId === null
+      ? null
+      : templateId === BUILT_IN_TEMPLATE_ID
+        ? builtInTemplate()
+        : store.accessPolicies.find(p => p.id === templateId && isTemplate(p));
   if (template === undefined) return { ok: false, reason: 'not-found' };
   const current = store.connections[index];
   if (current.mcpEnabled && template && !policyIsActive(template)) {
@@ -679,9 +704,50 @@ export function setApplyPolicyToOwnQueries(id: string, apply: boolean): SavedCon
   return toMeta(store.connections[index]);
 }
 
-// Templates and connections' own policies, told apart by connectionId.
+export type AgentAccess = 'off' | 'masked' | 'every-column';
+
+export type SetAgentAccessResult =
+  | { ok: true; profile: SavedConnectionMeta }
+  | { ok: false; reason: 'not-found' | 'needs-template' | 'no-active-policy' };
+
+// What agents can do on a connection, set from its row in the window:
+//  - off: MCP is off for it.
+//  - masked: agents see what its policy allows. A connection without one
+//    gets a copy of `templateId` first; without a template, needs-template.
+//    A policy with no rule on is refused, as it would decide nothing.
+//  - every-column: agents see every column, unmasked. The policy and its
+//    rules stay, and apply again when access goes back to masked.
+// Only the window calls this. No control-plane route can, so no agent can
+// widen its own access.
+export function setAgentAccess(id: string, access: AgentAccess, templateId?: string): SetAgentAccessResult {
+  if (access === 'masked') {
+    const current = readStore().connections.find(c => c.id === id);
+    if (!current) return { ok: false, reason: 'not-found' };
+    if (current.policyId === null) {
+      if (!templateId) return { ok: false, reason: 'needs-template' };
+      const attached = attachTemplate(id, templateId);
+      if (!attached.ok) return { ok: false, reason: attached.reason === 'not-found' ? 'not-found' : 'no-active-policy' };
+    }
+  }
+  const store = readStore();
+  const index = store.connections.findIndex(c => c.id === id);
+  if (index < 0) return { ok: false, reason: 'not-found' };
+  const next = {
+    ...store.connections[index],
+    mcpEnabled: access !== 'off',
+    agentsSeeEveryColumn: access === 'every-column',
+  };
+  if (access === 'masked' && !isConnectionPolicyActive(store, next)) return { ok: false, reason: 'no-active-policy' };
+  store.connections[index] = next;
+  writeStore(store);
+  console.log(`[credentials] setAgentAccess: id=${id} access=${access}`);
+  return { ok: true, profile: toMeta(store.connections[index]) };
+}
+
+// The built-in Default template first, then the stored templates and
+// connections' own policies, told apart by connectionId.
 export function listAccessPolicies(): AccessPolicy[] {
-  return readStore().accessPolicies;
+  return [builtInTemplate(), ...readStore().accessPolicies];
 }
 
 // A new template, with the starting rules.
@@ -816,12 +882,14 @@ export function setAccessPolicyRules(policyId: string, rules: AccessPolicyModule
 // A connection's label and its own policy, or null if there's no such
 // connection. Read-only: what get_access_policy shows an agent, and what an
 // agent's proposed change is checked against (control-plane-server.ts).
-export function getConnectionPolicy(id: string): { label: string; policy: AccessPolicy | null } | null {
+export function getConnectionPolicy(
+  id: string,
+): { label: string; policy: AccessPolicy | null; everyColumn: boolean } | null {
   const store = readStore();
   const connection = store.connections.find(c => c.id === id);
   if (!connection) return null;
   const policy = store.accessPolicies.find(p => p.id === connection.policyId && p.connectionId === id) ?? null;
-  return { label: connection.label, policy };
+  return { label: connection.label, policy, everyColumn: !policy || !!connection.agentsSeeEveryColumn };
 }
 
 // A blank/whitespace-only label is a no-op rather than an error -- there's no
@@ -903,6 +971,11 @@ export function registerCredentialIpc(): void {
     forgetConnection(id);
   });
   ipcMain.handle('credentials:set-mcp-enabled', (_event, id: string, enabled: boolean) => setMcpEnabled(id, enabled));
+  ipcMain.handle('credentials:set-agent-access', (_event, id: string, access: AgentAccess, templateId?: string) =>
+    access === 'off' || access === 'masked' || access === 'every-column'
+      ? setAgentAccess(id, access, templateId)
+      : { ok: false, reason: 'not-found' },
+  );
   ipcMain.handle('credentials:attach-template', (_event, id: string, templateId: string | null) =>
     attachTemplate(id, templateId),
   );

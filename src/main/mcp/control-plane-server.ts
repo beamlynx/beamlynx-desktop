@@ -187,7 +187,9 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
             error: `There are already ${MAX_PENDING_PROPOSALS_PER_CONNECTION} proposed changes waiting for this connection. Wait for the user to answer them.`,
           });
         }
-        const policy = getConnectionPolicy(profileId)?.policy ?? null;
+        const found = getConnectionPolicy(profileId);
+        // Agents that see every column have nothing a policy change would show them.
+        const policy = found && !found.everyColumn ? found.policy : null;
         const checked = checkChanges(policy, changes);
         if ('error' in checked) return sendJson(res, 400, { error: checked.error });
         const proposal = createProposal({

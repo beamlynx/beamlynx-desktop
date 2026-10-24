@@ -787,7 +787,7 @@ function describeMatcher(m: ColumnMatcher): string {
  */
 export function formatPolicy(label: string, policy: AccessPolicy | null): string {
   if (!policy) {
-    return `"${label}" has no access policy: you see every column. There is nothing to propose.`;
+    return `On "${label}" you see every column, unmasked: the user set it that way. There is nothing to propose.`;
   }
   const line = (m: AccessPolicyModule) => {
     const notes = [m.builtIn ? 'built in' : '', m.enabled ? '' : 'off'].filter(Boolean);

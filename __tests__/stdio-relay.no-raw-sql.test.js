@@ -128,7 +128,7 @@ test('run_sql_as_pine forwards SQL only to the control plane /query route', () =
 // see credential-store.ts's ensureOwnPolicies, but never with anything an
 // agent sent.)
 test('no control-plane route or relay code calls a policy or connection writer', () => {
-  const writers = /\b(addAccessPolicyRule|removeAccessPolicyRule|setAccessPolicyRuleEnabled|setAccessPolicyRules|attachTemplate|createAccessPolicy|deleteAccessPolicy|renameAccessPolicy|setMcpEnabled|saveConnection|writeStore)\b/;
+  const writers = /\b(addAccessPolicyRule|removeAccessPolicyRule|setAccessPolicyRuleEnabled|setAccessPolicyRules|attachTemplate|setAgentAccess|createAccessPolicy|deleteAccessPolicy|renameAccessPolicy|setMcpEnabled|saveConnection|writeStore)\b/;
   assert.ok(!writers.test(CONTROL_PLANE_SOURCE), 'control-plane-server.ts must not call a policy or connection writer');
   assert.ok(!writers.test(PROPOSAL_SOURCE), 'policy-proposals.ts must not call a policy or connection writer');
   assert.ok(!writers.test(STDIO_RELAY_SOURCE), 'stdio-relay.ts must not call a policy or connection writer');
