@@ -165,7 +165,14 @@ const SideRail = observer(({ hasUnreadUpdates, onOpenChangelog }: { hasUnreadUpd
       ? `Agent: waiting for your answer`
       : global.investigations.length > 0
         ? 'Open the agent’s investigation'
-        : 'Agent: nothing yet. An agent that uses beamlynx shows up here.';
+        : 'Connect an agent';
+  // One item for agents: with no investigation yet it opens the setup, and
+  // after that the agent's work, which links to the setup again.
+  const setupOpen = global.showSettings && global.settingsSection === 'mcp';
+  const openAgents = () => {
+    if (global.investigations.length > 0) global.focusAgentTab();
+    else global.setShowSettings(!setupOpen, setupOpen ? undefined : 'mcp');
+  };
 
   return (
     <Box
@@ -213,10 +220,9 @@ const SideRail = observer(({ hasUnreadUpdates, onOpenChangelog }: { hasUnreadUpd
 
       <Box sx={{ flex: 1 }} />
 
-      {/* The agent: only once one has started an investigation, since
-          until then there is nothing here to open, and at the bottom, so
-          the items above never move when it appears. */}
-      {isDesktop() && global.investigations.length > 0 && (
+      {/* The agent, at the bottom: before any investigation it opens the
+          setup for connecting one, and afterwards the agent's work. */}
+      {isDesktop() && (
         <>
           <RailItem
             icon={
@@ -252,8 +258,8 @@ const SideRail = observer(({ hasUnreadUpdates, onOpenChangelog }: { hasUnreadUpd
             ariaLabel={waiting > 0 ? `Agent (${waiting} waiting for your answer)` : 'Agent'}
             tooltip={agentStatus}
             expanded={expanded}
-            active={onAgentTab && !expanded}
-            onClick={() => global.focusAgentTab()}
+            active={(onAgentTab && !expanded) || setupOpen}
+            onClick={openAgents}
           />
           {expanded &&
             global.investigations.map(investigation => (

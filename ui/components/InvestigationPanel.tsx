@@ -678,6 +678,13 @@ const InvestigationPanel = observer(({ investigation }: { investigation: Investi
           </IconButton>
         </Box>
         <Typography sx={{ fontSize: 12, color: working ? 'var(--canvas-trace)' : dim, mt: 0.25 }}>{status}</Typography>
+        <Button
+          size="small"
+          onClick={() => global.setShowSettings(true, 'mcp')}
+          sx={{ textTransform: 'none', fontSize: 12, px: 0, minWidth: 0, mt: 0.25, color: dim, '&:hover': { color: 'var(--text-color)' } }}
+        >
+          Connect another agent
+        </Button>
       </Box>
 
       <Box

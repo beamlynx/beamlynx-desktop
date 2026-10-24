@@ -423,6 +423,8 @@ export type AccessPolicy = {
   id: string;
   name: string;
   rules: AccessPolicyModule[];
+  // The built-in Default template: kept in the desktop app, read-only.
+  builtIn?: boolean;
   // The connection this policy belongs to. None on a template.
   connectionId?: string;
   // The template a connection's policy was copied from.
@@ -461,7 +463,19 @@ export type ConnectionInfo = {
   // in. Undefined (older saved connections) also means false. See
   // effectiveAccessPolicyRules below.
   applyPolicyToOwnQueries?: boolean;
+  // Desktop-only: agent access set to "Every column". Agents see every
+  // column, unmasked, and the policy stays, unapplied, for when access goes
+  // back to "Masked". Undefined (an older desktop app) means false.
+  agentsSeeEveryColumn?: boolean;
 };
+
+/** What agents can do on a connection: the three values of its Agent access. */
+export type AgentAccess = 'off' | 'masked' | 'every-column';
+
+export function agentAccessOf(connection: ConnectionInfo | undefined): AgentAccess {
+  if (!connection?.mcpEnabled) return 'off';
+  return !connection.policyId || connection.agentsSeeEveryColumn ? 'every-column' : 'masked';
+}
 
 // The single place that decides which rules actually apply for a
 // connection right now -- shared by Session.accessPolicyRules (session.ts,
@@ -490,6 +504,9 @@ export function effectiveAccessPolicyRules(
   forMcp: boolean,
 ): AccessPolicyRule[] {
   if (!connection?.policyId) return [];
+  // Every column: the policy is kept but applies to no one. Masking your
+  // own queries shows what agents see, which is then everything.
+  if (connection.agentsSeeEveryColumn) return [];
   if (forMcp ? !connection.mcpEnabled : connection.applyPolicyToOwnQueries !== true) return [];
   const policy = policies.find(p => p.id === connection.policyId);
   if (!policy) return [];
@@ -513,7 +530,7 @@ export function effectiveAccessPolicy(
   forMcp: boolean,
 ): AppliedAccessPolicy {
   const rules = effectiveAccessPolicyRules(connection, policies, forMcp);
-  if (rules.length || forMcp || !connection?.mcpEnabled || !connection.policyId) {
+  if (rules.length || forMcp || !connection?.mcpEnabled || !connection.policyId || connection.agentsSeeEveryColumn) {
     return { rules, mode: 'enforce' };
   }
   const policy = policies.find(p => p.id === connection.policyId);

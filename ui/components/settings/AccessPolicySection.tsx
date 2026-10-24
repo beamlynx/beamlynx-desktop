@@ -10,9 +10,9 @@ import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import type { AccessPolicy, AccessPolicyModule, ColumnMatcher } from '../../store/client';
 import { useStores } from '../../store/store-container';
 import { describeMatcher } from '../../utils/accessPolicy';
+import ConfirmDialog from '../ConfirmDialog';
 import ToggleRow from './ToggleRow';
 
-const REMOVE_CONFIRM_TIMEOUT_MS = 3000;
 
 /**
  * Policy templates -- see GlobalStore.policyTemplates and
@@ -142,10 +142,12 @@ const RuleRow = observer(
     policy,
     module,
     focused,
+    readOnly = false,
   }: {
     policy: AccessPolicy;
     module: AccessPolicyModule;
     focused: boolean;
+    readOnly?: boolean;
   }) => {
     const { global } = useStores();
     const ref = useRef<HTMLDivElement>(null);
@@ -189,17 +191,20 @@ const RuleRow = observer(
         <Switch
           size="small"
           checked={module.enabled}
+          disabled={readOnly}
           onChange={(_e, value) => global.setAccessPolicyRuleEnabled(policy.id, module.id, value)}
           inputProps={{ 'aria-label': `${describeMatcher(matcher)}: on` }}
         />
-        <IconButton
-          size="small"
-          onClick={() => global.removeAccessPolicyRule(policy.id, module.id)}
-          aria-label={`Remove ${describeMatcher(matcher)}`}
-          sx={{ color: 'var(--canvas-text-dim)', '&:hover': { color: 'var(--text-color)' } }}
-        >
-          <CloseIcon sx={{ fontSize: 16 }} />
-        </IconButton>
+        {!readOnly && (
+          <IconButton
+            size="small"
+            onClick={() => global.removeAccessPolicyRule(policy.id, module.id)}
+            aria-label={`Remove ${describeMatcher(matcher)}`}
+            sx={{ color: 'var(--canvas-text-dim)', '&:hover': { color: 'var(--text-color)' } }}
+          >
+            <CloseIcon sx={{ fontSize: 16 }} />
+          </IconButton>
+        )}
       </Box>
     );
   },
@@ -246,12 +251,20 @@ const RuleList = ({
 
 export const PolicyRules = observer(({ policy, focusedRuleId }: { policy: AccessPolicy; focusedRuleId?: string }) => {
   const { global } = useStores();
+  // The built-in Default template can't change: its rules are shown, not edited.
+  const readOnly = !!policy.builtIn;
   const hides = policy.rules.filter(m => m.type === 'hide');
   const builtIns = policy.rules.filter(m => m.type !== 'hide' && m.builtIn);
   const shows = policy.rules.filter(m => m.type !== 'hide' && !m.builtIn);
 
   return (
     <>
+      {readOnly && (
+        <Typography variant="body2" sx={{ color: 'var(--canvas-text-dim)', mb: 2 }}>
+          Built in, so it can&apos;t change. Every connection that starts from it gets these rules, and edits its own
+          copy. For other starting rules, make a new template.
+        </Typography>
+      )}
       <RuleList
         title="Allow"
         caption="Agents see the columns these match. Every other column is hidden."
@@ -265,17 +278,20 @@ export const PolicyRules = observer(({ policy, focusedRuleId }: { policy: Access
               label={text.label}
               description={text.description}
               checked={m.enabled}
+              disabled={readOnly}
               onChange={checked => global.setAccessPolicyRuleEnabled(policy.id, m.id, checked)}
             />
           );
         })}
         {shows.map(m => (
-          <RuleRow key={m.id} policy={policy} module={m} focused={m.id === focusedRuleId} />
+          <RuleRow key={m.id} policy={policy} module={m} focused={m.id === focusedRuleId} readOnly={readOnly} />
         ))}
-        <AddRuleForm
-          examples={{ contains: 'code', equals: 'status', suffix: '_code' }}
-          onAdd={async matcher => void (await global.addAccessPolicyRule(policy.id, matcher))}
-        />
+        {!readOnly && (
+          <AddRuleForm
+            examples={{ contains: 'code', equals: 'status', suffix: '_code' }}
+            onAdd={async matcher => void (await global.addAccessPolicyRule(policy.id, matcher))}
+          />
+        )}
       </RuleList>
       <RuleList
         title="Except"
@@ -283,12 +299,14 @@ export const PolicyRules = observer(({ policy, focusedRuleId }: { policy: Access
         icon={<BlockIcon sx={{ fontSize: 18, color: 'var(--text-warning-color)' }} />}
       >
         {hides.map(m => (
-          <RuleRow key={m.id} policy={policy} module={m} focused={m.id === focusedRuleId} />
+          <RuleRow key={m.id} policy={policy} module={m} focused={m.id === focusedRuleId} readOnly={readOnly} />
         ))}
-        <AddRuleForm
-          examples={{ contains: 'token', equals: 'email', suffix: '_key' }}
-          onAdd={async match => void (await global.addAccessPolicyRule(policy.id, { type: 'hide', match }))}
-        />
+        {!readOnly && (
+          <AddRuleForm
+            examples={{ contains: 'token', equals: 'email', suffix: '_key' }}
+            onAdd={async match => void (await global.addAccessPolicyRule(policy.id, { type: 'hide', match }))}
+          />
+        )}
       </RuleList>
     </>
   );
@@ -300,14 +318,6 @@ const AccessPolicySection = () => {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
-  const confirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (confirmTimeoutRef.current) clearTimeout(confirmTimeoutRef.current);
-    };
-  }, []);
-
   // Opened at one template and rule (openAccessPolicy): select that
   // template, and keep the rule picked out until the next visit. A
   // connection's own policy is opened under Database Connections instead.
@@ -341,16 +351,10 @@ const AccessPolicySection = () => {
     await global.renameAccessPolicy(id, trimmed);
   };
 
+  // Deleting asks in a dialog, like every other choice that can't be undone.
   const handleDeleteClick = (e: MouseEvent<SVGSVGElement>, id: string) => {
     e.stopPropagation();
-    if (confirmTimeoutRef.current) clearTimeout(confirmTimeoutRef.current);
-    if (confirmingDeleteId === id) {
-      setConfirmingDeleteId(null);
-      global.deleteAccessPolicy(id);
-      return;
-    }
     setConfirmingDeleteId(id);
-    confirmTimeoutRef.current = setTimeout(() => setConfirmingDeleteId(null), REMOVE_CONFIRM_TIMEOUT_MS);
   };
 
   const handleCreate = async () => {
@@ -457,23 +461,20 @@ const AccessPolicySection = () => {
                     {policy.name}
                   </Typography>
                 )}
-                <EditIcon
-                  onClick={e => startRename(e, policy.id, policy.name)}
-                  titleAccess="Rename template"
-                  sx={{ fontSize: 14, cursor: 'pointer', opacity: 0.35, flexShrink: 0, '&:hover': { opacity: 0.9 } }}
-                />
-                <DeleteOutlineIcon
-                  onClick={e => handleDeleteClick(e, policy.id)}
-                  titleAccess={confirmingDeleteId === policy.id ? 'Click again to remove' : 'Remove template'}
-                  sx={{
-                    fontSize: 14,
-                    cursor: 'pointer',
-                    flexShrink: 0,
-                    opacity: confirmingDeleteId === policy.id ? 1 : 0.35,
-                    color: confirmingDeleteId === policy.id ? 'var(--text-warning-color)' : 'inherit',
-                    '&:hover': { opacity: 0.9 },
-                  }}
-                />
+                {!policy.builtIn && (
+                  <>
+                    <EditIcon
+                      onClick={e => startRename(e, policy.id, policy.name)}
+                      titleAccess="Rename template"
+                      sx={{ fontSize: 14, cursor: 'pointer', opacity: 0.35, flexShrink: 0, '&:hover': { opacity: 0.9 } }}
+                    />
+                    <DeleteOutlineIcon
+                      onClick={e => handleDeleteClick(e, policy.id)}
+                      titleAccess="Delete template"
+                      sx={{ fontSize: 14, cursor: 'pointer', flexShrink: 0, opacity: 0.35, '&:hover': { opacity: 0.9 } }}
+                    />
+                  </>
+                )}
               </Box>
             ))}
           <Box
@@ -505,6 +506,19 @@ const AccessPolicySection = () => {
           {selected && <PolicyRules policy={selected} focusedRuleId={focusedRuleId} />}
         </Box>
       </Box>
+
+      <ConfirmDialog
+        open={confirmingDeleteId !== null}
+        title={`Delete the “${templates.find(t => t.id === confirmingDeleteId)?.name ?? ''}” template?`}
+        confirmLabel="Delete template"
+        danger
+        onConfirm={async () => {
+          if (confirmingDeleteId) await global.deleteAccessPolicy(confirmingDeleteId);
+        }}
+        onClose={() => setConfirmingDeleteId(null)}
+      >
+        <p>Connections that started from it keep their own copies of its rules.</p>
+      </ConfirmDialog>
     </Box>
   );
 };
