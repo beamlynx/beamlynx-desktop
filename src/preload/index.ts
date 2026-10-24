@@ -8,6 +8,7 @@
 import type { PolicyProposal } from '../main/mcp/policy-proposals';
 import { contextBridge, ipcRenderer } from 'electron';
 import type { AppDbStatus, Recipe, RecipeInputDef, StartupState } from '../main/app-db';
+import type { AccountStatus, SignInResult } from '../main/account';
 import type { UpdateStatus } from '../main/auto-update';
 import type {
   AccessPolicy,
@@ -99,6 +100,25 @@ contextBridge.exposeInMainWorld('beamlynxDesktop', {
       ipcRenderer.invoke('app-db:set-column-widths', connection, changes),
     markImportedFromLocalStorage: (): Promise<void> => ipcRenderer.invoke('app-db:mark-imported-from-local-storage'),
   },
+  // Sign in once, and usage stats (src/main/account.ts). Main keeps the
+  // state; onChanged tells the UI when it changes.
+  account: {
+    status: (): Promise<AccountStatus> => ipcRenderer.invoke('account:status'),
+    signIn: (provider: 'github' | 'google'): Promise<SignInResult> => ipcRenderer.invoke('account:sign-in', provider),
+    cancelSignIn: (): Promise<void> => ipcRenderer.invoke('account:cancel-sign-in'),
+    signOut: (): Promise<AccountStatus> => ipcRenderer.invoke('account:sign-out'),
+    skip: (): Promise<AccountStatus> => ipcRenderer.invoke('account:skip'),
+    setUsageStats: (enabled: boolean): Promise<AccountStatus> => ipcRenderer.invoke('account:set-usage-stats', enabled),
+    onChanged: (callback: (status: AccountStatus) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, status: AccountStatus) => callback(status);
+      ipcRenderer.on('account:changed', listener);
+      return () => ipcRenderer.removeListener('account:changed', listener);
+    },
+  },
+  // One usage event. Main sends only the events and properties it knows
+  // (src/main/usage-stats.ts), and only when usage stats are on.
+  captureUsage: (event: string, properties?: Record<string, string>) =>
+    ipcRenderer.send('usage-stats:capture', event, properties ?? {}),
   // Saved recipes (src/main/app-db.ts). They are global: every recipe is
   // offered on every database. Pass the current connection when saving a
   // new one, to record where it was saved from.

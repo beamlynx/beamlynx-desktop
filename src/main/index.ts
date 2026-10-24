@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, session, shell } from 'elect
 import { autoUpdater } from 'electron-updater';
 import * as http from 'http';
 import * as path from 'path';
+import { getUsageStats, onAppStarted, registerAccountIpc, shutdownAccount } from './account';
 import { initAutoUpdater } from './auto-update';
 import { closeAppDb, registerAppDbIpc } from './app-db-ipc';
 import { registerCredentialIpc } from './credential-store';
@@ -378,10 +379,11 @@ function watchServer(handle: ServerHandle): void {
 
 async function main(): Promise<void> {
   Menu.setApplicationMenu(buildMenu());
-  registerCredentialIpc();
+  registerCredentialIpc(dbType => getUsageStats().capture('connection_added', { database_type: dbType }));
   registerRevealIpc();
   registerInvestigationIpc();
   registerAppDbIpc();
+  registerAccountIpc();
 
   // Checked before anything opens, so a taken port gets a plain explanation
   // instead of an uncaught EADDRINUSE. The pine server's port is checked in
@@ -410,6 +412,9 @@ async function main(): Promise<void> {
   // on startServer() (JVM boot + port-readiness polling, up to ~15s) --
   // previously nothing rendered at all during that gap.
   createWindow();
+  // Usage stats and the daily profile sync. Only here, in the GUI app: the
+  // --mcp relay never reaches main(), so an agent starting it isn't counted.
+  onAppStarted();
 
   try {
     serverHandle = await startServer(pineToken);
@@ -565,6 +570,7 @@ function runDesktopApp(): void {
   ipcMain.on('restart-to-update', async () => {
     quitting = true;
     await flushRendererStorage();
+    await shutdownAccount();
     closeAppDb();
     if (serverHandle) {
       await serverHandle.stop();
@@ -585,6 +591,7 @@ function runDesktopApp(): void {
     controlPlaneServer?.close();
     removeControlPlaneInfo(app.getPath('userData'));
     await flushRendererStorage();
+    await shutdownAccount();
     closeAppDb();
     await serverHandle.stop();
     app.quit();
