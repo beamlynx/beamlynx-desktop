@@ -1292,7 +1292,7 @@ const ConnectionsSection = () => {
     return (
       <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         <Typography variant="h6" component="h2" sx={headerSx}>
-          Add database connection
+          Add connection
         </Typography>
         {/* AddConnectionForm manages its own internal scroll (fields) vs.
             fixed footer (Cancel/Connect) split -- this just sizes the space
@@ -1307,22 +1307,46 @@ const ConnectionsSection = () => {
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }}>
-      <Typography variant="h6" component="h2" sx={headerSx}>
-        Database Connections
-      </Typography>
+      {/* The section's main action sits beside its title, always in view,
+          however long the list below gets. */}
+      <Box sx={{ ...headerSx, display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Typography variant="h6" component="h2" sx={{ flex: 1, minWidth: 0, color: 'var(--text-color)' }}>
+          Database Connections
+        </Typography>
+        {global.connections.length > 0 && (
+          <Button
+            size="small"
+            onClick={() => openForm(null)}
+            sx={{ textTransform: 'none', color: 'var(--text-color)', flexShrink: 0 }}
+          >
+            Add connection
+          </Button>
+        )}
+      </Box>
 
       {/* Rows carry no border of their own -- a bottom hairline between
           rows (same convention as PreferencesSection's ToggleRow) instead
           of each one boxed like a card. The active connection is marked by
           tinting the whole row, the same left-accent-plus-background
           treatment the settings rail itself uses for its active section.
-          Only this row list scrolls -- the title above and "+ Add" button
-          below stay put. */}
+          Only this row list scrolls -- the title and Add connection above
+          stay put. */}
       <Box className="styled-scrollbar" sx={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: 'auto' }}>
+        {/* An empty list is where the first connection gets added. */}
         {global.connections.length === 0 && (
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            No saved connections yet.
-          </Typography>
+          <Box sx={{ py: 4, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1.5 }}>
+            <Typography variant="body2" sx={{ color: 'var(--text-color)' }}>
+              No connections yet. Add a database to start querying it.
+            </Typography>
+            <Button
+              variant="contained"
+              size="small"
+              onClick={() => openForm(null)}
+              sx={{ textTransform: 'none', bgcolor: 'var(--primary-color)', color: '#fff', '&:hover': { bgcolor: 'var(--primary-color)', opacity: 0.9 } }}
+            >
+              Add connection
+            </Button>
+          </Box>
         )}
         {global.connections.map(
           ({ id, label, mcpEnabled, policyId, applyPolicyToOwnQueries }) => {
@@ -1348,22 +1372,6 @@ const ConnectionsSection = () => {
         )}
       </Box>
 
-      <Button
-        variant="outlined"
-        onClick={() => openForm(null)}
-        sx={{
-          flexShrink: 0,
-          mt: 2,
-          borderColor: 'var(--border-color)',
-          color: 'var(--text-color)',
-          '&:hover': {
-            borderColor: 'var(--primary-color)',
-            backgroundColor: 'var(--node-column-bg)',
-          },
-        }}
-      >
-        + Add database connection
-      </Button>
     </Box>
   );
 };
