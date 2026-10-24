@@ -1,8 +1,8 @@
 import React from 'react';
 import { Badge, Box, ButtonBase, Divider, Tooltip, Typography } from '@mui/material';
 import {
-  MenuOpen,
-  Menu as MenuIcon,
+  KeyboardDoubleArrowLeft,
+  KeyboardDoubleArrowRight,
   Notifications,
   SmartToyOutlined,
   StorageOutlined,
@@ -280,11 +280,21 @@ const SideRail = observer(({ hasUnreadUpdates, onOpenChangelog }: { hasUnreadUpd
         expanded={expanded}
         onClick={onOpenChangelog}
       />
+      {/* Collapse or expand: a double chevron pointing the way the sidebar
+          will move, unlike any other icon here. The menu icon it replaces
+          looked like Database Connections' storage icon at this size. At the
+          bottom, out of the way: the top is for the connection. */}
       <RailItem
-        icon={expanded ? <MenuOpen sx={{ fontSize: 20 }} /> : <MenuIcon sx={{ fontSize: 20 }} />}
-        label="Collapse"
+        icon={
+          expanded ? (
+            <KeyboardDoubleArrowLeft sx={{ fontSize: 20 }} />
+          ) : (
+            <KeyboardDoubleArrowRight sx={{ fontSize: 20 }} />
+          )
+        }
+        label="Collapse sidebar"
         ariaLabel={expanded ? 'Collapse the sidebar' : 'Expand the sidebar'}
-        tooltip="Expand"
+        tooltip="Expand sidebar"
         expanded={expanded}
         onClick={() => global.setSideRailExpanded(!expanded)}
       />
