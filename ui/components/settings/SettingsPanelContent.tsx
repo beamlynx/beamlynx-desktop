@@ -12,6 +12,7 @@ import PreferencesSection from './PreferencesSection';
 import AccessPolicySection from './AccessPolicySection';
 import McpSection from './McpSection';
 import AboutSection from './AboutSection';
+import AccountSection from './AccountSection';
 
 // Exported so useSettingsKeybindings.ts can drive j/k rail navigation off
 // the exact same order shown here, rather than a second, hand-kept list.
@@ -25,6 +26,7 @@ export const RAIL_ITEMS: { id: SettingsSection; label: string }[] = [
   { id: 'access-policy', label: 'Policy templates' },
   // No 'mcp' item: connecting an agent opens from the sidebar's Agent item
   // (SideRail.tsx), where agents' work shows too. The section stays.
+  { id: 'account', label: 'Account' },
   { id: 'about', label: 'About' },
 ];
 
@@ -33,7 +35,7 @@ export const RAIL_ITEMS: { id: SettingsSection; label: string }[] = [
 // Exported for the same reason RAIL_ITEMS is -- useSettingsKeybindings.ts's
 // j/k rail navigation skips these in browser mode too, off this exact list,
 // not a second hand-kept one.
-export const DESKTOP_ONLY_SECTIONS: SettingsSection[] = ['access-policy', 'mcp'];
+export const DESKTOP_ONLY_SECTIONS: SettingsSection[] = ['access-policy', 'mcp', 'account'];
 
 /**
  * The open section's content -- the entire "what Settings actually shows"
@@ -110,6 +112,7 @@ const SettingsPanelContent = () => {
           {activeSection === 'preferences' && <PreferencesSection />}
           {activeSection === 'access-policy' && <AccessPolicySection />}
           {activeSection === 'mcp' && <McpSection />}
+          {activeSection === 'account' && <AccountSection />}
           {activeSection === 'about' && <AboutSection />}
         </Box>
       </Box>

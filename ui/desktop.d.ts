@@ -184,6 +184,24 @@ type GetConnectionResult =
   | { ok: false; error: 'not-found' }
   | { ok: false; error: 'decryption-failed'; profile: SavedConnectionMeta };
 
+// Matches beamlynx-desktop's AccountStatus (src/main/account.ts).
+type AccountStatus = {
+  // False when the desktop build has no sign-in service (every dev build).
+  available: boolean;
+  user: { id: string; email: string | null; name: string | null; provider: string | null } | null;
+  onboarding: 'signed-in' | 'skipped' | null;
+  usageStats: boolean;
+  signingIn: boolean;
+  online: boolean;
+};
+
+type SignInResult = { ok: true; status: AccountStatus } | { ok: false; reason: 'cancelled' | 'failed'; message: string };
+
+// The usage events the UI sends, with the properties each may carry. The
+// desktop app sends the others itself, and drops anything it doesn't know
+// (src/main/usage-stats.ts).
+type UsageEvent = { event: 'query_run'; properties: { source: 'user' | 'agent'; language: 'pine' | 'sql' } };
+
 interface BeamlynxDesktopApi {
   // Where this app's bundled pine server listens, e.g. http://localhost:33333.
   // The dev build uses a different port than the installed app, so both can
@@ -312,6 +330,19 @@ interface BeamlynxDesktopApi {
     onRequest: (callback: (request: RevealRequest) => void) => () => void;
     resolve: (id: string, outcome: RevealOutcome) => Promise<RevealRequest | null>;
   };
+  // Sign in once, and usage stats. Optional: absent from a desktop app
+  // older than them. See FirstRunScreen.tsx and settings/AccountSection.tsx.
+  account?: {
+    status: () => Promise<AccountStatus>;
+    signIn: (provider: 'github' | 'google') => Promise<SignInResult>;
+    cancelSignIn: () => Promise<void>;
+    signOut: () => Promise<AccountStatus>;
+    skip: () => Promise<AccountStatus>;
+    setUsageStats: (enabled: boolean) => Promise<AccountStatus>;
+    onChanged: (callback: (status: AccountStatus) => void) => () => void;
+  };
+  // One usage event (utils/usage-stats.ts). Sent only when usage stats are on.
+  captureUsage?: (event: UsageEvent['event'], properties?: Record<string, string>) => void;
   // Fired when the user clicks a beamlynx:// deep link and this window is
   // the one that ends up handling it (see main/index.ts's handleDeepLink).
   onDeepLink: (callback: (params: { connection?: string; expression?: string }) => void) => () => void;
@@ -344,4 +375,7 @@ export type {
   McpQueryResult,
   RevealRequest,
   RevealOutcome,
+  AccountStatus,
+  SignInResult,
+  UsageEvent,
 };

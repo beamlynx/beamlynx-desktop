@@ -130,7 +130,7 @@ export type PendingConnectionSwitch =
   | { kind: 'select'; connectionId: string }
   | { kind: 'connectToSavedProfile'; id: string };
 
-export type SettingsSection = 'connections' | 'theme' | 'preferences' | 'access-policy' | 'mcp' | 'about';
+export type SettingsSection = 'connections' | 'theme' | 'preferences' | 'access-policy' | 'mcp' | 'account' | 'about';
 
 // Which edge the session tab strip runs along -- see tabOrientation below.
 // Deliberately its own type rather than reusing the inline

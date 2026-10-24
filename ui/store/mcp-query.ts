@@ -48,6 +48,7 @@ import { AccessPolicyRule, HttpClient, VariableValue } from './client';
 import type { Session } from './session';
 import type { DbType } from '../utils/dbType';
 import { restoreValues } from './values-blocks';
+import { captureUsage } from '../utils/usage-stats';
 
 export type ConnectionParams = {
   dbHost: string;
@@ -222,6 +223,9 @@ export async function runMcpQuery(
   // tab's own Variables strip: the agent's run is fully described by what it
   // sent.
   const rows = await session.evaluate({ applyServerPrettified: true, allowWrites: false, variables: variables ?? {} });
+  // Counted here, not in evaluate(), which skips agent tabs: only this call
+  // knows whether the agent sent SQL.
+  captureUsage('query_run', { source: 'agent', language: sql !== undefined ? 'sql' : 'pine' });
   // Snapshot to plain JSON synchronously, in the same tick evaluate()
   // resolves in -- not after returning up through McpBridge/preload.
   // Confirmed the hard way: PineTabs renders every session's own <Session>

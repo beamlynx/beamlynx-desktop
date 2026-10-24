@@ -37,6 +37,7 @@ import {
 import { generateGraph, getCandidateIndex, Graph } from './graph.util';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
 import { debounce } from './util';
+import { captureUsage } from '../utils/usage-stats';
 import type { HiddenColumn, QuerySnapshot } from './investigations';
 
 // The editor text split into blocks, and which block is the query a build
@@ -1212,6 +1213,11 @@ export class Session {
     const effectiveOpts: EvaluateOptions | undefined = this.isAgentSession
       ? { ...opts, allowWrites: false }
       : opts;
+    // An agent's runs are counted in runMcpQuery, which knows whether the
+    // agent sent SQL.
+    if (!this.isAgentSession) {
+      captureUsage('query_run', { source: 'user', language: opts?.forcePine ? 'pine' : this.inputMode });
+    }
     const result = await this.plugins.default.evaluate(effectiveOpts);
     // A run reaches the database on its own. If the last build didn't, say
     // because the database was down when the tab opened, build again now

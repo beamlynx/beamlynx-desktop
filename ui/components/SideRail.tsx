@@ -11,6 +11,7 @@ import {
   PolicyOutlined,
   HubOutlined,
   InfoOutlined,
+  AccountCircleOutlined,
 } from '@mui/icons-material';
 import type { SvgIconComponent } from '@mui/icons-material';
 import type { SettingsSection } from '../store/global.store';
@@ -45,6 +46,7 @@ const SECTION_ICONS: Record<SettingsSection, SvgIconComponent> = {
   preferences: TuneOutlined,
   'access-policy': PolicyOutlined,
   mcp: HubOutlined,
+  account: AccountCircleOutlined,
   about: InfoOutlined,
 };
 
