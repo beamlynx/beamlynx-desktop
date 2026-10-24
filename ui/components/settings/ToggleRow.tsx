@@ -1,4 +1,4 @@
-import { Box, Switch, Typography } from '@mui/material';
+import { Box, Switch, Tooltip, Typography } from '@mui/material';
 
 type ToggleRowProps = {
   label: string;
@@ -6,9 +6,12 @@ type ToggleRowProps = {
   checked: boolean;
   onChange: (checked: boolean) => void;
   disabled?: boolean;
+  // The description in a tooltip on the label, not a line under it, where
+  // the label says enough on its own.
+  descriptionInTooltip?: boolean;
 };
 
-const ToggleRow = ({ label, description, checked, onChange, disabled }: ToggleRowProps) => (
+const ToggleRow = ({ label, description, checked, onChange, disabled, descriptionInTooltip }: ToggleRowProps) => (
   <Box
     sx={{
       display: 'flex',
@@ -20,14 +23,22 @@ const ToggleRow = ({ label, description, checked, onChange, disabled }: ToggleRo
       opacity: disabled ? 0.6 : 1,
     }}
   >
-    <Box>
-      <Typography variant="body2" sx={{ color: 'var(--text-color)', fontFamily: 'var(--canvas-font)' }}>
-        {label}
-      </Typography>
-      <Typography variant="caption" color="text.secondary">
-        {description}
-      </Typography>
-    </Box>
+    {descriptionInTooltip ? (
+      <Tooltip title={description} placement="top-start">
+        <Typography variant="body2" sx={{ color: 'var(--text-color)', fontFamily: 'var(--canvas-font)', cursor: 'help' }}>
+          {label}
+        </Typography>
+      </Tooltip>
+    ) : (
+      <Box>
+        <Typography variant="body2" sx={{ color: 'var(--text-color)', fontFamily: 'var(--canvas-font)' }}>
+          {label}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {description}
+        </Typography>
+      </Box>
+    )}
     <Switch checked={checked} onChange={(_e, value) => onChange(value)} disabled={disabled} />
   </Box>
 );
