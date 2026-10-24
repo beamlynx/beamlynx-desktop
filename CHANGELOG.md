@@ -5,19 +5,18 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 ### Added
-- **Agents can read and propose changes to a connection's access policy.** Two new MCP tools. `get_access_policy` lists the connection's rules, each with an id. It shows rules only, never data. `propose_policy_change` takes a reason and a list of changes: add a rule, or remove, turn on or turn off one by its id. The app checks the changes first. It refuses an unknown rule id, removing a built-in rule, a malformed rule, and changes that would leave no rule on, since the agent would then be locked out. A valid proposal shows as a card in the agent's investigation (bundled beamlynx-ui). The call waits up to 10 minutes for the user to apply or decline it, then withdraws it. Nothing an agent can reach writes a policy: only the window does, after the user clicks Apply.
+- **Agents can read and propose access policy changes.** `get_access_policy` lists a connection's rules, never data. `propose_policy_change` sends changes that the app checks first, then shows the user as a card. Nothing changes until the user applies it, and only the window writes a policy. The call waits up to 10 minutes for an answer.
+- **Agent access per connection: off, masked or every column,** set with `credentials:set-agent-access`. Every column keeps the policy for later, in the new connection field `agentsSeeEveryColumn`. An older app ignores that field and masks.
 
 ### Changed
-- **A new connection starts with no access policy.** It gets one when MCP is turned on for it: beamlynx-ui asks for a template then. Until then MCP is off, so no agent can reach it.
-- **The Default template is built in.** It lives in the app's code, not in `connections.json`, so it can't be edited, renamed or deleted. Every connection that starts from it gets the same rules. While every policy was shared, "Show to agents" wrote Allow rules into the stored Default, and every new connection picked them up. Once, a stored template called Default is removed (store version 5). Each connection that used it keeps its own copy with every rule. `access-policy:list` lists the built-in template first, marked `builtIn`. Writes to it are refused.
-- **Agent access: off, masked, or every column.** A new IPC call, `credentials:set-agent-access`, sets what agents can do on a connection. Masked applies the connection's own policy, and a connection without one starts it from a template. Every column lets agents read every column, and keeps the policy and its rules for when access goes back to masked. It is a new connection field, `agentsSeeEveryColumn`. An older app ignores it and applies the policy, which hides more, never less. Only the window can call it. `get_access_policy` and `propose_policy_change` say there is nothing to change while agents see every column.
-- **Each connection has its own access policy.** No two connections share one, so changing one connection's policy never changes another's. The policies listed under Settings are templates. Attaching one copies its rules into the connection, with the new IPC call `credentials:attach-template`. The first time this version reads `connections.json`, a policy only one connection uses becomes that connection's own, as it is. That includes the copies 0.22.0's "Copy for this connection" made. A policy several connections share gives each its own copy, with the same rules, and stays as a template, along with any policy no connection uses. An older app reading the same file still applies each connection's own rules. If it makes two connections share a policy again, the next read gives them separate copies again.
-- **A query that uses a hidden column is refused at once.** `run_query` no longer waits for the user to allow the column. The refusal tells the agent to read the policy and propose a change.
-- **The Pine reference agents read covers newer Pine.** `order:` with `nulls first` and `nulls last`, the functions `jsonb_typeof()` and `jsonb_array_length()`, and a condition that starts with a function, like `where: jsonb_typeof(data) = 'array'`. They need the pine-lang that adds them (pine-lang #142 to #145). The order topic also said Pine sorts ascending by default. It sorts descending: write `asc` for ascending.
+- **Each connection has its own access policy.** No policy is shared any more. The ones listed under Settings are templates, copied into a connection with `credentials:attach-template`. On first start, each connection keeps exactly the rules it had.
+- **The Default template is built in.** It lives in code, so it can't be edited, and a stored "Default" is removed once.
+- **A new connection starts with no access policy.** The app asks for one when agent access is turned on.
+- **A query that uses a hidden column is refused at once.** The refusal points the agent to `propose_policy_change`.
+- **The Pine reference agents read covers newer Pine:** `nulls first` and `nulls last`, `jsonb_typeof()`, `jsonb_array_length()`, and a function on the left of a condition. It also corrects the default sort order: Pine sorts descending.
 
 ### Removed
-- `access-policy:duplicate` and `credentials:set-connection-policy`. A connection gets a policy only by attaching a template.
-- The approval wait in `run_query`, and its `/approval/:id` route and `mcp:approval-resolve` IPC call.
+- `access-policy:duplicate`, `credentials:set-connection-policy`, and `run_query`'s wait for an approval.
 
 ## [0.22.1] - 2026-10-19
 ### Fixed
