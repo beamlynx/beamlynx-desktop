@@ -163,8 +163,6 @@ const TraversalResult: React.FC<{ session: Session }> = observer(({ session }) =
             title={node.expression}
             placement="left"
             slotProps={expressionTooltipSlotProps}
-            // Long enough not to fire while running the cursor down the list,
-            // short enough to feel like an answer rather than a delay.
           >
             <Box
               data-testid={`traversal-node-${node.table}`}

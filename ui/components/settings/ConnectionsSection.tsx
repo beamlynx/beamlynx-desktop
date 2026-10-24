@@ -839,7 +839,7 @@ const ConnectionRow = observer(
               ))}
             </Popover>
           )}
-          {/* Name (or its rename field) and the agent icon share this flexible
+          {/* Name (or its rename field), Connect and the agent icon share this flexible
               region, rather than the chip sitting in the fixed trailing
               cluster below -- a chip that came and went between the pencil
               and the chevron dragged the pencil sideways with it (the name
@@ -895,9 +895,11 @@ const ConnectionRow = observer(
               <Typography
                 component="span"
                 variant="body2"
-                title={isActive ? 'Active connection' : undefined}
+                title={isActive ? 'Active connection' : label}
                 sx={{
-                  flex: 1,
+                  // A fixed share of the row, so Connect after it forms a
+                  // column; a longer name truncates.
+                  flex: '0 0 55%',
                   minWidth: 0,
                   fontFamily: 'var(--canvas-font)',
                   overflow: 'hidden',
@@ -908,6 +910,26 @@ const ConnectionRow = observer(
                 {label}
               </Typography>
             )}
+            {/* Connect in a column after the name: what you can do with this
+                connection, then a spacer, then its other actions at the far
+                right, which line up on every row. The tab's own connection
+                has its zap instead. */}
+            {desktop && !isActive && !renaming && (
+              <Button
+                size="small"
+                disabled={disabledWhileBusy}
+                onClick={e => {
+                  e.stopPropagation();
+                  onSwitch();
+                }}
+                onKeyDown={e => e.stopPropagation()}
+                aria-label={`Connect to ${label}`}
+                sx={{ ...actionSx, minWidth: 0, py: 0, flexShrink: 0 }}
+              >
+                Connect
+              </Button>
+            )}
+            <Box sx={{ flex: 1 }} />
             {/* What agents can do here, at rest and when expanded alike: the
                 sidebar's robot, dim when masked, in the warning colour when
                 agents read every column, absent when off. */}
@@ -954,27 +976,6 @@ const ConnectionRow = observer(
                 '&:hover': { opacity: 0.9 },
               }}
             />
-          )}
-          {/* Connect in a fixed slot, empty on the tab's own connection
-              (the zap marks it), so the icons after it line up. */}
-          {desktop && (
-            <Box sx={{ width: 64, flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>
-              {!isActive && (
-                <Button
-                  size="small"
-                  disabled={disabledWhileBusy}
-                  onClick={e => {
-                    e.stopPropagation();
-                    onSwitch();
-                  }}
-                  onKeyDown={e => e.stopPropagation()}
-                  aria-label={`Connect to ${label}`}
-                  sx={{ ...actionSx, minWidth: 0, py: 0 }}
-                >
-                  Connect
-                </Button>
-              )}
-            </Box>
           )}
           {desktop ? (
             <IconButton
