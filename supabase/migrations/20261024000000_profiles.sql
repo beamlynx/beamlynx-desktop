@@ -18,6 +18,10 @@ create table public.profiles (
 -- and another's row.
 alter table public.profiles enable row level security;
 
+-- Supabase usually grants these itself. Stated here so a project set not to
+-- expose new tables still lets the app write the row.
+grant select, insert, update on public.profiles to authenticated;
+
 create policy "own profile: read" on public.profiles
   for select using ((select auth.uid()) = user_id);
 create policy "own profile: insert" on public.profiles

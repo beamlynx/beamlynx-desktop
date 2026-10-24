@@ -11,7 +11,7 @@
 // table, so the app knows it offline and never asks again. A dev build has
 // its own data folder, so it has its own sign-in.
 import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js';
-import { app, BrowserWindow, ipcMain, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, net, safeStorage, shell } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import { PostHog } from 'posthog-node';
@@ -76,6 +76,9 @@ export function getUsageStats(): UsageStats {
           // The country, from the IP address. PostHog doesn't keep the
           // address itself unless the project is set to.
           disableGeoip: false,
+          // Electron's fetch follows the system's proxy settings, which
+          // Node's own fetch ignores.
+          fetch: (url, options) => net.fetch(url, options as RequestInit) as never,
         })
       : null;
     client?.on('error', e => console.error('[usage-stats]', e));
@@ -144,6 +147,9 @@ function getSupabase(): SupabaseClient | null {
       autoRefreshToken: true,
       detectSessionInUrl: false,
     },
+    // Electron's fetch follows the system's proxy settings, which Node's own
+    // fetch ignores.
+    global: { fetch: (input, init) => net.fetch(input instanceof URL ? input.href : input, init) },
   });
   return supabase;
 }
@@ -246,7 +252,10 @@ export async function signIn(provider: Provider): Promise<SignInResult> {
 
     const result = await server.result;
     if ('error' in result) throw new Error(result.error);
-    const exchanged = await client.auth.exchangeCodeForSession(result.code);
+    const exchanged = await client.auth.exchangeCodeForSession(
+      result.code,
+      result.flowId ? { flowId: result.flowId } : undefined,
+    );
     if (exchanged.error || !exchanged.data.session) {
       throw new Error(exchanged.error?.message ?? 'No session');
     }

@@ -4,7 +4,7 @@ The app counts a few anonymous events and lets people sign in once, with GitHub 
 
 ## What the app does
 
-- **Usage stats.** From the first launch, the app sends a few events to PostHog: `app_opened`, `connection_added`, `query_run`, `sign_in_skipped` and `sign_in_completed`. They carry the app version, OS and CPU architecture, and nothing else the user typed or saw. The full list, and the check that enforces it, is `EVENTS` in `src/main/usage-stats.ts`. People can turn this off on the first-run screen or in Settings → Preferences.
+- **Usage stats.** From the first launch, the app sends a few events to PostHog: `app_opened`, `connection_added`, `query_run`, `sign_in_skipped` and `sign_in_completed`. They carry the app version, OS and CPU architecture, and nothing else the user typed or saw. PostHog also records the country, from the IP address. The full list, and the check that enforces it, is `EVENTS` in `src/main/usage-stats.ts`. People can turn this off on the first-run screen or in Settings → Preferences.
 - **Sign in once.** The first-run screen offers GitHub, Google, or Skip. After sign-in, PostHog joins the install's earlier events to the person, and the app writes the person's row in the `profiles` table.
 
 Nothing is sent before the person has seen the first-run screen.

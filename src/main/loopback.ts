@@ -17,7 +17,9 @@ import type { AddressInfo } from 'net';
 
 export const CALLBACK_PATH = '/auth/callback';
 
-export type CallbackResult = { code: string } | { error: string };
+// flowId is Supabase's sb_flow_id, which it adds to the redirect address to
+// say which sign-in the code belongs to.
+export type CallbackResult = { code: string; flowId?: string } | { error: string };
 
 export type CallbackServer = {
   redirectUri: string;
@@ -64,7 +66,8 @@ export function startCallbackServer(timeoutMs = 5 * 60_000): Promise<CallbackSer
           : page("Beamlynx couldn't sign you in", 'Go back to the app to try again.'),
       );
       finish();
-      settle.resolve(code ? { code } : { error: error! });
+      const flowId = url.searchParams.get('sb_flow_id');
+      settle.resolve(code ? { code, ...(flowId ? { flowId } : {}) } : { error: error! });
     });
 
     const timer = setTimeout(() => {

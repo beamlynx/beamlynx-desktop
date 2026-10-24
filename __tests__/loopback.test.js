@@ -26,6 +26,12 @@ test('the redirect address is on 127.0.0.1, and the code comes back once', async
   await assert.rejects(fetch(`${server.redirectUri}?code=again`));
 });
 
+test("Supabase's flow ID comes back with the code", async () => {
+  const server = await startCallbackServer();
+  await fetch(`${server.redirectUri}?sb_flow_id=f1&code=abc`);
+  assert.deepEqual(await server.result, { code: 'abc', flowId: 'f1' });
+});
+
 test("the provider's error is passed on", async () => {
   const server = await startCallbackServer();
   await fetch(`${server.redirectUri}?error=access_denied&error_description=The+user+said+no`);
