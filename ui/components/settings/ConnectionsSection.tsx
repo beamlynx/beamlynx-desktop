@@ -34,6 +34,7 @@ import type { GlobalStore } from '../../store/global.store';
 import { buildConnectionString, parseConnectionString } from '../../utils/connectionString';
 import ToggleRow from './ToggleRow';
 import ConfirmDialog from '../ConfirmDialog';
+import InfoHint from '../InfoHint';
 import { agentAccessOf, type AgentAccess } from '../../store/client';
 import { PolicyRules } from './AccessPolicySection';
 
@@ -1061,9 +1062,23 @@ const ConnectionRow = observer(
             }}
           >
             <Box>
-              <Typography variant="body2" sx={{ color: 'var(--text-color)', fontWeight: 600, mb: 0.75 }}>
-                Agent access
-              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.75 }}>
+                <Typography variant="body2" sx={{ color: 'var(--text-color)', fontWeight: 600 }}>
+                  Agent access
+                </Typography>
+                <InfoHint
+                  text={
+                    <>
+                      <b>Off:</b> agents can&apos;t use this connection.
+                      <br />
+                      <b>Masked:</b> agents see the columns its access policy allows. The rest come back masked.
+                      <br />
+                      <b>Every column:</b> agents read every column, unmasked. The policy is kept for when you switch
+                      back.
+                    </>
+                  }
+                />
+              </Box>
               <ToggleButtonGroup
                 exclusive
                 size="small"
@@ -1078,25 +1093,12 @@ const ConnectionRow = observer(
                   },
                 }}
               >
-                {/* What each choice means, on hover: the line below says
-                    what is set, and the warning stays visible. */}
-                {/* The tooltip sits on each label: ToggleButtonGroup passes its
-                    selected state to its direct children only. */}
-                <ToggleButton value="off">
-                  <Tooltip title="Agents can't use this connection.">
-                    <span>Off</span>
-                  </Tooltip>
-                </ToggleButton>
-                <ToggleButton value="masked">
-                  <Tooltip title="Agents see the columns this connection's access policy allows. The rest come back masked.">
-                    <span>Masked</span>
-                  </Tooltip>
-                </ToggleButton>
-                <ToggleButton value="every-column">
-                  <Tooltip title="Agents read every column, unmasked. The policy is kept for when you switch back.">
-                    <span>Every column</span>
-                  </Tooltip>
-                </ToggleButton>
+                {/* What each choice means is in the info icon after the
+                    heading; the line below says what is set, and the
+                    warning stays visible. */}
+                <ToggleButton value="off">Off</ToggleButton>
+                <ToggleButton value="masked">Masked</ToggleButton>
+                <ToggleButton value="every-column">Every column</ToggleButton>
               </ToggleButtonGroup>
 
               {access === 'masked' && ownPolicy && (

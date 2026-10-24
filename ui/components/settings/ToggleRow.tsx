@@ -1,4 +1,5 @@
-import { Box, Switch, Tooltip, Typography } from '@mui/material';
+import { Box, Switch, Typography } from '@mui/material';
+import InfoHint from '../InfoHint';
 
 type ToggleRowProps = {
   label: string;
@@ -27,11 +28,12 @@ const ToggleRow = ({ label, description, checked, onChange, disabled, descriptio
     }}
   >
     {descriptionInTooltip ? (
-      <Tooltip title={description} placement="top-start">
-        <Typography variant="body2" sx={{ color: 'var(--text-color)', fontFamily: 'var(--canvas-font)', cursor: 'help' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+        <Typography variant="body2" sx={{ color: 'var(--text-color)', fontFamily: 'var(--canvas-font)' }}>
           {label}
         </Typography>
-      </Tooltip>
+        <InfoHint text={description} />
+      </Box>
     ) : (
       <Box>
         <Typography variant="body2" sx={{ color: 'var(--text-color)', fontFamily: 'var(--canvas-font)' }}>
