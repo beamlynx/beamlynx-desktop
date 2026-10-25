@@ -11,41 +11,50 @@ Nothing is sent before the person has seen the first-run screen.
 
 ## Setting up the services
 
-Do this once. All of it is in EU regions.
+`scripts/setup-accounts.sh` does everything that can be scripted, and lists what is left to do by hand. Run it again at any point: it finds what already exists and only fills in what's missing. The comment at its top lists every environment variable it reads.
 
-### Supabase
+### By hand, before the script
+1. Sign up at supabase.com, and create an organization named Grephyte.
+2. Create an access token under **Account → Access Tokens**. Supabase has no way to create one from a script.
 
-1. Create a project in an EU region, such as Frankfurt or Stockholm. The region can't be changed later.
-2. Add the repository secrets `SUPABASE_ACCESS_TOKEN` (a personal access token, from supabase.com → Account → Access Tokens), `SUPABASE_PROJECT_REF` (the ID in the project's URL) and `SUPABASE_DB_PASSWORD`. The next release applies the migrations as its first job, before anything is built. If they fail, the release stops. After that, migrations also deploy on every merge to `main` that changes one; see `supabase/README.md`.
+### Run the script
+```sh
+SUPABASE_ACCESS_TOKEN=sbp_... ./scripts/setup-accounts.sh
+```
+It does the following:
+1. Creates the `beamlynx` project in Frankfurt (`eu-central-1`). The region can't be changed later.
+2. Turns email sign-in off, and allows the app's return address, `http://127.0.0.1:*/auth/callback`. Supabase already accepts any return to a loopback address; the allowlist entry keeps sign-in working if that changes.
+3. Stores `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF` and `SUPABASE_DB_PASSWORD` as secrets in this repo.
+4. Runs the **Supabase migrations** workflow, the same one every release runs first, and checks that the database answers.
+5. Prints the new database password once, so you can save it. It also prints the Supabase callback URL that the OAuth apps need, and the command to try sign-in from a dev build.
 
-   A release with `BEAMLYNX_SUPABASE_URL` set but these secrets missing also stops, so the app never ships pointing at a database that was never set up.
-3. Under **Authentication → Sign In / Providers**:
-   - Turn on **GitHub**. Create an OAuth app at github.com → Settings → Developer settings → OAuth Apps. Its callback URL is the one Supabase shows, ending in `/auth/v1/callback`.
-   - Turn on **Google**. Create an OAuth client (type: Web application) in Google Cloud Console → APIs & Services → Credentials, with the same Supabase callback URL.
-   - Turn off **Email**.
-4. Under **Authentication → URL Configuration**:
-   - **Site URL**: `https://beamlynx.com`
-   - **Redirect URLs**: add `http://127.0.0.1:*/auth/callback`
+### By hand, after the first run
+GitHub and Google have no way to create these from a script. The script prints the exact values to fill in.
 
-   Supabase already accepts any redirect to a loopback IP address. The allowlist entry keeps sign-in working if that ever changes.
-5. Copy the **Project URL** and the **publishable key** (the public key, also called the anon key). Never use the secret or service role key in the app.
+- **A GitHub OAuth app, under the beamlynx GitHub organization.** It gives a client ID and a client secret.
+- **A Google OAuth client, under Grephyte's Google Cloud organization.** It gives a client ID and a client secret. Set up its consent screen first, under **Google Auth Platform**. Leave the logo out, because a logo means a review by Google. Then **Publish app**: until then, only test users you add can sign in.
 
-### PostHog
+Then run the script again with both:
+```sh
+SUPABASE_ACCESS_TOKEN=sbp_... \
+GITHUB_OAUTH_CLIENT_ID=... GITHUB_OAUTH_CLIENT_SECRET=... \
+GOOGLE_OAUTH_CLIENT_ID=... GOOGLE_OAUTH_CLIENT_SECRET=... \
+./scripts/setup-accounts.sh
+```
 
-Use the project the website uses, so website visits and app use are in one place. Copy its **project API key** (it starts with `phc_`) and check its host. The EU cloud is `https://eu.i.posthog.com`.
-
-### The release build
-
-Add these as **repository variables** (Settings → Secrets and variables → Actions → Variables), not secrets. They are public keys.
+### Ship it
+When sign-in works from a dev build, run the script once more with `--for-release`. It sets these **repository variables**, which the release workflow writes to `dist/main/service-config.json` (`scripts/write-service-config.js`):
 
 | Variable | Value |
 |---|---|
-| `BEAMLYNX_SUPABASE_URL` | The Supabase Project URL |
-| `BEAMLYNX_SUPABASE_KEY` | The Supabase publishable key |
-| `BEAMLYNX_POSTHOG_KEY` | The PostHog project API key |
-| `BEAMLYNX_POSTHOG_HOST` | Optional. Defaults to `https://eu.i.posthog.com` |
+| `BEAMLYNX_SUPABASE_URL` | The Supabase project URL |
+| `BEAMLYNX_SUPABASE_KEY` | The Supabase publishable key, which is public. Never the secret or service role key |
+| `BEAMLYNX_POSTHOG_KEY` | The PostHog project API key. The website's project, so visits and app use are in one place. The script reads it from `../beamlynx.com/.env.local`, or from `BEAMLYNX_POSTHOG_KEY` |
+| `BEAMLYNX_POSTHOG_HOST` | Optional, not set by the script. Defaults to `https://eu.i.posthog.com` |
 
-The release workflow writes them to `dist/main/service-config.json` (`scripts/write-service-config.js`). A build without them has no first-run screen, no sign-in and no usage stats.
+A build without them has no first-run screen, no sign-in and no usage stats.
+
+Every release applies new migrations as its first job, before anything is built, and stops if they fail. Migrations also deploy on every merge to `main` that changes one; see `supabase/README.md`. A release with `BEAMLYNX_SUPABASE_URL` set but the secrets missing stops too, so the app never ships pointing at a database that was never set up.
 
 ## When the services are unreachable
 
