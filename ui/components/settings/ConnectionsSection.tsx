@@ -1102,6 +1102,13 @@ const ConnectionRow = observer(
                 <ToggleButton value="every-column">Every column</ToggleButton>
               </ToggleButtonGroup>
 
+              {access !== 'off' && (
+                <Typography variant="body2" sx={{ mt: 1, color: 'var(--canvas-text-dim)' }}>
+                  Whatever an agent reads goes to its AI provider. Masking lowers what it sees, but isn&apos;t a
+                  guarantee.
+                </Typography>
+              )}
+
               {access === 'masked' && ownPolicy && (
                 <Box sx={{ mt: 1 }}>
                   <Typography variant="body2" sx={{ color: 'var(--canvas-text-dim)' }}>

@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Box, Checkbox, FormControlLabel, Link, Typography } from '@mui/material';
 import ModalSurface from './ModalSurface';
 import useAccountStatus from '../hooks/useAccountStatus';
-import { PRIVACY_URL, SignInButtons } from './settings/AccountSection';
+import { PRIVACY_URL, SignInButtons, TERMS_URL } from './settings/AccountSection';
 
 /**
  * Shown once, on desktop, the first time Beamlynx starts with a network
@@ -95,15 +95,15 @@ const FirstRunScreen = () => {
           }
           label="Send usage stats"
         />
-        <Link
-          href={PRIVACY_URL}
-          target="_blank"
-          rel="noreferrer"
-          variant="caption"
-          sx={{ display: 'block' }}
-        >
-          Privacy policy
-        </Link>
+        <Typography variant="caption" sx={{ display: 'block' }}>
+          <Link href={PRIVACY_URL} target="_blank" rel="noreferrer">
+            Privacy policy
+          </Link>
+          {' · '}
+          <Link href={TERMS_URL} target="_blank" rel="noreferrer">
+            Terms
+          </Link>
+        </Typography>
       </Box>
     </ModalSurface>
   );
