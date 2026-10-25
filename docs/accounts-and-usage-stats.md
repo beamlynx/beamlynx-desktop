@@ -16,7 +16,9 @@ Do this once. All of it is in EU regions.
 ### Supabase
 
 1. Create a project in an EU region, such as Frankfurt or Stockholm. The region can't be changed later.
-2. Add the repository secrets `SUPABASE_ACCESS_TOKEN` (a personal access token, from supabase.com → Account → Access Tokens), `SUPABASE_PROJECT_REF` (the ID in the project's URL) and `SUPABASE_DB_PASSWORD`. Then run the **Supabase migrations** workflow by hand (Actions → Supabase migrations → Run workflow). From then on, migrations deploy themselves; see `supabase/README.md`.
+2. Add the repository secrets `SUPABASE_ACCESS_TOKEN` (a personal access token, from supabase.com → Account → Access Tokens), `SUPABASE_PROJECT_REF` (the ID in the project's URL) and `SUPABASE_DB_PASSWORD`. The next release applies the migrations as its first job, before anything is built. If they fail, the release stops. After that, migrations also deploy on every merge to `main` that changes one; see `supabase/README.md`.
+
+   A release with `BEAMLYNX_SUPABASE_URL` set but these secrets missing also stops, so the app never ships pointing at a database that was never set up.
 3. Under **Authentication → Sign In / Providers**:
    - Turn on **GitHub**. Create an OAuth app at github.com → Settings → Developer settings → OAuth Apps. Its callback URL is the one Supabase shows, ending in `/auth/v1/callback`.
    - Turn on **Google**. Create an OAuth client (type: Web application) in Google Cloud Console → APIs & Services → Credentials, with the same Supabase callback URL.
