@@ -14,6 +14,10 @@ on:
 jobs:
   # The live database is shared by every released app, so a migration must
   # never break one. See supabase/README.md.
+  #
+  # This check is required to merge into main. It always runs, because a
+  # required check that never reports blocks the PR for good. When nothing
+  # about the database changed since main, it passes in seconds.
   supabase:
     runs-on: ubuntu-latest
     steps:
@@ -21,17 +25,32 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Did anything about the database change?
+        id: changed
+        run: |
+          base=$(git merge-base origin/main HEAD)
+          if git diff --quiet "$base" HEAD -- supabase scripts/check-supabase-migrations.js scripts/test-supabase-compat.sh .github/workflows/ci.yml; then
+            echo "::notice::No database changes since main, so the database checks were skipped."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/setup-node@v4
+        if: steps.changed.outputs.run == 'true'
         with:
           node-version: '22'
 
       - name: Migrations only add
+        if: steps.changed.outputs.run == 'true'
         run: node scripts/check-supabase-migrations.js
 
       - name: Start a local database with every migration
+        if: steps.changed.outputs.run == 'true'
         run: npx -y supabase@2.120.0 db start
 
       - name: Released apps' calls still work
+        if: steps.changed.outputs.run == 'true'
         run: ./scripts/test-supabase-compat.sh
 
   validate:
