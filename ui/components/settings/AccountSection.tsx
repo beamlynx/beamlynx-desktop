@@ -5,6 +5,7 @@ import useAccountStatus from '../../hooks/useAccountStatus';
 import type { SignInResult } from '../../desktop';
 
 export const PRIVACY_URL = 'https://beamlynx.com/privacy';
+export const TERMS_URL = 'https://beamlynx.com/terms';
 
 const PROVIDER_NAMES: Record<string, string> = { github: 'GitHub', google: 'Google' };
 
@@ -144,6 +145,10 @@ const AccountSection = () => {
         <Typography variant="caption" sx={{ display: 'block', mt: 3 }}>
           <Link href={PRIVACY_URL} target="_blank" rel="noreferrer">
             Privacy policy
+          </Link>
+          {' · '}
+          <Link href={TERMS_URL} target="_blank" rel="noreferrer">
+            Terms
           </Link>
         </Typography>
       </Box>
