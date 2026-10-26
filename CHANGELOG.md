@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.25.0] - 2026-10-26
 ### Added
 - **Website visits join the person who signs in.** After a sign-in, the browser tab moves on to beamlynx.com/signed-in, which tells PostHog that this browser belongs to the same person as the app. The sign-in is complete before that page loads, so it can't fail because of it. Not with usage stats off.
 
