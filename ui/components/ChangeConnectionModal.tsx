@@ -6,14 +6,15 @@ import { useRetainedValue } from '../hooks/useRetainedValue';
 import { useStores } from '../store/store-container';
 
 /**
- * Warns before switching the active tab's connection when that tab has a
- * non-empty Pine expression -- the expression stays as-is but now resolves
- * against a different connection's schema, so table/column names it relies
- * on may no longer exist. See GlobalStore.pendingConnectionSwitch.
+ * Asks what to do when a connection is picked while the active tab has a
+ * query: open the connection in a new tab (the default), or switch this tab
+ * to it, where the query may not work -- table and column names it relies on
+ * may not exist there. Cancel, Escape or a click outside does neither. See
+ * GlobalStore.pendingConnectionSwitch.
  */
 const ChangeConnectionModal = observer(() => {
   const { global } = useStores();
-  const [switching, setSwitching] = useState(false);
+  const [busy, setBusy] = useState(false);
   const pending = global.pendingConnectionSwitch;
 
   const targetId = pending && (pending.kind === 'select' ? pending.connectionId : pending.id);
@@ -25,16 +26,18 @@ const ChangeConnectionModal = observer(() => {
     targetId ? global.connections.find(c => c.id === targetId)?.label ?? targetId : null,
   );
 
-  const handleCancel = () => global.cancelPendingConnectionSwitch();
+  const handleCancel = () => {
+    if (!busy) global.cancelPendingConnectionSwitch();
+  };
 
-  const handleConfirm = async () => {
-    setSwitching(true);
+  const run = async (action: () => Promise<void>) => {
+    setBusy(true);
     try {
-      await global.confirmPendingConnectionSwitch();
+      await action();
     } catch (e) {
-      console.error('[connections] switching failed ->', e);
+      console.error('[connections] opening the connection failed ->', e);
     } finally {
-      setSwitching(false);
+      setBusy(false);
     }
   };
 
@@ -49,18 +52,18 @@ const ChangeConnectionModal = observer(() => {
           mb: 2,
         }}
       >
-        Switch connection?
+        Open {targetLabel}
       </Typography>
 
       <Typography variant="body2" sx={{ color: 'var(--text-color)', mb: 3 }}>
-        This tab&apos;s query may not work on <strong>{targetLabel}</strong> -- some tables or
-        columns it uses might not exist there.
+        This tab has a query. Open <strong>{targetLabel}</strong> in a new tab, or switch this
+        tab to it. The query may not work there: some tables or columns it uses might not exist.
       </Typography>
 
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <Button
           onClick={handleCancel}
-          disabled={switching}
+          disabled={busy}
           sx={{
             color: 'var(--text-color)',
             '&:hover': {
@@ -70,10 +73,20 @@ const ChangeConnectionModal = observer(() => {
         >
           Cancel
         </Button>
+        <Box sx={{ flex: 1 }} />
         <Button
-          onClick={handleConfirm}
+          onClick={() => run(global.confirmPendingConnectionSwitch)}
+          variant="outlined"
+          disabled={busy}
+          sx={{ color: 'var(--text-color)', borderColor: 'var(--border-color)' }}
+        >
+          Switch this tab
+        </Button>
+        <Button
+          onClick={() => run(global.openPendingConnectionInNewTab)}
           variant="contained"
-          disabled={switching}
+          disabled={busy}
+          autoFocus
           sx={{
             bgcolor: 'var(--primary-color)',
             color: '#fff',
@@ -83,7 +96,7 @@ const ChangeConnectionModal = observer(() => {
             },
           }}
         >
-          Switch connection
+          Open in new tab
         </Button>
       </Box>
     </ModalSurface>
