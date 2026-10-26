@@ -1,5 +1,5 @@
 {
-  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang unchanged at its tagged 0.50.0; beamlynx-ui bumped to its tagged 0.68.0 for own queries in an agent's tab, copies of shared policies and the agent at the bottom of the sidebar. beamlynx-ui 0.68.0 still needs pine-lang 0.50 (its RequiredVersion).",
-  "pineLangRef": "0.50.0",
-  "beamlynxUiRef": "0.68.0"
+  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang bumped to its tagged 0.51.0 for group without keys, JSON functions, nulls order and more SQL to Pine; beamlynx-ui bumped to its tagged 0.69.0 for sign-in, usage stats, per-connection policies and agent proposals. beamlynx-ui 0.69.0 needs pine-lang 0.51 (its RequiredVersion).",
+  "pineLangRef": "0.51.0",
+  "beamlynxUiRef": "0.69.0"
 }
