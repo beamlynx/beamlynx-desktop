@@ -240,7 +240,14 @@ export async function signIn(provider: Provider): Promise<SignInResult> {
 
   let server: CallbackServer | null = null;
   try {
-    server = await startCallbackServer();
+    // Once signed in, the browser moves on to beamlynx.com, which joins this
+    // browser's visits to the person (its /signed-in page). Not with usage
+    // stats off.
+    const linkId = getUsageStats().linkId();
+    server = await startCallbackServer(
+      undefined,
+      linkId ? `https://beamlynx.com/signed-in?id=${encodeURIComponent(linkId)}` : undefined,
+    );
     pendingSignIn = server;
     broadcast();
 

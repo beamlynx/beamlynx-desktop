@@ -151,6 +151,15 @@ test('turning usage stats off drops counts not sent yet, and signing out sends t
   assert.deepEqual(out.sent.map(e => [e.event, e.distinctId]), [['queries_run', 'user-1']]);
 });
 
+test('the link ID for beamlynx.com is the install ID, and none with usage stats off', () => {
+  const { stats, store } = setup({ meta: { [META.onboarding]: 'skipped' } });
+  const id = stats.linkId();
+  assert.equal(id, store.get(META.installId));
+  stats.setEnabled(false);
+  assert.equal(stats.linkId(), null);
+  assert.equal(setup({ client: false }).stats.linkId(), null);
+});
+
 function appContext() {
   return { app_version: '1.2.3', os: 'linux', arch: 'x64' };
 }

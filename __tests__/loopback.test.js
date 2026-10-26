@@ -49,3 +49,16 @@ test('it gives up after the timeout', async () => {
   const server = await startCallbackServer(50);
   await assert.rejects(server.result, /timed out/);
 });
+
+test('after a sign-in the page moves on to the given beamlynx.com page, never elsewhere', async () => {
+  const next = 'https://beamlynx.com/signed-in?id=0b0e7c1a-5a8e-4a4f-9f53-1c2d3e4f5a6b';
+  const server = await startCallbackServer(undefined, next);
+  const page = await (await fetch(`${server.redirectUri}?code=abc`)).text();
+  assert.ok(page.includes(`content="0;url=${next}"`));
+
+  const evil = await startCallbackServer(undefined, 'javascript:alert(1)');
+  assert.doesNotMatch(await (await fetch(`${evil.redirectUri}?code=abc`)).text(), /refresh/);
+
+  const failed = await startCallbackServer(undefined, next);
+  assert.doesNotMatch(await (await fetch(`${failed.redirectUri}?error=access_denied`)).text(), /refresh/);
+});

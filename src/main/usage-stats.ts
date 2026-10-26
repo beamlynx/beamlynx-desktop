@@ -79,6 +79,9 @@ export type UsageStats = {
   appOpened(): void;
   // Sends the counts of an hour that is over. Called at launch and by a timer.
   flushQueryCounts(): void;
+  // The ID beamlynx.com can join this browser's visits to, after a sign-in.
+  // null when usage stats are off or can't be sent.
+  linkId(): string | null;
   // Joins this install's earlier events to the person.
   identify(user: { id: string; email?: string | null; name?: string | null }): void;
   // On sign-out: a new install ID, because PostHog joins an install ID to a
@@ -187,6 +190,7 @@ export function createUsageStats(
       flushQueryCounts();
     },
     flushQueryCounts: () => flushQueryCounts(),
+    linkId: () => (client && isEnabled() ? installId() : null),
     identify: user => {
       store.setMeta(META.userId, user.id);
       if (!client || !isEnabled()) return;
