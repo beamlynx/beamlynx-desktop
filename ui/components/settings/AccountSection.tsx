@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Box, Button, CircularProgress, Link, Typography } from '@mui/material';
 import { GitHub, Google } from '@mui/icons-material';
 import useAccountStatus from '../../hooks/useAccountStatus';
+import ToggleRow from './ToggleRow';
 import type { SignInResult } from '../../desktop';
 
 export const PRIVACY_URL = 'https://beamlynx.com/privacy';
@@ -81,9 +82,9 @@ export const SignInButtons = ({ onSignedIn }: { onSignedIn?: () => void }) => {
 };
 
 /**
- * Who is signed in, or the sign-in buttons. Desktop only (the section is in
- * DESKTOP_ONLY_SECTIONS). Signing in only tells us who uses Beamlynx; the
- * app works the same either way.
+ * Who is signed in, or the sign-in buttons, and the usage stats switch.
+ * Desktop only (the section is in DESKTOP_ONLY_SECTIONS). Signing in only
+ * tells us who uses Beamlynx; the app works the same either way.
  */
 const AccountSection = () => {
   const status = useAccountStatus();
@@ -148,6 +149,16 @@ const AccountSection = () => {
             </Typography>
             <SignInButtons />
           </>
+        )}
+        {status?.available && account && (
+          <Box sx={{ mt: 3, borderTop: '1px solid var(--border-color)' }}>
+            <ToggleRow
+              label="Send usage stats"
+              description="Anonymous counts, like how often queries run and which database types are used. Never your queries, connections or data."
+              checked={status.usageStats}
+              onChange={checked => account.setUsageStats(checked)}
+            />
+          </Box>
         )}
         <Typography variant="caption" sx={{ display: 'block', mt: 3 }}>
           <Link href={PRIVACY_URL} target="_blank" rel="noreferrer">

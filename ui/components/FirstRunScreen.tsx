@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react';
-import { Box, Checkbox, FormControlLabel, Link, Typography } from '@mui/material';
+import { useState } from 'react';
+import { Box, Link, Typography } from '@mui/material';
 import ModalSurface from './ModalSurface';
 import useAccountStatus from '../hooks/useAccountStatus';
 import { PRIVACY_URL, SignInButtons, TERMS_URL } from './settings/AccountSection';
@@ -10,9 +10,9 @@ import { PRIVACY_URL, SignInButtons, TERMS_URL } from './settings/AccountSection
  * it never comes back on its own, and Settings -> Account can sign in later.
  *
  * It also says that the app sends anonymous usage stats, before any are
- * sent (the desktop app holds them until this choice is made). The checkbox
- * applies the moment it changes, so unchecking it and then skipping sends
- * nothing at all.
+ * sent (the desktop app holds them until this choice is made). The switch
+ * for them is in Settings -> Account, not here: the screen tells people
+ * about them without inviting them to turn them off.
  *
  * Not shown offline (sign-in can't work), in a browser, in a desktop build
  * without the sign-in service, or by a desktop app older than sign-in.
@@ -21,8 +21,6 @@ import { PRIVACY_URL, SignInButtons, TERMS_URL } from './settings/AccountSection
 const FirstRunScreen = () => {
   const status = useAccountStatus();
   const [skipping, setSkipping] = useState(false);
-  // The checkbox's last change, so Skip waits for it to land first.
-  const pendingToggle = useRef<Promise<unknown>>(Promise.resolve());
   const account = typeof window === 'undefined' ? undefined : window.beamlynxDesktop?.account;
 
   if (!account || !status || !status.available || status.onboarding !== null || !status.online)
@@ -32,7 +30,6 @@ const FirstRunScreen = () => {
     if (skipping) return;
     setSkipping(true);
     try {
-      await pendingToggle.current;
       if (status.signingIn) await account.cancelSignIn();
       await account.skip();
     } finally {
@@ -77,25 +74,9 @@ const FirstRunScreen = () => {
       <Box sx={{ mt: 3, pt: 2, borderTop: '1px solid var(--border-color)' }}>
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
           Beamlynx sends anonymous usage stats, like how often queries run. Never your queries,
-          connections or data.
+          connections or data. You can turn them off in Settings → Account.
         </Typography>
-        <FormControlLabel
-          sx={{
-            mt: 0.5,
-            '& .MuiFormControlLabel-label': { fontSize: '0.8rem', color: 'var(--text-color)' },
-          }}
-          control={
-            <Checkbox
-              size="small"
-              checked={status.usageStats}
-              onChange={(_e, checked) => {
-                pendingToggle.current = account.setUsageStats(checked);
-              }}
-            />
-          }
-          label="Send usage stats"
-        />
-        <Typography variant="caption" sx={{ display: 'block' }}>
+        <Typography variant="caption" sx={{ display: 'block', mt: 1 }}>
           <Link href={PRIVACY_URL} target="_blank" rel="noreferrer">
             Privacy policy
           </Link>

@@ -9,7 +9,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ### Added
 - **Sign in once, or skip.** On desktop, a first-run screen offers sign-in with GitHub, so we know who uses Beamlynx. Skip is final: the screen never comes back on its own. It waits for a launch with an internet connection. **Settings → Account** shows who is signed in, signs out, or signs in later. Both link to the privacy policy and the terms. Needs a beamlynx-desktop with sign-in; older ones show nothing new.
-- **Anonymous usage stats, and a switch for them.** The first-run screen says that Beamlynx sends anonymous usage stats, and has a checkbox to turn them off before anything is sent. The same switch is in **Settings → Preferences**. Each query run is counted as a user or agent run, in Pine or SQL, and nothing else about it.
+- **Anonymous usage stats, and a switch for them.** The first-run screen says that Beamlynx sends anonymous usage stats, before anything is sent. The switch to turn them off is in **Settings → Account**. Each query run is counted as a user or agent run, in Pine or SQL, and nothing else about it.
 - **Agents can propose access policy changes.** A proposal is a card in the agent's timeline that lists each change in plain words. Loosening an Except rule is marked in the warning colour. Nothing changes until you click **Apply**. **Decline…** sends the agent your reason, and **Undo** puts the rules back. This replaces the Allow card.
 
 ### Changed
