@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.70.0] - 2026-10-26
 ### Changed
 - **Account is at the bottom of the sidebar.** It shows your initials once you sign in, and a dot until then. The settings at the top are about the app.
 - **Picking a connection while the tab has a query offers a new tab.** **Open in new tab** is the default, and leaves this tab's query as it is. **Switch this tab** still switches it. Cancel, Escape or a click outside does neither.

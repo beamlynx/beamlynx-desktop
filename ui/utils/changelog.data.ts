@@ -23,6 +23,27 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.70.0',
+    date: '2026-10-26',
+    changed: [
+      {
+        title: "Account is at the bottom of the sidebar",
+        description:
+          "It shows your initials once you sign in, and a dot until then. The settings at the top are about the app.",
+      },
+      {
+        title: "Picking a connection while the tab has a query offers a new tab",
+        description:
+          "**Open in new tab** is the default, and leaves this tab's query as it is. **Switch this tab** still switches it. Cancel, Escape or a click outside does neither.",
+      },
+      {
+        title: "The sign-in screen comes back at every launch until you sign in",
+        description:
+          "Only **Skip for now** closes it, until the next launch: a click outside it or Escape does nothing. The Skip link is smaller.",
+      },
+    ],
+  },
+  {
     version: '0.69.0',
     date: '2026-10-26',
     breaking: [
@@ -2674,4 +2695,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.69.0';
+export const LATEST_VERSION = '0.70.0';
