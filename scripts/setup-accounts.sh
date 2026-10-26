@@ -83,14 +83,22 @@ supabase() { # supabase METHOD PATH [JSON]
 
 echo "== Supabase project"
 
-if [ -z "${SUPABASE_ORG:-}" ]; then
+# Look for the project first: a token limited to one organization may not
+# be allowed to list organizations, and the organization is only needed to
+# create the project.
+REF="$(supabase GET /projects | jq -r --arg org "${SUPABASE_ORG:-}" --arg name "$PROJECT_NAME" \
+  '.[] | select(.name == $name and ($org == "" or .organization_slug == $org)) | .ref' | head -1)"
+
+if [ -z "$REF" ] && [ -z "${SUPABASE_ORG:-}" ]; then
   orgs="$(supabase GET /organizations)"
   # The only organization, or else the one named Beamlynx.
   SUPABASE_ORG="$(jq -r --arg name "$ORG_NAME" \
     'if length == 1 then .[0].slug else (map(select(.name | ascii_downcase == ($name | ascii_downcase)))[0].slug // empty) end' <<<"$orgs")"
   if [ -z "$SUPABASE_ORG" ]; then
     if [ "$(jq length <<<"$orgs")" = 0 ]; then
-      echo "Your Supabase account has no organization. Create one named $ORG_NAME at supabase.com, then run this again." >&2
+      echo "This token can't see any Supabase organization." >&2
+      echo "Create one named $ORG_NAME at supabase.com, or give the token read access to it," >&2
+      echo "or set SUPABASE_ORG=<slug> (it's in the URL: supabase.com/dashboard/org/<slug>)." >&2
     else
       echo "None of your Supabase organizations is named $ORG_NAME. Pick one with SUPABASE_ORG=<slug>:" >&2
       jq -r '.[] | "  \(.slug)  \(.name)"' <<<"$orgs" >&2
@@ -98,9 +106,6 @@ if [ -z "${SUPABASE_ORG:-}" ]; then
     exit 1
   fi
 fi
-
-REF="$(supabase GET /projects | jq -r --arg org "$SUPABASE_ORG" --arg name "$PROJECT_NAME" \
-  '.[] | select(.organization_slug == $org and .name == $name) | .ref' | head -1)"
 
 NEW_DB_PASSWORD=""
 if [ -z "$REF" ]; then
