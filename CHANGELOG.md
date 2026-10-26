@@ -4,7 +4,12 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.24.0] - 2026-10-26
 ### Changed
+- **The sign-in screen comes back at each launch until you sign in.** Only **Skip for now** closes it, until the next launch (bundled beamlynx-ui 0.70.0).
+- **Account is at the bottom of the sidebar,** with your initials once signed in and a dot until then (bundled beamlynx-ui 0.70.0).
+- **Picking a connection while the tab has a query opens it in a new tab by default.** Switching this tab is the second choice (bundled beamlynx-ui 0.70.0).
 - **Usage stats count queries per hour instead of sending one event per query.** Each hour with queries becomes one `queries_run` event with four counts: user or agent, Pine or SQL. It is sent once the hour is over, or at the next launch. Turning usage stats off drops counts not sent yet.
 
 ## [0.23.0] - 2026-10-26
