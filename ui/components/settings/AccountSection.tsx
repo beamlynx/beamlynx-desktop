@@ -143,9 +143,8 @@ const AccountSection = () => {
         ) : (
           <>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Sign in once so we know who uses Beamlynx. It changes nothing in the app, and you
-              won&apos;t be asked again. Your queries, connections and data never leave this
-              computer.
+              Sign in so we know who uses Beamlynx. It changes nothing in the app. Your queries,
+              connections and data never leave this computer.
             </Typography>
             <SignInButtons />
           </>

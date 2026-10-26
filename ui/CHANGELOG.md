@@ -5,7 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 ### Changed
-- **The first-run screen only closes with Skip for now or by signing in.** A click outside it or Escape no longer skips, and the Skip link is smaller.
+- **The sign-in screen comes back at every launch until you sign in.** Only **Skip for now** closes it, until the next launch: a click outside it or Escape does nothing. The Skip link is smaller.
 
 ## [0.69.0] - 2026-10-26
 ### Breaking
