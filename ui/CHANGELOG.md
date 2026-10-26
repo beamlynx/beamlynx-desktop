@@ -4,8 +4,10 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.69.0] - 2026-10-26
 ### Breaking
-- Needs the matching beamlynx-desktop release.
+- Needs pine-lang 0.51.0 and the matching beamlynx-desktop release.
 
 ### Added
 - **Sign in once, or skip.** On desktop, a first-run screen offers sign-in with GitHub, so we know who uses Beamlynx. Skip is final: the screen never comes back on its own. It waits for a launch with an internet connection. **Settings → Account** shows who is signed in, signs out, or signs in later. Both link to the privacy policy and the terms. Needs a beamlynx-desktop with sign-in; older ones show nothing new.

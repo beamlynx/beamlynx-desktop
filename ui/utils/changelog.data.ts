@@ -23,6 +23,96 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.69.0',
+    date: '2026-10-26',
+    breaking: [
+      {
+        title: "Needs pine-lang 0.51.0 and the matching beamlynx-desktop release",
+      },
+    ],
+    added: [
+      {
+        title: "Sign in once, or skip",
+        description:
+          "On desktop, a first-run screen offers sign-in with GitHub, so we know who uses Beamlynx. Skip is final: the screen never comes back on its own. It waits for a launch with an internet connection. **Settings → Account** shows who is signed in, signs out, or signs in later. Both link to the privacy policy and the terms. Needs a beamlynx-desktop with sign-in; older ones show nothing new.",
+      },
+      {
+        title: "Anonymous usage stats, and a switch for them",
+        description:
+          "The first-run screen says that Beamlynx sends anonymous usage stats, before anything is sent. The switch to turn them off is in **Settings → Account**. Each query run is counted as a user or agent run, in Pine or SQL, and nothing else about it.",
+      },
+      {
+        title: "Agents can propose access policy changes",
+        description:
+          "A proposal is a card in the agent's timeline that lists each change in plain words. Loosening an Except rule is marked in the warning colour. Nothing changes until you click **Apply**. **Decline…** sends the agent your reason, and **Undo** puts the rules back. This replaces the Allow card.",
+      },
+    ],
+    changed: [
+      {
+        title: "Each connection has its own access policy",
+        description:
+          "Changing it never changes another connection, so the choice to copy a shared policy is gone. Settings → Access Policy is now **Policy templates**: a template is where a connection's policy starts. The built-in **Default** template can't be edited.",
+      },
+      {
+        title: "Agent access per connection: Off, Masked or Every column",
+        description:
+          "It replaces the MCP switch. **Masked** applies the connection's policy, and the first time you pick the template it starts from. **Every column** lets agents read every column, after asking, and keeps the policy for later. **Start over from a template…** resets a connection's rules. While agents have access, a line says that what they read goes to their AI provider, and that masking isn't a guarantee.",
+      },
+      {
+        title: "A clearer connection list",
+        description:
+          "A zap marks the tab's connection, and a robot shows agent access: dim when masked, in the warning colour for every column. A click on a row opens its settings, and **Connect** switches to it. **Add connection** is at the top right.",
+      },
+      {
+        title: "One way to confirm",
+        description:
+          "Anything that weakens protection or deletes something asks in a dialog. \"Click again to delete\" is gone.",
+      },
+      {
+        title: "One sidebar item for agents",
+        description:
+          "The robot is always there on desktop. It opens the setup until an agent has worked here, then the agent's work. MCP left Settings.",
+      },
+      {
+        title: "Tooltips wait 600 ms before showing",
+        description:
+          "and explanations sit behind small info icons.",
+      },
+      {
+        title: "The sidebar toggle is a double chevron",
+        description:
+          "so it no longer looks like the Database Connections icon.",
+      },
+      {
+        title: "A query that uses a hidden column is refused at once",
+        description:
+          "instead of waiting for your answer. The agent can propose a change.",
+      },
+      {
+        title: "The agent's timeline is shorter and follows the newest step",
+        description:
+          "A query takes two lines, and a run of lookups takes one. Scroll up to stop following, and **New steps below** brings you back.",
+      },
+    ],
+    fixed: [
+      {
+        title: "A `group:` with no keys reads right on the canvas",
+        description:
+          "`group with count as n`. Needs pine-lang after 0.50.0.",
+      },
+      {
+        title: "Sort and filter chips keep newer Pine",
+        description:
+          "Flipping a sort keeps `nulls first` or `nulls last`, and editing a filter keeps a function on its left, like `jsonb_typeof(data) = 'array'`.",
+      },
+      {
+        title: "An agent's SQL no longer appears in the Pine editor",
+        description:
+          "when it didn't convert. Its step shows the SQL and why it didn't convert.",
+      },
+    ],
+  },
+  {
     version: '0.68.0',
     date: '2026-10-19',
     added: [
@@ -2584,4 +2674,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.68.0';
+export const LATEST_VERSION = '0.69.0';
