@@ -38,10 +38,10 @@ const FirstRunScreen = () => {
   };
 
   return (
-    // Closing it any other way counts as Skip.
+    // Only Skip closes it: a click outside or Escape does nothing.
     <ModalSurface
       open
-      onClose={skip}
+      onClose={() => {}}
       aria-labelledby="first-run-title"
       surfaceSx={{ width: 380, maxWidth: '90vw', p: 3.5 }}
     >
@@ -62,7 +62,8 @@ const FirstRunScreen = () => {
       <Box sx={{ textAlign: 'center', mt: 1.5 }}>
         <Link
           component="button"
-          variant="body2"
+          variant="caption"
+          color="text.secondary"
           onClick={skip}
           disabled={skipping}
           underline="hover"
