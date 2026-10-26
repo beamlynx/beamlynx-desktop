@@ -83,11 +83,12 @@ supabase() { # supabase METHOD PATH [JSON]
 
 echo "== Supabase project"
 
-# Look for the project first: a token limited to one organization may not
+# Look for the project first, by name in any case (the dashboard keeps the
+# capital in "Beamlynx"): a token limited to one organization may not
 # be allowed to list organizations, and the organization is only needed to
 # create the project.
 REF="$(supabase GET /projects | jq -r --arg org "${SUPABASE_ORG:-}" --arg name "$PROJECT_NAME" \
-  '.[] | select(.name == $name and ($org == "" or .organization_slug == $org)) | .ref' | head -1)"
+  '.[] | select((.name | ascii_downcase) == ($name | ascii_downcase) and ($org == "" or .organization_slug == $org)) | .ref' | head -1)"
 
 if [ -z "$REF" ] && [ -z "${SUPABASE_ORG:-}" ]; then
   orgs="$(supabase GET /organizations)"
