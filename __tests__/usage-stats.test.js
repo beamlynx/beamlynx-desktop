@@ -12,7 +12,7 @@ const { createUsageStats, META } = require(DIST);
 
 const CONTEXT = { appVersion: '1.2.3', os: 'linux', arch: 'x64' };
 
-function setup({ client = true, meta = {} } = {}) {
+function setup({ client = true, meta = {}, clock } = {}) {
   const store = new Map(Object.entries(meta));
   const metaStore = {
     getMeta: k => (store.has(k) ? store.get(k) : null),
@@ -25,7 +25,8 @@ function setup({ client = true, meta = {} } = {}) {
     identify: m => sent.push({ type: 'identify', ...m }),
     shutdown: async () => {},
   };
-  return { stats: createUsageStats(metaStore, client ? fake : null, CONTEXT), sent, store };
+  const now = clock ? () => new Date(clock.time) : undefined;
+  return { stats: createUsageStats(metaStore, client ? fake : null, CONTEXT, now), sent, store };
 }
 
 test('nothing is sent before the first-run choice, and app_opened waits for it', () => {
@@ -50,16 +51,14 @@ test('turning usage stats off on the first-run screen means nothing is ever sent
 
 test('only known events and properties are sent, with the app context', () => {
   const { stats, sent, store } = setup({ meta: { [META.onboarding]: 'skipped' } });
-  stats.capture('query_run', { source: 'user', language: 'pine', expression: 'user | limit: 1' });
-  stats.capture('query_run', { source: 'nobody', language: 'pine' });
+  stats.capture('connection_added', { database_type: 'postgres', host: 'db.example.com' });
   stats.capture('connection_added', { database_type: 'db.example.com' });
   stats.capture('table_opened', { table: 'secrets' });
 
   assert.deepEqual(
     sent.map(e => [e.event, e.properties]),
     [
-      ['query_run', { source: 'user', language: 'pine', ...appContext() }],
-      ['query_run', { language: 'pine', ...appContext() }],
+      ['connection_added', { database_type: 'postgres', ...appContext() }],
       ['connection_added', appContext()],
     ],
   );
@@ -74,7 +73,7 @@ test('signing in joins the install to the person, and later events use the perso
   const installId = store.get(META.installId);
 
   stats.identify({ id: 'user-1', email: 'a@example.com', name: 'Anna' });
-  stats.capture('query_run', { source: 'agent', language: 'sql' });
+  stats.capture('connection_added', { database_type: 'mysql' });
 
   assert.deepEqual(sent[1], { type: 'alias', distinctId: 'user-1', alias: installId });
   assert.deepEqual(sent[2], { type: 'identify', distinctId: 'user-1', properties: { email: 'a@example.com', name: 'Anna' } });
@@ -102,6 +101,54 @@ test('without a client, nothing breaks and the choices are still kept', () => {
   stats.capture('app_opened');
   assert.equal(stats.onboarding(), 'signed-in');
   assert.equal(store.get(META.userId), 'user-1');
+});
+
+test('queries are counted per hour, and each finished hour is one event', () => {
+  const clock = { time: '2026-10-26T10:15:00Z' };
+  const { stats, sent, store } = setup({ meta: { [META.onboarding]: 'skipped' }, clock });
+  stats.capture('query_run', { source: 'user', language: 'pine', expression: 'user | limit: 1' });
+  stats.capture('query_run', { source: 'user', language: 'pine' });
+  stats.capture('query_run', { source: 'agent', language: 'sql' });
+  stats.capture('query_run', { source: 'nobody', language: 'pine' });
+  stats.flushQueryCounts();
+  assert.equal(sent.length, 0, 'nothing is sent while the hour lasts');
+  assert.ok(store.get(META.queryCounts), 'the counts are kept, so quitting loses nothing');
+
+  clock.time = '2026-10-26T11:02:00Z';
+  stats.flushQueryCounts();
+  assert.deepEqual(
+    sent.map(e => [e.event, e.properties, e.timestamp.toISOString()]),
+    [['queries_run', { user_pine: 2, agent_sql: 1, ...appContext() }, '2026-10-26T10:00:00.000Z']],
+  );
+  assert.equal(store.get(META.queryCounts), undefined);
+
+  stats.flushQueryCounts();
+  assert.equal(sent.length, 1, 'an hour without queries sends nothing');
+});
+
+test('the next launch sends counts left from the last one', () => {
+  const clock = { time: '2026-10-26T10:15:00Z' };
+  const first = setup({ meta: { [META.onboarding]: 'skipped' }, clock });
+  first.stats.capture('query_run', { source: 'user', language: 'sql' });
+
+  clock.time = '2026-10-27T09:00:00Z';
+  const meta = Object.fromEntries(first.store);
+  const second = setup({ meta, clock });
+  second.stats.appOpened();
+  assert.deepEqual(second.sent.map(e => [e.event, e.properties.user_sql]), [['app_opened', undefined], ['queries_run', 1]]);
+});
+
+test('turning usage stats off drops counts not sent yet, and signing out sends them first', () => {
+  const clock = { time: '2026-10-26T10:15:00Z' };
+  const off = setup({ meta: { [META.onboarding]: 'skipped' }, clock });
+  off.stats.capture('query_run', { source: 'user', language: 'pine' });
+  off.stats.setEnabled(false);
+  assert.equal(off.store.get(META.queryCounts), undefined);
+
+  const out = setup({ meta: { [META.onboarding]: 'signed-in', [META.userId]: 'user-1' }, clock });
+  out.stats.capture('query_run', { source: 'user', language: 'pine' });
+  out.stats.forget();
+  assert.deepEqual(out.sent.map(e => [e.event, e.distinctId]), [['queries_run', 'user-1']]);
 });
 
 function appContext() {

@@ -335,6 +335,8 @@ export function registerAccountIpc(): void {
 export function onAppStarted(): void {
   getUsageStats().appOpened();
   void syncProfileDaily();
+  // Sends the last hour's query counts once it's over, while the app stays open.
+  setInterval(() => getUsageStats().flushQueryCounts(), 5 * 60_000).unref();
 }
 
 export async function shutdownAccount(): Promise<void> {

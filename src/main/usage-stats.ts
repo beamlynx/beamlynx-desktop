@@ -2,6 +2,10 @@
 // install ID. Signing in (account.ts) joins that ID to the person. See
 // beamlynx-plans/plans/012-know-who-uses-beamlynx.md.
 //
+// Queries are counted, not sent one by one: each hour that had queries
+// becomes one queries_run event with the counts, sent once the hour is over.
+// The counts are kept in the meta table, so quitting loses nothing.
+//
 // What is never sent: query text, table or column names, connection hosts or
 // names, result data, file paths, error messages. Every event and property is
 // checked against EVENTS below, so a caller can't send anything else by
@@ -22,6 +26,9 @@ export const META = {
   // The signed-in person's Supabase user ID. Events use it instead of the
   // install ID.
   userId: 'account.userId',
+  // This hour's query counts, as JSON: { hour, counts }. Sent once the hour
+  // is over.
+  queryCounts: 'usageStats.queryCounts',
 } as const;
 
 export type MetaStore = {
@@ -31,7 +38,7 @@ export type MetaStore = {
 
 // The parts of posthog-node's PostHog client used here.
 export type UsageClient = {
-  capture(message: { distinctId: string; event: string; properties?: Record<string, unknown> }): void;
+  capture(message: { distinctId: string; event: string; properties?: Record<string, unknown>; timestamp?: Date }): void;
   alias(message: { distinctId: string; alias: string }): void;
   identify(message: { distinctId: string; properties?: Record<string, unknown> }): void;
   shutdown(timeoutMs?: number): Promise<void>;
@@ -41,12 +48,19 @@ export type UsageContext = { appVersion: string; os: string; arch: string };
 
 const word = (max: number) => (v: unknown) => typeof v === 'string' && new RegExp(`^[a-z0-9_-]{1,${max}}$`).test(v);
 const oneOf = (...values: string[]) => (v: unknown) => typeof v === 'string' && values.includes(v);
+const count = (v: unknown) => Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 1_000_000;
+
+// The four query counts, by who ran the query and in which language.
+const COUNT_KEYS = ['user_pine', 'user_sql', 'agent_pine', 'agent_sql'] as const;
+type Counts = Partial<Record<(typeof COUNT_KEYS)[number], number>>;
 
 // Every event that may be sent, and the properties each may carry.
 export const EVENTS: Record<string, Record<string, (v: unknown) => boolean>> = {
   app_opened: {},
   connection_added: { database_type: word(20) },
+  // Never sent as it is: counted into the hour's queries_run.
   query_run: { source: oneOf('user', 'agent'), language: oneOf('pine', 'sql') },
+  queries_run: Object.fromEntries(COUNT_KEYS.map(k => [k, count])),
   sign_in_skipped: {},
   sign_in_completed: { provider: oneOf('github', 'google') },
 };
@@ -63,6 +77,8 @@ export type UsageStats = {
   capture(event: string, properties?: Record<string, unknown>): void;
   // Called once per launch.
   appOpened(): void;
+  // Sends the counts of an hour that is over. Called at launch and by a timer.
+  flushQueryCounts(): void;
   // Joins this install's earlier events to the person.
   identify(user: { id: string; email?: string | null; name?: string | null }): void;
   // On sign-out: a new install ID, because PostHog joins an install ID to a
@@ -72,7 +88,12 @@ export type UsageStats = {
   shutdown(): Promise<void>;
 };
 
-export function createUsageStats(store: MetaStore, client: UsageClient | null, context: UsageContext): UsageStats {
+export function createUsageStats(
+  store: MetaStore,
+  client: UsageClient | null,
+  context: UsageContext,
+  now: () => Date = () => new Date(),
+): UsageStats {
   let appOpenedHeld = false;
 
   const installId = () => {
@@ -90,7 +111,7 @@ export function createUsageStats(store: MetaStore, client: UsageClient | null, c
   };
   const canSend = () => client !== null && isEnabled() && onboarding() !== null;
 
-  const capture = (event: string, properties: Record<string, unknown> = {}) => {
+  const send = (event: string, properties: Record<string, unknown> = {}, timestamp?: Date) => {
     const allowed = EVENTS[event];
     if (!allowed || !canSend()) return;
     const clean: Record<string, unknown> = {};
@@ -102,6 +123,7 @@ export function createUsageStats(store: MetaStore, client: UsageClient | null, c
         distinctId: store.getMeta(META.userId) ?? installId(),
         event,
         properties: { ...clean, app_version: context.appVersion, os: context.os, arch: context.arch },
+        ...(timestamp ? { timestamp } : {}),
       });
     } catch (e) {
       // Usage stats never get in the way of the app.
@@ -109,22 +131,62 @@ export function createUsageStats(store: MetaStore, client: UsageClient | null, c
     }
   };
 
+  // The start of the current hour, as an ISO string.
+  const thisHour = () => {
+    const d = now();
+    d.setUTCMinutes(0, 0, 0);
+    return d.toISOString();
+  };
+  const readCounts = (): { hour: string; counts: Counts } | null => {
+    try {
+      const value = JSON.parse(store.getMeta(META.queryCounts) ?? 'null');
+      return value && typeof value.hour === 'string' && value.counts ? value : null;
+    } catch {
+      return null;
+    }
+  };
+  // Sends a finished hour's counts, stamped with that hour, and clears them.
+  // `now` sends this hour's too, before signing out.
+  const flushQueryCounts = (when: 'finished' | 'now' = 'finished') => {
+    const saved = readCounts();
+    if (!saved || (when === 'finished' && saved.hour === thisHour())) return;
+    store.setMeta(META.queryCounts, null);
+    send('queries_run', saved.counts, new Date(saved.hour));
+  };
+
+  const capture = (event: string, properties: Record<string, unknown> = {}) => {
+    if (event !== 'query_run') return send(event, properties);
+    const { source, language } = EVENTS.query_run;
+    if (!canSend() || !source(properties.source) || !language(properties.language)) return;
+    flushQueryCounts();
+    const key = `${properties.source}_${properties.language}` as keyof Counts;
+    const saved = readCounts() ?? { hour: thisHour(), counts: {} };
+    saved.counts[key] = (saved.counts[key] ?? 0) + 1;
+    store.setMeta(META.queryCounts, JSON.stringify(saved));
+  };
+
   return {
     isEnabled,
-    setEnabled: enabled => store.setMeta(META.enabled, enabled ? null : 'off'),
+    setEnabled: enabled => {
+      store.setMeta(META.enabled, enabled ? null : 'off');
+      // Counts not sent yet never will be.
+      if (!enabled) store.setMeta(META.queryCounts, null);
+    },
     onboarding,
     setOnboarding: choice => {
       store.setMeta(META.onboarding, choice);
       if (appOpenedHeld) {
         appOpenedHeld = false;
-        capture('app_opened');
+        send('app_opened');
       }
     },
     capture,
     appOpened: () => {
       if (onboarding() === null) appOpenedHeld = true;
-      else capture('app_opened');
+      else send('app_opened');
+      flushQueryCounts();
     },
+    flushQueryCounts: () => flushQueryCounts(),
     identify: user => {
       store.setMeta(META.userId, user.id);
       if (!client || !isEnabled()) return;
@@ -139,6 +201,8 @@ export function createUsageStats(store: MetaStore, client: UsageClient | null, c
       }
     },
     forget: () => {
+      // This hour's queries were the person's who is signing out.
+      flushQueryCounts('now');
       store.setMeta(META.userId, null);
       store.setMeta(META.installId, randomUUID());
     },
