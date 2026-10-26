@@ -5,9 +5,9 @@ import useAccountStatus from '../hooks/useAccountStatus';
 import { PRIVACY_URL, SignInButtons, TERMS_URL } from './settings/AccountSection';
 
 /**
- * Shown once, on desktop, the first time Beamlynx starts with a network
- * connection: sign in with GitHub, or skip. Either choice is final:
- * it never comes back on its own, and Settings -> Account can sign in later.
+ * Shown on desktop at every launch with a network connection, until the
+ * person signs in: sign in with GitHub, or skip until the next launch.
+ * Settings -> Account can sign in at any time.
  *
  * It also says that the app sends anonymous usage stats, before any are
  * sent (the desktop app holds them until this choice is made). The switch
@@ -18,12 +18,17 @@ import { PRIVACY_URL, SignInButtons, TERMS_URL } from './settings/AccountSection
  * without the sign-in service, or by a desktop app older than sign-in.
  * See beamlynx-plans/plans/012-know-who-uses-beamlynx.md.
  */
+// Skipped in this launch. Outside the component, so the screen stays away
+// until the app starts again, even if it remounts.
+let skippedThisLaunch = false;
+
 const FirstRunScreen = () => {
   const status = useAccountStatus();
   const [skipping, setSkipping] = useState(false);
+  const [skipped, setSkipped] = useState(skippedThisLaunch);
   const account = typeof window === 'undefined' ? undefined : window.beamlynxDesktop?.account;
 
-  if (!account || !status || !status.available || status.onboarding !== null || !status.online)
+  if (!account || !status || !status.available || status.user || skipped || !status.online)
     return null;
 
   const skip = async () => {
@@ -32,6 +37,8 @@ const FirstRunScreen = () => {
     try {
       if (status.signingIn) await account.cancelSignIn();
       await account.skip();
+      skippedThisLaunch = true;
+      setSkipped(true);
     } finally {
       setSkipping(false);
     }
@@ -54,7 +61,7 @@ const FirstRunScreen = () => {
         Welcome to Beamlynx
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mb: 3 }}>
-        Sign in once so we know who uses Beamlynx. You won&apos;t be asked again.
+        Sign in so we know who uses Beamlynx. It changes nothing in the app.
       </Typography>
 
       <SignInButtons />
