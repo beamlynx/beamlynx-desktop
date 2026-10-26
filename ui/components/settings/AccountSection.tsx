@@ -9,8 +9,13 @@ export const TERMS_URL = 'https://beamlynx.com/terms';
 
 const PROVIDER_NAMES: Record<string, string> = { github: 'GitHub', google: 'Google' };
 
+// Google's consent screen names the Supabase project's domain, not Beamlynx,
+// until Google verifies the brand. Hidden until then; Google sign-in stays set
+// up in Supabase, so turning this back on is all it takes.
+const SHOW_GOOGLE = false;
+
 /**
- * The two sign-in buttons, a waiting state with Cancel, and a one-line error.
+ * The sign-in buttons, a waiting state with Cancel, and a one-line error.
  * Shared by the first-run screen and Settings -> Account.
  */
 export const SignInButtons = ({ onSignedIn }: { onSignedIn?: () => void }) => {
@@ -56,14 +61,16 @@ export const SignInButtons = ({ onSignedIn }: { onSignedIn?: () => void }) => {
       >
         Sign in with GitHub
       </Button>
-      <Button
-        variant="outlined"
-        startIcon={<Google />}
-        onClick={() => signIn('google')}
-        sx={{ textTransform: 'none' }}
-      >
-        Sign in with Google
-      </Button>
+      {SHOW_GOOGLE && (
+        <Button
+          variant="outlined"
+          startIcon={<Google />}
+          onClick={() => signIn('google')}
+          sx={{ textTransform: 'none' }}
+        >
+          Sign in with Google
+        </Button>
+      )}
       {error && (
         <Typography variant="caption" color="error">
           {error}
