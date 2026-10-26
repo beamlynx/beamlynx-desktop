@@ -146,6 +146,9 @@ fi
 echo
 echo "== Sign-in"
 
+# A provider left out of this run keeps its current setting, so say whether it's on.
+current="$(supabase GET "/projects/$REF/config/auth")"
+
 auth="$(jq -n --arg site "$SITE_URL" --arg redirect "$REDIRECT_URL" \
   '{site_url: $site, uri_allow_list: $redirect, external_email_enabled: false}')"
 
@@ -153,6 +156,8 @@ if [ -n "${GITHUB_OAUTH_CLIENT_ID:-}" ] && [ -n "${GITHUB_OAUTH_CLIENT_SECRET:-}
   auth="$(jq --arg id "$GITHUB_OAUTH_CLIENT_ID" --arg secret "$GITHUB_OAUTH_CLIENT_SECRET" \
     '. + {external_github_enabled: true, external_github_client_id: $id, external_github_secret: $secret}' <<<"$auth")"
   echo "GitHub: on."
+elif [ "$(jq -r .external_github_enabled <<<"$current")" = true ]; then
+  echo "GitHub: on, unchanged."
 else
   TODO+=("Create the GitHub OAuth app, then run this again with GITHUB_OAUTH_CLIENT_ID and GITHUB_OAUTH_CLIENT_SECRET.
      github.com/organizations/beamlynx/settings/applications -> New OAuth App
@@ -167,12 +172,14 @@ if [ -n "${GOOGLE_OAUTH_CLIENT_ID:-}" ] && [ -n "${GOOGLE_OAUTH_CLIENT_SECRET:-}
   auth="$(jq --arg id "$GOOGLE_OAUTH_CLIENT_ID" --arg secret "$GOOGLE_OAUTH_CLIENT_SECRET" \
     '. + {external_google_enabled: true, external_google_client_id: $id, external_google_secret: $secret}' <<<"$auth")"
   echo "Google: on."
+elif [ "$(jq -r .external_google_enabled <<<"$current")" = true ]; then
+  echo "Google: on, unchanged."
 else
   TODO+=("Create the Google OAuth client, then run this again with GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET.
      console.cloud.google.com -> a new project 'beamlynx' under Grephyte's organization
        Google Auth Platform -> Branding: app name Beamlynx, a support email you read,
          home page $SITE_URL, privacy $SITE_URL/privacy, terms $SITE_URL/terms,
-         authorized domains beamlynx.com and supabase.co. No logo: a logo means a review by Google.
+         authorized domains beamlynx.com and $REF.supabase.co. No logo: a logo means a review by Google.
        Audience: External, then Publish app.
        Clients -> Create client: Web application, authorized redirect URI $CALLBACK")
   echo "Google: skipped, no client ID and secret yet."
