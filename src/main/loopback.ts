@@ -29,13 +29,18 @@ export type CallbackServer = {
   close(): void;
 };
 
-const page = (title: string, text: string) => `<!doctype html>
-<html><head><meta charset="utf-8"><title>Beamlynx</title>
+// After a successful sign-in the page can move on to `next`, a page on
+// beamlynx.com. The sign-in is complete by then, so if that page fails to
+// load, nothing is lost.
+const page = (title: string, text: string, next?: string) => `<!doctype html>
+<html><head><meta charset="utf-8"><title>Beamlynx</title>${next ? `<meta http-equiv="refresh" content="0;url=${next}">` : ''}
 <style>body{font-family:system-ui,sans-serif;display:grid;place-items:center;height:100vh;margin:0;background:#111;color:#eee}
 main{text-align:center}h1{font-size:1.3rem;font-weight:600}p{color:#aaa}</style></head>
 <body><main><h1>${title}</h1><p>${text}</p></main></body></html>`;
 
-export function startCallbackServer(timeoutMs = 5 * 60_000): Promise<CallbackServer> {
+export function startCallbackServer(timeoutMs = 5 * 60_000, next?: string): Promise<CallbackServer> {
+  // Only ever an https address, so the page can't be made to go elsewhere.
+  if (next !== undefined && !/^https:\/\/[a-z0-9.-]+\/[A-Za-z0-9/?=&._-]*$/.test(next)) next = undefined;
   return new Promise((resolve, reject) => {
     let settle: { resolve: (r: CallbackResult) => void; reject: (e: Error) => void };
     const result = new Promise<CallbackResult>((res, rej) => (settle = { resolve: res, reject: rej }));
@@ -62,7 +67,7 @@ export function startCallbackServer(timeoutMs = 5 * 60_000): Promise<CallbackSer
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', Connection: 'close' });
       res.end(
         code
-          ? page("You're signed in to Beamlynx", 'You can close this tab and go back to the app.')
+          ? page("You're signed in to Beamlynx", 'You can close this tab and go back to the app.', next)
           : page("Beamlynx couldn't sign you in", 'Go back to the app to try again.'),
       );
       finish();
