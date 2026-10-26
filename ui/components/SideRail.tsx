@@ -21,6 +21,7 @@ import { isDesktop } from '../store/util';
 import type { Investigation } from '../store/investigations';
 import { DESKTOP_ONLY_SECTIONS, RAIL_ITEMS } from './settings/SettingsPanelContent';
 import ActiveConnection from './ActiveConnection';
+import useAccountStatus from '../hooks/useAccountStatus';
 
 /**
  * The sidebar on the left, like Slack's: icons only by default, with labels
@@ -37,6 +38,10 @@ import ActiveConnection from './ActiveConnection';
  * the decisions it is waiting on. Clicking it opens what most needs you, or else
  * the current investigation (GlobalStore.focusAgentTab). Expanded, each
  * investigation is listed by its question.
+ *
+ * You are at the bottom-left, as in Slack or VS Code: the Account item shows
+ * your initials once signed in, and a dot until then. The top is for the
+ * connection, which is what you work in.
  */
 
 // Each settings section's icon: the item's only mark when collapsed.
@@ -153,8 +158,17 @@ const InvestigationItem = observer(({ investigation }: { investigation: Investig
   );
 });
 
+// Up to two letters for the signed-in person: from the name, or else the email.
+const initials = (name: string | null, email: string | null) => {
+  const words = (name ?? '').trim().split(/\s+/).filter(Boolean);
+  if (words.length > 1) return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (email ?? '?').slice(0, 1).toUpperCase();
+};
+
 const SideRail = observer(({ hasUnreadUpdates, onOpenChangelog }: { hasUnreadUpdates: boolean; onOpenChangelog: () => void }) => {
   const { global } = useStores();
+  const account = useAccountStatus();
   const expanded = global.sideRailExpanded;
   const activity = global.agentActivity;
   const waiting = global.agentDecisionsWaiting;
@@ -202,7 +216,8 @@ const SideRail = observer(({ hasUnreadUpdates, onOpenChangelog }: { hasUnreadUpd
 
       {/* Settings' sections, each an item of its own: one opens Settings at
           that section, and the open one closes it again. */}
-      {RAIL_ITEMS.map(item => {
+      {/* Account isn't a setting of the app: it's at the bottom. */}
+      {RAIL_ITEMS.filter(item => item.id !== 'account').map(item => {
         const open = global.showSettings && item.id === global.settingsSection;
         const desktopOnly = DESKTOP_ONLY_SECTIONS.includes(item.id) && !isDesktop();
         const Icon = SECTION_ICONS[item.id];
@@ -282,6 +297,50 @@ const SideRail = observer(({ hasUnreadUpdates, onOpenChangelog }: { hasUnreadUpd
         expanded={expanded}
         onClick={onOpenChangelog}
       />
+      {/* You: your initials once signed in, a dot until then. Desktop only,
+          like sign-in itself. */}
+      {isDesktop() && account?.available && (() => {
+        const open = global.showSettings && global.settingsSection === 'account';
+        const user = account.user;
+        const label = user ? user.name ?? user.email ?? 'Account' : 'Sign in';
+        return (
+          <RailItem
+            icon={
+              user ? (
+                <Box
+                  sx={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 9,
+                    fontWeight: 600,
+                    backgroundColor: 'var(--primary-color)',
+                    color: '#fff',
+                  }}
+                >
+                  {initials(user.name, user.email)}
+                </Box>
+              ) : (
+                <Badge
+                  variant="dot"
+                  sx={{ '& .MuiBadge-badge': { backgroundColor: 'var(--notification-color)' } }}
+                >
+                  <AccountCircleOutlined sx={{ fontSize: 20 }} />
+                </Badge>
+              )
+            }
+            label={label}
+            ariaLabel={open ? 'Close Account' : user ? `Account: ${label}` : 'Account: not signed in'}
+            tooltip={user ? `Signed in as ${label}` : 'Sign in'}
+            expanded={expanded}
+            active={open}
+            onClick={() => (open ? global.setShowSettings(false) : global.setShowSettings(true, 'account'))}
+          />
+        );
+      })()}
       {/* Collapse or expand: a double chevron pointing the way the sidebar
           will move, unlike any other icon here. The menu icon it replaces
           looked like Database Connections' storage icon at this size. At the
