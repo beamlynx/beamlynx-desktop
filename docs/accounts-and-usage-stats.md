@@ -14,7 +14,7 @@ Nothing is sent before the person has seen the first-run screen.
 `scripts/setup-accounts.sh` does everything that can be scripted, and lists what is left to do by hand. Run it again at any point: it finds what already exists and only fills in what's missing. The comment at its top lists every environment variable it reads.
 
 ### By hand, before the script
-1. Sign up at supabase.com, and create an organization named Grephyte.
+1. Sign up at supabase.com, and create an organization named Beamlynx.
 2. Create an access token under **Account → Access Tokens**. Supabase has no way to create one from a script.
 
 ### Run the script
