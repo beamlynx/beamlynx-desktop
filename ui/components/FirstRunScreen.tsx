@@ -6,7 +6,7 @@ import { PRIVACY_URL, SignInButtons, TERMS_URL } from './settings/AccountSection
 
 /**
  * Shown once, on desktop, the first time Beamlynx starts with a network
- * connection: sign in with GitHub or Google, or skip. Either choice is final:
+ * connection: sign in with GitHub, or skip. Either choice is final:
  * it never comes back on its own, and Settings -> Account can sign in later.
  *
  * It also says that the app sends anonymous usage stats, before any are
