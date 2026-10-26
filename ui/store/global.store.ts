@@ -2176,6 +2176,27 @@ export class GlobalStore {
     }
   };
 
+  /**
+   * Open the connection ChangeConnectionModal asked about in a new tab,
+   * leaving the current tab and its query as they are.
+   */
+  openPendingConnectionInNewTab = async (): Promise<void> => {
+    const pending = this.pendingConnectionSwitch;
+    if (!pending) {
+      return;
+    }
+    runInAction(() => {
+      this.pendingConnectionSwitch = null;
+      this.addTab();
+    });
+    // The new tab is empty, so the switch applies to it without asking.
+    if (pending.kind === 'select') {
+      await this.selectConnection(pending.connectionId, true);
+    } else {
+      await this.connectToSavedProfile(pending.id);
+    }
+  };
+
   cancelPendingConnectionSwitch = () => {
     this.pendingConnectionSwitch = null;
   };
