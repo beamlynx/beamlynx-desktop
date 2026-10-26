@@ -25,7 +25,8 @@ set -euo pipefail
 #   GITHUB_OAUTH_CLIENT_SECRET   } GitHub sign-in stays off.
 #   GOOGLE_OAUTH_CLIENT_ID       } from the Google OAuth client. Without them,
 #   GOOGLE_OAUTH_CLIENT_SECRET   } Google sign-in stays off.
-#   SUPABASE_ORG                 the organization's slug, when you have more than one
+#   SUPABASE_ORG                 the organization's slug. Defaults to the only one,
+#                                or else the one named Beamlynx
 #   SUPABASE_DB_PASSWORD         only when the project already exists and the
 #                                repo doesn't have the secret yet
 #   BEAMLYNX_POSTHOG_KEY         --for-release only. Defaults to the website's
@@ -40,6 +41,7 @@ cd "$(dirname "$0")/.."
 
 REPO="beamlynx/beamlynx-desktop"
 PROJECT_NAME="beamlynx"
+ORG_NAME="Beamlynx"
 REGION="eu-central-1" # Frankfurt. Can't be changed after the project exists.
 SITE_URL="https://beamlynx.com"
 REDIRECT_URL="http://127.0.0.1:*/auth/callback"
@@ -83,12 +85,18 @@ echo "== Supabase project"
 
 if [ -z "${SUPABASE_ORG:-}" ]; then
   orgs="$(supabase GET /organizations)"
-  case "$(jq length <<<"$orgs")" in
-    0) echo "Your Supabase account has no organization. Create one named Grephyte at supabase.com, then run this again." >&2; exit 1 ;;
-    1) SUPABASE_ORG="$(jq -r '.[0].slug' <<<"$orgs")" ;;
-    *) echo "You have more than one Supabase organization. Pick one with SUPABASE_ORG=<slug>:" >&2
-       jq -r '.[] | "  \(.slug)  \(.name)"' <<<"$orgs" >&2; exit 1 ;;
-  esac
+  # The only organization, or else the one named Beamlynx.
+  SUPABASE_ORG="$(jq -r --arg name "$ORG_NAME" \
+    'if length == 1 then .[0].slug else (map(select(.name | ascii_downcase == ($name | ascii_downcase)))[0].slug // empty) end' <<<"$orgs")"
+  if [ -z "$SUPABASE_ORG" ]; then
+    if [ "$(jq length <<<"$orgs")" = 0 ]; then
+      echo "Your Supabase account has no organization. Create one named $ORG_NAME at supabase.com, then run this again." >&2
+    else
+      echo "None of your Supabase organizations is named $ORG_NAME. Pick one with SUPABASE_ORG=<slug>:" >&2
+      jq -r '.[] | "  \(.slug)  \(.name)"' <<<"$orgs" >&2
+    fi
+    exit 1
+  fi
 fi
 
 REF="$(supabase GET /projects | jq -r --arg org "$SUPABASE_ORG" --arg name "$PROJECT_NAME" \
