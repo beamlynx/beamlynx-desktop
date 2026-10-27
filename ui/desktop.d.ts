@@ -134,7 +134,8 @@ type RevealRequest = {
   expression: string;
   reason?: string;
   createdAt: number;
-  status: 'pending' | 'revealed' | 'declined';
+  // expired: nobody answered in time, and the agent stopped waiting.
+  status: 'pending' | 'revealed' | 'declined' | 'expired';
   // The Claude session that asked (store/investigations.ts). Absent from a
   // desktop app older than investigations.
   investigationId?: string;
@@ -319,9 +320,6 @@ interface BeamlynxDesktopApi {
     onPolicyProposalExpired?: (callback: (id: string) => void) => () => void;
     // False when the agent no longer waits for the answer.
     resolvePolicyProposal?: (id: string, outcome: { applied: boolean; comment?: string }) => Promise<boolean>;
-    // A reveal request nobody answered in time (mcpReveal.onRequest). The
-    // agent stopped waiting.
-    onRevealExpired?: (callback: (id: string) => void) => () => void;
     // An agent's query that ran past its time limit, by its
     // McpQueryRequest.requestId. The desktop app already answered the agent;
     // the renderer stops the run (GlobalStore.cancelMcpQuery).
@@ -339,7 +337,12 @@ interface BeamlynxDesktopApi {
   // reports what the owner decided, which the agent's check_reveal poll
   // reads back.
   mcpReveal: {
+    // Sent again, with the same id, once the bridge is ready after a reload.
     onRequest: (callback: (request: RevealRequest) => void) => () => void;
+    // A request nobody answered in time, by its id. The agent stopped
+    // waiting. Optional: absent from an older desktop app.
+    onExpired?: (callback: (id: string) => void) => () => void;
+    // null when the request is no longer waiting, such as one that expired.
     resolve: (id: string, outcome: RevealOutcome) => Promise<RevealRequest | null>;
   };
   // Sign in once, and usage stats. Optional: absent from a desktop app

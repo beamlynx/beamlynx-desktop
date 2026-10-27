@@ -314,7 +314,7 @@ const RevealStep = observer(
       setError('');
       try {
         const ok = await global.answerReveal(investigation.id, step.requestId, reveal, comment.trim() || undefined);
-        if (!ok) setError('This request can no longer be answered.');
+        if (!ok && step.status !== 'expired') setError('This request can no longer be answered.');
       } catch (e) {
         setError(`Couldn't send your answer to the agent. ${messageOf(e)}`);
       } finally {

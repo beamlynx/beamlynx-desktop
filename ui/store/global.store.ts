@@ -2013,8 +2013,9 @@ export class GlobalStore {
    * to main's in-memory queue (reveal-requests.ts's resolveRevealRequest),
    * which is what the agent's matching check_reveal poll reads.
    */
-  resolveRevealRequest = async (id: string, outcome: RevealOutcome): Promise<void> => {
-    if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
+  // null when the desktop app no longer waits on the request (it expired).
+  resolveRevealRequest = async (id: string, outcome: RevealOutcome): Promise<RevealRequest | null | undefined> => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) return undefined;
     // A reveal outcome's columns/rows come straight from Session state
     // (session.columns is a MobX-observable array), and Electron IPC's
     // structured clone cannot serialize a MobX Proxy -- confirmed the hard
@@ -2023,7 +2024,7 @@ export class GlobalStore {
     // main<-renderer IPC boundary: a JSON round-trip forces a plain,
     // guaranteed-cloneable copy, which loses nothing since this data is
     // already JSON-shaped.
-    await window.beamlynxDesktop.mcpReveal.resolve(id, JSON.parse(JSON.stringify(outcome)));
+    return window.beamlynxDesktop.mcpReveal.resolve(id, JSON.parse(JSON.stringify(outcome)));
   };
 
   /**
@@ -2104,18 +2105,21 @@ export class GlobalStore {
     const investigation = this.investigations.find(i => i.id === investigationId);
     const step = investigation?.reveal(requestId);
     if (!investigation || step?.status !== 'pending') return false;
-    if (reveal && step.preview) {
-      await this.resolveRevealRequest(requestId, {
-        ok: true,
-        expression: step.preview.expression,
-        columns: step.preview.columns,
-        rows: step.rows,
-      });
-      investigation.setReveal(requestId, 'revealed');
-    } else {
-      await this.resolveRevealRequest(requestId, { ok: false, comment });
-      investigation.setReveal(requestId, 'declined');
+    const sent =
+      reveal && step.preview
+        ? await this.resolveRevealRequest(requestId, {
+            ok: true,
+            expression: step.preview.expression,
+            columns: step.preview.columns,
+            rows: step.rows,
+          })
+        : await this.resolveRevealRequest(requestId, { ok: false, comment });
+    // The agent had stopped waiting: nothing was sent.
+    if (sent === null) {
+      investigation.setReveal(requestId, 'expired');
+      return false;
     }
+    investigation.setReveal(requestId, reveal && step.preview ? 'revealed' : 'declined');
     return true;
   };
 
