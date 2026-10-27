@@ -103,8 +103,14 @@ const BUILT_IN_SHOW_RULES: AccessPolicyRule[] = [
     ],
   },
   { type: 'foreign-key' },
-  { type: 'column-name', suffix: '_id' },
 ];
+
+// The built-in rule that showed every column ending in `_id`, whatever its
+// type. It showed text such as `national_id` or `passport_id`. Integer and
+// uuid ids are shown by type above, and real foreign keys by the rule
+// after it, so policies made since have neither. Older policies have it
+// switched off once (ensureOwnPolicies, store version 6).
+const RETIRED_ID_SUFFIX_RULE: AccessPolicyRule = { type: 'column-name', suffix: '_id' };
 
 // The hide rules every policy starts with. Ordinary rules, unlike the
 // built-in show rules: they can be removed, and added back by hand. A uuid
@@ -269,11 +275,30 @@ function getStorePath(): string {
 }
 
 function emptyStore(): StoreFile {
-  return { version: 5, connections: [], accessPolicies: [] };
+  return { version: 6, connections: [], accessPolicies: [] };
 }
 
-// A corrupt or missing file must never block app boot -- default to empty
-// rather than throwing. Also migrates (once, persisted immediately -- not
+// A file that can't be read or parsed: unreadable, but maybe still holding
+// every saved connection. readStore throws this instead of returning an
+// empty store, so no write can replace the file with an empty one.
+export class StoreUnreadableError extends Error {
+  constructor(storePath: string, cause: unknown) {
+    super(
+      `Beamlynx couldn't read its saved connections (${storePath}): ` +
+        `${cause instanceof Error ? cause.message : String(cause)}. Nothing was changed. ` +
+        'Fix or move that file, then try again.',
+    );
+  }
+}
+
+// Only a missing file is an empty store: nothing has been saved yet. A file
+// that can't be read or parsed throws StoreUnreadableError. It used to read
+// as empty too, and the next save then wrote an empty list over every saved
+// connection. Every write starts with readStore, so it stops here first.
+// What the app shows at boot goes through readStoreForDisplay, which logs
+// and shows nothing rather than keep the app from starting.
+//
+// Also migrates (once, persisted immediately -- not
 // just a type-level fallback re-applied on every read) a store written
 // before named policies existed:
 //  - a store with the earlier single-global-policy shape (`accessPolicy:
@@ -289,31 +314,45 @@ function emptyStore(): StoreFile {
 // connections.json directly showed a different value than what the app was
 // actually using. This store has to stay honest with itself.
 function readStore(): StoreFile {
+  const storePath = getStorePath();
+  let parsed;
   try {
-    const raw = fs.readFileSync(getStorePath(), 'utf-8');
-    const parsed = JSON.parse(raw);
-    if (!parsed || !Array.isArray(parsed.connections)) {
-      return emptyStore();
-    }
-    if (!Array.isArray(parsed.accessPolicies)) {
-      const migratedRules = Array.isArray(parsed.accessPolicy) ? parsed.accessPolicy : BUILT_IN_SHOW_RULES;
-      const defaultPolicy = makeDefaultPolicy(migratedRules);
-      parsed.accessPolicies = [defaultPolicy];
-      delete parsed.accessPolicy;
-      parsed.connections = parsed.connections.map((c: Record<string, unknown>) => {
-        if (c.policyId !== undefined) return c;
-        const { policyEnabled, ...rest } = c;
-        return { ...rest, policyId: policyEnabled ? defaultPolicy.id : null };
-      });
-      writeStore(parsed as StoreFile);
-    }
-    const ruleIds = migrateToRuleIds(parsed);
-    const own = ensureOwnPolicies(parsed as StoreFile);
-    if (ruleIds || own) {
-      writeStore(parsed as StoreFile);
-    }
-    return parsed as StoreFile;
-  } catch {
+    parsed = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return emptyStore();
+    throw new StoreUnreadableError(storePath, e);
+  }
+  // Valid JSON, but not a store: just as unsafe to write over.
+  if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.connections)) {
+    throw new StoreUnreadableError(storePath, new Error('it has no list of connections'));
+  }
+  if (!Array.isArray(parsed.accessPolicies)) {
+    const migratedRules = Array.isArray(parsed.accessPolicy) ? parsed.accessPolicy : BUILT_IN_SHOW_RULES;
+    const defaultPolicy = makeDefaultPolicy(migratedRules);
+    parsed.accessPolicies = [defaultPolicy];
+    delete parsed.accessPolicy;
+    parsed.connections = parsed.connections.map((c: Record<string, unknown>) => {
+      if (c.policyId !== undefined) return c;
+      const { policyEnabled, ...rest } = c;
+      return { ...rest, policyId: policyEnabled ? defaultPolicy.id : null };
+    });
+    writeStore(parsed as StoreFile);
+  }
+  const ruleIds = migrateToRuleIds(parsed);
+  const own = ensureOwnPolicies(parsed as StoreFile);
+  if (ruleIds || own) {
+    writeStore(parsed as StoreFile);
+  }
+  return parsed as StoreFile;
+}
+
+// For lists the app shows at boot: an unreadable file shows as no
+// connections, so the app still starts. Writes still refuse (see readStore).
+function readStoreForDisplay(): StoreFile {
+  try {
+    return readStore();
+  } catch (e) {
+    console.error('[credentials]', e instanceof Error ? e.message : e);
     return emptyStore();
   }
 }
@@ -437,6 +476,22 @@ function ensureOwnPolicies(store: StoreFile): boolean {
     store.version = 5;
     changed = true;
   }
+  // Once (store version 6): the built-in `_id` rule is switched off in
+  // every policy, so a text column ending in `_id` is hidden unless another
+  // rule shows it. Left on only where it is the policy's one rule that is
+  // on: switching it off there would lock agents out of the connection.
+  if (version < 6) {
+    const retired = JSON.stringify(RETIRED_ID_SUFFIX_RULE);
+    for (const policy of store.accessPolicies) {
+      const othersOn = policy.rules.some(m => m.enabled && JSON.stringify(ruleOf(m)) !== retired);
+      if (!othersOn) continue;
+      policy.rules = policy.rules.map(m =>
+        m.builtIn && JSON.stringify(ruleOf(m)) === retired ? { ...m, enabled: false } : m,
+      );
+    }
+    store.version = 6;
+    changed = true;
+  }
   return changed;
 }
 
@@ -510,7 +565,7 @@ export function getCredentialsStatus(): CredentialsStatus {
 }
 
 export function listConnections(): SavedConnectionMeta[] {
-  const list = readStore().connections.map(toMeta);
+  const list = readStoreForDisplay().connections.map(toMeta);
   console.log(`[credentials] listConnections -> ${list.length} saved (store: ${getStorePath()})`);
   return list;
 }
@@ -588,7 +643,8 @@ export function saveConnection(input: SaveConnectionInput): SaveConnectionResult
 }
 
 export function getConnection(id: string): GetConnectionResult {
-  const store = readStore();
+  // Only reads, and beamlynx-ui may call it at boot to reopen a tab.
+  const store = readStoreForDisplay();
   const record = store.connections.find(c => c.id === id);
   if (!record) {
     return { ok: false, error: 'not-found' };
@@ -747,7 +803,7 @@ export function setAgentAccess(id: string, access: AgentAccess, templateId?: str
 // The built-in Default template first, then the stored templates and
 // connections' own policies, told apart by connectionId.
 export function listAccessPolicies(): AccessPolicy[] {
-  return [builtInTemplate(), ...readStore().accessPolicies];
+  return [builtInTemplate(), ...readStoreForDisplay().accessPolicies];
 }
 
 // A new template, with the starting rules.

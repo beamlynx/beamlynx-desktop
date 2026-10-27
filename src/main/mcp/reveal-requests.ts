@@ -35,7 +35,9 @@ export type RevealRequest = {
   expression: string;
   reason?: string;
   createdAt: number;
-  status: 'pending' | 'revealed' | 'declined';
+  // 'expired': nobody answered within REVEAL_EXPIRY_MS. It no longer counts
+  // toward the per-connection limit, and can't be revealed any more.
+  status: 'pending' | 'revealed' | 'declined' | 'expired';
   outcome?: RevealOutcome;
   // The Claude session that asked (see investigations.ts): the request is a
   // card in that investigation's timeline in beamlynx-ui.
@@ -43,6 +45,12 @@ export type RevealRequest = {
 };
 
 const requests = new Map<string, RevealRequest>();
+
+// How long a reveal request stays on offer, the same as a policy proposal
+// (PROPOSAL_EXPIRY_MS in control-plane-server.ts). Before, an unanswered
+// request stayed pending forever, and three of them blocked the connection
+// from asking again until the app restarted.
+export const REVEAL_EXPIRY_MS = 10 * 60 * 1000;
 
 // Wakes up waitForRevealRequest's long-poll below the moment a request
 // resolves, instead of making it re-check the map on a timer. Event name is
@@ -88,14 +96,32 @@ export function getRevealRequest(id: string): RevealRequest | undefined {
   return requests.get(id);
 }
 
+/** Every request still waiting on the owner, oldest first. Re-sent when the window reloads. */
+export function listPendingRevealRequests(): RevealRequest[] {
+  return [...requests.values()].filter(r => r.status === 'pending');
+}
+
+/**
+ * A request nobody answered in time. True if it was still pending. Wakes a
+ * waiting check_reveal, which then says it expired.
+ */
+export function expireRevealRequest(id: string): boolean {
+  const request = requests.get(id);
+  if (!request || request.status !== 'pending') return false;
+  request.status = 'expired';
+  resolutionEvents.emit(id, request);
+  return true;
+}
+
 // Never refuses re-resolving an already-resolved request -- the owner's tab
 // is the only caller, and there's nothing to protect against here (unlike
 // credential-store.ts's setMcpEnabled/attachTemplate guards, which
 // exist because *different* callers could otherwise fight over one
-// invariant). A second call just overwrites the first outcome.
+// invariant). A second call just overwrites the first outcome. An expired
+// request is refused: the agent has stopped waiting for it.
 export function resolveRevealRequest(id: string, outcome: RevealOutcome): RevealRequest | null {
   const request = requests.get(id);
-  if (!request) return null;
+  if (!request || request.status === 'expired') return null;
   request.status = outcome.ok ? 'revealed' : 'declined';
   request.outcome = outcome;
   resolutionEvents.emit(id, request);

@@ -23,7 +23,15 @@ require.cache[electronPath] = {
   exports: { ipcMain: { handle: () => {} } },
 };
 
-const { createRevealRequest, getRevealRequest, resolveRevealRequest, waitForRevealRequest } = require(DIST);
+const {
+  createRevealRequest,
+  getRevealRequest,
+  resolveRevealRequest,
+  waitForRevealRequest,
+  expireRevealRequest,
+  countPendingRevealRequests,
+  listPendingRevealRequests,
+} = require(DIST);
 
 test('createRevealRequest starts pending, with no outcome yet', () => {
   const request = createRevealRequest('conn-1', 'user | select: email', 'need to verify a support ticket');
@@ -126,4 +134,42 @@ test('waitForRevealRequest supports several concurrent waiters on the same id, a
   for (const result of results) {
     assert.equal(result.status, 'declined');
   }
+});
+
+// An unanswered request used to stay pending forever, and three of them
+// blocked the connection from asking again until the app restarted.
+test('an expired request stops counting toward the limit, and is no longer listed as pending', () => {
+  const request = createRevealRequest('conn-expiry', 'user | select: email');
+  assert.equal(countPendingRevealRequests('conn-expiry'), 1);
+  assert.ok(listPendingRevealRequests().some(r => r.id === request.id));
+
+  assert.equal(expireRevealRequest(request.id), true);
+  assert.equal(getRevealRequest(request.id).status, 'expired');
+  assert.equal(countPendingRevealRequests('conn-expiry'), 0);
+  assert.ok(!listPendingRevealRequests().some(r => r.id === request.id));
+  // Only a pending request expires.
+  assert.equal(expireRevealRequest(request.id), false);
+});
+
+test('expiring wakes a waiting check_reveal, and the owner can no longer reveal it', async () => {
+  const request = createRevealRequest('conn-1', 'user | select: email');
+  const waiting = waitForRevealRequest(request.id, 5000);
+  expireRevealRequest(request.id);
+  assert.equal((await waiting).status, 'expired');
+  assert.equal(resolveRevealRequest(request.id, { ok: true, expression: 'x', columns: [], rows: [] }), null);
+  assert.equal(getRevealRequest(request.id).outcome, undefined);
+});
+
+test('a resolved request does not expire', () => {
+  const request = createRevealRequest('conn-1', 'user | select: email');
+  resolveRevealRequest(request.id, { ok: false });
+  assert.equal(expireRevealRequest(request.id), false);
+  assert.equal(getRevealRequest(request.id).status, 'declined');
+});
+
+test('formatRevealStatus says an expired request expired', () => {
+  const { formatRevealStatus } = require('../dist/main/mcp/format.js');
+  const text = formatRevealStatus({ request: { id: 'r', expression: 'user', status: 'expired' } });
+  assert.match(text, /expired/);
+  assert.match(text, /request_reveal again/);
 });

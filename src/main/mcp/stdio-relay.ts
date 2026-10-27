@@ -33,7 +33,8 @@ import { getLaunchPath, getResourcesRoot } from '../resources';
 import { SERVER_INSTRUCTIONS } from './instructions';
 import { describeCall, outcomeOf, type AgentActivity } from './activity';
 import { INVESTIGATION_HEADER } from './investigations';
-import { proposeAndWait } from './policy-proposals';
+import { proposeAndWait, type ControlPlaneRequest } from './policy-proposals';
+import { readUtf8Body } from './read-body';
 import { MAX_LIST_ITEMS, MAX_STRING_LENGTH, MAX_VARIABLES, variablesSchema, type VariableValue } from './variables-schema';
 import {
   formatCompletion,
@@ -46,7 +47,20 @@ import {
 } from './format';
 import type { BuildResponse } from './format';
 
-const GUI_LAUNCH_TIMEOUT_MS = 30000;
+// How long a launch of the app may take, until its window can take work:
+// the pine server's JVM boot plus loading the UI.
+const GUI_LAUNCH_TIMEOUT_MS = 60000;
+
+// Client-side timeouts for control-plane calls. The routes that wait on the
+// page get render-bridge.ts's 60 s plus room to answer; the long-polls hold
+// for 25 s (LONG_POLL_TIMEOUT_MS in control-plane-server.ts). Notes and
+// activity are extras around a tool call, so they never hold one up.
+const PAGE_REQUEST_TIMEOUT_MS = 70000;
+const LONG_POLL_REQUEST_TIMEOUT_MS = 35000;
+const SIDE_REQUEST_TIMEOUT_MS = 2000;
+
+const NOT_RUNNING_MESSAGE =
+  "Beamlynx isn't running, or is still starting. Call the tool again in a few seconds; it starts the app if needed.";
 
 // This Claude session, as beamlynx knows it: made up when the relay starts,
 // sent on every control-plane request. The app shows everything that comes
@@ -72,17 +86,35 @@ function isControlPlaneUp(): Promise<boolean> {
 
 // The token the running app wrote for its control plane (launch-secrets.ts).
 // Read on every request, not once: the app makes a new one each launch, and
-// it may have restarted since this relay started.
+// it may have restarted since this relay started. The app removes the file
+// when it quits, so a missing one means it isn't running, or is starting.
 function controlPlaneToken(): string {
   const info = readControlPlaneInfo(app.getPath('userData'));
-  if (!info) {
-    throw new Error('The Beamlynx app is running but has not published its control-plane token. Restart Beamlynx.');
-  }
+  if (!info) throw new Error(NOT_RUNNING_MESSAGE);
   return info.token;
 }
 
-function controlPlaneRequest(method: 'GET' | 'POST', path: string, body?: unknown): Promise<any> {
-  return new Promise((resolve, reject) => {
+// Errors from the socket itself, in words an agent can act on.
+function describeRequestError(err: NodeJS.ErrnoException): Error {
+  if (err.code === 'ECONNREFUSED') return new Error(NOT_RUNNING_MESSAGE);
+  if (err.code === 'ECONNRESET') {
+    return new Error('Beamlynx closed the connection before it answered. It may have quit or reloaded. Try again.');
+  }
+  return err;
+}
+
+// Default timeout per route (see the constants at the top).
+function defaultTimeout(method: string, path: string): number {
+  if (path === '/query' || path === '/explain' || (method === 'POST' && path === '/reveal')) {
+    return PAGE_REQUEST_TIMEOUT_MS;
+  }
+  return LONG_POLL_REQUEST_TIMEOUT_MS;
+}
+
+// `signal` is the MCP client's cancel: aborting it hangs up, and the control
+// plane stops whatever it was waiting on for this call.
+const controlPlaneRequest: ControlPlaneRequest = (method, path, body, options = {}) =>
+  new Promise((resolve, reject) => {
     const payload = body !== undefined ? JSON.stringify(body) : undefined;
     let token: string;
     try {
@@ -91,6 +123,11 @@ function controlPlaneRequest(method: 'GET' | 'POST', path: string, body?: unknow
       reject(e);
       return;
     }
+    if (options.signal?.aborted) {
+      reject(new Error('Cancelled.'));
+      return;
+    }
+    const timeoutMs = options.timeoutMs ?? defaultTimeout(method, path);
     const req = http.request(
       {
         host: '127.0.0.1',
@@ -102,12 +139,10 @@ function controlPlaneRequest(method: 'GET' | 'POST', path: string, body?: unknow
           [INVESTIGATION_HEADER]: INVESTIGATION_ID,
           ...(payload ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) } : {}),
         },
-        timeout: 35000,
+        timeout: timeoutMs,
       },
       res => {
-        let data = '';
-        res.on('data', chunk => (data += chunk));
-        res.on('end', () => {
+        readUtf8Body(res).then(data => {
           try {
             const parsed = data ? JSON.parse(data) : {};
             if ((res.statusCode ?? 200) >= 400) {
@@ -118,18 +153,23 @@ function controlPlaneRequest(method: 'GET' | 'POST', path: string, body?: unknow
           } catch {
             reject(new Error(`control-plane returned non-JSON response for ${path}`));
           }
-        });
+        }, reject);
       },
     );
-    req.on('error', reject);
+    const onAbort = () => {
+      req.destroy();
+      reject(new Error('Cancelled.'));
+    };
+    options.signal?.addEventListener('abort', onAbort, { once: true });
+    req.on('close', () => options.signal?.removeEventListener('abort', onAbort));
+    req.on('error', err => reject(describeRequestError(err)));
     req.on('timeout', () => {
       req.destroy();
-      reject(new Error(`control-plane request to ${path} timed out`));
+      reject(new Error(`Beamlynx didn't answer within ${Math.round(timeoutMs / 1000)} s.`));
     });
     if (payload) req.write(payload);
     req.end();
   });
-}
 
 // Launches the real, visible GUI app (no --mcp flag) as a detached child so
 // it outlives this relay process -- confirmed empirically that an Electron
@@ -151,16 +191,39 @@ function launchGuiDetached(): void {
   child.unref();
 }
 
+// Whether the app's window can take work (GET /ready). Anything short of a
+// yes counts as not yet: no token file, a crashed run's old token, a port
+// that refuses, or {ready: false}.
+async function isAppReady(): Promise<boolean> {
+  try {
+    const { ready } = await controlPlaneRequest('GET', '/ready', undefined, { timeoutMs: SIDE_REQUEST_TIMEOUT_MS });
+    return ready === true;
+  } catch {
+    return false;
+  }
+}
+
+// An app that is already running is used as it is: if its window is
+// reloading, the call itself says to try again. An app this relay started
+// is waited for until its window can take work, not just until its port
+// opens. The port opens seconds before the UI has loaded, and the first
+// call used to land in the loading screen and hang.
 async function ensureGuiRunning(): Promise<void> {
   if (await isControlPlaneUp()) return;
   launchGuiDetached();
   const deadline = Date.now() + GUI_LAUNCH_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    if (await isControlPlaneUp()) return;
+    if ((await isControlPlaneUp()) && (await isAppReady())) return;
     await new Promise(resolve => setTimeout(resolve, GUI_POLL_INTERVAL_MS));
   }
-  throw new Error('Timed out waiting for the Beamlynx app to start');
+  throw new Error(
+    `Beamlynx was started, but wasn't ready after ${GUI_LAUNCH_TIMEOUT_MS / 1000} s. Check its window, then try again.`,
+  );
 }
+
+// What the MCP SDK passes a tool handler next to its arguments. Only the
+// client's cancel is used here.
+type ToolExtra = { signal?: AbortSignal };
 
 function textResult(text: string) {
   return { content: [{ type: 'text' as const, text }] };
@@ -221,9 +284,9 @@ function getDoc(topic: string): string | null {
 // only in what gets rendered, since a bare table fragment produces
 // "start a pipeline here" hints and a trailing `| ` produces join hints.
 // Builds never touch the user's visible tab; only run_query does.
-async function build(profileId: string, expression: string): Promise<BuildResponse> {
+async function build(profileId: string, expression: string, signal?: AbortSignal): Promise<BuildResponse> {
   await ensureGuiRunning();
-  const { result } = await controlPlaneRequest('POST', '/explain', { profileId, expression });
+  const { result } = await controlPlaneRequest('POST', '/explain', { profileId, expression }, { signal });
   return result ?? {};
 }
 
@@ -231,7 +294,7 @@ async function build(profileId: string, expression: string): Promise<BuildRespon
 // never launches the app: a tool call must not wait on, or fail because of,
 // the person's view of it. With the app closed the event is dropped.
 function reportActivity(event: AgentActivity): void {
-  controlPlaneRequest('POST', '/activity', event).catch(() => undefined);
+  controlPlaneRequest('POST', '/activity', event, { timeoutMs: SIDE_REQUEST_TIMEOUT_MS }).catch(() => undefined);
 }
 
 let activityCounter = 0;
@@ -239,8 +302,11 @@ let activityCounter = 0;
 // Notes the user typed in this investigation's tab go at the top of the next
 // result, whatever the tool: beamlynx can't send the agent a message, only
 // answer its calls. Never fails the call: without the app, there are none.
+// Asked with a short timeout, so a busy or reloading app adds 2 s at most.
 async function withUserNotes<T extends { content?: unknown[] }>(result: T): Promise<T> {
-  const { notes } = await controlPlaneRequest('POST', '/investigation/notes').catch(() => ({ notes: [] }));
+  const { notes } = await controlPlaneRequest('POST', '/investigation/notes', undefined, {
+    timeoutMs: SIDE_REQUEST_TIMEOUT_MS,
+  }).catch(() => ({ notes: [] }));
   if (!Array.isArray(notes) || notes.length === 0) return result;
   const text =
     'The user wrote to you from beamlynx, while you worked:\n' +
@@ -282,6 +348,7 @@ async function registerTools(server: McpServer): Promise<void> {
     },
     async () => {
       try {
+        await ensureGuiRunning();
         const { connections } = await controlPlaneRequest('GET', '/connections');
         return textResult(formatConnections(connections ?? []));
       } catch (e) {
@@ -303,7 +370,7 @@ async function registerTools(server: McpServer): Promise<void> {
         query: z.string().min(1).describe('A fragment of the table name to look for, e.g. "invoice"'),
       },
     },
-    async ({ connection_id, query }: { connection_id: string; query: string }) => {
+    async ({ connection_id, query }: { connection_id: string; query: string }, extra: ToolExtra) => {
       try {
         // A blank query matches every table -- 249 on a mid-size schema,
         // thousands on a large one. min(1) on the schema plus this covers
@@ -311,7 +378,7 @@ async function registerTools(server: McpServer): Promise<void> {
         if (!query.trim()) {
           return errorResult('find_tables needs a name fragment to search for. Pass at least one character.');
         }
-        return textResult(formatTableMatches(query, await build(connection_id, query.trim())));
+        return textResult(formatTableMatches(query, await build(connection_id, query.trim(), extra.signal)));
       } catch (e) {
         return errorResult(e instanceof Error ? e.message : String(e));
       }
@@ -333,9 +400,9 @@ async function registerTools(server: McpServer): Promise<void> {
           .describe('A Pine expression, usually a partial one ending in `| ` or `| select: `, e.g. "public.user | "'),
       },
     },
-    async ({ connection_id, expression }: { connection_id: string; expression: string }) => {
+    async ({ connection_id, expression }: { connection_id: string; expression: string }, extra: ToolExtra) => {
       try {
-        return textResult(formatCompletion(expression, await build(connection_id, expression), getDoc));
+        return textResult(formatCompletion(expression, await build(connection_id, expression, extra.signal), getDoc));
       } catch (e) {
         return errorResult(e instanceof Error ? e.message : String(e));
       }
@@ -356,10 +423,10 @@ async function registerTools(server: McpServer): Promise<void> {
   const sayWhy =
     'Lead it with a `/* ... */` comment saying what you are looking for and why -- the tab this opens ' +
     'renders it as a note above the query, which is how the user sees your reasoning rather than just rows. ';
-  async function runOnControlPlane(body: Record<string, unknown>) {
+  async function runOnControlPlane(body: Record<string, unknown>, signal?: AbortSignal) {
     try {
       await ensureGuiRunning();
-      const { result } = await controlPlaneRequest('POST', '/query', body);
+      const { result } = await controlPlaneRequest('POST', '/query', body, { signal });
       return result?.error ? errorResult(formatRows(result)) : textResult(formatRows(result ?? {}));
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));
@@ -383,15 +450,18 @@ async function registerTools(server: McpServer): Promise<void> {
         variables: variablesInput,
       },
     },
-    async ({
-      connection_id,
-      expression,
-      variables,
-    }: {
-      connection_id: string;
-      expression: string;
-      variables?: Record<string, VariableValue>;
-    }) => runOnControlPlane({ profileId: connection_id, expression, variables }),
+    async (
+      {
+        connection_id,
+        expression,
+        variables,
+      }: {
+        connection_id: string;
+        expression: string;
+        variables?: Record<string, VariableValue>;
+      },
+      extra: ToolExtra,
+    ) => runOnControlPlane({ profileId: connection_id, expression, variables }, extra.signal),
   );
 
   // A tool of its own, not a field on run_query: an MCP client grants
@@ -420,17 +490,20 @@ async function registerTools(server: McpServer): Promise<void> {
         variables: variablesInput,
       },
     },
-    async ({
-      connection_id,
-      sql,
-      variables,
-    }: {
-      connection_id: string;
-      sql: string;
-      variables?: Record<string, VariableValue>;
-    }) => {
+    async (
+      {
+        connection_id,
+        sql,
+        variables,
+      }: {
+        connection_id: string;
+        sql: string;
+        variables?: Record<string, VariableValue>;
+      },
+      extra: ToolExtra,
+    ) => {
       if (!sql.trim()) return errorResult('run_sql_as_pine needs SQL in `sql`.');
-      return runOnControlPlane({ profileId: connection_id, sql, variables });
+      return runOnControlPlane({ profileId: connection_id, sql, variables }, extra.signal);
     },
   );
 
@@ -544,13 +617,19 @@ async function registerTools(server: McpServer): Promise<void> {
         changes: z.array(z.record(z.string(), z.unknown())).describe('The changes, in order. At most 20.'),
       },
     },
-    async ({ connection_id, reason, changes }: { connection_id: string; reason: string; changes: unknown[] }) => {
+    async (
+      { connection_id, reason, changes }: { connection_id: string; reason: string; changes: unknown[] },
+      extra: ToolExtra,
+    ) => {
       try {
         await ensureGuiRunning();
+        // Cancelling the call withdraws the proposal (see proposeAndWait).
         const { text, isError } = await proposeAndWait(
           controlPlaneRequest,
           { profileId: connection_id, reason, changes },
           PROPOSAL_TIMEOUT_MS,
+          Date.now,
+          extra.signal,
         );
         return isError ? errorResult(text) : textResult(text);
       } catch (e) {
@@ -583,10 +662,18 @@ async function registerTools(server: McpServer): Promise<void> {
           .describe('Why you need the real data -- shown to the user to help them decide'),
       },
     },
-    async ({ connection_id, expression, reason }: { connection_id: string; expression: string; reason?: string }) => {
+    async (
+      { connection_id, expression, reason }: { connection_id: string; expression: string; reason?: string },
+      extra: ToolExtra,
+    ) => {
       try {
         await ensureGuiRunning();
-        const result = await controlPlaneRequest('POST', '/reveal', { profileId: connection_id, expression, reason });
+        const result = await controlPlaneRequest(
+          'POST',
+          '/reveal',
+          { profileId: connection_id, expression, reason },
+          { signal: extra.signal },
+        );
         return textResult(formatRevealCreated(result));
       } catch (e) {
         return errorResult(e instanceof Error ? e.message : String(e));
@@ -607,9 +694,14 @@ async function registerTools(server: McpServer): Promise<void> {
         request_id: z.string().describe('The request id returned by request_reveal'),
       },
     },
-    async ({ request_id }: { request_id: string }) => {
+    // Cancelling stops this wait only. The request stays on offer until it
+    // expires, since the agent may call check_reveal again.
+    async ({ request_id }: { request_id: string }, extra: ToolExtra) => {
       try {
-        const result = await controlPlaneRequest('GET', `/reveal/${encodeURIComponent(request_id)}`);
+        await ensureGuiRunning();
+        const result = await controlPlaneRequest('GET', `/reveal/${encodeURIComponent(request_id)}`, undefined, {
+          signal: extra.signal,
+        });
         return textResult(formatRevealStatus(result));
       } catch (e) {
         return errorResult(e instanceof Error ? e.message : String(e));
@@ -659,6 +751,13 @@ export async function startMcpRelay(): Promise<void> {
     { instructions: SERVER_INSTRUCTIONS },
   );
   await registerTools(server);
+
+  // Exit once the client is gone. The MCP SDK's stdio transport doesn't
+  // watch for the end of stdin, so a relay whose client quit stayed behind.
+  const exit = () => app.exit(0);
+  process.stdin.on('end', exit);
+  process.stdin.on('close', exit);
+  server.server.onclose = exit;
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

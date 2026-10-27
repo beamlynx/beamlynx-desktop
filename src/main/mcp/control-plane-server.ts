@@ -17,11 +17,21 @@ import {
   countPendingProposals,
   createProposal,
   expireProposal,
+  listPendingProposals,
   waitForProposal,
 } from './policy-proposals';
 import { authorizeControlPlaneRequest } from './control-plane-auth';
-import { runInRenderer } from './render-bridge';
-import { countPendingRevealRequests, createRevealRequest, waitForRevealRequest } from './reveal-requests';
+import { BodyTooLargeError, readUtf8Body } from './read-body';
+import { isBridgeReady, NOT_READY_MESSAGE, onBridgeReady, runInRenderer } from './render-bridge';
+import {
+  countPendingRevealRequests,
+  createRevealRequest,
+  expireRevealRequest,
+  getRevealRequest,
+  listPendingRevealRequests,
+  REVEAL_EXPIRY_MS,
+  waitForRevealRequest,
+} from './reveal-requests';
 
 // Enough for any expression and its variables. Nothing an MCP client sends
 // legitimately comes close.
@@ -30,13 +40,13 @@ const MAX_BODY_BYTES = 1024 * 1024;
 // An agent in a loop could otherwise open a new pinned tab per call.
 const MAX_PENDING_REVEALS_PER_CONNECTION = 3;
 
-// How long GET /reveal/:id blocks waiting for a decision before returning
-// "still pending" -- stdio-relay.ts's controlPlaneRequest gives every call a
-// 35s client-side socket timeout, and render-bridge.ts's own renderer round
-// trip already uses all but 5s of that budget for /query and /explain, so
-// this stays comfortably under it with margin to spare for this call's own
-// (much smaller) IPC/JSON overhead.
-const REVEAL_LONG_POLL_TIMEOUT_MS = 25000;
+// How long GET /reveal/:id and GET /policy-proposal/:id block waiting for a
+// decision before returning "still pending". stdio-relay.ts's
+// controlPlaneRequest gives these calls a 35 s client-side timeout
+// (LONG_POLL_REQUEST_TIMEOUT_MS there), so this stays well under it. The
+// routes that wait on the page (/query, /explain, POST /reveal) have their
+// own, longer budget: render-bridge.ts's 60 s, and 70 s in the relay.
+const LONG_POLL_TIMEOUT_MS = 25000;
 
 // How long a proposed policy change stays on offer. stdio-relay.ts's
 // propose_policy_change waits as long (PROPOSAL_TIMEOUT_MS there).
@@ -70,23 +80,24 @@ function readJsonBody(req: http.IncomingMessage): Promise<any> {
       req.resume();
       return;
     }
-    let data = '';
-    req.on('data', chunk => {
-      data += chunk;
-      if (data.length > MAX_BODY_BYTES) {
-        reject(new HttpError(413, 'Request body larger than 1 MB'));
-        req.destroy();
-      }
-    });
-    req.on('end', () => {
-      if (!data) return resolve({});
-      try {
-        resolve(JSON.parse(data));
-      } catch {
-        reject(new Error('Invalid JSON body'));
-      }
-    });
-    req.on('error', reject);
+    readUtf8Body(req, MAX_BODY_BYTES).then(
+      data => {
+        if (!data) return resolve({});
+        try {
+          resolve(JSON.parse(data));
+        } catch {
+          reject(new Error('Invalid JSON body'));
+        }
+      },
+      err => {
+        if (err instanceof BodyTooLargeError) {
+          reject(new HttpError(413, 'Request body larger than 1 MB'));
+          req.destroy();
+          return;
+        }
+        reject(err);
+      },
+    );
   });
 }
 
@@ -130,6 +141,41 @@ function assertWhitelisted(profileId: string): void {
 }
 
 export function startControlPlaneServer(options: StartControlPlaneServerOptions): http.Server {
+  // To the page, if it is there. A message to a window that is gone, or to a
+  // page that is reloading, is dropped: what matters is re-sent on ready.
+  const sendToWindow = (channel: string, payload: unknown) => {
+    const webContents = options.getMainWindow()?.webContents;
+    if (webContents && !webContents.isDestroyed()) webContents.send(channel, payload);
+  };
+
+  // The window for a route that needs the page to answer, or null after a
+  // 503 saying to try again. Without it, a request sent into loading.html or
+  // a reloading page waited out the whole timeout with nothing listening.
+  const windowOr503 = (res: http.ServerResponse): BrowserWindow | null => {
+    const mainWindow = options.getMainWindow();
+    if (!mainWindow || mainWindow.isDestroyed() || !isBridgeReady()) {
+      sendJson(res, 503, { error: NOT_READY_MESSAGE });
+      return null;
+    }
+    return mainWindow;
+  };
+
+  // One way to withdraw a proposal: at expiry, or when the agent cancels its
+  // call. The card says it expired.
+  const proposalTimers = new Map<string, NodeJS.Timeout>();
+  const withdrawProposal = (id: string) => {
+    clearTimeout(proposalTimers.get(id));
+    proposalTimers.delete(id);
+    if (expireProposal(id)) sendToWindow('mcp:policy-proposal-expired', id);
+  };
+
+  // A reload loses the cards the page was showing. Everything still waiting
+  // on the user is sent again; beamlynx-ui keeps one card per id.
+  onBridgeReady(() => {
+    for (const proposal of listPendingProposals()) sendToWindow('mcp:policy-proposal', proposal);
+    for (const request of listPendingRevealRequests()) sendToWindow('mcp:reveal-request', request);
+  });
+
   const server = http.createServer(async (req, res) => {
     try {
       const refusal = authorizeControlPlaneRequest(req.headers, options.token);
@@ -142,11 +188,17 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
       // no window, or one still on the loading page, it is dropped.
       const investigationId = readInvestigationId(req.headers);
 
+      // Whether the window can take work: the --mcp relay polls this after
+      // it started the app, before its first call.
+      if (req.method === 'GET' && req.url === '/ready') {
+        return sendJson(res, 200, { ready: isBridgeReady() });
+      }
+
       if (req.method === 'POST' && req.url === '/activity') {
         const event = readActivity(await readJsonBody(req));
         if (!event) return sendJson(res, 400, { error: 'Not an activity event' });
         sendJson(res, 200, {});
-        options.getMainWindow()?.webContents.send('mcp:activity', { ...event, investigationId });
+        sendToWindow('mcp:activity', { ...event, investigationId });
         return;
       }
 
@@ -157,10 +209,7 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
         if (!investigationId) return sendJson(res, 200, { notes: [] });
         const notes = takeNotes(investigationId);
         if (notes.length) {
-          options.getMainWindow()?.webContents.send('mcp:notes-delivered', {
-            investigationId,
-            ids: notes.map(n => n.id),
-          });
+          sendToWindow('mcp:notes-delivered', { investigationId, ids: notes.map(n => n.id) });
         }
         return sendJson(res, 200, { notes });
       }
@@ -180,8 +229,8 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
         const { profileId, reason, changes } = (await readJsonBody(req)) ?? {};
         if (typeof profileId !== 'string') return sendJson(res, 400, { error: 'profileId is required' });
         assertWhitelisted(profileId);
-        const mainWindow = options.getMainWindow();
-        if (!mainWindow) return sendJson(res, 503, { error: 'The Beamlynx window is not available yet' });
+        const mainWindow = windowOr503(res);
+        if (!mainWindow) return;
         if (countPendingProposals(profileId) >= MAX_PENDING_PROPOSALS_PER_CONNECTION) {
           return sendJson(res, 429, {
             error: `There are already ${MAX_PENDING_PROPOSALS_PER_CONNECTION} proposed changes waiting for this connection. Wait for the user to answer them.`,
@@ -199,20 +248,27 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
           changes: checked.changes,
           investigationId,
         });
-        const expiry = setTimeout(() => {
-          expireProposal(proposal.id);
-          options.getMainWindow()?.webContents.send('mcp:policy-proposal-expired', proposal.id);
-        }, PROPOSAL_EXPIRY_MS);
+        const expiry = setTimeout(() => withdrawProposal(proposal.id), PROPOSAL_EXPIRY_MS);
         expiry.unref();
-        mainWindow.webContents.send('mcp:policy-proposal', proposal);
+        proposalTimers.set(proposal.id, expiry);
+        sendToWindow('mcp:policy-proposal', proposal);
         return sendJson(res, 200, { proposalId: proposal.id });
       }
 
+      const proposalPath = req.url?.match(/^\/policy-proposal\/([A-Za-z0-9-]{1,64})$/);
+
+      // The agent cancelled its propose_policy_change call: the card stops
+      // offering the change.
+      if (proposalPath && req.method === 'DELETE') {
+        withdrawProposal(proposalPath[1]);
+        return sendJson(res, 200, {});
+      }
+
       // The user's answer to a proposal. Held open up to 25 s; the relay
-      // asks again while it is `pending`.
-      const proposalAnswer = req.method === 'GET' ? req.url?.match(/^\/policy-proposal\/([A-Za-z0-9-]{1,64})$/) : null;
-      if (proposalAnswer) {
-        const outcome = await waitForProposal(proposalAnswer[1], 25000);
+      // asks again while it is `pending`. Never 503: the answer is kept
+      // here, not in the page.
+      if (proposalPath && req.method === 'GET') {
+        const outcome = await waitForProposal(proposalPath[1], LONG_POLL_TIMEOUT_MS);
         if (outcome === 'pending' || outcome === 'unknown') return sendJson(res, 200, { status: outcome });
         return sendJson(
           res,
@@ -241,22 +297,31 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
         }
         assertWhitelisted(profileId);
 
-        const mainWindow = options.getMainWindow();
-        if (!mainWindow) {
-          return sendJson(res, 503, { error: 'The Beamlynx window is not available yet' });
-        }
+        const mainWindow = windowOr503(res);
+        if (!mainWindow) return;
+
+        // The relay hangs up when the agent cancels its call. The page then
+        // stops the run too, instead of finishing it for nobody.
+        const hungUp = new AbortController();
+        res.on('close', () => {
+          if (!res.writableFinished) hungUp.abort();
+        });
 
         const kind = req.url === '/explain' ? 'build' : 'eval';
         // Values for the expression's $variables (run_query's `variables`).
         // Only an object is passed on; pine-lang checks each value.
-        const result = await runInRenderer(mainWindow, {
-          kind,
-          profileId,
-          expression: hasSql ? '' : expression,
-          ...(hasSql ? { sql } : {}),
-          variables: variables && typeof variables === 'object' && !Array.isArray(variables) ? variables : undefined,
-          investigationId,
-        });
+        const result = await runInRenderer(
+          mainWindow,
+          {
+            kind,
+            profileId,
+            expression: hasSql ? '' : expression,
+            ...(hasSql ? { sql } : {}),
+            variables: variables && typeof variables === 'object' && !Array.isArray(variables) ? variables : undefined,
+            investigationId,
+          },
+          { signal: hungUp.signal },
+        );
         return sendJson(res, 200, { result });
       }
 
@@ -274,10 +339,8 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
         }
         assertWhitelisted(profileId);
 
-        const mainWindow = options.getMainWindow();
-        if (!mainWindow) {
-          return sendJson(res, 503, { error: 'The Beamlynx window is not available yet' });
-        }
+        const mainWindow = windowOr503(res);
+        if (!mainWindow) return;
 
         if (countPendingRevealRequests(profileId) >= MAX_PENDING_REVEALS_PER_CONNECTION) {
           return sendJson(res, 429, {
@@ -309,15 +372,21 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
           typeof reason === 'string' ? reason : undefined,
           investigationId,
         );
+        // Unanswered, it expires like a proposal, and stops counting toward
+        // the limit above. The card says so.
+        const expiry = setTimeout(() => {
+          if (expireRevealRequest(request.id)) sendToWindow('mcp:reveal-request-expired', request.id);
+        }, REVEAL_EXPIRY_MS);
+        expiry.unref();
         // Fire-and-forget: RevealRequestHandler.tsx (beamlynx-ui) opens a
         // real tab for the owner to review. Nothing here awaits that --
         // the whole point is that this HTTP call returns right away.
-        mainWindow.webContents.send('mcp:reveal-request', request);
+        sendToWindow('mcp:reveal-request', request);
         return sendJson(res, 200, { requestId: request.id, status: request.status });
       }
 
       // check_reveal (see stdio-relay.ts). Long-polls: blocks up to
-      // REVEAL_LONG_POLL_TIMEOUT_MS for the request to stop being pending,
+      // LONG_POLL_TIMEOUT_MS for the request to stop being pending,
       // rather than returning "pending" immediately and leaving the agent to
       // invent its own retry delay. Still always 200, even for an id this
       // process has never seen (a stale id from a previous app run, or a
@@ -326,9 +395,16 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
       // check_reveal has to render a message for (format.ts's
       // formatRevealStatus), not transport-level failures the relay's
       // controlPlaneRequest should reject on.
+      //
+      // The connection must still be open to agents, before the wait and
+      // again after it: the user may have turned agent access off while the
+      // request waited, and revealed rows must not go out after that.
       if (req.method === 'GET' && req.url?.startsWith('/reveal/')) {
         const id = decodeURIComponent(req.url.slice('/reveal/'.length));
-        const request = await waitForRevealRequest(id, REVEAL_LONG_POLL_TIMEOUT_MS);
+        const known = getRevealRequest(id);
+        if (known) assertWhitelisted(known.profileId);
+        const request = await waitForRevealRequest(id, LONG_POLL_TIMEOUT_MS);
+        if (request) assertWhitelisted(request.profileId);
         return sendJson(res, 200, { request: request ?? null });
       }
 

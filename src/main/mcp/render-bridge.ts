@@ -7,11 +7,15 @@
 // round trip in this codebase to model on (every prior IPC round trip is
 // renderer-initiated, via ipcRenderer.invoke/ipcMain.handle) -- this is new
 // plumbing.
-import { BrowserWindow, ipcMain } from 'electron';
+import { BrowserWindow, ipcMain, type WebContents } from 'electron';
 
 const REQUEST_CHANNEL = 'mcp:query-request';
 const RESPONSE_CHANNEL = 'mcp:query-response';
-const RESPONSE_TIMEOUT_MS = 30000;
+// Sent when a query runs out of time, so beamlynx-ui stops that run too.
+const CANCEL_CHANNEL = 'mcp:query-cancel';
+// beamlynx-ui's McpBridge sends this once it listens on every MCP channel.
+const READY_CHANNEL = 'mcp:bridge-ready';
+export const RESPONSE_TIMEOUT_MS = 60000;
 
 export type McpQueryRequestPayload = {
   requestId: string;
@@ -53,23 +57,139 @@ function ensureResponseListener(): void {
   });
 }
 
+// --- Is the page listening? ----------------------------------------------
+//
+// A request sent while the window shows loading.html, or while it reloads,
+// reaches no listener and would wait out the whole timeout. So the page says
+// when it listens (mcp:bridge-ready), and main stops counting on it the
+// moment it navigates away, crashes or closes (watchBridge). The control
+// plane answers 503 in between, instead of sending into a page that can't
+// answer.
+
+let bridgeReady = false;
+let watched: WebContents | null = null;
+const readyCallbacks: (() => void)[] = [];
+
+export const NOT_READY_MESSAGE =
+  'Beamlynx is still starting, or its window is reloading. Try again in a few seconds.';
+
+export function isBridgeReady(): boolean {
+  return bridgeReady;
+}
+
+/** Called each time the page becomes ready, including again after a reload. */
+export function onBridgeReady(callback: () => void): void {
+  readyCallbacks.push(callback);
+}
+
+// Going not-ready fails every request still waiting: the page that would
+// have answered is gone.
+export function setBridgeReady(ready: boolean): void {
+  const was = bridgeReady;
+  bridgeReady = ready;
+  if (!ready) {
+    for (const [requestId, entry] of pending) {
+      pending.delete(requestId);
+      clearTimeout(entry.timeout);
+      entry.reject(new Error('The Beamlynx window reloaded before the query finished. Try again in a few seconds.'));
+    }
+    return;
+  }
+  if (!was) {
+    for (const callback of readyCallbacks) {
+      try {
+        callback();
+      } catch (e) {
+        console.error('[mcp] bridge-ready callback failed:', e);
+      }
+    }
+  }
+}
+
+let readyListenerRegistered = false;
+
+// Follows the main window's page. Called once per window (createWindow in
+// index.ts). Only that window's page can say it is ready.
+//
+// `staysInWindow` is index.ts's will-navigate rule. A link the window
+// refuses (and opens in the browser instead) still starts a navigation
+// first, but never replaces the page, so the page stays ready.
+export function watchBridge(window: BrowserWindow, staysInWindow: (url: string) => boolean = () => true): void {
+  const webContents = window.webContents;
+  watched = webContents;
+  setBridgeReady(false);
+  if (!readyListenerRegistered) {
+    readyListenerRegistered = true;
+    ipcMain.on(READY_CHANNEL, event => {
+      if (watched && event.sender === watched) setBridgeReady(true);
+    });
+  }
+  const forget = () => {
+    if (watched === webContents) setBridgeReady(false);
+  };
+  webContents.on('did-start-navigation', details => {
+    if (details.isMainFrame && !details.isSameDocument && staysInWindow(details.url)) forget();
+  });
+  webContents.on('render-process-gone', forget);
+  window.on('closed', () => {
+    forget();
+    if (watched === webContents) watched = null;
+  });
+}
+
 let requestCounter = 0;
 
-// Renderer isn't guaranteed to be ready (loading.html vs. the real UI, see
-// index.ts's loadRealUi) -- callers should only invoke this once the main
-// window has actually finished loading beamlynx-ui, which the control-plane
-// server itself waits on before accepting requests.
-export function runInRenderer(mainWindow: BrowserWindow, request: Omit<McpQueryRequestPayload, 'requestId'>): Promise<unknown> {
+// Rejects at once while the page isn't ready (see above). The control plane
+// checks first and answers 503, so this is the backstop.
+//
+// A query that takes longer than timeoutMs is cancelled in the page too
+// (mcp:query-cancel). So is one whose caller gives up: `signal` aborts when
+// the agent cancels its tool call (control-plane-server.ts).
+export function runInRenderer(
+  mainWindow: BrowserWindow,
+  request: Omit<McpQueryRequestPayload, 'requestId'>,
+  options: { signal?: AbortSignal; timeoutMs?: number } = {},
+): Promise<unknown> {
   ensureResponseListener();
+  if (!bridgeReady) return Promise.reject(new Error(NOT_READY_MESSAGE));
   const requestId = `mcp-${Date.now()}-${++requestCounter}`;
+  const timeoutMs = options.timeoutMs ?? RESPONSE_TIMEOUT_MS;
+  const webContents = mainWindow.webContents;
+  const cancel = () => {
+    if (!webContents.isDestroyed()) webContents.send(CANCEL_CHANNEL, { requestId });
+  };
 
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
+    const settle = () => {
       pending.delete(requestId);
-      reject(new Error('Timed out waiting for the renderer to run the MCP query'));
-    }, RESPONSE_TIMEOUT_MS);
+      clearTimeout(timeout);
+      options.signal?.removeEventListener('abort', onAbort);
+    };
+    const onAbort = () => {
+      if (!pending.has(requestId)) return;
+      settle();
+      cancel();
+      reject(new Error('The query was cancelled.'));
+    };
+    const timeout = setTimeout(() => {
+      settle();
+      cancel();
+      reject(new Error(`The query took longer than ${Math.round(timeoutMs / 1000)} s and was cancelled.`));
+    }, timeoutMs);
 
-    pending.set(requestId, { resolve, reject, timeout });
-    mainWindow.webContents.send(REQUEST_CHANNEL, { ...request, requestId });
+    pending.set(requestId, {
+      resolve: result => {
+        settle();
+        resolve(result);
+      },
+      reject: err => {
+        settle();
+        reject(err);
+      },
+      timeout,
+    });
+    if (options.signal?.aborted) return onAbort();
+    options.signal?.addEventListener('abort', onAbort);
+    webContents.send(REQUEST_CHANNEL, { ...request, requestId });
   });
 }

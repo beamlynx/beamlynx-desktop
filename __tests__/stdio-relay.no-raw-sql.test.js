@@ -113,10 +113,11 @@ test('run_sql_as_pine forwards SQL only to the control plane /query route', () =
   // person (see src/main/mcp/activity.ts). The app only displays it: it
   // never reaches pine-lang from there. /investigation/notes only hands
   // over what the user typed for the agent.
-  // /policy only reads the connection's own rules.
-  assert.ok(sends.every(route => ['/connections', '/explain', '/query', '/reveal', '/reveal-status', '/activity', '/investigation/notes', '/policy'].some(r => route.startsWith(r))), sends.join(', '));
-  assert.ok(/runOnControlPlane\(\{ profileId: connection_id, sql, variables \}\)/.test(STDIO_RELAY_SOURCE));
-  assert.ok(/controlPlaneRequest\('POST', '\/query', body\)/.test(STDIO_RELAY_SOURCE));
+  // /policy only reads the connection's own rules. /ready only asks whether
+  // the window can take work.
+  assert.ok(sends.every(route => ['/ready', '/connections', '/explain', '/query', '/reveal', '/reveal-status', '/activity', '/investigation/notes', '/policy'].some(r => route.startsWith(r))), sends.join(', '));
+  assert.ok(/runOnControlPlane\(\{ profileId: connection_id, sql, variables \}, extra\.signal\)/.test(STDIO_RELAY_SOURCE));
+  assert.ok(/controlPlaneRequest\('POST', '\/query', body, \{ signal \}\)/.test(STDIO_RELAY_SOURCE));
   // policy-proposals.ts sends a proposal, and asks for the user's answer.
   const waitSends = [...PROPOSAL_SOURCE.matchAll(/request\(\s*'(\w+)',\s*[`']([^`']+)[`']/g)].map(m => m[2]);
   assert.ok(waitSends.length > 0 && waitSends.every(route => route.startsWith('/policy-proposal')), waitSends.join(', '));

@@ -112,6 +112,30 @@ test('the agent\'s call sends the proposal, then waits until the user answers', 
   assert.match(late.text, /withdrawn/);
 });
 
+test('cancelling the agent\'s call stops the wait and withdraws the proposal', async () => {
+  const sent = [];
+  const cancel = new AbortController();
+  const request = async (method, route, _body, options = {}) => {
+    sent.push(`${method} ${route}`);
+    if (method === 'POST') return { proposalId: 'pp-9' };
+    if (method === 'DELETE') return {};
+    // The long-poll: held open until the call is cancelled.
+    return new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(new Error('Cancelled.')));
+      setTimeout(() => cancel.abort(), 5);
+    });
+  };
+  const result = await proposeAndWait(request, { profileId: 'p1', reason: 'r', changes: [] }, 60000, Date.now, cancel.signal);
+  assert.deepEqual(result, { isError: true, text: 'You cancelled the call, so the proposed policy change was withdrawn.' });
+  assert.deepEqual(sent, ['POST /policy-proposal', 'GET /policy-proposal/pp-9', 'DELETE /policy-proposal/pp-9']);
+});
+
+test('expireProposal says whether the proposal was still on offer', () => {
+  const proposal = createProposal({ profileId: 'p1', policyId: 'pol', reason: 'r', changes: [] });
+  assert.equal(expireProposal(proposal.id), true);
+  assert.equal(expireProposal(proposal.id), false);
+});
+
 test('the agent reads the policy as rules with ids, never data', () => {
   const text = formatPolicy('Prod', policy);
   assert.match(text, /first copied from the "Default" template/);
