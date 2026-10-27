@@ -542,10 +542,19 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     // rule wouldn't replace it, and it would still win.
     const info = session.columnMetadata.colIndexToPolicyLookup?.[fieldIndex];
     const ownHide = !hide && info?.by?.type === 'hide' ? findModule(policy, info.by) : undefined;
-    if (ownHide) await global.removeAccessPolicyRule(policy.id, ownHide.id);
-    const updated = await global.addAccessPolicyRule(policy.id, rule);
+    // If the new rule then isn't saved, the policy goes back as it was:
+    // otherwise the column would be left without its Except rule, and
+    // without the change asked for either.
+    let updated: Awaited<ReturnType<typeof global.addAccessPolicyRule>> = null;
+    try {
+      if (ownHide && !(await global.removeAccessPolicyRule(policy.id, ownHide.id))) throw new Error('not saved');
+      updated = await global.addAccessPolicyRule(policy.id, rule);
+    } catch {
+      updated = null;
+    }
     if (!updated) {
-      setNotice({ kind: 'error', text: "Couldn't change the access policy." });
+      if (ownHide) await global.setAccessPolicyRules(policy.id, before).catch(() => null);
+      setNotice({ kind: 'error', text: "Couldn't change the access policy, so nothing changed." });
       return;
     }
     markColumn(action.target, hide, rule);

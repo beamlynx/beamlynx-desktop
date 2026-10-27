@@ -48,7 +48,7 @@ import {
   queryReason,
   snapshotOf,
 } from './investigations';
-import { exactColumnRule, ownHideRules } from '../utils/accessPolicy';
+import { exactColumnRule, ownHideRules, sameRules } from '../utils/accessPolicy';
 import type { AgentActivity } from '../desktop';
 import { getCommandById } from '../utils/commands';
 import { normalizeServerVersion } from '../utils/version';
@@ -97,6 +97,12 @@ export class DecryptionFailedError extends Error {
 }
 
 const client = new HttpClient();
+
+// How many investigations are kept before the oldest finished one is
+// dropped (GlobalStore.dropOldInvestigations), and how long an agent must
+// have been quiet for its investigation to count as finished.
+export const MAX_INVESTIGATIONS = 10;
+export const INVESTIGATION_IDLE_MS = 30 * 60_000;
 
 // The desktop app's MCP bridge, or undefined: in the browser, in tests, and
 // before the preload ran.
@@ -233,6 +239,17 @@ export class GlobalStore {
   // Every MCP tool call the agent makes, as it happens (desktop only, see
   // McpBridge.tsx). SideRail shows it.
   agentActivity = new AgentActivityStore();
+  // The agent's queries the desktop app sent, by its request id, so it can
+  // stop one that ran past its time (cancelMcpQuery). Not observable.
+  private mcpRuns = new Map<string, { sessionId: string; cancelled: boolean; started: boolean }>();
+  // How long a reveal request's read-only run may take before it is
+  // declined for the agent (handleRevealRequest). A field so tests can
+  // shorten it.
+  revealPreviewTimeoutMs = 60_000;
+  // The longest an agent's query may hold its investigation's queue
+  // (runQueuedMcpQuery): a little over the desktop app's own 60 s limit,
+  // after which it should have been stopped already.
+  mcpQueryDeadlineMs = 75_000;
   // profileId -> live pine-lang connection-id, cached per app session so
   // every MCP query doesn't spin up a fresh Hikari pool. See
   // store/mcp-query.ts's ensureConnection.
@@ -720,7 +737,7 @@ export class GlobalStore {
     this._newLayoutPanelHeight = getUserPreference(STORAGE_KEYS.NEW_LAYOUT_PANEL_HEIGHT, DEFAULT_NEW_LAYOUT_PANEL_HEIGHT, isFiniteNumber);
     this._commandHistory = getUserPreference<string[]>(STORAGE_KEYS.COMMAND_HISTORY, [], isStringArray);
     this.connectionColors = getUserPreference<Record<string, string>>(STORAGE_KEYS.CONNECTION_COLORS, {}, isStringRecord);
-    makeAutoObservable(this);
+    makeAutoObservable<GlobalStore, 'mcpRuns'>(this, { mcpRuns: false });
 
     // Restore tabs/sessions from a previous visit, if any were saved.
     // getUserPreference safely no-ops (returns the default) during SSR, so
@@ -784,6 +801,9 @@ export class GlobalStore {
     reaction(
       () => this.pineConnected,
       connected => {
+        // The pine server restarted, or went away: the agent's connections
+        // were in its pools, which are gone.
+        this.mcpConnectionsByProfile = {};
         if (connected) {
           this.ensureSessionConnected(this.activeSessionId);
         }
@@ -1111,9 +1131,12 @@ export class GlobalStore {
     );
   };
 
+  // toJS: a rule can come out of this observable store, such as an agent's
+  // proposal, and IPC can't send a MobX proxy ("An object could not be
+  // cloned").
   addAccessPolicyRule = async (policyId: string, rule: AccessPolicyRule) => {
     if (typeof window === 'undefined' || !window.beamlynxDesktop) return null;
-    return this.replaceAccessPolicy(await window.beamlynxDesktop.accessPolicy.addRule(policyId, rule));
+    return this.replaceAccessPolicy(await window.beamlynxDesktop.accessPolicy.addRule(policyId, toJS(rule)));
   };
 
   removeAccessPolicyRule = async (policyId: string, ruleId: string) => {
@@ -1501,6 +1524,7 @@ export class GlobalStore {
   getOrCreateInvestigation = (id: string = DEFAULT_INVESTIGATION): Investigation => {
     const existing = this.investigations.find(i => i.id === id);
     if (existing && this.sessions[existing.sessionId]) return existing;
+    this.dropOldInvestigations();
     const session = this.createSession();
     const investigation = new Investigation(id, session.id);
     runInAction(() => {
@@ -1508,6 +1532,32 @@ export class GlobalStore {
       this.investigations = [...this.investigations.filter(i => i.id !== id), investigation];
     });
     return investigation;
+  };
+
+  /**
+   * Makes room for a new investigation: past MAX_INVESTIGATIONS, the oldest
+   * that is over is dropped, with its tab and what it saw. Over means its
+   * tab is closed, nothing waits on the user, and its agent hasn't called
+   * for INVESTIGATION_IDLE_MS. One still in use is never dropped.
+   */
+  private dropOldInvestigations = () => {
+    if (this.investigations.length < MAX_INVESTIGATIONS) return;
+    const now = Date.now();
+    const over = this.investigations
+      .filter(
+        i =>
+          !i.tabOpen &&
+          i.pendingDecisions.length === 0 &&
+          !i.steps.some(s => s.kind === 'query' && s.running) &&
+          now - (i.lastCallAt ?? 0) >= INVESTIGATION_IDLE_MS,
+      )
+      .sort((a, b) => (a.lastCallAt ?? 0) - (b.lastCallAt ?? 0));
+    const drop = new Set(over.slice(0, this.investigations.length - MAX_INVESTIGATIONS + 1));
+    if (drop.size === 0) return;
+    runInAction(() => {
+      this.investigations = this.investigations.filter(i => !drop.has(i));
+      drop.forEach(investigation => this.deleteSession(investigation.sessionId));
+    });
   };
 
   private getOrCreateMcpSession = (investigationId: string = DEFAULT_INVESTIGATION): Session =>
@@ -1548,6 +1598,7 @@ export class GlobalStore {
    */
   runMcpQuery = async ({
     investigationId,
+    requestId,
     ...args
   }: {
     profileId: string;
@@ -1555,22 +1606,74 @@ export class GlobalStore {
     sql?: string;
     variables?: Record<string, VariableValue>;
     investigationId?: string;
+    requestId?: string;
   }) => {
     const investigation = this.getOrCreateInvestigation(investigationId);
     const stepId = investigation.startQuery(args.expression, 'agent', args.sql);
+    const run = { sessionId: investigation.sessionId, cancelled: false, started: false };
+    if (requestId) this.mcpRuns.set(requestId, run);
+    try {
+      // One query at a time per investigation: they share its tab, and a
+      // second one would read the first's columns, rows and error.
+      return await investigation.queue.run(() => this.runQueuedMcpQuery(investigation, stepId, run, args));
+    } finally {
+      if (requestId) this.mcpRuns.delete(requestId);
+    }
+  };
+
+  private runQueuedMcpQuery = async (
+    investigation: Investigation,
+    stepId: string,
+    run: { cancelled: boolean; started: boolean },
+    args: { profileId: string; expression: string; sql?: string; variables?: Record<string, VariableValue> },
+  ) => {
+    if (run.cancelled) {
+      const message = 'Stopped before it ran: the agent waited too long for it.';
+      investigation.failQuery(stepId, message);
+      throw new Error(message);
+    }
+    run.started = true;
     // Marks the tab's requests as the agent's for exactly as long as this
     // query runs (Session.runsAsAgent): they are enforced, and the run isn't
     // taken for the user's own (onSessionEvaluated).
-    const running = this.sessions[investigation.sessionId];
+    const running = this.getOrCreateMcpSession(investigation.id);
     runInAction(() => running.agentRunsInFlight++);
+    const work = (async () => {
+      try {
+        const first = await runMcpQueryImpl(this.mcpQueryDeps(investigation.id), args);
+        // pine-lang no longer has the connection this app made for the agent,
+        // such as after the server restarted: make a new one, once.
+        if (run.cancelled || running.evalErrorType !== 'no-connection') return first;
+        this.forgetMcpConnection(args.profileId);
+        return await runMcpQueryImpl(this.mcpQueryDeps(investigation.id), args);
+      } finally {
+        runInAction(() => running.agentRunsInFlight--);
+      }
+    })();
+    // A run that never ends would hold the queue, and every later query of
+    // this investigation would wait behind it: past the deadline it is
+    // stopped and its place given up. A desktop app older than
+    // onQueryCancel never stops one itself.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<'timeout'>(resolve => {
+      timer = setTimeout(() => resolve('timeout'), this.mcpQueryDeadlineMs);
+      // Node's timers keep a process alive (the tests); a browser's are numbers.
+      (timer as { unref?: () => void }).unref?.();
+    });
     let result: Awaited<ReturnType<typeof runMcpQueryImpl>>;
     try {
-      result = await runMcpQueryImpl(this.mcpQueryDeps(investigation.id), args);
+      const outcome = await Promise.race([work, deadline]);
+      if (outcome === 'timeout') {
+        void running.stop();
+        work.catch(() => undefined);
+        throw new Error(`The query was stopped: it ran for more than ${Math.round(this.mcpQueryDeadlineMs / 1000)} s.`);
+      }
+      result = outcome;
     } catch (e) {
       investigation.failQuery(stepId, e instanceof Error ? e.message : String(e));
       throw e;
     } finally {
-      runInAction(() => running.agentRunsInFlight--);
+      if (timer) clearTimeout(timer);
     }
     const session = this.sessions[investigation.sessionId];
     // No tab id: the SQL didn't convert, so nothing ran in the tab, and
@@ -1590,6 +1693,23 @@ export class GlobalStore {
     return result;
   };
 
+  /**
+   * The desktop app gave up on an agent's query (its time limit). A query
+   * still waiting its turn never runs; a running one is stopped on the
+   * server, as the Stop button does.
+   */
+  cancelMcpQuery = (requestId: string) => {
+    const run = this.mcpRuns.get(requestId);
+    if (!run) return;
+    run.cancelled = true;
+    if (run.started) void this.sessions[run.sessionId]?.stop();
+  };
+
+  private forgetMcpConnection = (profileId: string) => {
+    const { [profileId]: _gone, ...others } = this.mcpConnectionsByProfile;
+    this.mcpConnectionsByProfile = others;
+  };
+
   /** An agent's proposed policy change, from beamlynx-desktop (McpBridge.tsx): a card in its investigation. */
   handlePolicyProposal = (proposal: PolicyProposal) => {
     this.getOrCreateInvestigation(proposal.investigationId).addProposal(proposal);
@@ -1607,11 +1727,23 @@ export class GlobalStore {
     this.investigations.find(i => i.id === investigationId)?.proposal(proposalId);
 
   /**
+   * Re-reads the saved connections and every access policy. Desktop only:
+   * elsewhere there are none to read. A decision about a policy reads them
+   * first, so it never acts on a list another window or Settings changed.
+   */
+  private refreshPolicyState = async () => {
+    if (!isDesktop() || typeof window === 'undefined' || !window.beamlynxDesktop) return;
+    await Promise.all([this.refreshConnections(), this.refreshAccessPolicies()]);
+  };
+
+  /**
    * The user's answer to a proposal card. Apply makes the changes to the
    * connection's own policy, through the same calls as Settings, then tells
    * the agent's waiting call. Only a pending card is answered, and only
    * while the connection still has the policy the changes were checked
-   * against. False when nothing was saved.
+   * against. False when nothing was saved. A change that fails, by
+   * returning nothing or by throwing, puts the policy back as it was; a
+   * throw is passed on, for the card to show.
    */
   answerPolicyProposal = async (investigationId: string, proposalId: string, apply: boolean, comment?: string) => {
     const step = this.proposalStep(investigationId, proposalId);
@@ -1623,35 +1755,72 @@ export class GlobalStore {
       investigation.setProposal(proposal.id, 'declined');
       return true;
     }
-    const policy = this.connectionPolicy(proposal.profileId);
-    if (!policy || policy.id !== proposal.policyId) return false;
-    const before = toJS(policy.rules);
-    for (const change of proposal.changes) {
-      // Showing a column takes out its own Except rules first, as the
-      // results grid's "Show to agents" does. The card says so.
-      for (const hide of 'add' in change ? ownHideRules(policy.rules, change.add) : []) {
-        await this.removeAccessPolicyRule(policy.id, hide.id);
+    await this.refreshPolicyState();
+    const current = this.connectionPolicy(proposal.profileId);
+    if (!current || current.id !== proposal.policyId) return false;
+    const policyId = current.id;
+    const before = toJS(current.rules);
+    // The policy as the desktop app stored it after the last change.
+    let saved: AccessPolicy | null = null;
+    try {
+      for (const change of proposal.changes) {
+        // Showing a column takes out its own Except rules first, as the
+        // results grid's "Show to agents" does. The card says so. Read
+        // from the policy as it is now, after the changes before this one.
+        const rules = this.connectionPolicy(proposal.profileId)?.rules ?? [];
+        for (const hide of 'add' in change ? ownHideRules(rules, change.add) : []) {
+          saved = await this.removeAccessPolicyRule(policyId, hide.id);
+          if (!saved) {
+            await this.setAccessPolicyRules(policyId, before);
+            return false;
+          }
+        }
+        saved =
+          'add' in change
+            ? await this.addAccessPolicyRule(policyId, change.add)
+            : 'remove' in change
+              ? await this.removeAccessPolicyRule(policyId, change.remove)
+              : await this.setAccessPolicyRuleEnabled(policyId, 'enable' in change ? change.enable : change.disable, 'enable' in change);
+        if (!saved) {
+          await this.setAccessPolicyRules(policyId, before);
+          return false;
+        }
       }
-      const done =
-        'add' in change
-          ? await this.addAccessPolicyRule(policy.id, change.add)
-          : 'remove' in change
-            ? await this.removeAccessPolicyRule(policy.id, change.remove)
-            : await this.setAccessPolicyRuleEnabled(policy.id, 'enable' in change ? change.enable : change.disable, 'enable' in change);
-      if (!done) {
-        await this.setAccessPolicyRules(policy.id, before);
-        return false;
-      }
+    } catch (e) {
+      await this.setAccessPolicyRules(policyId, before).catch(() => null);
+      throw e;
     }
-    await desktopMcp()?.resolvePolicyProposal?.(proposal.id, { applied: true });
-    investigation.setProposal(proposal.id, 'applied', before);
+    // The rules as the policy list reads them, which is what Undo compares
+    // with. Without the desktop app, as the last change returned them.
+    await this.refreshPolicyState().catch(() => undefined);
+    const after = isDesktop() ? this.accessPolicies.find(p => p.id === policyId)?.rules : undefined;
+    investigation.setProposal(proposal.id, 'applied', { before, after: toJS(after ?? saved?.rules ?? before) });
+    // Saved either way. Telling the agent is all that's left, and it may
+    // have stopped waiting.
+    let told: boolean | undefined;
+    try {
+      told = await desktopMcp()?.resolvePolicyProposal?.(proposal.id, { applied: true });
+    } catch {
+      told = false;
+    }
+    if (told === false) investigation.markProposalAgentGone(proposal.id);
     return true;
   };
 
-  /** Puts the policy back as it was before an applied proposal. The agent isn't told. */
+  /**
+   * Puts the policy back as it was before an applied proposal. The agent
+   * isn't told. Refused, with an error that says why, once the policy has
+   * changed since Apply: putting the old rules back would also undo that
+   * later change, such as a column hidden afterwards.
+   */
   undoPolicyProposal = async (investigationId: string, proposalId: string) => {
     const step = this.proposalStep(investigationId, proposalId);
     if (!step || step.status !== 'applied' || !step.before) return false;
+    await this.refreshPolicyState();
+    const policy = this.accessPolicies.find(p => p.id === step.proposal.policyId);
+    if (!policy || (step.after && !sameRules(policy.rules, step.after))) {
+      throw new Error('The access policy has changed since this was applied. Undo it in Settings instead.');
+    }
     if (!(await this.setAccessPolicyRules(step.proposal.policyId, step.before))) return false;
     this.investigations.find(i => i.id === investigationId)!.setProposal(proposalId, 'undone');
     return true;
@@ -1719,14 +1888,19 @@ export class GlobalStore {
   };
 
   /** Backing call for the `complete_query` MCP tool -- parse/build only, no execution. */
-  explainMcpQuery = (args: { profileId: string; expression: string }) =>
-    explainMcpQueryImpl(this.mcpQueryDeps(), args);
+  explainMcpQuery = async (args: { profileId: string; expression: string }) => {
+    const response = await explainMcpQueryImpl(this.mcpQueryDeps(), args);
+    // As in runQueuedMcpQuery: a connection pine-lang no longer has.
+    if ((response as { 'error-type'?: string })?.['error-type'] !== 'no-connection') return response;
+    this.forgetMcpConnection(args.profileId);
+    return explainMcpQueryImpl(this.mcpQueryDeps(), args);
+  };
 
   /**
    * Resolve a saved profile to a live pine-lang connection id the same way
    * an MCP query does (mcp-query.ts's ensureConnection, reused here) --
    * never pine-lang's shared "active connection" singleton, and never
-   * activeSessionId either. RevealRequestHandler.tsx uses this instead of
+   * activeSessionId either. McpBridge.tsx uses this instead of
    * connectToSavedProfile for exactly that second reason: a reveal-review
    * tab must not steal focus onto itself the way connectToSavedProfile
    * does. Refreshes connections afterward, same as connect() does, so the
@@ -1855,7 +2029,12 @@ export class GlobalStore {
   setApplyPolicyToOwnQueries = async (id: string, apply: boolean): Promise<void> => {
     if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
     const updated = await window.beamlynxDesktop.credentials.setApplyPolicyToOwnQueries(id, apply);
-    if (!updated) return;
+    if (!updated) {
+      runInAction(() => {
+        this.connectionError = 'That connection no longer exists.';
+      });
+      return;
+    }
     runInAction(() => {
       this.connections = this.connections.map(c =>
         c.id === id ? { ...c, applyPolicyToOwnQueries: updated.applyPolicyToOwnQueries } : c,
@@ -1869,8 +2048,9 @@ export class GlobalStore {
    * to main's in-memory queue (reveal-requests.ts's resolveRevealRequest),
    * which is what the agent's matching check_reveal poll reads.
    */
-  resolveRevealRequest = async (id: string, outcome: RevealOutcome): Promise<void> => {
-    if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
+  // null when the desktop app no longer waits on the request (it expired).
+  resolveRevealRequest = async (id: string, outcome: RevealOutcome): Promise<RevealRequest | null | undefined> => {
+    if (typeof window === 'undefined' || !window.beamlynxDesktop) return undefined;
     // A reveal outcome's columns/rows come straight from Session state
     // (session.columns is a MobX-observable array), and Electron IPC's
     // structured clone cannot serialize a MobX Proxy -- confirmed the hard
@@ -1879,7 +2059,7 @@ export class GlobalStore {
     // main<-renderer IPC boundary: a JSON round-trip forces a plain,
     // guaranteed-cloneable copy, which loses nothing since this data is
     // already JSON-shaped.
-    await window.beamlynxDesktop.mcpReveal.resolve(id, JSON.parse(JSON.stringify(outcome)));
+    return window.beamlynxDesktop.mcpReveal.resolve(id, JSON.parse(JSON.stringify(outcome)));
   };
 
   /**
@@ -1894,37 +2074,65 @@ export class GlobalStore {
    */
   handleRevealRequest = async (request: RevealRequest) => {
     const investigation = this.getOrCreateInvestigation(request.investigationId);
-    investigation.addReveal(request.id, request.expression, request.reason);
+    // The desktop app sends a request again after the window reloads. One
+    // already here has its card, and its run.
+    if (!investigation.addReveal(request.id, request.expression, request.reason)) return;
+    runInAction(() => {
+      this.mcpHasUnseenActivity = true;
+    });
     const decline = async (note: string) => {
       investigation.setReveal(request.id, 'declined', note);
       await this.resolveRevealRequest(request.id, { ok: false, comment: note });
     };
-    let connectionId: string;
-    try {
-      connectionId = await this.ensureProfileConnection(request.profileId);
-    } catch (e) {
-      await decline(`Could not connect to this database: ${e instanceof Error ? e.message : String(e)}`);
-      return;
-    }
     const preview = new Session(`reveal-${request.id}`, this);
-    runInAction(() => {
-      preview.connectionId = connectionId;
-      preview.profileId = request.profileId;
-      preview.expression = request.expression;
-      preview.pendingRevealRequestId = request.id;
+    // A run that never ends would leave the card running, and the robot
+    // saying the agent waits for an answer, for good.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<'timeout'>(resolve => {
+      timer = setTimeout(() => resolve('timeout'), this.revealPreviewTimeoutMs);
+      // Node's timers keep a process alive (the tests); a browser's are numbers.
+      (timer as { unref?: () => void }).unref?.();
     });
-    let rows: unknown;
+    const run = async () => {
+      const connectionId = await this.ensureProfileConnection(request.profileId).catch(e => {
+        throw new Error(`Could not connect to this database: ${e instanceof Error ? e.message : String(e)}`);
+      });
+      runInAction(() => {
+        preview.connectionId = connectionId;
+        preview.profileId = request.profileId;
+        preview.expression = request.expression;
+        preview.pendingRevealRequestId = request.id;
+      });
+      return { rows: await preview.evaluate({ applyServerPrettified: true, allowWrites: false }) };
+    };
+    let outcome: { rows: unknown } | 'timeout';
     try {
-      rows = await preview.evaluate({ applyServerPrettified: true, allowWrites: false });
+      outcome = await Promise.race([run(), timedOut]);
     } catch (e) {
-      await decline(`The query failed: ${e instanceof Error ? e.message : String(e)}`);
+      const message = e instanceof Error ? e.message : String(e);
+      await decline(message.startsWith('Could not connect') ? message : `The query failed: ${message}`);
+      return;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    if (outcome === 'timeout') {
+      void preview.stop();
+      await decline(
+        `The query took longer than ${Math.round(this.revealPreviewTimeoutMs / 1000)} s to run, so it was stopped. ` +
+          'Narrow it down and ask again.',
+      );
       return;
     }
     if (preview.evalErrorType === 'write-refused') {
       await decline('Refused: the expression changes data. Reveal requests are read-only.');
       return;
     }
-    investigation.setRevealPreview(request.id, snapshotOf(preview), toJS(rows));
+    investigation.setRevealPreview(request.id, snapshotOf(preview), toJS(outcome.rows));
+  };
+
+  /** A reveal request the agent stopped waiting on: its card can no longer be answered. */
+  expireRevealRequest = (requestId: string) => {
+    for (const investigation of this.investigations) investigation.setReveal(requestId, 'expired');
   };
 
   /** The user's answer to a reveal card: the previewed rows, or a decline with their reason. */
@@ -1932,18 +2140,21 @@ export class GlobalStore {
     const investigation = this.investigations.find(i => i.id === investigationId);
     const step = investigation?.reveal(requestId);
     if (!investigation || step?.status !== 'pending') return false;
-    if (reveal && step.preview) {
-      await this.resolveRevealRequest(requestId, {
-        ok: true,
-        expression: step.preview.expression,
-        columns: step.preview.columns,
-        rows: step.rows,
-      });
-      investigation.setReveal(requestId, 'revealed');
-    } else {
-      await this.resolveRevealRequest(requestId, { ok: false, comment });
-      investigation.setReveal(requestId, 'declined');
+    const sent =
+      reveal && step.preview
+        ? await this.resolveRevealRequest(requestId, {
+            ok: true,
+            expression: step.preview.expression,
+            columns: step.preview.columns,
+            rows: step.rows,
+          })
+        : await this.resolveRevealRequest(requestId, { ok: false, comment });
+    // The agent had stopped waiting: nothing was sent.
+    if (sent === null) {
+      investigation.setReveal(requestId, 'expired');
+      return false;
     }
+    investigation.setReveal(requestId, reveal && step.preview ? 'revealed' : 'declined');
     return true;
   };
 
@@ -2745,6 +2956,19 @@ export class GlobalStore {
     if (section) {
       this.settingsSection = section;
     }
+  };
+
+  // Counts requests to bring Settings to the person's attention
+  // (showSettingsSection). SettingsDock flashes the panel on each.
+  settingsAttentionCount = 0;
+
+  /**
+   * Opens Settings at a section, and makes sure it is seen: a link that
+   * opens Settings when it is already open there seemed to do nothing.
+   */
+  showSettingsSection = (section: SettingsSection) => {
+    this.setShowSettings(true, section);
+    this.settingsAttentionCount++;
   };
 
   /** Decisions an agent is blocked on: proposed policy changes and reveal requests. */

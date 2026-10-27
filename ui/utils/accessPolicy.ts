@@ -25,7 +25,11 @@ export function describeMatcher(matcher: ColumnMatcher): string {
       if (matcher.equals) return `Name is “${matcher.equals}”`;
       return 'Any name';
     case 'column':
-      return columnName({ schema: matcher.schema ?? null, table: matcher.table, column: matcher.column });
+      // A rule without a schema matches the table in every schema. Named
+      // like the one column it looks like, it read as narrower than it is.
+      return matcher.schema
+        ? columnName({ schema: matcher.schema, table: matcher.table, column: matcher.column })
+        : `${matcher.table}.${matcher.column} in every schema`;
   }
 }
 
@@ -44,6 +48,11 @@ function canonical(value: unknown): string {
     return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(',')}}`;
   }
   return JSON.stringify(value);
+}
+
+/** Whether two lists hold the same rules, whatever order their keys are in. */
+export function sameRules(a: AccessPolicyModule[], b: AccessPolicyModule[]): boolean {
+  return canonical(a) === canonical(b);
 }
 
 /** The stored rule that pine-lang reported as deciding a column. */

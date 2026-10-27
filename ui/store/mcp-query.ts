@@ -107,7 +107,7 @@ function assertServerSupportsWriteRefusal(serverVersion: string | undefined): vo
   }
 }
 
-// Exported for RevealRequestHandler.tsx (via GlobalStore.ensureProfileConnection)
+// Exported for McpBridge.tsx (via GlobalStore.ensureProfileConnection)
 // -- a reveal-review tab needs the exact same "resolve a saved profile to a
 // live connection id without pine-lang's shared active-connection singleton,
 // and without touching activeSessionId" behavior an MCP query gets, since it

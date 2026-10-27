@@ -13,7 +13,7 @@ import {
 } from '@mui/icons-material';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
-import type { Investigation, InvestigationStep } from '../store/investigations';
+import { isStaleCall, type Investigation, type InvestigationStep } from '../store/investigations';
 import { describeMatcher, ownHideRules } from '../utils/accessPolicy';
 import type { AccessPolicyModule, AccessPolicyRule } from '../store/client';
 import type { PolicyChange } from '../desktop';
@@ -39,6 +39,8 @@ const failed = 'var(--canvas-trace-unresolved)';
 
 // One line of text, cut with an ellipsis. The whole text is in its tooltip.
 const oneLine = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } as const;
+
+const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /**
  * A query as two short lines: why the agent ran it and how it went, then
@@ -95,7 +97,14 @@ const QueryStep = observer(
           ) : step.error ? (
             <ErrorOutline sx={{ fontSize: 14, color: failed, flexShrink: 0, alignSelf: 'center' }} />
           ) : (
-            <Typography sx={{ fontSize: 11, color: dim, flexShrink: 0 }}>
+            <Typography
+              sx={{ fontSize: 11, color: dim, flexShrink: 0 }}
+              title={
+                step.snapshot?.rowsDropped
+                  ? `Only the first ${step.snapshot.rows.length} are kept to show again.`
+                  : undefined
+              }
+            >
               {step.rowCount} row{step.rowCount === 1 ? '' : 's'}
             </Typography>
           )}
@@ -122,9 +131,13 @@ function describeChange(change: PolicyChange, rules: AccessPolicyModule[]): { te
   const what = (rule: AccessPolicyRule) =>
     describeMatcher(rule.type === 'hide' ? rule.match : rule).replace(/^[A-Z](?=[a-z])/, c => c.toLowerCase());
   if ('add' in change) {
-    const replaces = ownHideRules(rules, change.add).length > 0;
+    const replaced = ownHideRules(rules, change.add);
     const text = `${change.add.type === 'hide' ? 'Hide' : 'Show'} ${what(change.add)}`;
-    return { text: replaces ? `${text}, in place of the Except rule hiding it` : text, loosens: replaces };
+    if (replaced.length === 0) return { text, loosens: false };
+    // Named, since an Except rule without a schema hides the column in
+    // every schema, and taking it out shows it in all of them.
+    const hides = replaced.map(m => `hide ${what(m)}`).join('; ');
+    return { text: `${text}, in place of the Except rule (${hides})`, loosens: true };
   }
   const id = 'remove' in change ? change.remove : 'enable' in change ? change.enable : change.disable;
   const rule = rules.find(m => m.id === id);
@@ -155,15 +168,26 @@ const ProposalStep = observer(
     const answer = async (apply: boolean) => {
       setBusy(true);
       setError('');
-      const ok = await global.answerPolicyProposal(investigation.id, proposal.id, apply, comment.trim() || undefined);
-      setBusy(false);
-      if (!ok) setError("Couldn't save that to the access policy, so nothing changed.");
+      try {
+        const ok = await global.answerPolicyProposal(investigation.id, proposal.id, apply, comment.trim() || undefined);
+        if (!ok) setError("Couldn't save that to the access policy, so nothing changed.");
+      } catch (e) {
+        setError(`Couldn't save that to the access policy, so nothing changed. ${messageOf(e)}`);
+      } finally {
+        setBusy(false);
+      }
     };
     const undo = async () => {
       setBusy(true);
-      const ok = await global.undoPolicyProposal(investigation.id, proposal.id);
-      setBusy(false);
-      if (!ok) setError("Couldn't put the access policy back.");
+      setError('');
+      try {
+        const ok = await global.undoPolicyProposal(investigation.id, proposal.id);
+        if (!ok) setError("Couldn't put the access policy back.");
+      } catch (e) {
+        setError(messageOf(e));
+      } finally {
+        setBusy(false);
+      }
     };
 
     return (
@@ -208,7 +232,9 @@ const ProposalStep = observer(
             <CheckCircleOutline sx={{ fontSize: 14, color: dim }} />
             <Typography sx={{ fontSize: 12, color: dim, flex: 1 }}>
               {step.status === 'applied'
-                ? 'Applied.'
+                ? step.agentGone
+                  ? 'Applied. The agent had stopped waiting, so it wasn’t told.'
+                  : 'Applied.'
                 : step.status === 'undone'
                   ? 'Applied, then undone.'
                   : step.status === 'expired'
@@ -277,6 +303,7 @@ const RevealStep = observer(
     const [declining, setDeclining] = useState(false);
     const [comment, setComment] = useState('');
     const [busy, setBusy] = useState(false);
+    const [error, setError] = useState('');
     const pending = step.status === 'pending';
     const shown = investigation.selectedStepId === step.id;
     const rows = step.preview?.rows.length ?? 0;
@@ -284,8 +311,15 @@ const RevealStep = observer(
 
     const answer = async (reveal: boolean) => {
       setBusy(true);
-      await global.answerReveal(investigation.id, step.requestId, reveal, comment.trim() || undefined);
-      setBusy(false);
+      setError('');
+      try {
+        const ok = await global.answerReveal(investigation.id, step.requestId, reveal, comment.trim() || undefined);
+        if (!ok && step.status !== 'expired') setError('This request can no longer be answered.');
+      } catch (e) {
+        setError(`Couldn't send your answer to the agent. ${messageOf(e)}`);
+      } finally {
+        setBusy(false);
+      }
     };
 
     return (
@@ -332,10 +366,14 @@ const RevealStep = observer(
             Running it, so you can look first…
           </Typography>
         )}
-        {(step.status === 'revealed' || step.status === 'declined') && (
+        {(step.status === 'revealed' || step.status === 'declined' || step.status === 'expired') && (
           <Typography sx={{ fontSize: 12, color: dim, display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <CheckCircleOutline sx={{ fontSize: 14 }} />
-            {step.status === 'revealed' ? `Revealed: the agent has these ${rows} rows.` : step.note ?? 'Declined.'}
+            {step.status === 'revealed'
+              ? `Revealed: the agent has these ${rows} rows.`
+              : step.status === 'expired'
+                ? 'The agent stopped waiting for an answer.'
+                : step.note ?? 'Declined.'}
           </Typography>
         )}
         {pending && (
@@ -389,6 +427,7 @@ const RevealStep = observer(
             )}
           </>
         )}
+        {error && <Typography sx={{ fontSize: 12, color: failed, mt: 0.5 }}>{error}</Typography>}
       </Box>
     );
   },
@@ -438,16 +477,21 @@ const Step = observer(({ investigation, step }: { investigation: Investigation; 
 
 type CallStep = Extract<InvestigationStep, { kind: 'call' }>;
 
-const CallLine = observer(({ step }: { step: CallStep }) => (
-  <Typography
-    sx={{ fontSize: 12, color: step.ok === false ? failed : dim, px: 1, ...oneLine }}
-    title={step.ok === false && step.outcome ? step.outcome : step.detail}
-  >
-    {step.endedAt === undefined ? '… ' : ''}
-    {step.summary}
-    {step.ok === false ? ': failed' : ''}
-  </Typography>
-));
+const CallLine = observer(({ step }: { step: CallStep }) => {
+  const { global } = useStores();
+  // A call whose end never arrived isn't shown as going on for good.
+  const stale = isStaleCall(step, global.agentActivity.now);
+  return (
+    <Typography
+      sx={{ fontSize: 12, color: step.ok === false ? failed : dim, px: 1, ...oneLine }}
+      title={step.ok === false && step.outcome ? step.outcome : stale ? 'Its end never arrived.' : step.detail}
+    >
+      {step.endedAt === undefined && !stale ? '… ' : ''}
+      {step.summary}
+      {step.ok === false ? ': failed' : ''}
+    </Typography>
+  );
+});
 
 /**
  * Lookups in a row, like a run of table searches and completions, as one
@@ -514,10 +558,15 @@ const NoteComposer = observer(({ investigation }: { investigation: Investigation
     if (!text.trim() || sending) return;
     setSending(true);
     setError('');
-    const ok = await global.sendInvestigationNote(investigation.id, text);
-    setSending(false);
-    if (ok) setText('');
-    else setError("Couldn't send it. Is the desktop app up to date?");
+    try {
+      const ok = await global.sendInvestigationNote(investigation.id, text);
+      if (ok) setText('');
+      else setError("Couldn't send it. Is the desktop app up to date?");
+    } catch (e) {
+      setError(`Couldn't send it. ${messageOf(e)}`);
+    } finally {
+      setSending(false);
+    }
   };
   return (
     <Box sx={{ borderTop: '1px solid var(--border-color)', p: 1.25 }}>
@@ -603,14 +652,14 @@ const InvestigationPanel = observer(({ investigation }: { investigation: Investi
     global.showInvestigationStep(investigation.id, null);
   };
 
-  // The activity feed is shared: it says what the agent of the latest
-  // investigation is doing, so only that investigation's tab shows it.
-  const working = activity.working && activity.current && global.mcpSessionId === investigation.sessionId;
+  // What this investigation's own agent is doing: several can work at once.
+  const current = activity.currentFor(investigation.id);
+  const working = activity.workingFor(investigation.id) && current;
   // After a pause, say why it may be quiet: the agent also uses other
   // tools, which beamlynx can't see.
   const sinceLastCall = investigation.lastCallAt ? now - investigation.lastCallAt : undefined;
   const status = working
-    ? activity.current!.summary
+    ? current!.summary
     : sinceLastCall === undefined
       ? 'Waiting for the agent'
       : sinceLastCall < 15000
@@ -680,7 +729,7 @@ const InvestigationPanel = observer(({ investigation }: { investigation: Investi
         <Typography sx={{ fontSize: 12, color: working ? 'var(--canvas-trace)' : dim, mt: 0.25 }}>{status}</Typography>
         <Button
           size="small"
-          onClick={() => global.setShowSettings(true, 'mcp')}
+          onClick={() => global.showSettingsSection('mcp')}
           sx={{ textTransform: 'none', fontSize: 12, px: 0, minWidth: 0, mt: 0.25, color: dim, '&:hover': { color: 'var(--text-color)' } }}
         >
           Connect another agent

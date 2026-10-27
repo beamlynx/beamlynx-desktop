@@ -67,3 +67,20 @@ test('the log keeps the newest calls', () => {
   assert.equal(store.entries.length, MAX_ENTRIES);
   assert.equal(store.entries[0].id, `e${MAX_ENTRIES + 4}`);
 });
+
+test('each investigation says what its own agent is doing', () => {
+  const store = new AgentActivityStore();
+  const at = Date.now();
+  store.apply({ ...start('a', 'find_tables', at), investigationId: 'claude-a' });
+  store.apply({ ...start('b', 'run_query', at), investigationId: 'claude-b' });
+  assert.equal(store.workingFor('claude-a'), true);
+  assert.equal(store.currentFor('claude-a').id, 'a');
+  assert.equal(store.currentFor('claude-b').id, 'b');
+  store.apply({ ...end('a', true, at + 5), investigationId: 'claude-a' });
+  store.tick(at + LINGER_MS + 10);
+  assert.equal(store.workingFor('claude-a'), false);
+  assert.equal(store.workingFor('claude-b'), true, 'its call still runs');
+  // An event from a relay too old to name its investigation.
+  store.apply(start('c', 'find_tables', at + LINGER_MS + 10));
+  assert.equal(store.currentFor('default').id, 'c');
+});

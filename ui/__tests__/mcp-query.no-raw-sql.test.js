@@ -278,10 +278,16 @@ test('effectiveAccessPolicyRules: only enabled rules are returned, with `enabled
   assert.deepEqual(effectiveAccessPolicyRules(conn, policies, true), [{ type: 'foreign-key' }]);
 });
 
-test('effectiveAccessPolicyRules: an unresolvable policyId (deleted policy) yields no rules, not a throw', () => {
+// An agent's query must never run unmasked because its policy is missing:
+// it is refused. The owner's own tab just isn't masked, as before.
+test('effectiveAccessPolicyRules: an unresolvable policyId (deleted policy) refuses an agent, not the owner', () => {
   const policies = [{ id: 'p1', name: 'X', rules: [{ type: 'foreign-key', enabled: true }] }];
+  assert.throws(
+    () => effectiveAccessPolicyRules({ policyId: 'gone', mcpEnabled: true }, policies, true),
+    /access policy wasn't found/,
+  );
   assert.deepEqual(
-    effectiveAccessPolicyRules({ policyId: 'gone', mcpEnabled: true }, policies, true),
+    effectiveAccessPolicyRules({ policyId: 'gone', mcpEnabled: true, applyPolicyToOwnQueries: true }, policies, false),
     [],
   );
 });
@@ -510,11 +516,12 @@ test('effectiveAccessPolicy: an agent\'s query always enforces, whatever the con
     { policyId: 'p1', mcpEnabled: true, applyPolicyToOwnQueries: false },
     { policyId: 'p1', mcpEnabled: false },
     { policyId: null, mcpEnabled: true },
-    { policyId: 'gone', mcpEnabled: true },
     undefined,
   ]) {
     assert.equal(effectiveAccessPolicy(conn, policies, true).mode, 'enforce', JSON.stringify(conn));
   }
+  // A policy that can't be found refuses the query instead.
+  assert.throws(() => effectiveAccessPolicy({ policyId: 'gone', mcpEnabled: true }, policies, true));
   assert.deepEqual(effectiveAccessPolicy({ policyId: 'p1', mcpEnabled: true }, policies, true), {
     rules: [{ type: 'foreign-key' }],
     mode: 'enforce',

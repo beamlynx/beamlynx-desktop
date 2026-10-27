@@ -1206,7 +1206,7 @@ export class Session {
     // editor). It also covers the person pressing Run on an agent's tab,
     // where the expression on screen is the agent's, not theirs.
     //
-    // A reveal-review tab is an agent's tab too: RevealRequestHandler runs
+    // A reveal-review tab is an agent's tab too: McpBridge.tsx runs
     // the agent's expression the moment the request arrives, so the owner
     // can see the data before deciding. Without this, `user | delete!` sent
     // as a reveal request deleted rows before anyone was asked.

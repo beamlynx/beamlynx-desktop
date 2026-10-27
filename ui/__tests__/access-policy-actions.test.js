@@ -9,6 +9,7 @@ const {
   describeMatcher,
   exactColumnRule,
   findModule,
+  sameRules,
 } = require('../utils/accessPolicy.ts');
 
 const table = { schema: 'public', table: 'user' };
@@ -68,4 +69,17 @@ test('rules and columns in words', () => {
     type: 'hide',
     match: { type: 'column', schema: 'public', table: 'user', column: 'email' },
   });
+});
+
+test('a column rule without a schema says it matches every schema', () => {
+  assert.equal(describeMatcher({ type: 'column', schema: null, table: 'user', column: 'email' }), 'user.email in every schema');
+  assert.equal(describeMatcher({ type: 'column', table: 'user', column: 'email' }), 'user.email in every schema');
+});
+
+test('sameRules compares rule lists whatever order their keys are in', () => {
+  const a = [{ id: 'r1', type: 'column', schema: 'public', table: 'user', column: 'email', enabled: true }];
+  const b = [{ enabled: true, column: 'email', table: 'user', schema: 'public', type: 'column', id: 'r1' }];
+  assert.equal(sameRules(a, b), true);
+  assert.equal(sameRules(a, [{ ...b[0], enabled: false }]), false);
+  assert.equal(sameRules(a, [...a, { id: 'r2', type: 'foreign-key', enabled: true }]), false);
 });
