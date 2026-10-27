@@ -254,7 +254,7 @@ test('a new policy starts with the starter hide rules, then the built-in show ru
   );
   assert.deepEqual(
     policy.rules.filter(r => r.builtIn).map(r => r.type),
-    ['column-type', 'foreign-key', 'column-name'],
+    ['column-type', 'foreign-key'],
   );
   assert.ok(policy.rules.every(r => r.enabled && typeof r.id === 'string'));
   assert.equal(new Set(policy.rules.map(r => r.id)).size, policy.rules.length);
@@ -342,13 +342,52 @@ test('a version 1 store gets rule ids, built-in marks and the starter hide rules
     { type: 'foreign-key' },
     { type: 'column-name', suffix: '_id' },
   ]);
-  assert.deepEqual(policy.rules.map(r => r.enabled), [true, true, true, true, false, true]);
+  // The `_id` rule is switched off once (store version 6).
+  assert.deepEqual(policy.rules.map(r => r.enabled), [true, true, true, true, false, false]);
   assert.deepEqual(policy.rules.map(r => !!r.builtIn), [false, false, false, true, true, true]);
-  assert.equal(JSON.parse(fs.readFileSync(storePath, 'utf-8')).version, 5);
+  assert.equal(JSON.parse(fs.readFileSync(storePath, 'utf-8')).version, 6);
 
   // Removing a starter rule sticks: the migration doesn't run again.
   removeAccessPolicyRule('p1', policy.rules[0].id);
   assert.equal(policyById('p1').rules.length, 5);
+});
+
+test('once, the built-in `_id` rule is switched off, unless it is the only rule on', () => {
+  const storePath = path.join(userDataDir, 'connections.json');
+  fs.mkdirSync(userDataDir, { recursive: true });
+  const idRule = { type: 'column-name', suffix: '_id' };
+  fs.writeFileSync(
+    storePath,
+    JSON.stringify({
+      version: 5,
+      connections: [],
+      accessPolicies: [
+        {
+          id: 'typical',
+          name: 'Typical',
+          rules: [
+            { type: 'column-type', allow: ['integer'], id: 't1', enabled: true, builtIn: true },
+            { ...idRule, id: 't2', enabled: true, builtIn: true },
+          ],
+        },
+        {
+          id: 'only-id',
+          name: 'Only _id on',
+          rules: [
+            { type: 'column-type', allow: ['integer'], id: 'o1', enabled: false, builtIn: true },
+            { ...idRule, id: 'o2', enabled: true, builtIn: true },
+          ],
+        },
+      ],
+    }),
+  );
+  assert.deepEqual(policyById('typical').rules.map(r => r.enabled), [true, false]);
+  assert.deepEqual(policyById('only-id').rules.map(r => r.enabled), [false, true]);
+  assert.equal(JSON.parse(fs.readFileSync(storePath, 'utf-8')).version, 6);
+
+  // Switching it back on sticks: this runs once.
+  setAccessPolicyRuleEnabled('typical', 't2', true);
+  assert.deepEqual(policyById('typical').rules.map(r => r.enabled), [true, true]);
 });
 
 test('a policy without rule ids is migrated on its own, even in a version 2 store, and only once', () => {
@@ -461,7 +500,7 @@ test('connections that shared a policy each get their own copy, and the shared o
   assert.equal(c3.mcpEnabled, false);
 
   const written = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
-  assert.equal(written.version, 5);
+  assert.equal(written.version, 6);
   // Only once: reading again changes nothing.
   listConnections();
   assert.deepEqual(JSON.parse(fs.readFileSync(storePath, 'utf-8')), written);
@@ -567,7 +606,7 @@ test('once, a stored Default template goes: Default is built in, and connections
   assert.equal(policyById('default'), undefined);
   assert.deepEqual(plain(policyById('own')), plain({ rules }));
   assert.deepEqual(plain(policyById('mine')), plain({ rules }));
-  assert.equal(JSON.parse(fs.readFileSync(storePath, 'utf-8')).version, 5);
+  assert.equal(JSON.parse(fs.readFileSync(storePath, 'utf-8')).version, 6);
 });
 
 test('the built-in Default can\'t be changed, renamed or deleted', () => {

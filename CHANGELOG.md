@@ -5,6 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 ### Changed
+- **Columns ending in `_id` are no longer shown to agents just for their name.** Integer and uuid ids are still shown by type, and foreign keys by the foreign-key rule, but a text column like `national_id` is now hidden. Existing policies have the built-in `_id` rule switched off once; switch it back on in the policy to undo.
 - **An agent's query may run for 60 seconds, up from 30.** A query that takes longer, or whose tool call the agent cancels, is stopped in its tab too.
 - **Agent results are capped at about 100,000 characters.** Rows past the cap are left out, and the result says how many, and how to narrow the query.
 

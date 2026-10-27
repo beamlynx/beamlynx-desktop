@@ -103,8 +103,14 @@ const BUILT_IN_SHOW_RULES: AccessPolicyRule[] = [
     ],
   },
   { type: 'foreign-key' },
-  { type: 'column-name', suffix: '_id' },
 ];
+
+// The built-in rule that showed every column ending in `_id`, whatever its
+// type. It showed text such as `national_id` or `passport_id`. Integer and
+// uuid ids are shown by type above, and real foreign keys by the rule
+// after it, so policies made since have neither. Older policies have it
+// switched off once (ensureOwnPolicies, store version 6).
+const RETIRED_ID_SUFFIX_RULE: AccessPolicyRule = { type: 'column-name', suffix: '_id' };
 
 // The hide rules every policy starts with. Ordinary rules, unlike the
 // built-in show rules: they can be removed, and added back by hand. A uuid
@@ -269,7 +275,7 @@ function getStorePath(): string {
 }
 
 function emptyStore(): StoreFile {
-  return { version: 5, connections: [], accessPolicies: [] };
+  return { version: 6, connections: [], accessPolicies: [] };
 }
 
 // A file that can't be read or parsed: unreadable, but maybe still holding
@@ -468,6 +474,22 @@ function ensureOwnPolicies(store: StoreFile): boolean {
   if (version < 5) {
     store.accessPolicies = store.accessPolicies.filter(p => !(isTemplate(p) && p.name === 'Default'));
     store.version = 5;
+    changed = true;
+  }
+  // Once (store version 6): the built-in `_id` rule is switched off in
+  // every policy, so a text column ending in `_id` is hidden unless another
+  // rule shows it. Left on only where it is the policy's one rule that is
+  // on: switching it off there would lock agents out of the connection.
+  if (version < 6) {
+    const retired = JSON.stringify(RETIRED_ID_SUFFIX_RULE);
+    for (const policy of store.accessPolicies) {
+      const othersOn = policy.rules.some(m => m.enabled && JSON.stringify(ruleOf(m)) !== retired);
+      if (!othersOn) continue;
+      policy.rules = policy.rules.map(m =>
+        m.builtIn && JSON.stringify(ruleOf(m)) === retired ? { ...m, enabled: false } : m,
+      );
+    }
+    store.version = 6;
     changed = true;
   }
   return changed;
