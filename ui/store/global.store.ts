@@ -246,6 +246,10 @@ export class GlobalStore {
   // declined for the agent (handleRevealRequest). A field so tests can
   // shorten it.
   revealPreviewTimeoutMs = 60_000;
+  // The longest an agent's query may hold its investigation's queue
+  // (runQueuedMcpQuery): a little over the desktop app's own 60 s limit,
+  // after which it should have been stopped already.
+  mcpQueryDeadlineMs = 75_000;
   // profileId -> live pine-lang connection-id, cached per app session so
   // every MCP query doesn't spin up a fresh Hikari pool. See
   // store/mcp-query.ts's ensureConnection.
@@ -1634,20 +1638,42 @@ export class GlobalStore {
     // taken for the user's own (onSessionEvaluated).
     const running = this.getOrCreateMcpSession(investigation.id);
     runInAction(() => running.agentRunsInFlight++);
+    const work = (async () => {
+      try {
+        const first = await runMcpQueryImpl(this.mcpQueryDeps(investigation.id), args);
+        // pine-lang no longer has the connection this app made for the agent,
+        // such as after the server restarted: make a new one, once.
+        if (run.cancelled || running.evalErrorType !== 'no-connection') return first;
+        this.forgetMcpConnection(args.profileId);
+        return await runMcpQueryImpl(this.mcpQueryDeps(investigation.id), args);
+      } finally {
+        runInAction(() => running.agentRunsInFlight--);
+      }
+    })();
+    // A run that never ends would hold the queue, and every later query of
+    // this investigation would wait behind it: past the deadline it is
+    // stopped and its place given up. A desktop app older than
+    // onQueryCancel never stops one itself.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<'timeout'>(resolve => {
+      timer = setTimeout(() => resolve('timeout'), this.mcpQueryDeadlineMs);
+      // Node's timers keep a process alive (the tests); a browser's are numbers.
+      (timer as { unref?: () => void }).unref?.();
+    });
     let result: Awaited<ReturnType<typeof runMcpQueryImpl>>;
     try {
-      result = await runMcpQueryImpl(this.mcpQueryDeps(investigation.id), args);
-      // pine-lang no longer has the connection this app made for the agent,
-      // such as after the server restarted: make a new one, once.
-      if (!run.cancelled && running.evalErrorType === 'no-connection') {
-        this.forgetMcpConnection(args.profileId);
-        result = await runMcpQueryImpl(this.mcpQueryDeps(investigation.id), args);
+      const outcome = await Promise.race([work, deadline]);
+      if (outcome === 'timeout') {
+        void running.stop();
+        work.catch(() => undefined);
+        throw new Error(`The query was stopped: it ran for more than ${Math.round(this.mcpQueryDeadlineMs / 1000)} s.`);
       }
+      result = outcome;
     } catch (e) {
       investigation.failQuery(stepId, e instanceof Error ? e.message : String(e));
       throw e;
     } finally {
-      runInAction(() => running.agentRunsInFlight--);
+      if (timer) clearTimeout(timer);
     }
     const session = this.sessions[investigation.sessionId];
     // No tab id: the SQL didn't convert, so nothing ran in the tab, and
@@ -1764,7 +1790,11 @@ export class GlobalStore {
       await this.setAccessPolicyRules(policyId, before).catch(() => null);
       throw e;
     }
-    investigation.setProposal(proposal.id, 'applied', { before, after: toJS(saved?.rules ?? before) });
+    // The rules as the policy list reads them, which is what Undo compares
+    // with. Without the desktop app, as the last change returned them.
+    await this.refreshPolicyState().catch(() => undefined);
+    const after = isDesktop() ? this.accessPolicies.find(p => p.id === policyId)?.rules : undefined;
+    investigation.setProposal(proposal.id, 'applied', { before, after: toJS(after ?? saved?.rules ?? before) });
     // Saved either way. Telling the agent is all that's left, and it may
     // have stopped waiting.
     let told: boolean | undefined;
@@ -1999,7 +2029,12 @@ export class GlobalStore {
   setApplyPolicyToOwnQueries = async (id: string, apply: boolean): Promise<void> => {
     if (typeof window === 'undefined' || !window.beamlynxDesktop) return;
     const updated = await window.beamlynxDesktop.credentials.setApplyPolicyToOwnQueries(id, apply);
-    if (!updated) return;
+    if (!updated) {
+      runInAction(() => {
+        this.connectionError = 'That connection no longer exists.';
+      });
+      return;
+    }
     runInAction(() => {
       this.connections = this.connections.map(c =>
         c.id === id ? { ...c, applyPolicyToOwnQueries: updated.applyPolicyToOwnQueries } : c,

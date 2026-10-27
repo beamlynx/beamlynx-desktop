@@ -848,3 +848,20 @@ test('a proposal sent again after a reload keeps its one card', () => {
   store.handlePolicyProposal(proposal([{ disable: 'h1' }]));
   assert.equal(store.investigations[0].steps.filter(s => s.kind === 'proposal').length, 1);
 });
+
+test('an agent query that never ends gives up its place, so the next one still runs', async () => {
+  const store = storeWithFakeDatabase(expression => (expression === 'stuck' ? new Promise(() => {}) : { rows: [{ id: 1 }] }));
+  store.mcpQueryDeadlineMs = 20;
+  const first = run(store, 'claude-a', 'stuck');
+  const session = store.sessions[store.investigations[0].sessionId];
+  let stopped = 0;
+  session.stop = async () => void stopped++;
+  const second = run(store, 'claude-a', 'user');
+  await assert.rejects(first, /ran for more than/);
+  assert.equal((await second).error, '');
+  assert.equal(stopped, 1);
+  const [stuck, next] = store.investigations[0].steps;
+  assert.equal(stuck.running, false);
+  assert.match(stuck.error, /ran for more than/);
+  assert.equal(next.rowCount, 1);
+});

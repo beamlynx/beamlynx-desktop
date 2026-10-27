@@ -6,18 +6,17 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ## [Unreleased]
 ### Changed
 - **The dialog for opening a connection in a tab with a query shows two choices.** Each says what happens: **Open in a new tab** keeps this tab as it is, and **Switch this tab** warns that the query may not work there. The new tab is the default.
-- **A column rule without a schema says "in every schema".** Settings and the agent's cards used to show it like a rule for one column.
+- **A column rule without a schema reads "in every schema",** in Settings and on the agent's cards.
 
 ### Fixed
-- **Applying an agent's proposed policy change saves it.** It used to stay busy and save nothing. If a change fails, the policy goes back as it was and the card says why. If the agent had stopped waiting, the card says it wasn't told.
+- **Applying an agent's proposed policy change saves it, or puts the policy back and says why.** The card also says when the agent had stopped waiting for the answer.
 - **Undo on an applied proposal never erases a later change.** Once the policy has changed since Apply, Undo is refused and points to Settings.
-- **An agent's queries in one investigation run one at a time.** Each step now shows its own result. A query the desktop app gives up on is stopped, and a lost connection is made again once.
-- **The timeline no longer looks stuck.** A call whose end never arrived stops showing as running. A reveal request whose query runs over 60 s is declined for the agent. A request the agent stopped waiting on says so. Each investigation's tab says what its own agent is doing.
-- **Buttons in the timeline and in Settings show an error when they fail,** instead of staying disabled or looking done. Settings reads the policies again each time it opens.
-- **"Show to agents" puts the Except rule back if showing the column fails.**
-- **An agent's query on a connection whose policy can't be found is refused,** instead of running with every column shown.
-- **Long agent sessions use less memory.** Each step keeps at most 500 rows to show again, and older steps fewer. Finished investigations past the tenth are dropped.
-- **"Connect another agent" always shows the setup.** When it is already open, the panel flashes.
+- **An agent's queries in one investigation run one at a time, and each step shows its own result.** A query that runs too long is stopped, and a lost connection is made again once.
+- **The timeline no longer looks stuck.** A call whose end never arrived, a reveal request that runs over 60 s, and a request the agent stopped waiting on each end, and each investigation says what its own agent is doing.
+- **Buttons in the timeline and in Settings show an error when they fail.** Settings reads the policies again each time it opens, and **Show to agents** puts the Except rule back if it fails.
+- **An agent's query is refused when its connection's policy can't be found.**
+- **Long agent sessions use less memory.** A step keeps at most 500 rows to show again, older steps fewer, and finished investigations past the tenth are dropped.
+- **Connect another agent always shows the setup.** When it is already open, the panel flashes.
 
 ## [0.70.0] - 2026-10-26
 ### Changed
