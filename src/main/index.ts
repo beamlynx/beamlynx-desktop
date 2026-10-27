@@ -184,6 +184,32 @@ function openExternalIfSafe(url: string): void {
   console.warn('[navigation] refused to open external link:', url);
 }
 
+// Whether the main window may navigate to `url` itself. file:// covers the
+// packaged static export (loading.html -> index.html, and index.html's own
+// loads); same-origin covers the dev-mode `next dev` server
+// (BEAMLYNX_DEV_UI_URL, see loadRealUi() below) hot reloading itself.
+// Everything else is an outbound link -- the app has no legitimate reason to
+// navigate its own window anywhere else.
+//
+// A URL that doesn't parse stays out: the check runs before anything can
+// throw, so a throw can't let the navigation through.
+function staysInWindow(url: string): boolean {
+  let target: URL;
+  try {
+    target = new URL(url);
+  } catch {
+    return false;
+  }
+  if (target.protocol === 'file:') return true;
+  let currentOrigin: string | undefined;
+  try {
+    currentOrigin = new URL(mainWindow?.webContents.getURL() ?? '').origin;
+  } catch {
+    currentOrigin = undefined;
+  }
+  return !!currentOrigin && target.origin === currentOrigin;
+}
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     // The page has no <title>, so this is the window's name everywhere it
@@ -223,7 +249,8 @@ function createWindow(): void {
 
   // Whether the page can take agents' work (see render-bridge.ts). Not until
   // beamlynx-ui says so, and not again after a reload until it says so again.
-  watchBridge(mainWindow);
+  // A link the window refuses (will-navigate below) doesn't count as a reload.
+  watchBridge(mainWindow, staysInWindow);
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
@@ -265,31 +292,10 @@ function createWindow(): void {
   }
 
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    // file:// covers the packaged static export (loading.html -> index.html,
-    // and index.html's own loads); same-origin covers the dev-mode
-    // `next dev` server (BEAMLYNX_DEV_UI_URL, see loadRealUi() below) hot
-    // reloading itself. Everything else is an outbound link -- the app has
-    // no legitimate reason to navigate its own window anywhere else.
-    //
-    // A URL that doesn't parse is refused: the check runs before anything
-    // can throw, so a throw can't let the navigation through.
-    let target: URL;
-    try {
-      target = new URL(url);
-    } catch {
-      event.preventDefault();
-      return;
-    }
-    if (target.protocol === 'file:') return;
-    let currentOrigin: string | undefined;
-    try {
-      currentOrigin = new URL(mainWindow?.webContents.getURL() ?? '').origin;
-    } catch {
-      currentOrigin = undefined;
-    }
-    if (currentOrigin && target.origin === currentOrigin) return;
+    if (staysInWindow(url)) return;
     event.preventDefault();
-    openExternalIfSafe(url);
+    // A URL that doesn't parse is just refused.
+    if (URL.canParse(url)) openExternalIfSafe(url);
   });
 
   // Shown immediately, before the server is up -- see loadRealUi() below for

@@ -110,7 +110,11 @@ let readyListenerRegistered = false;
 
 // Follows the main window's page. Called once per window (createWindow in
 // index.ts). Only that window's page can say it is ready.
-export function watchBridge(window: BrowserWindow): void {
+//
+// `staysInWindow` is index.ts's will-navigate rule. A link the window
+// refuses (and opens in the browser instead) still starts a navigation
+// first, but never replaces the page, so the page stays ready.
+export function watchBridge(window: BrowserWindow, staysInWindow: (url: string) => boolean = () => true): void {
   const webContents = window.webContents;
   watched = webContents;
   setBridgeReady(false);
@@ -124,7 +128,7 @@ export function watchBridge(window: BrowserWindow): void {
     if (watched === webContents) setBridgeReady(false);
   };
   webContents.on('did-start-navigation', details => {
-    if (details.isMainFrame && !details.isSameDocument) forget();
+    if (details.isMainFrame && !details.isSameDocument && staysInWindow(details.url)) forget();
   });
   webContents.on('render-process-gone', forget);
   window.on('closed', () => {

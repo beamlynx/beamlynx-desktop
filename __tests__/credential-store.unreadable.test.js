@@ -53,6 +53,7 @@ for (const [name, content] of [
     // What the app shows at boot still works.
     assert.deepEqual(store.listConnections(), []);
     assert.equal(store.listAccessPolicies().length, 1); // the built-in template only
+    assert.deepEqual(store.getConnection('a'), { ok: false, error: 'not-found' });
     // Every write refuses, naming the file.
     assert.throws(() => store.saveConnection(input), store.StoreUnreadableError);
     assert.throws(() => store.createAccessPolicy('x'), /couldn't read its saved connections/);

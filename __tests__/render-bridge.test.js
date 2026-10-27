@@ -82,6 +82,17 @@ test('a reload fails every waiting query at once, and the page must say ready ag
   await assert.rejects(second, /reloaded/);
 });
 
+test('a link the window refuses to open in place is not a reload', () => {
+  const inWindow = url => url.startsWith('file:');
+  const linked = fakeWindow();
+  bridge.watchBridge(linked, inWindow);
+  pageSaysReady(linked);
+  linked.webContents.emit('did-start-navigation', { url: 'https://beamlynx.com', isMainFrame: true, isSameDocument: false });
+  assert.equal(bridge.isBridgeReady(), true);
+  linked.webContents.emit('did-start-navigation', { url: 'file:///ui/index.html', isMainFrame: true, isSameDocument: false });
+  assert.equal(bridge.isBridgeReady(), false);
+});
+
 test('a crashed page, or a closed window, is not ready', () => {
   pageSaysReady(window);
   window.webContents.emit('render-process-gone', {}, { reason: 'crashed' });

@@ -621,7 +621,8 @@ export function saveConnection(input: SaveConnectionInput): SaveConnectionResult
 }
 
 export function getConnection(id: string): GetConnectionResult {
-  const store = readStore();
+  // Only reads, and beamlynx-ui may call it at boot to reopen a tab.
+  const store = readStoreForDisplay();
   const record = store.connections.find(c => c.id === id);
   if (!record) {
     return { ok: false, error: 'not-found' };
