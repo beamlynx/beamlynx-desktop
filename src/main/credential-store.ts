@@ -272,8 +272,27 @@ function emptyStore(): StoreFile {
   return { version: 5, connections: [], accessPolicies: [] };
 }
 
-// A corrupt or missing file must never block app boot -- default to empty
-// rather than throwing. Also migrates (once, persisted immediately -- not
+// A file that can't be read or parsed: unreadable, but maybe still holding
+// every saved connection. readStore throws this instead of returning an
+// empty store, so no write can replace the file with an empty one.
+export class StoreUnreadableError extends Error {
+  constructor(storePath: string, cause: unknown) {
+    super(
+      `Beamlynx couldn't read its saved connections (${storePath}): ` +
+        `${cause instanceof Error ? cause.message : String(cause)}. Nothing was changed. ` +
+        'Fix or move that file, then try again.',
+    );
+  }
+}
+
+// Only a missing file is an empty store: nothing has been saved yet. A file
+// that can't be read or parsed throws StoreUnreadableError. It used to read
+// as empty too, and the next save then wrote an empty list over every saved
+// connection. Every write starts with readStore, so it stops here first.
+// What the app shows at boot goes through readStoreForDisplay, which logs
+// and shows nothing rather than keep the app from starting.
+//
+// Also migrates (once, persisted immediately -- not
 // just a type-level fallback re-applied on every read) a store written
 // before named policies existed:
 //  - a store with the earlier single-global-policy shape (`accessPolicy:
@@ -289,31 +308,45 @@ function emptyStore(): StoreFile {
 // connections.json directly showed a different value than what the app was
 // actually using. This store has to stay honest with itself.
 function readStore(): StoreFile {
+  const storePath = getStorePath();
+  let parsed;
   try {
-    const raw = fs.readFileSync(getStorePath(), 'utf-8');
-    const parsed = JSON.parse(raw);
-    if (!parsed || !Array.isArray(parsed.connections)) {
-      return emptyStore();
-    }
-    if (!Array.isArray(parsed.accessPolicies)) {
-      const migratedRules = Array.isArray(parsed.accessPolicy) ? parsed.accessPolicy : BUILT_IN_SHOW_RULES;
-      const defaultPolicy = makeDefaultPolicy(migratedRules);
-      parsed.accessPolicies = [defaultPolicy];
-      delete parsed.accessPolicy;
-      parsed.connections = parsed.connections.map((c: Record<string, unknown>) => {
-        if (c.policyId !== undefined) return c;
-        const { policyEnabled, ...rest } = c;
-        return { ...rest, policyId: policyEnabled ? defaultPolicy.id : null };
-      });
-      writeStore(parsed as StoreFile);
-    }
-    const ruleIds = migrateToRuleIds(parsed);
-    const own = ensureOwnPolicies(parsed as StoreFile);
-    if (ruleIds || own) {
-      writeStore(parsed as StoreFile);
-    }
-    return parsed as StoreFile;
-  } catch {
+    parsed = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return emptyStore();
+    throw new StoreUnreadableError(storePath, e);
+  }
+  // Valid JSON, but not a store: just as unsafe to write over.
+  if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.connections)) {
+    throw new StoreUnreadableError(storePath, new Error('it has no list of connections'));
+  }
+  if (!Array.isArray(parsed.accessPolicies)) {
+    const migratedRules = Array.isArray(parsed.accessPolicy) ? parsed.accessPolicy : BUILT_IN_SHOW_RULES;
+    const defaultPolicy = makeDefaultPolicy(migratedRules);
+    parsed.accessPolicies = [defaultPolicy];
+    delete parsed.accessPolicy;
+    parsed.connections = parsed.connections.map((c: Record<string, unknown>) => {
+      if (c.policyId !== undefined) return c;
+      const { policyEnabled, ...rest } = c;
+      return { ...rest, policyId: policyEnabled ? defaultPolicy.id : null };
+    });
+    writeStore(parsed as StoreFile);
+  }
+  const ruleIds = migrateToRuleIds(parsed);
+  const own = ensureOwnPolicies(parsed as StoreFile);
+  if (ruleIds || own) {
+    writeStore(parsed as StoreFile);
+  }
+  return parsed as StoreFile;
+}
+
+// For lists the app shows at boot: an unreadable file shows as no
+// connections, so the app still starts. Writes still refuse (see readStore).
+function readStoreForDisplay(): StoreFile {
+  try {
+    return readStore();
+  } catch (e) {
+    console.error('[credentials]', e instanceof Error ? e.message : e);
     return emptyStore();
   }
 }
@@ -510,7 +543,7 @@ export function getCredentialsStatus(): CredentialsStatus {
 }
 
 export function listConnections(): SavedConnectionMeta[] {
-  const list = readStore().connections.map(toMeta);
+  const list = readStoreForDisplay().connections.map(toMeta);
   console.log(`[credentials] listConnections -> ${list.length} saved (store: ${getStorePath()})`);
   return list;
 }
@@ -747,7 +780,7 @@ export function setAgentAccess(id: string, access: AgentAccess, templateId?: str
 // The built-in Default template first, then the stored templates and
 // connections' own policies, told apart by connectionId.
 export function listAccessPolicies(): AccessPolicy[] {
-  return [builtInTemplate(), ...readStore().accessPolicies];
+  return [builtInTemplate(), ...readStoreForDisplay().accessPolicies];
 }
 
 // A new template, with the starting rules.
