@@ -70,7 +70,8 @@ const AddRuleForm = ({
   onAdd,
   examples,
 }: {
-  onAdd: (matcher: ColumnMatcher) => Promise<void>;
+  // False when the rule wasn't saved: the text stays, to try again.
+  onAdd: (matcher: ColumnMatcher) => Promise<boolean>;
   // A name that fits the list the form adds to, as each kind's placeholder.
   examples: Partial<Record<MatcherKind, string>>;
 }) => {
@@ -85,8 +86,7 @@ const AddRuleForm = ({
       return;
     }
     setError('');
-    await onAdd(matcher);
-    setText('');
+    if (await onAdd(matcher)) setText('');
   };
 
   const fieldSx = {
@@ -143,11 +143,13 @@ const RuleRow = observer(
     module,
     focused,
     readOnly = false,
+    save,
   }: {
     policy: AccessPolicy;
     module: AccessPolicyModule;
     focused: boolean;
     readOnly?: boolean;
+    save: (change: Promise<AccessPolicy | null>) => Promise<boolean>;
   }) => {
     const { global } = useStores();
     const ref = useRef<HTMLDivElement>(null);
@@ -192,13 +194,13 @@ const RuleRow = observer(
           size="small"
           checked={module.enabled}
           disabled={readOnly}
-          onChange={(_e, value) => global.setAccessPolicyRuleEnabled(policy.id, module.id, value)}
+          onChange={(_e, value) => void save(global.setAccessPolicyRuleEnabled(policy.id, module.id, value))}
           inputProps={{ 'aria-label': `${describeMatcher(matcher)}: on` }}
         />
         {!readOnly && (
           <IconButton
             size="small"
-            onClick={() => global.removeAccessPolicyRule(policy.id, module.id)}
+            onClick={() => void save(global.removeAccessPolicyRule(policy.id, module.id))}
             aria-label={`Remove ${describeMatcher(matcher)}`}
             sx={{ color: 'var(--canvas-text-dim)', '&:hover': { color: 'var(--text-color)' } }}
           >
@@ -256,9 +258,31 @@ export const PolicyRules = observer(({ policy, focusedRuleId }: { policy: Access
   const hides = policy.rules.filter(m => m.type === 'hide');
   const builtIns = policy.rules.filter(m => m.type !== 'hide' && m.builtIn);
   const shows = policy.rules.filter(m => m.type !== 'hide' && !m.builtIn);
+  // Every edit goes through here, so one that wasn't saved says so instead
+  // of looking done.
+  const [error, setError] = useState('');
+  const save = async (change: Promise<AccessPolicy | null>) => {
+    try {
+      if (await change) {
+        setError('');
+        return true;
+      }
+      setError("Couldn't save that to the access policy, so nothing changed. It may have been changed elsewhere.");
+    } catch (e) {
+      setError(`Couldn't save that to the access policy, so nothing changed. ${e instanceof Error ? e.message : String(e)}`);
+    }
+    // Show the policy as it is stored.
+    void global.refreshAccessPolicies().catch(() => undefined);
+    return false;
+  };
 
   return (
     <>
+      {error && (
+        <Typography variant="body2" role="alert" sx={{ color: 'var(--text-warning-color)', mb: 2 }}>
+          {error}
+        </Typography>
+      )}
       {readOnly && (
         <Typography variant="body2" sx={{ color: 'var(--canvas-text-dim)', mb: 2 }}>
           Built in, so it can&apos;t change. Every connection that starts from it gets these rules, and edits its own
@@ -279,17 +303,17 @@ export const PolicyRules = observer(({ policy, focusedRuleId }: { policy: Access
               description={text.description}
               checked={m.enabled}
               disabled={readOnly}
-              onChange={checked => global.setAccessPolicyRuleEnabled(policy.id, m.id, checked)}
+              onChange={checked => void save(global.setAccessPolicyRuleEnabled(policy.id, m.id, checked))}
             />
           );
         })}
         {shows.map(m => (
-          <RuleRow key={m.id} policy={policy} module={m} focused={m.id === focusedRuleId} readOnly={readOnly} />
+          <RuleRow key={m.id} policy={policy} module={m} focused={m.id === focusedRuleId} readOnly={readOnly} save={save} />
         ))}
         {!readOnly && (
           <AddRuleForm
             examples={{ contains: 'code', equals: 'status', suffix: '_code' }}
-            onAdd={async matcher => void (await global.addAccessPolicyRule(policy.id, matcher))}
+            onAdd={matcher => save(global.addAccessPolicyRule(policy.id, matcher))}
           />
         )}
       </RuleList>
@@ -299,12 +323,12 @@ export const PolicyRules = observer(({ policy, focusedRuleId }: { policy: Access
         icon={<BlockIcon sx={{ fontSize: 18, color: 'var(--text-warning-color)' }} />}
       >
         {hides.map(m => (
-          <RuleRow key={m.id} policy={policy} module={m} focused={m.id === focusedRuleId} readOnly={readOnly} />
+          <RuleRow key={m.id} policy={policy} module={m} focused={m.id === focusedRuleId} readOnly={readOnly} save={save} />
         ))}
         {!readOnly && (
           <AddRuleForm
             examples={{ contains: 'token', equals: 'email', suffix: '_key' }}
-            onAdd={async match => void (await global.addAccessPolicyRule(policy.id, { type: 'hide', match }))}
+            onAdd={match => save(global.addAccessPolicyRule(policy.id, { type: 'hide', match }))}
           />
         )}
       </RuleList>

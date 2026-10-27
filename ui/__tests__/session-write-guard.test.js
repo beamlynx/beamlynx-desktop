@@ -2,7 +2,7 @@
 // in. Session.evaluate forces allowWrites: false for the dedicated MCP tab and,
 // since 2026-10-08, for a tab reviewing a request_reveal call too. Before
 // that, a reveal request for `user | delete!` ran with writes allowed the
-// moment it arrived (RevealRequestHandler.tsx).
+// moment it arrived (McpBridge.tsx).
 //
 // These call the real Session.evaluate with the plugin swapped for a stub that
 // records the options it was given.

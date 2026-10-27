@@ -11,8 +11,13 @@ import type { AgentActivity } from '../desktop';
  * Display only. Nothing here runs anything, and it stays out of
  * mcp-query.ts, which the no-raw-SQL test reads.
  */
+/** Investigations from a relay too old to send an id share this one (store/investigations.ts). */
+export const DEFAULT_INVESTIGATION = 'default';
+
 export type AgentActivityEntry = {
   id: string;
+  // The investigation the call belongs to (store/investigations.ts).
+  investigationId: string;
   tool: string;
   summary: string;
   detail?: string;
@@ -59,6 +64,7 @@ export class AgentActivityStore {
       if (entry) return;
       this.entries.unshift({
         id: event.id,
+        investigationId: event.investigationId ?? DEFAULT_INVESTIGATION,
         tool: event.tool,
         summary: event.summary,
         detail: event.detail,
@@ -71,7 +77,12 @@ export class AgentActivityStore {
       entry.outcome = event.outcome;
     } else {
       // The start was missed, e.g. the call itself opened the app.
-      this.entries.unshift({ ...event, startedAt: event.at, endedAt: event.at });
+      this.entries.unshift({
+        ...event,
+        investigationId: event.investigationId ?? DEFAULT_INVESTIGATION,
+        startedAt: event.at,
+        endedAt: event.at,
+      });
       if (this.entries.length > MAX_ENTRIES) this.entries.length = MAX_ENTRIES;
     }
     this.keepTicking();
@@ -107,6 +118,25 @@ export class AgentActivityStore {
   /** The newest call still going, for a one-line status. */
   get current(): AgentActivityEntry | undefined {
     return this.running.find(e => !WAITING_TOOLS.has(e.tool)) ?? this.running[0];
+  }
+
+  /**
+   * The same as working and current, for one investigation's agent: each
+   * investigation's tab says what its own agent is doing, while several
+   * work at once.
+   */
+  workingFor(investigationId: string): boolean {
+    const own = this.entries.filter(e => e.investigationId === investigationId);
+    const running = own.some(
+      e => e.endedAt === undefined && this.now - e.startedAt < STALE_MS && !WAITING_TOOLS.has(e.tool),
+    );
+    const ended = own.filter(e => e.endedAt !== undefined && !WAITING_TOOLS.has(e.tool)).map(e => e.endedAt!);
+    return running || (ended.length > 0 && this.now - Math.max(...ended) < LINGER_MS);
+  }
+
+  currentFor(investigationId: string): AgentActivityEntry | undefined {
+    const running = this.running.filter(e => e.investigationId === investigationId);
+    return running.find(e => !WAITING_TOOLS.has(e.tool)) ?? running[0];
   }
 
   /** Whether a call ran too long to still be going. */

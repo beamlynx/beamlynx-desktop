@@ -1,5 +1,6 @@
-import { makeAutoObservable, toJS } from 'mobx';
+import { makeAutoObservable, observable, toJS } from 'mobx';
 import type { AgentActivity } from '../desktop';
+import { DEFAULT_INVESTIGATION, STALE_MS } from './agent-activity';
 import type { AccessPolicyModule, ColumnPolicy } from './client';
 import type { PolicyProposal } from '../desktop';
 import type { ColumnMetadata, ResultColumn, Row, Session } from './session';
@@ -18,7 +19,28 @@ export type QuerySnapshot = {
   columnMetadata: ColumnMetadata;
   columnVisibilityModel: Record<string, boolean>;
   error: string;
+  // How many rows the run returned, when only the first of them are kept
+  // (keepSnapshotsSmall).
+  rowsDropped?: number;
 };
+
+/**
+ * How many rows a step keeps of what the agent saw, to show again. A
+ * timeline of big results was all kept, for as long as the app ran. The
+ * newest steps keep more, since they are the ones looked at again.
+ */
+export const SNAPSHOT_ROWS = 500;
+export const OLD_SNAPSHOT_ROWS = 50;
+export const FULL_SNAPSHOTS = 20;
+
+function keepRows(snapshot: QuerySnapshot, max: number): QuerySnapshot {
+  if (snapshot.rows.length <= max) return snapshot;
+  return {
+    ...snapshot,
+    rows: snapshot.rows.slice(0, max),
+    rowsDropped: (snapshot.rowsDropped ?? 0) + snapshot.rows.length - max,
+  };
+}
 
 /**
  * A copy of what a tab shows after a run. Plain data, so later runs can't
@@ -88,6 +110,11 @@ export type InvestigationStep =
       status: 'pending' | 'applied' | 'declined' | 'expired' | 'undone';
       // The policy's rules before Apply, for Undo.
       before?: AccessPolicyModule[];
+      // The rules as Apply left them. Undo puts `before` back only while
+      // the policy still has exactly these, or it would erase a later edit.
+      after?: AccessPolicyModule[];
+      // Applied after the agent's call stopped waiting, so it wasn't told.
+      agentGone?: boolean;
     }
   // A note the user wrote to the agent.
   | { id: string; kind: 'note'; at: number; text: string; delivered: boolean }
@@ -101,7 +128,8 @@ export type InvestigationStep =
       requestId: string;
       expression: string;
       reason?: string;
-      status: 'running' | 'pending' | 'revealed' | 'declined';
+      // expired: the agent stopped waiting before anyone answered.
+      status: 'running' | 'pending' | 'revealed' | 'declined' | 'expired';
       preview?: QuerySnapshot;
       rows?: unknown;
       // Why it was declined without asking, such as a query that changes data.
@@ -115,8 +143,7 @@ const QUERY_TOOLS = new Set(['run_query', 'run_sql_as_pine', 'propose_policy_cha
 const QUIET_TOOLS = new Set(['check_reveal']);
 
 
-/** Investigations from a relay too old to send an id share this one. */
-export const DEFAULT_INVESTIGATION = 'default';
+export { DEFAULT_INVESTIGATION };
 
 /**
  * The reason an agent gave for a query: its leading comment, as it writes
@@ -132,6 +159,38 @@ export function queryReason(expression: string): string | undefined {
 let counter = 0;
 const stepId = () => `step-${Date.now()}-${++counter}`;
 
+// A step's result data stays plain: MobX would otherwise make every row of
+// every result observable, which is slow for big ones and was never needed.
+// A new value is still noticed, as a whole.
+const newStep = <T extends InvestigationStep>(value: T): T =>
+  observable(value, {
+    snapshot: observable.ref,
+    preview: observable.ref,
+    rows: observable.ref,
+    proposal: observable.ref,
+    before: observable.ref,
+    after: observable.ref,
+  } as Record<string, typeof observable.ref>);
+
+/**
+ * Runs tasks one at a time, in the order they came. An investigation's
+ * queries share its one tab, so two at once would each read the other's
+ * columns, rows and error. A task that fails doesn't stop the ones after it.
+ */
+export class SerialQueue {
+  private tail: Promise<unknown> = Promise.resolve();
+
+  run<T>(task: () => Promise<T>): Promise<T> {
+    const result = this.tail.then(task, task);
+    this.tail = result.catch(() => undefined);
+    return result;
+  }
+}
+
+/** Whether a tool call has had no end for too long to still be going (AgentActivityStore's STALE_MS). */
+export const isStaleCall = (step: { at: number; endedAt?: number }, now: number) =>
+  step.endedAt === undefined && now - step.at >= STALE_MS;
+
 export class Investigation {
   question?: string;
   steps: InvestigationStep[] = [];
@@ -142,12 +201,14 @@ export class Investigation {
   // Whether its tab is in the strip. It isn't until the user opens it from
   // the robot; closing it only hides it again, and the investigation goes on.
   tabOpen = false;
+  // The agent's queries, one at a time (SerialQueue).
+  readonly queue = new SerialQueue();
 
   constructor(
     readonly id: string,
     readonly sessionId: string,
   ) {
-    makeAutoObservable(this, { id: false, sessionId: false });
+    makeAutoObservable(this, { id: false, sessionId: false, queue: false });
   }
 
   /** Takes in a tool call's start or end (see beamlynx-desktop's activity.ts). */
@@ -159,7 +220,7 @@ export class Investigation {
     }
     if (event.tool === 'note_finding') {
       if (event.phase === 'start' && event.detail) {
-        this.steps.push({ id: `finding-${event.id}`, kind: 'finding', at: event.at, text: event.detail });
+        this.steps.push(newStep({ id: `finding-${event.id}`, kind: 'finding', at: event.at, text: event.detail }));
       }
       return;
     }
@@ -167,59 +228,101 @@ export class Investigation {
     const existing = this.steps.find(s => s.kind === 'call' && s.id === event.id);
     if (event.phase === 'start') {
       if (existing) return;
-      this.steps.push({
-        id: event.id,
-        kind: 'call',
-        tool: event.tool,
-        summary: event.summary,
-        detail: event.detail,
-        at: event.at,
-      });
+      this.steps.push(
+        newStep({
+          id: event.id,
+          kind: 'call',
+          tool: event.tool,
+          summary: event.summary,
+          detail: event.detail,
+          at: event.at,
+        }),
+      );
     } else if (existing && existing.kind === 'call') {
       existing.endedAt = event.at;
       existing.ok = event.ok;
       existing.outcome = event.outcome;
+    } else {
+      // The start was missed, such as when the call itself opened the app.
+      this.steps.push(
+        newStep({
+          id: event.id,
+          kind: 'call',
+          tool: event.tool,
+          summary: event.summary,
+          detail: event.detail,
+          at: event.at,
+          endedAt: event.at,
+          ok: event.ok,
+          outcome: event.outcome,
+        }),
+      );
     }
   }
 
   startQuery(expression: string, by: 'agent' | 'user', sql?: string): string {
     const id = stepId();
-    this.steps.push({
-      id,
-      kind: 'query',
-      by,
-      at: Date.now(),
-      expression: sql === undefined ? expression : '',
-      ...(sql === undefined ? {} : { sql }),
-      reason: queryReason(sql ?? expression),
-      running: true,
-    });
+    this.steps.push(
+      newStep({
+        id,
+        kind: 'query',
+        by,
+        at: Date.now(),
+        expression: sql === undefined ? expression : '',
+        ...(sql === undefined ? {} : { sql }),
+        reason: queryReason(sql ?? expression),
+        running: true,
+        snapshot: undefined,
+      }),
+    );
     if (by === 'agent') this.selectedStepId = null;
     return id;
   }
 
   finishQuery(id: string, snapshot: QuerySnapshot) {
-    const step = this.steps.find(s => s.id === id);
-    if (!step || step.kind !== 'query') return;
-    step.running = false;
-    step.expression = snapshot.expression || step.expression;
-    step.reason = queryReason(step.expression) ?? step.reason;
-    step.snapshot = snapshot;
-    step.error = snapshot.error || undefined;
-    step.rowCount = snapshot.error ? undefined : snapshot.rows.length;
+    const query = this.steps.find(s => s.id === id);
+    if (!query || query.kind !== 'query') return;
+    query.running = false;
+    query.expression = snapshot.expression || query.expression;
+    query.reason = queryReason(query.expression) ?? query.reason;
+    // Counted before any rows are dropped.
+    query.rowCount = snapshot.error ? undefined : snapshot.rows.length;
+    query.snapshot = keepRows(snapshot, SNAPSHOT_ROWS);
+    query.error = snapshot.error || undefined;
+    this.keepSnapshotsSmall();
+  }
+
+  /** Steps older than the newest FULL_SNAPSHOTS keep only their first OLD_SNAPSHOT_ROWS rows. */
+  private keepSnapshotsSmall() {
+    let seen = 0;
+    for (let i = this.steps.length - 1; i >= 0; i--) {
+      const s = this.steps[i];
+      if (s.kind !== 'query' || !s.snapshot) continue;
+      if (++seen > FULL_SNAPSHOTS) s.snapshot = keepRows(s.snapshot, OLD_SNAPSHOT_ROWS);
+    }
   }
 
   /** A query that ran nothing in the tab, such as SQL that didn't convert. */
   failQuery(id: string, error: string) {
-    const step = this.steps.find(s => s.id === id);
-    if (!step || step.kind !== 'query') return;
-    step.running = false;
-    step.error = error;
+    const query = this.steps.find(s => s.id === id);
+    if (!query || query.kind !== 'query') return;
+    query.running = false;
+    query.error = error;
   }
 
   addProposal(proposal: PolicyProposal): void {
     if (this.proposal(proposal.id)) return;
-    this.steps.push({ id: `proposal-${proposal.id}`, kind: 'proposal', at: Date.now(), proposal, status: 'pending' });
+    this.steps.push(
+      newStep({
+        id: `proposal-${proposal.id}`,
+        kind: 'proposal',
+        at: Date.now(),
+        proposal: toJS(proposal),
+        status: 'pending',
+        before: undefined,
+        after: undefined,
+      }),
+    );
   }
 
   proposal(proposalId: string) {
@@ -227,36 +330,64 @@ export class Investigation {
     return step?.kind === 'proposal' ? step : undefined;
   }
 
-  setProposal(proposalId: string, status: 'applied' | 'declined' | 'expired' | 'undone', before?: AccessPolicyModule[]) {
-    const step = this.proposal(proposalId);
-    if (!step) return;
+  setProposal(
+    proposalId: string,
+    status: 'applied' | 'declined' | 'expired' | 'undone',
+    rules?: { before: AccessPolicyModule[]; after: AccessPolicyModule[] },
+  ) {
+    const card = this.proposal(proposalId);
+    if (!card) return;
     // Only a pending card is answered, or expires: an answer after the
     // agent stopped waiting is no answer. Only an applied one is undone.
-    if (status === 'undone' ? step.status !== 'applied' : step.status !== 'pending') return;
-    step.status = status;
-    if (before) step.before = before;
+    if (status === 'undone' ? card.status !== 'applied' : card.status !== 'pending') return;
+    card.status = status;
+    if (rules) {
+      card.before = rules.before;
+      card.after = rules.after;
+    }
   }
 
-  addReveal(requestId: string, expression: string, reason: string | undefined): string {
-    const id = stepId();
-    this.steps.push({ id, kind: 'reveal', at: Date.now(), requestId, expression, reason, status: 'running' });
-    return id;
+  /** Applied, but the agent's call had stopped waiting, so it wasn't told. */
+  markProposalAgentGone(proposalId: string) {
+    const card = this.proposal(proposalId);
+    if (card) card.agentGone = true;
+  }
+
+  /** A new card, or false when this request already has one (the desktop app sends it again after a reload). */
+  addReveal(requestId: string, expression: string, reason: string | undefined): boolean {
+    if (this.reveal(requestId)) return false;
+    this.steps.push(
+      newStep({
+        id: stepId(),
+        kind: 'reveal',
+        at: Date.now(),
+        requestId,
+        expression,
+        reason,
+        status: 'running',
+        preview: undefined,
+        rows: undefined,
+      }),
+    );
+    return true;
   }
 
   /** The reveal's read-only run is done: ready for the user's decision, or declined already. */
   setRevealPreview(requestId: string, preview: QuerySnapshot, rows: unknown) {
-    const step = this.reveal(requestId);
-    if (step?.status !== 'running') return;
-    step.preview = preview;
-    step.rows = rows;
-    step.status = 'pending';
+    const card = this.reveal(requestId);
+    if (card?.status !== 'running') return;
+    card.preview = preview;
+    card.rows = rows;
+    card.status = 'pending';
   }
 
-  setReveal(requestId: string, status: 'revealed' | 'declined', note?: string) {
-    const step = this.reveal(requestId);
-    if (!step || step.status === 'revealed' || step.status === 'declined') return;
-    step.status = status;
-    if (note) step.note = note;
+  setReveal(requestId: string, status: 'revealed' | 'declined' | 'expired', note?: string) {
+    const card = this.reveal(requestId);
+    if (!card || card.status === 'revealed' || card.status === 'declined' || card.status === 'expired') return;
+    card.status = status;
+    if (note) card.note = note;
+    // Approve sent the rows, or nothing will: they needn't be kept.
+    card.rows = undefined;
   }
 
   reveal(requestId: string) {
@@ -265,7 +396,7 @@ export class Investigation {
   }
 
   addNote(id: string, text: string) {
-    this.steps.push({ id, kind: 'note', at: Date.now(), text, delivered: false });
+    this.steps.push(newStep({ id, kind: 'note', at: Date.now(), text, delivered: false }));
   }
 
   markDelivered(ids: string[]) {
@@ -285,8 +416,8 @@ export class Investigation {
   /** The newest query with a result: what the tab shows when following. */
   get latestQuery() {
     for (let i = this.steps.length - 1; i >= 0; i--) {
-      const step = this.steps[i];
-      if (step.kind === 'query' && step.snapshot) return step;
+      const s = this.steps[i];
+      if (s.kind === 'query' && s.snapshot) return s;
     }
     return undefined;
   }

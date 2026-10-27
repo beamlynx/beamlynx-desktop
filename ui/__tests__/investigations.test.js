@@ -170,12 +170,31 @@ function withPolicy(store) {
       },
     ];
   });
+  // As the desktop app does: each call changes the stored policy and sends
+  // it back, and the store shows it.
   const calls = [];
-  const ok = policyId => ({ id: policyId, name: 'Default for Prod', rules: [] });
-  store.addAccessPolicyRule = async (policyId, rule) => (calls.push(['add', policyId, rule]), ok(policyId));
-  store.removeAccessPolicyRule = async (policyId, id) => (calls.push(['remove', policyId, id]), ok(policyId));
-  store.setAccessPolicyRuleEnabled = async (policyId, id, on) => (calls.push(['enabled', policyId, id, on]), ok(policyId));
-  store.setAccessPolicyRules = async (policyId, rules) => (calls.push(['set', policyId, rules.map(r => r.id)]), ok(policyId));
+  let next = 0;
+  const store_ = (policyId, change) => {
+    const policy = store.accessPolicies.find(p => p.id === policyId);
+    const updated = { ...policy, rules: change(policy.rules.map(r => ({ ...r }))) };
+    runInAction(() => {
+      store.accessPolicies = store.accessPolicies.map(p => (p.id === policyId ? updated : p));
+    });
+    return updated;
+  };
+  store.addAccessPolicyRule = async (policyId, rule) => (
+    calls.push(['add', policyId, rule]), store_(policyId, rules => [...rules, { ...rule, id: `new-${++next}`, enabled: true }])
+  );
+  store.removeAccessPolicyRule = async (policyId, id) => (
+    calls.push(['remove', policyId, id]), store_(policyId, rules => rules.filter(r => r.id !== id))
+  );
+  store.setAccessPolicyRuleEnabled = async (policyId, id, on) => (
+    calls.push(['enabled', policyId, id, on]),
+    store_(policyId, rules => rules.map(r => (r.id === id ? { ...r, enabled: on } : r)))
+  );
+  store.setAccessPolicyRules = async (policyId, rules) => (
+    calls.push(['set', policyId, rules.map(r => r.id)]), store_(policyId, () => rules)
+  );
   return calls;
 }
 
@@ -349,9 +368,9 @@ test('overlapping agent runs in one tab are all the agent\'s, never told back as
   });
   const sent = stubBridge();
   const first = run(store, 'claude-a', 'user');
-  await run(store, 'claude-a', 'tenant');
+  const second = run(store, 'claude-a', 'tenant');
   release();
-  await first;
+  await Promise.all([first, second]);
   assert.deepEqual(store.investigations[0].steps.map(s => s.by), ['agent', 'agent']);
   assert.equal(sent.notes.length, 0);
 });

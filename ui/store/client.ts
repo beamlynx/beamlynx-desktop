@@ -509,7 +509,17 @@ export function effectiveAccessPolicyRules(
   if (connection.agentsSeeEveryColumn) return [];
   if (forMcp ? !connection.mcpEnabled : connection.applyPolicyToOwnQueries !== true) return [];
   const policy = policies.find(p => p.id === connection.policyId);
-  if (!policy) return [];
+  if (!policy) {
+    // An agent's query on a connection whose policy can't be found would
+    // otherwise run with no rules at all: every column shown. Refuse it.
+    // Nothing is hidden from the owner's own tab that wasn't before.
+    if (forMcp) {
+      throw new Error(
+        "Refusing to run an agent's query: this connection's access policy wasn't found. Open Settings to check it.",
+      );
+    }
+    return [];
+  }
   return activeRules(policy);
 }
 

@@ -5,6 +5,7 @@ import { DEFAULT_SETTINGS_PANEL_WIDTH, NEW_LAYOUT_GUTTER } from '../../constants
 import { usePanelPresence } from '../../hooks/usePanelPresence';
 import { getUserPreference, isFiniteNumber, STORAGE_KEYS } from '../../store/preferences';
 import { useStores } from '../../store/store-container';
+import { isDesktop } from '../../store/util';
 import { NewLayoutSettingsPanelDivider } from '../ResizableDividers';
 import SettingsDockedPanel from './SettingsDockedPanel';
 
@@ -33,6 +34,26 @@ const SettingsDock = observer(() => {
   useEffect(() => {
     setWidth(getUserPreference(STORAGE_KEYS.SETTINGS_PANEL_WIDTH, DEFAULT_SETTINGS_PANEL_WIDTH, isFiniteNumber));
   }, []);
+
+  // Each time Settings opens, the policies and connections are read again:
+  // its contents stay built between opens, and an agent's proposal or
+  // another window may have changed them meanwhile.
+  useEffect(() => {
+    if (!global.showSettings || !isDesktop()) return;
+    void global.refreshConnections().catch(() => undefined);
+    void global.refreshAccessPolicies().catch(() => undefined);
+  }, [global, global.showSettings]);
+
+  // A link to a section of Settings that is already open seemed to do
+  // nothing (GlobalStore.showSettingsSection). The panel flashes instead.
+  const [flash, setFlash] = useState(false);
+  const attention = global.settingsAttentionCount;
+  useEffect(() => {
+    if (!attention) return;
+    setFlash(true);
+    const timer = setTimeout(() => setFlash(false), 900);
+    return () => clearTimeout(timer);
+  }, [attention]);
 
   // Builds Settings' contents once the app has gone quiet, so the FIRST
   // open doesn't have to. That render costs around 55ms, which is three
@@ -125,6 +146,11 @@ const SettingsDock = observer(() => {
           border: '1px solid var(--border-color)',
           borderRadius: 1,
           overflow: 'hidden',
+          // Inside its edge: the wrapper above clips anything outside it.
+          outline: '2px solid',
+          outlineColor: flash ? 'var(--notification-color)' : 'transparent',
+          outlineOffset: '-2px',
+          transition: 'outline-color 0.4s ease',
         }}
       >
         <SettingsDockedPanel open={settings.open} />
