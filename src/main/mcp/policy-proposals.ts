@@ -150,6 +150,11 @@ export function createProposal(input: Omit<PolicyProposal, 'id' | 'reason'> & { 
   return proposal;
 }
 
+/** Every proposal still on offer. Re-sent when the window reloads. */
+export function listPendingProposals(): PolicyProposal[] {
+  return [...proposals.values()];
+}
+
 export function countPendingProposals(profileId: string): number {
   return [...proposals.values()].filter(p => p.profileId === profileId).length;
 }
@@ -189,33 +194,62 @@ export function waitForProposal(id: string, timeoutMs: number): Promise<Proposal
   });
 }
 
-/** A proposal the user didn't answer in time: no card should still offer it. */
-export function expireProposal(id: string): void {
-  proposals.delete(id);
+/**
+ * A proposal the user didn't answer in time, or the agent stopped waiting
+ * for: no card should still offer it. True if it was still on offer.
+ */
+export function expireProposal(id: string): boolean {
+  return proposals.delete(id);
 }
 
 // --- The agent's side ----------------------------------------------------
 
 /** A control-plane request, as stdio-relay.ts makes them. */
-export type ControlPlaneRequest = (method: 'GET' | 'POST', path: string, body?: unknown) => Promise<any>;
+export type ControlPlaneRequest = (
+  method: 'GET' | 'POST' | 'DELETE',
+  path: string,
+  body?: unknown,
+  options?: { timeoutMs?: number; signal?: AbortSignal },
+) => Promise<any>;
+
+const CANCELLED_TEXT = 'You cancelled the call, so the proposed policy change was withdrawn.';
 
 /**
  * propose_policy_change's call: sends the proposal, then waits for the
  * user's answer until the deadline. Returns the text for the agent, and
  * whether it failed.
+ *
+ * `signal` is the MCP client's cancel. It stops the wait and withdraws the
+ * proposal, so its card stops offering it.
  */
 export async function proposeAndWait(
   request: ControlPlaneRequest,
   body: { profileId: string; reason: string; changes: unknown },
   timeoutMs: number,
   now: () => number = Date.now,
+  signal?: AbortSignal,
 ): Promise<{ text: string; isError: boolean }> {
   const deadline = now() + timeoutMs;
-  const created = await request('POST', '/policy-proposal', body);
+  const created = await request('POST', '/policy-proposal', body, { signal });
   const id = created?.proposalId;
   if (typeof id !== 'string') return { isError: true, text: created?.error ?? "The proposal wasn't accepted." };
+  const withdraw = () =>
+    request('DELETE', `/policy-proposal/${encodeURIComponent(id)}`, undefined, { timeoutMs: 2000 }).catch(
+      () => undefined,
+    );
   while (now() < deadline) {
-    const answer = await request('GET', `/policy-proposal/${encodeURIComponent(id)}`);
+    if (signal?.aborted) {
+      await withdraw();
+      return { isError: true, text: CANCELLED_TEXT };
+    }
+    let answer;
+    try {
+      answer = await request('GET', `/policy-proposal/${encodeURIComponent(id)}`, undefined, { signal });
+    } catch (e) {
+      if (!signal?.aborted) throw e;
+      await withdraw();
+      return { isError: true, text: CANCELLED_TEXT };
+    }
     if (answer?.status === 'applied') {
       return { isError: false, text: 'The user applied your changes to the access policy. Run your query again.' };
     }

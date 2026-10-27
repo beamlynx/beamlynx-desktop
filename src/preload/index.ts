@@ -57,7 +57,7 @@ type RevealRequest = {
   expression: string;
   reason?: string;
   createdAt: number;
-  status: 'pending' | 'revealed' | 'declined';
+  status: 'pending' | 'revealed' | 'declined' | 'expired';
   investigationId?: string;
 };
 type RevealOutcome =
@@ -220,6 +220,19 @@ contextBridge.exposeInMainWorld('beamlynxDesktop', {
       ipcRenderer.on('mcp:query-request', listener);
       return () => ipcRenderer.removeListener('mcp:query-request', listener);
     },
+    // A query main stopped waiting for: it ran out of time, or the agent
+    // cancelled its call. The page stops that run (see render-bridge.ts).
+    onQueryCancel: (callback: (event: { requestId: string }) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, cancel: { requestId: string }) => callback(cancel);
+      ipcRenderer.on('mcp:query-cancel', listener);
+      return () => ipcRenderer.removeListener('mcp:query-cancel', listener);
+    },
+    // Called by McpBridge once it listens on every MCP channel. Until then,
+    // and again from the moment the page reloads, main tells agents to try
+    // again in a few seconds instead of sending work nobody would answer.
+    // Becoming ready re-sends every proposal and reveal request still
+    // waiting, so their cards come back after a reload.
+    notifyBridgeReady: (): void => ipcRenderer.send('mcp:bridge-ready'),
     // Each MCP tool call as it starts and ends (see src/main/mcp/activity.ts),
     // so the app can show that an agent is working.
     onActivity: (callback: (event: AgentActivity) => void) => {
@@ -271,6 +284,14 @@ contextBridge.exposeInMainWorld('beamlynxDesktop', {
       const listener = (_event: Electron.IpcRendererEvent, request: RevealRequest) => callback(request);
       ipcRenderer.on('mcp:reveal-request', listener);
       return () => ipcRenderer.removeListener('mcp:reveal-request', listener);
+    },
+    // A request nobody answered within 10 minutes (see
+    // src/main/mcp/reveal-requests.ts). Its card should say it expired:
+    // resolve() now returns null for it.
+    onExpired: (callback: (id: string) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, id: string) => callback(id);
+      ipcRenderer.on('mcp:reveal-request-expired', listener);
+      return () => ipcRenderer.removeListener('mcp:reveal-request-expired', listener);
     },
     resolve: (id: string, outcome: RevealOutcome): Promise<RevealRequest | null> =>
       ipcRenderer.invoke('mcp:reveal-resolve', id, outcome),

@@ -541,6 +541,24 @@ test('a cell longer than MAX_CELL_CHARS is cut, saying how much was left out', (
   assert.match(text, /"short"/);
 });
 
+test('a result past MAX_RESULT_CHARS drops trailing rows and says how to narrow the query', () => {
+  const { formatRows, MAX_RESULT_CHARS } = require('../dist/main/mcp/format.js');
+  const cell = 'y'.repeat(1000);
+  const rows = [['id', 'body'], ...Array.from({ length: 250 }, (_, i) => [i, cell])];
+  const text = formatRows({ rows, columns: [] });
+  assert.ok(text.length <= MAX_RESULT_CHARS + 500, `${text.length} characters`);
+  const shown = text.split('\n').filter(line => line.startsWith('[') && line.includes(cell)).length;
+  assert.ok(shown > 0 && shown < 250);
+  assert.match(text, new RegExp(`^250 rows, showing the first ${shown}\n\n\\["id","body"\\]`));
+  assert.match(text, new RegExp(`${250 - shown} more rows not shown`));
+  assert.match(text, /select:.*where: or limit:/);
+});
+
+test('a result within the budget is shown whole, with no note', () => {
+  const text = formatRows({ rows: [['id'], [1], [2]], columns: [] });
+  assert.equal(text, ['2 rows', '', '["id"]', '[1]', '[2]'].join('\n'));
+});
+
 test('formatRows leads with the Pine that SQL ran as, and its notes', () => {
   const out = formatRows({
     pine: 'company\n | where: id = 1',

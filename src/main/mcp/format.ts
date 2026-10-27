@@ -429,6 +429,11 @@ export function explainEvalError(errorText: string): string {
 // the agent's context. 250 rows of a large JSON column used to be megabytes.
 export const MAX_CELL_CHARS = 2000;
 
+// The whole result's budget, in characters. 250 rows of 2000-character
+// cells still came to half a megabyte, more than an agent's context should
+// take from one call. Rows past it are dropped, and the result says so.
+export const MAX_RESULT_CHARS = 100000;
+
 function truncateCell(value: unknown): unknown {
   const text = typeof value === 'string' ? value : value !== null && typeof value === 'object' ? JSON.stringify(value) : null;
   if (text === null || text.length <= MAX_CELL_CHARS) return value;
@@ -474,9 +479,28 @@ function formatRowsOnly(response: EvalResponse): string {
     if (hiddenNames.has(String(name)) || /^__.+__.+$/.test(String(name))) hidden.add(i);
   });
   const visible = (row: unknown[]) => row.filter((_, i) => !hidden.has(i)).map(truncateCell);
-  const lines = [header, ...data].map(row => JSON.stringify(visible(row)));
+  const headerLine = JSON.stringify(visible(header ?? []));
+  const lines: string[] = [];
+  let used = headerLine.length;
+  for (const row of data) {
+    const line = JSON.stringify(visible(row));
+    if (used + line.length + 1 > MAX_RESULT_CHARS) break;
+    lines.push(line);
+    used += line.length + 1;
+  }
 
-  return [`${data.length} row${data.length === 1 ? '' : 's'}`, '', ...lines].join('\n');
+  const count = `${data.length} row${data.length === 1 ? '' : 's'}`;
+  if (lines.length === data.length) return [count, '', headerLine, ...lines].join('\n');
+  const omitted = data.length - lines.length;
+  return [
+    `${count}, showing the first ${lines.length}`,
+    '',
+    headerLine,
+    ...lines,
+    '',
+    `${omitted} more row${omitted === 1 ? '' : 's'} not shown: the result is larger than ${MAX_RESULT_CHARS} ` +
+      'characters. Select only the columns you need with select:, or narrow the rows with where: or limit:.',
+  ].join('\n');
 }
 
 /**
@@ -513,7 +537,7 @@ export type RevealStatusResponse = {
   request?: {
     id: string;
     expression: string;
-    status: 'pending' | 'revealed' | 'declined';
+    status: 'pending' | 'revealed' | 'declined' | 'expired';
     outcome?: RevealOutcome;
   };
   error?: string;
@@ -572,6 +596,13 @@ export function formatRevealStatus(response: RevealStatusResponse): string {
 
   if (request.status === 'pending') {
     return 'Still pending after waiting -- the user has not responded yet. Call check_reveal again to keep waiting.';
+  }
+
+  if (request.status === 'expired') {
+    return (
+      "The user didn't answer this reveal request within 10 minutes, so it expired. Carry on without it, or " +
+      'call request_reveal again if you still need it.'
+    );
   }
 
   if (request.status === 'declined') {

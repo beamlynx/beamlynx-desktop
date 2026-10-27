@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Changed
+- **An agent's query may run for 60 seconds, up from 30.** A query that takes longer is stopped in its tab too, and the agent is told it was cancelled. Cancelling a tool call in the agent stops its query as well.
+- **Agent results are capped at about 100,000 characters.** Rows past the cap are left out, and the result says how many, and how to narrow the query.
+
+### Fixed
+- **Agent calls no longer hang while the window is loading or reloading.** The app now answers right away that it is still starting and to try again in a few seconds. The page tells the app when it is ready, through the new `mcp:bridge-ready` IPC message.
+- **Policy proposals and reveal requests come back after the window reloads.** Their cards had disappeared while the agent kept waiting.
+- **An agent that starts Beamlynx waits until its window is ready,** up to 60 seconds, not just until it accepts connections. The first call used to land on the loading screen.
+- **Reveal requests expire after 10 minutes, like policy proposals.** Unanswered ones used to block the connection from asking again until the app restarted. The card hears about it through the new `mcp:reveal-request-expired` IPC message.
+- **Cancelling `propose_policy_change` withdraws the proposal,** so its card stops offering it.
+- **Notes for the agent can no longer slow down a tool call.** The app gets 2 seconds to hand them over, and the call goes on without them after that.
+- **`list_connections` and `check_reveal` start Beamlynx when it isn't running,** like the other tools. When it can't be reached, the agent is told it isn't running or is still starting.
+- **An agent's connection to Beamlynx closes when the agent quits.** It used to stay behind as a background process.
+- **Accented letters and other non-ASCII text in agent results are no longer garbled.** A character split between two network chunks came out as "�".
+- **A damaged `connections.json` is never written over.** It used to read as empty, and the next save then removed every saved connection. The app now shows no connections and refuses to change anything until the file is fixed or moved.
+- **`check_reveal` returns revealed rows only while the connection is still open to agents.**
 
 ## [0.25.0] - 2026-10-26
 ### Added

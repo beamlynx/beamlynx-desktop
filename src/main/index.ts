@@ -9,6 +9,7 @@ import { registerCredentialIpc } from './credential-store';
 import { useSeparateDevDataDir } from './data-dir';
 import { startControlPlaneServer } from './mcp/control-plane-server';
 import { registerInvestigationIpc } from './mcp/investigations';
+import { watchBridge } from './mcp/render-bridge';
 import { registerRevealIpc } from './mcp/reveal-requests';
 import { startMcpRelay } from './mcp/stdio-relay';
 import { CONTROL_PLANE_PORT, describePortInUse, isPortInUse, PINE_PORT } from './ports';
@@ -219,6 +220,10 @@ function createWindow(): void {
       ],
     },
   });
+
+  // Whether the page can take agents' work (see render-bridge.ts). Not until
+  // beamlynx-ui says so, and not again after a reload until it says so again.
+  watchBridge(mainWindow);
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
