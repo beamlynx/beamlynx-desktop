@@ -198,14 +198,14 @@ export const CHANGELOG: ChangelogVersion[] = [
     ],
     fixed: [
       {
-        title: "A `group:` with no keys reads correctly on the canvas",
+        title: "A group: with no keys reads correctly on the canvas",
         description:
-          "It shows as `group with count as n`.",
+          "It shows as group with count as n.",
       },
       {
         title: "Sort and filter chips keep the newer Pine you wrote",
         description:
-          "Flipping a sort keeps `nulls first` or `nulls last`. Editing a filter keeps a function on its left, like `jsonb_typeof(data) = 'array'`.",
+          "Flipping a sort keeps nulls first or nulls last. Editing a filter keeps a function on its left, like jsonb_typeof(data) = 'array'.",
       },
       {
         title: "An agent's SQL that didn't convert to Pine no longer appears in the Pine editor",
@@ -278,7 +278,7 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: "Except rules keep a column hidden from agents, even when an Allow rule matches it",
         description:
-          "Every policy starts with exceptions for names containing `token`, `password` and `secret`. You'll find both lists in Settings → Access Policy.",
+          "Every policy starts with exceptions for names containing token, password and secret. You'll find both lists in Settings → Access Policy.",
       },
       {
         title: "Hide a column from agents, or show it, from the results",
@@ -302,7 +302,7 @@ export const CHANGELOG: ChangelogVersion[] = [
           "Most of the new features below need it. Connecting to an older server shows the upgrade-required screen.",
       },
       {
-        title: "Editing a cell finds its row by the table's primary key, not by a column called `id`",
+        title: "Editing a cell finds its row by the table's primary key, not by a column called id",
         description:
           "Tables keyed on another column, or on several, can now be edited. Tables and views without a primary key can't be edited, and the grid says why. Primary key columns themselves can't be edited.",
       },
@@ -321,42 +321,42 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: "Open a checkpoint or a named result to see what's inside it",
         description:
-          "An arrow on the node, or `e`, opens a dashed box above it that holds the tables it is made from. Those tables work as usual.",
+          "An arrow on the node, or e, opens a dashed box above it that holds the tables it is made from. Those tables work as usual.",
       },
       {
         title: "Several query blocks on the canvas",
         description:
-          "A block that ends in `|= name` is drawn as a nested query of the block that uses `name`. A strip at the top of the canvas shows how the blocks feed each other. Click a chip to open that block.",
+          "A block that ends in |= name is drawn as a nested query of the block that uses name. A strip at the top of the canvas shows how the blocks feed each other. Click a chip to open that block.",
       },
       {
         title: "A \"per\" field in the limit editor",
         description:
-          "It keeps the first N rows of each group, like `limit: 3 per department_id`.",
+          "It keeps the first N rows of each group, like limit: 3 per department_id.",
       },
       {
         title: "Variables in the filter editor",
         description:
-          "Type `$name` as a value to use a variable, and pick `in` or `not in` to compare with a list. make variable turns a value like `'shipped'` into a variable, with its value in the values block.",
+          "Type $name as a value to use a variable, and pick in or not in to compare with a list. make variable turns a value like 'shipped' into a variable, with its value in the values block.",
       },
       {
         title: "The canvas draws a query in stages",
         description:
-          "Each `limit:` or `group:` ends a stage, and the steps after it work on that result. Each checkpoint is a node you can select from, filter and join, like a table.",
+          "Each limit: or group: ends a stage, and the steps after it work on that result. Each checkpoint is a node you can select from, filter and join, like a table.",
       },
       {
         title: "Set the limit from any table on the canvas",
         description:
-          "Use `limit:` in a table's \"+\" menu, or press `l`.",
+          "Use limit: in a table's \"+\" menu, or press l.",
       },
       {
         title: "AI agents can send SQL, which runs as Pine",
         description:
-          "The desktop app's `run_sql_as_pine` tool converts the agent's SQL to Pine and runs only the Pine, under the same rules as any agent query. SQL that doesn't convert runs nothing, and the agent is told why. Needs the matching beamlynx-desktop release.",
+          "The desktop app's run_sql_as_pine tool converts the agent's SQL to Pine and runs only the Pine, under the same rules as any agent query. SQL that doesn't convert runs nothing, and the agent is told why. Needs the matching beamlynx-desktop release.",
       },
       {
         title: "The SQL panel completes table and column names",
         description:
-          "Press Tab or Ctrl/Cmd-Space to open the hints, as in the Pine panel. After `JOIN`, it suggests the tables that join to yours, with the `ON` clause written out.",
+          "Press Tab or Ctrl/Cmd-Space to open the hints, as in the Pine panel. After JOIN, it suggests the tables that join to yours, with the ON clause written out.",
       },
       {
         title: "SQL becomes Pine as you type",
@@ -366,7 +366,7 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: "JSON paths on the canvas",
         description:
-          "A key inside a JSON column, like `data.address.city`, shows by that name on the select, filter, order and group chips.",
+          "A key inside a JSON column, like data.address.city, shows by that name on the select, filter, order and group chips.",
       },
       {
         title: "Edit a key inside a JSON column from the grid",
@@ -389,7 +389,7 @@ export const CHANGELOG: ChangelogVersion[] = [
           "Pick SQLite as the database type in Settings → Database Connections, then choose the file with Browse… or type its path.",
       },
       {
-        title: "On desktop, your preferences are kept in the app's data file, `beamlynx.db`",
+        title: "On desktop, your preferences are kept in the app's data file, beamlynx.db",
         description:
           "This covers theme, fonts, panel sizes, open tabs and the other settings. Your current settings are copied over the first time. Needs beamlynx-desktop 0.20.0 or later.",
       },
@@ -403,15 +403,15 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: "Deleting through a traversal removes rows in batches of 10 000",
         description:
-          "Pine accepts `limit:` only up to 10 000. The SQL script you can copy says to repeat a statement that has more rows.",
+          "Pine accepts limit: only up to 10 000. The SQL script you can copy says to repeat a statement that has more rows.",
       },
       {
-        title: "The canvas no longer makes up names for checkpoints, like `agg`",
+        title: "The canvas no longer makes up names for checkpoints, like agg",
         description:
-          "When it needs a name in the text, it uses the one Pine already gives, like `|= result_1`.",
+          "When it needs a name in the text, it uses the one Pine already gives, like |= result_1.",
       },
       {
-        title: "A `beamlynx://run` link opens its query in a tab but doesn't run it",
+        title: "A beamlynx://run link opens its query in a tab but doesn't run it",
         description:
           "A banner names the connection it would run on. Check both, then press Run. Any web page or message can carry such a link.",
       },
@@ -438,25 +438,25 @@ export const CHANGELOG: ChangelogVersion[] = [
           "Once a query had two checkpoints, it could land after the checkpoint instead.",
       },
       {
-        title: "Removing a query's only `limit:` or `group:` on the canvas no longer leaves a stray name, like `|= agg`",
+        title: "Removing a query's only limit: or group: on the canvas no longer leaves a stray name, like |= agg",
       },
       {
         title: "Copying results and CSV export hold only the columns shown in the grid",
         description:
-          "They used to include hidden key columns, such as `__c_0__id`.",
+          "They used to include hidden key columns, such as __c_0__id.",
       },
       {
-        title: "A column the query works out, like `created_at => month`, can no longer be edited",
+        title: "A column the query works out, like created_at => month, can no longer be edited",
         description:
-          "Saving it used to write the value into the stored column, such as `2024-01` into `created_at`.",
+          "Saving it used to write the value into the stored column, such as 2024-01 into created_at.",
       },
       {
-        title: "Tab right after an alias and a dot, as in `s: t.`, offers that table's columns",
+        title: "Tab right after an alias and a dot, as in s: t., offers that table's columns",
         description:
-          "Before, it offered nothing. Choosing a table after `public.` no longer repeats the schema.",
+          "Before, it offered nothing. Choosing a table after public. no longer repeats the schema.",
       },
       {
-        title: "Using a recipe (Ctrl+O) keeps your tab's own `$variables`",
+        title: "Using a recipe (Ctrl+O) keeps your tab's own $variables",
         description:
           "Before, the recipe's values replaced them and changed the tab's results.",
       },
@@ -481,14 +481,14 @@ export const CHANGELOG: ChangelogVersion[] = [
           "Resetting keeps your open tabs.",
       },
       {
-        title: "A Pine server with a version like `dev` connects",
+        title: "A Pine server with a version like dev connects",
         description:
           "It used to show \"No connection to Pine server\". The upgrade-required screen also clears once the server is upgraded, without a reload.",
       },
       {
         title: "Auto-run on the canvas no longer runs a query that changes data",
         description:
-          "Narrowing an `update!` with a filter chip used to run the update at once. Such a query now waits for Run.",
+          "Narrowing an update! with a filter chip used to run the update at once. Such a query now waits for Run.",
       },
       {
         title: "Saving a cell checks first that the row still exists",
@@ -496,7 +496,7 @@ export const CHANGELOG: ChangelogVersion[] = [
           "If it doesn't, the save is refused and says so.",
       },
       {
-        title: "A `?query=` share link with a `%`, like `like '%a%'`, opens",
+        title: "A ?query= share link with a %, like like '%a%', opens",
         description:
           "It used to be ignored.",
       },
@@ -513,7 +513,7 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: "The Inspect dialog says why an update failed, and shows JSON values as JSON",
         description:
-          "It used to show \"Update execution failed\" and `[object Object]`.",
+          "It used to show \"Update execution failed\" and [object Object].",
       },
     ],
     security: [
@@ -523,7 +523,7 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: "A reveal request can no longer change data",
         description:
-          "Before, an agent could send `user | delete!` as a reveal request, and the rows were deleted as soon as it arrived. The query now runs read-only, and one that would change data is declined.",
+          "Before, an agent could send user | delete! as a reveal request, and the rows were deleted as soon as it arrived. The query now runs read-only, and one that would change data is declined.",
       },
       {
         title: "Only Beamlynx can use the query server bundled with the desktop app",
@@ -533,7 +533,7 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: "CSV export and copy can't run a formula in your spreadsheet",
         description:
-          "A value starting with `=`, `+`, `-` or `@` gets an apostrophe in front.",
+          "A value starting with =, +, - or @ gets an apostrophe in front.",
       },
       {
         title: "Next.js and other libraries are updated past every published security advisory",
@@ -549,10 +549,10 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: "Needs pine-lang 0.48.0 or later (was 0.47.0)",
         description:
-          "Values blocks and named results after `in` need it. Connecting to an older server shows the upgrade-required screen.",
+          "Values blocks and named results after in need it. Connecting to an older server shows the upgrade-required screen.",
       },
       {
-        title: "Ctrl+S saves a recipe instead of downloading the tab as a `.pine` file",
+        title: "Ctrl+S saves a recipe instead of downloading the tab as a .pine file",
         description:
           "Nothing in Beamlynx opened those files. In the browser, which has no recipes, Ctrl+S does nothing.",
       },
@@ -561,18 +561,18 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: "Variables",
         description:
-          "Write `$name` where a value goes, and set it in a values block above the query, like `$company_name = 'Acme'`. On the canvas, a Variables list shows each variable and its value, and you can click a value to change it.",
+          "Write $name where a value goes, and set it in a values block above the query, like $company_name = 'Acme'. On the canvas, a Variables list shows each variable and its value, and you can click a value to change it.",
       },
       {
         title: "Use one query's result in another",
         description:
-          "A named result with one column can follow `in`, like `employee | where: id in acme_emps`.",
+          "A named result with one column can follow in, like employee | where: id in acme_emps.",
       },
       {
-        title: "A recipe keeps its `$variables` and their values",
+        title: "A recipe keeps its $variables and their values",
       },
       {
-        title: "An AI agent can pass values for `$variables` when it runs a query",
+        title: "An AI agent can pass values for $variables when it runs a query",
         description:
           "The agent's tab shows the values it used, so you can run it again.",
       },
@@ -606,7 +606,7 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: "A desktop dev build can run next to the installed app",
         description:
-          "It uses its own port, and its agent setup is named `beamlynx-dev`.",
+          "It uses its own port, and its agent setup is named beamlynx-dev.",
       },
     ],
     fixed: [
@@ -618,7 +618,7 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: "Keys pressed in a dialog no longer reach the canvas behind it",
         description:
-          "Pressing Backspace, Delete or `x` in the recipe picker or the command palette used to delete the selected item in your tab.",
+          "Pressing Backspace, Delete or x in the recipe picker or the command palette used to delete the selected item in your tab.",
       },
       {
         title: "New Database Connection in the command palette opens the add form again",
@@ -639,7 +639,7 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: "Needs pine-lang 0.47.0 or later (was 0.46.0)",
         description:
-          "Canvas filters that match any of several conditions use `or`, which pine-lang 0.47.0 added. Connecting to an older server shows the upgrade-required screen.",
+          "Canvas filters that match any of several conditions use or, which pine-lang 0.47.0 added. Connecting to an older server shows the upgrade-required screen.",
       },
     ],
     added: [
@@ -651,7 +651,7 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: "A value that can't be edited says why as soon as you try",
         description:
-          "That covers a row's `id`, a table whose `id` isn't in the result, and values the query works out.",
+          "That covers a row's id, a table whose id isn't in the result, and values the query works out.",
       },
       {
         title: "Move between result cells with the arrow keys, and copy a range",
@@ -661,7 +661,7 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: "A canvas filter can match any of several conditions",
         description:
-          "In the filter panel, + or adds another condition. It is written as one `where:` joined with `or`.",
+          "In the filter panel, + or adds another condition. It is written as one where: joined with or.",
       },
     ],
     changed: [
@@ -716,9 +716,9 @@ export const CHANGELOG: ChangelogVersion[] = [
     date: '2026-09-25',
     breaking: [
       {
-        title: "`delete:` is gone from Pine",
+        title: "delete: is gone from Pine",
         description:
-          "Use traverse instead (see below). A saved tab that ends in `delete:` has it removed when the tab opens.",
+          "Use traverse instead (see below). A saved tab that ends in delete: has it removed when the tab opens.",
       },
       {
         title: "Needs pine-lang 0.46.0 or later (was 0.45.0)",
@@ -730,14 +730,14 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: "Traverse from a table on the canvas",
         description:
-          "Press `+` on a table and pick traverse. It finds every table that points at it by foreign key, up to 25 levels deep. Count rows lists their row counts. Delete rows… builds a script that deletes them, deepest table first, which you can copy or run.",
+          "Press + on a table and pick traverse. It finds every table that points at it by foreign key, up to 25 levels deep. Count rows lists their row counts. Delete rows… builds a script that deletes them, deepest table first, which you can copy or run.",
       },
     ],
     fixed: [
       {
         title: "Joins on the canvas start from the latest table unless you pick another",
         description:
-          "Hovering over a table used to move focus to it, so the next `|` could join from the wrong table. To join from an older table, click it or move to it with the keyboard.",
+          "Hovering over a table used to move focus to it, so the next | could join from the wrong table. To join from an older table, click it or move to it with the keyboard.",
       },
       {
         title: "Ctrl+C on the canvas copies again",
@@ -759,7 +759,7 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: "AI agents can no longer change your data",
         description:
-          "The old check only refused `delete!`, and let `update!` through. The Pine server now refuses every write from the agent's tab, even if you press Run there yourself.",
+          "The old check only refused delete!, and let update! through. The Pine server now refuses every write from the agent's tab, even if you press Run there yourself.",
       },
       {
         title: "Agent queries need pine-lang 0.46.0 or later",
@@ -769,7 +769,7 @@ export const CHANGELOG: ChangelogVersion[] = [
     ],
     removed: [
       {
-        title: "The `BEAMLYNX_MCP_ALLOW_DELETE` environment variable",
+        title: "The BEAMLYNX_MCP_ALLOW_DELETE environment variable",
         description:
           "It turned off the check on agents' deletes for the whole machine.",
       },
@@ -782,12 +782,12 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: "Explain a tab with a comment at the top of its query",
         description:
-          "Start the query with a `/* ... */` comment or `--` lines, and the canvas shows it in its top-left corner. It's a place to note what you're looking for and why.",
+          "Start the query with a /* ... */ comment or -- lines, and the canvas shows it in its top-left corner. It's a place to note what you're looking for and why.",
       },
       {
         title: "Write a tab's comment from the canvas",
         description:
-          "Press `c`, click the comment button in the toolbar, or click an existing comment. Cmd/Ctrl+Enter or clicking away saves it, and Esc cancels.",
+          "Press c, click the comment button in the toolbar, or click an existing comment. Cmd/Ctrl+Enter or clicking away saves it, and Esc cancels.",
       },
       {
         title: "An AI agent explains each query it runs",
@@ -882,7 +882,7 @@ export const CHANGELOG: ChangelogVersion[] = [
         title: "Entering or leaving Zen mode keeps the canvas where you panned and zoomed",
       },
       {
-        title: "A blank line inside a `/* ... */` comment no longer breaks the query",
+        title: "A blank line inside a /* ... */ comment no longer breaks the query",
         description:
           "The comment used to be split in two.",
       },
