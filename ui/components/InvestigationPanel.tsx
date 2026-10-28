@@ -171,9 +171,9 @@ const ProposalStep = observer(
       setError('');
       try {
         const ok = await global.answerPolicyProposal(investigation.id, proposal.id, apply, comment.trim() || undefined);
-        if (!ok) setError("Couldn't save that to the access policy, so nothing changed.");
+        if (!ok) setError("Couldn't save that to the masking policy, so nothing changed.");
       } catch (e) {
-        setError(`Couldn't save that to the access policy, so nothing changed. ${messageOf(e)}`);
+        setError(`Couldn't save that to the masking policy, so nothing changed. ${messageOf(e)}`);
       } finally {
         setBusy(false);
       }
@@ -183,7 +183,7 @@ const ProposalStep = observer(
       setError('');
       try {
         const ok = await global.undoPolicyProposal(investigation.id, proposal.id);
-        if (!ok) setError("Couldn't put the access policy back.");
+        if (!ok) setError("Couldn't put the masking policy back.");
       } catch (e) {
         setError(messageOf(e));
       } finally {
@@ -279,7 +279,7 @@ const ProposalStep = observer(
         ) : (
           <>
             <Typography sx={{ fontSize: 12, color: dim, mb: 1, lineHeight: 1.4 }}>
-              Changes {connection ? `${connection.label}'s` : "this connection's"} access policy. No other connection
+              Changes {connection ? `${connection.label}'s` : "this connection's"} masking policy. No other connection
               changes.
             </Typography>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
@@ -340,7 +340,7 @@ const RevealStep = observer(
           </Typography>
         </Box>
         <Typography sx={{ fontSize: 12, color: dim, mb: 0.5, lineHeight: 1.4 }}>
-          Your access policy masks some of what this query returns.
+          Your masking policy masks some of what this query returns.
           {step.reason ? ` Its reason: “${step.reason}”` : ''}
         </Typography>
         <Box

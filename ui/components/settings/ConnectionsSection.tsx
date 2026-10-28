@@ -1072,7 +1072,7 @@ const ConnectionRow = observer(
                     <>
                       <b>Off:</b> agents can&apos;t use this connection.
                       <br />
-                      <b>Masked:</b> agents see the columns its access policy allows. The rest come back masked.
+                      <b>Masked:</b> agents see the columns its masking policy allows. The rest come back masked.
                       <br />
                       <b>Every column:</b> agents read every column, unmasked. The policy is kept for when you switch
                       back.
@@ -1095,19 +1095,12 @@ const ConnectionRow = observer(
                 }}
               >
                 {/* What each choice means is in the info icon after the
-                    heading; the line below says what is set, and the
-                    warning stays visible. */}
+                    heading. */}
                 <ToggleButton value="off">Off</ToggleButton>
                 <ToggleButton value="masked">Masked</ToggleButton>
                 <ToggleButton value="every-column">Every column</ToggleButton>
               </ToggleButtonGroup>
 
-              {access !== 'off' && (
-                <Typography variant="body2" sx={{ mt: 1, color: 'var(--canvas-text-dim)' }}>
-                  Whatever an agent reads goes to its AI provider. Masking lowers what it sees, but isn&apos;t a
-                  guarantee.
-                </Typography>
-              )}
 
               {access === 'masked' && ownPolicy && (
                 <Box sx={{ mt: 1 }}>
@@ -1186,7 +1179,7 @@ const ConnectionRow = observer(
               onClose={() => setAsking(null)}
             >
               <p>
-                {label} gets an access policy of its own. Agents see the columns its rules allow, and the rest come back
+                {label} gets a masking policy of its own. Agents see the columns its rules allow, and the rest come back
                 masked. Start it from a template:
               </p>
               {templateSelect}
@@ -1217,7 +1210,7 @@ const ConnectionRow = observer(
               onConfirm={deleteConnection}
               onClose={() => setConfirmingRemove(false)}
             >
-              <p>Its saved details and its access policy are deleted. This can&apos;t be undone.</p>
+              <p>Its saved details and its masking policy are deleted. This can&apos;t be undone.</p>
             </ConfirmDialog>
 
 

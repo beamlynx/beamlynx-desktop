@@ -11,6 +11,7 @@ import type { AccessPolicy, AccessPolicyModule, ColumnMatcher } from '../../stor
 import { useStores } from '../../store/store-container';
 import { describeMatcher } from '../../utils/accessPolicy';
 import ConfirmDialog from '../ConfirmDialog';
+import InfoHint from '../InfoHint';
 import ToggleRow from './ToggleRow';
 
 
@@ -267,9 +268,9 @@ export const PolicyRules = observer(({ policy, focusedRuleId }: { policy: Access
         setError('');
         return true;
       }
-      setError("Couldn't save that to the access policy, so nothing changed. It may have been changed elsewhere.");
+      setError("Couldn't save that to the masking policy, so nothing changed. It may have been changed elsewhere.");
     } catch (e) {
-      setError(`Couldn't save that to the access policy, so nothing changed. ${e instanceof Error ? e.message : String(e)}`);
+      setError(`Couldn't save that to the masking policy, so nothing changed. ${e instanceof Error ? e.message : String(e)}`);
     }
     // Show the policy as it is stored.
     void global.refreshAccessPolicies().catch(() => undefined);
@@ -392,26 +393,27 @@ const AccessPolicySection = () => {
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <Typography
-        variant="h6"
-        component="h2"
+      <Box
         sx={{
           flexShrink: 0,
-          color: 'var(--text-color)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0.75,
           pb: 1.5,
           mb: 2,
           borderBottom: '1px solid var(--border-color)',
         }}
       >
-        Policy templates
-      </Typography>
+        <Typography variant="h6" component="h2" sx={{ color: 'var(--text-color)' }}>
+          Masking templates
+        </Typography>
+        <InfoHint
+          text="Masked columns come back as xxxxx. Agents can still filter and join on them."
+        />
+      </Box>
 
       <Typography variant="body2" sx={{ flexShrink: 0, color: 'var(--canvas-text-dim)', mb: 2 }}>
-        Each connection has its own access policy, which decides which columns an agent can see there. A template is
-        where a connection&apos;s policy starts: attaching one under Database Connections copies its rules into the
-        connection. Changing a template doesn&apos;t change connections already made from it. Every column is hidden
-        unless an Allow rule matches it. Except rules take columns back out: a column they match stays hidden, even
-        when an Allow rule matches it.
+        Each connection starts from a copy of a template.
       </Typography>
 
       {/* The policies as a strip above the rules, not a column beside
