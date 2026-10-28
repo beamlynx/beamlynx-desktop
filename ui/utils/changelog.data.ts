@@ -23,6 +23,24 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.70.2',
+    date: '2026-10-28',
+    changed: [
+      {
+        title: "The sidebar no longer lists an agent's investigation under Agent until it has a name",
+        description:
+          "While there is only one, and the agent hasn't said its question, **Agent** opens it.",
+      },
+    ],
+    fixed: [
+      {
+        title: "The agent's question shows as soon as it says it",
+        description:
+          "This is in the sidebar and at the top of the timeline. It used to wait for the next step to appear.",
+      },
+    ],
+  },
+  {
     version: '0.70.1',
     date: '2026-10-28',
     changed: [
@@ -2756,4 +2774,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.70.1';
+export const LATEST_VERSION = '0.70.2';
