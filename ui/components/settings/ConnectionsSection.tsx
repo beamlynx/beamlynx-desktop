@@ -1095,18 +1095,12 @@ const ConnectionRow = observer(
                 }}
               >
                 {/* What each choice means is in the info icon after the
-                    heading; the line below says what is set, and the
-                    warning stays visible. */}
+                    heading. */}
                 <ToggleButton value="off">Off</ToggleButton>
                 <ToggleButton value="masked">Masked</ToggleButton>
                 <ToggleButton value="every-column">Every column</ToggleButton>
               </ToggleButtonGroup>
 
-              {access !== 'off' && (
-                <Typography variant="body2" sx={{ mt: 1, color: 'var(--canvas-text-dim)' }}>
-                  What agents read goes to their AI provider{access === 'masked' ? ', masked by this policy.' : '.'}
-                </Typography>
-              )}
 
               {access === 'masked' && ownPolicy && (
                 <Box sx={{ mt: 1 }}>
