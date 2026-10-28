@@ -362,7 +362,9 @@ export function formatTableMatches(query: string, response: BuildResponse): stri
 // completed/2026-09-19-mcp-pine-usability-feedback.md).
 const EVAL_ERROR_GUIDANCE: { pattern: RegExp; guidance: string }[] = [
   {
-    pattern: /is hidden by the access policy/,
+    // "is hidden by the access policy" is what pine-lang said before it
+    // called the policy a masking policy.
+    pattern: /is a masked column|is hidden by the access policy/,
     guidance:
       'If you need this column, read the connection\'s rules with get_access_policy, then propose the ' +
       'narrowest change that shows it with propose_policy_change. The user decides.',
