@@ -10,7 +10,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **An agent's investigation appears under Agent in the sidebar only once it has a name.** Until then, while there is only one investigation, clicking **Agent** opens it. (bundled beamlynx-ui 0.70.2)
 
 ### Fixed
-- **The agent's question shows as soon as the agent states it.** You'll see it in the sidebar and at the top of the timeline. (bundled beamlynx-ui 0.70.2)
+- **The agent's question shows as soon as the agent states it.** You'll see it in the sidebar and at the top of the timeline. Before, it only appeared with the agent's next step. (bundled beamlynx-ui 0.70.2)
 
 ## [0.25.1] - 2026-10-28
 ### Changed
@@ -29,7 +29,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **An agent that starts Beamlynx waits until its window is ready, for up to 60 seconds.** Its first call used to land on the loading screen.
 - **An agent's request to see hidden values expires after 10 minutes without an answer.** Before, an unanswered request stopped agents asking again on that connection until you restarted Beamlynx.
 - **When an agent cancels its `propose_policy_change` call, the proposal is withdrawn.** Its card no longer offers to apply it.
-- **Notes you write for the agent can no longer slow down its calls.** If they take more than 2 seconds to hand over, the call goes on without them.
+- **Messages Beamlynx adds to an agent's call can no longer slow it down.** If they take more than 2 seconds, the call goes on without them.
 - **`list_connections` and `check_reveal` start Beamlynx when it isn't running, like the other agent tools.** If Beamlynx can't be reached, the agent is told it isn't running or is still starting.
 - **An agent's connection to Beamlynx closes when the agent quits.** It used to stay behind as a background process.
 - **Accented letters and other non-ASCII text in agent results are no longer garbled.** Some characters used to come out as "�".
