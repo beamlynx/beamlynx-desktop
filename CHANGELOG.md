@@ -4,12 +4,19 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.25.1] - 2026-10-28
 ### Changed
 - **Columns ending in `_id` are no longer shown to agents just for their name.** Integer and uuid ids are still shown by type, and foreign keys by the foreign-key rule, but a text column like `national_id` is now hidden. Existing policies have the built-in `_id` rule switched off once; switch it back on in the policy to undo.
 - **An agent's query may run for 60 seconds, up from 30.** A query that takes longer, or whose tool call the agent cancels, is stopped in its tab too.
 - **Agent results are capped at about 100,000 characters.** Rows past the cap are left out, and the result says how many, and how to narrow the query.
+- **The dialog for opening a connection in a tab with a query shows two choices:** open it in a new tab, the default, or switch this tab. (bundled beamlynx-ui 0.70.1)
+- **Connecting another agent is a plug icon in the timeline's header.** (bundled beamlynx-ui 0.70.1)
+- **Agent queries that join on a hidden column are refused.** On MySQL and SQLite, a column name in another case is judged as the real column. (bundled pine-lang 0.51.1)
 
 ### Fixed
+- **Applying an agent's proposed policy change no longer gets stuck.** It saves, or puts the policy back and says why. Undo never erases a change made after Apply. (bundled beamlynx-ui 0.70.1)
+- **An agent's queries in one investigation run one at a time,** so each step shows its own result. (bundled beamlynx-ui 0.70.1)
 - **Agent calls no longer hang while the window is loading or reloading.** The app answers right away to try again in a few seconds, until the page says it is ready with the new `mcp:bridge-ready` IPC message.
 - **Policy proposals and reveal requests come back after the window reloads.** Their cards had disappeared while the agent kept waiting.
 - **An agent that starts Beamlynx waits until its window is ready,** up to 60 seconds, not just until it accepts connections. The first call used to land on the loading screen.
