@@ -23,6 +23,67 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.70.1',
+    date: '2026-10-28',
+    changed: [
+      {
+        title: "The dialog for opening a connection in a tab with a query shows two choices",
+        description:
+          "Each says what happens: **Open in a new tab** keeps this tab as it is, and **Switch this tab** warns that the query may not work there. The new tab is the default.",
+      },
+      {
+        title: "Connecting another agent is a plug icon in the timeline's header",
+        description:
+          "It sits next to the arrow that hides the timeline, and opens Settings at the agent setup.",
+      },
+      {
+        title: "A column rule without a schema reads \"in every schema\"",
+        description:
+          "This is the wording in Settings and on the agent's cards.",
+      },
+    ],
+    fixed: [
+      {
+        title: "Applying an agent's proposed policy change saves it, or puts the policy back and says why",
+        description:
+          "The card also says when the agent had stopped waiting for the answer.",
+      },
+      {
+        title: "Undo on an applied proposal never erases a later change",
+        description:
+          "Once the policy has changed since Apply, Undo is refused and points to Settings.",
+      },
+      {
+        title: "An agent's queries in one investigation run one at a time, and each step shows its own result",
+        description:
+          "A query that runs too long is stopped, and a lost connection is made again once.",
+      },
+      {
+        title: "The timeline no longer looks stuck",
+        description:
+          "A call whose end never arrived, a reveal request that runs over 60 s, and a request the agent stopped waiting on each end, and each investigation says what its own agent is doing.",
+      },
+      {
+        title: "Buttons in the timeline and in Settings show an error when they fail",
+        description:
+          "Settings reads the policies again each time it opens, and **Show to agents** puts the Except rule back if it fails.",
+      },
+      {
+        title: "An agent's query is refused when its connection's policy can't be found",
+      },
+      {
+        title: "Long agent sessions use less memory",
+        description:
+          "A step keeps at most 500 rows to show again, older steps fewer, and finished investigations past the tenth are dropped.",
+      },
+      {
+        title: "The plug icon always shows the agent setup",
+        description:
+          "When Settings is already open there, the setup flashes.",
+      },
+    ],
+  },
+  {
     version: '0.70.0',
     date: '2026-10-26',
     changed: [
@@ -2695,4 +2756,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.70.0';
+export const LATEST_VERSION = '0.70.1';

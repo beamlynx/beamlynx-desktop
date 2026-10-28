@@ -4,10 +4,12 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.70.1] - 2026-10-28
 ### Changed
 - **The dialog for opening a connection in a tab with a query shows two choices.** Each says what happens: **Open in a new tab** keeps this tab as it is, and **Switch this tab** warns that the query may not work there. The new tab is the default.
-- **Connecting another agent is a plug icon in the timeline's header,** next to the arrow that hides it. It opens Settings at the agent setup.
-- **A column rule without a schema reads "in every schema",** in Settings and on the agent's cards.
+- **Connecting another agent is a plug icon in the timeline's header.** It sits next to the arrow that hides the timeline, and opens Settings at the agent setup.
+- **A column rule without a schema reads "in every schema".** This is the wording in Settings and on the agent's cards.
 
 ### Fixed
 - **Applying an agent's proposed policy change saves it, or puts the policy back and says why.** The card also says when the agent had stopped waiting for the answer.
@@ -17,7 +19,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **Buttons in the timeline and in Settings show an error when they fail.** Settings reads the policies again each time it opens, and **Show to agents** puts the Except rule back if it fails.
 - **An agent's query is refused when its connection's policy can't be found.**
 - **Long agent sessions use less memory.** A step keeps at most 500 rows to show again, older steps fewer, and finished investigations past the tenth are dropped.
-- **Connect another agent always shows the setup.** When it is already open, the panel flashes.
+- **The plug icon always shows the agent setup.** When Settings is already open there, the setup flashes.
 
 ## [0.70.0] - 2026-10-26
 ### Changed
