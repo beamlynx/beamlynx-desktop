@@ -158,7 +158,7 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: "Agent access is set per connection: Off, Masked or Every column",
         description:
-          "This replaces the MCP switch. Masked hides columns as the connection's policy says. Every column lets agents read everything, after asking you to confirm.",
+          "This replaces the MCP switch. Masked hides columns as the connection's policy says. Every column lets agents read everything, after asking you to confirm. While agents have access, Settings reminds you that what they read goes to your AI provider, and that masking isn't a guarantee.",
       },
       {
         title: "The connection list is clearer",

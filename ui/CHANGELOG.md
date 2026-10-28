@@ -45,7 +45,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ### Changed
 - **Each connection has its own access policy.** Changing it never changes another connection. Settings → Access Policy is now **Policy templates**, which a connection's policy starts from.
-- **Agent access is set per connection: Off, Masked or Every column.** This replaces the MCP switch. **Masked** hides columns as the connection's policy says. **Every column** lets agents read everything, after asking you to confirm.
+- **Agent access is set per connection: Off, Masked or Every column.** This replaces the MCP switch. **Masked** hides columns as the connection's policy says. **Every column** lets agents read everything, after asking you to confirm. While agents have access, Settings reminds you that what they read goes to your AI provider, and that masking isn't a guarantee.
 - **The connection list is clearer.** A zap marks the tab's connection, and a robot shows whether agents can query it. Click a row to open its settings, and **Connect** to switch to it.
 - **Anything that weakens protection or deletes something asks in a dialog.** "Click again to delete" is gone.
 - **Agents have one item in the sidebar.** On desktop, the robot opens the agent setup until an agent has worked here, then the agent's work. The MCP section left Settings.
