@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Changed
+- **The sidebar no longer lists an agent's investigation under Agent until it has a name.** While there is only one, and the agent hasn't said its question, **Agent** opens it.
+
+### Fixed
+- **The agent's question shows as soon as it says it,** in the sidebar and at the top of the timeline. It used to wait for the next step to appear.
 
 ## [0.70.1] - 2026-10-28
 ### Changed

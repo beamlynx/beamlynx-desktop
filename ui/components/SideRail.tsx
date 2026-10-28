@@ -185,6 +185,9 @@ const SideRail = observer(({ hasUnreadUpdates, onOpenChangelog }: { hasUnreadUpd
   // One item for agents: with no investigation yet it opens the setup, and
   // after that the agent's work, which links to the setup again.
   const setupOpen = global.showSettings && global.settingsSection === 'mcp';
+  // A lone investigation the agent hasn't named yet would only repeat
+  // "Agent", which already opens it, so it isn't listed.
+  const listInvestigations = !(global.investigations.length === 1 && !global.investigations[0].question);
   const openAgents = () => {
     if (global.investigations.length > 0) global.focusAgentTab();
     else global.setShowSettings(!setupOpen, setupOpen ? undefined : 'mcp');
@@ -275,10 +278,11 @@ const SideRail = observer(({ hasUnreadUpdates, onOpenChangelog }: { hasUnreadUpd
             ariaLabel={waiting > 0 ? `Agent (${waiting} waiting for your answer)` : 'Agent'}
             tooltip={agentStatus}
             expanded={expanded}
-            active={(onAgentTab && !expanded) || setupOpen}
+            active={(onAgentTab && (!expanded || !listInvestigations)) || setupOpen}
             onClick={openAgents}
           />
           {expanded &&
+            listInvestigations &&
             global.investigations.map(investigation => (
               <InvestigationItem key={investigation.id} investigation={investigation} />
             ))}
