@@ -6,6 +6,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ## [Unreleased]
 ### Changed
 - **The dialog for opening a connection in a tab with a query shows two choices.** Each says what happens: **Open in a new tab** keeps this tab as it is, and **Switch this tab** warns that the query may not work there. The new tab is the default.
+- **Connecting another agent is a plug icon in the timeline's header,** next to the arrow that hides it. It opens Settings at the agent setup.
 - **A column rule without a schema reads "in every schema",** in Settings and on the agent's cards.
 
 ### Fixed
