@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Changed
+- **Agents can filter, sort and join on a masked column again.** The masking policy hides what comes back, not what an agent asks. An agent that already knows an email can find the rows that hold it, but still sees `xxxxx` in place of the column. Agents are told this in their instructions. (bundled pine-lang, unreleased)
 
 ## [0.25.2] - 2026-10-28
 ### Changed

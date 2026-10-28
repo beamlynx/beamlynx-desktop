@@ -125,9 +125,10 @@ The cast goes at the end of the condition and applies to the column, not the val
 `::text` and `::uuid` exist. Reach for this when a column's stored type does not match the
 literal you are comparing it against.
 
-## On a connection with an access policy
+## On a connection with a masking policy
 
-A column the policy hides comes back as `xxxxx`. It also can't be used in `where:`, `order:` or
-`group:`: such a query is refused, since filtering on a hidden value would reveal it through the
-rows that match. Filter on a column the policy shows, which is usually the `id`. A table the connection
-hasn't indexed yet is refused too, until the owner refreshes its schema.
+A column the policy masks comes back as `xxxxx`. The policy masks what comes back, not what you
+ask, so a masked column still works in `where:`, `order:` and joins with a value you supply:
+`where: email = 'ann@example.com'` finds the rows that hold that email. It can't be a `group:` key
+or be cast with `::uuid`, since each would return its value. A table the connection hasn't
+indexed yet is refused, until the owner refreshes its schema.

@@ -114,7 +114,8 @@ column.
 - **No `=> month` on a key.** Its value is text, not a date.
 - **A path only goes into a JSON column.** `name.first` on a text column is an error.
 
-## On a connection with an access policy
+## On a connection with a masking policy
 
-A JSON column the policy hides hides every key inside it. Selecting a key returns `xxxxx`, and
-filtering, sorting or grouping on one is refused.
+A JSON column the policy masks masks every key inside it. Selecting a key returns `xxxxx`.
+Filtering, sorting and joining on a key still work, with a value you supply. Grouping on one is
+refused, since the group's key would return the value.

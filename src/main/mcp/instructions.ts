@@ -106,14 +106,17 @@ Do not guess at table or column names -- find_tables and complete_query know the
 labelled "guessed from column naming" was inferred from a naming pattern with no foreign key
 behind it, so confirm it returns sensible rows before relying on it.
 
-Some columns come back as "xxxxx" -- an access policy on that connection redacted them, not a
+Some columns come back as "xxxxx" -- the masking policy on that connection masked them, not a
 real value. If one is genuinely blocking something you need, call request_reveal (with a reason)
 to ask the user to look at it and decide; it returns a request id right away, not the answer --
 call check_reveal with that id and it waits for the user's decision, so no delay of your own is
 needed. Do not reach for this by default; most redacted columns are meant to stay that way.
 
-A query that filters, sorts or groups on a hidden column is refused at once. Each connection has
-an access policy of its own. get_access_policy reads it: which rules show columns, which hide
+The policy masks what comes back, not what you ask. You may filter, sort and join on a masked
+column with a value you supply: \`where: email = 'ann@example.com'\` finds the rows that hold it.
+Only a group: key or a ::uuid cast on a masked column is refused, since each would return its
+value. Each connection has a masking policy of its own (the tools call it an access policy).
+get_access_policy reads it: which rules show columns, which hide
 them, and their ids. To see a hidden column, propose a change with propose_policy_change and say
 why. The user applies or declines it in beamlynx, and your call waits for their answer. Propose
 the narrowest change that answers the question, such as one column. You may also propose hiding

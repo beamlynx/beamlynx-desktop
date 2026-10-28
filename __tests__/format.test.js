@@ -587,11 +587,13 @@ test('SQL sent as an expression is pointed at run_sql_as_pine', () => {
   assert.match(out, /To run SQL, use run_sql_as_pine/);
 });
 
-test('a query refused for a hidden column points the agent at the policy tools', () => {
-  const text = formatRows({
-    error: "`a_0.type` is hidden by the access policy, so it can't be used in where:, order:, group: or per.",
+for (const error of [
+  "`a_0.type` is a masked column, so it can't be a `group:` key: the key is a column of the result.",
+  "`a_0.type` is hidden by the access policy, so it can't be used in where:, order:, group: or per.",
+]) {
+  test(`a query refused for a masked column points the agent at the policy tools: ${error}`, () => {
+    const text = formatRows({ error });
+    assert.match(text, /get_access_policy/);
+    assert.match(text, /propose_policy_change/);
   });
-  assert.match(text, /hidden by the access policy/);
-  assert.match(text, /get_access_policy/);
-  assert.match(text, /propose_policy_change/);
-});
+}
