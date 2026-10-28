@@ -1,5 +1,5 @@
 {
-  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang unchanged at its tagged 0.51.0; beamlynx-ui bumped to its tagged 0.70.0 for sign-in at each launch, Account at the bottom of the sidebar and opening a connection in a new tab. beamlynx-ui 0.70.0 still needs pine-lang 0.51 (its RequiredVersion).",
-  "pineLangRef": "0.51.0",
-  "beamlynxUiRef": "0.70.0"
+  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang bumped to its tagged 0.51.1 for access policy checks on joins and column names; beamlynx-ui bumped to its tagged 0.70.1, which sends mcp:bridge-ready (this app answers agents 503 without it) and fixes Apply on agent proposals. beamlynx-ui 0.70.1 still needs pine-lang 0.51 (its RequiredVersion).",
+  "pineLangRef": "0.51.1",
+  "beamlynxUiRef": "0.70.1"
 }
