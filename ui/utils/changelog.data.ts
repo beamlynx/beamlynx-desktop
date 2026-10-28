@@ -23,6 +23,24 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.71.0',
+    date: '2026-10-28',
+    added: [
+      {
+        title: 'The results show how long the query took',
+        description:
+          'The time, in milliseconds, sits next to the row count. It counts from pressing Run to the rows arriving.',
+      },
+    ],
+    changed: [
+      {
+        title: 'Access policies are now called masking policies',
+        description:
+          'The info icon next to Settings → Masking templates explains what masking does. A masked column comes back as xxxxx. An agent can still filter, sort and join on it with a value it already has, such as an email it was given.',
+      },
+    ],
+  },
+  {
     version: '0.70.2',
     date: '2026-10-28',
     changed: [
@@ -2687,4 +2705,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.70.2';
+export const LATEST_VERSION = '0.71.0';
