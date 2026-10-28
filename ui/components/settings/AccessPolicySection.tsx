@@ -414,8 +414,6 @@ const AccessPolicySection = () => {
               <br />
               <b>Still works:</b> agents can filter, sort and join on it with a value they already have, like an email
               they were given.
-              <br />
-              <b>Not a vault:</b> an agent could narrow a value down one query at a time. Every query shows in beamlynx.
             </>
           }
         />
