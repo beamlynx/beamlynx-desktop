@@ -7,554 +7,543 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [0.70.2] - 2026-10-28
 ### Changed
-- **The sidebar no longer lists an agent's investigation under Agent until it has a name.** While there is only one, and the agent hasn't said its question, **Agent** opens it.
+- **The sidebar lists an agent's investigation under Agent only once it has a name.** Until then, if it's the only one, clicking **Agent** opens it.
 
 ### Fixed
-- **The agent's question shows as soon as it says it.** This is in the sidebar and at the top of the timeline. It used to wait for the next step to appear.
+- **The agent's question shows as soon as the agent says it.** It appears in the sidebar and at the top of the timeline. Before, it waited for the agent's next step.
 
 ## [0.70.1] - 2026-10-28
 ### Changed
-- **The dialog for opening a connection in a tab with a query shows two choices.** Each says what happens: **Open in a new tab** keeps this tab as it is, and **Switch this tab** warns that the query may not work there. The new tab is the default.
-- **Connecting another agent is a plug icon in the timeline's header.** It sits next to the arrow that hides the timeline, and opens Settings at the agent setup.
-- **A column rule without a schema reads "in every schema".** This is the wording in Settings and on the agent's cards.
+- **Opening a connection in a tab that has a query offers two clearly labelled choices.** **Open in a new tab** leaves this tab as it is, and is the default. **Switch this tab** warns that the query may not work on the other database.
+- **To connect another agent, click the plug icon in the timeline's header.** It sits next to the arrow that hides the timeline, and opens the agent setup in Settings.
+- **Access policy rules for a column in any schema say "in every schema".** You'll see this in Settings and on the cards where an agent proposes a change.
 
 ### Fixed
-- **Applying an agent's proposed policy change saves it, or puts the policy back and says why.** The card also says when the agent had stopped waiting for the answer.
-- **Undo on an applied proposal never erases a later change.** Once the policy has changed since Apply, Undo is refused and points to Settings.
-- **An agent's queries in one investigation run one at a time, and each step shows its own result.** A query that runs too long is stopped, and a lost connection is made again once.
-- **The timeline no longer looks stuck.** A call whose end never arrived, a reveal request that runs over 60 s, and a request the agent stopped waiting on each end, and each investigation says what its own agent is doing.
-- **Buttons in the timeline and in Settings show an error when they fail.** Settings reads the policies again each time it opens, and **Show to agents** puts the Except rule back if it fails.
-- **An agent's query is refused when its connection's policy can't be found.**
-- **Long agent sessions use less memory.** A step keeps at most 500 rows to show again, older steps fewer, and finished investigations past the tenth are dropped.
-- **The plug icon always shows the agent setup.** When Settings is already open there, the setup flashes.
+- **Applying an agent's proposed policy change works, or says why it didn't.** Before, Apply could fail silently and leave the card stuck. If saving fails, the policy goes back to how it was, and the card says when the agent had already stopped waiting.
+- **Undo on an applied proposal no longer erases changes made after it.** If the policy changed since you clicked **Apply**, Undo is refused and points you to Settings.
+- **An agent's queries run one at a time, and each step in the timeline shows its own result.** Before, queries sent together could mix up each other's columns and errors. A query that runs too long is stopped.
+- **The agent's timeline no longer shows "working" forever.** Steps that will never finish are shown as ended, including a reveal preview that runs longer than 60 seconds. Each investigation shows what its own agent is doing.
+- **Buttons in the timeline and in Settings show an error when they fail.** They used to stay disabled. If **Show to agents** fails, the rules go back to how they were.
+- **An agent's query is refused when its connection's access policy can't be found.** Before, it ran without hiding anything.
+- **Long agent sessions use less memory.** Each step keeps at most 500 rows to show again, and only the ten most recent finished investigations are kept.
+- **The plug icon always takes you to the agent setup.** If Settings is already open there, the setup flashes so you can see it.
 
 ## [0.70.0] - 2026-10-26
 ### Changed
 - **Account is at the bottom of the sidebar.** It shows your initials once you sign in, and a dot until then. The settings at the top are about the app.
-- **Picking a connection while the tab has a query offers a new tab.** **Open in new tab** is the default, and leaves this tab's query as it is. **Switch this tab** still switches it. Cancel, Escape or a click outside does neither.
-- **The sign-in screen comes back at every launch until you sign in.** Only **Skip for now** closes it, until the next launch: a click outside it or Escape does nothing. The Skip link is smaller.
+- **Picking a connection while the tab has a query offers to open it in a new tab.** **Open in new tab** is the default, and leaves this tab's query as it is. **Switch this tab** switches it, as before.
+- **The sign-in screen comes back at every launch until you sign in.** Only **Skip for now** closes it, until the next launch. Clicking outside it or pressing Escape does nothing.
 
 ## [0.69.0] - 2026-10-26
 ### Breaking
-- Needs pine-lang 0.51.0 and the matching beamlynx-desktop release.
+- **Needs pine-lang 0.51.0 and the matching beamlynx-desktop release.**
 
 ### Added
-- **Sign in once, or skip.** On desktop, a first-run screen offers sign-in with GitHub, so we know who uses Beamlynx. Skip is final: the screen never comes back on its own. It waits for a launch with an internet connection. **Settings → Account** shows who is signed in, signs out, or signs in later. Both link to the privacy policy and the terms. Needs a beamlynx-desktop with sign-in; older ones show nothing new.
-- **Anonymous usage stats, and a switch for them.** The first-run screen says that Beamlynx sends anonymous usage stats, before anything is sent. The switch to turn them off is in **Settings → Account**. Each query run is counted as a user or agent run, in Pine or SQL, and nothing else about it.
-- **Agents can propose access policy changes.** A proposal is a card in the agent's timeline that lists each change in plain words. Loosening an Except rule is marked in the warning colour. Nothing changes until you click **Apply**. **Decline…** sends the agent your reason, and **Undo** puts the rules back. This replaces the Allow card.
+- **Sign in to Beamlynx with GitHub, or skip.** On desktop, a first-run screen asks you to sign in, so we know who uses Beamlynx. Skipping is final, and you can sign in or out later in **Settings → Account**.
+- **Anonymous usage stats, with a switch to turn them off.** The first-run screen says so before anything is sent, and the switch is in **Settings → Account**. Each query run is counted as yours or an agent's, in Pine or SQL, and nothing else about it is sent.
+- **Agents can propose changes to an access policy.** The proposal is a card in the agent's timeline that lists each change in plain words. Nothing changes until you click **Apply**, and **Undo** puts the rules back. This replaces the Allow card.
 
 ### Changed
-- **Each connection has its own access policy.** Changing it never changes another connection, so the choice to copy a shared policy is gone. Settings → Access Policy is now **Policy templates**: a template is where a connection's policy starts. The built-in **Default** template can't be edited.
-- **Agent access per connection: Off, Masked or Every column.** It replaces the MCP switch. **Masked** applies the connection's policy, and the first time you pick the template it starts from. **Every column** lets agents read every column, after asking, and keeps the policy for later. **Start over from a template…** resets a connection's rules. While agents have access, a line says that what they read goes to their AI provider, and that masking isn't a guarantee.
-- **A clearer connection list.** A zap marks the tab's connection, and a robot shows agent access: dim when masked, in the warning colour for every column. A click on a row opens its settings, and **Connect** switches to it. **Add connection** is at the top right.
-- **One way to confirm.** Anything that weakens protection or deletes something asks in a dialog. "Click again to delete" is gone.
-- **One sidebar item for agents.** The robot is always there on desktop. It opens the setup until an agent has worked here, then the agent's work. MCP left Settings.
-- **Tooltips wait 600 ms before showing,** and explanations sit behind small info icons.
-- **The sidebar toggle is a double chevron,** so it no longer looks like the Database Connections icon.
-- **A query that uses a hidden column is refused at once,** instead of waiting for your answer. The agent can propose a change.
-- **The agent's timeline is shorter and follows the newest step.** A query takes two lines, and a run of lookups takes one. Scroll up to stop following, and **New steps below** brings you back.
+- **Each connection has its own access policy.** Changing it never changes another connection. Settings → Access Policy is now **Policy templates**, which a connection's policy starts from.
+- **Agent access is set per connection: Off, Masked or Every column.** This replaces the MCP switch. **Masked** hides columns as the connection's policy says. **Every column** lets agents read everything, after asking you to confirm. While agents have access, Settings reminds you that what they read goes to your AI provider, and that masking isn't a guarantee.
+- **The connection list is clearer.** A zap marks the tab's connection, and a robot shows whether agents can query it. Click a row to open its settings, and **Connect** to switch to it.
+- **Anything that weakens protection or deletes something asks in a dialog.** "Click again to delete" is gone.
+- **Agents have one item in the sidebar.** On desktop, the robot opens the agent setup until an agent has worked here, then the agent's work. The MCP section left Settings.
+- **Tooltips wait 600 ms before showing.** Longer explanations sit behind small info icons.
+- **The sidebar toggle is a double chevron.** It used to look like the Database Connections icon.
+- **An agent's query that uses a hidden column is refused straight away.** Before, it waited for your answer. The agent can propose a policy change instead.
+- **The agent's timeline is shorter and follows the newest step.** A query takes two lines, and a run of lookups takes one. Scroll up to stop following, and click **New steps below** to go back.
 
 ### Fixed
-- **A `group:` with no keys reads right on the canvas:** `group with count as n`. Needs pine-lang after 0.50.0.
-- **Sort and filter chips keep newer Pine.** Flipping a sort keeps `nulls first` or `nulls last`, and editing a filter keeps a function on its left, like `jsonb_typeof(data) = 'array'`.
-- **An agent's SQL no longer appears in the Pine editor** when it didn't convert. Its step shows the SQL and why it didn't convert.
+- **A `group:` with no keys reads correctly on the canvas.** It shows as `group with count as n`.
+- **Sort and filter chips keep the newer Pine you wrote.** Flipping a sort keeps `nulls first` or `nulls last`. Editing a filter keeps a function on its left, like `jsonb_typeof(data) = 'array'`.
+- **An agent's SQL that didn't convert to Pine no longer appears in the Pine editor.** Its step in the timeline shows the SQL and why it didn't convert.
 
 ## [0.68.0] - 2026-10-19
 ### Added
-- **A shared policy is copied, not changed for everyone, if you choose.** When you show or hide a column for agents from the results, and the connection's access policy is also used by other connections, beamlynx asks first. **Copy for (this connection)** gives the connection a copy of the policy and changes only the copy; the other connections keep the original. **Change (policy)** changes it for all of them, as before. Undo after a copy puts the connection back on the original and removes the copy. The Allow card in an agent's investigation offers the same two choices. Needs the desktop app's new `access-policy:duplicate`.
+- **Hiding or showing a column for agents can change only this connection's policy.** When the policy is shared with other connections, Beamlynx asks first. **Copy for (this connection)** changes a copy, and **Change (policy)** changes it for every connection. Needs the matching beamlynx-desktop release.
 
 ### Changed
-- **The agent sits at the bottom of the sidebar,** and only once an agent has started an investigation, since until then there's nothing to open. The connection and the settings stay at the top.
+- **The agent's item sits at the bottom of the sidebar, once an agent has started an investigation.** Until then there is nothing to open. The connection and the settings stay at the top.
 
 ### Fixed
-- **"Also restrict my own queries" now applies in an agent's investigation tab too.** A query you ran there was always masked, whatever the setting said, because the whole tab counted as the agent's. Now only the agent's own queries are always masked, while they run. Your own runs in that tab follow the setting, as in any other tab, and the agent's results in the timeline stay as it saw them.
+- **"Also restrict my own queries" applies in an agent's investigation tab too.** Before, every query you ran in that tab was masked, whatever the setting said. Only the agent's own queries are always masked.
 
 ## [0.67.0] - 2026-10-18
 ### Breaking
-- Needs pine-lang 0.50.0 or later (was 0.49.0). Your own tabs ask pine-lang only to report which columns agents can't see (`access-policy-mode: annotate`), and an agent's refused query names the hidden column, so you can be asked to allow it. Pine-lang 0.49.0 knows neither, and would mask the results in your own tabs. Connecting to an older server shows the upgrade-required screen.
+- **Needs pine-lang 0.50.0 or later (was 0.49.0).** With 0.49.0, your own tabs would hide the values that are hidden from agents. Connecting to an older server shows the upgrade-required screen.
 
 ### Added
-- **A sidebar on the left.** The agent, What's new and the settings moved from the header's right corner to a sidebar on the left, next to where Settings and an investigation's timeline open. It runs the window's full height. The database connection moved to its top, as a workspace is in Slack: a tile in the connection's colour with its initial, filled when connected. Click it to switch the tab's connection, or to reconnect. It shows icons only, and expands to show labels and the agent's investigations by their questions. It remembers which you chose. Settings' sections are items of their own, each with an icon: Database Connections, Appearance, Preferences, Access Policy, MCP and About. One opens Settings at that section, and clicking it again closes it. The panel beside it shows only the open section, so it's narrower by default (520 px).
-- **Agent investigations.** In the desktop app, each Claude session that uses beamlynx gets an investigation of its own, named for the question the agent says it is investigating. The robot in the sidebar opens it as a tab at the end of yours. Closing the tab only puts it away: the robot opens it again with everything the agent did. An agent's tabs are no longer restored as your own tabs when the app restarts. A timeline beside the canvas keeps every step: the tables it looked for, each query with the reason the agent gave and what came back, and what it found, including from other tools. Click a query to see its rows again, exactly as the agent saw them, without running anything. The tab follows the newest query until you pick an older one. A failed query is marked in the timeline, with its error. The robot opens the current investigation, or a decision an agent is waiting on. Its activity log is replaced by the timeline.
-- **Allow a hidden column while the agent waits.** When an agent's query is refused because it filters, sorts or groups on a column the access policy hides, the timeline shows a card: which column, and the agent's reason. **Allow** adds that column to the Allow rules of the connection's policy, and the agent's query runs again in the same call. **Decline** sends your reason to the agent. A column hidden by an Except rule isn't offered, since the Except rule would win.
-- **Reveal requests are cards in the investigation.** When an agent asks to see a query's real values (`request_reveal`), the request is a card in its investigation, with the agent's reason, instead of a "Needs approval" tab. The query runs once, read-only, so you can look at the real rows in the grid before deciding. **Reveal to the agent** sends exactly those rows. **Decline** sends your reason. A query that changes data is declined without asking, as before. You can no longer edit the agent's query before revealing it.
-- **Write to the agent from beamlynx.** A box at the bottom of the timeline sends a note to the agent. It arrives with the agent's next call to beamlynx, and the timeline shows when it has. A query you run yourself in the agent's tab is added to the timeline, and the agent is told what you ran and what came back.
-- **Exceptions to what agents may see.** In the desktop app, every column is hidden from agents unless an access policy's **Allow** rule matches it. Now a policy can also list **Except** rules: a column they match stays hidden, even when an Allow rule matches it. Every policy starts with exceptions for names containing `token`, `password` and `secret`, so a uuid column called `reset_token` stays hidden even though uuids are allowed. Settings → Access Policy lists the Allow rules, then the exceptions. Each list has a form to add a rule: a name that contains, equals or ends with a text, or one exact column. The rules that used to be called "Allow …" are now plain names, such as "Standard data types", under Allow.
-- **Change the access policy from the results.** Right-click a cell or a column header and choose **Hide from agents** or **Show to agents**. The change is saved to the policy of that tab's connection. A message says what changed, which policy it was saved to, and which other connections use that policy, with **Undo** and **Open policy**. A column a broader exception covers, such as "name contains token", offers that exception instead, opened in Settings. A connection agents can query with no policy offers to choose one.
-- **See which columns agents can't see.** On a connection agents can query, a column hidden from them has a crossed-out eye in its header, in your own tabs as well as the agent's. Your own tabs still show the real values.
+- **A sidebar on the left.** It holds the database connection at the top, the agent, What's new and each section of Settings. It shows icons, and expands to show labels and the agent's investigations.
+- **Agent investigations.** In the desktop app, each Claude session gets its own investigation, named for the question the agent is investigating. Its timeline keeps every step: the tables the agent looked for, each query with its reason and result, and what it found. Click a query to see its rows again, exactly as the agent saw them, without running anything.
+- **Let an agent use a hidden column while it waits.** When an agent's query filters, sorts or groups on a column the access policy hides, the timeline shows a card with the column and the agent's reason. **Allow** adds the column to the policy and runs the query again. **Decline** sends the agent your reason.
+- **An agent's request to see hidden values is a card in its investigation.** The query runs once, read-only, so you can check the real rows before deciding. **Reveal to the agent** sends exactly those rows, and **Decline** sends your reason.
+- **Write to the agent from Beamlynx.** A box at the bottom of the timeline sends the agent a note with its next call. A query you run in the agent's tab is added to the timeline, and the agent is told what you ran and what came back.
+- **Except rules keep a column hidden from agents, even when an Allow rule matches it.** Every policy starts with exceptions for names containing `token`, `password` and `secret`. You'll find both lists in Settings → Access Policy.
+- **Hide a column from agents, or show it, from the results.** Right-click a cell or a column header and choose **Hide from agents** or **Show to agents**. The change goes into the policy of that tab's connection, and you can undo it.
+- **See which columns agents can't see.** On a connection agents can query, a hidden column has a crossed-out eye in its header. Your own tabs still show the real values.
 
 ## [0.66.0] - 2026-10-17
 ### Breaking
-- Needs pine-lang 0.49.0 or later (was 0.48.0). The canvas's checkpoints, `limit: N per`, groups written with `with`, SQL to Pine, JSON paths and the database-down message all need it. Connecting to an older server shows the upgrade-required screen.
-- A cell edit finds its row by the table's primary key, not by a column called `id`. Tables keyed on another column, or on several columns, can now be edited from the grid. Tables and views without a primary key can't be edited, even when they have an `id` column, and the grid says why. Primary key columns can't be edited. Needs pine-lang after 0.48.1, which marks each primary key column in the result.
+- **Needs pine-lang 0.49.0 or later (was 0.48.0).** Most of the new features below need it. Connecting to an older server shows the upgrade-required screen.
+- **Editing a cell finds its row by the table's primary key, not by a column called `id`.** Tables keyed on another column, or on several, can now be edited. Tables and views without a primary key can't be edited, and the grid says why. Primary key columns themselves can't be edited.
 
 ### Added
-- **See what an AI agent is doing, as it does it.** In the desktop app, the robot icon in the header appears with the agent's first call of any kind, not only its first query. While the agent works, the robot pulses, here and on the agent's tab. It keeps pulsing for 20 seconds after each call, while the agent thinks about its next one. Its tooltip says what the agent is doing, like "Searching for tables like \"order\"". Clicking it opens the agent's activity log: every call, newest first, with its time and how long it took. Click a call to see what the agent sent, like its SQL or Pine, and how it went. Buttons there open the agent's tab, or a pending approval. Clicking the robot used to jump straight to the agent's tab. Needs a desktop app that reports the calls (beamlynx-desktop after 0.19.0); with an older one, nothing changes.
-- **Reset the canvas layout.** Once you have dragged a node or a strip chip, the canvas toolbar shows a refresh icon at its right end. Clicking it puts every node back where the layout places it. Dragged positions are kept in memory only, so reloading also resets them.
-- **Checkpoints and named results open into containers.** A checkpoint's node, or a table that uses an earlier block's `|= name`, has an arrow to expand it. Expanded, a dashed box with no fill is drawn right above the node, around everything it holds, with a short line from the box to the node. The tables inside work as usual. Opening and closing is animated. Everything starts closed, and `e` on the node opens or closes it. Animation follows the system's reduced-motion setting.
-- **Several query blocks on the canvas.** A query block above the last one that ends in `|= name` is drawn as a nested query of it. The table that uses `name` says `|= name`; its arrow, or `e` on the table, draws the block above it in a container. Changes made on that block's tables edit that block's text. A strip at the top of the canvas shows how the blocks are made from each other: one chip per block, like `|= top` with `limit 10` under it, and `query` for the last block. An arrow goes from each block to the blocks that read it, labelled `in` when it's used in `where: x in name`. The arrows are dashed curves, unlike the square join lines below, so the join graph only shows joins. Clicking a chip expands that block; clicking `query` collapses it. A chip can be dragged anywhere; the tables below move down to make room for it. A block the last query doesn't join has no node: its chip stands for it, and expanded, its container stands alone above the graph. Only one nested query is expanded at a time, checkpoints and named blocks alike. A query block above the last without `|= name` still shows a banner.
-- **`per` in the limit editor.** Besides the number, an optional "per" field takes columns of the stage's tables: the first N rows of each group of rows that share them. Opened from a checkpoint node's label, it shows the columns it already has.
-- **Variables in the where editor.** Type `$name` as a value to use a variable: the tab's own are offered, and a new one gets a `$name = ` line in the values block, so the Variables list asks for its value. `in` and `not in` are in the operator list and take a list, `1, 2`, or a list variable, `$ids`. On an existing condition, **make variable** turns `status = 'shipped'` into `status = $status` and moves `'shipped'` into the values block, as `$status_2` if `$status` is taken. A `$name =` line with no value needs pine-lang after 0.48.1.
-- **Checkpoints on the canvas are drawn as stages.** A `limit:` or `group:` seals everything before it, and the steps after it work on that result. The canvas now draws the query top to bottom, one stage per checkpoint. Each checkpoint is a node named as pine-lang names it: the `|= name`, or `result_1`, `result_2`, and so on. It is drawn and works like any table: select, where, join, the "+" menu and the keyboard all act on the result. Tables joined after a checkpoint are drawn in its stage, joined to its node. The node says what the checkpoint does, like `limit 10`, `limit 1 per c.id` or `group t.title with count`. Click a limit's label to change the number and its `per`. Changing a group's columns keeps its aggregates after `with` as typed. Its × removes the checkpoint, and the tables after it stay. After you add a `limit:` or `group:`, the new checkpoint's node is focused, so the next step builds on it. Before, the tables before a checkpoint always sat in a dashed box on the main graph. Needs pine-lang's `ast.checkpoints` (pine-lang after 0.48.1).
-- **Set the limit from any table on the canvas.** `limit:` is in each table's and checkpoint's "+" menu, and on the `l` key, as well as on the multi-select toolbar. It changes the limit at the end of that table's stage, if there is one. Otherwise it adds a limit at the end of the query. It opens with the current limit filled in, and **clear** removes it. `l` is in the shortcut list at the bottom of the canvas.
-- **AI agents can send SQL, which runs as Pine.** The desktop app's `run_sql_as_pine` tool takes SQL. The app converts it to Pine, and only the Pine runs, the same way as any agent query: in a visible tab, with the connection's access policy, and with writes refused. SQL itself never runs. An `UPDATE` or `DELETE` converts and shows in the agent's tab, but never runs. The agent gets back the Pine that ran, so it learns Pine as it goes. SQL that doesn't convert runs nothing, and the agent is told why, like "Line 3: OFFSET isn't in Pine." Needs beamlynx-desktop's matching release.
-- **The SQL panel completes table and column names** from the connected database. The hints open the way they do in the Pine panel: Tab opens them and moves to the next one, Shift-Tab moves back, and Ctrl/Cmd-Space opens them too. They no longer pop up while you type. After `JOIN`, the hints start with the tables that join to the ones already in the query, with the `ON` clause written in your aliases, like `employee e ON e.company_id = c.id`. They are the joins the Pine panel suggests, from foreign keys and column names like `company_id`. After `FROM` or `JOIN` it offers tables. After an alias and a dot, like `e.`, it offers that table's columns. A name like `tenantId` is inserted in quotes where the database needs them. Tables in the default schema (`public` in Postgres) are offered without it. A reindex loads the names again. Needs pine-lang's `/api/v1/sql-schema`; with an older server there is no completion.
-- **SQL becomes Pine as you type.** Typing or pasting a query in the SQL panel converts it to Pine after a short pause, and the canvas draws it: its tables, joins and conditions, editable by clicking. When the SQL doesn't convert, the canvas keeps the last query that converted, and a line under the SQL editor says so and why: "The canvas isn't showing this query. Line 3: OFFSET isn't in Pine." It is marked in amber, not red, because that SQL can still run; red is kept for a query that can't. The line is empty while the canvas shows what you typed, and SQL that is only unfinished is mentioned only if it stays that way for a moment. The SQL you typed stays in the panel. A burst of typing is one undo step on the canvas, so one Ctrl+Z brings back the query from before. Converting runs nothing: in SQL mode, Run still runs the SQL. Needs pine-lang after 0.48.1, which adds `/api/v1/sql-to-pine`.
-- **JSON paths on the canvas.** A key inside a JSON column, like `data.address.city`, shows as that name on the select, where, order and group chips. Editing a where chip writes the path back, and a value compared with a key reads `SE`, not `"SE"`. Needs pine-lang after 0.48.1.
-- **Edit a key inside a JSON column.** A cell like `dp.companies[0].id` can be edited in the grid, and the edit is saved into that key alone. It keeps the type the value had: in a number cell `12` is saved as a number and text that isn't a number is refused; in a string cell `5` stays the string `"5"`; a boolean cell takes `true` or `false`, or `1` or `0`, which is how SQLite shows them. A JSON `null` takes what is typed as a string. A cell whose key is missing in that row, or that holds an object or an array, stays read-only and says why. Needs pine-lang after 0.48.1, which sends each value's JSON type.
-- **Hidden columns in SQL.** The SQL panel shows the query without the columns beamlynx adds so results can be edited: each table's key and each JSON value's type. They are still fetched. To see them, turn on the switch in Settings > Preferences, or use Toggle Hidden Columns in SQL in the command palette. The setting applies to every tab. Copy SQL copies what is shown. With pine-lang 0.48.1 or older, the SQL always includes them.
-- **Stop a running query.** While a query runs, Run becomes Stop. Escape in the Pine or SQL editor does the same when no completion list is open. With Vim mode on, Escape may stay with Vim; use the button. The database stops the statement, a write is rolled back, and the results pane says "Query stopped." The command palette has Stop Query too. Needs pine-lang after 0.48.1.
-- **SQLite** in the desktop app. Pick SQLite as the database type in Settings > Database Connections, then choose the database file with **Browse…** or type its absolute path. There is no server, port, user or password to enter. A connection string takes the form `sqlite:///path/to/file.db`. It needs a pine-lang with SQLite support (after 0.48.1); an older one refuses the connection. The web build doesn't offer SQLite: it would read the server's disk, not yours.
-- **Preferences in the desktop app's data file.** On desktop, theme, fonts, text size, panel sizes, open tabs and the other settings are kept in `beamlynx.db`, the app's SQLite file, instead of the browser's storage. The first time the app starts with this, it copies your current settings into the file, once. A dev build has a file of its own. Browser storage still gets every change for one more release, so going back to an older version keeps them. The web build still uses browser storage. Needs beamlynx-desktop after 0.19.0; an older one keeps using browser storage.
-- **Column widths are remembered** in the desktop app. A column you resize keeps that width the next time it shows up, in any tab, until you resize it again. Widths are kept per connection, by table and column heading, in the app's data file. A column that isn't from a table, like a count, is remembered by its heading. The web build doesn't remember widths.
+- **See what an AI agent is doing as it works.** In the desktop app, the robot icon in the header pulses while an agent works, and its tooltip says what it's doing. Clicking it opens a log of every call the agent made. Needs beamlynx-desktop 0.20.0 or later.
+- **Reset the canvas layout.** After you drag a node, a refresh icon at the right end of the canvas toolbar puts everything back where it was laid out.
+- **Open a checkpoint or a named result to see what's inside it.** An arrow on the node, or `e`, opens a dashed box above it that holds the tables it is made from. Those tables work as usual.
+- **Several query blocks on the canvas.** A block that ends in `|= name` is drawn as a nested query of the block that uses `name`. A strip at the top of the canvas shows how the blocks feed each other. Click a chip to open that block.
+- **A "per" field in the limit editor.** It keeps the first N rows of each group, like `limit: 3 per department_id`.
+- **Variables in the filter editor.** Type `$name` as a value to use a variable, and pick `in` or `not in` to compare with a list. **make variable** turns a value like `'shipped'` into a variable, with its value in the values block.
+- **The canvas draws a query in stages.** Each `limit:` or `group:` ends a stage, and the steps after it work on that result. Each checkpoint is a node you can select from, filter and join, like a table.
+- **Set the limit from any table on the canvas.** Use `limit:` in a table's "+" menu, or press `l`.
+- **AI agents can send SQL, which runs as Pine.** The desktop app's `run_sql_as_pine` tool converts the agent's SQL to Pine and runs only the Pine, under the same rules as any agent query. SQL that doesn't convert runs nothing, and the agent is told why. Needs the matching beamlynx-desktop release.
+- **The SQL panel completes table and column names.** Press Tab or Ctrl/Cmd-Space to open the hints, as in the Pine panel. After `JOIN`, it suggests the tables that join to yours, with the `ON` clause written out.
+- **SQL becomes Pine as you type.** The canvas draws the SQL you type, and you can edit it there. When the SQL doesn't convert, an amber line under the editor says why, and the SQL still runs.
+- **JSON paths on the canvas.** A key inside a JSON column, like `data.address.city`, shows by that name on the select, filter, order and group chips.
+- **Edit a key inside a JSON column from the grid.** The edit is saved into that key alone, and keeps the type the value had. A cell for a missing key, an object or an array stays read-only and says why.
+- **The SQL panel hides the extra columns Beamlynx adds so results can be edited.** They are still fetched. To show them, turn on the switch in Settings → Preferences, or use **Toggle Hidden Columns in SQL** in the command palette.
+- **Stop a running query.** While a query runs, Run becomes **Stop**, and Escape in the editor does the same. The database stops the query, and a write is rolled back.
+- **SQLite in the desktop app.** Pick SQLite as the database type in Settings → Database Connections, then choose the file with **Browse…** or type its path.
+- **On desktop, your preferences are kept in the app's data file, `beamlynx.db`.** This covers theme, fonts, panel sizes, open tabs and the other settings. Your current settings are copied over the first time. Needs beamlynx-desktop 0.20.0 or later.
+- **The desktop app remembers column widths.** A column you resize keeps its width the next time it shows up, in any tab, on the same connection.
 
 ### Changed
-- Deleting through a traversal removes a table with more than 10 000 matching rows in batches of 10 000, because pine-lang now accepts `limit:` only up to 10 000. Each table still loses no more rows than were counted in the plan. The copyable SQL script uses the same limit and says to repeat a statement that has more rows.
-- The canvas no longer makes up a checkpoint's name (`agg`, `agg2`, ...). When a gesture needs the name in the text, it writes the one pine-lang already gives the checkpoint, like `|= result_1`.
-- The canvas reads each `where:` condition from pine-lang as a map with `alias`, `column`, `cast`, `operator` and `value`, not as a list read by position. With an older pine-lang, where chips don't show. Needs pine-lang after 0.48.1.
-- The canvas reads named results from `/build`'s `named-results`, which pine-lang renamed from `variables`. With an older pine-lang, the canvas no longer recognises a named result used as a table. Needs pine-lang after 0.48.1.
-- A `beamlynx://run` link opens a tab with the expression but no longer runs it. A banner names the connection it would run on. Check both and press Run. Any web page or message can carry such a link, and the browser's prompt doesn't show what it would do.
+- **Deleting through a traversal removes rows in batches of 10 000.** Pine accepts `limit:` only up to 10 000. The SQL script you can copy says to repeat a statement that has more rows.
+- **The canvas no longer makes up names for checkpoints, like `agg`.** When it needs a name in the text, it uses the one Pine already gives, like `|= result_1`.
+- **A `beamlynx://run` link opens its query in a tab but doesn't run it.** A banner names the connection it would run on. Check both, then press Run. Any web page or message can carry such a link.
 
 ### Removed
-- Sign-in with Clerk on the hosted web build, and the middleware that enforced it. The desktop app never had sign-in, and the web build is no longer deployed. The middleware also skipped sign-in for any hostname containing 'playground', and logged every request's hostname.
-- The unused `marked` library.
+- **Sign-in on the hosted web build.** The desktop app never had sign-in, and the web build is no longer deployed.
 
 ### Fixed
-- Opening the app while a database is down no longer leaves the tabs stuck. The canvas said "Not parsing - showing last valid graph" while the results showed the connection error, and the canvas kept saying it after the database came back, on every tab, even once Run worked again. Now the tab shows one message, above the results, in plain text: "Can't reach the database", with the reason. The canvas shows no banner. The tab you're on tries again every 10 seconds. Other tabs don't, but switching to one tries it at once. When the database answers, every tab on it draws its graph again, and a successful run brings it back straight away. In the desktop app, a saved connection that can't connect at startup no longer pops an alert either. Needs pine-lang's matching release.
-- A canvas popover opened near the edge of the canvas could be cut off. It now always stays inside the window.
-- A `where:`, join or `group:` on a table before a checkpoint could land after it, once the query had two checkpoints. It now lands in the table's own stage.
-- Removing a query's only `limit:` or `group:` on the canvas no longer leaves a name behind, like `| = agg`. It now goes when nothing is left for it to name, unless you wrote the name or later steps use it.
-- Copy result and CSV export included the hidden key columns beamlynx adds for editing, such as `__c_0__id`. They now hold only the columns shown in the grid.
-- A result column worked out by the query, like a date bucket (`created_at => month`), could be edited in the grid or the JSON inspector. Saving wrote the value into the stored column: `2024-01` into `created_at`. These columns are now read-only, and say why.
-- Pressing Tab right after an alias and a dot, as in `s: t.`, offered nothing. The editor took the dot for the word being typed, and no column contains a dot. It now offers the alias's columns and inserts the chosen one after the dot. Choosing a table after a schema prefix, as in `public.te`, replaces the whole prefix instead of repeating the schema.
-- Using a recipe (Ctrl+O) in a tab that already sets one of its `$variables` changed that tab's results. The recipe's values block came last, and the last value wins across the whole tab. The tab's value is now kept, and the recipe's assignment of that name is left out. Using the same recipe twice no longer adds its values twice.
-- Approving a reveal request is disabled while the expression has been edited but not run, so the agent never receives rows the owner didn't look at. If the run fails, the banner shows why instead of doing nothing.
-- Editing a cell to a value with an apostrophe, like O'Brien, saved it as O_Brien. A row whose text id contained an apostrophe couldn't be edited at all. The value is now written with the apostrophe doubled, which Pine reads as one apostrophe. Needs pine-lang after 0.48.1.
-- A stored preference the app no longer understands, or browser storage that is blocked, could leave a blank page or an 'Application error' at start-up. An unknown theme, font or text size, a non-version 'last read' marker, and a damaged list of saved tabs each did it. Every preference is now checked, an unusable one falls back to its default, and damaged saved tabs are skipped.
-- An unexpected error while drawing the app shows a page with Reload and 'Reset preferences and reload' buttons instead of a blank window. Resetting keeps your open tabs.
-- A Pine server whose version isn't a plain x.y.z, such as `dev` or `0.48`, showed as 'No connection to Pine server'. It now connects. The upgrade-required screen also clears once the server is upgraded, instead of staying until a reload.
-- Auto-run on the canvas no longer runs an expression that changes data. Adding a where chip to narrow an `update!` used to run the update 150 ms later. Such an expression now waits for Run, and the tab says why.
-- Pressing Enter in a cell checks that the row is still there before saving. If it isn't, the save is refused and says so.
-- A `?query=` share link containing `%`, such as `like '%a%'`, was silently ignored. It opens now.
-- The bar chart is offered only up to 2 000 rows; past that, its button is disabled with a tooltip. A large result used to freeze the tab. Empty strings and Infinity no longer count as numbers to chart.
-- A tab whose saved connection was deleted showed a 'Failed to reconnect' alert on every switch to it. It now forgets the connection once and asks you to pick one.
-- The Inspect dialog's Run shows why an update failed instead of 'Update execution failed'. JSON values that the grid didn't recognise as JSON show as JSON instead of [object Object]. The connection monitor no longer logs an error every second while the server is down.
+- **A database that is down shows one plain message instead of leaving tabs stuck.** "Can't reach the database" appears above the results, with the reason. The tab you're on tries again every 10 seconds. The desktop app no longer shows an alert at startup for a connection it can't reach.
+- **A canvas popover near the edge is no longer cut off.**
+- **A filter, join or group on a table before a checkpoint lands in that table's stage.** Once a query had two checkpoints, it could land after the checkpoint instead.
+- **Removing a query's only `limit:` or `group:` on the canvas no longer leaves a stray name, like `|= agg`.**
+- **Copying results and CSV export hold only the columns shown in the grid.** They used to include hidden key columns, such as `__c_0__id`.
+- **A column the query works out, like `created_at => month`, can no longer be edited.** Saving it used to write the value into the stored column, such as `2024-01` into `created_at`.
+- **Tab right after an alias and a dot, as in `s: t.`, offers that table's columns.** Before, it offered nothing. Choosing a table after `public.` no longer repeats the schema.
+- **Using a recipe (Ctrl+O) keeps your tab's own `$variables`.** Before, the recipe's values replaced them and changed the tab's results.
+- **You can't approve a reveal request while the query has unrun edits.** This makes sure the agent only gets rows you looked at.
+- **Values with an apostrophe, like O'Brien, are saved correctly.** They used to be saved as O_Brien, and a row whose text id had an apostrophe couldn't be edited.
+- **A damaged or out-of-date saved preference no longer leaves a blank page at start-up.** It falls back to its default. Damaged saved tabs are skipped.
+- **An unexpected error shows a page with Reload and "Reset preferences and reload" instead of a blank window.** Resetting keeps your open tabs.
+- **A Pine server with a version like `dev` connects.** It used to show "No connection to Pine server". The upgrade-required screen also clears once the server is upgraded, without a reload.
+- **Auto-run on the canvas no longer runs a query that changes data.** Narrowing an `update!` with a filter chip used to run the update at once. Such a query now waits for Run.
+- **Saving a cell checks first that the row still exists.** If it doesn't, the save is refused and says so.
+- **A `?query=` share link with a `%`, like `like '%a%'`, opens.** It used to be ignored.
+- **The bar chart is offered only up to 2 000 rows.** A large result used to freeze the tab.
+- **A tab whose saved connection was deleted asks you to pick one.** It used to show "Failed to reconnect" every time you switched to it.
+- **The Inspect dialog says why an update failed, and shows JSON values as JSON.** It used to show "Update execution failed" and `[object Object]`.
 
 ### Security
-- The desktop app no longer writes the database password to the developer console when it connects to a saved connection. Other connection details are logged only in development builds.
-- An expression an AI agent asks to reveal can no longer change data. The review tab runs it read-only, and a reveal request whose expression would change data is declined automatically, with a comment saying why. Before, `user | delete!` sent as a reveal request deleted the rows the moment it arrived.
-- In the desktop app, every request to the bundled query server carries the secret the app makes at each launch, so no other program or web page can use the server. If the server refuses the app anyway, the connection indicator says so and suggests restarting beamlynx. Needs beamlynx-desktop with launch tokens (after 0.19.0) and pine-lang after 0.48.1.
-- CSV export and copy neutralise a value a spreadsheet would run as a formula (one starting with =, +, -, @, a tab or a carriage return) by prefixing an apostrophe. A value with a carriage return is quoted. JSON values are written as JSON, not [object Object].
-- Updated Next.js from 13.5.6 to 15.5.27, past every published Next.js advisory, including the middleware bypass (CVE-2025-29927). PostCSS, nanoid, source-map-js and yaml are lifted to fixed versions. `npm audit --omit=dev` reports no vulnerabilities. The lockfile is back in step with package.json.
+- **The desktop app no longer writes your database password to the developer console.**
+- **A reveal request can no longer change data.** Before, an agent could send `user | delete!` as a reveal request, and the rows were deleted as soon as it arrived. The query now runs read-only, and one that would change data is declined.
+- **Only Beamlynx can use the query server bundled with the desktop app.** Each request carries a secret the app makes at launch. If the server refuses the app, the connection indicator suggests restarting Beamlynx.
+- **CSV export and copy can't run a formula in your spreadsheet.** A value starting with `=`, `+`, `-` or `@` gets an apostrophe in front.
+- **Next.js and other libraries are updated past every published security advisory.** This includes the middleware bypass CVE-2025-29927.
 
 ## [0.65.0] - 2026-10-06
 ### Breaking
-- Needs pine-lang 0.48.0 or later (was 0.47.0). Values blocks and named results after `in` need it. Connecting to an older server shows the upgrade-required screen.
-- Ctrl+S no longer downloads the tab as a `.pine` file. Nothing in beamlynx opened those files. Ctrl+S now saves a recipe (see below). In the browser, where there are no recipes, Ctrl+S does nothing.
+- **Needs pine-lang 0.48.0 or later (was 0.47.0).** Values blocks and named results after `in` need it. Connecting to an older server shows the upgrade-required screen.
+- **Ctrl+S saves a recipe instead of downloading the tab as a `.pine` file.** Nothing in Beamlynx opened those files. In the browser, which has no recipes, Ctrl+S does nothing.
 
 ### Added
-- **Variables.** Write `$name` in a query where a value goes, and set it in a values block of its own above the query: `$company_name = 'Acme'`, or a list for `in`, `$statuses = ('failed', 'stuck')`. A values block holds one or more `$name = value` lines, so the query and its values are all in the Pine text. Pressing Ctrl+Enter with the cursor in a values block runs the query below it. On the canvas, a Variables list shows each `$name` the query uses and its value, or "no value"; click a value to change it, which rewrites its line in the text. Condition chips show `$name`. Needs pine-lang with values blocks (0.48 or later).
-- **One query's result in another:** a named result that selects one column can be used after `in`, like `employee | where: id in acme_emps` (pine-lang 0.48 or later).
-- A recipe keeps its `$variables` and their values: saving one includes the values blocks the query uses, placed above the query, and using it puts them in with the query.
-- An AI agent can pass values for `$variables` to `run_query`, overriding those written in the text (with beamlynx-desktop's matching change). The agent's tab shows the values it used in a values block above the query, so the run can be repeated.
-- **Save a query as a recipe with Ctrl+S** (desktop app 0.19 or later). A bar above the tab asks for a title, offering the first line of the query's top comment. Enter saves, Esc cancels. It saves the block under the cursor, plus any block above it that the query uses through a named result. Comments are saved with the query: they are the recipe's explanation. Recipes are offered on every database.
-- **Use a recipe with Ctrl+O.** Find it by any word in its title, comments or query, then click it or press Enter. Its query, comments included, goes into the tab as ordinary text. Nothing runs until you press Ctrl+Enter. Hover a recipe to see its query. Delete one with the trash icon on its row: click once, then again within 3 seconds. Editing comes later.
+- **Variables.** Write `$name` where a value goes, and set it in a values block above the query, like `$company_name = 'Acme'`. On the canvas, a Variables list shows each variable and its value, and you can click a value to change it.
+- **Use one query's result in another.** A named result with one column can follow `in`, like `employee | where: id in acme_emps`.
+- **A recipe keeps its `$variables` and their values.**
+- **An AI agent can pass values for `$variables` when it runs a query.** The agent's tab shows the values it used, so you can run it again.
+- **Save a query as a recipe with Ctrl+S.** A bar above the tab asks for a title. The query's comments are saved with it, as the recipe's explanation. Needs the desktop app 0.19 or later.
+- **Use a recipe with Ctrl+O.** Search by any word in its title, comments or query. The query goes into your tab as text, and nothing runs until you press Ctrl+Enter.
+
 ### Changed
-- Vercel no longer deploys this repo. `vercel.json` turns off deployments for every branch, including `main` and `release/**`. The last deployed version stays online until the Vercel project is removed.
-- The hosted web app builds on Node.js 24. Vercel stopped building with Node.js 20, so every deployment since 2026-10-03 had failed. `package.json` now sets `engines.node` to `24.x`, which overrides the Vercel project's setting, and `.nvmrc` says 24. `npm test` works on Node.js 22 and later again: it passes the test files, not the folder.
-- A dev copy shows an amber **DEV** chip in the header, in place of the grey "[Development]" text. It also shows in a desktop dev build (beamlynx-desktop's `npm start`), which had no label at all, so it can't be mistaken for the installed app when both are open. Hover it to see which kind of dev copy it is.
-- Inside beamlynx-desktop, the app now asks the desktop app which port its Pine server is on instead of assuming 33333. The desktop dev build uses a different port, so it can run next to the installed app. The browser and playground are unchanged.
-- In the desktop dev build, the MCP setup instructions register the server as `beamlynx-dev`, so it can sit next to the installed app's `beamlynx` entry.
+- **The hosted web app is no longer updated.** The last version deployed stays online.
+- **The web app builds on Node.js 24.** Hosting providers stopped building with Node.js 20.
+- **A development copy shows an amber DEV chip in the header.** A desktop dev build shows it too, so it can't be mistaken for the installed app.
+- **A desktop dev build can run next to the installed app.** It uses its own port, and its agent setup is named `beamlynx-dev`.
+
 ### Fixed
-- The Access Policy section now says that a masked column can still be used in a query's conditions, so a query can test a guess about its values, for example by counting matching rows. That has always been true; it wasn't written down.
-- Keys pressed in a dialog, such as the Ctrl+O recipe picker or the command palette, no longer reach the canvas behind it. Clicking a dialog's text and then pressing Backspace, Delete or `x` used to delete the selected item in your tab.
-- **New Database Connection** in the command palette opens the add form again. It used to open Settings on the list of connections instead, because that section was already loaded in the background. The same fix covers a saved password that can't be unlocked: the form now opens filled in every time, not only the first time.
-- The Access Policy section said agent (MCP) access needs an active rule in some policy. The rule is per connection: MCP access can be turned on for a connection whose own policy has an active rule, or that has no policy.
-- The MCP section's setup steps named a toggle and a section that no longer exist. They now say to turn on **MCP access** under **Database Connections**.
+- **The Access Policy section says that a hidden column can still be used in a query's conditions.** So a query could test a guess about its values, for example by counting rows. This was always true, but wasn't written down.
+- **Keys pressed in a dialog no longer reach the canvas behind it.** Pressing Backspace, Delete or `x` in the recipe picker or the command palette used to delete the selected item in your tab.
+- **New Database Connection in the command palette opens the add form again.** It used to open the list of connections. A saved password that can't be unlocked now opens the form filled in every time.
+- **The Access Policy and MCP sections describe agent access correctly.** Access is set per connection, under **MCP access** in Database Connections.
 
 ## [0.64.0] - 2026-09-27
 ### Breaking
-- Needs pine-lang 0.47.0 or later (was 0.46.0). Canvas filters that match any of several conditions are written with `or`, which pine-lang 0.47.0 added. Connecting to an older server shows the upgrade-required screen.
+- **Needs pine-lang 0.47.0 or later (was 0.46.0).** Canvas filters that match any of several conditions use `or`, which pine-lang 0.47.0 added. Connecting to an older server shows the upgrade-required screen.
 
 ### Added
-- After you edit a value, its cell glows briefly and a short message says it was saved. If it wasn't, the message says why.
-- A value that can't be edited now says why as soon as you try, instead of opening an editor. That covers a row's `id` (an update uses it to find the row), a table whose `id` isn't in the result, and values the query works out rather than reads from a table.
-- Move between result cells with the arrow keys. Select a range by dragging or with Shift, and copy it with Ctrl+C as tab-separated text that pastes into a spreadsheet.
-- A canvas filter can match either of several conditions. In the filter panel, **+ or** adds another condition; pick its column from the same list as the first. The filter is written as one `where:` joined with `or`, like `where: c.status = 'blocked' or c.status = 'active'`. It needs pine-lang 0.47.0, which added `or`.
+- **An edited value's cell glows briefly, and a message says it was saved.** If it wasn't saved, the message says why.
+- **A value that can't be edited says why as soon as you try.** That covers a row's `id`, a table whose `id` isn't in the result, and values the query works out.
+- **Move between result cells with the arrow keys, and copy a range.** Select by dragging or with Shift. Ctrl+C copies the range as text that pastes into a spreadsheet.
+- **A canvas filter can match any of several conditions.** In the filter panel, **+ or** adds another condition. It is written as one `where:` joined with `or`.
 
 ### Changed
-- The results grid is new, and much faster. It draws only the cells in view, so scrolling stays smooth however many rows a result has. A result shows up in about half the time, and a 100,000-row result about four times sooner than before.
-- The delete script from **traverse** now says in its first lines how its Run button works. Running the script yourself deletes everything in one transaction, between its `BEGIN;` and `COMMIT;`. Run doesn't send those: it deletes one table at a time, deepest first, and each table is committed as it goes.
-- Opening or closing Settings or the Pine panel beside the results is smooth now. The results used to be swapped for a grey placeholder while the panel moved, then redrawn; now they resize along with it.
-- Results are no longer split into pages of 100 rows. Every row the query returns is in one scrolling grid, with the row count underneath.
+- **The results grid is new, and much faster.** Scrolling stays smooth however many rows there are. A 100,000-row result shows about four times sooner.
+- **The delete script from traverse explains how its Run button works.** Running the script yourself deletes everything in one transaction. Run deletes one table at a time, deepest first, committing each.
+- **Results resize smoothly when Settings or the Pine panel opens beside them.** They used to turn into a grey placeholder while the panel moved.
+- **All rows are in one scrolling grid.** Results are no longer split into pages of 100 rows.
 
 ### Removed
-- Sorting by clicking a column header, and the column menu (sort, filter, hide columns). Sorting and filtering will come back as changes to the Pine expression, so they show up in the query. To filter on a value for now, right-click the cell and choose **Filter**.
+- **Sorting by clicking a column header, and the column menu.** Sorting and filtering will come back as changes to the Pine query. To filter on a value for now, right-click the cell and choose **Filter**.
 
 ### Fixed
-- Tab in the canvas filter panel moved focus out of the panel, usually to the Pine panel. It now moves through the panel's own fields and buttons, going to **add** right after the value, and wraps around. Escape still closes the panel.
-- A filter typed by hand that matches any of several conditions disappeared from its table on the canvas. It now shows as one chip, and clicking it opens every condition in it for editing.
-- The app's fonts now ship inside it. The desktop app showed IBM Plex Mono, JetBrains Mono, Fira Code, Inter and IBM Plex Sans only if they were installed on your computer, and a system font otherwise. The web app downloaded them from Google Fonts. Every build now carries its own copies, and works offline.
+- **Tab in the canvas filter panel moves between the panel's own fields.** It used to move focus out of the panel.
+- **A filter typed by hand that matches any of several conditions shows on its table on the canvas.** It used to disappear. Click its chip to edit every condition.
+- **The app's fonts work offline.** Fonts like IBM Plex Mono and Inter now ship inside the app. Before, the desktop app used a system font if they weren't installed.
 
 ## [0.63.0] - 2026-09-25
 ### Breaking
-- `delete:` is gone from Pine. Use the traverse action below instead. A saved tab that still ends in `delete:` has it removed when the tab opens, so the tab doesn't come back blank.
-- Needs pine-lang 0.46.0 or later (was 0.45.0). The server now describes a join in a different shape, which this release needs to draw the canvas. Connecting to an older server shows the upgrade-required screen.
+- **`delete:` is gone from Pine.** Use traverse instead (see below). A saved tab that ends in `delete:` has it removed when the tab opens.
+- **Needs pine-lang 0.46.0 or later (was 0.45.0).** The canvas needs the new way the server describes joins. Connecting to an older server shows the upgrade-required screen.
 
 ### Added
-- Traverse from a table on the canvas: press `+` on it and pick **traverse**. It follows every table that points at it by foreign key, up to 25 levels deep, and offers two operations on them:
-  - **Count rows** lists each table with its row count. Click one to open its rows in a new tab.
-  - **Delete rows…** generates the delete statements, deepest table first, as a script you can copy or run from the same panel after a confirmation.
+- **Traverse from a table on the canvas.** Press `+` on a table and pick **traverse**. It finds every table that points at it by foreign key, up to 25 levels deep. **Count rows** lists their row counts. **Delete rows…** builds a script that deletes them, deepest table first, which you can copy or run.
 
 ### Fixed
-- Joins on the canvas now start from the latest table unless you pick another one. Hovering over a table used to move keyboard focus to it, even with the pointer hidden while you typed, so the next `|` could join from an older table. Hovering now only highlights. To join from an older table, click it or move to it with the keyboard.
-- Ctrl+C on the canvas copies again instead of opening the comment editor. The same goes for Ctrl+V, Ctrl+A and Ctrl+F.
-- Switching tabs no longer shifts the layout. Pane and panel sizes used to reset to their defaults and then jump to your saved sizes on every tab change.
-- The error above the results is no longer cut off. The whole message wraps over as many lines as it needs, up to six before it scrolls.
+- **Joins on the canvas start from the latest table unless you pick another.** Hovering over a table used to move focus to it, so the next `|` could join from the wrong table. To join from an older table, click it or move to it with the keyboard.
+- **Ctrl+C on the canvas copies again.** It used to open the comment editor. Ctrl+V, Ctrl+A and Ctrl+F work again too.
+- **Switching tabs no longer makes the layout jump.** Panel sizes used to reset and then jump back to your saved sizes.
+- **The error above the results is no longer cut off.** It wraps over up to six lines, then scrolls.
 
 ### Security
-- An agent can no longer change your data through MCP. The old check only refused `delete!`, found by searching the text, and let `update!`, `d!` and `u!` through. The Pine server now refuses every write from the agent's tab, even when you press Run on it yourself. Your own tabs are unchanged.
-- Agent queries need pine-lang 0.46.0 or later. An older server would run the writes it was asked to refuse, so MCP refuses to run anything against it.
+- **AI agents can no longer change your data.** The old check only refused `delete!`, and let `update!` through. The Pine server now refuses every write from the agent's tab, even if you press Run there yourself.
+- **Agent queries need pine-lang 0.46.0 or later.** An older server can't refuse the writes, so agent queries won't run against it.
 
 ### Removed
-- The `BEAMLYNX_MCP_ALLOW_DELETE` environment variable. It turned off the agent delete check for the whole machine.
+- **The `BEAMLYNX_MCP_ALLOW_DELETE` environment variable.** It turned off the check on agents' deletes for the whole machine.
 
 ## [0.62.0] - 2026-09-20
 ### Added
-- A tab can now explain itself. Start an expression with a comment -- either `/* ... */` across lines, or a run of `--` lines -- and the canvas shows it in its top-left corner instead of leaving it as grey text to scroll past. Write what you are looking for and why when you open a tab, and it is still there when you come back to it.
-- You can write that comment from the canvas itself: press `c` (shown at the front of the bottom-left keybinding legend), click the comment button in the toolbar, or click an existing comment to edit it. A dim "Add a comment" marks the spot when there isn't one. What you type is spliced into the expression as a comment, the same way picking a table splices in an operation, so the canvas and the expression can never disagree. Emptying it removes the comment. Enter is a line break; Cmd/Ctrl+Enter or clicking away saves, Esc cancels.
-- MCP: an agent now leads every query it runs with a comment saying what it is looking for and why, so the tab it opens shows its reasoning, not just its results.
-- Database Connections: you can now have more than one connection to the same host and port, as long as they point at different databases. Previously the second one was rejected.
-- Add Connection form: switching to the "Connection string" tab rebuilds the string from whatever's in the Fields tab, so the two stay in sync in both directions instead of only string-to-fields.
+- **Explain a tab with a comment at the top of its query.** Start the query with a `/* ... */` comment or `--` lines, and the canvas shows it in its top-left corner. It's a place to note what you're looking for and why.
+- **Write a tab's comment from the canvas.** Press `c`, click the comment button in the toolbar, or click an existing comment. Cmd/Ctrl+Enter or clicking away saves it, and Esc cancels.
+- **An AI agent explains each query it runs.** It starts the query with a comment saying what it is looking for and why, so its tab shows its reasoning.
+- **Have more than one connection to the same host and port.** They need to point at different databases. The second one used to be rejected.
+- **The connection string stays in step with the fields.** In the Add Connection form, switching to the "Connection string" tab rebuilds it from the Fields tab.
 
 ### Changed
-- Panels now open and close with a short animation instead of appearing in a single frame. Settings, the Pine/SQL panel, Zen mode, the error band above the results, the agent's pinned tabs and every dialog all move now, so you can see where something came from. All of it follows your operating system's "reduce motion" setting -- turn that on and everything is instant again.
-- Results columns size to their own content instead of stretching to fill the pane. A UUID column gets the room it needs and a short "status" column isn't stretched to match; scroll horizontally if a wide result doesn't fit, the same as any spreadsheet.
-- Table colors, and hovering a table on the canvas, now tint each column's header only, not every value under it. Coloring every cell read as noise -- and the hover spotlight did it even with "Table colors" turned off, which made the preference look like it had no effect.
-- Database Connections: switching the active tab's connection while it still has a query in it no longer silently opens a new tab. You get a warning that the query may reference tables or columns the new connection doesn't have, and the choice to switch anyway or cancel.
-- Database Connections: renaming a connection now has its own pencil icon next to the name. Previously renaming only worked by first expanding the row.
-- MCP: queries an agent runs now show in their own tab, pinned to the end of the tab strip and marked with a robot icon so it doesn't read as one of your own. It always shows the same query slot -- an agent's next query replaces whatever was there -- so closing it is always safe.
-- MCP: when an agent asks to see something its access policy redacted, the request gets its own "Needs approval" pinned tab instead of opening as a new tab and stealing focus. The tab names the connection, quotes the agent's reason, and offers Approve/Decline. Closing it without deciding declines, so an agent waiting on a decision never hangs.
-- MCP: an agent icon in the header, next to the bell, covers everything the agent is doing -- a dot when a result landed while you were looking elsewhere, a count when approvals are waiting. Clicking it goes to whichever needs you most: an approval first, since an agent is blocked on it, otherwise the activity tab.
-- Settings opens faster the first time. Its contents are built once while the app is idle and kept afterwards, which also preserves your scroll position and the section you were last on.
-- Dragging a pane divider no longer selects the text it passes over.
+- **Panels open and close with a short animation.** This covers Settings, the Pine/SQL panel, Zen mode, the error above the results and dialogs. Turn on your system's "reduce motion" setting to make them instant.
+- **Results columns fit their content instead of stretching to fill the pane.** Scroll sideways when a wide result doesn't fit.
+- **Table colours tint only each column's header, not every value under it.** Hovering a table on the canvas does the same. It used to tint every cell, even with "Table colors" turned off.
+- **Switching the tab's connection while it has a query warns you first.** The query may use tables or columns the other connection doesn't have. Before, a new tab opened without asking.
+- **Rename a connection with the pencil icon next to its name.** You used to have to expand the row first.
+- **An AI agent's queries show in a tab of their own.** It is pinned to the end of the tab strip with a robot icon. Each new query replaces the last, so closing the tab is safe.
+- **An agent's request to see hidden values opens a "Needs approval" tab.** It names the connection, quotes the agent's reason, and offers Approve or Decline. Closing it declines, so the agent never waits forever.
+- **An agent icon in the header shows what the agent is doing.** A dot means a result arrived, and a count means approvals are waiting. Clicking it opens what needs you most.
+- **Settings opens faster the first time.** It also remembers your scroll position and section.
+- **Dragging a pane divider no longer selects text.**
 
 ### Removed
-- The classic Graph mode (the non-interactive node diagram you got with "Canvas mode" off) is gone. Canvas is now the only graph editor, and the preference and its command-palette entry are gone with it.
-- Legacy Layout (the classic sidebar arrangement) is gone. The Canvas + Results two-pane layout is now the only one. The "Switch to legacy layout" header link, the "New layout" toggle and their command-palette entries are gone with it. Settings always opens as a docked panel now, never a floating window.
+- **The classic Graph mode.** The canvas is now the only graph editor.
+- **Legacy Layout.** The canvas and results two-pane layout is the only one, and Settings always opens as a docked panel.
 
 ### Fixed
-- Panels open and close smoothly, including with a full table of results on screen. The results grid re-fits its columns whenever its container resizes, which is expensive, so a panel opening beside it used to redo that work on every frame. The grid now stands still while the panel moves -- a skeleton of your real column headers stands in for that moment -- and fits itself once, afterwards.
-- Upgraded the results grid library (`@mui/x-data-grid` 7.15.0 -> 7.29.13, 14 minor releases of fixes), measured as a ~18% cut in the main-thread work it does when its container resizes.
-- Resizing a results column by hand no longer snaps back to its default width. The grid was rebuilding its whole column list on every render -- including renders that had nothing to do with it, like hovering a table on the canvas -- and losing the width you'd just dragged.
-- Entering and leaving Zen mode no longer resets the canvas. It used to rebuild the canvas from scratch each way, losing whatever you had panned or zoomed to.
-- A blank line inside a `/* ... */` comment no longer breaks the expression. Blank lines separate one expression block from the next, and that rule used to apply inside a comment too -- so a comment with a paragraph break was split down the middle and sent to the server as an unterminated comment followed by loose text.
-- Header: the version badge no longer shows "obsolete" when you're simply not connected yet. It stays hidden until there's a real version to show.
-- Database Connections: typing a space while renaming a connection did nothing to the text and silently switched your active connection instead. The row's own Enter/Space shortcut was intercepting keystrokes meant for the rename field inside it.
-- Database Connections: the rename pencil and the MCP badge could misalign across rows, and the badge shifted sideways the moment you clicked the pencil. The rename and expand icons now form a stable column regardless of a row's MCP state.
-- Various icon-only buttons across the app (close, download, save, notifications, tab controls, the JSON inspector) now have accessible labels for screen readers.
+- **Panels open and close smoothly, even with a full table of results on screen.** The results grid used to redo its layout on every frame of the animation.
+- **A results column you resize keeps its width.** It used to snap back, for example when you hovered a table on the canvas.
+- **Entering or leaving Zen mode keeps the canvas where you panned and zoomed.**
+- **A blank line inside a `/* ... */` comment no longer breaks the query.** The comment used to be split in two.
+- **The version badge in the header no longer says "obsolete" before you connect.**
+- **Typing a space while renaming a connection adds a space.** It used to switch your active connection instead.
+- **The rename and expand icons line up across rows in Database Connections.** They used to shift sideways.
+- **Icon-only buttons have labels for screen readers.** This covers close, download, save, notifications, tab controls and the JSON inspector.
 
 ### Breaking
-- Minimum required pine-lang server version raised to 0.45.0 (from 0.44.0). Canvas comments need it: an older server deletes a comment the moment you touch the canvas, since it strips comments when it reformats an expression. Multiple connections to one host and port need it too. Connecting to an older server now shows the upgrade-required screen instead of the app.
+- **Needs pine-lang 0.45.0 or later (was 0.44.0).** Canvas comments need it, because an older server deletes them when you change the query on the canvas. So do several connections to one host and port. Connecting to an older server shows the upgrade-required screen.
 
 ## [0.61.0] - 2026-09-12
 ### Added
-- Database Connections: a "Database type" picker (Postgres/MySQL) when adding a connection, with the port field defaulting to match (5432/3306). Pasting a connection string now also accepts `mysql://` (in addition to `postgresql://`/`postgres://`) and sets the picker accordingly. The SQL panel (and the Pine/SQL input's SQL mode) correctly renders a MySQL connection's backtick-quoted SQL too.
+- **You can add MySQL databases, not only Postgres.** Pick the database type when you add a connection, and the port fills in to match. Pasting a `mysql://` connection string sets the type for you.
 
 ### Fixed
-- A query that failed at the network level (e.g. the server unreachable) left the loading spinner stuck on forever with no error shown, since the query-evaluation path had no `try/catch` around its network call — a thrown exception skipped every one of its `loading = false` sites. It now always resets and shows the failure.
+- **A query that can't reach the server no longer leaves the spinner running forever.** Before, no error appeared. Now the spinner stops and the error shows.
 
 ### Breaking
-- Minimum required pine-lang server version raised to 0.44.0 (from 0.43.0) — needed for the MySQL connection support above. Connecting to an older server now shows the upgrade-required screen instead of the app.
+- **Requires pine-lang 0.44.0 or later (was 0.43.0).** MySQL support needs it. With an older server, Beamlynx shows a screen asking you to upgrade it.
 
 ## [0.60.0] - 2026-09-10
 ### Added
-- MCP: when a connection's access policy is redacting something an agent legitimately needs, it can now call `request_reveal` to ask you to look at the real query. It opens in a normal tab where you can edit the expression, then reveal the real results to the agent or decline with a comment explaining why (so it can adjust and retry). Requires beamlynx-desktop's matching support.
-- Results grid: a new "Copy result as CSV" button (next to Export to CSV) copies the whole result to your clipboard as CSV, ready to paste into a spreadsheet. Also available as a "Copy Result" command in the command palette.
-- Canvas mode: adding a `where` filter on a column that looks like a date now offers "today" and "in the last" alongside the usual operator choices (=, !=, ...) - picking either adds a pair of `where:` conditions instead of asking for a literal value.
-- Results grid: clicking a cell in a JSON column opens its formatted, syntax-highlighted value in a panel on the right, already in edit mode - type your change and press Mod+Enter or the checkmark to save, or the undo icon to cancel back to the read-only view. JSON cells no longer edit inline in the grid row. Copying from the right-click menu also copies the pretty-printed form. The panel's own left edge can be dragged to resize it, its editor respects Vim mode when you have that on in Settings, and pressing Escape while editing no longer closes the panel (in Vim mode it exits to normal mode instead, matching Vim's own behavior). Every code editor's scrollbar (this panel, Pine/SQL input) now matches the app's theme instead of the OS default.
+- **An AI agent can ask you to show it values that your access policy hides.** The agent calls `request_reveal`, and its query opens in a tab where you can edit it. You then reveal the real results to the agent, or decline with a comment saying why so it can adjust.
+- **Copy a whole result as CSV, ready to paste into a spreadsheet.** Use the "Copy result as CSV" button next to Export to CSV, or the "Copy Result" command.
+- **Date columns get "today" and "in the last" filters on the canvas.** They appear next to the usual operators when you add a `where` on a column that looks like a date. Each one adds a pair of `where:` conditions for you.
+- **Clicking a JSON cell opens its formatted value in an editor on the right.** Edit it there and save with Mod+Enter or the checkmark. JSON cells no longer edit inline, and Copy in the right-click menu gives the formatted JSON.
+- **Scrollbars in code editors match the app's theme instead of your system's.**
 
 ### Changed
-- Database Connections: the per-connection "apply access policy to my own queries" toggle is now off by default and opt-in, instead of on by default with an opt-out "bypass". An access policy protects the MCP agent only unless you explicitly turn this on to have it also redact your own queries on that connection.
-- Canvas mode: moving between table nodes with the keyboard (arrow keys, `j`/`k`) now spotlights that table's columns in the Results grid, the same way hovering a node with the mouse already did.
+- **Access policies no longer hide values in your own queries unless you turn that on.** Each connection has an "apply access policy to my own queries" switch, off by default. Before, it was on unless you chose to bypass it.
+- **Moving between tables with the keyboard highlights their columns in the results, like hovering does.** This works with the arrow keys and `j`/`k` on the canvas.
 
 ### Fixed
-- New Layout: opening the Pine/SQL panel (Ctrl/Cmd+./+Shift+., the toolbar buttons, or the command palette) now moves keyboard focus into it and reframes the graph to fit the canvas's new size. Neither used to happen reliably - the panel could open with the graph's own keyboard shortcuts silently disabled and nowhere for keystrokes to land instead, and the graph stayed wherever the old pan/zoom left it, partly cut off by the resized canvas.
-- Canvas mode: a `where` chip added via the Results grid's right-click "Filter" action can now always be deleted or edited. It used to land at the end of the query's pipe text regardless of which table it filtered, so canvas's position-based bookkeeping could attribute it to the wrong table - deleting or editing it then silently did nothing, or acted on an unrelated chip that happened to share its position.
-- Canvas mode: reopening an existing `where` chip to edit it (e.g. `ilike`) no longer breaks the query on save. The server reports operators in their SQL casing (`ILIKE`), and the editor was writing that casing straight back into the Pine text, which pine-lang's parser rejects since it only accepts lowercase operator keywords.
+- **Opening the Pine or SQL panel moves the keyboard focus into it and refits the graph.** Before, your keystrokes could go nowhere, and the graph could stay partly cut off by the smaller canvas.
+- **A filter added with "Filter" in the results grid's right-click menu can always be edited or deleted on the canvas.** Before, editing or deleting it could do nothing, or change a different filter.
+- **Editing an existing `ilike` filter on the canvas no longer breaks the query.** The editor wrote the operator back as `ILIKE`, which Pine rejects.
 
 ## [0.59.0] - 2026-09-06
 ### Added
-- Canvas mode: hovering a table node now spotlights that table's columns in the Results grid below, so it's easy to see which columns come from which joined table without needing to turn on the "Table colors" preference.
-- Canvas mode: clicking an existing `order` chip now opens an Asc/Desc popover to change its direction, instead of reopening the column-add list. Arrow keys or the `a`/`d` mnemonics flip it; a "remove" action deletes the chip.
+- **Hovering a table on the canvas highlights its columns in the results.** You can see which columns come from which table without turning on "Table colors".
+- **Click an `order` on the canvas to switch it between ascending and descending.** The arrow keys or `a`/`d` flip it, and "remove" deletes it. Before, clicking it opened the column list again.
 
 ### Fixed
-- Results grid: right-clicking a cell and choosing "Filter" now scopes the generated `where:` to the table that cell's column actually belongs to (`alias.column`), instead of an unqualified column name that silently filtered whichever table the query's pipe ended on.
+- **"Filter" in the results grid's right-click menu filters the table the cell belongs to.** Before, it filtered whichever table the query ended on.
 
 ## [0.58.0] - 2026-09-06
 ### Breaking
-- Minimum required pine-lang server version is now 0.43.0 (up from 0.42.0) - the version that introduces `? table`, which canvas mode's new "path" action and the Pine editor's autocomplete both depend on.
+- **Requires pine-lang 0.43.0 or later (was 0.42.0).** The canvas's new "path" action and path search in the Pine editor need it.
 
 ### Added
-- The Pine text editor's autocomplete (Ctrl+Space) now completes `? table` path searches too - shows the discovered routes once the target names a real table (reachability-filtered destination names before that), and accepting one replaces the whole `? target` fragment, not just the typed table name.
-- Canvas mode: a node's action bar is now `select | where | join | +`, with order, group, and the new "path" action tucked behind the `+` (their own keyboard shortcuts - `o`, `g`, `p`, and now `+` itself to open the overflow directly - still work regardless of whether `+` is ever clicked). "Path" finds every way to reach a table that isn't directly joinable - not just the next hop, but multi-hop routes through the schema too - and lets you pick one to add all the way to the destination in one go.
-- Canvas mode: click a join's icon to pick Inner, Left, or Right. It's the same two-circle diagram most SQL join references use - inner shades just the overlap, left/right shades one whole side plus the overlap - so the type reads at a glance with no text label needed.
-- Canvas mode: click an existing `where` condition, selected column, order column, or group column to reopen it for editing, instead of removing it and adding a new one.
-- Canvas mode: Shift+J and Shift+K step through the whole pipeline as one list - each node, then everything configured on it (its incoming join, selected columns, where conditions, order columns, group columns), then the next node's. Enter or Space opens whichever one is highlighted; Delete, Backspace, or `x` removes it.
+- **The Pine editor's autocomplete (Ctrl+Space) completes `? table` path searches.** A `? table` search finds the joins that lead to a table. Autocomplete lists the routes, and picking one replaces the whole search.
+- **The canvas's new "path" action adds the whole chain of joins to reach a table that isn't directly joinable.** It sits behind the new `+` button, together with order and group. Their shortcuts still work: `o`, `g`, `p`, and `+` to open the menu.
+- **Click a join's icon on the canvas to pick Inner, Left or Right.** The icon is the familiar two-circle diagram, so you can tell the join type at a glance.
+- **Click a filter, selected column, order or group on the canvas to edit it.** Before, you had to remove it and add it again.
+- **Shift+J and Shift+K step through everything in the query, one item at a time.** That is each table, then its join, columns, filters, order and group. Enter or Space opens the highlighted item, and Delete, Backspace or `x` removes it.
 
 ### Changed
-- Canvas mode: a resolved join's line is now a plain neutral color instead of the theme's accent - the accent now lives on the join-type icon itself (Inner/Left/Right), so it marks the one clickable, meaningful thing on that edge rather than the whole line. Broken and heuristic-only joins keep their own distinct (non-neutral) colors, unchanged.
+- **Join lines on the canvas are a neutral color, and only the join-type icon uses the accent color.** Broken and guessed joins keep their own warning colors.
 
 ### Fixed
-- Canvas mode: adding an operation (`select`, `where`, `join`, ...) while the expression already ended in a stray `|` (typed by hand in the Pine panel, or left over from an earlier edit) left that dangling pipe in place after the new operation, instead of dropping it.
-- Canvas mode: hovering a node revealed its action bar but didn't move keyboard focus there - the node last focused via the keyboard kept its "current" border even while a different node was being hovered. Hovering now moves focus, the same as it already does when navigating with the keyboard - including onto a specific chip or a join's own icon, which now show their own highlight on hover, exactly like Left/Right already does, instead of the whole node's border staying lit alongside it.
-- Canvas mode: clicking an action button (`+`, `select`, `where`, ...) without the mouse having freshly crossed into the node first (it was already resting there from an earlier action) opened the picker but left the *previously* focused node's border showing, instead of moving focus to the node actually being acted on.
-- Settings -> Connections: a connection's access policy could be set to "None" (unrestricted access - e.g. a local/sandbox database), but the UI still treated that exactly like an inactive policy - blocking MCP from turning on, and disabling "None" outright while MCP was already on. "None" is a deliberate choice, not a missing one, and the desktop app's own policy enforcement already treated it that way; the UI now matches, with wording that says so ("no redaction", not "select a policy").
+- **Adding a step on the canvas removes a stray `|` left at the end of the query.** Before, the dangling pipe stayed after the new step.
+- **Hovering or clicking a table on the canvas moves the keyboard focus to it.** Before, the highlight could stay on the table you last reached with the keyboard. Hovering a filter or a join icon also highlights just that item.
+- **A connection's access policy can be "None" while AI agent access is on.** Before, Settings → Connections treated "None" as no policy and blocked agent access. "None" means no values are hidden, as the desktop app already treated it.
 
 ## [0.57.0] - 2026-09-02
 ### Added
-- Tabs can be reordered by dragging them, in both the horizontal strip and the vertical rail. Dragging to either end of a long rail scrolls it. The new order also drives Ctrl+Tab cycling and survives a reload.
-- New Settings -> Appearance -> Tabs setting: show the session tabs as a vertical rail down the left side instead of the horizontal strip across the top, with a new-tab button at the top of the rail. Applies to both layouts, and is also available as a "Toggle Tab Orientation" command.
+- **Drag tabs to reorder them.** The order survives a reload, and Ctrl+Tab follows it. Dragging to the end of a long vertical rail scrolls it.
+- **Tabs can run down the left side instead of across the top.** Turn it on in Settings → Appearance → Tabs, or with the "Toggle Tab Orientation" command.
 
 ### Changed
-- Tab close buttons now appear on hover of that tab, instead of on every tab at once. Hovering a tab also tints it and brightens its label.
+- **A tab's close button appears only when you hover that tab.** Hovering also tints the tab.
 
 ### Fixed
-- "Only apply to MCP server" (desktop) kept flipping back off. It was saved correctly to disk, but reloading the connections list -- which happens after almost any connection action -- rebuilt the in-memory list without this field, so the toggle (and the behavior behind it) reverted to off until the next app restart.
+- **The "Only apply to MCP server" switch no longer turns itself off.** In the desktop app, it switched back off after most connection actions until you restarted.
 
 ## [0.56.0] - 2026-09-02
 ### Breaking
-- Requires pine-lang 0.42.0 or later (was 0.41.0) -- lets MCP-run queries below show up prettified (see Fixed).
+- **Requires pine-lang 0.42.0 or later (was 0.41.0).** It formats the queries AI agents run (see Fixed).
 
 ### Added
-- New "Toggle Layout Orientation" command (command palette): switch New Layout between side-by-side and top/bottom without using the canvas toolbar icon.
+- **The "Toggle Layout Orientation" command switches the new layout between side by side and top and bottom.** It's in the command palette, so you don't need the canvas toolbar icon.
 
 ### Changed
-- Database Connections list (desktop): a connection's rename field, access policy, MCP access toggle, "only apply to MCP server" toggle, refresh, and delete are now behind an expand arrow instead of five icons crammed onto one row. The expanded panel orders them the way you'd actually use them -- pick a policy, then turn MCP on -- instead of leaving that dependency to a tooltip.
+- **In the desktop app, each connection's options fold out under an arrow in Settings → Database Connections.** That is rename, access policy, AI agent access, "Only apply to MCP server", refresh and delete. They're in the order you use them: pick a policy, then turn on agent access.
 
 ### Fixed
-- New Layout: dragging the Pine/SQL panel's resize divider in top/bottom view no longer moves it in the opposite direction.
-- MCP-run queries now show up nicely formatted in the Pine panel instead of the raw, unformatted expression the agent sent.
-- Canvas's `where` picker: a long column name no longer gets hard-clipped mid-character (now truncates with `…` and shows the full name on hover), the operator and value fields have visible spacing between them instead of sitting flush together, and opening the picker now focuses the operator dropdown first instead of the value field.
+- **Dragging the Pine/SQL panel's divider in the top and bottom view moves it the right way.** It used to move the opposite way.
+- **Queries run by AI agents appear formatted in the Pine panel.** Before, you saw the agent's expression exactly as it sent it.
+- **The canvas's `where` picker is easier to read and use.** A long column name ends in "…", with the full name on hover. The operator field gets focus first, and the fields have space between them.
 
 ## [0.55.0] - 2026-08-31
 ### Breaking
-- Requires pine-lang 0.41.0 or later (was 0.39.0) -- the access policy feature below needs its new `access-policy` param.
+- **Requires pine-lang 0.41.0 or later (was 0.39.0).** Access policies need it.
 
 ### Added
-- New Settings -> Access Policy section: create, rename, and delete named policies, each a toggleable set of rules deciding which columns show real values instead of `xxxxx` (Postgres types, foreign keys, `_id`-suffixed columns).
-- Database Connections: pick which policy applies to each connection. MCP can only be turned on once its connection has an active policy, and the policy can't be cleared or swapped for an inactive one while MCP is on.
-- New per-connection toggle, "Only apply to MCP server": see real data on your own queries without changing what the agent sees. Off by default.
-- Redacted columns return `xxxxx` straight from the database query -- the real value never leaves it. Applies to every tab, not just MCP's.
+- **Access policies decide which columns show real values and which show `xxxxx`.** Create, rename and delete them in Settings → Access Policy. Each policy has rules you switch on, for example for a Postgres type, foreign keys, or columns ending in `_id`.
+- **Pick the access policy for each database connection.** AI agent access can only be turned on once the connection has an active policy. While it's on, you can't remove the policy or switch to an inactive one.
+- **"Only apply to MCP server" lets you see real values in your own queries on a connection.** What the agent sees doesn't change. It's off by default.
+- **Hidden columns show `xxxxx`, and the real value never leaves the database.** This applies to every tab, not only the agent's.
 
 ### Changed
-- "Vim keybindings" no longer gates the canvas's own `s`/`w`/`o`/`g`/`x`/`u`/`U`/`i` shortcuts -- only `j`/`k` and the query editor's vim mode are.
-- The "Vim keybindings" preference is now app-wide (was per-tab) -- every open tab reflects the same value immediately.
+- **"Vim keybindings" no longer switches off the canvas's letter shortcuts.** It only affects `j`/`k` and the query editor's Vim mode. This undoes part of 0.54.0.
+- **"Vim keybindings" applies to every tab at once.** It used to be set per tab.
 
 ### Fixed
-- MCP queries now always re-read the current access policy before running, instead of a stale copy from app boot.
-- Fixed an intermittent "X is not a function" from a duplicate MCP query listener left behind by dev-mode Fast Refresh.
-- Fixed canvas keyboard shortcuts (e.g. `x`) getting stuck after picking a value in the canvas picker with Settings open.
-- Fixed a canvas checkpoint's `|= agg` name reappearing after being deliberately removed, and the first click after (re)naming a checkpoint using stale query results.
-- Tab order (New Layout): the notification bell and Settings gear no longer steal early Tab stops; connections in the docked Settings panel are now reachable by Tab (Enter/Space to switch).
-- Settings no longer loses its own keyboard shortcuts to the canvas the moment focus lands somewhere neither claims.
-- Arrow keys/`j`/`k` no longer scroll Settings' rail while a toggle switch has focus.
+- **AI agents' queries always use the current access policy.** Before, they could use the policy as it was when the app started.
+- **Canvas shortcuts such as `x` keep working after you pick a value while Settings is open.**
+- **A removed name on a canvas checkpoint no longer comes back.** A checkpoint is a `group:` or `limit:` step, named with `|= name`. The first click after naming one also no longer shows old results.
+- **You can reach connections in the docked Settings panel with Tab.** The bell and gear no longer take the first Tab stops. Settings also keeps its own shortcuts and arrow keys instead of losing them to the canvas.
 
 ## [0.54.0] - 2026-08-30
 ### Added
-- The join picker (canvas mode) now shows which foreign-key column a candidate uses (Pine's own disambiguation syntax, e.g. `.created_by`) whenever two candidates in the same group would otherwise name the same table and be indistinguishable -- a single unambiguous candidate for a table still renders with no extra text, same as before.
+- **The canvas's join picker shows which foreign key a join uses when a table appears twice.** It uses Pine's own syntax, such as `.created_by`. A table with only one way to join shows no extra text.
 
 ### Changed
-- "Vim keybindings" (Preferences) now also gates the canvas's `j`/`k`-as-letters and single-letter shortcuts (`s`/`w`/`o`/`g`/`x`/`u`/`U`/`i`), not just the query editor -- previously those fired unconditionally regardless of the setting. Arrow-key navigation and Ctrl+Z/Ctrl+Y undo/redo are unaffected (they aren't vim-specific).
+- **"Vim keybindings" also controls the canvas's letter shortcuts.** With it off, `j`/`k` and `s`, `w`, `o`, `g`, `x`, `u`, `U`, `i` do nothing on the canvas. The arrow keys and Ctrl+Z/Ctrl+Y still work.
 
 ### Fixed
-- Canvas's `j`/`k`/single-letter shortcuts (New Layout) no longer fire once the docked Settings panel is open, or while typing in the Pine/SQL panel -- keyboard input now routes to whichever panel actually has focus, falling back to the canvas when nothing else does. Opening Settings (however it's triggered -- the gear icon, `Ctrl`/`Cmd`+`,`, the command palette) hands it focus immediately, rather than only once something inside it is clicked. Settings' rail (Database Connections/Appearance/Preferences/MCP/About) also gained its own `j`/`k`/Arrow Up/Down navigation once it holds focus.
+- **Canvas shortcuts no longer fire while you're in Settings or typing in the Pine/SQL panel.** Keys go to the panel that has focus, and Settings gets focus as soon as it opens. You can also move through Settings' sections with `j`/`k` and the arrow keys.
 
 ## [0.53.0] - 2026-08-28
 ### Added
-- Zen mode (New Layout, command palette only for now -- no dedicated key): a graph-only, distraction-free view that hides the header, tab strip, and Results, and turns auto-run off for as long as it's on (restored to whatever it was set to once you exit).
-- `Ctrl`/`Cmd`+`Shift`+`,` toggles Settings open and closed, matching the gear icon.
-- A "↻ Reconnect" action next to the connection label in the header, shown whenever a tab's assigned database connection isn't live (e.g. the database wasn't running yet when the app started) -- previously the only way to retry was switching tabs or reloading the whole app.
+- **Zen mode shows only the canvas.** It hides the header, tabs and results, and pauses auto-run until you leave. Open it from the command palette.
+- **Ctrl/Cmd+Shift+, opens and closes Settings.**
+- **"↻ Reconnect" appears in the header when a tab's database isn't connected.** This happens, for example, when the database wasn't running yet when Beamlynx started. Before, you had to switch tabs or reload the app.
 
 ### Changed
-- `Ctrl`/`Cmd`+`,` now toggles Settings (matching Slack's and most native Mac apps' Preferences convention) instead of the SQL panel. `Ctrl`/`Cmd`+`.` still toggles the Pine panel; `Ctrl`/`Cmd`+`Shift`+`.` now toggles the SQL panel.
-- Settings in New Layout is now a docked panel on the left, spanning the full height (tab strip included) and staying open across tab switches, instead of living inside whichever tab was active when it was opened. No longer closes on Escape (that was a Modal convention; a docked panel isn't in anyone's way, and Escape is needed elsewhere, e.g. closing a picker).
+- **Ctrl/Cmd+, opens and closes Settings, as in most Mac apps.** It used to open the SQL panel, which moved to Ctrl/Cmd+Shift+. instead. Ctrl/Cmd+. still opens the Pine panel.
+- **In the new layout, Settings is a panel docked on the left.** It stays open when you switch tabs. Escape no longer closes it.
 
 ### Fixed
-- Canvas mode's node labels, chips, and toolbars now scale with the Text Size setting (previously only the rest of the app did) and are larger at every size to begin with. The keybinding legend at the bottom-left of the canvas is now bigger and shows each shortcut key in bold accent color instead of one uniformly dimmed string.
-- Settings no longer opens as a floating modal on top of the canvas in New Layout (see "Changed" above) -- so it never covers the canvas or results while you tune a change against them. Changing Text Size while the Appearance panel is open no longer reflows the panel itself, which previously scrolled the Text Size control out from under you. Its border, and its top/bottom edges, now match Canvas's own pane instead of being the only misaligned, unbordered panel in New Layout.
+- **Canvas text follows the Text Size setting and is larger at every size.** The shortcut legend at the bottom left is bigger too, with each key in bold.
+- **Settings no longer covers the canvas and results in the new layout.** Changing Text Size also no longer scrolls the control out from under you.
 
 ## [0.52.0] - 2026-08-25
 ### Added
-- A new Appearance section in Settings: three built-in themes (Light, Dark, Sepia), each with its own coordinated colors rather than a shared palette with a swappable accent. Picking one also determines light/dark behavior for the editor and canvas.
-- Independent Interface font (System, Inter, IBM Plex Sans) and Code font (IBM Plex Mono, JetBrains Mono, Fira Code, System Monospace) choices, replacing one shared monospace-only font setting. Fira Code's ligatures now actually render.
-- A Text size setting (Small/Medium/Large) that scales the app's text and spacing without resizing panels or the canvas.
+- **Pick a theme in the new Appearance section of Settings: Light, Dark or Sepia.** Each has its own colors, and the editor and canvas follow it.
+- **Choose the interface font and the code font separately.** The interface offers System, Inter and IBM Plex Sans. Code offers IBM Plex Mono, JetBrains Mono, Fira Code (with its ligatures) and System Monospace.
+- **A Text size setting (Small, Medium, Large) scales text and spacing.** Panels and the canvas keep their size.
 
 ### Changed
-- "Toggle Theme" (command palette) now cycles through all three themes instead of switching between two.
-- Canvas keyboard navigation between tables (arrow keys, or `j`/`k`) now wraps from the last table back to the first instead of stopping there.
+- **"Toggle Theme" in the command palette cycles through all three themes.**
+- **The arrow keys and `j`/`k` wrap from the last table on the canvas back to the first.**
 
 ### Fixed
-- Two-finger trackpad scroll zoomed the graph instead of panning it, in both the classic graph and canvas mode -- it now pans, matching the Miro/Figma convention. The classic graph's mouse controls also now match canvas mode's: right-click drags the canvas, left-click drags a node or rubber-band-selects, with no modifier key needed for either.
+- **Two-finger trackpad scrolling pans the graph instead of zooming it.** This matches Miro and Figma. In the classic graph, right-drag moves the view and left-drag moves a node or selects, as on the canvas.
 
 ## [0.51.2] - 2026-08-23
 ### Changed
-- New Layout's Canvas/Results split now uses one consistent 8px gap on all sides and between the two panes, instead of a slightly different, unexplained width for the pane divider (10px) versus the surrounding margins (8px), and no gap at all at the bottom.
+- **The Canvas and Results panes have the same 8px gap on every side.** Before, the gaps differed, and there was none at the bottom.
 
 ### Fixed
-- Desktop's "update ready" notification said "restart" twice (in the message and the button) and its "Restart Now" button had no visible border or fill, reading as plain text rather than something to click.
+- **The desktop app's "update ready" message no longer says "restart" twice.** Its "Restart Now" button also looks like a button.
 
 ## [0.51.1] - 2026-08-23
 ### Changed
-- A connection's color is now set from Settings > Database Connections (click its status dot), alongside renaming and MCP access, instead of from the top-left connection picker. The picker's dot is now just a status indicator.
-- The Updates modal shows a short title for each change first, with its fuller explanation (when there is one) underneath -- easier to skim than a flat bullet list.
-- The new layout's Pine/SQL panel shortcuts are now `Ctrl`/`Cmd`+`.` for Pine and `Ctrl`/`Cmd`+`,` for SQL, replacing `Ctrl`/`Cmd`+`Shift`+`E`/`S`.
-- A canvas filter now composes as its own `where:` step instead of joining a comma-separated list on one shared `where:` clause. Multiple filters on the same table still combine with AND, same as before.
+- **Set a connection's color in Settings → Database Connections by clicking its status dot.** The dot in the connection picker at the top left only shows status.
+- **The Updates list shows a short title for each change, with details underneath.** This makes it easier to skim.
+- **The Pine and SQL panels open with Ctrl/Cmd+. and Ctrl/Cmd+, instead of Ctrl/Cmd+Shift+E and Ctrl/Cmd+Shift+S.**
+- **Each filter you add on the canvas becomes its own `where:` step.** Before, they were joined with commas in one `where:`. Several filters on one table must still all match.
 
 ### Fixed
-- Table colors (Preferences > Table colors) disappeared the instant the SQL panel was opened, even though the results on screen hadn't gone stale -- opening the panel compared the newly-shown SQL text against the last-run Pine expression and always found a mismatch.
-- Auto-run silently stopped firing on canvas edits whenever the SQL panel was the visible one, since a canvas gesture's own auto-run was gated on the Pine panel specifically being shown rather than on canvas mode being active.
+- **Table colors no longer disappear when you open the SQL panel.** The results hadn't changed, but the app thought they were out of date.
+- **Auto-run works while the SQL panel is open.** Before, canvas edits only ran the query while the Pine panel was showing.
 
 ## [0.51.0] - 2026-08-23
 ### Added
-- A Canvas-first two-pane layout (Canvas and Results, side by side or stacked), on by default for new sessions. Switch back to the classic sidebar layout any time from the header, Settings, or the command palette.
-- Auto-run: with canvas mode active, the query now runs automatically after each canvas edit instead of waiting for Run. Toggle it off from Settings or the command palette if you'd rather run explicitly.
-- An optional Pine or SQL text panel next to the canvas in the new layout, for hand-editing alongside point-and-click use (`Ctrl+Shift+E` for Pine, `Ctrl+Shift+S` for SQL).
-- `|` now also opens the join picker in canvas mode, alongside `i` -- a join is "pipe a new table onto this one".
-- In canvas mode's select/order/group/join pickers, `,` now behaves like `Enter`, so a comma-separated list of columns doesn't need a keypress between each one.
-- Conventional `Ctrl`/`Cmd`+`Z` and `Ctrl`/`Cmd`+`Shift`+`Z` (and `Ctrl`+`Y`) now undo/redo in canvas mode too, alongside `u`/`Shift+U`.
-- Any table can now be removed from the canvas, not just the last one added. If another table's join was relying on the removed one implicitly, it now resolves against whatever's left instead -- if that connection isn't real, it already shows the existing dashed/warning-colored styling used for any other join the server can't resolve cleanly.
-- The new layout's Pine/SQL panel can now be resized by dragging the divider between it and the canvas, instead of a fixed size.
-- `Ctrl`/`Cmd`+`Tab` and `Ctrl`/`Cmd`+`Shift`+`Tab` move between tabs, matching a browser's own tab switching (`Ctrl`+`PageDown`/`PageUp` also work). Desktop app only -- a real browser already owns these for its own tabs.
-- A PINE/SQL toggle in the canvas toolbar (new layout) opens the same panel `Ctrl`/`Cmd`+`Shift`+`E`/`S` already did, so it's reachable without a keyboard shortcut.
+- **A new layout puts the canvas and the results side by side, or one above the other.** It's the default for new sessions. Switch back to the classic sidebar layout from the header, Settings or the command palette.
+- **Auto-run: each edit on the canvas runs the query.** Turn it off in Settings or the command palette if you'd rather run queries yourself.
+- **A Pine or SQL text panel can sit next to the canvas in the new layout, for editing by hand.** Open it with Ctrl+Shift+E (Pine), Ctrl+Shift+S (SQL) or the PINE/SQL toggle in the canvas toolbar. Drag the divider to resize it.
+- **`|` also opens the join picker on the canvas, like `i`.** A join pipes a new table onto the current one.
+- **In the canvas's select, order, group and join pickers, `,` works like Enter.** You can type a comma-separated list of columns in one go.
+- **Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z and Ctrl+Y undo and redo on the canvas.** `u` and Shift+U still work too.
+- **Remove any table from the canvas, not only the last one.** Joins that depended on it reconnect to the tables that are left. If such a join isn't real, it's drawn dashed as a warning.
+- **Ctrl/Cmd+Tab and Ctrl/Cmd+Shift+Tab switch tabs in the desktop app.** Ctrl+PageDown and Ctrl+PageUp work too. In a browser, these keys belong to the browser's own tabs.
 
 ### Removed
-- The "Compact mode" preference and its command-palette entry. It only ever affected the classic sidebar layout, and no longer had any effect once the new Canvas-first layout became the default -- the new layout already switches to a stacked arrangement on small screens on its own.
+- **The "Compact mode" preference is gone.** It only affected the classic layout. The new layout stacks its panes on small screens by itself.
 
 ### Fixed
-- Canvas mode's keyboard shortcuts (`s`/`w`/`o`/`g`/`i`/`x`/`u`) stopped responding after any query ran, and stayed unresponsive until the page was reloaded.
-- A sidebar height saved from an earlier resize could overflow its own panel and stretch the graph/results panel taller than the window, showing an unwanted scrollbar.
-- The join action's letter hint highlighted `j`, not `i` -- `i` is the actual shortcut for it.
-- The checkpoint/container node's action bar didn't show which letter shortcuts were active while it had keyboard focus, unlike a table node's.
-- Opening the new layout's Pine/SQL panel auto-focused its text editor, silently blocking every canvas keybinding until you clicked away from it once.
-- Auto-run waited a fixed 500ms after every canvas edit before running, made to feel far slower than the query itself (typically a few milliseconds) -- cut to 150ms, still enough to collapse a burst of rapid picks into one run.
-- A canvas gesture whose speculative build came back without a usable result (rather than failing outright) could crash the whole app instead of falling back gracefully.
-- A join that no longer had a real column to connect on (for example, after deleting the table in between two others) could render as a plain, confident-looking solid line instead of the dashed warning styling used for any other join the server can't resolve -- and the table on the other end showed no columns at all. Both are now treated the same as any other unresolved join.
-- Canvas edits silently did nothing while the new layout's SQL panel was open -- the graph and the SQL text both stayed frozen on whatever they showed before the edit. A session that reloaded with the SQL panel already open got stuck showing "Connecting…" forever for the same reason.
+- **Canvas shortcuts keep working after a query runs.** Before, `s`, `w`, `o`, `g`, `i`, `x` and `u` stopped working until you reloaded.
+- **A saved sidebar height no longer makes the window scroll.** It could stretch the graph and results taller than the window.
+- **The join action's letter hint shows `i`, its real shortcut.** It used to show `j`.
+- **A checkpoint shows its letter shortcuts when it has keyboard focus, like a table does.** A checkpoint is a `group:` or `limit:` step.
+- **Opening the Pine/SQL panel no longer blocks canvas shortcuts.** It used to put the cursor in its editor, so keys didn't reach the canvas until you clicked away.
+- **Auto-run starts 150 ms after an edit instead of 500 ms.** Queries usually take a few milliseconds, so the longer wait made auto-run feel slow.
+- **A canvas edit the server couldn't fully build no longer crashes the app.**
+- **A join left with no column to connect on shows as a dashed warning line.** Before, it looked like a normal join, and the table at its far end showed no columns. This could happen after you deleted a table between two others.
+- **Canvas edits work while the SQL panel is open.** Before, the graph and the SQL stayed frozen. A session reloaded with the SQL panel open also got stuck on "Connecting…".
 
 ### Changed
-- The canvas/graph mode switch moved out of the header and into the graph panel itself, since it only applies there; the header now only ever refers to which overall layout is active.
+- **The canvas/graph switch moved from the header into the graph panel.** The header only switches the overall layout.
 
 ## [0.50.0] - 2026-08-22
 ### Breaking
-- Requires pine-lang 0.39.0 or later -- the new connection refresh icon (below) needs its `POST /api/v1/connections/:id/reindex` endpoint.
+- **Requires pine-lang 0.39.0 or later.** The connection refresh icon needs it.
 
 ### Added
-- A refresh icon next to each live connection in Settings > Database Connections. Use it to pick up tables or columns added to the database after the connection was first opened, instead of restarting the server.
-- A connection can now be renamed: an optional name field when adding it, and a pencil icon on its row in Settings > Database Connections afterward. Desktop app only, since that's the only place a connection's name is actually saved anywhere.
-- Keyboard control for canvas mode. Move between nodes with the arrow keys or `j`/`k`, and use a single-letter shortcut for the highlighted node's operations: `s` select, `w` where, `o` order, `g` group, `i` join (or add the first table, from the start node), `x` delete, `u`/`Shift+U` undo/redo. The highlighted node is shown the same way as the query's current node, and its operations stay visible without needing to hover it. A checkpoint (a `group:`/`limit:` step) can now be navigated to and deleted the same way.
+- **A refresh icon on each live connection picks up new tables and columns.** It's in Settings → Database Connections. Before, you had to restart the server.
+- **Give a connection a name in the desktop app.** Set it when you add the connection, or later with the pencil icon in Settings → Database Connections.
+- **Use the canvas from the keyboard.** Move between tables and checkpoints with the arrow keys or `j`/`k`. Then press `s` select, `w` where, `o` order, `g` group, `i` join, `x` delete, or `u` and Shift+U to undo and redo.
 
 ### Fixed
-- The delete icon on a Database Connections row used to sit in a different column depending on whether that row also showed the refresh icon (only shown for a live connection), so rows didn't line up. It now sits in the same place on every row.
-- On the desktop app, the graph view could get stuck showing "Connecting…" forever even once the connection was live. The very first query build for a tab, sent before its connection actually had a live pool yet, failed silently and nothing ever retried it once the connection came up. The connection reconnect step now asks for a fresh build once it succeeds.
-- The MCP switch on a Database Connections row (desktop app) looked like a general on/off toggle for the connection itself. Replaced with a small robot icon, lit when MCP access is on -- consistent with the row's other icon actions, and specific about what it actually controls.
+- **The delete icon lines up on every row in Settings → Database Connections.** It used to shift when a row also showed the refresh icon.
+- **The desktop app's graph no longer sticks on "Connecting…" once the database is connected.** A tab's first query could fail before its connection was ready, and nothing tried again.
+- **AI agent access on a connection is shown as a small robot icon, lit when it's on.** The switch it replaces looked like it turned the whole connection on or off.
 
 ### Changed
-- The Settings About section now labels its version row correctly ("Server version" -- it was always the connected pine-lang server's version, not this app's own). It also shows the UI's own version, and, in the desktop app, the installed app's own version.
+- **Settings → About labels the pine-lang version "Server version".** It also shows the version of this interface, and of the desktop app when you use it.
 
 ## [0.49.0] - 2026-08-16
 ### Added
-- A Settings page, opened from the gear icon next to the notification bell. It brings database connections, app preferences, and MCP setup into one place instead of scattered menus.
-- MCP support for the desktop app. An AI agent like Claude Code can run queries directly against your saved connections. Turn it on per connection from Settings.
-- A database type field when adding a connection. Picking a type fills in its default port automatically.
-- "Open Settings" and "New Database Connection" command palette entries.
+- **A Settings page brings database connections, preferences and AI agent setup together.** Open it with the gear icon next to the notification bell.
+- **In the desktop app, AI agents such as Claude Code can query your saved connections.** They connect through MCP. Turn it on for each connection in Settings.
+- **Pick the database type when you add a connection, and its default port fills in.**
+- **"Open Settings" and "New Database Connection" are in the command palette.**
 
 ### Changed
-- "Connections" is now called "Database Connections" everywhere in the app, to leave room for a future connection to the Pine server itself.
-- Adding a connection now uses tabs to switch between typing in the fields and pasting a connection string, instead of an expandable section.
-- The old onboarding screens (the Docker "Welcome" page and the "Pine server is not running" page) are gone. The app now goes straight to its normal view.
+- **"Connections" is called "Database Connections" everywhere.** This leaves room for a future connection to the Pine server itself.
+- **When you add a connection, tabs switch between filling in fields and pasting a connection string.** They replace the expandable section.
+- **The Docker "Welcome" page and the "Pine server is not running" page are gone.** The app opens straight to its normal view.
 
 ## [0.48.0] - 2026-08-13
 ### Breaking
-- Requires pine-lang 0.38.1 or later.
+- **Requires pine-lang 0.38.1 or later.**
 
 ### Added
-- An experimental interactive view for building Pine queries by clicking through tables in a graph instead of writing text -- toggle it from the header, next to the version number.
+- **Build Pine queries by clicking through tables in a graph (experimental).** Turn it on from the header, next to the version number.
 
 ### Changed
-- Unified the app's visual design (the "schematic/blueprint" look) across the whole app.
+- **The whole app shares one visual design, the "schematic/blueprint" look.**
 
 ## [0.47.0] - 2026-08-09
 ### Changed
-- Each tab now connects to its own database lazily, only when it becomes the active tab, instead of every tab eagerly following whatever connection was picked most recently. Opening the app no longer forces the connections picker open -- it silently reconnects the tab you were on. A tab whose connection isn't live yet shows a hollow (outline-only) dot in its own connection's color, filling in solid once connected.
+- **Each tab keeps its own database connection and connects only when you open it.** Before, every tab followed the connection you picked last. At start-up, Beamlynx reconnects the tab you were on, and a hollow dot means it isn't connected yet.
 
 ### Fixed
-- Clicking a graph node (e.g. expanding a variable/checkpoint container) was mistaken for a Tab keypress, stealing focus into the Pine input and jumping the candidate-relation highlight to the first suggestion.
-- Picking a connection from the auto-opened startup picker could open an unrelated new tab and silently change which connection *other*, already-open tabs appeared to be using -- both tabs and the toolbar were falling back to display whatever connection was last selected globally instead of each tab's own assigned connection.
-- (Desktop) A tab restored from before this session-connection rework had no saved-profile id to reconnect from, so it silently never auto-connected -- it now falls back to resolving one from its connection id.
-- (Desktop) The connections picker's "currently active" checkmark could point at a stale profile after switching tabs silently reconnected a different one in the background -- it's now derived directly from the active tab's own connection, so it can't drift.
-- Every tab's assigned connection was silently wiped back to "not connected" on every app launch, before pine-server (a fresh process each launch) had any chance to reconnect it -- restarting the app looked like every saved connection had been forgotten. A tab's assigned connection is no longer cleared just because it isn't live *yet*; liveness is now tracked separately (see the lazy per-tab reconnect above).
-- Failing to reconnect a saved profile (deleted/renamed on disk, or its DB unreachable) via the connections picker only logged to the console -- now shows the same connection-error banner as every other connection failure.
-- (Desktop) The connections list/picker always showed a solid dot for every saved connection regardless of whether it actually had a live pool -- it was comparing pine's own connection id against the saved-profile id, two different id spaces that never matched. Not-yet-connected entries now correctly show as a hollow (outline-only) dot, matching the toolbar and tab indicators.
-- (Desktop) On launch, a tab's connection briefly displayed as its raw `host:port` id instead of its saved name, before flashing to the real name once the saved-profile list finished loading -- looked like the connection had been renamed. Shows a neutral placeholder during that gap instead of the misleading raw id.
+- **Clicking a graph node no longer jumps into the Pine input.** It was taken as a Tab key press and moved the suggestion highlight.
+- **Picking a connection at start-up no longer changes which connection other tabs show.** It could also open an unrelated new tab.
+- **In the desktop app, tabs saved by an older version reconnect on their own.** Before, they never connected automatically.
+- **In the desktop app, the connection picker's checkmark always marks the open tab's connection.** It could point at another connection after you switched tabs.
+- **Restarting Beamlynx no longer makes tabs forget their connection.** Each tab was reset to "not connected" before the server could reconnect it.
+- **A failed reconnect from the connection picker shows an error.** This happens when a saved connection was deleted or renamed, or its database can't be reached. Before, nothing appeared on screen.
+- **In the desktop app, a saved connection that isn't live shows a hollow dot.** Before, every saved connection showed a solid dot, connected or not.
+- **In the desktop app, a tab no longer shows its connection's `host:port` at start-up before its name.** It shows a neutral placeholder until the name loads.
 
 ## [0.46.2] - 2026-08-04
 ### Breaking
-- Requires pine-lang 0.37.2 or later.
+- **Requires pine-lang 0.37.2 or later.**
 
 ### Fixed
-- A failed attempt to connect (unreachable DB, wrong credentials, etc.) used to fail silently — the toolbar just stopped showing a "connecting" spinner with no indication anything went wrong. A new error toast now surfaces the actual failure.
-- A previously-used connection restored from a past session could show as "connected" in the toolbar even when nothing was actually connected this session (pine-server's connection pools don't survive a process restart). Restored connections are now checked against the backend's live state before being trusted.
-- When disconnected, the app now automatically opens the connections picker (or the add-connection form, if none exist yet) instead of leaving a dead "Not connected to database" label with no obvious next step.
+- **A failed connection attempt shows an error.** Before, the "connecting" spinner just stopped, for example with a wrong password or an unreachable database.
+- **A connection restored from a past session shows as connected only if it really is.** The server's connections don't survive a restart, so Beamlynx checks first.
+- **When you're not connected, the connection picker opens for you.** If you have no connections yet, the form to add one opens. Before, you only saw "Not connected to database".
 
 ## [0.46.1] - 2026-08-03
 ### Fixed
-- The playground's shared connection could be deleted from the connection picker, breaking the playground for everyone else using it; the delete action is now hidden (and refused as a backstop) in playground mode.
-- The changelog's relative-date label showed "-1 days ago" for a same-day entry when the local timezone is behind UTC.
+- **The playground's shared connection can't be deleted.** Deleting it broke the playground for everyone.
+- **The Updates list no longer says "-1 days ago" for a change made today.** This happened when your time zone is behind UTC.
 
 ## [0.46.0] - 2026-08-03
 ### Added
-- Tabs (Pine/SQL text, input mode, connection) are now restored on reload instead of always starting from a single blank session.
-- `Ctrl/Cmd+S` ("Save Tab") downloads the active tab's Pine expression as a `.pine` file.
-- New "List Database Connections" / "New Database Connection" command palette entries.
+- **Tabs come back after a reload.** Each keeps its Pine or SQL text, input mode and connection.
+- **Ctrl/Cmd+S saves the tab's Pine expression as a `.pine` file.**
+- **"List Database Connections" and "New Database Connection" are in the command palette.**
 
 ### Fixed
-- Pressing Tab while the graph had focus was falling through to React Flow's own node/edge navigation instead of cycling through Pine completion candidates.
+- **Tab cycles through Pine suggestions while the graph has focus.** Before, it moved between the graph's nodes and edges instead.
 
 ## [0.45.2] - 2026-08-02
 ### Fixed
-- The notification bell's color (for unread updates) was showing as blue instead of the intended warm accent.
+- **The notification bell shows unread updates in the warm accent color, not blue.**
 
 ## [0.45.1] - 2026-08-02
 ### Fixed
-- In the desktop app, saved connections weren't showing their color or proper name in the connection picker.
-- The "Database Connection" dialog no longer pops up automatically when you already have saved or active connections to pick from -- it now only does that when there's genuinely nothing to connect to yet.
+- **In the desktop app, saved connections show their color and name in the connection picker.**
+- **The connection dialog opens by itself only when there's nothing to connect to.** Before, it opened even when you had saved or active connections.
 
 ### Changed
-- The notification bell no longer shakes when there's something new -- it still changes color, just more subtly.
+- **The notification bell no longer shakes for new updates.** It still changes color.
 
 ## [0.45.0] - 2026-08-02
 ### Added
-- Beamlynx can now be downloaded and run as a desktop app, with no Docker required.
-- New keyboard shortcuts in the desktop app: `Ctrl/Cmd+K` for the Command Palette, `Ctrl/Cmd+T` for a new tab, `Ctrl/Cmd+W` to close a tab.
-- The desktop app now shows update progress in-app, instead of only in the background.
-- In the desktop app, your saved connections are now remembered between sessions, encrypted using your device's own secure storage. The hosted/browser version is unchanged -- it still never stores credentials.
+- **Beamlynx runs as a desktop app, with no Docker needed.**
+- **The desktop app has shortcuts for the command palette and tabs.** Ctrl/Cmd+K opens the command palette, Ctrl/Cmd+T opens a tab and Ctrl/Cmd+W closes it.
+- **The desktop app shows update progress.** Before, updates only ran in the background.
+- **The desktop app remembers your saved connections between sessions.** They're encrypted with your device's secure storage. The browser version still never stores credentials.
 
 ### Changed
-- The small server-version label is now hidden in the desktop app, since it has its own separate release notes.
+- **The desktop app hides the small server version label.** The desktop app has its own release notes.
 
 ## [0.44.0] - 2026-07-31
 ### Added
-- Pine variables: write multi-expression queries and name/reuse an intermediate result with `|= name` in a new multi-expression editor. Variables and checkpoint (`group:`/`limit:`) results render in the graph as collapsible container nodes, with the same FK-relation handles and join-type-aware (solid/dashed) edges as regular tables.
-- The database connection dialog accepts a Postgres connection string (`postgresql://user:password@host:5432/database`) and parses it to fill in the host/port/user/password/database fields; manual entry stays the default, with pasting a string as a secondary, collapsible option. The connection string field is masked like a password so password managers can autofill it.
-- The connection picker can remove a saved connection (click its trash icon to arm, click again to confirm), backed by pine-lang's new DELETE endpoint.
+- **Name an intermediate result with `|= name` and reuse it in later expressions.** A new editor holds several expressions. Named results and checkpoints (`group:` and `limit:` steps) show in the graph as boxes you can collapse, joined like tables.
+- **Paste a Postgres connection string to fill in the connection fields.** For example `postgresql://user:password@host:5432/database`. The field is masked like a password, so password managers can fill it in.
+- **Delete a saved connection from the connection picker.** Click its trash icon, then click again to confirm.
 
 ### Fixed
-- Typing lag in the Pine input that worsened with more expression blocks/variables (unnecessary CodeMirror rebuilds on every keystroke).
-- The autocomplete dropdown now shows a "Loading..." state instead of flashing "Nothing found" while results are still loading.
+- **Typing in the Pine input no longer slows down as you add expressions.**
+- **Autocomplete shows "Loading..." instead of "Nothing found" while it loads.**
 
 ### Breaking
-- Minimum required server version is now `0.37.0`.
+- **Requires pine-lang 0.37.0 or later.**
 
 ## [0.43.0] - 2026-05-21
 ### Added
