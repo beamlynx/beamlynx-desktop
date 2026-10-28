@@ -8,7 +8,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **The results show how long the query took.** The time, in milliseconds, sits next to the row count. It counts from pressing Run to the rows arriving.
 
 ### Changed
-- **Access policies are now called masking policies.** Settings → Masking templates explains what masking does. A masked column comes back as `xxxxx`. An agent can still filter, sort and join on it with a value it already has, such as an email it was given.
+- **Access policies are now called masking policies.** The info icon next to Settings → Masking templates explains what masking does. A masked column comes back as `xxxxx`. An agent can still filter, sort and join on it with a value it already has, such as an email it was given.
 
 ## [0.70.2] - 2026-10-28
 ### Changed

@@ -11,6 +11,7 @@ import type { AccessPolicy, AccessPolicyModule, ColumnMatcher } from '../../stor
 import { useStores } from '../../store/store-container';
 import { describeMatcher } from '../../utils/accessPolicy';
 import ConfirmDialog from '../ConfirmDialog';
+import InfoHint from '../InfoHint';
 import ToggleRow from './ToggleRow';
 
 
@@ -392,34 +393,37 @@ const AccessPolicySection = () => {
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <Typography
-        variant="h6"
-        component="h2"
+      <Box
         sx={{
           flexShrink: 0,
-          color: 'var(--text-color)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0.75,
           pb: 1.5,
           mb: 2,
           borderBottom: '1px solid var(--border-color)',
         }}
       >
-        Masking templates
-      </Typography>
-
-      <Typography variant="body2" sx={{ flexShrink: 0, color: 'var(--canvas-text-dim)', mb: 1.5 }}>
-        A masking policy decides what an agent sees in the rows it gets back. A masked column comes back as{' '}
-        <code>xxxxx</code>, and its value never leaves the database. An agent can still filter, sort and join on a masked
-        column with a value it already has: given an email, it can find the rows that hold it, without seeing the column.
-        Masking hides contents, not facts an agent could guess: it could narrow down a value one query at a time, and
-        every query it runs shows in beamlynx.
-      </Typography>
+        <Typography variant="h6" component="h2" sx={{ color: 'var(--text-color)' }}>
+          Masking templates
+        </Typography>
+        <InfoHint
+          text={
+            <>
+              <b>Masked:</b> the column comes back as xxxxx. Its value never leaves the database.
+              <br />
+              <b>Still works:</b> agents can filter, sort and join on it with a value they already have, like an email
+              they were given.
+              <br />
+              <b>Not a vault:</b> an agent could narrow a value down one query at a time. Every query shows in beamlynx.
+            </>
+          }
+        />
+      </Box>
 
       <Typography variant="body2" sx={{ flexShrink: 0, color: 'var(--canvas-text-dim)', mb: 2 }}>
-        Each connection has its own masking policy, which decides which columns an agent can see there. A template is
-        where a connection&apos;s policy starts: attaching one under Database Connections copies its rules into the
-        connection. Changing a template doesn&apos;t change connections already made from it. Every column is hidden
-        unless an Allow rule matches it. Except rules take columns back out: a column they match stays hidden, even
-        when an Allow rule matches it.
+        A connection&apos;s masking policy starts as a copy of a template. Changing a template later doesn&apos;t
+        change it.
       </Typography>
 
       {/* The policies as a strip above the rules, not a column beside
