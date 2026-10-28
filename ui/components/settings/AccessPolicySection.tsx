@@ -408,20 +408,12 @@ const AccessPolicySection = () => {
           Masking templates
         </Typography>
         <InfoHint
-          text={
-            <>
-              <b>Masked:</b> the column comes back as xxxxx. Its value never leaves the database.
-              <br />
-              <b>Still works:</b> agents can filter, sort and join on it with a value they already have, like an email
-              they were given.
-            </>
-          }
+          text="Masked columns come back as xxxxx. Agents can still filter and join on them."
         />
       </Box>
 
       <Typography variant="body2" sx={{ flexShrink: 0, color: 'var(--canvas-text-dim)', mb: 2 }}>
-        A connection&apos;s masking policy starts as a copy of a template. Changing a template later doesn&apos;t
-        change it.
+        Each connection starts from a copy of a template.
       </Typography>
 
       {/* The policies as a strip above the rules, not a column beside

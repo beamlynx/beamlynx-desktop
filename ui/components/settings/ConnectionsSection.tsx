@@ -1104,8 +1104,7 @@ const ConnectionRow = observer(
 
               {access !== 'off' && (
                 <Typography variant="body2" sx={{ mt: 1, color: 'var(--canvas-text-dim)' }}>
-                  Whatever an agent reads goes to its AI provider.
-                  {access === 'masked' && ' Columns are masked as the policy says, and you decide what it says.'}
+                  What agents read goes to their AI provider{access === 'masked' ? ', masked by this policy.' : '.'}
                 </Typography>
               )}
 
