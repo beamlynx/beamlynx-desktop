@@ -17,6 +17,12 @@ When working in this codebase, if you discover a new pattern, convention, archit
 See [docs/canvas-mode.md](./docs/canvas-mode.md) for how the experimental interactive canvas
 (text-splice architecture, checkpoint handling, alias pinning) actually works today.
 
+## The masking policy
+
+Users see it as the **masking policy**. The code, the stored settings and the pine-lang API still call it an access policy (`accessPolicies`, `access-policy`). Don't rename those: older apps read the same stored settings.
+
+It masks output only. A masked column comes back as `xxxxx`, but a query may still filter, sort and join on it with a value it supplies. This is deliberate. Don't add UI that treats a filter or a join on a masked column as a leak. The full principle is in `pine-lang/docs/access-policy.md`, "What it protects".
+
 ## Crediting Contributors
 
 When updating the changelog (CHANGELOG.md and utils/changelog.data.ts), contributors should be credited in the changelog entries themselves. The format is:

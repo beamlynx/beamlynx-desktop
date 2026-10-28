@@ -554,7 +554,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     }
     if (!updated) {
       if (ownHide) await global.setAccessPolicyRules(policy.id, before).catch(() => null);
-      setNotice({ kind: 'error', text: "Couldn't change the access policy, so nothing changed." });
+      setNotice({ kind: 'error', text: "Couldn't change the masking policy, so nothing changed." });
       return;
     }
     markColumn(action.target, hide, rule);
@@ -577,13 +577,13 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
           label: 'Undo',
           onClick: async () => {
             if (!(await global.setAccessPolicyRules(policy.id, before))) {
-              setNotice({ kind: 'error', text: "Couldn't undo the change to the access policy." });
+              setNotice({ kind: 'error', text: "Couldn't undo the change to the masking policy." });
               return;
             }
             runInAction(() => {
               session.columnMetadata = { ...session.columnMetadata, colIndexToPolicyLookup: beforeLookup };
             });
-            setNotice({ kind: 'success', text: `${connection}'s access policy is back as it was.` });
+            setNotice({ kind: 'success', text: `${connection}'s masking policy is back as it was.` });
           },
         },
         ...(rerunButton
@@ -667,7 +667,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
                 <PolicyOutlined fontSize="small" />
               </ListItemIcon>
               <ListItemText
-                primary="Choose an access policy…"
+                primary="Choose a masking policy…"
                 secondary="Agents see every column of this connection"
                 secondaryTypographyProps={{ sx: secondarySx }}
               />

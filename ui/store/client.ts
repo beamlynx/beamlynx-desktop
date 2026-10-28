@@ -515,7 +515,7 @@ export function effectiveAccessPolicyRules(
     // Nothing is hidden from the owner's own tab that wasn't before.
     if (forMcp) {
       throw new Error(
-        "Refusing to run an agent's query: this connection's access policy wasn't found. Open Settings to check it.",
+        "Refusing to run an agent's query: this connection's masking policy wasn't found. Open Settings to check it.",
       );
     }
     return [];

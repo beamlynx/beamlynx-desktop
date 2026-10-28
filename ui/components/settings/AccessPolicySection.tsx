@@ -267,9 +267,9 @@ export const PolicyRules = observer(({ policy, focusedRuleId }: { policy: Access
         setError('');
         return true;
       }
-      setError("Couldn't save that to the access policy, so nothing changed. It may have been changed elsewhere.");
+      setError("Couldn't save that to the masking policy, so nothing changed. It may have been changed elsewhere.");
     } catch (e) {
-      setError(`Couldn't save that to the access policy, so nothing changed. ${e instanceof Error ? e.message : String(e)}`);
+      setError(`Couldn't save that to the masking policy, so nothing changed. ${e instanceof Error ? e.message : String(e)}`);
     }
     // Show the policy as it is stored.
     void global.refreshAccessPolicies().catch(() => undefined);
@@ -403,11 +403,19 @@ const AccessPolicySection = () => {
           borderBottom: '1px solid var(--border-color)',
         }}
       >
-        Policy templates
+        Masking templates
+      </Typography>
+
+      <Typography variant="body2" sx={{ flexShrink: 0, color: 'var(--canvas-text-dim)', mb: 1.5 }}>
+        A masking policy decides what an agent sees in the rows it gets back. A masked column comes back as{' '}
+        <code>xxxxx</code>, and its value never leaves the database. An agent can still filter, sort and join on a masked
+        column with a value it already has: given an email, it can find the rows that hold it, without seeing the column.
+        Masking hides contents, not facts an agent could guess: it could narrow down a value one query at a time, and
+        every query it runs shows in beamlynx.
       </Typography>
 
       <Typography variant="body2" sx={{ flexShrink: 0, color: 'var(--canvas-text-dim)', mb: 2 }}>
-        Each connection has its own access policy, which decides which columns an agent can see there. A template is
+        Each connection has its own masking policy, which decides which columns an agent can see there. A template is
         where a connection&apos;s policy starts: attaching one under Database Connections copies its rules into the
         connection. Changing a template doesn&apos;t change connections already made from it. Every column is hidden
         unless an Allow rule matches it. Except rules take columns back out: a column they match stays hidden, even

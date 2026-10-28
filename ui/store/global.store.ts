@@ -1819,7 +1819,7 @@ export class GlobalStore {
     await this.refreshPolicyState();
     const policy = this.accessPolicies.find(p => p.id === step.proposal.policyId);
     if (!policy || (step.after && !sameRules(policy.rules, step.after))) {
-      throw new Error('The access policy has changed since this was applied. Undo it in Settings instead.');
+      throw new Error('The masking policy has changed since this was applied. Undo it in Settings instead.');
     }
     if (!(await this.setAccessPolicyRules(step.proposal.policyId, step.before))) return false;
     this.investigations.find(i => i.id === investigationId)!.setProposal(proposalId, 'undone');
@@ -1936,7 +1936,7 @@ export class GlobalStore {
       runInAction(() => {
         this.connectionError =
           result.reason === 'no-active-policy'
-            ? 'Select "None" for unrestricted access, or an access policy with an active rule, for this connection first.'
+            ? 'Select "None" for unrestricted access, or a masking policy with an active rule, for this connection first.'
             : 'That connection no longer exists.';
       });
       return;
@@ -1965,7 +1965,7 @@ export class GlobalStore {
           result.reason === 'no-active-policy'
             ? "This connection's policy has no rule on, so it would mask nothing. Turn a rule on first."
             : result.reason === 'needs-template'
-              ? 'Pick a template to start the access policy from.'
+              ? 'Pick a template to start the masking policy from.'
               : 'That connection no longer exists.';
       });
       return false;

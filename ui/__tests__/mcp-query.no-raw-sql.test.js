@@ -284,7 +284,7 @@ test('effectiveAccessPolicyRules: an unresolvable policyId (deleted policy) refu
   const policies = [{ id: 'p1', name: 'X', rules: [{ type: 'foreign-key', enabled: true }] }];
   assert.throws(
     () => effectiveAccessPolicyRules({ policyId: 'gone', mcpEnabled: true }, policies, true),
-    /access policy wasn't found/,
+    /masking policy wasn't found/,
   );
   assert.deepEqual(
     effectiveAccessPolicyRules({ policyId: 'gone', mcpEnabled: true, applyPolicyToOwnQueries: true }, policies, false),
