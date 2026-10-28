@@ -7,194 +7,187 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [0.25.2] - 2026-10-28
 ### Changed
-- **The sidebar no longer lists an agent's investigation under Agent until it has a name.** While there is only one, and the agent hasn't said its question, **Agent** opens it. (bundled beamlynx-ui 0.70.2)
+- **An agent's investigation appears under Agent in the sidebar only once it has a name.** Until then, while there is only one investigation, clicking **Agent** opens it. (bundled beamlynx-ui 0.70.2)
 
 ### Fixed
-- **The agent's question shows as soon as it says it.** This is in the sidebar and at the top of the timeline. (bundled beamlynx-ui 0.70.2)
+- **The agent's question shows as soon as the agent states it.** You'll see it in the sidebar and at the top of the timeline. (bundled beamlynx-ui 0.70.2)
 
 ## [0.25.1] - 2026-10-28
 ### Changed
-- **Columns ending in `_id` are no longer shown to agents just for their name.** Integer and uuid ids are still shown by type, and foreign keys by the foreign-key rule, but a text column like `national_id` is now hidden. Existing policies have the built-in `_id` rule switched off once; switch it back on in the policy to undo.
-- **An agent's query may run for 60 seconds, up from 30.** A query that takes longer, or whose tool call the agent cancels, is stopped in its tab too.
-- **Agent results are capped at about 100,000 characters.** Rows past the cap are left out, and the result says how many, and how to narrow the query.
-- **The dialog for opening a connection in a tab with a query shows two choices:** open it in a new tab, the default, or switch this tab. (bundled beamlynx-ui 0.70.1)
-- **Connecting another agent is a plug icon in the timeline's header.** (bundled beamlynx-ui 0.70.1)
-- **Agent queries that join on a hidden column are refused.** On MySQL and SQLite, a column name in another case is judged as the real column. (bundled pine-lang 0.51.1)
+- **A column is no longer shown to agents just because its name ends in `_id`.** Number and uuid ids, and foreign keys, are still shown, but a text column like `national_id` is now hidden. Existing policies have this rule switched off once; switch it back on in the policy to undo.
+- **An agent's query may run for 60 seconds, up from 30.** If it runs longer, or the agent cancels the call, the query also stops in its tab.
+- **Results sent to an agent are capped at about 100,000 characters.** The result says how many rows were left out, and how to narrow the query.
+- **When you open a connection in a tab that already has a query, a dialog offers two choices.** Open it in a new tab, which is the default, or switch this tab. (bundled beamlynx-ui 0.70.1)
+- **To connect another agent, use the plug icon in the timeline's header.** (bundled beamlynx-ui 0.70.1)
+- **An agent's query that joins on a hidden column is refused.** On MySQL and SQLite, a hidden column is also recognised when its name is written in a different case. (bundled pine-lang 0.51.1)
 
 ### Fixed
-- **Applying an agent's proposed policy change no longer gets stuck.** It saves, or puts the policy back and says why. Undo never erases a change made after Apply. (bundled beamlynx-ui 0.70.1)
-- **An agent's queries in one investigation run one at a time,** so each step shows its own result. (bundled beamlynx-ui 0.70.1)
-- **Agent calls no longer hang while the window is loading or reloading.** The app answers right away to try again in a few seconds, until the page says it is ready with the new `mcp:bridge-ready` IPC message.
-- **Policy proposals and reveal requests come back after the window reloads.** Their cards had disappeared while the agent kept waiting.
-- **An agent that starts Beamlynx waits until its window is ready,** up to 60 seconds, not just until it accepts connections. The first call used to land on the loading screen.
-- **Reveal requests expire after 10 minutes, like policy proposals, and the card is told with `mcp:reveal-request-expired`.** Unanswered ones used to block the connection from asking again until the app restarted.
-- **Cancelling `propose_policy_change` withdraws the proposal,** so its card stops offering it.
-- **Notes for the agent can no longer slow down a tool call.** The app gets 2 seconds to hand them over, and the call goes on without them after that.
-- **`list_connections` and `check_reveal` start Beamlynx when it isn't running,** like the other tools. When it can't be reached, the agent is told it isn't running or is still starting.
+- **Applying an agent's proposed policy change no longer gets stuck.** It either saves, or puts the policy back and says why. Undo never erases a change you made after Apply. (bundled beamlynx-ui 0.70.1)
+- **An agent's queries in one investigation run one at a time.** Each step in the timeline shows its own result. (bundled beamlynx-ui 0.70.1)
+- **AI agents no longer hang while Beamlynx is starting or reloading.** They're told right away to try again in a few seconds.
+- **Cards for an agent's policy proposals and requests to see hidden values come back after the window reloads.** Before, they disappeared while the agent kept waiting.
+- **An agent that starts Beamlynx waits until its window is ready, for up to 60 seconds.** Its first call used to land on the loading screen.
+- **An agent's request to see hidden values expires after 10 minutes without an answer.** Before, an unanswered request stopped agents asking again on that connection until you restarted Beamlynx.
+- **When an agent cancels its `propose_policy_change` call, the proposal is withdrawn.** Its card no longer offers to apply it.
+- **Notes you write for the agent can no longer slow down its calls.** If they take more than 2 seconds to hand over, the call goes on without them.
+- **`list_connections` and `check_reveal` start Beamlynx when it isn't running, like the other agent tools.** If Beamlynx can't be reached, the agent is told it isn't running or is still starting.
 - **An agent's connection to Beamlynx closes when the agent quits.** It used to stay behind as a background process.
-- **Accented letters and other non-ASCII text in agent results are no longer garbled.** A character split between two network chunks came out as "�".
-- **A damaged `connections.json` is never written over.** It used to read as empty, so the next save removed every saved connection; now the app shows none and refuses changes until the file is fixed.
-- **`check_reveal` returns revealed rows only while the connection is still open to agents.**
+- **Accented letters and other non-ASCII text in agent results are no longer garbled.** Some characters used to come out as "�".
+- **A damaged `connections.json` is never written over.** Before, it read as empty, so the next save deleted every saved connection. Now Beamlynx shows no connections and refuses changes until the file is fixed.
+- **`check_reveal` returns revealed rows only while the connection is still open to agents.** If you turn off agent access first, the agent gets nothing.
 
 ## [0.25.0] - 2026-10-26
 ### Added
-- **Website visits join the person who signs in.** After a sign-in, the browser tab moves on to beamlynx.com/signed-in, which tells PostHog that this browser belongs to the same person as the app. The sign-in is complete before that page loads, so it can't fail because of it. Not with usage stats off.
+- **After you sign in, your visits to beamlynx.com count as the same person as the app.** The browser tab moves on to beamlynx.com/signed-in, which tells usage stats that this browser and the app belong together. Sign-in is already complete by then, so this page can't make it fail. Nothing is linked when usage stats are off.
 
 ## [0.24.0] - 2026-10-26
 ### Changed
-- **The sign-in screen comes back at each launch until you sign in.** Only **Skip for now** closes it, until the next launch (bundled beamlynx-ui 0.70.0).
-- **Account is at the bottom of the sidebar,** with your initials once signed in and a dot until then (bundled beamlynx-ui 0.70.0).
-- **Picking a connection while the tab has a query opens it in a new tab by default.** Switching this tab is the second choice (bundled beamlynx-ui 0.70.0).
-- **Usage stats count queries per hour instead of sending one event per query.** Each hour with queries becomes one `queries_run` event with four counts: user or agent, Pine or SQL. It is sent once the hour is over, or at the next launch. Turning usage stats off drops counts not sent yet.
+- **The sign-in screen comes back at each launch until you sign in.** **Skip for now** closes it until the next launch. (bundled beamlynx-ui 0.70.0)
+- **Account is at the bottom of the sidebar.** It shows your initials once you sign in, and a dot until then. (bundled beamlynx-ui 0.70.0)
+- **Choosing a connection while the tab has a query opens it in a new tab by default.** Switching this tab is the second choice. (bundled beamlynx-ui 0.70.0)
+- **Usage stats send one count per hour instead of one event per query.** Each hour with queries sends how many ran, split by you or an agent, and by Pine or SQL. It is sent when the hour is over, or at the next launch. Turning usage stats off drops counts not yet sent.
 
 ## [0.23.0] - 2026-10-26
 ### Added
-- **Supabase migrations only deploy from `main` or a release tag,** and the guard runs again right before each deploy. A test run of the release workflow from a branch no longer reaches the live database. A release stops if the app has a Supabase address but the secrets to set up its database are missing. The database checks in CI are required to merge into `main`, and pass in seconds when no database file changed.
-- **Sign in once, and anonymous usage stats.** The app can now ask people to sign in with GitHub, once, and they can skip it. Google sign-in works too, but the bundled UI hides it until Google verifies the Beamlynx brand. The app also sends a few anonymous events (app opened, connection added, query run) to PostHog. Never query text, table names or connection details. Nothing is sent before the first-run screen has been seen, and usage stats can be turned off in Settings → Account (bundled beamlynx-ui 0.69.0). Sign-in uses the browser and a short-lived local web server on `127.0.0.1`, so it works in every packaging, AppImage included. New IPC calls under `account:*` and `usage-stats:capture`. A build without the service keys has neither; `scripts/setup-accounts.sh` sets them up; see `docs/accounts-and-usage-stats.md`. The app never waits for these services: offline, everything works as before.
-- **The Supabase database, and how it changes safely.** Migrations live in `supabase/migrations/`, and apps only call the `record_profile` function, never a table. CI refuses a migration that drops, renames or tightens anything, and tests that every released app's call still works. Migrations go live on merge, and again as the first step of every release. See `supabase/README.md`.
-- **Agents can read and propose access policy changes.** `get_access_policy` lists a connection's rules, never data. `propose_policy_change` sends changes that the app checks first, then shows the user as a card. Nothing changes until the user applies it, and only the window writes a policy. The call waits up to 10 minutes for an answer.
-- **Agent access per connection: off, masked or every column,** set with `credentials:set-agent-access`. Every column keeps the policy for later, in the new connection field `agentsSeeEveryColumn`. An older app ignores that field and masks.
-- **`group:` without keys gives one row of totals,** with named aggregates: `orders | group: with count as n, total => sum as revenue` (bundled pine-lang 0.51.0, beamlynx-ui 0.69.0).
-- **`jsonb_typeof()`, `jsonb_array_length()`, and a function on the left of a condition,** like `where: jsonb_typeof(data) = 'array'` (bundled pine-lang 0.51.0).
-- **`nulls first` and `nulls last` in `order:`** (bundled pine-lang 0.51.0).
-- **More SQL converts to Pine:** JSON keys like `data->>'plan'`, `EXISTS` and `NOT EXISTS`, `COUNT(column)`, and `GROUP BY 1` / `ORDER BY 3` (bundled pine-lang 0.51.0).
+- **You can sign in with GitHub, and the app sends anonymous usage stats.** Sign-in opens your browser, and you can skip it. The stats are a few events, such as app opened, connection added and query run, and never include query text, table names or connection details. Nothing is sent before you've seen the first-run screen, and you can turn stats off in Settings → Account. Beamlynx never waits for these services, so it works offline as before. (bundled beamlynx-ui 0.69.0)
+- **Agents can read a connection's access policy and propose changes to it.** `get_access_policy` lists the rules, never data. `propose_policy_change` shows you the change as a card, and nothing changes until you apply it. The agent waits up to 10 minutes for your answer.
+- **Each connection sets what agents may see: Off, Masked or Every column.** You'll find it in Settings → Connections. Every column lets agents read all values, and keeps the access policy for when you switch back. An older Beamlynx treats such a connection as Masked.
+- **`group:` with no keys gives one row of totals.** Aggregates can be named: `orders | group: with count as n, total => sum as revenue`. (bundled pine-lang 0.51.0, beamlynx-ui 0.69.0)
+- **Pine has `jsonb_typeof()` and `jsonb_array_length()`, and a function can go on the left of a condition.** For example, `where: jsonb_typeof(data) = 'array'`. (bundled pine-lang 0.51.0)
+- **`order:` takes `nulls first` and `nulls last`.** (bundled pine-lang 0.51.0)
+- **More SQL converts to Pine.** This includes JSON keys like `data->>'plan'`, `EXISTS` and `NOT EXISTS`, `COUNT(column)`, and `GROUP BY 1` / `ORDER BY 3`. (bundled pine-lang 0.51.0)
 
 ### Changed
-- **Each connection has its own access policy.** No policy is shared any more. The ones listed under Settings are templates, copied into a connection with `credentials:attach-template`. On first start, each connection keeps exactly the rules it had.
-- **The Default template is built in.** It lives in code, so it can't be edited, and a stored "Default" is removed once.
-- **A new connection starts with no access policy.** The app asks for one when agent access is turned on.
-- **A query that uses a hidden column is refused at once.** The refusal points the agent to `propose_policy_change`.
-- **The Pine reference agents read covers newer Pine:** `nulls first` and `nulls last`, `jsonb_typeof()`, `jsonb_array_length()`, and a function on the left of a condition. It also corrects the default sort order: Pine sorts descending.
-- **A clearer connection list, one way to confirm, and a shorter agent timeline.** A zap marks the tab's connection and a robot shows agent access. Anything that weakens protection or deletes something asks in a dialog. The timeline follows the newest step (bundled beamlynx-ui 0.69.0).
+- **Each connection has its own access policy.** Policies are no longer shared between connections. The policies listed in Settings are templates that you copy into a connection. After the upgrade, each connection keeps exactly the rules it had.
+- **The Default template is built in, and can't be edited.** A stored policy called "Default" is removed once, on upgrade.
+- **A new connection starts with no access policy.** Beamlynx asks for one when you turn on agent access.
+- **An agent's query that uses a hidden column is refused at once.** It used to wait while Beamlynx asked you. The refusal tells the agent to ask for the column with `propose_policy_change`.
+- **The Pine reference agents read covers the newer Pine.** That is `nulls first` and `nulls last`, `jsonb_typeof()`, `jsonb_array_length()`, and a function on the left of a condition. It also corrects the default sort order: Pine sorts descending.
+- **The connection list is clearer, confirmations work one way, and the agent's timeline is shorter.** A zap marks the tab's connection, and a robot shows agent access. Anything that weakens protection or deletes something asks in a dialog. The timeline follows the newest step. (bundled beamlynx-ui 0.69.0)
 
 ### Removed
-- `access-policy:duplicate`, `credentials:set-connection-policy`, and `run_query`'s wait for an approval.
+- **You can no longer pick a shared policy for a connection, or copy a shared one.** Every connection now has its own policy.
 
 ### Fixed
-- **Dates and times in results are exact on Postgres.** A timestamp keeps its fraction of a second, and a `DATE` reads `1990-07-22` instead of midnight UTC (bundled pine-lang 0.51.0).
-- **SQL to Pine: selecting only an earlier table's columns** no longer returns every column of the last table too (bundled pine-lang 0.51.0).
+- **Dates and times in results are exact on Postgres.** A timestamp keeps its fraction of a second, and a `DATE` shows as `1990-07-22` instead of midnight UTC. (bundled pine-lang 0.51.0)
+- **SQL to Pine: selecting only an earlier table's columns no longer adds every column of the last table.** (bundled pine-lang 0.51.0)
 
 ## [0.22.1] - 2026-10-19
 ### Fixed
-- **The app no longer crashes at launch on macOS.** Since 0.20.0 it quit within seconds of opening, on every launch. The app's name in `Info.plist` (`CFBundleName`) was "Beamlynx", but its helper apps are named "beamlynx Helper". Electron finds the helpers through that name, and aborted when the capital B didn't match the path on disk. `CFBundleName` is back to the lowercase default. Finder, the Dock and the app switcher still show "Beamlynx", but the bold app menu title in the menu bar shows "beamlynx".
+- **Beamlynx no longer crashes at launch on macOS.** Since 0.20.0 it quit within seconds of opening, every time. The cause was the capital B in the app's internal name, which is lowercase again. Finder, the Dock and the app switcher still show "Beamlynx", but the bold app title in the menu bar shows "beamlynx".
 
 ## [0.22.0] - 2026-10-19
 ### Added
-- **A shared policy can be copied instead of changed for everyone.** When you show or hide a column for agents and the connection's access policy is also used by other connections, beamlynx asks first: copy the policy for this connection and change only the copy, or change it for all of them. The Allow card in an agent's investigation offers the same choice. A new IPC call, `access-policy:duplicate`, makes the copy (bundled beamlynx-ui 0.68.0).
+- **When you show or hide a column for agents and its policy is shared, you can change a copy instead.** Beamlynx asks whether to copy the policy for this connection only, or change it for every connection that uses it. The Allow card in an agent's investigation offers the same choice. (bundled beamlynx-ui 0.68.0)
 
 ### Changed
-- **The agent sits at the bottom of the sidebar,** and only once an agent has started an investigation (bundled beamlynx-ui 0.68.0).
+- **The agent sits at the bottom of the sidebar, and only appears once an agent has started an investigation.** (bundled beamlynx-ui 0.68.0)
 
 ### Fixed
-- **"Also restrict my own queries" now applies in an agent's investigation tab too.** A query you ran there was always masked. Now only the agent's own queries are, while they run (bundled beamlynx-ui 0.68.0).
+- **Your own queries in an agent's investigation tab are no longer always masked.** They follow "Also restrict my own queries", like your other tabs. The agent's queries there are masked while they run. (bundled beamlynx-ui 0.68.0)
 
 ## [0.21.0] - 2026-10-18
 ### Added
-- **Agent investigations.** Each Claude session that uses beamlynx is now an investigation of its own. The MCP relay sends an id with every call, so the app can give each session its own tab, opened from the robot in the sidebar. A timeline beside the canvas keeps every step: each query with the agent's reason and what came back, failures included. Click a query to see its rows again, exactly as the agent saw them (bundled beamlynx-ui 0.67.0).
-- **Steering an agent from beamlynx.** Notes the user types in an investigation's tab reach the agent at the top of its next beamlynx call. beamlynx can't send the agent a message, only answer its calls, so a note waits for that call.
-- **Allowing a hidden column while the agent waits.** A query refused for a hidden column now waits inside the agent's `run_query` call while beamlynx asks the user. If they allow the column, the query runs again and the agent gets the rows. If they decline, it gets their answer. The call gives up after 10 minutes. The card that asks is in the investigation's timeline (bundled pine-lang 0.50.0, beamlynx-ui 0.67.0).
-- **Reveal requests belong to their investigation.** A `request_reveal` call carries the id of the Claude session that made it, so the app shows it as a card in that investigation instead of a tab of its own. You can look at the real rows before revealing them (bundled beamlynx-ui 0.67.0).
-- **Two new MCP tools:** `set_question` names what the agent is investigating, which becomes the tab's title. `note_finding` records what it found, from beamlynx or another source, shown next to its queries.
-- **Access policy: exceptions.** Besides its Allow rules, a policy can now list Except rules: a column they match stays hidden from agents, even when an Allow rule matches it. (In pine-lang's rules they are `hide` rules.) Rules can name a column by what its name contains, ends with or equals, or name one exact column of one table. Every rule has an id, so a policy can hold any number of them. New IPC calls add, remove and switch one rule, and put a policy's rules back for Undo: `access-policy:add-rule`, `access-policy:remove-rule`, `access-policy:set-rule-enabled` and `access-policy:set-rules`. They replace `access-policy:set-module-enabled`. Settings → Access Policy lists the Allow rules, then the exceptions (bundled pine-lang 0.50.0, beamlynx-ui 0.67.0).
-- **Change the access policy from the results.** Right-click a cell or a column header and choose **Show to agents** or **Hide from agents**. A message says which policy changed and which other connections use it, with Undo. A column agents can't see has a crossed-out eye in its header, in your own tabs too, where you still see its values (bundled pine-lang 0.50.0, beamlynx-ui 0.67.0).
-- **A sidebar on the left.** The database connection is at its top, then the agent, the settings sections and What's new. It shows icons only, or expands to show labels and the agent's investigations (bundled beamlynx-ui 0.67.0).
+- **Each AI agent session gets its own investigation tab.** Open it from the robot in the sidebar. A timeline beside the canvas keeps every step: each query, the agent's reason for it, and what came back, failures included. Click a query to see its rows again, exactly as the agent saw them. (bundled beamlynx-ui 0.67.0)
+- **You can steer an agent by writing notes in its investigation tab.** The agent gets them at the start of its next call to Beamlynx. Beamlynx can't message the agent first, so a note waits for that call.
+- **When an agent's query is refused for a hidden column, you can allow the column while the agent waits.** A card in the investigation's timeline asks you. If you allow it, the query runs again and the agent gets the rows; if you decline, the agent gets your answer. The agent waits up to 10 minutes. (bundled pine-lang 0.50.0, beamlynx-ui 0.67.0)
+- **An agent's request to see hidden values shows as a card in its investigation.** It used to open a tab of its own. You can look at the real rows before revealing them. (bundled beamlynx-ui 0.67.0)
+- **Two new agent tools: `set_question` and `note_finding`.** `set_question` names what the agent is investigating, and becomes the tab's title. `note_finding` records what it found, from Beamlynx or elsewhere, shown next to its queries.
+- **Access policies can list exceptions.** A column that an Except rule matches stays hidden from agents, even when an Allow rule matches it too. A rule can match a column whose name contains, ends with or equals some text, or one exact column of one table. Settings → Access Policy lists the Allow rules, then the exceptions. (bundled pine-lang 0.50.0, beamlynx-ui 0.67.0)
+- **Right-click a cell or column header to show or hide that column for agents.** Choose **Show to agents** or **Hide from agents**, and a message says which policy changed and which other connections use it, with Undo. A column hidden from agents has a crossed-out eye in its header, even in your own tabs, where you still see its values. (bundled pine-lang 0.50.0, beamlynx-ui 0.67.0)
+- **There is a sidebar on the left.** The database connection is at its top, then the agent, the Settings sections and What's new. It shows icons only, or expands to show labels and the agent's investigations. (bundled beamlynx-ui 0.67.0)
 
 ### Changed
-- **Every policy now hides columns whose name contains `token`, `password` or `secret`.** New policies start with these exceptions, and existing policies get them once, switched on. This only hides more from agents. Switch them off or remove them under Settings → Access Policy.
+- **Every policy hides columns whose name contains `token`, `password` or `secret`.** New policies start with these exceptions, and existing policies got them once, switched on. Switch them off or remove them in Settings → Access Policy.
 
 ### Fixed
-- **SQL to Pine: a column without its table, in a query with a join,** now belongs to the one table that has it, as in SQL. It used to be refused (bundled pine-lang 0.50.0).
+- **SQL to Pine: a column without a table name, in a query with a join, belongs to the one table that has it.** This matches SQL. It used to be refused. (bundled pine-lang 0.50.0)
 
 ## [0.20.0] - 2026-10-17
 ### Added
-- **Canvas: checkpoints and query blocks.** A `limit:` or `group:` is drawn as its own stage, a node named like `result_1` that works like any table. A checkpoint, or a table that uses an earlier block's `|= name`, opens into a dashed box showing what it holds. A tab with several query blocks shows which block is made from which, in a strip at the top. Dragged nodes go back with the toolbar's refresh icon (bundled beamlynx-ui 0.66.0).
-- **Top N per group.** `limit: 1 per customer_id` keeps the first rows of each group, ranked by the `order:` before it, like each customer's latest order. The result comes group by group (bundled pine-lang 0.49.0).
-- **Computed values.** `select:` can name a value that isn't just a column: `coalesce(title, 'untitled') as label`, `if ... then ... else`, or a condition as true or false. The arrow applies a function: `created_at => month`. A group takes aggregates after `with`: `group: customer_id with count, total => sum as spent` (bundled pine-lang 0.49.0).
-- **The SQL panel.** It completes table and column names, suggests joins after `JOIN`, and turns the SQL you type into Pine, so the canvas follows it (bundled beamlynx-ui 0.66.0, pine-lang 0.49.0).
-- **JSON paths.** A key inside a JSON column works like a column, `where: data.country = 'SE'`, on the canvas too, and its cell can be edited (bundled beamlynx-ui 0.66.0, pine-lang 0.49.0).
-- **Stop a running query** with the Stop button or Escape (bundled beamlynx-ui 0.66.0, pine-lang 0.49.0).
-- Column widths in the results are remembered (bundled beamlynx-ui 0.66.0).
-- **The app sees every call an AI agent makes.** Each MCP tool call is reported to the app as it starts and as it ends: what the agent is doing, what it sent, and how it went. That includes calls that never reach a tab, like `find_tables` and `get_pine_doc`. Reporting never delays a call and never opens the app; with the app closed, it is skipped. The robot in the header pulses while an agent works, and opens a log of every call it made (bundled beamlynx-ui 0.66.0).
-- **AI agents can send SQL.** A new MCP tool, `run_sql_as_pine`, takes SQL: a `SELECT`, or an `UPDATE` or `DELETE`, with `WITH` queries. It is a tool of its own, so a person can allow Pine queries in their MCP client and refuse SQL. The SQL is converted to Pine, and only the Pine runs, in a visible tab, with the connection's access policy and with writes refused. SQL never runs. The result starts with the Pine that ran, so an agent learns Pine from its own queries. An `UPDATE` or `DELETE` converts and shows in the agent's tab, but is refused when it runs: only a person can run a change. SQL that Pine can't say, like `OFFSET` or `UNION`, runs nothing and returns the reason. The instructions every session starts with say so. Needs the bundled pine-lang and beamlynx-ui to include SQL to Pine and beamlynx-ui #133, which this release bundles.
-- The Pine reference AI agents read, and the instructions every session starts with, no longer say Pine has no `>=` or `<=`. Both are listed with the other operators, and an `in` list is shown holding numbers. Needs the bundled pine-lang to include pine-lang #111, which this release bundles.
-- A `json` topic in the Pine reference AI agents read (`get_pine_doc`), and a line about it in the instructions every session starts with. It covers keys inside a JSON column, like `customer | where: data.country = 'SE' | select: data.address.city`. Needs the bundled pine-lang to include JSON paths (pine-lang #107), which this release bundles.
-- The Pine reference AI agents read says how to write into a key with `update!` (`update! data.plan = 'pro'`), and that a number can be negative or have a decimal part. Needs the bundled pine-lang to include pine-lang #109 and #110, which this release bundles.
-- The Pine reference AI agents read covers computed values, in a new `computed-values` topic: `coalesce()`, `concat()`, `now()`, `if ... then ... else`, conditions as true or false columns, and the date functions `minute` to `year`. It explains the arrow: `x => f` is `f(x)`, and `x => f(a)` is `f(x, a)`. The `group` topic lists the aggregates beside `count`: `min`, `max`, `sum`, `avg`, `any` and `all`, each with an optional `where` filter, as in `group: customer_id with count, total => sum as spent`. The `limit` topic covers `limit: 1 per customer_id`, which answers a question about each group, like each customer's latest order, in one query. The instructions every session starts with show all three, and tell agents not to run one `limit:` query per group, since each run opens in the user's tab. Needs the bundled pine-lang to include pine-lang #121 to #131, which this release bundles.
-- **SQLite.** Connect to a SQLite database file: choose SQLite as the database type and pick the file with **Browse…**. A saved SQLite connection holds only the file's path, so it needs no password and is saved even on a computer with no secure credential storage. The bundled server is started with `PINE_SQLITE=1`, which lets it open files by path. Needs the pine-lang and beamlynx-ui releases that add SQLite, which this release bundles.
-- **Preferences in `beamlynx.db`.** The app's UI keeps its settings in the app's SQLite file instead of the browser's storage. It reads them all in one blocking call before the UI starts, because the UI reads settings synchronously. If the file can't be opened, the UI keeps using browser storage. Needs the beamlynx-ui release that adds this, which this release bundles.
+- **The canvas draws checkpoints and query blocks.** A `limit:` or `group:` becomes its own node, named like `result_1`, that works like any table. A checkpoint, or a table that uses an earlier block's `|= name`, opens into a dashed box showing what it holds. With several query blocks in a tab, a strip at the top shows which is made from which. The toolbar's refresh icon puts dragged nodes back. (bundled beamlynx-ui 0.66.0)
+- **Top N per group: `limit: 1 per customer_id`.** It keeps the first rows of each group, ranked by the `order:` before it, such as each customer's latest order. (bundled pine-lang 0.49.0)
+- **`select:` can compute values.** For example `coalesce(title, 'untitled') as label`, `if ... then ... else`, or a condition as true or false. The arrow applies a function, as in `created_at => month`. A group takes aggregates after `with`: `group: customer_id with count, total => sum as spent`. (bundled pine-lang 0.49.0)
+- **The SQL panel completes names and turns your SQL into Pine.** It completes table and column names, and suggests joins after `JOIN`. The canvas follows the SQL as you type. (bundled beamlynx-ui 0.66.0, pine-lang 0.49.0)
+- **A key inside a JSON column works like a column.** For example, `where: data.country = 'SE'`. It works on the canvas too, and you can edit its cell. (bundled beamlynx-ui 0.66.0, pine-lang 0.49.0)
+- **Stop a running query with the Stop button or Escape.** (bundled beamlynx-ui 0.66.0, pine-lang 0.49.0)
+- **The results remember column widths.** (bundled beamlynx-ui 0.66.0)
+- **The robot in the header shows every call an AI agent makes.** It pulses while an agent works, and opens a log of each call: what the agent did, what it sent, and how it went. This includes calls that never open a tab, like `find_tables`. Logging never slows a call or opens the app. (bundled beamlynx-ui 0.66.0)
+- **AI agents can send SQL with the new `run_sql_as_pine` tool.** Beamlynx converts it to Pine and runs only the Pine, in a visible tab, under the connection's access policy. An `UPDATE` or `DELETE` converts and shows in the tab, but never runs: only you can run a change. SQL that Pine can't express, like `OFFSET` or `UNION`, runs nothing and returns the reason. It is a separate tool, so you can allow Pine queries in your agent's settings and refuse SQL.
+- **The Pine reference agents read covers the newer Pine.** It lists `>=` and `<=`, which it used to say Pine didn't have. It adds keys inside JSON columns, writing into a key with `update!`, negative and decimal numbers, computed values, aggregates in `group:`, and `limit: 1 per`. The instructions agents start with tell them to use one `limit: ... per` query instead of one query per group, since each run opens in your tab.
+- **Beamlynx can open SQLite database files.** Choose SQLite as the database type and pick the file with **Browse…**. A SQLite connection saves only the file's path, so it needs no password, and saves even on a computer without secure credential storage.
+- **Settings are kept in `beamlynx.db`, the app's own data file.** They used to be in the browser's storage, which Beamlynx still uses if the file can't be opened.
 
 ### Changed
-- **Breaking:** a group's aggregates come after `with`: `group: status with count`. `group: status => count` is now an error that names the new form, including in saved recipes (bundled pine-lang 0.49.0). The Pine reference AI agents read, the instructions every session starts with, and `complete_query`'s list of operations teach the new form.
-- **Breaking:** a cell edit finds its row by the table's primary key, not by a column called `id`. Tables without a primary key can't be edited from the grid (bundled beamlynx-ui 0.66.0).
-- A dev build has its own `beamlynx.db`, in its own data folder, instead of sharing the installed app's. Experiments in a dev build, including new migrations, no longer touch the installed app's settings and recipes. Recipes saved from a dev build until now stay in the installed app's file. Saved connections are still shared.
-- Links the app opens in your browser must be `http`, `https` or `mailto`. Anything else is refused.
-- Results sent to an AI agent cut any cell longer than 2 000 characters, saying how much was left out, so one large text or JSON column can't flood the agent's context.
-- The Pine reference AI agents read (`get_pine_doc`) matches the bundled pine-lang. A string can hold an apostrophe written twice. Date-time literals work. `limit:` takes 0 to 10 000. `delete!` needs a `where:` or `limit:`. Under an access policy, hidden columns can't be filtered, sorted or grouped on, and unindexed tables are refused.
+- **Breaking: a group's aggregates come after `with`, as in `group: status with count`.** `group: status => count` is now an error that names the new form, in saved recipes too. Agents are taught the new form. (bundled pine-lang 0.49.0)
+- **Breaking: editing a cell finds the row by the table's primary key, not by a column called `id`.** Tables without a primary key can't be edited from the results. (bundled beamlynx-ui 0.66.0)
+- **A dev build keeps its own `beamlynx.db`, separate from the installed app's.** Experiments in a dev build no longer touch the installed app's settings and recipes. Recipes saved from a dev build before this stay in the installed app's file. Saved connections are still shared.
+- **Beamlynx only opens `http`, `https` and `mailto` links in your browser.** Any other link is refused.
+- **Cells longer than 2,000 characters are cut short in results sent to an agent.** The cell says how much was left out, so one large text or JSON value can't flood the agent's context.
+- **The Pine reference agents read matches the bundled pine-lang.** It covers an apostrophe written twice in a string, date-time literals, `limit:` from 0 to 10,000, and `delete!` needing a `where:` or `limit:`. It also says that under an access policy, hidden columns can't be filtered, sorted or grouped on, and unindexed tables are refused.
 
 ### Fixed
-- Opening the app while a database is down no longer leaves the tabs stuck on "Not parsing". The tab says it can't reach the database, tries again every 10 seconds while it's open, and draws its graph once the database answers (bundled beamlynx-ui 0.66.0, pine-lang 0.49.0).
-- If the AI-agent control port can't start, the app now says so instead of failing silently, and agents then get a clear error.
-- When the bundled query server fails to start, the error says why, with what it printed, as soon as it stops. It used to wait 15 seconds and report only that it 'did not become ready'. A server binary that can't be started at all no longer crashes the app.
-- If the query server stops while the app is open, the app offers to restart it. Every query failed until the app was reopened before.
-- At start-up the app stops a server left behind by a crashed run only if that process is still a pine server. The process number it remembered could belong to an unrelated program after a reboot.
-- KDE Plasma 5 can save connections again. The app asked for KWallet 6, which Plasma 5 doesn't have, so saving was refused with no explanation.
-- A development build registers `beamlynx://` links for itself, not for a bare Electron. The app data file failing to open is logged once, with the reason, instead of on every call.
+- **Opening the app while a database is down no longer leaves tabs stuck on "Not parsing".** The tab says it can't reach the database, and tries again every 10 seconds while it's open. It draws its graph once the database answers. (bundled beamlynx-ui 0.66.0, pine-lang 0.49.0)
+- **If the port AI agents connect through can't open, Beamlynx says so.** It used to fail silently. Agents then get a clear error.
+- **When the bundled query server fails to start, the error says why at once, with what the server printed.** It used to wait 15 seconds and say only that the server "did not become ready". A server that can't be started at all no longer crashes the app.
+- **If the query server stops while the app is open, Beamlynx offers to restart it.** Before, every query failed until you reopened the app.
+- **At start-up, Beamlynx no longer risks stopping an unrelated program.** It stops a server left behind by a crash only if that process is still a Pine server. After a reboot, the process number it remembered could belong to something else.
+- **KDE Plasma 5 can save connections again.** Beamlynx asked for KWallet 6, which Plasma 5 doesn't have, so saving failed with no explanation.
+- **A dev build opens `beamlynx://` links itself, not in a bare Electron.**
 
 ### Security
-- A `beamlynx://` link is ignored unless it is a `beamlynx://run` link. With the bundled beamlynx-ui after 0.65.0, a run link opens a tab with its expression but doesn't run it.
-- Other programs on the computer, and web pages open in the browser, could use the bundled query server and the AI-agent control port. Both now require a secret the app creates at each launch. The query server's goes to it as `PINE_TOKEN` and to the app's own UI. The control port's is written to `control-plane.json` in the app's data folder, readable only by you, where `beamlynx --mcp` reads it. The control port also refuses any request from a web page. Needs pine-lang and beamlynx-ui newer than the ones 0.19.0 bundled (pine-lang 0.48.1, beamlynx-ui 0.65.0); this release bundles both.
-- An AI agent can no longer ask to reveal an expression that changes data. The app builds the expression first and refuses the request unless pine-lang reports it as read-only. At most three reveal requests per connection can wait at once.
-- The bundled server always listens on 127.0.0.1, even if `PINE_HOST` is set in your environment.
-- The saved-connections file is readable only by you. It lists every saved database with its host, name and user; the passwords in it were already encrypted.
+- **Beamlynx ignores every `beamlynx://` link except `beamlynx://run`.** A run link opens a tab with its query, but doesn't run it.
+- **Other programs and web pages can no longer use the bundled query server or the port AI agents connect through.** Both need a secret the app creates at each launch. For agents, it is written to `control-plane.json` in the app's data folder, readable only by you, where `beamlynx --mcp` reads it. The agent port also refuses any request from a web page.
+- **An agent can no longer ask to see the hidden values of a query that changes data.** Beamlynx checks the query first, and refuses unless it only reads. At most three such requests per connection can wait at once.
+- **The bundled server only accepts connections from your own computer, even if `PINE_HOST` is set.**
+- **The saved-connections file is readable only by you.** It lists each saved database's host, name and user. The passwords in it were already encrypted.
 
 ## [0.19.0] - 2026-10-06
 ### Changed
-- **Breaking:** Ctrl+S no longer downloads the tab as a `.pine` file. It saves a recipe instead (bundled beamlynx-ui 0.65.0).
-- **Breaking:** beamlynx now runs on Electron 44 (Chromium 152, Node 24), up from Electron 31, which no longer gets security fixes. It needs macOS 13 or later. macOS 11 and 12 are no longer supported.
-- Electron 44 includes SQLite. beamlynx will use it to keep its own data, such as settings and saved recipes. A new release check confirms it works in the packaged app on Linux, macOS and Windows.
-- Building beamlynx-desktop needs Node 22 or later. See DEVELOPMENT.md.
+- **Breaking: Ctrl+S saves a recipe instead of downloading the tab as a `.pine` file.** (bundled beamlynx-ui 0.65.0)
+- **Breaking: Beamlynx needs macOS 13 or later.** It now runs on Electron 44, up from Electron 31, which no longer gets security fixes. macOS 11 and 12 are no longer supported.
+- **Building beamlynx-desktop needs Node 22 or later.** See DEVELOPMENT.md.
 
 ### Added
-- **Variables.** Write `$name` in a query where a value goes, and set it in a values block of its own above the query: `$company_name = 'Acme'`, or a list for `in`, `$statuses = ('failed', 'stuck')`. On the canvas, a Variables list shows each `$name` the query uses and its value; click a value to change it (bundled beamlynx-ui 0.65.0, pine-lang 0.48.1).
-- **Save a query as a recipe with Ctrl+S.** A bar above the tab asks for a title. It saves the query with its comments and the values blocks it uses (bundled beamlynx-ui 0.65.0).
-- **Use a recipe with Ctrl+O.** Find it by any word in its title, comments or query, then click it or press Enter to put it in the tab. Delete one with the trash icon on its row (bundled beamlynx-ui 0.65.0).
-- **One query's result in another:** a named result that selects one column can be used after `in`, like `employee | where: id in acme_emps` (bundled pine-lang 0.48.1).
-- The Pine reference agents read now teaches values blocks (`$name = value` lines above the query, which `run_query`'s `variables` overrides) and using a one-column named result after `in`. Needs a bundled pine-lang with both.
-- An AI agent can pass values for `$variables` to `run_query`, as `variables: {"company_name": "Acme", "tenant_ids": [17, 23]}`. pine-lang binds each as a value, never pasted into the query. A name must be a valid `$name`. An integer larger than 2^53 is refused, because JSON has already rounded it; pass a large id as a string. `request_reveal` and `open_in_desktop` take no `variables`, so their description tells the agent to write the values in a values block. The Pine reference agents read has a new `variables` topic, and what it used to call variables (`|= name`) is now the `named-results` topic. Needs a bundled pine-lang with variables.
-- beamlynx has a SQLite file for its own data, `beamlynx.db`, in the same folder as saved connections. A dev build and the installed app share it. It can store recipes: saved Pine queries, with values you fill in each time. Recipes are offered on every database, because a local, staging and production database usually share one schema. Each recipe remembers which database it was saved from. Settings, open tabs and column widths move into the file in a later release. If the file is ever damaged, beamlynx keeps it as `beamlynx.db.bad` and starts with an empty one. A file that is only busy, because the other copy of the app has it open, is never treated as damaged.
-- A dev build (`npm start`) shows an amber **DEV** chip in the header, so it can't be mistaken for the installed app when both are open (with beamlynx-ui's matching change).
-- A dev build (`npm start`) can run next to the installed app. It uses its own ports (43333 and 43334) and its own data folder, `beamlynx-desktop-dev`, but shares the installed app's saved connections. In Settings > MCP it registers itself as `beamlynx-dev`, so an AI agent can use either copy. See DEVELOPMENT.md. The dev build needs a pine-server staged from a pine-lang that reads `PINE_PORT`. The installed app still uses 33333.
+- **Variables: write `$name` in a query where a value goes.** Set it in a values block above the query, like `$company_name = 'Acme'`, or a list for `in`, like `$statuses = ('failed', 'stuck')`. On the canvas, a Variables list shows each `$name` and its value; click a value to change it. (bundled beamlynx-ui 0.65.0, pine-lang 0.48.1)
+- **Save a query as a recipe with Ctrl+S.** A bar above the tab asks for a title. The recipe keeps the query's comments and the values blocks it uses. (bundled beamlynx-ui 0.65.0)
+- **Open a recipe with Ctrl+O.** Search for any word in its title, comments or query, then click it or press Enter to put it in the tab. Delete a recipe with the trash icon on its row. (bundled beamlynx-ui 0.65.0)
+- **A named result with one column can be used after `in`.** For example, `employee | where: id in acme_emps`. (bundled pine-lang 0.48.1)
+- **AI agents can pass values for `$variables` when they run a query.** `run_query` takes `variables: {"company_name": "Acme", "tenant_ids": [17, 23]}`, and each is sent as a value, never pasted into the query. A whole number above 2^53 is refused, because JSON has already rounded it, so pass large ids as strings. The Pine reference agents read teaches values blocks and a one-column named result after `in`. Its new `variables` topic covers `$name`, and what it used to call variables (`|= name`) is now the `named-results` topic.
+- **Beamlynx keeps recipes in its own data file, `beamlynx.db`.** It sits in the same folder as saved connections. Recipes are offered on every database, since local, staging and production usually share a schema, and each remembers which database it was saved from. If the file is damaged, Beamlynx keeps it as `beamlynx.db.bad` and starts a new one.
+- **A dev build (`npm start`) shows an amber DEV chip in the header.** That way it can't be mistaken for the installed app when both are open.
+- **A dev build can run next to the installed app.** It uses its own ports (43333 and 43334) and data folder, `beamlynx-desktop-dev`, but shares saved connections. In Settings → MCP it registers as `beamlynx-dev`, so an agent can use either copy. See DEVELOPMENT.md.
 
 ### Fixed
-- Keys pressed in a dialog, such as the Ctrl+O recipe picker or the command palette, no longer reach the canvas behind it. Clicking a dialog's text and then pressing Backspace, Delete or `x` used to delete the selected item in your tab (bundled beamlynx-ui 0.65.0).
-- **New Database Connection** in the command palette opens the add form again, instead of Settings on the list of connections (bundled beamlynx-ui 0.65.0).
-- A cast after an `in` list, as in `where: name in ('a') ::text`, was read as one more value, so the query matched `'text'` too. It now applies to the column (bundled pine-lang 0.48.1).
-- Opening beamlynx while it's already open now says so. It used to quit without a word, and on some desktops, such as Hyprland, the open window didn't come forward either.
-- If a port beamlynx needs is taken, it now says what's using it: another copy of beamlynx, a Pine server started some other way, or another program. A taken MCP port (33334) used to go unhandled.
-- On Linux, the AppImage's MCP setup instructions pointed at a temporary folder (`/tmp/.mount_…`) that gets a new name on every launch, so the registration broke after the app was closed. They now point at the AppImage file itself. The MCP relay also starts the app from that file, so the app no longer depends on the relay's own temporary folder, which is removed when the relay exits.
+- **Keys pressed in a dialog no longer reach the canvas behind it.** In a dialog such as the Ctrl+O recipe picker or the command palette, Backspace, Delete or `x` used to delete the selected item in your tab. (bundled beamlynx-ui 0.65.0)
+- **New Database Connection in the command palette opens the add form again.** It had opened Settings on the list of connections. (bundled beamlynx-ui 0.65.0)
+- **A cast after an `in` list applies to the column.** In `where: name in ('a') ::text`, the cast was read as one more value, so the query matched `'text'` too. (bundled pine-lang 0.48.1)
+- **Opening Beamlynx while it's already open says so.** It used to quit without a word, and on some desktops, such as Hyprland, the open window didn't come forward.
+- **If a port Beamlynx needs is taken, it says what's using it.** That could be another copy of Beamlynx, a Pine server started some other way, or another program. A taken agent port (33334) used to go unhandled.
+- **On Linux, agent setup for the AppImage keeps working after you close the app.** The setup instructions pointed at a temporary folder (`/tmp/.mount_…`) that gets a new name on every launch. They now point at the AppImage file itself.
 
 ## [0.18.0] - 2026-09-28
 ### Added
-- After you edit a value in the results, its cell glows briefly and a short message says it was saved. If it wasn't, the message says why (bundled beamlynx-ui 0.64.0).
-- A value that can't be edited now says why as soon as you try, instead of opening an editor: a row's `id`, a table whose `id` isn't in the result, and values the query works out rather than reads from a table (bundled beamlynx-ui 0.64.0).
-- Move between result cells with the arrow keys. Select a range by dragging or with Shift, and copy it with Ctrl+C as tab-separated text that pastes into a spreadsheet (bundled beamlynx-ui 0.64.0).
-- A canvas filter can match either of several conditions. In the filter panel, **+ or** adds another condition (bundled beamlynx-ui 0.64.0, pine-lang 0.47.0).
+- **After you edit a value in the results, its cell glows briefly and a message says it was saved.** If it wasn't saved, the message says why. (bundled beamlynx-ui 0.64.0)
+- **A value that can't be edited says why as soon as you try.** It used to open an editor anyway. This covers a row's `id`, a table whose `id` isn't in the result, and values the query computes rather than reads from a table. (bundled beamlynx-ui 0.64.0)
+- **Move between result cells with the arrow keys.** Select a range by dragging or with Shift, and copy it with Ctrl+C. It pastes into a spreadsheet as tab-separated text. (bundled beamlynx-ui 0.64.0)
+- **A canvas filter can match any of several conditions.** In the filter panel, **+ or** adds another condition. (bundled beamlynx-ui 0.64.0, pine-lang 0.47.0)
 
 ### Changed
-- **Breaking:** conditions inside one `where:` are joined with `or`, not a comma: `where: status = 'blocked' or status = 'active'`. A comma there is now a parse error, and so is `and`. To require several conditions, chain `where:` steps: `where: status = 'active' | where: country = 'SE'` (bundled pine-lang 0.47.0).
-- The instructions and the `where` reference an AI agent reads now say how to combine conditions: `or` inside one `where:` for either, another `where:` step for both. They used to say a comma meant AND and that Pine had no `or`. Both were wrong: a comma meant OR. The reference also told agents to run a separate query per column and combine the results themselves, which is no longer needed. It goes with the bundled pine-lang change that makes a comma or `and` inside `where:` a parse error.
-- The results grid is new, and much faster. It draws only the cells in view, so scrolling stays smooth however many rows a result has. Results are no longer split into pages of 100 rows; every row is in one scrolling grid, with the row count underneath (bundled beamlynx-ui 0.64.0).
-- Opening or closing Settings or the Pine panel beside the results is smooth now, instead of swapping the results for a grey placeholder while the panel moved (bundled beamlynx-ui 0.64.0).
-- The delete script from **traverse** now says in its first lines how its Run button works: running the script yourself deletes everything in one transaction, while Run deletes one table at a time, each committed as it goes (bundled beamlynx-ui 0.64.0).
+- **Breaking: conditions inside one `where:` are joined with `or`, not a comma.** For example, `where: status = 'blocked' or status = 'active'`. A comma or `and` there is now a parse error. To require several conditions, chain `where:` steps: `where: status = 'active' | where: country = 'SE'`. (bundled pine-lang 0.47.0)
+- **The instructions agents read explain how to combine conditions.** Use `or` inside one `where:` for either, and another `where:` step for both. They used to say a comma meant AND and that Pine had no `or`, but a comma actually meant OR.
+- **The results grid is new and much faster.** It draws only the cells in view, so scrolling stays smooth with any number of rows. Results are no longer split into pages of 100 rows; the row count shows underneath. (bundled beamlynx-ui 0.64.0)
+- **Opening or closing Settings or the Pine panel beside the results is smooth.** Before, the results turned into a grey placeholder while the panel moved. (bundled beamlynx-ui 0.64.0)
+- **The delete script from traverse explains its Run button in its first lines.** Running the script yourself deletes everything in one transaction. Run deletes one table at a time, committing each as it goes. (bundled beamlynx-ui 0.64.0)
 
 ### Removed
-- Sorting by clicking a column header, and the column menu (sort, filter, hide columns). Sorting and filtering will come back as changes to the Pine expression. To filter on a value for now, right-click the cell and choose **Filter** (bundled beamlynx-ui 0.64.0).
+- **Sorting by clicking a column header, and the column menu for sort, filter and hide, are gone.** Sorting and filtering will come back as changes to the Pine expression. To filter on a value for now, right-click the cell and choose **Filter**. (bundled beamlynx-ui 0.64.0)
 
 ### Fixed
-- The app's fonts now ship inside it. IBM Plex Mono, JetBrains Mono, Fira Code, Inter and IBM Plex Sans used to show only if they were installed on your computer, and a system font otherwise (bundled beamlynx-ui 0.64.0).
-- Tab in the canvas filter panel moved focus out of the panel. It now moves through the panel's own fields and buttons (bundled beamlynx-ui 0.64.0).
-- A filter typed by hand that matches any of several conditions disappeared from its table on the canvas. It now shows as one chip (bundled beamlynx-ui 0.64.0).
-- Hints for a condition typed after a complete one (`where: id = 1 or e.`) listed the current table's columns instead of the ones for what was being typed (bundled pine-lang 0.47.0).
+- **The app's fonts ship inside it.** IBM Plex Mono, JetBrains Mono, Fira Code, Inter and IBM Plex Sans used to show only if they were installed on your computer. (bundled beamlynx-ui 0.64.0)
+- **Tab in the canvas filter panel moves through the panel's own fields and buttons.** It used to move focus out of the panel. (bundled beamlynx-ui 0.64.0)
+- **A hand-typed filter that matches any of several conditions shows on its table on the canvas.** It used to disappear; now it shows as one chip. (bundled beamlynx-ui 0.64.0)
+- **Hints after a complete condition suggest the right columns.** In `where: id = 1 or e.`, they listed the current table's columns instead of `e`'s. (bundled pine-lang 0.47.0)
 
 ## [0.17.1] - 2026-09-26
 ### Changed
