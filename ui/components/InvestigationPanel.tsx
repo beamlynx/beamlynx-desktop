@@ -8,6 +8,7 @@ import {
   ErrorOutline,
   LightbulbOutlined,
   PolicyOutlined,
+  PowerOutlined,
   Send,
   VisibilityOutlined,
 } from '@mui/icons-material';
@@ -718,6 +719,15 @@ const InvestigationPanel = observer(({ investigation }: { investigation: Investi
           </Typography>
           <IconButton
             size="small"
+            onClick={() => global.showSettingsSection('mcp')}
+            aria-label="Connect another agent"
+            title="Connect another agent: set up Claude Code or another AI tool in Settings"
+            sx={{ color: dim, mt: '-2px', '&:hover': { color: 'var(--text-color)' } }}
+          >
+            <PowerOutlined sx={{ fontSize: 17 }} />
+          </IconButton>
+          <IconButton
+            size="small"
             onClick={() => global.setInvestigationPanelCollapsed(true)}
             aria-label="Hide the timeline"
             title="Hide the timeline"
@@ -727,13 +737,6 @@ const InvestigationPanel = observer(({ investigation }: { investigation: Investi
           </IconButton>
         </Box>
         <Typography sx={{ fontSize: 12, color: working ? 'var(--canvas-trace)' : dim, mt: 0.25 }}>{status}</Typography>
-        <Button
-          size="small"
-          onClick={() => global.showSettingsSection('mcp')}
-          sx={{ textTransform: 'none', fontSize: 12, px: 0, minWidth: 0, mt: 0.25, color: dim, '&:hover': { color: 'var(--text-color)' } }}
-        >
-          Connect another agent
-        </Button>
       </Box>
 
       <Box
