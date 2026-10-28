@@ -5,6 +5,13 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.25.2] - 2026-10-28
+### Changed
+- **The sidebar no longer lists an agent's investigation under Agent until it has a name.** While there is only one, and the agent hasn't said its question, **Agent** opens it. (bundled beamlynx-ui 0.70.2)
+
+### Fixed
+- **The agent's question shows as soon as it says it.** This is in the sidebar and at the top of the timeline. (bundled beamlynx-ui 0.70.2)
+
 ## [0.25.1] - 2026-10-28
 ### Changed
 - **Columns ending in `_id` are no longer shown to agents just for their name.** Integer and uuid ids are still shown by type, and foreign keys by the foreign-key rule, but a text column like `national_id` is now hidden. Existing policies have the built-in `_id` rule switched off once; switch it back on in the policy to undo.
