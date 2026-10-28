@@ -4,8 +4,15 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.26.0] - 2026-10-28
+### Added
+- **Join on ids inside a JSON array:** `documents_package as dp | officer .id = .officers[*].id` joins each package to the officers its `officers` array lists. `[*]` means any element of the array. (bundled pine-lang 0.52.0)
+- **The results show how long the query took,** next to the row count. (bundled beamlynx-ui 0.71.0)
+
 ### Changed
-- **Agents can filter, sort and join on a masked column again.** The masking policy hides what comes back, not what an agent asks. An agent that already knows an email can find the rows that hold it, but still sees `xxxxx` in place of the column. Agents are told this in their instructions. (bundled pine-lang, unreleased)
+- **Access policies are now called masking policies.** The info icon next to Settings → Masking templates explains what masking does. (bundled beamlynx-ui 0.71.0)
+- **Agents can filter, sort and join on a masked column again.** The masking policy hides what comes back, not what an agent asks. An agent that already knows an email can find the rows that hold it, but still sees `xxxxx` in place of the column. Agents are told this in their instructions. (bundled pine-lang 0.52.0)
 
 ## [0.25.2] - 2026-10-28
 ### Changed
