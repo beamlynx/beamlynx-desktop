@@ -198,381 +198,372 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [0.17.1] - 2026-09-26
 ### Changed
-- beamlynx has its own app icon, in the dock, taskbar, and app launcher. It used to show the stock Electron logo. The icon uses the four-bar mark from beamlynx.com.
+- **Beamlynx has its own app icon in the dock, taskbar and app launcher.** It used to show the stock Electron logo. The icon is the four-bar mark from beamlynx.com.
 
 ## [0.17.0] - 2026-09-26
 ### Added
-- Traverse from a table on the canvas: press `+` on it and pick **traverse**. It follows every table that points at it by foreign key, all the way down, and offers two operations on them (bundled beamlynx-ui 0.63.0):
-  - **Count rows** lists each table with its row count. Click one to open its rows in a new tab.
-  - **Delete rows…** generates the delete statements, deepest table first, as a script you can copy or run from the same panel after a confirmation.
-- Joins can name several columns: `note | note_ref .note_id, .other_id`, or `a | b .x = .p, .y = .q` to write the pairs out yourself. `delete!` takes several columns too (bundled pine-lang 0.46.0).
+- **You can follow every table that depends on a table, and count or delete their rows.** On the canvas, press `+` on a table and pick **traverse**. It follows every foreign key that points at the table, all the way down. **Count rows** lists each table with its row count; click one to open its rows in a new tab. **Delete rows…** writes the delete statements, deepest table first, as a script you can copy, or run from the same panel after you confirm (bundled beamlynx-ui 0.63.0).
+- **A join can name several columns.** For example `note | note_ref .note_id, .other_id`, or `a | b .x = .p, .y = .q` to write the pairs out yourself. `delete!` takes several columns too (bundled pine-lang 0.46.0).
 
 ### Changed
-- **Breaking:** a foreign key made of more than one column is now one join on all of its columns. Before, Pine joined on whichever one column you named. An expression that named a column that isn't unique on its own now returns fewer rows -- the rows it should have returned all along (bundled pine-lang 0.46.0).
-- **Breaking:** `delete:` is gone from Pine, replaced by the traverse action. A saved tab that still ends in `delete:` has it removed when it opens (bundled beamlynx-ui 0.63.0, pine-lang 0.46.0).
-- Pine reference: the join and delete topics now describe a foreign key made of more than one column. The columns after a table **name which relationship** you mean rather than spelling out the `ON` clause, so naming one column of a key joins on all of it, and several columns can be named when one isn't enough to tell two relationships apart. `delete!` takes several columns too, which a table with no single identifying column needs. Also documents writing the pairs out yourself (`.a = .b, .c = .d`), and corrects the note about a join column that matches nothing -- the query now fails with a plain syntax error rather than `zero-length delimited identifier`.
+- **Breaking: a foreign key made of several columns is joined on all of them.** Before, Pine joined only on the one column you named. If that column isn't unique on its own, the expression now returns fewer rows. These are the rows it should have returned all along (bundled pine-lang 0.46.0).
+- **Breaking: `delete:` is gone from Pine.** The traverse action replaces it. A saved tab that still ends in `delete:` has it removed when it opens (bundled beamlynx-ui 0.63.0, pine-lang 0.46.0).
+- **The Pine reference explains joins and deletes on a foreign key made of several columns.** The columns after a table name the relationship you mean, so one column of a key joins on all of it. Name more columns only when one can't tell two relationships apart. It also shows how to write the pairs out yourself (`.a = .b, .c = .d`). A join column that matches nothing now fails with a plain syntax error, and the reference says so.
 
 ### Fixed
-- Joins on the canvas now start from the latest table unless you pick another one. Hovering over a table used to move keyboard focus to it, even with the pointer hidden while you typed, so the next `|` could join from an older table (bundled beamlynx-ui 0.63.0).
-- Ctrl+C on the canvas copies again instead of opening the comment editor (bundled beamlynx-ui 0.63.0).
-- Switching tabs no longer shifts the layout (bundled beamlynx-ui 0.63.0).
-- The error above the results is no longer cut off. The whole message wraps over as many lines as it needs, up to six before it scrolls (bundled beamlynx-ui 0.63.0).
+- **A join from the canvas starts from the latest table unless you pick another.** Hovering over a table used to move keyboard focus to it, even with the pointer hidden while you typed. The next `|` could then join from an older table (bundled beamlynx-ui 0.63.0).
+- **Ctrl+C on the canvas copies again.** It used to open the comment editor (bundled beamlynx-ui 0.63.0).
+- **Switching tabs no longer shifts the layout** (bundled beamlynx-ui 0.63.0).
+- **The error above the results is no longer cut off.** The message wraps over up to six lines, then scrolls (bundled beamlynx-ui 0.63.0).
 
 ### Security
-- An agent can no longer change your data through an operation the old check missed. MCP only refused `delete!`, found by searching the text, and let `update!`, `d!` and `u!` through. The Pine server now refuses every form, and the agent's tab refuses writes even when you press Run on it yourself. Your own tabs are unchanged (bundled beamlynx-ui 0.63.0, pine-lang 0.46.0).
+- **AI agents can no longer change your data.** Before, only `delete!` was refused, and `update!`, `d!` and `u!` got through. The Pine server now refuses every form. The agent's tab also refuses writes when you press Run on it yourself. Your own tabs are unchanged (bundled beamlynx-ui 0.63.0, pine-lang 0.46.0).
 
 ## [0.16.0] - 2026-09-20
 ### Added
-- A tab can now explain itself. Start an expression with a comment -- either `/* ... */` across lines, or a run of `--` lines -- and the canvas shows it in its top-left corner instead of leaving it as grey text. Write it from the canvas too: press `c`, click the comment button in the toolbar, or click an existing comment to edit it (bundled beamlynx-ui 0.62.0, pine-lang 0.45.0).
-- MCP: an agent is now told to lead every expression it runs with a comment saying what it is looking for and why. beamlynx renders that comment as a note above the query, so the tab an agent opens shows its reasoning rather than only rows. Taught in the server instructions and repeated in `run_query`'s own description, since that is the tool that puts a tab in front of you.
-- MCP: `complete_query` now lists the aliases in scope for a joined expression (`aliases in scope: u_0 = public.user, d_1 = public.document`) and says how to list an earlier table's columns (`| select: u_0.`). An agent could previously see only the last joined table's columns, with no way to discover that the others were still reachable.
-- MCP: three database errors an agent cannot otherwise act on -- it never sees the generated SQL -- now come back with a line saying what to fix in Pine: a table name used as a column qualifier, a column that belongs to an earlier table in the pipeline, and a `.column` join suffix naming a column that does not exist.
-- Pine reference: `where:` now documents that there is no `or` (and what to use instead), that there are no regex operators, the `::text`/`::uuid` casts, comma-separated conditions, and the full list of comparison operators.
-- Pine reference: `join` now warns that a `.column` suffix naming a column that does not exist is not rejected. The query fails later with `zero-length delimited identifier`, which says nothing about the cause. Tracked as a pine-lang fix in `beamlynx-plans/pending/2026-09-19-pine-invalid-join-column.md`.
-- Database Connections: you can now have more than one saved connection to the same host and port, as long as they point at different databases. Previously the second one was rejected (bundled beamlynx-ui 0.62.0, pine-lang 0.45.0).
-- Add Connection form: switching to the "Connection string" tab rebuilds the string from whatever's in the Fields tab, so the two stay in sync in both directions (bundled beamlynx-ui 0.62.0).
+- **A tab can explain itself with a comment at the start of its expression.** Use `/* ... */` or a run of `--` lines. The canvas shows it in its top-left corner instead of as grey text. To write one from the canvas, press `c`, click the comment button in the toolbar, or click an existing comment to edit it (bundled beamlynx-ui 0.62.0, pine-lang 0.45.0).
+- **AI agents are asked to start each query with a comment saying what they're looking for and why.** Beamlynx shows that comment as a note above the query. The tab an agent opens then shows its reasoning, not only rows.
+- **AI agents can reach the columns of every table in a join.** `complete_query` lists the aliases in scope (`aliases in scope: u_0 = public.user, d_1 = public.document`). It also says how to list an earlier table's columns (`| select: u_0.`). Before, an agent saw only the last table's columns.
+- **AI agents get a hint for three database errors they couldn't fix on their own.** These are a table name used as a column qualifier, a column from an earlier table in the pipeline, and a join column that doesn't exist. Agents never see the SQL, so each error now says what to change in Pine.
+- **The Pine reference for `where:` covers more.** It says there is no `or` and what to use instead, and that there are no regex operators. It also covers the `::text`/`::uuid` casts, comma-separated conditions, and every comparison operator.
+- **The Pine reference for joins warns about a join column that doesn't exist.** Pine doesn't reject it. The query fails later with `zero-length delimited identifier`, which doesn't say why.
+- **You can save more than one connection to the same host and port,** as long as they point at different databases. Before, the second one was rejected (bundled beamlynx-ui 0.62.0, pine-lang 0.45.0).
+- **The "Connection string" tab of the Add Connection form fills in from the Fields tab.** The two stay in sync both ways (bundled beamlynx-ui 0.62.0).
 
 ### Changed
-- MCP: `check_reveal` now waits up to 25 seconds for you to respond instead of returning "pending" immediately. An agent can call it once and wait for a decision rather than inventing its own retry delay. It still returns "still pending" if you haven't decided within that window; calling again keeps waiting.
-- MCP: queries an agent runs now show in their own tab, pinned to the end of the tab strip and marked with a robot icon so it doesn't read as one of your own. It always shows the same query slot -- an agent's next query replaces whatever was there -- so closing it is always safe (bundled beamlynx-ui 0.62.0).
-- MCP: when an agent asks to see something its access policy redacted, the request gets its own "Needs approval" pinned tab instead of opening as a new tab and stealing focus. The tab names the connection, quotes the agent's reason, and offers Approve/Decline. Closing it without deciding declines, so an agent waiting on a decision never hangs (bundled beamlynx-ui 0.62.0).
-- MCP: an agent icon in the header, next to the bell, covers everything the agent is doing -- a dot when a result landed while you were looking elsewhere, a count when approvals are waiting. Clicking it goes to whichever needs you most (bundled beamlynx-ui 0.62.0).
-- Panels now open and close with a short animation instead of appearing in a single frame, and follow your operating system's "reduce motion" setting (bundled beamlynx-ui 0.62.0).
-- Results columns size to their own content instead of stretching to fill the pane, so a UUID column gets the room it needs and a short "status" column isn't stretched to match (bundled beamlynx-ui 0.62.0).
-- Table colors, and hovering a table on the canvas, now tint each column's header only, not every value under it (bundled beamlynx-ui 0.62.0).
-- Database Connections: switching the active tab's connection while it still has a query in it now warns that the query may reference tables the new connection doesn't have, instead of silently opening a new tab (bundled beamlynx-ui 0.62.0).
-- Database Connections: renaming a connection now has its own pencil icon, instead of only working once the row is expanded (bundled beamlynx-ui 0.62.0).
+- **`check_reveal` waits up to 25 seconds for your answer.** It used to return "pending" right away. An agent can call it once and wait. If you haven't decided by then it says "still pending", and calling again keeps waiting.
+- **Queries an AI agent runs open in a tab of their own, marked with a robot icon.** It is pinned to the end of the tab strip. The agent's next query replaces the last one, so closing the tab is always safe (bundled beamlynx-ui 0.62.0).
+- **An agent's request to see hidden values opens in a pinned "Needs approval" tab.** Before, it opened a new tab and took focus. The tab names the connection, quotes the agent's reason, and offers Approve and Decline. Closing it counts as Decline, so a waiting agent never hangs (bundled beamlynx-ui 0.62.0).
+- **An agent icon in the header, next to the bell, shows what the agent is doing.** A dot means a result arrived while you were elsewhere. A count means approvals are waiting. Click it to go to whichever needs you most (bundled beamlynx-ui 0.62.0).
+- **Panels slide open and closed.** They follow your system's "reduce motion" setting (bundled beamlynx-ui 0.62.0).
+- **Results columns fit their content instead of stretching to fill the pane.** A UUID column gets the room it needs, and a short "status" column stays short (bundled beamlynx-ui 0.62.0).
+- **Table colors, and hovering a table on the canvas, tint only the column headers.** Before, they tinted every value too (bundled beamlynx-ui 0.62.0).
+- **Switching a tab with a query in it to another connection asks first.** The query may use tables the new connection doesn't have. Before, it opened a new tab without saying so (bundled beamlynx-ui 0.62.0).
+- **Each saved connection has a pencil icon to rename it.** Before, you had to expand the row first (bundled beamlynx-ui 0.62.0).
 
 ### Removed
-- The classic Graph mode and Legacy Layout are both gone, along with their preferences. Canvas and the Canvas + Results two-pane layout are now the only way the app works (bundled beamlynx-ui 0.62.0).
+- **The classic Graph mode and the Legacy Layout are gone, with their preferences.** The canvas, with the Canvas + Results layout, is the only way the app works (bundled beamlynx-ui 0.62.0).
 
 ### Fixed
-- MCP: the operations footer printed on every `complete_query` response taught `| group: <col> => count:`, which is a parse error -- the aggregate takes no colon. It now shows `=> count` next to the standalone `count:` operation so the two are not conflated.
-- MCP: the same footer told agents to qualify a column by table name (`document.userId`), which always fails -- only an alias works. It now shows the alias form, and says so when a table name is used as one.
-- MCP: `check_reveal` reported that you had edited the expression on every successful reveal, because the review tab returns it re-prettified. Only a real change is flagged now.
-- Pine reference: `where:` documented `not status = 'archived'` as the way to negate, which does not parse. `!=`, `not like`, `not in` and `is not` do.
-- Panels stay smooth even with a full table of results on screen. The results grid used to re-fit its columns on every frame of the animation; it now holds still, shows a skeleton of your real column headers, and fits itself once afterwards (bundled beamlynx-ui 0.62.0).
-- Resizing a results column by hand no longer snaps back to its default width (bundled beamlynx-ui 0.62.0).
-- Entering and leaving Zen mode no longer resets whatever you had panned or zoomed the canvas to (bundled beamlynx-ui 0.62.0).
-- A blank line inside a `/* ... */` comment no longer breaks the expression (bundled beamlynx-ui 0.62.0).
-- Database Connections: typing a space while renaming a connection did nothing to the text and silently switched your active connection instead (bundled beamlynx-ui 0.62.0).
-- Database Connections: the rename pencil and the MCP badge no longer misalign across rows (bundled beamlynx-ui 0.62.0).
-- Icon-only buttons (close, download, save, notifications, tab controls, the JSON inspector) now have accessible labels for screen readers (bundled beamlynx-ui 0.62.0).
-- `? table` no longer suggests join paths that route back through a table the expression has already joined (bundled pine-lang 0.45.0).
-- A comma inside one `where:` now means `OR`, as the syntax always suggested: `where: id = 1, id = 2`. Previously everything after the first condition was silently dropped (bundled pine-lang 0.45.0).
-- A table your database role can't `SELECT` from now still shows up in hints -- its columns were never indexed before, so it was invisible (bundled pine-lang 0.45.0).
-- A table, column, or alias starting with an underscore (`_user`) now parses (bundled pine-lang 0.45.0).
+- **`complete_query` taught AI agents two things that always fail.** It showed `| group: <col> => count:`, but the aggregate takes no colon. It now shows `=> count` next to the separate `count:` operation. It also told agents to qualify a column with a table name (`document.userId`). It now shows an alias, and says so when an agent uses a table name.
+- **`check_reveal` no longer says you edited the expression when you didn't.** It said so on every reveal, because the review tab reformats the expression.
+- **The Pine reference showed `not status = 'archived'`, which doesn't parse.** Use `!=`, `not like`, `not in` or `is not`.
+- **Panels stay smooth with a full table of results on screen.** The results grid used to re-fit its columns on every frame. It now shows your column headers while the panel moves, and fits once at the end (bundled beamlynx-ui 0.62.0).
+- **A results column you resized by hand keeps its width.** It used to snap back (bundled beamlynx-ui 0.62.0).
+- **Leaving Zen mode keeps the canvas where you had panned and zoomed it** (bundled beamlynx-ui 0.62.0).
+- **A blank line inside a `/* ... */` comment no longer breaks the expression** (bundled beamlynx-ui 0.62.0).
+- **Typing a space while renaming a connection works.** It used to switch your active connection instead (bundled beamlynx-ui 0.62.0).
+- **The rename pencil and the MCP badge line up across connection rows** (bundled beamlynx-ui 0.62.0).
+- **Screen readers can name the icon-only buttons.** This covers close, download, save, notifications, the tab controls and the JSON inspector (bundled beamlynx-ui 0.62.0).
+- **`? table` no longer suggests paths that loop back through a table you've already joined** (bundled pine-lang 0.45.0).
+- **A comma inside one `where:` means OR: `where: id = 1, id = 2`.** Before, everything after the first condition was dropped without a word (bundled pine-lang 0.45.0).
+- **A table you can't `SELECT` from still shows in hints.** Before, it was invisible (bundled pine-lang 0.45.0).
+- **Names that start with an underscore, like `_user`, parse** (bundled pine-lang 0.45.0).
 
 ## [0.15.0] - 2026-09-12
 ### Added
-- Database Connections: MySQL support -- a "Database type" picker (Postgres/MySQL) when adding a connection, `mysql://` connection strings, and correctly-rendered SQL (bundled pine-lang 0.44.0, beamlynx-ui 0.61.0).
-- Saved connections now remember their database type (Postgres/MySQL), so a saved MySQL connection reconnects as MySQL on relaunch instead of silently defaulting back to Postgres and failing with a confusing "An error occurred while setting up the SSL connection" error.
+- **You can connect to MySQL.** Pick Postgres or MySQL under "Database type" when you add a connection, or paste a `mysql://` connection string. The SQL panel shows MySQL's SQL (bundled pine-lang 0.44.0, beamlynx-ui 0.61.0).
+- **A saved connection remembers whether it is Postgres or MySQL.** Before, a saved MySQL connection came back as Postgres after a restart. It then failed with "An error occurred while setting up the SSL connection".
 
 ## [0.14.0] - 2026-09-10
 ### Added
-- Two new MCP tools, `request_reveal` and `check_reveal`, let an agent ask the user to review a query an access policy is redacting: `request_reveal` opens it in a real tab (bundled beamlynx-ui), where the user can edit the expression, reveal the real results, or decline with a comment, and returns a request id right away; `check_reveal` polls that id for the outcome.
-- Results grid: a "Copy result as CSV" button (next to Export to CSV) copies the whole result to the clipboard as CSV. Also available as a "Copy Result" command palette entry (bundled beamlynx-ui 0.60.0).
-- Canvas mode: adding a `where` filter on a date-looking column now offers "today" and "in the last" alongside the usual operators, adding a pair of `where:` conditions instead of asking for a literal value (bundled beamlynx-ui 0.60.0).
-- Results grid: clicking a cell in a JSON column now opens its formatted, syntax-highlighted value in an editable side panel instead of editing inline in the grid row (bundled beamlynx-ui 0.60.0).
+- **An AI agent can ask you to see values its access policy hides.** It calls `request_reveal`, and the query opens in a tab (bundled beamlynx-ui). There you can edit the expression, show the real results, or decline with a comment. The agent checks for your answer with `check_reveal`.
+- **"Copy result as CSV" copies the whole result to the clipboard.** It sits next to Export to CSV, and is also "Copy Result" in the command palette (bundled beamlynx-ui 0.60.0).
+- **A filter on a date column offers "today" and "in the last".** You don't have to type a date (bundled beamlynx-ui 0.60.0).
+- **Clicking a cell in a JSON column opens its value in a side panel.** It is formatted, highlighted and editable. Before, you edited it inside the grid row (bundled beamlynx-ui 0.60.0).
 
 ### Changed
-- A connection's "apply access policy to my own queries" toggle is now off by default and opt-in, instead of on by default with an opt-out "bypass" -- an access policy protects the MCP agent only unless the owner explicitly turns this on too (bundled beamlynx-ui).
-- Canvas mode: moving between table nodes with the keyboard now spotlights that table's columns in the Results grid, the same way hovering a node with the mouse already did (bundled beamlynx-ui 0.60.0).
+- **An access policy applies only to AI agents unless you turn on "apply access policy to my own queries".** That setting is off by default. Before, the policy also covered your own queries unless you opted out (bundled beamlynx-ui).
+- **Moving between tables on the canvas with the keyboard highlights their columns in the results.** Hovering with the mouse already did this (bundled beamlynx-ui 0.60.0).
 
 ### Fixed
-- New Layout: opening the Pine/SQL panel now moves keyboard focus into it and reframes the graph to fit the canvas's new size (bundled beamlynx-ui 0.60.0).
-- Canvas mode: a `where` chip added via the Results grid's right-click "Filter" action can now always be deleted or edited, instead of sometimes landing on the wrong table (bundled beamlynx-ui 0.60.0).
-- Canvas mode: reopening an existing `where` chip using `ilike` no longer breaks the query on save (bundled beamlynx-ui 0.60.0).
+- **Opening the Pine/SQL panel puts the cursor in it.** The graph also re-fits to the smaller canvas (bundled beamlynx-ui 0.60.0).
+- **A filter added from the results grid's right-click "Filter" can always be edited or deleted.** It sometimes landed on the wrong table (bundled beamlynx-ui 0.60.0).
+- **Reopening a filter that uses `ilike` no longer breaks the query when you save it** (bundled beamlynx-ui 0.60.0).
 
 ## [0.13.0] - 2026-09-06
 ### Added
-- Canvas mode: hovering a table now spotlights its columns in the Results grid below, so it's easy to see which columns come from which joined table without needing to turn on the "Table colors" preference (bundled beamlynx-ui 0.59.0).
-- Canvas mode: click an existing order chip to open an Asc/Desc popover and change its direction, instead of reopening the column-add list (bundled beamlynx-ui 0.59.0).
+- **Hovering a table on the canvas highlights its columns in the results.** You can see which columns come from which joined table without turning on "Table colors" (bundled beamlynx-ui 0.59.0).
+- **Click a sort chip on the canvas to switch it between Asc and Desc** (bundled beamlynx-ui 0.59.0).
 
 ### Fixed
-- Results grid: right-clicking a cell and choosing "Filter" now scopes the generated `where:` to the table that cell's column actually belongs to, instead of an unqualified column name that could silently filter the wrong table in a join (bundled beamlynx-ui 0.59.0).
+- **"Filter" from a cell's right-click menu filters the table that column belongs to.** Before, it used a bare column name, which in a join could filter the wrong table (bundled beamlynx-ui 0.59.0).
 
 ## [0.12.1] - 2026-09-06
 ### Added
-- `? table` finds every join chain between two tables through the schema graph, not just the direct next hop -- e.g. `company | ? document` searches for every route, multi-hop ones included. Results are ranked by how much of a real ownership relationship each route stays within, not just by length: a denormalized shortcut column (the classic "every row also stores its tenant id" pattern) ranks last even when it's shortest, since it duplicates what a longer, more specific chain already reaches (bundled pine-lang 0.43.0).
-- Canvas mode: a new "path" action (tucked behind a "+" next to select/where/join) runs the `? table` search above and lets you commit one of the discovered routes all the way to the destination in one go. The Pine editor's own autocomplete completes the same search when typed directly (bundled beamlynx-ui 0.58.0).
-- Canvas mode: click a join's icon to pick Inner, Left, or Right, using the same two-circle diagram most SQL join references use (bundled beamlynx-ui 0.58.0).
-- Canvas mode: click an existing where/select/order/group chip to edit it in place, instead of removing and re-adding it. Shift+J/Shift+K step through the whole pipeline -- each node, then everything configured on it -- as one flat list (bundled beamlynx-ui 0.58.0).
+- **`? table` finds every join path between two tables, including ones through several tables.** For example, `company | ? document`. Paths that follow a real ownership chain rank first. A shortcut column, such as a tenant id copied onto every row, ranks last even when it is shortest (bundled pine-lang 0.43.0).
+- **A "path" action on the canvas joins all the way to a table in one step.** It's behind the `+` next to select, where and join, and uses the `? table` search. The Pine editor's completion offers the same search as you type (bundled beamlynx-ui 0.58.0).
+- **Click a join's icon on the canvas to make it Inner, Left or Right** (bundled beamlynx-ui 0.58.0).
+- **Click a where, select, order or group chip on the canvas to edit it.** Before, you removed it and added it again. Shift+J and Shift+K step through every table and chip in order (bundled beamlynx-ui 0.58.0).
 
 ### Changed
-- A connection's access policy can now be explicitly set to "None" (unrestricted access) even while MCP is on for it, instead of being refused -- useful for a local or sandbox database the owner doesn't need redacted. MCP still refuses to turn on, or keep running, against a named policy that has no active rule.
-- Canvas mode: a resolved join's line is now a plain neutral color instead of the theme's accent -- the accent now lives on the join-type icon itself, marking the one clickable thing on the edge rather than the whole line (bundled beamlynx-ui 0.58.0).
+- **A connection open to AI agents can use the "None" access policy.** This suits a local or test database. Agents are still refused when the connection's policy has no active rule.
+- **Join lines on the canvas are a neutral color.** The accent color marks the join-type icon, which is the part you can click (bundled beamlynx-ui 0.58.0).
 
 ### Fixed
-- Canvas mode: a stray trailing pipe (typed by hand, or left over from an earlier edit) no longer survives adding an operation -- it used to stay in the committed expression as a dangling `| ` (bundled beamlynx-ui 0.58.0).
-- Canvas mode: hovering a node now moves keyboard focus there too, matching what clicking or arrow-key navigation already did -- previously only its action bar appeared, while the "current" border stayed on whichever node the keyboard had last focused (bundled beamlynx-ui 0.58.0).
+- **A stray `|` at the end of the expression no longer stays behind after you add an operation** (bundled beamlynx-ui 0.58.0).
+- **Hovering a table on the canvas moves keyboard focus to it, as clicking does.** Before, only its action bar appeared, and the focus border stayed on another table (bundled beamlynx-ui 0.58.0).
 
 ## [0.11.0] - 2026-09-02
 ### Added
-- Tabs can be reordered by dragging them, in both the horizontal strip and a new vertical rail layout (Settings -> Appearance -> Tabs). Dragging to either end of a long rail scrolls it. The new order also drives Ctrl+Tab cycling and survives a reload (bundled beamlynx-ui 0.57.0).
-- New "Toggle Layout Orientation" command (command palette): switch New Layout between side-by-side and top/bottom without using the canvas toolbar icon (bundled beamlynx-ui 0.56.0).
+- **Drag tabs to reorder them.** This works in the tab strip and in a new vertical tab rail (Settings → Appearance → Tabs). Ctrl+Tab follows the new order, and it survives a reload (bundled beamlynx-ui 0.57.0).
+- **"Toggle Layout Orientation" in the command palette switches between side-by-side and stacked panes** (bundled beamlynx-ui 0.56.0).
 
 ### Changed
-- The app now re-checks for a new release every 15 minutes it stays open, not just at launch, so a session left running for hours or days still picks up a release that ships in the meantime.
-- Tab close buttons now appear on hover of that tab, instead of on every tab at once. Hovering a tab also tints it and brightens its label (bundled beamlynx-ui 0.57.0).
-- Database Connections list: a connection's rename field, access policy, MCP access toggle, "only apply to MCP server" toggle, refresh, and delete are now behind an expand arrow instead of five icons crammed onto one row (bundled beamlynx-ui 0.56.0).
+- **Beamlynx checks for a new release every 15 minutes while it is open.** Before, it checked only at launch.
+- **A tab's close button appears when you hover that tab.** Hovering also tints the tab (bundled beamlynx-ui 0.57.0).
+- **A connection's settings sit behind an expand arrow in the connection list.** These are rename, access policy, AI agent access, "only apply to MCP server", refresh and delete (bundled beamlynx-ui 0.56.0).
 
 ### Fixed
-- "Only apply to MCP server" kept flipping back off after almost any connection action, even though it was saved correctly to disk -- your own queries were silently protected by the policy again until the app restarted (bundled beamlynx-ui 0.57.0).
-- New Layout: dragging the Pine/SQL panel's resize divider in top/bottom view no longer moves it in the opposite direction (bundled beamlynx-ui 0.56.0).
-- MCP-run queries now show up nicely formatted in the Pine panel instead of the raw, unformatted expression the agent sent (bundled beamlynx-ui 0.56.0, pine-lang 0.42.0).
-- Canvas's where picker: a long column name no longer gets hard-clipped mid-character, the operator and value fields have visible spacing between them, and opening the picker now focuses the operator dropdown first instead of the value field (bundled beamlynx-ui 0.56.0).
+- **"Only apply to MCP server" no longer switches itself off.** After almost any connection action, the access policy covered your own queries again until a restart (bundled beamlynx-ui 0.57.0).
+- **Dragging the Pine/SQL panel's divider in the stacked layout moves it the right way** (bundled beamlynx-ui 0.56.0).
+- **Queries an AI agent runs are formatted in the Pine panel** (bundled beamlynx-ui 0.56.0, pine-lang 0.42.0).
+- **The canvas filter picker is easier to use.** Long column names no longer cut off mid-letter, and the fields have space between them. The operator field gets focus first (bundled beamlynx-ui 0.56.0).
 
 ## [0.10.0] - 2026-09-01
 ### Added
-- Named, user-creatable access policies (Settings -> Access Policy in beamlynx-ui): create/rename/delete a policy, toggle its rules. Each saved connection picks which one applies to it.
-- MCP can only be enabled for a connection once its assigned policy has an active rule, and the policy can't be cleared or swapped for an inactive one while MCP is on -- there's no "reachable but unprotected" state.
-- New per-connection toggle, "Only apply to MCP server": lets the owner see real data on their own queries without weakening what the agent sees.
-- The control-plane server now double-checks a connection's access status at the moment an MCP call actually runs (not just when MCP was last toggled on), so a policy that went inactive afterward fails loud instead of running unprotected.
+- **You can create and name your own access policies in Settings → Access Policy.** Rename or delete them, and switch rules on and off. Each saved connection picks the policy that applies to it.
+- **AI agent access needs a policy with at least one active rule.** You can't clear that policy, or swap in one with no active rule, while agents have access.
+- **"Only apply to MCP server" lets you see real data in your own queries.** What AI agents see stays protected.
+- **Beamlynx checks the policy each time an AI agent runs a query.** If the policy has lost its active rules, the query fails instead of running unprotected.
 
 ### Fixed
-- Fixed an intermittent "X is not a function" from a duplicate MCP query listener left behind by dev-mode Fast Refresh.
+- **Fixed an occasional "X is not a function" error in development builds.**
 
 ## [0.9.1] - 2026-08-28
 ### Fixed
-- macOS auto-update still didn't work in 0.9.0, despite that release's own fix -- the release workflow's artifact-upload step never actually included the `.zip` file `electron-builder` produces (only its `.blockmap`, matched by a broader pattern, which is what made the miss easy to overlook). `MacUpdater` requires the real `.zip` to apply an update, not just its blockmap.
+- **Auto-update on macOS works.** The fix in 0.9.0 was incomplete, because the release still left out the `.zip` file the Mac updater needs.
 
 ## [0.9.0] - 2026-08-28
 ### Added
-- Zen mode: a graph-only, distraction-free view that hides the header, tab strip, and Results, and turns auto-run off for as long as it's on, restored once you exit. Reachable from the command palette for now (bundled beamlynx-ui 0.53.0).
-- A "Reconnect" action next to the connection label in the header, shown whenever a tab's assigned database connection isn't live -- particularly relevant here, since the bundled server can still be starting up when the window first opens (bundled beamlynx-ui 0.53.0).
+- **Zen mode shows only the graph.** It hides the header, the tab strip and the results, and turns auto-run off until you leave. Find it in the command palette (bundled beamlynx-ui 0.53.0).
+- **A "Reconnect" action appears next to the connection name in the header when the tab's database isn't connected.** This helps at launch, when the server may still be starting (bundled beamlynx-ui 0.53.0).
 
 ### Changed
-- `Ctrl`/`Cmd`+`,` now opens Settings (matching most native Mac apps' Preferences convention) instead of the SQL panel; `Ctrl`/`Cmd`+`.` still opens the Pine panel, and `Ctrl`/`Cmd`+`Shift`+`.` now opens the SQL panel (bundled beamlynx-ui 0.53.0).
-- Settings now docks on the left in New Layout instead of floating on top of the canvas, so it never covers the graph or results while you tune a change against them. It also stays open across tab switches now, and no longer closes on Escape (bundled beamlynx-ui 0.53.0).
+- **`Ctrl`/`Cmd`+`,` opens Settings, as in most Mac apps.** `Ctrl`/`Cmd`+`.` still opens the Pine panel. `Ctrl`/`Cmd`+`Shift`+`.` opens the SQL panel (bundled beamlynx-ui 0.53.0).
+- **Settings opens on the left instead of on top of the canvas.** You can see the graph and results while you change things. It stays open when you switch tabs, and Escape no longer closes it (bundled beamlynx-ui 0.53.0).
 
 ### Fixed
-- Auto-update never actually worked on macOS -- `electron-updater`'s `MacUpdater` requires a `.zip` release asset to apply an update and throws `ERR_UPDATER_ZIP_FILE_NOT_FOUND` when only the `.dmg` is published, but that error was swallowed silently (no UI, only a console log), so it looked like nothing was happening. Mac releases now also publish a `.zip`. This particularly affected the Homebrew cask, which sets `auto_updates true` and has no fallback update path of its own.
-- Canvas node labels, chips, and toolbars didn't scale with the Text Size setting, and were quite small even so -- they now scale, and are bigger at every size to begin with (bundled beamlynx-ui 0.53.0).
+- **Auto-update on macOS never worked, and gave no sign of failing.** The Mac updater needs a `.zip` download, and releases had only the `.dmg`. Mac releases include a `.zip` from this version. This mattered most for the Homebrew install, which relies on the app's own updates.
+- **Canvas labels, chips and toolbars follow the Text Size setting.** They're also bigger at every size (bundled beamlynx-ui 0.53.0).
 
 ## [0.8.0] - 2026-08-26
 ### Added
-- The MCP server teaches an AI agent Pine up front, instead of leaving it to guess. A short primer now arrives when an agent connects, before it makes a single tool call. When an expression fails to parse, the reference page for whatever operation it got wrong comes back with the error, rather than the agent needing two more calls to find it.
-- A new `find_tables` MCP tool searches for a table by name fragment -- "ten" finds "tenant", "tenant_role" and "user_tenant_role". An agent no longer has to guess a table name (a singular/plural mismatch was the usual way that went wrong).
-- Pine reference pages for `count:`, `delete!`, `from:` and `limit:` now have worked examples. All four previously shipped with empty example blocks.
+- **AI agents learn Pine when they connect.** A short primer arrives before their first call. When an expression fails to parse, the reference page for that operation comes back with the error.
+- **A new `find_tables` tool lets an AI agent search tables by part of a name.** "ten" finds "tenant", "tenant_role" and "user_tenant_role". Agents used to guess, and often got singular and plural wrong.
+- **The Pine reference pages for `count:`, `delete!`, `from:` and `limit:` have examples.** They used to be empty.
 
 ### Changed
-- Connecting to a second database on the same server and port as an existing connection now reports a clear error instead of appearing to work. The two share an identity internally and could never both be connected — previously the second one quietly took the first one's place, so queries you believed were running against the first database actually ran against the second. Disconnect the existing one first (bundled pine-lang 0.40.0).
-- MCP tool results are now written for an agent to act on, not dumped as raw API JSON. Asking what can be added to `user | ` went from 5,930 bytes of JSON to about 1,250 bytes of ranked suggestions, and query results dropped by roughly two thirds. Joins backed by a real foreign key are now listed separately from ones guessed from column naming, so an agent knows which it can trust; long lists say how many entries they left out instead of truncating silently.
-- `explain_query` is now `complete_query`, and answers "what can I add here?" rather than dumping a parse tree. Its old description promised validation it never performed -- a query against a table that does not exist still parses cleanly, and only fails when run.
-- The MCP server no longer shows SQL to an AI agent anywhere, in either direction. It could not run SQL before; now it does not return or teach it either. The bundled Pine reference explains what each example does in words, where it previously showed the SQL each expression translates to. Pine is the layer where query restrictions can be enforced, so an agent that reasons in SQL undermines the point of it.
-- `list_pine_docs` is gone. Its topic list is now part of `get_pine_doc`'s own description, so fetching a topic takes one call instead of two.
-- `run_query`'s description no longer tells an agent to look up column types by querying the database's own catalog tables. Column *names* now come from `complete_query`, but nothing in the MCP surface reports a column's **type** any more. Exposing types properly is planned as a Pine language feature rather than a lookup the MCP server does behind the agent's back.
+- **Connecting to a second database on the same host and port gives a clear error.** Before, it seemed to work but replaced the first connection. Queries you meant for the first database ran against the second. Disconnect the first one before you connect the second (bundled pine-lang 0.40.0).
+- **What AI agents get back is shorter and easier to act on.** Suggestions are ranked, and query results are about a third of their old size. Joins backed by a real foreign key are listed apart from guessed ones. Long lists say how many entries they left out.
+- **`explain_query` is now `complete_query`.** It answers "what can I add here?" instead of returning a parse tree. The old name promised a check it never did.
+- **AI agents no longer see SQL anywhere.** They couldn't run it before, and now nothing shows or teaches it to them. The Pine reference explains each example in words. Pine is where query limits are enforced, so an agent that thinks in SQL works around them.
+- **`list_pine_docs` is gone.** `get_pine_doc` lists its topics in its own description, so a topic takes one call instead of two.
+- **AI agents can no longer look up column types.** `run_query` used to suggest querying the database's own catalog. `complete_query` gives column names, but not types. Types are planned as a Pine feature.
 
 ### Fixed
-- Running a query could stop working entirely, with every query hanging and never finishing, while the app otherwise looked fine — expressions still parsed, and the relationship graph still updated. Once it happened it did not recover until the app was restarted, and it became more likely the longer the app stayed open. Two independent causes, both fixed: the bundled server printed every query it ran to a stream this app never read, and once that stream filled up the server blocked permanently (bundled pine-lang 0.40.0); and this app never drained that stream in the first place.
-- Each reconnection to a database left the previous connection open. A long session could accumulate dozens of them and eventually be refused a new connection by the database server (bundled pine-lang 0.40.0).
-- The MCP control plane's `/explain` route accepted any HTTP method rather than only POST, so a bodyless GET would enter the handler and stall waiting for a request body.
+- **Queries could stop running for good until you restarted Beamlynx.** Every query hung, while the rest of the app looked fine. The longer the app stayed open, the likelier it was. The bundled server logged every query to an output that filled up and was never read. Both sides are fixed (bundled pine-lang 0.40.0).
+- **Reconnecting to a database closes the old connection.** A long session could pile up dozens, until the database refused new ones (bundled pine-lang 0.40.0).
+- **The local server behind AI agents accepts only the request type it expects.** Any other request could leave it waiting.
 
 ## [0.7.0] - 2026-08-25
 ### Added
-- A new Appearance section in Settings: three built-in themes (Light, Dark, Sepia), each with its own coordinated colors rather than a shared palette with a swappable accent (bundled beamlynx-ui 0.52.0).
-- Independent Interface font (System, Inter, IBM Plex Sans) and Code font (IBM Plex Mono, JetBrains Mono, Fira Code, System Monospace) choices, replacing one shared monospace-only font setting (bundled beamlynx-ui 0.52.0).
-- A Text size setting (Small/Medium/Large) that scales the app's text and spacing without resizing panels or the canvas (bundled beamlynx-ui 0.52.0).
-- The loading screen now matches your chosen theme (or the OS's light/dark preference) instead of always showing a fixed dark palette, and rotates through a few status messages while the server starts instead of showing one static line.
+- **Settings has an Appearance section with three themes: Light, Dark and Sepia.** Each has its own matching set of colors (bundled beamlynx-ui 0.52.0).
+- **Pick the Interface font and the Code font separately.** Interface: System, Inter or IBM Plex Sans. Code: IBM Plex Mono, JetBrains Mono, Fira Code or System Monospace. This replaces the single font setting (bundled beamlynx-ui 0.52.0).
+- **A Text size setting (Small, Medium, Large) scales text and spacing.** Panels and the canvas keep their size (bundled beamlynx-ui 0.52.0).
+- **The loading screen matches your theme.** Without one, it follows your system's light or dark setting. It also shows a few status messages while the server starts.
 
 ### Fixed
-- Trackpad two-finger scroll zoomed the graph instead of panning it, in both graph views -- it now pans, matching the Miro/Figma convention (bundled beamlynx-ui 0.52.0).
-- Canvas keyboard navigation between tables now wraps from the last table back to the first instead of stopping there (bundled beamlynx-ui 0.52.0).
+- **Two-finger scrolling on a trackpad pans the graph instead of zooming,** as in Miro and Figma (bundled beamlynx-ui 0.52.0).
+- **Keyboard navigation on the canvas wraps from the last table back to the first** (bundled beamlynx-ui 0.52.0).
 
 ## [0.6.2] - 2026-08-23
 ### Changed
-- New Layout's Canvas/Results split now uses one consistent 8px gap on all sides and between the two panes, instead of a slightly different, unexplained width for the pane divider (10px) versus the surrounding margins (8px), and no gap at all at the bottom (bundled beamlynx-ui 0.51.2).
+- **The Canvas and Results panes have the same 8px gap on every side and between them** (bundled beamlynx-ui 0.51.2).
 
 ### Fixed
-- The "update ready" notification said "restart" twice (in the message and the button), and its "Restart Now" button had no visible border or fill, reading as plain text rather than something to click (bundled beamlynx-ui 0.51.2).
+- **The "update ready" notice no longer says "restart" twice.** Its "Restart Now" button also looks like a button (bundled beamlynx-ui 0.51.2).
 
 ## [0.6.1] - 2026-08-23
 ### Changed
-- A connection's color is now set from Settings > Database Connections (click its status dot), alongside renaming and MCP access, instead of from the top-left connection picker (bundled beamlynx-ui 0.51.1).
-- The Updates modal shows a short title for each change first, with its fuller explanation underneath -- easier to skim than a flat bullet list (bundled beamlynx-ui 0.51.1).
-- The Pine/SQL panel's keybindings changed to Ctrl/Cmd+. for Pine and Ctrl/Cmd+, for SQL, replacing Ctrl/Cmd+Shift+E/S (bundled beamlynx-ui 0.51.1).
-- A canvas filter now composes as its own `where:` step instead of joining a comma-separated list on one shared `where:` clause -- multiple filters on the same table still combine with AND (bundled beamlynx-ui 0.51.1).
+- **Set a connection's color in Settings → Database Connections by clicking its status dot.** Before, it was in the connection picker at the top left (bundled beamlynx-ui 0.51.1).
+- **The Updates window shows a short title for each change, with the details underneath** (bundled beamlynx-ui 0.51.1).
+- **New shortcuts for the Pine and SQL panels: Ctrl/Cmd+. for Pine, Ctrl/Cmd+, for SQL.** They replace Ctrl/Cmd+Shift+E and Ctrl/Cmd+Shift+S (bundled beamlynx-ui 0.51.1).
+- **Each filter you add on the canvas becomes its own `where:` step.** Several filters on one table still all have to match (bundled beamlynx-ui 0.51.1).
 
 ### Fixed
-- Table colors disappeared the instant the SQL panel was opened, even though the results on screen hadn't gone stale (bundled beamlynx-ui 0.51.1).
-- Auto-run silently stopped firing on canvas edits whenever the SQL panel was the visible one (bundled beamlynx-ui 0.51.1).
+- **Table colors no longer vanish when you open the SQL panel** (bundled beamlynx-ui 0.51.1).
+- **Auto-run keeps working while the SQL panel is open** (bundled beamlynx-ui 0.51.1).
 
 ## [0.6.0] - 2026-08-23
 ### Added
-- Canvas mode is now the default way to build a query, in a new two-pane layout (canvas and results, side by side or stacked) with results running automatically as you edit -- the classic sidebar layout is still one click away (bundled beamlynx-ui 0.51.0).
-- Ctrl/Cmd+Tab and Ctrl/Cmd+Shift+Tab switch between tabs, matching a browser's own tab switching (bundled beamlynx-ui 0.51.0).
-- F12 (or Ctrl/Cmd+Shift+I) now opens Chrome DevTools when running unpackaged (`npm start`) -- there's no menu bar to reach it from otherwise. Not available in packaged builds.
+- **The canvas is the default way to build a query.** Canvas and results sit side by side or stacked, and results update as you edit. The classic sidebar layout is one click away (bundled beamlynx-ui 0.51.0).
+- **Ctrl/Cmd+Tab and Ctrl/Cmd+Shift+Tab switch tabs,** as in a browser (bundled beamlynx-ui 0.51.0).
 
 ### Fixed
-- Canvas mode could freeze up while its optional Pine/SQL text panel was open -- edits went nowhere, and a session reloaded with the panel already open could get stuck showing "Connecting…" forever (bundled beamlynx-ui 0.51.0).
-- A join that no longer had a real column to connect on (for example, after deleting a table in between two others) could render as a plain, confident-looking line instead of the dashed warning styling used for any other unresolved join (bundled beamlynx-ui 0.51.0).
+- **The canvas could freeze while the Pine/SQL panel was open.** Edits did nothing. A session reopened with the panel open could show "Connecting…" forever (bundled beamlynx-ui 0.51.0).
+- **A join with no column left to connect on shows as a dashed warning line.** This can happen after you delete the table between two others. Before, it looked like a normal join (bundled beamlynx-ui 0.51.0).
 
 ## [0.5.0] - 2026-08-22
 ### Added
-- A saved connection can now be renamed (bundled beamlynx-ui 0.50.0) -- a new `credentials.rename` call updates its stored label.
-- A refresh icon next to each live connection in Settings > Database Connections, to pick up tables or columns added to the database after the connection was first opened -- no restart needed (bundled beamlynx-ui 0.50.0 / pine-lang 0.39.0's new reindex endpoint).
-- Keyboard control for canvas mode: navigate between tables with the arrow keys or `j`/`k`, and trigger a highlighted table's operations with a single letter, without touching the mouse (bundled beamlynx-ui 0.50.0).
+- **You can rename a saved connection** (bundled beamlynx-ui 0.50.0).
+- **A refresh icon next to each live connection in Settings → Database Connections picks up new tables and columns.** No restart needed (bundled beamlynx-ui 0.50.0, pine-lang 0.39.0).
+- **Use the canvas from the keyboard.** Move between tables with the arrow keys or `j`/`k`. Press a single letter to run an operation on the highlighted table (bundled beamlynx-ui 0.50.0).
 
 ### Fixed
-- The graph view could get stuck showing "Connecting…" forever even once the connection was live -- the very first query build for a tab, sent before its connection pool actually existed yet, failed silently and nothing ever retried it (bundled beamlynx-ui 0.50.0).
-- A heuristic join between columns of different database types (e.g. text vs uuid) generated SQL Postgres rejected outright; both sides are now cast to a common type instead (bundled pine-lang 0.39.0).
+- **The graph could show "Connecting…" forever after the connection was live.** A tab's first query was sent before its connection was ready, failed silently, and was never retried (bundled beamlynx-ui 0.50.0).
+- **A guessed join between columns of different types, such as text and uuid, works.** Postgres used to reject it (bundled pine-lang 0.39.0).
 
 ### Changed
-- Removed the native menu bar (File/Edit/View/Window) on Windows/Linux -- it only duplicated beamlynx-ui's own header. Kept a minimal one on macOS (app name + Edit), since Cmd+C/V/X and undo/redo rely on the Edit menu to work at all in text fields.
-- Exposes this app's own version to the Settings About section's new "App version" row (bundled beamlynx-ui 0.50.0).
+- **The menu bar is gone on Windows and Linux.** It only repeated the app's own header. macOS keeps a small one, because copy, paste and undo in text fields need its Edit menu.
+- **Settings → About shows the app's version** (bundled beamlynx-ui 0.50.0).
 
 ## [0.4.0] - 2026-08-17
 ### Added
-- MCP support. An AI agent like Claude Code can run queries directly against your saved connections. Turn it on per connection, and copy the setup command, from the new Settings page (bundled beamlynx-ui 0.49.0).
-- A `beamlynx://` URL scheme for opening a saved connection with a query already filled in.
-- A Settings page, opened from the gear icon next to the notification bell, for connections, preferences, and MCP setup (bundled beamlynx-ui 0.49.0).
-- A database type field when adding a connection. Picking a type fills in its default port automatically (bundled beamlynx-ui 0.49.0).
+- **AI agents such as Claude Code can query your saved connections through MCP.** Turn it on for each connection, and copy the setup command, in the new Settings page (bundled beamlynx-ui 0.49.0).
+- **A `beamlynx://` link opens a saved connection with a query filled in.**
+- **A Settings page, behind the gear icon next to the bell, holds connections, preferences and MCP setup** (bundled beamlynx-ui 0.49.0).
+- **Pick a database type when you add a connection, and its default port fills in** (bundled beamlynx-ui 0.49.0).
 
 ### Security
-- Bundles pine-lang 0.38.2. The server now binds to `127.0.0.1` (loopback only) by default instead of every network interface -- it has no authentication, so the old default left it reachable from your whole network.
+- **The bundled server is reachable only from your own computer.** It used to listen on every network interface, and it has no password, so anyone on your network could reach it (bundled pine-lang 0.38.2).
 
 ## [0.3.0] - 2026-08-14
 ### Added
-- `beamlynx --app-version` prints the installed desktop app's own version and exits, without opening the GUI.
+- **`beamlynx --app-version` prints the installed app's version and exits,** without opening the window.
 
 ## [0.2.2] - 2026-08-14
 ### Changed
-- macOS builds are now code-signed and notarized by Apple.
+- **macOS builds are signed and notarized by Apple.**
 
 ## [0.2.0] - 2026-08-14
 ### Added
-- An experimental interactive view for building Pine queries by clicking through tables in a graph instead of writing text (bundled beamlynx-ui 0.48.1).
+- **An experimental view builds Pine queries by clicking through tables in a graph** (bundled beamlynx-ui 0.48.1).
 
 ### Changed
-- Unified the app's visual design (the "schematic/blueprint" look) across the whole app (bundled beamlynx-ui 0.48.1).
+- **The whole app has one visual style, a schematic, blueprint look** (bundled beamlynx-ui 0.48.1).
 
 ### Fixed
-- The loading screen's colors were hardcoded to the app's old dark-theme palette, so it visually flash-swapped once the real (now "schematic/blueprint") UI loaded -- updated to match.
+- **The loading screen uses the new colors.** Before, its colors flashed to the new look once the app loaded.
 
 ## [0.1.19] - 2026-08-09
 ### Changed
-- Each tab now connects to its own database lazily, only when it becomes the active tab, instead of every tab eagerly following whatever connection was picked most recently. Opening the app no longer forces the connections picker open -- it silently reconnects the tab you were on. A tab whose connection isn't live yet shows a hollow (outline-only) dot in its own connection's color, filling in solid once connected (bundled beamlynx-ui 0.47.0).
+- **Each tab connects to its own database when you open it.** Before, every tab followed the connection you picked last. The app no longer opens the connection picker at launch; it reconnects the tab you were on. A hollow dot in the connection's color means it isn't connected yet; it fills in once it is (bundled beamlynx-ui 0.47.0).
 
 ### Fixed
-- A checkpoint feeding into a pipeline's terminal `group:` had its own CTE silently dropped from the generated SQL, leaving the group's wrapper CTE referencing a relation that was never defined (bundled pine-lang 0.37.3).
-- Clicking a graph node (e.g. expanding a variable/checkpoint container) was mistaken for a Tab keypress, stealing focus into the Pine input and jumping the candidate-relation highlight to the first suggestion (bundled beamlynx-ui 0.47.0).
-- Picking a connection from the auto-opened startup picker could open an unrelated new tab and silently change which connection *other*, already-open tabs appeared to be using (bundled beamlynx-ui 0.47.0).
-- A tab restored from before this session-connection rework had no saved-profile id to reconnect from, so it silently never auto-connected -- it now falls back to resolving one from its connection id (bundled beamlynx-ui 0.47.0).
-- The connections picker's "currently active" checkmark could point at a stale profile after switching tabs silently reconnected a different one in the background (bundled beamlynx-ui 0.47.0).
-- Every tab's assigned connection was silently wiped back to "not connected" on every app launch, before pine-server (a fresh process each launch) had any chance to reconnect it -- restarting the app looked like every saved connection had been forgotten (bundled beamlynx-ui 0.47.0).
-- Failing to reconnect a saved profile (deleted/renamed on disk, or its DB unreachable) via the connections picker only logged to the console -- now shows the same connection-error banner as every other connection failure (bundled beamlynx-ui 0.47.0).
-- The connections list/picker always showed a solid dot for every saved connection regardless of whether it actually had a live pool -- not-yet-connected entries now correctly show as a hollow (outline-only) dot (bundled beamlynx-ui 0.47.0).
-- On launch, a tab's connection briefly displayed as its raw `host:port` id instead of its saved name, before flashing to the real name once the saved-profile list finished loading (bundled beamlynx-ui 0.47.0).
+- **A query that fed a checkpoint into a final `group:` produced broken SQL** (bundled pine-lang 0.37.3).
+- **Clicking a graph node no longer moves focus into the Pine input.** It counted as a Tab press and jumped to the first suggestion (bundled beamlynx-ui 0.47.0).
+- **Picking a connection at startup no longer opens a stray tab or changes the connection of your other tabs** (bundled beamlynx-ui 0.47.0).
+- **Restarting the app no longer forgets every tab's connection.** Tabs from older versions reconnect too (bundled beamlynx-ui 0.47.0).
+- **The connection picker's checkmark shows the right connection after you switch tabs** (bundled beamlynx-ui 0.47.0).
+- **A saved connection that can't reconnect shows an error.** This happens when it was deleted, renamed, or its database is down. Before, nothing appeared (bundled beamlynx-ui 0.47.0).
+- **The connection list shows a solid dot only for connections that are live.** Others show a hollow dot (bundled beamlynx-ui 0.47.0).
+- **A tab's connection no longer flashes as `host:port` at launch before its name appears** (bundled beamlynx-ui 0.47.0).
 
 ## [0.1.18] - 2026-08-04
 ### Fixed
-- Relation/join hints for a column like `tenant_id` were lost whenever a checkpoint (`l:`/`group:`) sealed the selection into an anonymous CTE and `id` wasn't also selected (bundled pine-lang 0.37.2).
-- Creating a database connection now returns a proper error instead of an uncaught server error when the target database is unreachable (bundled pine-lang 0.37.2).
-- A failed attempt to connect (unreachable DB, wrong credentials, etc.) used to fail silently; a new error toast now surfaces the actual failure (bundled beamlynx-ui 0.46.2).
-- A saved connection could show as "connected" on launch even though nothing was actually connected yet this session — pine-server is a fresh process every launch, so a previously-used connection is no longer trusted until it's confirmed live (bundled beamlynx-ui 0.46.2).
-- When disconnected, the app now automatically opens the connections picker (or the add-connection form, if none exist yet) instead of leaving a dead "Not connected to database" label (bundled beamlynx-ui 0.46.2).
+- **Join hints for a column like `tenant_id` survive a checkpoint (`l:` or `group:`).** They used to disappear unless `id` was selected too (bundled pine-lang 0.37.2).
+- **Adding a connection to a database that can't be reached gives a clear error** (bundled pine-lang 0.37.2).
+- **A failed connection shows an error message.** Before, a wrong password or an unreachable database failed silently (bundled beamlynx-ui 0.46.2).
+- **A saved connection no longer shows as connected at launch before it really is** (bundled beamlynx-ui 0.46.2).
+- **When nothing is connected, the connection picker opens.** If you have no connections yet, the form to add one opens. Before, you saw only "Not connected to database" (bundled beamlynx-ui 0.46.2).
 
 ## [0.1.17] - 2026-08-03
 ### Fixed
-- The changelog's relative-date label showed "-1 days ago" for a same-day entry when the local timezone is behind UTC (bundled beamlynx-ui 0.46.1).
+- **The changelog no longer says "-1 days ago" for an entry from today.** This happened in time zones behind UTC (bundled beamlynx-ui 0.46.1).
 
 ## [0.1.16] - 2026-08-03
 ### Added
-- Tabs (Pine/SQL text, input mode, connection) are now restored on reload instead of always starting from a single blank session (bundled beamlynx-ui 0.46.0).
-- `Ctrl/Cmd+S` ("Save Tab") downloads the active tab's Pine expression as a `.pine` file (bundled beamlynx-ui 0.46.0).
-- New "List Database Connections" / "New Database Connection" command palette entries (bundled beamlynx-ui 0.46.0).
+- **Your tabs come back after a reload.** Each keeps its Pine or SQL text, input mode and connection (bundled beamlynx-ui 0.46.0).
+- **`Ctrl/Cmd+S` ("Save Tab") downloads the tab's Pine expression as a `.pine` file** (bundled beamlynx-ui 0.46.0).
+- **"List Database Connections" and "New Database Connection" are in the command palette** (bundled beamlynx-ui 0.46.0).
 
 ### Fixed
-- Pressing Tab while the graph had focus was falling through to React Flow's own node/edge navigation instead of cycling through Pine completion candidates (bundled beamlynx-ui 0.46.0).
+- **Tab cycles through Pine suggestions while the graph has focus.** It used to move between graph nodes instead (bundled beamlynx-ui 0.46.0).
 
 ## [0.1.15] - 2026-08-02
 ### Fixed
-- Changes could fail to survive a restart if a stale/orphaned instance of the app was still running in the background (e.g. left behind by a crash) -- the app now refuses to run a second instance at all, and instead brings the existing window to the front.
-- A brief blank/white flash when the app first opens, before the loading screen has rendered.
-- Notification bell color correction (bundled beamlynx-ui 0.45.2).
+- **Only one copy of Beamlynx runs at a time.** Opening it again brings the open window to the front. A copy left running after a crash could stop your changes being saved.
+- **No more white flash when the app opens.**
+- **The notification bell has the right color** (bundled beamlynx-ui 0.45.2).
 
 ## [0.1.14] - 2026-08-02
 ### Fixed
-- Saved connections weren't showing their color or proper name in the connection picker.
-- The "Database Connection" dialog no longer pops up automatically when you already have connections to pick from.
+- **Saved connections show their color and name in the connection picker.**
+- **The "Database Connection" dialog no longer opens by itself when you already have connections.**
 
 ### Changed
-- The notification bell no longer shakes for new updates -- it still changes color, just more subtly.
+- **The notification bell no longer shakes for new updates.** It still changes color.
 
 ## [0.1.13] - 2026-08-02
 ### Added
-- Connections you add are now saved to disk, encrypted via the OS's own credential storage (`safeStorage` -- Keychain on macOS, DPAPI on Windows, the Secret Service/libsecret or KWallet on Linux), and reloaded the next time you open the app instead of only lasting for the session. If no real OS secret store is available, connections aren't persisted rather than being stored with weak/no protection -- you'll need to re-enter them, same as before.
-- Forces the Linux `safeStorage` backend explicitly (`--password-store`) instead of relying on Chromium's desktop-environment auto-detection, which only recognizes a fixed list of DEs (GNOME, KDE, XFCE, ...) -- on tiling window managers like Hyprland it reported no key storage available at all, even with a real secret service (e.g. gnome-keyring) running.
+- **Connections you add are saved and come back when you reopen the app.** They're encrypted with your system's secret store: Keychain on macOS, DPAPI on Windows, and libsecret or KWallet on Linux. Without a secret store, connections aren't saved, and you enter them again each time.
+- **Saving connections works on Linux desktops the system doesn't recognize, such as Hyprland.** Before, those reported no secret store, even with gnome-keyring running.
 
 ### Changed
-- Deleting a connection from the picker now also forgets its saved credential, in addition to closing the live session.
+- **Deleting a connection from the picker also forgets its saved password.**
 
 ## [0.1.12] - 2026-08-02
 ### Changed
-- The auto-update banner (introduced in 0.1.10) now uses the app's own palette colors instead of MUI's stock info/success colors, matching the existing `Alert` styling convention in `beamlynx-ui`'s settings page.
+- **The update banner uses the app's own colors.**
 
 ## [0.1.11] - 2026-08-02
 ### Fixed
-- User preferences (vim mode, sidebar width, theme, etc.) could silently revert after an auto-update -- Chromium buffers localStorage writes and only periodically flushes them to disk, and the abrupt quit-and-relaunch auto-update performs could race that flush and lose whatever hadn't been written yet. Both quit paths now force a flush (`session.flushStorageData()`) before quitting.
+- **Your preferences survive an auto-update.** Settings such as vim mode, sidebar width and theme could revert, because the restart for an update could happen before they were saved to disk.
 
 ## [0.1.10] - 2026-08-02
 ### Added
-- Auto-update progress is now shown in-app (bundled from `beamlynx-ui`'s `DesktopUpdateBanner`) -- "Downloading update... NN%", then "Update ready -- Restart to install". Replaces the previous console-only/native-OS-notification behavior (`checkForUpdatesAndNotify()` swapped for `checkForUpdates()` to avoid a redundant native toast alongside the in-app one).
+- **The app shows auto-update progress.** You see "Downloading update... NN%", then "Update ready -- Restart to install". This replaces the system notification.
 
 ## [0.1.9] - 2026-08-02
 ### Added
-- A loading splash (`assets/loading.html`) shown immediately on launch, instead of a blank window for several seconds while the bundled server boots.
-- Desktop-only keybindings: `Ctrl/Cmd+K` (command palette), `Ctrl/Cmd+T` (new tab), `Ctrl/Cmd+W` (close tab), bundled from `beamlynx-ui`'s `desktop-app` branch. See its `utils/keybindings.ts`.
-- `DEVELOPMENT.md` documenting the local dev/test workflow.
+- **A loading screen appears right away at launch.** Before, the window was blank for several seconds while the server started.
+- **Desktop shortcuts: `Ctrl/Cmd+K` opens the command palette, `Ctrl/Cmd+T` a new tab, `Ctrl/Cmd+W` closes the tab.**
 
 ### Changed
-- An explicit application menu, so `Ctrl/Cmd+W` reaches the page's own close-tab handler instead of Electron's default menu closing the whole window.
-- The connected server's version chip (e.g. `[0.37.0]`) no longer shows in the UI -- bundled from the same `beamlynx-ui` commit as the keybindings above.
+- **`Ctrl/Cmd+W` closes the tab, not the whole window.**
+- **The server version chip (such as `[0.37.0]`) is gone from the header.**
 
 ### Fixed
-- The window now appears immediately on launch instead of only after the bundled server finishes booting (up to ~15s).
+- **The window opens right away at launch.** Before, it waited for the server to start, which took up to 15 seconds.
 
 ## [0.1.8] - 2026-08-02
 ### Changed
-- Sign-in is no longer required -- reverts the Clerk auth added in 0.1.6. Google OAuth's redirect flow doesn't work from a `file://`-loaded static export ("The provided redirect url has a prohibited URL scheme"), and email/password-only auth wasn't enough on its own to justify keeping it. Desktop goes back to the pre-0.1.6 behavior: no login screen, `[Desktop]` label shown instead of the user box.
+- **Sign-in is no longer required.** It was added in 0.1.6. Signing in with Google doesn't work from the desktop app, and email and password alone weren't worth keeping it for.
 
 ## [0.1.7] - 2026-08-01
 ### Changed
-- No functional change -- verifies that a symlink pointing at the stable `beamlynx.AppImage` filename (introduced in 0.1.6) survives an actual auto-update instead of dangling.
+- **No changes you'll notice.** This release tested that a link to the AppImage still works after an auto-update.
 
 ## [0.1.6] - 2026-08-01
 ### Added
-- Sign-in is now required, matching the hosted product, via `beamlynx-ui`'s `desktop-app` branch (client-side Clerk gating, since a static export can't run `middleware.ts`). Not present in any earlier release -- this is the first one that includes it.
+- **Sign-in is required, as in the hosted app.**
 
 ### Fixed
-- The Linux AppImage's filename no longer changes across auto-updates (was `beamlynx-X.Y.Z.AppImage`, now a stable `beamlynx.AppImage`) -- previously, a symlink pointing at a specific version's filename would dangle the moment the app self-updated.
+- **The Linux AppImage keeps the same file name across updates: `beamlynx.AppImage`.** It used to be `beamlynx-X.Y.Z.AppImage`, so a link to it broke after each update.
 
 ## [0.1.5] - 2026-08-01
 ### Changed
-- No functional change -- verifies that differential/delta auto-update still works now that the new AppImage toolset embeds the blockmap inside the binary instead of publishing it as a separate sidecar file.
+- **No changes you'll notice.** This release tested that auto-update still downloads only what changed.
 
 ## [0.1.4] - 2026-08-01
 ### Fixed
-- The Linux AppImage no longer requires FUSE to run. Many distros (Arch, Ubuntu 22.04+, Fedora, etc.) don't ship `libfuse.so.2` by default anymore, which made the AppImage fail outright with "dlopen(): error loading libfuse.so.2" unless the user separately installed `fuse2` or ran it with `--appimage-extract-and-run`. Switched to electron-builder's newer static, FUSE-less AppImage runtime (`toolsets.appimage: "1.0.3"`), which needed bumping `electron-builder` from 24.x to 26.x.
+- **The Linux AppImage runs without FUSE.** Many distributions, such as Arch, Ubuntu 22.04 and later, and Fedora, no longer include it. The AppImage failed with "dlopen(): error loading libfuse.so.2" unless you installed `fuse2` or ran it with `--appimage-extract-and-run`.
 
 ## [0.1.3] - 2026-08-01
 ### Changed
-- No functional change -- verifies an installed 0.1.2 correctly detects, downloads, and applies this version via electron-updater (the actual M5 gate test).
+- **No changes you'll notice.** This release tested that an installed 0.1.2 finds, downloads and installs an update.
 
 ## [0.1.2] - 2026-08-01
 ### Added
-- Console logging for auto-update lifecycle events (checking/available/downloading/downloaded), needed to actually observe the round-trip while verifying it -- previously silent unless something errored.
+- **Auto-update writes its progress to the console log.** It used to log nothing unless something failed.
 
 ## [0.1.1] - 2026-08-01
 ### Changed
-- No functional change -- this release exists to verify the auto-update round-trip (an installed 0.1.0 correctly detects, downloads, and applies this version).
+- **No changes you'll notice.** This release tested that an installed 0.1.0 finds, downloads and installs an update.
 
 ## [0.1.0] - 2026-08-01
 ### Added
-- Initial release: an Electron app that bundles the pine-lang server (as a
-  self-contained jpackage runtime, no Docker required) and a static export of
-  beamlynx-ui, so the two can never drift out of version sync.
-- Auto-update via electron-updater and GitHub Releases.
-- Linux (AppImage, deb) and Windows (nsis) installers; macOS (dmg) unsigned
-  for now -- code signing/notarization is a separate, later milestone.
+- **First release: one app with the Pine server and the Beamlynx interface built in.** It needs no Docker, and the two always match.
+- **The app updates itself from GitHub Releases.**
+- **Installers for Linux (AppImage, deb) and Windows.** The macOS dmg is not signed yet.
