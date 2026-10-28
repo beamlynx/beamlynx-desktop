@@ -233,6 +233,12 @@ export class Session {
     colIndexToPolicyLookup: {},
   };
   rows: Row[] = [];
+  /**
+   * How long the last run took, in milliseconds: from sending the query to
+   * getting the rows back. Null when the rows on screen didn't come from a
+   * run, such as an investigation's earlier step.
+   */
+  runMs: number | null = null;
 
   /** Mode - controls the main view */
   mode: Mode = 'documentation';
@@ -1246,6 +1252,7 @@ export class Session {
       this.expressionAtLastEval = snapshot.expression;
       this.columns = snapshot.columns;
       this.rows = snapshot.rows;
+      this.runMs = null;
       this.columnMetadata = snapshot.columnMetadata;
       this.columnVisibilityModel = snapshot.columnVisibilityModel;
       this.error = snapshot.error;

@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- **The results show how long the query took.** The time, in milliseconds, sits next to the row count. It counts from pressing Run to the rows arriving.
 
 ## [0.70.2] - 2026-10-28
 ### Changed

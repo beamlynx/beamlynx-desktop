@@ -37,6 +37,7 @@ export class DefaultPlugin implements PluginInterface {
     runInAction(() => {
       session.runId = runId;
     });
+    const startedAt = performance.now();
 
     try {
       // Use SQL endpoint if in SQL mode, otherwise use Pine eval endpoint.
@@ -173,6 +174,7 @@ export class DefaultPlugin implements PluginInterface {
           return { ...row, _id: index };
         });
         session.expressionAtLastEval = runsSql ? sqlQuery : session.expression;
+        session.runMs = Math.round(performance.now() - startedAt);
 
         // session.message = pickSuccessMessage();
         // Canvas is always mounted now (the classic node-graph widget,

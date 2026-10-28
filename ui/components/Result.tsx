@@ -1155,6 +1155,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
           }}
         >
           {rows.length.toLocaleString()} row{rows.length === 1 ? '' : 's'}
+          {session.runMs !== null && ` · ${session.runMs.toLocaleString()} ms`}
         </Box>
       )}
 
