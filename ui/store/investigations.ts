@@ -192,9 +192,11 @@ export const isStaleCall = (step: { at: number; endedAt?: number }, now: number)
   step.endedAt === undefined && now - step.at >= STALE_MS;
 
 export class Investigation {
-  question?: string;
+  // Each field starts with a value, even undefined: the build doesn't emit
+  // a field without one, and MobX only observes fields that exist.
+  question: string | undefined = undefined;
   steps: InvestigationStep[] = [];
-  lastCallAt?: number;
+  lastCallAt: number | undefined = undefined;
   // The step shown in the tab, when the user picked an older one. null
   // follows the newest query.
   selectedStepId: string | null = null;
