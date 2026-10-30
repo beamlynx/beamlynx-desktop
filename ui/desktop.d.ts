@@ -191,6 +191,7 @@ type AccountStatus = {
   available: boolean;
   user: { id: string; email: string | null; name: string | null; provider: string | null } | null;
   onboarding: 'signed-in' | 'skipped' | null;
+  // The detailed usage stats switch. Basic stats are sent either way.
   usageStats: boolean;
   signingIn: boolean;
   online: boolean;
@@ -356,7 +357,8 @@ interface BeamlynxDesktopApi {
     setUsageStats: (enabled: boolean) => Promise<AccountStatus>;
     onChanged: (callback: (status: AccountStatus) => void) => () => void;
   };
-  // One usage event (utils/usage-stats.ts). Sent only when usage stats are on.
+  // One usage event (utils/usage-stats.ts). Sent only when detailed usage
+  // stats are on.
   captureUsage?: (event: UsageEvent['event'], properties?: Record<string, string>) => void;
   // Fired when the user clicks a beamlynx:// deep link and this window is
   // the one that ends up handling it (see main/index.ts's handleDeepLink).
