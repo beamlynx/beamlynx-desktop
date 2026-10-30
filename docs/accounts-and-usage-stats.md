@@ -1,11 +1,13 @@
 # Accounts and usage stats
 
-The app counts a few anonymous events and lets people sign in once, with GitHub or Google. This page is how to set up the services behind that, and how to try it from a dev build. The reasons are in `beamlynx-plans/plans/012-know-who-uses-beamlynx.md`.
+The app counts a few events and lets people sign in once, with GitHub or Google. This page is how to set up the services behind that, and how to try it from a dev build. The reasons are in `beamlynx-plans/plans/012-know-who-uses-beamlynx.md`.
 
 ## What the app does
 
-- **Usage stats.** From the first launch, the app sends a few events to PostHog: `app_opened`, `connection_added`, `query_run`, `sign_in_skipped` and `sign_in_completed`. They carry the app version, OS and CPU architecture, and nothing else the user typed or saw. PostHog also records the country, from the IP address. The full list, and the check that enforces it, is `EVENTS` in `src/main/usage-stats.ts`. People can turn this off on the first-run screen or in Settings → Preferences.
-- **Sign in.** The sign-in screen offers GitHub, or Skip until the next launch. After sign-in, PostHog joins the install's earlier events to the person, and the app writes the person's row in the `profiles` table. The browser tab then moves on to `https://beamlynx.com/signed-in?id=<install ID>`, which joins that browser's website visits to the same person. Not with usage stats off.
+- **Basic usage stats.** These are always sent, and there is no switch for them. Each launch sends `app_opened`, and the first-run choice sends `sign_in_skipped` or `sign_in_completed`. For a signed-in person, each launch also tells PostHog their name and email, so we know who uses Beamlynx.
+- **Detailed usage stats.** These follow the switch in Settings → Account, which is on by default. They are `connection_added` (the database type only) and `queries_run` (hourly query counts). With the switch off, the browser tab after sign-in doesn't join website visits to the person either.
+- **What every event carries.** The app version, OS and CPU architecture, and nothing else the user typed or saw. PostHog also records the country, from the IP address. The full list, and the check that enforces it, is `EVENTS` in `src/main/usage-stats.ts`. `BASIC_EVENTS` there marks the events the switch doesn't cover.
+- **Sign in.** The sign-in screen offers GitHub, or Skip until the next launch. After sign-in, PostHog joins the install's earlier events to the person, and the app writes the person's row in the `profiles` table. The browser tab then moves on to `https://beamlynx.com/signed-in?id=<install ID>`, which joins that browser's website visits to the same person.
 
 Nothing is sent before the person has seen the first-run screen.
 

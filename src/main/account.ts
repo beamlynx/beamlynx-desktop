@@ -340,6 +340,8 @@ export function registerAccountIpc(): void {
 
 // Once per launch, after the window is up.
 export function onAppStarted(): void {
+  const user = storedUser();
+  if (user) getUsageStats().identify(user);
   getUsageStats().appOpened();
   void syncProfileDaily();
   // Sends the last hour's query counts once it's over, while the app stays open.
