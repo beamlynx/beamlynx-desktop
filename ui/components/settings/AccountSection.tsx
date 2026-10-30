@@ -82,7 +82,8 @@ export const SignInButtons = ({ onSignedIn }: { onSignedIn?: () => void }) => {
 };
 
 /**
- * Who is signed in, or the sign-in buttons, and the usage stats switch.
+ * Who is signed in, or the sign-in buttons, and the detailed usage stats
+ * switch. Launches and who is signed in are sent either way.
  * Desktop only (the section is in DESKTOP_ONLY_SECTIONS). Signing in only
  * tells us who uses Beamlynx; the app works the same either way.
  */
@@ -152,8 +153,8 @@ const AccountSection = () => {
         {status?.available && account && (
           <Box sx={{ mt: 3, borderTop: '1px solid var(--border-color)' }}>
             <ToggleRow
-              label="Send usage stats"
-              description="Anonymous counts, like how often queries run and which database types are used. Never your queries, connections or data."
+              label="Send detailed usage stats"
+              description="Counts of how often queries run, and which database types you add. Each launch, the app version and who is signed in are always sent. Never your queries, connections or data."
               checked={status.usageStats}
               onChange={checked => account.setUsageStats(checked)}
             />

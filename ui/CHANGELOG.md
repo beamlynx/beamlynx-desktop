@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Changed
+- **The usage stats switch now covers only the detailed stats.** It is called **Send detailed usage stats**, in Settings → Account, and covers query counts and the database types you add. Each launch, the app version and who is signed in are now always sent. The first-run screen says so.
 
 ## [0.71.0] - 2026-10-28
 ### Added

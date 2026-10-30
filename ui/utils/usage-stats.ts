@@ -7,7 +7,7 @@ type UsageArgs = {
 
 /**
  * Sends one anonymous usage event through the desktop app, which checks it
- * against its own list and sends it only when usage stats are on (see
+ * against its own list and sends it only when detailed usage stats are on (see
  * beamlynx-desktop's src/main/usage-stats.ts). Does nothing in a browser or
  * an older desktop app, and never throws: usage stats must never get in the
  * way.
