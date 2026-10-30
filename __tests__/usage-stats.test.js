@@ -39,14 +39,34 @@ test('nothing is sent before the first-run choice, and app_opened waits for it',
   assert.deepEqual(sent.map(e => e.event), ['app_opened']);
 });
 
-test('turning usage stats off on the first-run screen means nothing is ever sent', () => {
-  const { stats, sent } = setup();
+test('with detailed stats off, launches, sign-ins and who is signed in are still sent', () => {
+  const clock = { time: '2026-10-26T10:15:00Z' };
+  const { stats, sent } = setup({ clock });
   stats.appOpened();
   stats.setEnabled(false);
-  stats.setOnboarding('skipped');
-  stats.capture('query_run', { source: 'user', language: 'sql' });
+  stats.setOnboarding('signed-in');
   stats.identify({ id: 'user-1', email: 'a@example.com' });
-  assert.equal(sent.length, 0);
+  stats.capture('sign_in_completed', { provider: 'github' });
+  stats.capture('connection_added', { database_type: 'postgres' });
+  stats.capture('query_run', { source: 'user', language: 'sql' });
+  clock.time = '2026-10-26T11:02:00Z';
+  stats.flushQueryCounts();
+
+  assert.deepEqual(
+    sent.map(e => e.event ?? e.type),
+    ['app_opened', 'alias', 'identify', 'sign_in_completed'],
+  );
+  assert.equal(stats.linkId(), null);
+});
+
+test('who is signed in is sent again at each launch, but joined to the install only once', () => {
+  const { stats, sent } = setup({ meta: { [META.onboarding]: 'signed-in', [META.userId]: 'user-1' } });
+  stats.identify({ id: 'user-1', email: 'a@example.com', name: 'Anna' });
+  stats.appOpened();
+  assert.deepEqual(
+    sent.map(e => [e.event ?? e.type, e.distinctId]),
+    [['identify', 'user-1'], ['app_opened', 'user-1']],
+  );
 });
 
 test('only known events and properties are sent, with the app context', () => {
@@ -138,7 +158,7 @@ test('the next launch sends counts left from the last one', () => {
   assert.deepEqual(second.sent.map(e => [e.event, e.properties.user_sql]), [['app_opened', undefined], ['queries_run', 1]]);
 });
 
-test('turning usage stats off drops counts not sent yet, and signing out sends them first', () => {
+test('turning detailed stats off drops counts not sent yet, and signing out sends them first', () => {
   const clock = { time: '2026-10-26T10:15:00Z' };
   const off = setup({ meta: { [META.onboarding]: 'skipped' }, clock });
   off.stats.capture('query_run', { source: 'user', language: 'pine' });
@@ -151,7 +171,7 @@ test('turning usage stats off drops counts not sent yet, and signing out sends t
   assert.deepEqual(out.sent.map(e => [e.event, e.distinctId]), [['queries_run', 'user-1']]);
 });
 
-test('the link ID for beamlynx.com is the install ID, and none with usage stats off', () => {
+test('the link ID for beamlynx.com is the install ID, and none with detailed stats off', () => {
   const { stats, store } = setup({ meta: { [META.onboarding]: 'skipped' } });
   const id = stats.linkId();
   assert.equal(id, store.get(META.installId));

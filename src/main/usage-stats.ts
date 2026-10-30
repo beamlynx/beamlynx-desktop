@@ -2,6 +2,11 @@
 // install ID. Signing in (account.ts) joins that ID to the person. See
 // beamlynx-plans/plans/012-know-who-uses-beamlynx.md.
 //
+// There are two kinds. Basic stats are always sent once the first-run screen
+// is done: each launch, the sign-in choice, and who is signed in. Detailed
+// stats follow the switch in Settings → Account: query counts, the database
+// types added, and joining beamlynx.com visits to the person.
+//
 // Queries are counted, not sent one by one: each hour that had queries
 // becomes one queries_run event with the counts, sent once the hour is over.
 // The counts are kept in the meta table, so quitting loses nothing.
@@ -17,11 +22,12 @@ import { randomUUID } from 'crypto';
 // The values below live in app-db's meta table.
 export const META = {
   installId: 'usageStats.installId',
-  // 'off' when the user turned usage stats off. Absent means on.
+  // 'off' when the user turned detailed usage stats off. Absent means on.
+  // Basic stats don't look at it.
   enabled: 'usageStats.enabled',
   // What the person chose on the first-run screen: 'signed-in' or 'skipped'.
-  // Nothing is sent before this is set, so turning usage stats off there
-  // means nothing was ever sent.
+  // Nothing is sent before this is set, so the screen that says what is sent
+  // always comes first.
   onboarding: 'account.onboarding',
   // The signed-in person's Supabase user ID. Events use it instead of the
   // install ID.
@@ -56,18 +62,21 @@ type Counts = Partial<Record<(typeof COUNT_KEYS)[number], number>>;
 
 // Every event that may be sent, and the properties each may carry.
 export const EVENTS: Record<string, Record<string, (v: unknown) => boolean>> = {
+  // Basic: sent even with the switch off.
   app_opened: {},
+  sign_in_skipped: {},
+  sign_in_completed: { provider: oneOf('github', 'google') },
+  // Detailed: only with the switch on.
   connection_added: { database_type: word(20) },
   // Never sent as it is: counted into the hour's queries_run.
   query_run: { source: oneOf('user', 'agent'), language: oneOf('pine', 'sql') },
   queries_run: Object.fromEntries(COUNT_KEYS.map(k => [k, count])),
-  sign_in_skipped: {},
-  sign_in_completed: { provider: oneOf('github', 'google') },
 };
+export const BASIC_EVENTS = new Set(['app_opened', 'sign_in_skipped', 'sign_in_completed']);
 
 export type UsageStats = {
-  // True unless the user turned usage stats off. Says nothing about whether
-  // events can be sent (no client, or onboarding not done yet).
+  // True unless the user turned detailed usage stats off. Says nothing about
+  // whether events can be sent (no client, or onboarding not done yet).
   isEnabled(): boolean;
   setEnabled(enabled: boolean): void;
   onboarding(): 'signed-in' | 'skipped' | null;
@@ -80,9 +89,11 @@ export type UsageStats = {
   // Sends the counts of an hour that is over. Called at launch and by a timer.
   flushQueryCounts(): void;
   // The ID beamlynx.com can join this browser's visits to, after a sign-in.
-  // null when usage stats are off or can't be sent.
+  // null when detailed usage stats are off or can't be sent.
   linkId(): string | null;
-  // Joins this install's earlier events to the person.
+  // Tells PostHog who the person is. Called at sign-in, and at each launch
+  // so the name and email stay current. The first time for a person, it also
+  // joins this install's earlier events to them.
   identify(user: { id: string; email?: string | null; name?: string | null }): void;
   // On sign-out: a new install ID, because PostHog joins an install ID to a
   // person for good. Without it, a second person signing in on this machine
@@ -112,11 +123,12 @@ export function createUsageStats(
     const value = store.getMeta(META.onboarding);
     return value === 'signed-in' || value === 'skipped' ? value : null;
   };
-  const canSend = () => client !== null && isEnabled() && onboarding() !== null;
+  const canSendBasic = () => client !== null && onboarding() !== null;
+  const canSend = (event: string) => canSendBasic() && (BASIC_EVENTS.has(event) || isEnabled());
 
   const send = (event: string, properties: Record<string, unknown> = {}, timestamp?: Date) => {
     const allowed = EVENTS[event];
-    if (!allowed || !canSend()) return;
+    if (!allowed || !canSend(event)) return;
     const clean: Record<string, unknown> = {};
     for (const [key, check] of Object.entries(allowed)) {
       if (check(properties[key])) clean[key] = properties[key];
@@ -160,7 +172,7 @@ export function createUsageStats(
   const capture = (event: string, properties: Record<string, unknown> = {}) => {
     if (event !== 'query_run') return send(event, properties);
     const { source, language } = EVENTS.query_run;
-    if (!canSend() || !source(properties.source) || !language(properties.language)) return;
+    if (!canSend(event) || !source(properties.source) || !language(properties.language)) return;
     flushQueryCounts();
     const key = `${properties.source}_${properties.language}` as keyof Counts;
     const saved = readCounts() ?? { hour: thisHour(), counts: {} };
@@ -192,14 +204,15 @@ export function createUsageStats(
     flushQueryCounts: () => flushQueryCounts(),
     linkId: () => (client && isEnabled() ? installId() : null),
     identify: user => {
+      const isNew = store.getMeta(META.userId) !== user.id;
       store.setMeta(META.userId, user.id);
-      if (!client || !isEnabled()) return;
+      if (!canSendBasic()) return;
       try {
-        client.alias({ distinctId: user.id, alias: installId() });
+        if (isNew) client!.alias({ distinctId: user.id, alias: installId() });
         const properties: Record<string, unknown> = {};
         if (user.email) properties.email = user.email;
         if (user.name) properties.name = user.name;
-        client.identify({ distinctId: user.id, properties });
+        client!.identify({ distinctId: user.id, properties });
       } catch (e) {
         console.error('[usage-stats] identify failed:', e);
       }
