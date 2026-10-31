@@ -408,7 +408,7 @@ const deriveStage = (
     whereChips: (whereByAlias[alias] ?? []).map(whereChip(alias)),
     orderChips: (orderByAlias[alias] ?? []).map(o => orderChip(columnName(o.column, o.path), o)),
     groupChips: (groupByAlias[alias] ?? []).map(g => columnName(g.column, g.path)),
-    unnestChips: (unnestsByTable[alias] ?? []).map(u => `${u.text} as ${u.alias}`),
+    unnestChips: (unnestsByTable[alias] ?? []).map(u => `${u.text} as ${u.alias}${u.left ? ' :left' : ''}`),
     elementChips: {
       // As for a table's own: a grouped key shows under group only.
       select: (elementSelectByTable[alias] ?? [])

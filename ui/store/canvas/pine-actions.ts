@@ -716,6 +716,10 @@ export const toggleElementPart = (
 export const addUnnest = (base: PinnedBase, alias: string, column: string, name: string): string =>
   toText(appendOwnedSegment(base.segments, alias, 'unnest', `unnest: ${alias}.${column} as ${name}`));
 
+/** The name of the elements an UNNEST chip shows: `e` in `data.changes as e :left`. */
+export const unnestChipName = (chip: string): string =>
+  chip.replace(/\s+:left\s*$/i, '').split(/\s+as\s+/).pop() ?? '';
+
 /**
  * Removes the `unnest:` that names its elements `name`. A step after it that
  * still reads `name` is left as typed, and pine-lang's error says so.
@@ -723,6 +727,6 @@ export const addUnnest = (base: PinnedBase, alias: string, column: string, name:
 export const removeUnnest = (base: PinnedBase, name: string): string =>
   toText(
     base.segments.filter(
-      s => !(s.kind === 'unnest' && new RegExp(`\\bas\\s+${name}\\s*$`, 'i').test(s.text.trim())),
+      s => !(s.kind === 'unnest' && new RegExp(`\\bas\\s+${name}(\\s+:left)?\\s*$`, 'i').test(s.text.trim())),
     ),
   );

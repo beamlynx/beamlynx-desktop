@@ -3,6 +3,7 @@ import { observer } from 'mobx-react-lite';
 import { Handle, NodeProps, Position, useUpdateNodeInternals } from 'reactflow';
 import { CanvasHandle, CanvasTableNodeData, PickerState } from '../../../store/canvas/canvas.model';
 import { getNodeHeight, nodeWidth } from '../../../store/canvas/layout';
+import { unnestChipName } from '../../../store/canvas/pine-actions';
 import { useCanvasStore } from '../canvas-context';
 import { useStores } from '../../../store/store-container';
 import { NOTCHED_NODE_THEMES } from '../../../styles/palette/themes';
@@ -892,7 +893,7 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
         chips={data.unnestChips ?? []}
         onRemove={i => {
           // A chip reads `data.changes as change`: the name is after `as`.
-          const name = (data.unnestChips ?? [])[i]?.split(/\s+as\s+/).pop();
+          const name = unnestChipName((data.unnestChips ?? [])[i] ?? '');
           if (name) void canvasStore.removeUnnest(data.alias, name);
         }}
       />

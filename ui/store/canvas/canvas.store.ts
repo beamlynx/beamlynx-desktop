@@ -1803,7 +1803,7 @@ export class CanvasStore {
    */
   elementsOf(alias: string): string[] {
     const node = this.canvasGraph.nodes.find((n): n is CanvasTableNode => n.type === 'table-node' && n.id === alias);
-    return (node?.data.unnestChips ?? []).map(chip => chip.split(/\s+as\s+/).pop() ?? '').filter(Boolean);
+    return (node?.data.unnestChips ?? []).map(actions.unnestChipName).filter(Boolean);
   }
 
   /** `e` or `e.field` typed or picked in a column picker on `alias`'s node, or null. */

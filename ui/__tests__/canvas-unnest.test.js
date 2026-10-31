@@ -165,3 +165,24 @@ test('an element item is added to, or removed from, the step the table owns', ()
   );
   assert.match(actions.toggleElementPart(base(), 'a', 'group', 'e.field'), /\| group: e\.field$/);
 });
+
+test('an unnest with :left shows it on its chip, and its name and x still work', () => {
+  assert.equal(actions.unnestChipName('data.changes as change :left'), 'change');
+  assert.equal(actions.unnestChipName('data as e'), 'e');
+  const expression = 'activity as a | unnest: a.data as e :left | where: a.type = 1';
+  const leftAst = { ...ast, unnests: [{ ...ast.unnests[0], left: true }] };
+  const b = {
+    expression,
+    ast: leftAst,
+    segments: segmentsFromAst(expression, {
+      ...leftAst,
+      ranges: [
+        { alias: 'a', start: { line: 0, character: 0 }, end: { line: 0, character: 13 } },
+        { alias: 'a', start: { line: 0, character: 16 }, end: { line: 0, character: 41 } },
+        { alias: 'a', start: { line: 0, character: 44 }, end: { line: 0, character: 61 } },
+      ],
+    }),
+    aliasMap: new Map(),
+  };
+  assert.equal(actions.removeUnnest(b, 'e'), 'activity as a | where: a.type = 1');
+});
