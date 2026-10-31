@@ -318,12 +318,15 @@ const DeleteButton = ({ onClick, testId }: { onClick: () => void; testId?: strin
 const ChipRow = ({
   label,
   chips,
+  readOnlyChips = [],
   onRemove,
   onSelect,
   highlightIndex,
 }: {
   label: string;
   chips: string[];
+  /** Shown after `chips`, without × or a panel: what the query reads from the elements of an `unnest:`. */
+  readOnlyChips?: string[];
   onRemove?: (index: number) => void;
   /** Reopens this chip's own config panel with its current value prefilled - see CanvasStore.openWhereEditor. Only offered for "where" today; select/order/group chips are already fully edited by toggling. */
   onSelect?: (index: number, anchor: { x: number; y: number }) => void;
@@ -335,7 +338,7 @@ const ChipRow = ({
   // managers hide it on key press) resting where the graph re-lays out would otherwise pull
   // focus onto an older node, and the next `|` would join from there.
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  if (chips.length === 0) return null;
+  if (chips.length === 0 && readOnlyChips.length === 0) return null;
   return (
     <div
       className="nodrag"
@@ -399,6 +402,26 @@ const ChipRow = ({
               &times;
             </span>
           )}
+        </div>
+      ))}
+      {readOnlyChips.map((chip, i) => (
+        <div
+          key={`ro-${chip}-${i}`}
+          style={{
+            fontSize: 'calc(10px * var(--text-scale, 1))',
+            fontFamily: 'var(--canvas-font)',
+            background: 'var(--canvas-chip-bg)',
+            padding: '2px 6px',
+            borderRadius: '3px',
+            border: '1px solid var(--canvas-chip-border)',
+            color: 'var(--canvas-text)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+          }}
+        >
+          <span style={{ width: 4, height: 4, flexShrink: 0, background: 'var(--canvas-pin)' }} />
+          <span>{chip}</span>
         </div>
       ))}
     </div>
@@ -848,9 +871,11 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
       </div>
 
       {/* Configuration */}
+      <ChipRow label="unnest" chips={[]} readOnlyChips={data.unnestChips} />
       <ChipRow
         label="sel"
         chips={data.selectColumns}
+        readOnlyChips={data.elementChips?.select}
         onRemove={i => void canvasStore.toggleSelectColumn(data.alias, data.selectColumns[i])}
         onSelect={(i, anchor) => canvasStore.openColumnPicker('select', data.alias, anchor, data.selectColumns[i])}
         highlightIndex={cursorItem?.kind === 'select' ? data.selectColumns.indexOf(cursorItem.column) : undefined}
@@ -858,6 +883,7 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
       <ChipRow
         label="where"
         chips={data.whereChips}
+        readOnlyChips={data.elementChips?.where}
         onRemove={i => void canvasStore.removeWhereAt(data.alias, i)}
         onSelect={(i, anchor) => canvasStore.openWhereEditor(data.alias, i, anchor)}
         highlightIndex={cursorItem?.kind === 'where' ? cursorItem.index : undefined}
@@ -865,6 +891,7 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
       <ChipRow
         label="order"
         chips={data.orderChips}
+        readOnlyChips={data.elementChips?.order}
         onRemove={i => void canvasStore.removeOrderAt(data.alias, i)}
         onSelect={(i, anchor) => {
           const chip = data.orderChips[i] ?? '';
@@ -880,6 +907,7 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
       <ChipRow
         label="group"
         chips={data.groupChips}
+        readOnlyChips={data.elementChips?.group}
         onRemove={i => void canvasStore.toggleGroupColumn(data.alias, data.groupChips[i])}
         onSelect={(i, anchor) => canvasStore.openColumnPicker('group', data.alias, anchor, data.groupChips[i])}
         highlightIndex={cursorItem?.kind === 'group' ? data.groupChips.indexOf(cursorItem.column) : undefined}

@@ -199,6 +199,18 @@ function getPineCompletions(
       }
     });
 
+    // The column alone after `unnest:`: the array is often a path inside it.
+    hints.unnest?.forEach(hint => {
+      if (hint.column.toLowerCase().includes(word.toLowerCase()) || word === '') {
+        completions.push({
+          expression: hint.column,
+          section: 'Columns',
+          label: hint.column,
+          apply: hint.column,
+        });
+      }
+    });
+
     hints.update?.forEach((hint, index) => {
       if (hint.column.toLowerCase().includes(word.toLowerCase()) || word === '') {
         completions.push({
