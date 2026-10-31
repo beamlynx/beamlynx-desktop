@@ -17,7 +17,8 @@ export type SegmentKind =
   | 'count'
   | 'delete-action'
   | 'update'
-  | 'assign';
+  | 'assign'
+  | 'unnest';
 
 /**
  * One pipe segment of a Pine expression. `owner` is the table alias whose
@@ -86,6 +87,9 @@ const classifyKind = (text: string): SegmentKind => {
   if (/^(delete!|d!)/i.test(text)) return 'delete-action';
   if (/^(update!|u!)/i.test(text)) return 'update';
   if (/^=\s*\S/.test(text)) return 'assign';
+  // `unnest: data as e` works on the table the pipe is on, like where:. Its
+  // `as` names the elements, not a table.
+  if (/^unnest:/i.test(text)) return 'unnest';
   return 'table';
 };
 

@@ -8,8 +8,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **The canvas shows `unnest:` on its table.** `unnest: data as e` gives one row for each element of a JSON array. The table's node shows it in an **unnest** row, and the keys the query reads from the elements, like `e.field`, in its other rows. Typing `unnest: ` in the Pine panel suggests the table's JSON columns. This needs a Pine server with `unnest:`.
 - **Edit values inside unnested elements in the results.** After `unnest: data as e`, a cell like `e.after` can be edited like any other. The change goes into that one element of the row's JSON array. This needs a Pine server that returns each element's position.
 - **Joins on a name you give show on the canvas.** `s: resourceableId as company_id | company` joins each row to the company it names. The canvas draws that join dashed, like a join guessed from column names, because nothing in the database says it. A join from unnested elements starts at their table. This needs a Pine server with joins on names.
+- **Unnest from the canvas.** A table with a JSON column has **unnest** in its **+** menu. Pick the column, and its elements are named after the array in the singular: `changes` becomes `change`. In the select, where, order and group pickers, type a key of the elements, like `change.field`, to use it. Every chip of an unnest, and of what is read from its elements, can be removed with its ×. An unnest that keeps rows with no elements shows `:left` on its chip.
 
 ### Changed
+- **Removing a chip on a table that has an unnest removes the right one.** Removing a table's own select, where or order item used to count the items on the elements too. It could remove another item, or rewrite `e.field` as a column of the table.
 - **The usage stats switch now covers only the detailed stats.** It is called **Send detailed usage stats**, in Settings → Account, and covers query counts and the database types you add. Each launch, the app version and who is signed in are now always sent. The first-run screen says so.
 
 ## [0.71.0] - 2026-10-28

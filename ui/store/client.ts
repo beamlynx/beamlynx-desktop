@@ -356,6 +356,8 @@ export type Unnest = {
   source?: string;
   column?: string | null;
   path?: JsonPathStep[];
+  /** `unnest: data as e :left`: a row with no elements stays, with `e` empty. */
+  left?: boolean;
 };
 
 // A $variable's value as pine-lang takes it: a string, number or boolean, or a

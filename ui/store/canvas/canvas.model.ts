@@ -209,6 +209,8 @@ export type PickerRequest =
   | { kind: 'where'; alias: string; draft?: WhereDraft }
   | { kind: 'order'; alias: string }
   | { kind: 'group'; alias: string }
+  // The JSON columns of `alias` an `unnest:` can read.
+  | { kind: 'unnest'; alias: string }
   /** Step 1 of `? table` (docs/paths.md in pine-lang): pick a destination table - see CanvasStore.openPathPicker. */
   | { kind: 'path'; alias: string }
   /** Step 2: pick one of the discovered routes to `target` - see CanvasStore.openPathRoutePicker. */
@@ -351,13 +353,14 @@ export type PickerState =
     };
 
 /** The actions tucked behind a node's "+" overflow trigger - see TableNode.tsx. */
-export type MoreAction = 'order' | 'group' | 'path' | 'limit' | 'traverse';
+export type MoreAction = 'order' | 'group' | 'path' | 'limit' | 'traverse' | 'unnest';
 export const MORE_ACTIONS: { action: MoreAction; label: string; key: string }[] = [
   { action: 'order', label: 'order', key: 'o' },
   { action: 'group', label: 'group', key: 'g' },
   { action: 'limit', label: 'limit', key: 'l' },
   { action: 'path', label: 'path', key: 'p' },
   { action: 'traverse', label: 'traverse', key: 't' },
+  { action: 'unnest', label: 'unnest', key: 'u' },
 ];
 
 /**
@@ -371,7 +374,9 @@ export const MORE_ACTIONS: { action: MoreAction; label: string; key: string }[] 
  * result, and `traverse` would have to follow a foreign key out of a CTE's
  * sealed output, which is not a thing.
  */
-export const MORE_ACTIONS_FOR_TABLE: MoreAction[] = ['order', 'group', 'limit', 'path', 'traverse'];
+// `unnest` is only offered on a table with a JSON column: see
+// CanvasStore.openMorePicker.
+export const MORE_ACTIONS_FOR_TABLE: MoreAction[] = ['order', 'group', 'limit', 'path', 'traverse', 'unnest'];
 // `limit` on a checkpoint's node limits its sealed result.
 export const MORE_ACTIONS_FOR_CHECKPOINT: MoreAction[] = ['order', 'limit', 'path'];
 

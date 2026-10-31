@@ -148,15 +148,75 @@ export const setJoinType = (base: PinnedBase, alias: string, type: JoinType): st
 // (This loses a hand-typed column-function form like `created_at => month`
 // on the next toggle - the same simplification the pre-existing candidate-
 // column click already makes; see SelectedNodeComponent's onCandidateColumnClick.)
-export const setSelectColumns = (base: PinnedBase, alias: string, columns: string[]): string =>
-  toText(
-    upsertOwnedSegment(
-      base.segments,
-      alias,
-      'select',
-      columns.length ? `select: ${columns.map(c => `${alias}.${c}`).join(', ')}` : null,
-    ),
-  );
+export const setSelectColumns = (base: PinnedBase, alias: string, columns: string[]): string => {
+  // What the step reads from the elements of an `unnest:` on this table,
+  // `e.field`, isn't one of the table's columns: it stays as typed.
+  const elementParts = selectParts(base, alias).filter(part => isElementPart(base, part));
+  const parts = [...columns.map(c => `${alias}.${c}`), ...elementParts];
+  return toText(upsertOwnedSegment(base.segments, alias, 'select', parts.length ? `select: ${parts.join(', ')}` : null));
+};
+
+const selectParts = (base: PinnedBase, alias: string): string[] => {
+  const existing = base.segments.find(s => s.owner === alias && s.kind === 'select');
+  return existing ? splitTopLevel(existing.text.replace(/^(select:|s:)\s*/i, '')) : [];
+};
+
+/**
+ * Whether a part of a step, `e.field` or `e.field desc`, reads the elements
+ * of an `unnest:` rather than a column of the table. Such a part is in a
+ * step the table owns, since the pipe stays on the table, but its chip is
+ * listed apart (see layout.ts's elementChips).
+ */
+const isElementPart = (base: PinnedBase, part: string): boolean => {
+  const name = part.trim().match(/^([A-Za-z_][A-Za-z0-9_-]*)/)?.[1];
+  return !!name && (base.ast.unnests ?? []).some(u => u.alias === name);
+};
+
+/** A `where:` step the table owns, but whose first condition is on elements. */
+const isElementWhere = (base: PinnedBase, segment: Segment): boolean =>
+  isElementPart(base, segment.text.replace(/^(where:|w:)\s*/i, ''));
+
+/** `alias`'s own `where:` steps, in the order its where chips are listed. */
+const ownWhereSegments = (base: PinnedBase, alias: string): Segment[] =>
+  base.segments.filter(s => s.owner === alias && s.kind === 'where' && !isElementWhere(base, s));
+
+/** Removes the `index`th `where:` step on elements of `alias`'s table, in the order its chips are listed. */
+export const removeElementWhereAt = (base: PinnedBase, alias: string, index: number): string => {
+  const target = base.segments.filter(s => s.owner === alias && s.kind === 'where' && isElementWhere(base, s))[
+    index
+  ];
+  return toText(target ? base.segments.filter(s => s !== target) : base.segments);
+};
+
+/**
+ * Removes one element item, `e.field`, from `alias`'s own select:, order:
+ * or group: step - the × on an element chip. An order chip carries its
+ * direction, so items are matched by their column.
+ */
+export const removeElementPart = (
+  base: PinnedBase,
+  alias: string,
+  kind: 'select' | 'order' | 'group',
+  chip: string,
+): string => {
+  const column = (part: string) => splitOrderItem(part).column.toLowerCase();
+  const target = column(chip);
+  if (kind === 'group') {
+    const index = stageGroupIndex(base.segments, alias);
+    if (index < 0) return toText(base.segments);
+    const { keys, aggregates } = groupBody(base.segments[index]);
+    const rest = splitTopLevel(keys).filter(part => column(part) !== target);
+    if (rest.length === 0) return toText(withoutCheckpointOp(base.segments, index));
+    const next = [...base.segments];
+    next[index] = { ...next[index], text: `group: ${rest.join(', ')}${aggregates ? ` with ${aggregates}` : ''}` };
+    return toText(next);
+  }
+  const prefix = kind === 'select' ? /^(select:|s:)\s*/i : /^(order:|o:)\s*/i;
+  const existing = base.segments.find(s => s.owner === alias && s.kind === kind);
+  if (!existing) return toText(base.segments);
+  const rest = splitTopLevel(existing.text.replace(prefix, '')).filter(part => column(part) !== target);
+  return toText(upsertOwnedSegment(base.segments, alias, kind, rest.length ? `${kind}: ${rest.join(', ')}` : null));
+};
 
 /**
  * Reads the columns currently selected for `alias` off `base.segments` -
@@ -166,12 +226,10 @@ export const setSelectColumns = (base: PinnedBase, alias: string, columns: strin
  * result instead of one silently overwriting the other. Assumes plain
  * `alias.column` entries, same as setSelectColumns above.
  */
-export const getSelectColumns = (base: PinnedBase, alias: string): string[] => {
-  const existing = base.segments.find(s => s.owner === alias && s.kind === 'select');
-  if (!existing) return [];
-  const body = existing.text.replace(/^(select:|s:)\s*/i, '');
-  return splitTopLevel(body).map(part => columnAfterAlias(part, alias));
-};
+export const getSelectColumns = (base: PinnedBase, alias: string): string[] =>
+  selectParts(base, alias)
+    .filter(part => !isElementPart(base, part))
+    .map(part => columnAfterAlias(part, alias));
 
 /**
  * `c_0.data.plan` -> `data.plan`: the column, and any path into its JSON
@@ -249,14 +307,16 @@ export const whereSegmentText = (conditions: WhereConditionDraft[]): string =>
 // A function on the left, `jsonb_typeof(c_0.data)`, comes back from
 // pine-lang already written as Pine with its own aliases, so it isn't
 // prefixed with one.
-const whereLeft = (alias: string, column: string): string => (column.includes('(') ? column : `${alias}.${column}`);
+// An element of `unnest:` by itself has no column: just `e`.
+const whereLeft = (alias: string, column: string): string =>
+  column.includes('(') ? column : column === '' ? alias : `${alias}.${column}`;
 
 // `index` is this alias's where-conditions in pipeline order - the same
 // order `ast.where` reports them in (see layout.ts's whereChips), since a new
 // condition always lands right after this alias's existing segments (see
 // appendOwnedSegment/insertAfterLastOwned) and so preserves that order too.
 export const removeWhereConditionAt = (base: PinnedBase, alias: string, index: number): string => {
-  const whereSegments = base.segments.filter(s => s.owner === alias && s.kind === 'where');
+  const whereSegments = ownWhereSegments(base, alias);
   const target = whereSegments[index];
   if (!target) return toText(base.segments);
   return toText(base.segments.filter(s => s !== target));
@@ -275,7 +335,7 @@ export const updateWhereConditionAt = (
   index: number,
   conditions: WhereConditionDraft[],
 ): string => {
-  const whereSegments = base.segments.filter(s => s.owner === alias && s.kind === 'where');
+  const whereSegments = ownWhereSegments(base, alias);
   const target = whereSegments[index];
   if (!target) return toText(base.segments);
   const next = base.segments.map(s => (s === target ? { ...s, text: whereSegmentText(conditions) } : s));
@@ -337,9 +397,21 @@ export const getOrderColumns = (base: PinnedBase, alias: string): string[] => {
   const existing = base.segments.find(s => s.owner === alias && s.kind === 'order');
   if (!existing) return [];
   const body = existing.text.replace(/^(order:|o:)\s*/i, '');
-  return splitTopLevel(body).map(part => {
-    return columnAfterAlias(splitOrderItem(part).column, alias);
-  });
+  return splitTopLevel(body)
+    .filter(part => !isElementPart(base, part))
+    .map(part => {
+      return columnAfterAlias(splitOrderItem(part).column, alias);
+    });
+};
+
+/**
+ * The position in `columns` (every item of the order: step) of the table's
+ * own `index`th item: its order chips leave out items on elements (see
+ * isElementPart).
+ */
+const ownOrderIndex = (base: PinnedBase, columns: string[], index: number): number => {
+  const own = columns.flatMap((part, i) => (isElementPart(base, part) ? [] : [i]));
+  return own[index] ?? -1;
 };
 
 /** Flips an existing order column's direction in place - the index stays stable, unlike remove+re-add. */
@@ -352,11 +424,12 @@ export const setOrderDirectionAt = (
   const existing = base.segments.find(s => s.owner === alias && s.kind === 'order');
   if (!existing) return toText(base.segments);
   const columns = splitTopLevel(existing.text.replace(/^(order:|o:)\s*/i, ''));
-  const target = columns[index];
+  const at = ownOrderIndex(base, columns, index);
+  const target = columns[at];
   if (target === undefined) return toText(base.segments);
   // `nulls first` stays: only the direction flips.
   const { column, nulls } = splitOrderItem(target);
-  columns[index] = `${column} ${direction}${nulls ? ` nulls ${nulls}` : ''}`;
+  columns[at] = `${column} ${direction}${nulls ? ` nulls ${nulls}` : ''}`;
   return toText(upsertOwnedSegment(base.segments, alias, 'order', `order: ${columns.join(', ')}`));
 };
 
@@ -364,7 +437,9 @@ export const removeOrderColumnAt = (base: PinnedBase, alias: string, index: numb
   const existing = base.segments.find(s => s.owner === alias && s.kind === 'order');
   if (!existing) return toText(base.segments);
   const columns = splitTopLevel(existing.text.replace(/^(order:|o:)\s*/i, ''));
-  columns.splice(index, 1);
+  const at = ownOrderIndex(base, columns, index);
+  if (at < 0) return toText(base.segments);
+  columns.splice(at, 1);
   return toText(
     upsertOwnedSegment(base.segments, alias, 'order', columns.length ? `order: ${columns.join(', ')}` : null),
   );
@@ -550,3 +625,108 @@ export const setGroupColumns = (base: PinnedBase, alias: string, columns: string
   const newSegment: Segment = { text: `group: ${nextAll.join(', ')}`, start: -1, end: -1, kind: 'group', owner: null };
   return toText([...base.segments.slice(0, at), newSegment, ...base.segments.slice(at)]);
 };
+
+/**
+ * The name the elements of `unnest: <column>` get on the canvas: the
+ * array's name in the singular, `changes` -> `change`, `companies` ->
+ * `company`. A name in the singular joins on its own (pine-lang's
+ * docs/joins.md, "Joining on a name you give"): `companies` -> `company`
+ * joins `company` on each element's `id`. A name that is already singular,
+ * or taken, gets a number: `data` -> `data_1`, so `data.x` still reads the
+ * column.
+ */
+export const unnestName = (column: string, taken: Set<string>): string => {
+  const last = column.split('.').pop() ?? column;
+  const lower = last.toLowerCase();
+  const singular = /ies$/.test(lower)
+    ? `${last.slice(0, -3)}y`
+    : /(ss|x|z|ch|sh)es$/.test(lower)
+      ? last.slice(0, -2)
+      : /s$/.test(lower) && !/(ss|us|is)$/.test(lower)
+        ? last.slice(0, -1)
+        : last;
+  if (singular !== last && !taken.has(singular)) return singular;
+  let n = 1;
+  while (taken.has(`${singular}_${n}`)) n++;
+  return `${singular}_${n}`;
+};
+
+/**
+ * What is typed in a column picker, `e.address.city`, as Pine: the element
+ * `e` and the key's steps, each quoted when it isn't a plain name
+ * (`e.'home address'`). Null unless it starts with one of `elements`.
+ * Keys inside JSON aren't in the schema, so they are typed, not picked.
+ */
+export const elementKeyText = (typed: string, elements: string[]): { element: string; text: string } | null => {
+  const [first, ...steps] = typed.trim().split('.');
+  if (!elements.includes(first) || steps.some(s => s === '')) return null;
+  const text = steps.reduce(
+    (name, step) => (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(step) ? `${name}.${step}` : `${name}.'${step.replace(/'/g, "''")}'`),
+    first,
+  );
+  return { element: first, text };
+};
+
+/**
+ * Adds `text` (`e.field`, or `e.field desc` for order) to `alias`'s own
+ * select:, order: or group: step, or removes it when it's there - the
+ * element counterpart of toggling a column.
+ */
+export const toggleElementPart = (
+  base: PinnedBase,
+  alias: string,
+  kind: 'select' | 'order' | 'group',
+  text: string,
+): string => {
+  const column = (part: string) => splitOrderItem(part).column.toLowerCase();
+  const present =
+    kind === 'group'
+      ? (() => {
+          const index = stageGroupIndex(base.segments, alias);
+          return index >= 0 && splitTopLevel(groupBody(base.segments[index]).keys).some(p => column(p) === column(text));
+        })()
+      : splitTopLevel(
+          (base.segments.find(s => s.owner === alias && s.kind === kind)?.text ?? '').replace(
+            /^(select:|s:|order:|o:)\s*/i,
+            '',
+          ),
+        ).some(p => column(p) === column(text));
+  if (present) return removeElementPart(base, alias, kind, text);
+  if (kind === 'group') {
+    const index = stageGroupIndex(base.segments, alias);
+    if (index >= 0) {
+      const { keys, aggregates } = groupBody(base.segments[index]);
+      const next = [...base.segments];
+      const all = [...splitTopLevel(keys), text];
+      next[index] = { ...next[index], text: `group: ${all.join(', ')}${aggregates ? ` with ${aggregates}` : ''}` };
+      return toText(next);
+    }
+    const at = stageEnd(base.segments, alias);
+    const segment: Segment = { text: `group: ${text}`, start: -1, end: -1, kind: 'group', owner: null };
+    return toText([...base.segments.slice(0, at), segment, ...base.segments.slice(at)]);
+  }
+  const prefix = kind === 'select' ? /^(select:|s:)\s*/i : /^(order:|o:)\s*/i;
+  const existing = base.segments.find(s => s.owner === alias && s.kind === kind);
+  const parts = existing ? splitTopLevel(existing.text.replace(prefix, '')) : [];
+  const part = kind === 'order' ? `${text} desc` : text;
+  return toText(upsertOwnedSegment(base.segments, alias, kind, `${kind}: ${[...parts, part].join(', ')}`));
+};
+
+/** `unnest: c.data.changes as change`, after `alias`'s own steps. */
+export const addUnnest = (base: PinnedBase, alias: string, column: string, name: string): string =>
+  toText(appendOwnedSegment(base.segments, alias, 'unnest', `unnest: ${alias}.${column} as ${name}`));
+
+/** The name of the elements an UNNEST chip shows: `e` in `data.changes as e :left`. */
+export const unnestChipName = (chip: string): string =>
+  chip.replace(/\s+:left\s*$/i, '').split(/\s+as\s+/).pop() ?? '';
+
+/**
+ * Removes the `unnest:` that names its elements `name`. A step after it that
+ * still reads `name` is left as typed, and pine-lang's error says so.
+ */
+export const removeUnnest = (base: PinnedBase, name: string): string =>
+  toText(
+    base.segments.filter(
+      s => !(s.kind === 'unnest' && new RegExp(`\\bas\\s+${name}(\\s+:left)?\\s*$`, 'i').test(s.text.trim())),
+    ),
+  );

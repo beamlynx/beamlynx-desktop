@@ -931,6 +931,9 @@ const Picker: React.FC = observer(() => {
       case 'where':
         store.beginWhereValue(request.alias, item.value, request.draft);
         return;
+      case 'unnest':
+        void store.commitUnnest(request.alias, item.value);
+        return;
       // Step 1: `item.value` here is a bare table name (not h.pine - see
       // openPathPicker), naming the destination for step 2 to search
       // routes to. Doesn't commit anything itself.
