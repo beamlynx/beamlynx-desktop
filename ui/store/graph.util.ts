@@ -65,7 +65,7 @@ const DarkColors = ['#cf6679', '#d4995c', '#e6c07b', '#98c379', '#61afef'];
 // local (non-observable) edge list instead - see isUncertainResolution.
 export const uncertainEdgeStyle = { strokeDasharray: '4 4' };
 export const isUncertainResolution = (resolution: TableHint['resolution']) =>
-  resolution === 'heuristic' || resolution === 'synthetic';
+  resolution === 'heuristic' || resolution === 'synthetic' || resolution === 'alias';
 
 /**
  * Get the color for the schema. Note: this function probably has collisions.

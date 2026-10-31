@@ -47,7 +47,10 @@ export type TableHint = {
   // emitted by hints today - that syntax bypasses the reference map entirely,
   // so there's nothing to suggest - but it's reserved here for
   // forward-completeness.
-  resolution?: 'fk' | 'heuristic' | 'synthetic' | 'manual';
+  // 'alias' is a join from a name given with `as` in the query, `s:
+  // resourceId as company_id | company`: the query says what the values are,
+  // nothing in the schema does.
+  resolution?: 'fk' | 'heuristic' | 'synthetic' | 'manual' | 'alias';
   pine: string;
 };
 
@@ -177,7 +180,16 @@ export const whereConditions = (entry: WhereEntry): WhereCondition[] =>
   'or' in entry ? entry.or : [entry];
 
 /** One column pair of a join's ON clause, each side labelled by the alias that owns it. */
-export type JoinColumns = { from: string; to: string };
+export type JoinColumns = {
+  from: string;
+  to: string;
+  /**
+   * A join from a name given with `as` to a value inside JSON: the keys
+   * inside `from` the join reads (`[]` for an element itself). See
+   * pine-lang's docs/joins.md, "Joining on a name you give".
+   */
+  'from-value-path'?: JsonPathStep[];
+};
 
 /**
  * One join in the pipeline, as pine-lang describes it.
@@ -964,6 +976,7 @@ export class HttpClient {
           !h.parent &&
           h.resolution !== 'heuristic' &&
           h.resolution !== 'synthetic' &&
+          h.resolution !== 'alias' &&
           h.column !== undefined,
       )
       // table/schema come along so a caller can name the table without
