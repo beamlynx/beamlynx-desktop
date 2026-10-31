@@ -86,6 +86,8 @@ export type Hints = {
   // see pine-lang's generate-path-hints. Empty (not absent) otherwise, same
   // convention as every other hint bucket.
   paths: PathHint[];
+  // The JSON columns `unnest:` can read. Absent from a server older than it.
+  unnest?: ColumnHint[];
   context: string;
 };
 // There are more operations. I'll add them as we need to handle them here
@@ -312,6 +314,25 @@ export type Ast = {
   assign?: string;
   // Absent from a server older than this field.
   checkpoints?: Checkpoint[];
+  // Every `unnest:`, in pipe order. Absent from a server older than it.
+  unnests?: Unnest[];
+};
+
+/**
+ * One `unnest: data as e` step, as pine-lang's /build reports it in
+ * `ast.unnests`. It isn't a table: its elements are read by its alias, and
+ * the canvas shows it on the node of the table whose column holds the
+ * array. See pine-lang's docs/json-paths.md ("Arrays as rows").
+ */
+export type Unnest = {
+  /** The name the elements are read by: `e`. Columns, conditions and order items on them carry it as their alias. */
+  alias: string;
+  /** The alias of the table whose column holds the array. */
+  table: string;
+  /** The array's path from that table: `data.changes`, or `o.items` for the elements of the elements `o`. */
+  text: string;
+  /** Its operation index, the same index as `ast.ranges`. */
+  index: number;
 };
 
 // A $variable's value as pine-lang takes it: a string, number or boolean, or a

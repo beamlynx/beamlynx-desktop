@@ -28,6 +28,13 @@ export type CanvasTableNodeData = {
   whereChips: string[]; // display text, e.g. "id = 1"
   orderChips: string[]; // display text, e.g. "name desc"
   groupChips: string[]; // this alias's own contribution to the one shared group: segment
+  /**
+   * The `unnest:` steps on this table's columns, `data as e`, and what the
+   * query reads from their elements, `e.field`, shown after this table's own
+   * chips. Shown only: the chip actions edit a table's own columns.
+   */
+  unnestChips?: string[];
+  elementChips?: { select: string[]; where: string[]; order: string[]; group: string[] };
   leftHandles: CanvasHandle[];
   rightHandles: CanvasHandle[];
   /**

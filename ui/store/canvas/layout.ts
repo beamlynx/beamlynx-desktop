@@ -8,8 +8,10 @@ import {
   columnName,
   GroupColumn,
   Join,
+  JsonPathStep,
   OrderColumn,
   NamedResultAst,
+  Unnest,
   WhereEntry,
   whereConditions,
   whereLiteral,
@@ -71,7 +73,13 @@ export const getNodeHeight = (node: CanvasNode): number => {
 // don't sit on top of them.
 const chipRowHeight = 22;
 const chipsHeight = (data: CanvasTableNodeData): number =>
-  [data.selectColumns, data.whereChips, data.orderChips, data.groupChips].reduce(
+  [
+    data.unnestChips ?? [],
+    [...data.selectColumns, ...(data.elementChips?.select ?? [])],
+    [...data.whereChips, ...(data.elementChips?.where ?? [])],
+    [...data.orderChips, ...(data.elementChips?.order ?? [])],
+    [...data.groupChips, ...(data.elementChips?.group ?? [])],
+  ].reduce(
     (height, chips) => (chips.length ? height + chipRowHeight * Math.ceil(chips.length / 2) : height),
     0,
   );
@@ -207,6 +215,7 @@ type StageSource = {
   where: WhereEntry[];
   order: OrderColumn[];
   group: GroupColumn[];
+  unnests: Unnest[];
 };
 
 /**
@@ -219,7 +228,7 @@ type StageSource = {
  */
 type Stage = { source: StageSource; after?: Checkpoint; removable: boolean };
 
-const emptySource: StageSource = { tables: [], joins: [], columns: [], where: [], order: [], group: [] };
+const emptySource: StageSource = { tables: [], joins: [], columns: [], where: [], order: [], group: [], unnests: [] };
 
 const fromSnapshot = (snapshot: NamedResultAst): StageSource => ({
   tables: snapshot.tables ?? snapshot['selected-tables'] ?? [],
@@ -228,6 +237,7 @@ const fromSnapshot = (snapshot: NamedResultAst): StageSource => ({
   where: snapshot.where ?? [],
   order: snapshot.order ?? [],
   group: snapshot.group ?? [],
+  unnests: [],
 });
 
 /**
@@ -258,6 +268,7 @@ const stagesOf = (ast: Ast): Stage[] => {
     // See the `order: Column[]` comment in client.ts - the real wire shape is OrderColumn.
     order: (ast.order ?? []) as unknown as OrderColumn[],
     group: ast.group ?? [],
+    unnests: ast.unnests ?? [],
   };
   const checkpoints = ast.checkpoints ?? [];
   const stages: Stage[] = checkpoints.map((checkpoint, k) => {
@@ -309,12 +320,30 @@ const deriveStage = (
   firstOrder: number,
 ): { nodes: CanvasTableNode[]; edges: CanvasEdge[] } => {
   const { source, after } = stage;
-  const selectByAlias = byAlias(source.columns.filter(c => !c.hidden && !!c.column), c => c.alias);
+  // The elements of `unnest: data as e` aren't a node. What the query reads
+  // from them shows on the node of the table whose column holds the array,
+  // named as typed: `e`, `e.field`.
+  const unnestTable = new Map(source.unnests.map(u => [u.alias, u.table]));
+  const isElement = (alias: string) => unnestTable.has(alias);
+  const elementName = (alias: string, path?: JsonPathStep[] | null) => columnName(alias, path);
+  const elementsOf = <T,>(items: T[], aliasOf: (item: T) => string) =>
+    byAlias(
+      items.filter(item => isElement(aliasOf(item))),
+      item => unnestTable.get(aliasOf(item)) ?? aliasOf(item),
+    );
+  const visibleColumns = source.columns.filter(c => !c.hidden && !!c.column);
+  const selectByAlias = byAlias(visibleColumns.filter(c => !isElement(c.alias)), c => c.alias);
+  const elementSelectByTable = elementsOf(visibleColumns, c => c.alias);
   // An `or` group belongs to the table of its first condition - one chip,
   // on one node, even when its conditions name several tables.
-  const whereByAlias = byAlias(source.where, w => whereConditions(w)[0].alias);
-  const orderByAlias = byAlias(source.order, o => o.alias);
-  const groupByAlias = byAlias(source.group, g => g.alias);
+  const firstAlias = (w: WhereEntry) => whereConditions(w)[0].alias;
+  const whereByAlias = byAlias(source.where.filter(w => !isElement(firstAlias(w))), firstAlias);
+  const elementWhereByTable = elementsOf(source.where, firstAlias);
+  const orderByAlias = byAlias(source.order.filter(o => !isElement(o.alias)), o => o.alias);
+  const elementOrderByTable = elementsOf(source.order, o => o.alias);
+  const groupByAlias = byAlias(source.group.filter(g => !isElement(g.alias)), g => g.alias);
+  const elementGroupByTable = elementsOf(source.group, g => g.alias);
+  const unnestsByTable = byAlias(source.unnests, u => u.table);
   // pine-lang merges every group: column into the columns too - required so
   // the generated SQL's SELECT list actually includes what it groups by, not
   // a canvas-specific quirk. Left unfiltered, a grouped column would render
@@ -329,27 +358,41 @@ const deriveStage = (
   const edges: CanvasEdge[] = [];
   addJoins(source.joins, handles, edges, name => checkpointNames.has(name));
 
+  const whereChip = (alias: string) => (entry: WhereEntry) =>
+    whereConditions(entry)
+      .map(({ alias: conditionAlias, column, path, operator, value: val }) => {
+        // A $variable shows as `$name`: the tab builds without its value.
+        const literal = whereLiteral(val);
+        // Another table's column in the same group keeps its alias, so the
+        // chip doesn't read as this table's.
+        const name = isElement(conditionAlias)
+          ? elementName(conditionAlias, path)
+          : conditionAlias === alias
+            ? columnName(column, path)
+            : `${conditionAlias}.${columnName(column, path)}`;
+        return `${name} ${operator} ${literal}`.trim();
+      })
+      .join(' or ');
+  const orderChip = (name: string, o: OrderColumn) =>
+    `${name} ${o.direction}${o.nulls ? ` nulls ${o.nulls.toLowerCase()}` : ''}`;
+
   const chipsFor = (alias: string) => ({
     selectColumns: (selectByAlias[alias] ?? [])
       .map(c => columnName(c.column, c.path))
       .filter(column => !groupedColumnNamesByAlias[alias]?.has(column)),
-    whereChips: (whereByAlias[alias] ?? []).map(entry =>
-      whereConditions(entry)
-        .map(({ alias: conditionAlias, column, path, operator, value: val }) => {
-          // A $variable shows as `$name`: the tab builds without its value.
-          const literal = whereLiteral(val);
-          // Another table's column in the same group keeps its alias, so the
-          // chip doesn't read as this table's.
-          const name =
-            conditionAlias === alias ? columnName(column, path) : `${conditionAlias}.${columnName(column, path)}`;
-          return `${name} ${operator} ${literal}`.trim();
-        })
-        .join(' or '),
-    ),
-    orderChips: (orderByAlias[alias] ?? []).map(
-      o => `${columnName(o.column, o.path)} ${o.direction}${o.nulls ? ` nulls ${o.nulls.toLowerCase()}` : ''}`,
-    ),
+    whereChips: (whereByAlias[alias] ?? []).map(whereChip(alias)),
+    orderChips: (orderByAlias[alias] ?? []).map(o => orderChip(columnName(o.column, o.path), o)),
     groupChips: (groupByAlias[alias] ?? []).map(g => columnName(g.column, g.path)),
+    unnestChips: (unnestsByTable[alias] ?? []).map(u => `${u.text} as ${u.alias}`),
+    elementChips: {
+      // As for a table's own: a grouped key shows under group only.
+      select: (elementSelectByTable[alias] ?? [])
+        .map(c => elementName(c.alias, c.path))
+        .filter(name => !(elementGroupByTable[alias] ?? []).some(g => elementName(g.alias, g.path) === name)),
+      where: (elementWhereByTable[alias] ?? []).map(whereChip(alias)),
+      order: (elementOrderByTable[alias] ?? []).map(o => orderChip(elementName(o.alias, o.path), o)),
+      group: (elementGroupByTable[alias] ?? []).map(g => elementName(g.alias, g.path)),
+    },
     leftHandles: toHandles(handles.left[alias]),
     rightHandles: toHandles(handles.right[alias]),
   });
