@@ -179,7 +179,10 @@ const addJoins = (
       addHandle(handles.left, toNode, child, 'l', fromNode);
     }
     const [{ parent: parentCol, child: childCol }] = oriented;
-    const uncertain = resolution === 'heuristic' || resolution === 'synthetic';
+    // A join from a name given with `as` is the query's word, not the
+    // schema's, so it is drawn as uncertain too.
+    const uncertain =
+      resolution === 'heuristic' || resolution === 'synthetic' || resolution === 'alias';
     edges.push({
       id: `${fromNode}->${toNode}:${parentCol}=${childCol}`,
       source: fromNode,
@@ -356,7 +359,29 @@ const deriveStage = (
 
   const handles: HandleMaps = { left: {}, right: {} };
   const edges: CanvasEdge[] = [];
-  addJoins(source.joins, handles, edges, name => checkpointNames.has(name));
+  // A join from a name given with `as` can start from the elements of an
+  // `unnest:`, which have no node: it is drawn from their table's node. Its
+  // handle is named as typed, `company_id` or `e.companyId`, as is one on a
+  // key inside a JSON column, `data.ownerId`.
+  const joinsOnNodes = source.joins.map(join => {
+    const element = isElement(join.from);
+    if (!element && !join.columns.some(c => c['from-value-path'])) return join;
+    return {
+      ...join,
+      from: unnestTable.get(join.from) ?? join.from,
+      columns: join.columns.map(c =>
+        c['from-value-path']
+          ? {
+              ...c,
+              from: element
+                ? elementName(join.from, c['from-value-path'])
+                : columnName(c.from, c['from-value-path']),
+            }
+          : c,
+      ),
+    };
+  });
+  addJoins(joinsOnNodes, handles, edges, name => checkpointNames.has(name));
 
   const whereChip = (alias: string) => (entry: WhereEntry) =>
     whereConditions(entry)
