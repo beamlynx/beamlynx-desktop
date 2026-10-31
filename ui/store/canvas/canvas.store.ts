@@ -1070,9 +1070,24 @@ export class CanvasStore {
 
   setPickerFilter(filter: string) {
     if (this.picker.open && this.picker.mode === 'list') {
-      this.picker = { ...this.picker, filter };
+      const { request } = this.picker;
+      // Keys inside JSON aren't in the schema, so a key of an `unnest:`'s
+      // elements is typed: `e.field` becomes an item of its own.
+      const typed =
+        request.kind === 'select' || request.kind === 'where' || request.kind === 'order' || request.kind === 'group'
+          ? actions.elementKeyText(filter, this.elementsOf(request.alias))
+          : null;
+      const groups = this.picker.groups.filter(g => g.label !== CanvasStore.typedKeyGroup);
+      const withTyped =
+        typed && typed.text !== typed.element
+          ? [{ label: CanvasStore.typedKeyGroup, items: [{ id: `key:${typed.text}`, label: filter.trim(), value: typed.text }] }, ...groups]
+          : groups;
+      this.picker = { ...this.picker, filter, groups: withTyped };
     }
   }
+
+  /** The picker group holding a typed key of an `unnest:`'s elements - see setPickerFilter. */
+  private static readonly typedKeyGroup = 'key inside the elements';
 
   /** Fallback anchor for a picker opened without a captured click position. */
   private static readonly defaultAnchor: PickerAnchor = { x: 24, y: 24 };
@@ -1133,7 +1148,9 @@ export class CanvasStore {
         ? ''
         : request.kind === 'path'
           ? '? '
-          : `${request.kind === 'where' ? 'w' : request.kind === 'order' ? 'o' : 's'}: `;
+          : request.kind === 'unnest'
+            ? 'unnest: '
+            : `${request.kind === 'where' ? 'w' : request.kind === 'order' ? 'o' : 's'}: `;
     return `${focusPrefix} | ${opPrefix}`.trimEnd();
   }
 
@@ -1351,8 +1368,83 @@ export class CanvasStore {
       return;
     }
     this.focusNode(alias);
-    const offer = isCheckpoint ? MORE_ACTIONS_FOR_CHECKPOINT : MORE_ACTIONS_FOR_TABLE;
+    const all = isCheckpoint ? MORE_ACTIONS_FOR_CHECKPOINT : MORE_ACTIONS_FOR_TABLE;
+    // `unnest` is only offered on a table with a JSON column: on any other,
+    // it would only add noise. The columns are probed once per expression
+    // and table, and the entry appears when the answer comes back.
+    const key = this.unnestKey(alias);
+    const known = this.unnestColumns.get(key);
+    const offer = known?.length ? all : all.filter(a => a !== 'unnest');
     this.picker = { open: true, mode: 'more', alias, offer, isCheckpoint, anchor };
+    if (all.includes('unnest') && known === undefined) void this.probeUnnestColumns(alias, key);
+  }
+
+  /** The JSON columns an `unnest:` can read, by unnestKey. See openMorePicker. */
+  private unnestColumns = new Map<string, string[]>();
+
+  private unnestKey(alias: string): string {
+    const { block } = this.scopeOf(alias);
+    return `${this.textOf(block)}\u0000${alias}`;
+  }
+
+  private async probeUnnestColumns(alias: string, key: string) {
+    const ast = await this.probeFor({ kind: 'unnest', alias });
+    const columns = (ast?.hints.unnest ?? []).map(h => h.column);
+    runInAction(() => {
+      this.unnestColumns.set(key, columns);
+      const p = this.picker;
+      if (columns.length && p.open && p.mode === 'more' && p.alias === alias && !p.offer.includes('unnest')) {
+        this.picker = { ...p, offer: [...p.offer, 'unnest'] };
+      }
+    });
+  }
+
+  /** The JSON columns of `alias` to unnest. Picking one adds `unnest: alias.column as <name>`. */
+  openUnnestPicker(alias: string, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
+    this.focusNode(alias);
+    const request: PickerRequest = { kind: 'unnest', alias };
+    void this.openListPicker(request, anchor, async () => {
+      const ast = await this.probeFor(request);
+      if (!ast) throw new Error('Failed to build column suggestions');
+      const items: PickerItem[] = (ast.hints.unnest ?? []).map(h => ({
+        id: h.column,
+        label: h.column,
+        value: h.column,
+      }));
+      return { groups: [{ label: '', items }] };
+    });
+  }
+
+  /**
+   * Adds `unnest: alias.column as <name>`, named after the array in the
+   * singular (see pine-actions.ts's unnestName).
+   */
+  async commitUnnest(alias: string, column: string) {
+    this.closePicker();
+    await this.commit(base => {
+      const resolved = actions.resolveAlias(base, alias);
+      const taken = new Set([
+        ...(base.ast['selected-tables'] ?? []).map(t => t.alias),
+        ...(base.ast.unnests ?? []).map(u => u.alias),
+        base.ast.current,
+      ]);
+      return actions.addUnnest(base, resolved, column, actions.unnestName(column, taken));
+    }, alias);
+  }
+
+  /** The × on an element chip, `e.field`, under select, order or group. */
+  async removeElementPart(alias: string, kind: 'select' | 'order' | 'group', chip: string) {
+    await this.commit(base => actions.removeElementPart(base, actions.resolveAlias(base, alias), kind, chip), alias);
+  }
+
+  /** The × on the `index`th element where chip of `alias`'s node. */
+  async removeElementWhereAt(alias: string, index: number) {
+    await this.commit(base => actions.removeElementWhereAt(base, actions.resolveAlias(base, alias), index), alias);
+  }
+
+  /** The UNNEST chip's ×: removes the `unnest:` that names its elements `name`. */
+  async removeUnnest(alias: string, name: string) {
+    await this.commit(base => actions.removeUnnest(base, name), alias);
   }
 
   /**
@@ -1368,6 +1460,12 @@ export class CanvasStore {
     // so it needs no picker-time pin.
     if (action === 'limit') {
       this.openLimitEditor(alias, anchor);
+      return;
+    }
+    if (action === 'unnest') {
+      // Only offered for a plain node: a checkpoint's node has no JSON
+      // column of its own to read.
+      if (!isCheckpoint) this.openUnnestPicker(alias, anchor);
       return;
     }
     if (action === 'traverse') {
@@ -1571,7 +1669,18 @@ export class CanvasStore {
             if (!present.has(column)) items.push({ id: column, label: column, value: column });
           }
         }
-        return { groups: [{ label: '', items }] };
+        // The elements of an `unnest:` on this node, `e` itself. A key of
+        // one is typed: `e.field` (see setPickerFilter).
+        const elements = this.elementsOf(alias);
+        const elementGroup = elements.length
+          ? [
+              {
+                label: `elements: type ${elements[0]}.<key> for a key`,
+                items: elements.map(e => ({ id: `element:${e}`, label: e, value: e })),
+              },
+            ]
+          : [];
+        return { groups: [{ label: '', items }, ...elementGroup] };
       },
       focusValue,
     );
@@ -1687,7 +1796,29 @@ export class CanvasStore {
    * pick in the same still-open picker (confirmed live: reading it here
    * silently dropped the first pick's column every time).
    */
+  /**
+   * The names of the elements of every `unnest:` on `alias`'s node: `e` in
+   * `data.changes as e`. A column picker on that node also takes a typed key
+   * of one, `e.field`.
+   */
+  elementsOf(alias: string): string[] {
+    const node = this.canvasGraph.nodes.find((n): n is CanvasTableNode => n.type === 'table-node' && n.id === alias);
+    return (node?.data.unnestChips ?? []).map(chip => chip.split(/\s+as\s+/).pop() ?? '').filter(Boolean);
+  }
+
+  /** `e` or `e.field` typed or picked in a column picker on `alias`'s node, or null. */
+  private elementKey(alias: string, value: string) {
+    return actions.elementKeyText(value, this.elementsOf(alias));
+  }
+
+  /** Adds or removes an element item, `e.field`, in `alias`'s select:, order: or group:. */
+  async toggleElementPart(alias: string, kind: 'select' | 'order' | 'group', text: string) {
+    await this.commit(base => actions.toggleElementPart(base, actions.resolveAlias(base, alias), kind, text), alias);
+  }
+
   async toggleSelectColumn(alias: string, column: string) {
+    const element = this.elementKey(alias, column);
+    if (element) return this.toggleElementPart(alias, 'select', element.text);
     await this.commit(base => {
       const resolvedAlias = actions.resolveAlias(base, alias);
       const current = actions.getSelectColumns(base, resolvedAlias);
@@ -1704,7 +1835,12 @@ export class CanvasStore {
    */
   beginWhereValue(alias: string, column: string, draft?: WhereDraft) {
     const anchor = this.picker.open ? this.picker.anchor : CanvasStore.defaultAnchor;
-    const condition: WhereConditionDraft = { alias, column, operator: '=', value: '' };
+    // A key of the elements of an `unnest:` on this node is a condition on
+    // the elements, `e.field = …`, in a where: step the node owns.
+    const element = this.elementKey(alias, column);
+    const condition: WhereConditionDraft = element
+      ? { alias: element.element, column: element.text.slice(element.element.length + 1), operator: '=', value: '' }
+      : { alias, column, operator: '=', value: '' };
     this.picker = {
       open: true,
       mode: 'where-value',
@@ -1937,6 +2073,8 @@ export class CanvasStore {
    * the rendered canvasGraph.
    */
   async toggleOrderColumn(alias: string, column: string) {
+    const element = this.elementKey(alias, column);
+    if (element) return this.toggleElementPart(alias, 'order', element.text);
     await this.commit(base => {
       const resolvedAlias = actions.resolveAlias(base, alias);
       const current = actions.getOrderColumns(base, resolvedAlias);
@@ -1958,6 +2096,8 @@ export class CanvasStore {
    * contribution rather than producing a second `group:` segment.
    */
   async toggleGroupColumn(alias: string, column: string) {
+    const element = this.elementKey(alias, column);
+    if (element) return this.toggleElementPart(alias, 'group', element.text);
     await this.commit(base => {
       const resolvedAlias = actions.resolveAlias(base, alias);
       const current = actions.getGroupColumns(base, resolvedAlias);

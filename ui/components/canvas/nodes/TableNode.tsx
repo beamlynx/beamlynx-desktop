@@ -79,6 +79,8 @@ export const activeOperationFor = (picker: PickerState, alias: string): Operatio
   // path-route (step 2: picking a discovered route) is still the same
   // logical operation as path (step 1: picking a destination) - both dim
   // the bar down to the same single 'path' button.
+  // `unnest` has no button of its own: it is picked from the "+" menu.
+  if (picker.request.kind === 'unnest') return 'more';
   return picker.request.kind === 'path-route' ? 'path' : picker.request.kind;
 };
 
@@ -320,14 +322,17 @@ const ChipRow = ({
   chips,
   readOnlyChips = [],
   onRemove,
+  onRemoveReadOnly,
   onSelect,
   highlightIndex,
 }: {
   label: string;
   chips: string[];
-  /** Shown after `chips`, without × or a panel: what the query reads from the elements of an `unnest:`. */
+  /** Shown after `chips`, without a panel: what the query reads from the elements of an `unnest:`. */
   readOnlyChips?: string[];
   onRemove?: (index: number) => void;
+  /** The × on a chip of `readOnlyChips`: it has no panel, but can be removed. */
+  onRemoveReadOnly?: (index: number) => void;
   /** Reopens this chip's own config panel with its current value prefilled - see CanvasStore.openWhereEditor. Only offered for "where" today; select/order/group chips are already fully edited by toggling. */
   onSelect?: (index: number, anchor: { x: number; y: number }) => void;
   /** The chip at this index is CanvasStore.focusedConfigItem's current target - drawn with the same "current" ring TableNode's own border uses for keyboard focus. */
@@ -422,6 +427,17 @@ const ChipRow = ({
         >
           <span style={{ width: 4, height: 4, flexShrink: 0, background: 'var(--canvas-pin)' }} />
           <span>{chip}</span>
+          {onRemoveReadOnly && (
+            <span
+              onClick={e => {
+                e.stopPropagation();
+                onRemoveReadOnly(i);
+              }}
+              style={{ cursor: 'pointer', opacity: 0.6 }}
+            >
+              &times;
+            </span>
+          )}
         </div>
       ))}
     </div>
@@ -871,11 +887,20 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
       </div>
 
       {/* Configuration */}
-      <ChipRow label="unnest" chips={[]} readOnlyChips={data.unnestChips} />
+      <ChipRow
+        label="unnest"
+        chips={data.unnestChips ?? []}
+        onRemove={i => {
+          // A chip reads `data.changes as change`: the name is after `as`.
+          const name = (data.unnestChips ?? [])[i]?.split(/\s+as\s+/).pop();
+          if (name) void canvasStore.removeUnnest(data.alias, name);
+        }}
+      />
       <ChipRow
         label="sel"
         chips={data.selectColumns}
         readOnlyChips={data.elementChips?.select}
+        onRemoveReadOnly={i => void canvasStore.removeElementPart(data.alias, 'select', data.elementChips?.select[i] ?? '')}
         onRemove={i => void canvasStore.toggleSelectColumn(data.alias, data.selectColumns[i])}
         onSelect={(i, anchor) => canvasStore.openColumnPicker('select', data.alias, anchor, data.selectColumns[i])}
         highlightIndex={cursorItem?.kind === 'select' ? data.selectColumns.indexOf(cursorItem.column) : undefined}
@@ -884,6 +909,7 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
         label="where"
         chips={data.whereChips}
         readOnlyChips={data.elementChips?.where}
+        onRemoveReadOnly={i => void canvasStore.removeElementWhereAt(data.alias, i)}
         onRemove={i => void canvasStore.removeWhereAt(data.alias, i)}
         onSelect={(i, anchor) => canvasStore.openWhereEditor(data.alias, i, anchor)}
         highlightIndex={cursorItem?.kind === 'where' ? cursorItem.index : undefined}
@@ -892,6 +918,7 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
         label="order"
         chips={data.orderChips}
         readOnlyChips={data.elementChips?.order}
+        onRemoveReadOnly={i => void canvasStore.removeElementPart(data.alias, 'order', data.elementChips?.order[i] ?? '')}
         onRemove={i => void canvasStore.removeOrderAt(data.alias, i)}
         onSelect={(i, anchor) => {
           const chip = data.orderChips[i] ?? '';
@@ -908,6 +935,7 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
         label="group"
         chips={data.groupChips}
         readOnlyChips={data.elementChips?.group}
+        onRemoveReadOnly={i => void canvasStore.removeElementPart(data.alias, 'group', data.elementChips?.group[i] ?? '')}
         onRemove={i => void canvasStore.toggleGroupColumn(data.alias, data.groupChips[i])}
         onSelect={(i, anchor) => canvasStore.openColumnPicker('group', data.alias, anchor, data.groupChips[i])}
         highlightIndex={cursorItem?.kind === 'group' ? data.groupChips.indexOf(cursorItem.column) : undefined}
