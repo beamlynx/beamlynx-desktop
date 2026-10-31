@@ -108,6 +108,9 @@ export type ColumnMetadata = {
   // How the access policy treats each column, when a policy was sent: what
   // the header marks and the right-click menu offers.
   colIndexToPolicyLookup: Record<string, ColumnPolicyInfo>;
+  // For the elements of `unnest: data as e`, the field holding each row's
+  // position of `e` in its array. Only when its table's rows can be edited.
+  aliasToElementIndexField: Record<string, string>;
 };
 
 /**
@@ -230,6 +233,7 @@ export class Session {
     aliasToKeyLookup: {},
     colIndexToColumnLookup: {},
     colIndexToPathLookup: {},
+    aliasToElementIndexField: {},
     colIndexToPolicyLookup: {},
   };
   rows: Row[] = [];

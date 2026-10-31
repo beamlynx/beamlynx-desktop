@@ -227,6 +227,9 @@ export type Column = {
   // A hidden column holding the JSON type of a path column's value in each
   // row, named after that column's 'column-alias'.
   'json-type-of'?: string;
+  // A hidden column holding each row's position of an unnested element in
+  // its array, for the elements named by 'alias'.
+  'element-index'?: boolean;
   // How the access policy treats this column. Only when a policy was sent.
   policy?: ColumnPolicy;
 };
@@ -333,6 +336,14 @@ export type Unnest = {
   text: string;
   /** Its operation index, the same index as `ast.ranges`. */
   index: number;
+  /**
+   * Where the array is: a column of the table `source` and the keys inside it,
+   * or (column null) the keys inside the elements `source`. With each row's
+   * positions, the grid turns `e.qty` into `data.items[1].qty` to edit it.
+   */
+  source?: string;
+  column?: string | null;
+  path?: JsonPathStep[];
 };
 
 // A $variable's value as pine-lang takes it: a string, number or boolean, or a

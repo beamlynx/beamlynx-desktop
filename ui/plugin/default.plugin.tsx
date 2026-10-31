@@ -114,6 +114,9 @@ export class DefaultPlugin implements PluginInterface {
           if (!column['path'] && !column['col-fn']) {
             acc.colIndexToColumnLookup[index.toString()] = column['column'];
           }
+          if (column['element-index']) {
+            acc.aliasToElementIndexField[column['alias']] = index.toString();
+          }
           if (column.policy) {
             acc.colIndexToPolicyLookup[index.toString()] = {
               ...column.policy,
@@ -138,6 +141,7 @@ export class DefaultPlugin implements PluginInterface {
           colIndexToColumnLookup: {},
           colIndexToPathLookup: {},
           colIndexToPolicyLookup: {},
+          aliasToElementIndexField: {},
         },
       );
       // A path column whose table can be edited has a hidden type column,

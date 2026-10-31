@@ -43,6 +43,7 @@ import { useRetainedValue } from '../hooks/useRetainedValue';
 import DownloadResultsModal from './DownloadResultsModal';
 import { pineString } from '../store/util';
 import { columnName, type JsonPathStep } from '../store/client';
+import { elementEditTarget } from '../store/element-edit.util';
 import { jsonCellReadOnlyReason, jsonEditLiteral } from '../store/json-edit.util';
 import { getColorForAlias, shouldShowTableColors } from '../store/table-colors.util';
 import { estimateColumnWidth } from './column-width.util';
@@ -94,6 +95,11 @@ interface EditTarget {
   path?: JsonPathStep[];
   /** The `update!` assignment: `email = 'a@b.c'`. */
   assignment: string;
+  /**
+   * The grid field the cell is in, when its column isn't the one written:
+   * a value inside an unnested element is written into its table's column.
+   */
+  field?: string;
 }
 
 interface UpdateData {
@@ -204,8 +210,13 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   // its row by that table's primary key, so the table needs one, and the key
   // itself is the one thing it can't change.
   const readOnlyReasonFor = (field: string, headerName: string): string | undefined => {
-    const alias = colIndexToAlias[field];
     const pathTarget = session.columnMetadata.colIndexToPathLookup[field];
+    // A value inside the elements of `unnest:` is edited in its table's row.
+    const unnest = ast?.unnests?.find(u => u.alias === colIndexToAlias[field]);
+    if (unnest && !session.columnMetadata.aliasToElementIndexField[unnest.alias]) {
+      return `Values inside ${unnest.alias} can't be edited here. Its table has no primary key, so an update can't tell its rows apart.`;
+    }
+    const alias = unnest ? unnest.table : colIndexToAlias[field];
     const column = session.columnMetadata.colIndexToColumnLookup[field] ?? pathTarget?.column;
     if (!alias || !column) {
       return `${headerName} is worked out by the query, not stored in a table, so it can't be edited.`;
@@ -232,7 +243,10 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   const cellReadOnlyReasonFor = (field: string): ((row: Row) => string | undefined) | undefined => {
     const target = session.columnMetadata.colIndexToPathLookup[field];
     if (!target) return undefined;
-    const name = columnName(target.column, target.path);
+    // An element's value is named by the element: `e.qty`, not `value.qty`.
+    const alias = colIndexToAlias[field];
+    const isElement = !!ast?.unnests?.some(u => u.alias === alias);
+    const name = isElement ? columnName(alias, target.path) : columnName(target.column, target.path);
     return row => jsonCellReadOnlyReason(name, row[target.typeField]);
   };
 
@@ -752,12 +766,34 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     const alias = session.columnMetadata.colIndexToAliasLookup[field];
     const pathTarget = session.columnMetadata.colIndexToPathLookup[field];
     if (pathTarget) {
-      const name = columnName(pathTarget.column, pathTarget.path);
+      // A value inside the elements of `unnest:` is written into its
+      // table's JSON column, at the element's position: `e.qty` in this row
+      // is `data.items[1].qty`.
+      const element = elementEditTarget(
+        alias,
+        pathTarget.path,
+        row,
+        ast?.unnests ?? [],
+        session.columnMetadata.aliasToElementIndexField,
+      );
+      const elementName = element ? columnName(alias, pathTarget.path) : undefined;
+      if (typeof element === 'string') return { name: elementName ?? alias, error: element };
+      const name = element ? columnName(element.column, element.path) : columnName(pathTarget.column, pathTarget.path);
       const type = row[pathTarget.typeField];
-      const reason = jsonCellReadOnlyReason(name, type);
-      if (reason) return { name, error: reason };
-      const literal = jsonEditLiteral(name, type, value);
-      if ('error' in literal) return { name, error: literal.error };
+      const reason = jsonCellReadOnlyReason(elementName ?? name, type);
+      if (reason) return { name: elementName ?? name, error: reason };
+      const literal = jsonEditLiteral(elementName ?? name, type, value);
+      if ('error' in literal) return { name: elementName ?? name, error: literal.error };
+      if (element) {
+        return {
+          alias: element.alias,
+          name: elementName ?? name,
+          column: element.column,
+          path: element.path,
+          assignment: `${element.alias}.${name} = ${literal.literal}`,
+          field,
+        };
+      }
       // Qualified by the alias: after `from: dp`, `dp.companies` can only
       // mean that table's column, whatever else is called `companies`.
       return {
@@ -827,13 +863,17 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
       // and field indices belong to one result, not the next.
       const meta = session.columnMetadata;
       const samePath = (p: JsonPathStep[]) => JSON.stringify(p) === JSON.stringify(path);
-      const field = Object.keys(meta.colIndexToAliasLookup).find(f => {
-        if (meta.colIndexToAliasLookup[f] !== alias) return false;
-        const pathTarget = meta.colIndexToPathLookup[f];
-        return path
-          ? !!pathTarget && pathTarget.column === column && samePath(pathTarget.path)
-          : meta.colIndexToColumnLookup[f] === column;
-      });
+      // A value inside an element appears in one row per element, and the
+      // key alone can't tell which of them was edited, so it doesn't glow.
+      const field = target.field
+        ? undefined
+        : Object.keys(meta.colIndexToAliasLookup).find(f => {
+            if (meta.colIndexToAliasLookup[f] !== alias) return false;
+            const pathTarget = meta.colIndexToPathLookup[f];
+            return path
+              ? !!pathTarget && pathTarget.column === column && samePath(pathTarget.path)
+              : meta.colIndexToColumnLookup[f] === column;
+          });
       const keyFields = meta.aliasToKeyLookup[alias] ?? [];
       const rowIndex = keyFields.length
         ? session.rows.findIndex(row =>

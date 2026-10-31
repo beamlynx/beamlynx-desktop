@@ -6,6 +6,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ## [Unreleased]
 ### Added
 - **The canvas shows `unnest:` on its table.** `unnest: data as e` gives one row for each element of a JSON array. The table's node shows it in an **unnest** row, and the keys the query reads from the elements, like `e.field`, in its other rows. Typing `unnest: ` in the Pine panel suggests the table's JSON columns. This needs a Pine server with `unnest:`.
+- **Edit values inside unnested elements in the results.** After `unnest: data as e`, a cell like `e.after` can be edited like any other. The change goes into that one element of the row's JSON array. This needs a Pine server that returns each element's position.
 
 ### Changed
 - **The usage stats switch now covers only the detailed stats.** It is called **Send detailed usage stats**, in Settings → Account, and covers query counts and the database types you add. Each launch, the app version and who is signed in are now always sent. The first-run screen says so.
