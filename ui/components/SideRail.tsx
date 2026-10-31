@@ -302,11 +302,14 @@ const SideRail = observer(({ hasUnreadUpdates, onOpenChangelog }: { hasUnreadUpd
         onClick={onOpenChangelog}
       />
       {/* You: your initials once signed in, a dot until then. Desktop only,
-          like sign-in itself. */}
-      {isDesktop() && account?.available && (() => {
+          like sign-in itself. Shown even when this build has no sign-in (every
+          dev build) or the desktop app is too old for it: Settings -> Account
+          then says why, and the sidebar looks the same in every build. */}
+      {isDesktop() && (() => {
         const open = global.showSettings && global.settingsSection === 'account';
-        const user = account.user;
-        const label = user ? user.name ?? user.email ?? 'Account' : 'Sign in';
+        const canSignIn = account?.available === true;
+        const user = account?.user ?? null;
+        const label = user ? user.name ?? user.email ?? 'Account' : canSignIn ? 'Sign in' : 'Account';
         return (
           <RailItem
             icon={
@@ -330,6 +333,7 @@ const SideRail = observer(({ hasUnreadUpdates, onOpenChangelog }: { hasUnreadUpd
               ) : (
                 <Badge
                   variant="dot"
+                  invisible={!canSignIn}
                   sx={{ '& .MuiBadge-badge': { backgroundColor: 'var(--notification-color)' } }}
                 >
                   <AccountCircleOutlined sx={{ fontSize: 20 }} />
@@ -338,7 +342,7 @@ const SideRail = observer(({ hasUnreadUpdates, onOpenChangelog }: { hasUnreadUpd
             }
             label={label}
             ariaLabel={open ? 'Close Account' : user ? `Account: ${label}` : 'Account: not signed in'}
-            tooltip={user ? `Signed in as ${label}` : 'Sign in'}
+            tooltip={user ? `Signed in as ${label}` : canSignIn ? 'Sign in' : 'Sign-in isn’t available in this build'}
             expanded={expanded}
             active={open}
             onClick={() => (open ? global.setShowSettings(false) : global.setShowSettings(true, 'account'))}
