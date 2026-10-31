@@ -115,10 +115,6 @@ const AccountSection = () => {
           <Typography variant="body2" color="text.secondary">
             Sign-in needs a newer Beamlynx desktop app.
           </Typography>
-        ) : !status.available ? (
-          <Typography variant="body2" color="text.secondary">
-            Sign-in isn&apos;t available in this build.
-          </Typography>
         ) : status.user ? (
           <>
             <Typography variant="body2" sx={{ color: 'var(--text-color)', mb: 0.5 }}>
@@ -140,7 +136,20 @@ const AccountSection = () => {
             >
               Sign out
             </Button>
+            {/* Signed in by a build that had sign-in, such as a dev build
+                started with the sign-in settings. Still signed in here, but
+                this build can't sign in again after signing out. */}
+            {!status.available && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
+                This build can&apos;t sign in. If you sign out, you can sign in again from a build
+                that can.
+              </Typography>
+            )}
           </>
+        ) : !status.available ? (
+          <Typography variant="body2" color="text.secondary">
+            Sign-in isn&apos;t available in this build.
+          </Typography>
         ) : (
           <>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
