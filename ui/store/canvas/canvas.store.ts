@@ -1071,36 +1071,36 @@ export class CanvasStore {
   setPickerFilter(filter: string) {
     if (this.picker.open && this.picker.mode === 'list') {
       const { request } = this.picker;
-      // Keys inside JSON aren't in the schema, so a key of an `unnest:`'s
-      // elements is typed: `e.field` becomes an item of its own.
-      const groups = this.picker.groups.filter(
-        g => g.label !== CanvasStore.typedKeyGroup && g.label !== CanvasStore.typedPathGroup,
-      );
-      // For unnest:, the array can be inside a JSON column, `options.officers`,
-      // or inside elements already unnested here, `o.items`.
+      // The item typed last is dropped, along with a group it was alone in.
+      const groups = this.picker.groups
+        .map(g => ({ ...g, items: g.items.filter(i => !i.id.startsWith(CanvasStore.typedId)) }))
+        .filter(g => g.items.length > 0 || g.label === '');
+      // Keys inside JSON aren't in the schema, so a path is typed and becomes
+      // an item of its own: inside a column, `data.address.city`, or inside
+      // the elements of an `unnest:` on this node, `e.field`. For unnest:, a
+      // path to an array, `options.officers` or `o.items`.
+      const elements =
+        request.kind === 'table' ? [] : this.elementsOf(request.alias);
+      const columns = groups.filter(g => g.label === '').flatMap(g => g.items.map(i => i.value));
       const typed =
-        request.kind === 'unnest'
-          ? actions.elementKeyText(filter, [
-              ...groups.flatMap(g => g.items.map(i => i.value)),
-              ...this.elementsOf(request.alias),
-            ])
-          : request.kind === 'select' || request.kind === 'where' || request.kind === 'order' || request.kind === 'group'
-            ? actions.elementKeyText(filter, this.elementsOf(request.alias))
-            : null;
-      const label = request.kind === 'unnest' ? CanvasStore.typedPathGroup : CanvasStore.typedKeyGroup;
+        request.kind === 'unnest' ||
+        request.kind === 'select' ||
+        request.kind === 'where' ||
+        request.kind === 'order' ||
+        request.kind === 'group'
+          ? actions.typedPath(filter, [...elements, ...columns])
+          : null;
+      const label = typed && elements.includes(typed.start) && request.kind !== 'unnest' ? 'unnested' : 'nested';
       const withTyped =
-        typed && typed.text !== typed.element
-          ? [{ label, items: [{ id: `key:${typed.text}`, label: filter.trim(), value: typed.text }] }, ...groups]
+        typed && typed.text !== typed.start
+          ? [{ label, items: [{ id: `${CanvasStore.typedId}${typed.text}`, label: filter.trim(), value: typed.text }] }, ...groups]
           : groups;
       this.picker = { ...this.picker, filter, groups: withTyped };
     }
   }
 
-  /** The picker group holding a typed key of an `unnest:`'s elements - see setPickerFilter. */
-  private static readonly typedKeyGroup = 'key inside the elements';
-
-  /** The unnest picker's group holding a typed path to an array - see setPickerFilter. */
-  private static readonly typedPathGroup = 'array inside the JSON';
+  /** The id prefix of the item a typed path becomes - see setPickerFilter. */
+  private static readonly typedId = 'typed:';
 
   /** Fallback anchor for a picker opened without a captured click position. */
   private static readonly defaultAnchor: PickerAnchor = { x: 24, y: 24 };
@@ -1400,7 +1400,13 @@ export class CanvasStore {
     return `${this.textOf(block)}\u0000${alias}`;
   }
 
-  private async probeUnnestColumns(alias: string, key: string) {
+  /** The JSON columns of `alias`, probed once per expression and table (see unnestKey). */
+  private async jsonColumnsOf(alias: string): Promise<string[]> {
+    const key = this.unnestKey(alias);
+    return this.unnestColumns.get(key) ?? this.probeUnnestColumns(alias, key);
+  }
+
+  private async probeUnnestColumns(alias: string, key: string): Promise<string[]> {
     const ast = await this.probeFor({ kind: 'unnest', alias });
     const columns = (ast?.hints.unnest ?? []).map(h => h.column);
     runInAction(() => {
@@ -1410,6 +1416,7 @@ export class CanvasStore {
         this.picker = { ...p, offer: [...p.offer, 'unnest'] };
       }
     });
+    return columns;
   }
 
   /**
@@ -1427,6 +1434,7 @@ export class CanvasStore {
         id: h.column,
         label: h.column,
         value: h.column,
+        json: true,
       }));
       return { groups: [{ label: '', items }] };
     });
@@ -1654,12 +1662,20 @@ export class CanvasStore {
       request,
       anchor,
       async () => {
-        const ast = await this.probeFor(request);
+        const [ast, jsonColumns] = await Promise.all([this.probeFor(request), this.jsonColumnsOf(alias)]);
         if (!ast) throw new Error('Failed to build column suggestions');
         // No dedicated hint category for group - see buildProbeExpression's
         // matching comment; reuses select's.
         const hints = kind === 'where' ? ast.hints.where : kind === 'order' ? ast.hints.order : ast.hints.select;
-        const items: PickerItem[] = hints.map(h => ({ id: h.column, label: h.column, value: h.column }));
+        // A JSON column's row has a › that starts a path inside it (see
+        // Picker.tsx): keys inside JSON aren't in the schema, so they're typed.
+        const json = new Set(jsonColumns);
+        const items: PickerItem[] = hints.map(h => ({
+          id: h.column,
+          label: h.column,
+          value: h.column,
+          json: json.has(h.column) || undefined,
+        }));
         // hints.select (and order/group, which reuse it) only ever lists
         // what could still be ADDED - buildProbeExpression's own comment
         // calls this deliberate for select's "what else could I add"
@@ -1694,7 +1710,7 @@ export class CanvasStore {
         const elementGroup = elements.length
           ? [
               {
-                label: `elements: type ${elements[0]}.<key> for a key`,
+                label: 'unnested',
                 items: elements.map(e => ({ id: `element:${e}`, label: e, value: e })),
               },
             ]
@@ -1827,7 +1843,7 @@ export class CanvasStore {
 
   /** `e` or `e.field` typed or picked in a column picker on `alias`'s node, or null. */
   private elementKey(alias: string, value: string) {
-    return actions.elementKeyText(value, this.elementsOf(alias));
+    return actions.typedPath(value, this.elementsOf(alias));
   }
 
   /** Adds or removes an element item, `e.field`, in `alias`'s select:, order: or group:. */
@@ -1858,7 +1874,7 @@ export class CanvasStore {
     // the elements, `e.field = …`, in a where: step the node owns.
     const element = this.elementKey(alias, column);
     const condition: WhereConditionDraft = element
-      ? { alias: element.element, column: element.text.slice(element.element.length + 1), operator: '=', value: '' }
+      ? { alias: element.start, column: element.text.slice(element.start.length).replace(/^\./, ''), operator: '=', value: '' }
       : { alias, column, operator: '=', value: '' };
     this.picker = {
       open: true,

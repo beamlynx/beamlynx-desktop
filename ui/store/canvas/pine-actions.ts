@@ -308,8 +308,9 @@ export const whereSegmentText = (conditions: WhereConditionDraft[]): string =>
 // pine-lang already written as Pine with its own aliases, so it isn't
 // prefixed with one.
 // An element of `unnest:` by itself has no column: just `e`.
+// An index into it, `[0]`, follows it directly: `e[0]`.
 const whereLeft = (alias: string, column: string): string =>
-  column.includes('(') ? column : column === '' ? alias : `${alias}.${column}`;
+  column.includes('(') ? column : column === '' || column.startsWith('[') ? `${alias}${column}` : `${alias}.${column}`;
 
 // `index` is this alias's where-conditions in pipeline order - the same
 // order `ast.where` reports them in (see layout.ts's whereChips), since a new
@@ -653,19 +654,27 @@ export const unnestName = (column: string, taken: Set<string>): string => {
 };
 
 /**
- * What is typed in a column picker, `e.address.city`, as Pine: the element
- * `e` and the key's steps, each quoted when it isn't a plain name
- * (`e.'home address'`). Null unless it starts with one of `elements`.
- * Keys inside JSON aren't in the schema, so they are typed, not picked.
+ * What is typed in a picker, `data.address.city`, as Pine: one of `starts`
+ * (a column, or the elements of an `unnest:`) and a path inside it. Keys
+ * inside JSON aren't in the schema, so they are typed, not picked.
+ *
+ * The text becomes part of the query, so each key is written in a form
+ * Pine reads as a key and nothing else: a plain name as it is, anything
+ * else quoted, `data.'home address'`, with a quote inside doubled. `[n]`
+ * after a key is an array index. Null unless it starts with one of
+ * `starts`, or when a step is empty.
  */
-export const elementKeyText = (typed: string, elements: string[]): { element: string; text: string } | null => {
+export const typedPath = (typed: string, starts: string[]): { start: string; text: string } | null => {
   const [first, ...steps] = typed.trim().split('.');
-  if (!elements.includes(first) || steps.some(s => s === '')) return null;
-  const text = steps.reduce(
-    (name, step) => (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(step) ? `${name}.${step}` : `${name}.'${step.replace(/'/g, "''")}'`),
-    first,
-  );
-  return { element: first, text };
+  const [, start, firstIndexes] = first.match(/^(.*?)((?:\[\d+\])*)$/) ?? [];
+  if (!start || !starts.includes(start)) return null;
+  let text = `${start}${firstIndexes}`;
+  for (const step of steps) {
+    const [, key, indexes] = step.match(/^(.*?)((?:\[\d+\])*)$/) ?? [];
+    if (!key) return null;
+    text += /^[A-Za-z_][A-Za-z0-9_-]*$/.test(key) ? `.${key}${indexes}` : `.'${key.replace(/'/g, "''")}'${indexes}`;
+  }
+  return { start, text };
 };
 
 /**

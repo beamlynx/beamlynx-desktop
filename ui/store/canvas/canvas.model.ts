@@ -158,6 +158,8 @@ export type PickerItem = {
    * before this field existed.
    */
   columnHint?: string;
+  /** A JSON column: its row has a › that starts typing a path inside it, `data.`. */
+  json?: boolean;
   /**
    * Set only for a path-route item (openPathRoutePicker) whose destination
    * table is reachable more than one way - e.g. "via employee" - so two

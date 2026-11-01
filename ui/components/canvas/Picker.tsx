@@ -241,6 +241,7 @@ const Picker: React.FC = observer(() => {
   // without this, arrowing past the visible area kept "moving" a selection
   // the scrollable body never actually followed.
   const itemRefs = useRef(new Map<string, HTMLDivElement>());
+  const filterRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const id = flatItems[highlighted]?.id;
     if (id) itemRefs.current.get(id)?.scrollIntoView({ block: 'nearest' });
@@ -949,7 +950,34 @@ const Picker: React.FC = observer(() => {
     }
   };
 
+  // A JSON column's keys aren't in the schema, so its › (or Right on its
+  // row) starts typing a path inside it: the filter becomes `data.`, and
+  // what is typed next becomes a "nested" item (CanvasStore.setPickerFilter).
+  // The click lands on the row, so the focus is put back in the filter,
+  // with the caret after the dot, ready for the key.
+  const startPath = (item: PickerItem) => {
+    store.setPickerFilter(`${item.value}.`);
+    requestAnimationFrame(() => {
+      const input = filterRef.current;
+      if (!input) return;
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    });
+  };
+  const jsonItems = picker.groups.flatMap(g => g.items.filter(i => i.json));
+  // `data.` typed, or just opened with ›: say what to type next.
+  const pathStart = jsonItems.find(i => picker.filter === `${i.value}.`);
+
   const onListKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowRight') {
+      const item = flatItems[highlighted];
+      const input = e.target as HTMLInputElement;
+      if (item?.json && input.selectionStart === input.value.length) {
+        e.preventDefault();
+        startPath(item);
+      }
+      return;
+    }
     if (flatItems.length === 0) return;
     // Tab doubles as Down/Up (Shift+Tab) - moves through options rather
     // than leaving the picker, since it has nowhere else useful to go.
@@ -978,8 +1006,15 @@ const Picker: React.FC = observer(() => {
     <div ref={rootRef} style={anchoredStyle(picker.anchor)} data-testid="canvas-picker">
       <div style={headerStyle}>
         <input
+          ref={filterRef}
           autoFocus
-          placeholder={picker.request.kind === 'unnest' ? 'column, or a path: options.officers' : 'filter...'}
+          placeholder={
+            picker.request.kind === 'unnest'
+              ? 'column, or a path: options.officers'
+              : jsonItems.length
+                ? `filter, or ${jsonItems[0].value}.key`
+                : 'filter...'
+          }
           value={picker.filter}
           onChange={e => {
             const value = e.target.value;
@@ -1004,6 +1039,12 @@ const Picker: React.FC = observer(() => {
       <div className="styled-scrollbar" style={bodyStyle}>
         {picker.loading && <div style={{ opacity: 0.7 }}>loading...</div>}
         {picker.error && <div style={{ color: 'var(--canvas-warn)' }}>{picker.error}</div>}
+        {pathStart && (
+          <div data-testid="picker-path-hint" style={{ opacity: 0.6, padding: '3px 4px' }}>
+            type a key inside {pathStart.value}, like <code>{pathStart.value}.name</code> or{' '}
+            <code>{pathStart.value}.tags[0]</code>
+          </div>
+        )}
         {!picker.loading &&
           !picker.error &&
           picker.groups.map(group => {
@@ -1087,6 +1128,21 @@ const Picker: React.FC = observer(() => {
                           {item.label}
                         </span>
                         {item.detail && <span style={{ opacity: 0.5 }}>{item.detail}</span>}
+                        {item.json && (
+                          <span
+                            data-testid={`picker-path-${item.label}`}
+                            title={`A key inside ${item.label} (→)`}
+                            // Keeps the focus in the filter, where the key is typed.
+                            onMouseDown={e => e.preventDefault()}
+                            onClick={e => {
+                              e.stopPropagation();
+                              startPath(item);
+                            }}
+                            style={{ opacity: isHighlighted ? 0.9 : 0.45, padding: '0 4px', fontFamily: 'var(--code-font)' }}
+                          >
+                            {'{ } ›'}
+                          </span>
+                        )}
                       </div>
                       {/* Only rendered for a join candidate that shares its
                           table with another candidate in the same group -
