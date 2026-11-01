@@ -118,7 +118,7 @@ export class CanvasStore {
   // between 'node' stops; Left/Right walks every stop in order, visiting
   // each node's own items before crossing into the next node's. Holds the
   // stop's own identity, not a raw position - select/order/group pickers
-  // deliberately stay open across repeat toggles (toggleSelectColumn et al
+  // deliberately stay open across repeat toggles (addSelectColumn et al
   // never call closePicker), so a plain index captured before one of those
   // toggles can end up pointing at a totally different item once the list's
   // shape changes (confirmed live, back when node-focus and the config
@@ -286,7 +286,10 @@ export class CanvasStore {
       (n): n is CanvasTableNode => n.type === 'table-node' && n.id === alias,
     );
     const items: ConfigItem[] = [];
-    (node?.data.selectColumns ?? []).forEach(column => items.push({ kind: 'select', column }));
+    const selectColumns = node?.data.selectColumns ?? [];
+    selectColumns.forEach((column, i) =>
+      items.push({ kind: 'select', column, occurrence: actions.occurrenceAt(selectColumns, i) }),
+    );
     (node?.data.whereChips ?? []).forEach((_, index) => items.push({ kind: 'where', index }));
     (node?.data.orderChips ?? []).forEach(chip => items.push({ kind: 'order', column: actions.splitOrderItem(chip).column }));
     (node?.data.groupChips ?? []).forEach(column => items.push({ kind: 'group', column }));
@@ -330,6 +333,7 @@ export class CanvasStore {
   private static configItemKey(item: ConfigItem): string {
     if (item.kind === 'join-type') return 'join-type';
     if (item.kind === 'where') return `where:${item.index}`;
+    if (item.kind === 'select') return `select:${item.column}#${item.occurrence}`;
     return `${item.kind}:${item.column}`;
   }
 
@@ -408,6 +412,8 @@ export class CanvasStore {
         this.openWhereEditor(alias, item.index, anchor);
         return;
       case 'select':
+        this.openSelectNameEditor(alias, item.column, item.occurrence, anchor);
+        return;
       case 'group':
         // These two don't have a per-chip value/operator to prefill the way
         // a where condition or a join's type do (see canvas.model.ts's
@@ -459,13 +465,13 @@ export class CanvasStore {
         await this.removeWhereAt(alias, item.index);
         return;
       case 'select':
-        await this.toggleSelectColumn(alias, item.column);
+        await this.removeSelectColumn(alias, item.column, item.occurrence);
         return;
       case 'group':
         await this.toggleGroupColumn(alias, item.column);
         return;
       case 'order': {
-        // removeOrderAt takes an array index - unlike toggleSelectColumn/
+        // removeOrderAt takes an array index - unlike addSelectColumn/
         // toggleGroupColumn, there's no value-keyed remove for order (each
         // entry also carries a direction, not just a column name), so this
         // is the one case that still needs a fresh index lookup rather than
@@ -1030,7 +1036,7 @@ export class CanvasStore {
           this.focusNode(prefix + addedCheckpoint);
         }
         // The select/where/order pickers stay open across multiple picks
-        // (see toggleSelectColumn) with `request.alias` frozen from when
+        // (see addSelectColumn) with `request.alias` frozen from when
         // they were opened. If *this* commit is the one that pinned that
         // same node's alias, the picker is left holding the now-dangling
         // pre-pin alias - the next pick would read/write against an alias
@@ -1106,12 +1112,12 @@ export class CanvasStore {
   private static readonly defaultAnchor: PickerAnchor = { x: 24, y: 24 };
 
   /** A picker's probe: buildProbeExpression's text, built with its block's context. */
-  private probeFor(request: PickerRequest): Promise<Ast | undefined> {
+  private probeFor(request: PickerRequest, keepSelect = false): Promise<Ast | undefined> {
     const block = 'alias' in request ? this.scopeOf(request.alias).block : this.mainBlock;
-    return probeBuild(this.buildProbeExpression(request), this.session.connectionId, this.contextOf(block));
+    return probeBuild(this.buildProbeExpression(request, keepSelect), this.session.connectionId, this.contextOf(block));
   }
 
-  private buildProbeExpression(request: PickerRequest): string {
+  private buildProbeExpression(request: PickerRequest, keepSelect = false): string {
     if (request.kind === 'table') return '';
     // A node of an earlier block probes that block, with its own alias.
     const { block, alias } = this.scopeOf(request.alias);
@@ -1136,7 +1142,9 @@ export class CanvasStore {
     // 35-column list down to 34. Stripping that alias's own select:
     // segment before probing (for the group case only) restores the full
     // list, since the probe then looks exactly like nothing was selected.
-    if (request.kind === 'group') {
+    // Select strips it too: a column already selected can be picked again,
+    // to give the copy its own name with `as`, and stays in its place.
+    if (request.kind === 'group' || (request.kind === 'select' && !keepSelect)) {
       relevant = relevant.filter(s => !(s.owner === alias && s.kind === 'select'));
     }
     const base = (relevant.length ? toText(relevant) : text).replace(/\|\s*$/, '').trimEnd();
@@ -1180,7 +1188,7 @@ export class CanvasStore {
     // the dropdown visibly jump). A picker already open for the same
     // request just stays exactly as it is - EXCEPT `focusValue`: select/
     // order/group pickers deliberately stay open across repeat picks (see
-    // toggleSelectColumn), so clicking a DIFFERENT already-selected chip (or
+    // addSelectColumn), so clicking a DIFFERENT already-selected chip (or
     // moving the keyboard config cursor to one) while that same alias+kind
     // picker is still open from a moment ago must still move the highlight
     // there - without this, the picker silently kept showing wherever it
@@ -1652,7 +1660,7 @@ export class CanvasStore {
     // cursor (matching what Left/Right would land on); adding a new one
     // from the action bar just focuses the node itself - see
     // focusConfigItem's own comment for why these are kept distinct.
-    if (focusValue !== undefined && (kind === 'select' || kind === 'order' || kind === 'group')) {
+    if (focusValue !== undefined && (kind === 'order' || kind === 'group')) {
       this.focusConfigItem(alias, { kind, column: focusValue });
     } else {
       this.focusNode(alias);
@@ -1662,7 +1670,14 @@ export class CanvasStore {
       request,
       anchor,
       async () => {
-        const [ast, jsonColumns] = await Promise.all([this.probeFor(request), this.jsonColumnsOf(alias)]);
+        const [probed, jsonColumns] = await Promise.all([
+          this.probeFor(request).catch(() => undefined),
+          this.jsonColumnsOf(alias),
+        ]);
+        // Without its select step the stage may not build: a join after it
+        // can be on a name given there with `as`. The full stage is probed
+        // then, and the selected columns are added back below.
+        const ast = probed ?? (kind === 'select' ? await this.probeFor(request, true) : undefined);
         if (!ast) throw new Error('Failed to build column suggestions');
         // No dedicated hint category for group - see buildProbeExpression's
         // matching comment; reuses select's.
@@ -1818,8 +1833,13 @@ export class CanvasStore {
     this.closePicker();
   }
 
+  /** `*` in the select picker: adds every column not selected yet. The items already there stay as written. */
   async commitSelectColumns(alias: string, columns: string[]) {
-    await this.commit(base => actions.setSelectColumns(base, actions.resolveAlias(base, alias), columns), alias);
+    await this.commit(base => {
+      const resolvedAlias = actions.resolveAlias(base, alias);
+      const present = new Set(actions.getSelectColumns(base, resolvedAlias));
+      return actions.addSelectColumns(base, resolvedAlias, columns.filter(c => !present.has(c)));
+    }, alias);
   }
 
   /**
@@ -1851,15 +1871,61 @@ export class CanvasStore {
     await this.commit(base => actions.toggleElementPart(base, actions.resolveAlias(base, alias), kind, text), alias);
   }
 
-  async toggleSelectColumn(alias: string, column: string) {
+  /**
+   * Adds a column picked in the select picker, even one already selected:
+   * the copy can then be given its own name. The picker stays open for more
+   * picks. Only a chip's × removes. A key of the elements of an `unnest:` is
+   * added once.
+   */
+  async addSelectColumn(alias: string, column: string) {
     const element = this.elementKey(alias, column);
-    if (element) return this.toggleElementPart(alias, 'select', element.text);
-    await this.commit(base => {
-      const resolvedAlias = actions.resolveAlias(base, alias);
-      const current = actions.getSelectColumns(base, resolvedAlias);
-      const next = current.includes(column) ? current.filter(c => c !== column) : [...current, column];
-      return actions.setSelectColumns(base, resolvedAlias, next);
-    }, alias);
+    if (element) {
+      await this.commit(
+        base => actions.toggleElementPart(base, actions.resolveAlias(base, alias), 'select', element.text, true),
+        alias,
+      );
+      return;
+    }
+    await this.commit(base => actions.addSelectColumn(base, actions.resolveAlias(base, alias), column), alias);
+  }
+
+  /** The × on a select chip: removes that one copy of the column. */
+  async removeSelectColumn(alias: string, column: string, occurrence: number) {
+    await this.commit(
+      base => actions.removeSelectColumn(base, actions.resolveAlias(base, alias), column, occurrence),
+      alias,
+    );
+  }
+
+  /** A select chip's click: a field for the name the item is given with `as`. A second click closes it. */
+  openSelectNameEditor(alias: string, column: string, occurrence: number, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
+    const p = this.picker;
+    if (p.open && p.mode === 'select-name' && p.alias === alias && p.column === column && p.occurrence === occurrence) {
+      this.closePicker();
+      return;
+    }
+    const node = this.canvasGraph.nodes.find((n): n is CanvasTableNode => n.type === 'table-node' && n.id === alias);
+    const columns = node?.data.selectColumns ?? [];
+    let seen = 0;
+    const index = columns.findIndex(c => c === column && seen++ === occurrence);
+    const value = (index >= 0 ? node?.data.selectNames?.[index] : null) ?? '';
+    this.focusConfigItem(alias, { kind: 'select', column, occurrence });
+    this.picker = { open: true, mode: 'select-name', alias, column, occurrence, value, anchor };
+  }
+
+  setSelectNameValue(value: string) {
+    if (this.picker.open && this.picker.mode === 'select-name') this.picker = { ...this.picker, value };
+  }
+
+  /** Writes the typed name after `as`, made safe by actions.selectName. Empty drops the name. */
+  async commitSelectName() {
+    if (!this.picker.open || this.picker.mode !== 'select-name') return;
+    const { alias, column, occurrence, value } = this.picker;
+    this.closePicker();
+    await this.commit(
+      base => actions.setSelectName(base, actions.resolveAlias(base, alias), column, occurrence, value),
+      alias,
+    );
   }
 
   /**
@@ -2103,7 +2169,7 @@ export class CanvasStore {
 
   /**
    * Toggles one column in/out of `alias`'s order list; picker stays open for
-   * repeat picks, same as toggleSelectColumn - see its comment for why the
+   * repeat picks, same as addSelectColumn - see its comment for why the
    * current set is read from `base.segments` inside the commit rather than
    * the rendered canvasGraph.
    */
@@ -2348,7 +2414,7 @@ export class CanvasStore {
    * pin. The first click on an unpinned checkpoint does pay a commit round
    * trip - `checkpointPinning` is what lets its node show a loading state.
    * Committing the actual pick still goes through the full pinning pipeline
-   * regardless (see toggleSelectColumn etc.) - this only covers opening the
+   * regardless (see addSelectColumn etc.) - this only covers opening the
    * picker.
    */
   async openCheckpointPicker(

@@ -229,3 +229,8 @@ test('an unnest with :left shows it on its chip, and its name and x still work',
   };
   assert.equal(actions.removeUnnest(b, 'e'), 'activity as a | where: a.type = 1');
 });
+
+test('a select column picked again goes before the elements, and a picked element is added only once', () => {
+  assert.match(actions.addSelectColumn(base(), 'a', 'id'), /select: a\.id, a\.id, e\.field/);
+  assert.equal(actions.toggleElementPart(base(), 'a', 'select', 'e.field', true), expression);
+});

@@ -229,7 +229,87 @@ export const removeElementPart = (
 export const getSelectColumns = (base: PinnedBase, alias: string): string[] =>
   selectParts(base, alias)
     .filter(part => !isElementPart(base, part))
-    .map(part => columnAfterAlias(part, alias));
+    .map(part => selectPartColumn(part, alias));
+
+// `c_0.id as company_id`: the name a select item is given with `as`.
+const SELECT_NAME_RE = /\s+as\s+([A-Za-z_][A-Za-z0-9_-]*)\s*$/i;
+
+/** `c_0.id as company_id` -> `id`; `c_0.created_at => month` -> `created_at`. */
+const selectPartColumn = (part: string, alias: string): string =>
+  columnAfterAlias(part.replace(SELECT_NAME_RE, '').split(/\s+=>\s+/)[0].trim(), alias);
+
+/**
+ * A name typed for a select item, made safe to write after `as`: letters,
+ * digits and `_` only, not starting with a digit. Empty means no name.
+ */
+export const selectName = (typed: string): string => {
+  const name = typed.trim().replace(/[^A-Za-z0-9_]+/g, '_');
+  return /^[0-9]/.test(name) ? `_${name}` : name;
+};
+
+/**
+ * Rewrites the `occurrence`th select item of `alias` on `column` (the same
+ * column can be selected more than once, each under its own name) with
+ * `edit`; null removes it. The other items stay as written.
+ */
+const editSelectPart = (
+  base: PinnedBase,
+  alias: string,
+  column: string,
+  occurrence: number,
+  edit: (part: string) => string | null,
+): string => {
+  const parts = selectParts(base, alias);
+  let seen = 0;
+  const index = parts.findIndex(
+    part => !isElementPart(base, part) && selectPartColumn(part, alias) === column && seen++ === occurrence,
+  );
+  if (index < 0) return toText(base.segments);
+  const edited = edit(parts[index]);
+  const next = edited === null ? parts.filter((_, i) => i !== index) : parts.map((p, i) => (i === index ? edited : p));
+  return toText(upsertOwnedSegment(base.segments, alias, 'select', next.length ? `select: ${next.join(', ')}` : null));
+};
+
+/**
+ * Adds `alias.column` for each of `columns` to the select step, even one
+ * already there: a second copy can get its own name. The items already
+ * there stay as written.
+ */
+export const addSelectColumns = (base: PinnedBase, alias: string, columns: string[]): string => {
+  if (columns.length === 0) return toText(base.segments);
+  const parts = selectParts(base, alias);
+  // Before the elements' items, which are listed apart (see setSelectColumns).
+  const at = parts.findIndex(part => isElementPart(base, part));
+  const next = [...parts];
+  next.splice(at < 0 ? parts.length : at, 0, ...columns.map(c => `${alias}.${c}`));
+  return toText(upsertOwnedSegment(base.segments, alias, 'select', `select: ${next.join(', ')}`));
+};
+
+export const addSelectColumn = (base: PinnedBase, alias: string, column: string): string =>
+  addSelectColumns(base, alias, [column]);
+
+/** Removes one select item: the × on its chip. */
+export const removeSelectColumn = (base: PinnedBase, alias: string, column: string, occurrence: number): string =>
+  editSelectPart(base, alias, column, occurrence, () => null);
+
+/** Names one select item with `as`, or drops its name when `name` is empty. */
+export const setSelectName = (
+  base: PinnedBase,
+  alias: string,
+  column: string,
+  occurrence: number,
+  name: string,
+): string => {
+  const safe = selectName(name);
+  return editSelectPart(base, alias, column, occurrence, part => {
+    const bare = part.replace(SELECT_NAME_RE, '').trim();
+    return safe ? `${bare} as ${safe}` : bare;
+  });
+};
+
+/** Which copy of its column the chip at `index` is: `id`, `id as a`, `id as b` are copies 0, 1 and 2. */
+export const occurrenceAt = (columns: string[], index: number): number =>
+  columns.slice(0, index).filter(c => c === columns[index]).length;
 
 /**
  * `c_0.data.plan` -> `data.plan`: the column, and any path into its JSON
@@ -687,6 +767,7 @@ export const toggleElementPart = (
   alias: string,
   kind: 'select' | 'order' | 'group',
   text: string,
+  addOnly = false,
 ): string => {
   const column = (part: string) => splitOrderItem(part).column.toLowerCase();
   const present =
@@ -701,7 +782,7 @@ export const toggleElementPart = (
             '',
           ),
         ).some(p => column(p) === column(text));
-  if (present) return removeElementPart(base, alias, kind, text);
+  if (present) return addOnly ? toText(base.segments) : removeElementPart(base, alias, kind, text);
   if (kind === 'group') {
     const index = stageGroupIndex(base.segments, alias);
     if (index >= 0) {

@@ -25,6 +25,8 @@ export type CanvasTableNodeData = {
   order: number;
   removable: boolean;
   selectColumns: string[];
+  /** The name each of `selectColumns` was given with `as`, or null. The same column can be selected more than once. */
+  selectNames?: (string | null)[];
   whereChips: string[]; // display text, e.g. "id = 1"
   orderChips: string[]; // display text, e.g. "name desc"
   groupChips: string[]; // this alias's own contribution to the one shared group: segment
@@ -252,7 +254,8 @@ export const ORDER_DIRECTIONS: { direction: OrderDirection; label: string; key: 
  * item still being highlighted.
  */
 export type ConfigItem =
-  | { kind: 'select'; column: string }
+  // The same column can be selected more than once: `occurrence` says which copy.
+  | { kind: 'select'; column: string; occurrence: number }
   | { kind: 'join-type' }
   | { kind: 'where'; index: number }
   | { kind: 'order'; column: string }
@@ -306,6 +309,17 @@ export type PickerState =
       /** Same pipeline-order indexing as removeOrderColumnAt/setOrderDirectionAt. */
       index: number;
       current: OrderDirection;
+      anchor: PickerAnchor;
+    }
+  | {
+      open: true;
+      mode: 'select-name';
+      alias: string;
+      column: string;
+      /** Which copy of `column` in the select step, as in actions.occurrenceAt. */
+      occurrence: number;
+      /** The input's live text, seeded with the item's current name. */
+      value: string;
       anchor: PickerAnchor;
     }
   | {

@@ -3,7 +3,7 @@ import { observer } from 'mobx-react-lite';
 import { Handle, NodeProps, Position, useUpdateNodeInternals } from 'reactflow';
 import { CanvasHandle, CanvasTableNodeData, PickerState } from '../../../store/canvas/canvas.model';
 import { getNodeHeight, nodeWidth } from '../../../store/canvas/layout';
-import { unnestChipName } from '../../../store/canvas/pine-actions';
+import { occurrenceAt, unnestChipName } from '../../../store/canvas/pine-actions';
 import { useCanvasStore } from '../canvas-context';
 import { useStores } from '../../../store/store-container';
 import { NOTCHED_NODE_THEMES } from '../../../styles/palette/themes';
@@ -22,6 +22,7 @@ export const pickerAliasFor = (picker: PickerState): string | null => {
     picker.mode === 'more' ||
     picker.mode === 'traverse' ||
     picker.mode === 'order-direction' ||
+    picker.mode === 'select-name' ||
     picker.mode === 'limit-value'
   )
     return picker.alias;
@@ -68,6 +69,8 @@ export const activeOperationFor = (picker: PickerState, alias: string): Operatio
   // A per-chip direction popover (a click on an existing order chip, or the
   // keyboard config cursor) is still editing that node's order operation.
   if (picker.mode === 'order-direction') return picker.alias === alias ? 'order' : null;
+  // A select chip's name field is still editing that node's select.
+  if (picker.mode === 'select-name') return picker.alias === alias ? 'select' : null;
   // The limit number-entry popover - same dimming as any other open picker,
   // even though `limit:` itself isn't owned by `alias` (see
   // CanvasStore.openLimitEditor).
@@ -899,12 +902,26 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
       />
       <ChipRow
         label="sel"
-        chips={data.selectColumns}
+        chips={data.selectColumns.map((column, i) => {
+          const name = data.selectNames?.[i];
+          return name ? `${column} as ${name}` : column;
+        })}
         readOnlyChips={data.elementChips?.select}
         onRemoveReadOnly={i => void canvasStore.removeElementPart(data.alias, 'select', data.elementChips?.select[i] ?? '')}
-        onRemove={i => void canvasStore.toggleSelectColumn(data.alias, data.selectColumns[i])}
-        onSelect={(i, anchor) => canvasStore.openColumnPicker('select', data.alias, anchor, data.selectColumns[i])}
-        highlightIndex={cursorItem?.kind === 'select' ? data.selectColumns.indexOf(cursorItem.column) : undefined}
+        // The same column can be selected more than once: a chip is one copy.
+        onRemove={i =>
+          void canvasStore.removeSelectColumn(data.alias, data.selectColumns[i], occurrenceAt(data.selectColumns, i))
+        }
+        onSelect={(i, anchor) =>
+          canvasStore.openSelectNameEditor(data.alias, data.selectColumns[i], occurrenceAt(data.selectColumns, i), anchor)
+        }
+        highlightIndex={
+          cursorItem?.kind === 'select'
+            ? data.selectColumns.findIndex(
+                (column, i) => column === cursorItem.column && occurrenceAt(data.selectColumns, i) === cursorItem.occurrence,
+              )
+            : undefined
+        }
       />
       <ChipRow
         label="where"

@@ -15,6 +15,7 @@ import {
   WHERE_TODAY_OPERATOR,
 } from '../../store/canvas/canvas.model';
 import { looksLikeDateColumn } from '../../store/canvas/relative-date';
+import { selectName } from '../../store/canvas/pine-actions';
 import { useCanvasStore } from './canvas-context';
 
 const pluralize = (count: number, unit: string): string => (count === 1 ? unit : `${unit}s`);
@@ -205,11 +206,14 @@ const Picker: React.FC = observer(() => {
           ? node?.data.groupChips ?? []
           : (node?.data.orderChips ?? []).map(chip => chip.replace(/\s+(asc|desc)$/i, ''));
   }
+  // A select column can be picked again, for a copy with its own name, so it
+  // stays in its place in the list with a count rather than sinking.
+  const sunkColumns = picker.open && picker.mode === 'list' && picker.request.kind === 'select' ? [] : selectedColumns;
 
   const flatItems: PickerItem[] =
     picker.open && picker.mode === 'list' && !picker.loading && !picker.error
       ? picker.groups.flatMap(g =>
-          sinkSelected(filterItems(g.items, picker.filter), selectedColumns),
+          sinkSelected(filterItems(g.items, picker.filter), sunkColumns),
         )
       : [];
   const flatKey = flatItems.map(i => i.id).join('|');
@@ -613,6 +617,59 @@ const Picker: React.FC = observer(() => {
     );
   }
 
+  if (picker.mode === 'select-name') {
+    const node = store.canvasGraph.nodes.find(
+      (n): n is CanvasTableNode => n.id === picker.alias && n.type === 'table-node',
+    );
+    return (
+      <div
+        ref={rootRef}
+        style={{ ...anchoredStyle(picker.anchor), padding: 8, maxHeight: 'none' }}
+        data-testid="canvas-picker"
+      >
+        <div style={{ marginBottom: 6, opacity: 0.7 }}>
+          {node?.data.table ?? picker.alias}.{picker.column}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ opacity: 0.7, fontFamily: 'var(--code-font)' }}>as</span>
+          <input
+            autoFocus
+            data-testid="select-name-input"
+            placeholder="name"
+            value={picker.value}
+            onChange={e => store.setSelectNameValue(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') void store.commitSelectName();
+              if (e.key === 'Escape') store.closePicker();
+            }}
+            style={{ ...inputStyle, width: 160 }}
+          />
+        </div>
+        {/* What will be written: letters, digits and _ only. */}
+        {picker.value.trim() && selectName(picker.value) !== picker.value.trim() && (
+          <div data-testid="select-name-preview" style={{ marginTop: 4, opacity: 0.6 }}>
+            saved as <code>{selectName(picker.value)}</code>
+          </div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
+          <span
+            style={{ cursor: 'pointer', color: 'var(--canvas-warn)' }}
+            onClick={() =>
+              void store
+                .removeSelectColumn(picker.alias, picker.column, picker.occurrence)
+                .then(() => store.closePicker())
+            }
+          >
+            remove
+          </span>
+          <span style={{ cursor: 'pointer' }} onClick={() => void store.commitSelectName()}>
+            save
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   if (picker.mode === 'limit-value') {
     return (
       <div
@@ -923,7 +980,7 @@ const Picker: React.FC = observer(() => {
         // the just-typed filter in place would hide every other column
         // behind it, so clear it to hand the input back ready for the next.
         void (request.kind === 'select'
-          ? store.toggleSelectColumn(request.alias, item.value)
+          ? store.addSelectColumn(request.alias, item.value)
           : request.kind === 'order'
             ? store.toggleOrderColumn(request.alias, item.value)
             : store.toggleGroupColumn(request.alias, item.value));
@@ -1048,7 +1105,7 @@ const Picker: React.FC = observer(() => {
         {!picker.loading &&
           !picker.error &&
           picker.groups.map(group => {
-            const items = sinkSelected(filterItems(group.items, picker.filter), selectedColumns);
+            const items = sinkSelected(filterItems(group.items, picker.filter), sunkColumns);
             if (items.length === 0) return null;
             return (
               <div key={group.label || 'default'} style={{ marginBottom: 6 }}>
@@ -1119,13 +1176,20 @@ const Picker: React.FC = observer(() => {
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span>
-                          {(picker.request.kind === 'select' ||
-                            picker.request.kind === 'order' ||
-                            picker.request.kind === 'group') &&
+                          {(picker.request.kind === 'order' || picker.request.kind === 'group') &&
                           selectedColumns.includes(item.value)
                             ? '☑ '
                             : ''}
                           {item.label}
+                          {picker.request.kind === 'select' && selectedColumns.includes(item.value) && (
+                            <span
+                              data-testid={`picker-count-${item.label}`}
+                              title="Already selected. Pick it again to add a copy with its own name."
+                              style={{ opacity: 0.5, marginLeft: 6 }}
+                            >
+                              ×{selectedColumns.filter(c => c === item.value).length}
+                            </span>
+                          )}
                         </span>
                         {item.detail && <span style={{ opacity: 0.5 }}>{item.detail}</span>}
                         {item.json && (
