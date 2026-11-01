@@ -8,7 +8,6 @@ import {
   StorageOutlined,
   PaletteOutlined,
   TuneOutlined,
-  PolicyOutlined,
   HubOutlined,
   InfoOutlined,
   AccountCircleOutlined,
@@ -49,7 +48,6 @@ const SECTION_ICONS: Record<SettingsSection, SvgIconComponent> = {
   connections: StorageOutlined,
   theme: PaletteOutlined,
   preferences: TuneOutlined,
-  'access-policy': PolicyOutlined,
   mcp: HubOutlined,
   account: AccountCircleOutlined,
   about: InfoOutlined,
@@ -181,7 +179,7 @@ const SideRail = observer(({ hasUnreadUpdates, onOpenChangelog }: { hasUnreadUpd
       ? `Agent: waiting for your answer`
       : global.investigations.length > 0
         ? 'Open the agent’s investigation'
-        : 'Connect an agent';
+        : 'Agent: connect one, and choose its databases';
   // One item for agents: with no investigation yet it opens the setup, and
   // after that the agent's work, which links to the setup again.
   const setupOpen = global.showSettings && global.settingsSection === 'mcp';

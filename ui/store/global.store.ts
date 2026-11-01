@@ -136,7 +136,7 @@ export type PendingConnectionSwitch =
   | { kind: 'select'; connectionId: string }
   | { kind: 'connectToSavedProfile'; id: string };
 
-export type SettingsSection = 'connections' | 'theme' | 'preferences' | 'access-policy' | 'mcp' | 'account' | 'about';
+export type SettingsSection = 'connections' | 'theme' | 'preferences' | 'mcp' | 'account' | 'about';
 
 // Which edge the session tab strip runs along -- see tabOrientation below.
 // Deliberately its own type rather than reusing the inline
@@ -210,9 +210,9 @@ export class GlobalStore {
   // getter reads this same shared array, so an edit here is visible to
   // every open tab on its next read.
   accessPolicies: AccessPolicy[] = [];
-  // Which policy, and which of its rules, Settings should show when it next
-  // opens. See openAccessPolicy.
-  accessPolicyFocus: { policyId: string; ruleId?: string } | null = null;
+  // Which database the Agent page should open at, and which of its data
+  // masking rules to pick out. See openAgentDatabase.
+  agentDatabaseFocus: { connectionId: string; ruleId?: string } | null = null;
   credentialsStatus: CredentialsStatus | null = null;
 
   // Desktop-only: one investigation per Claude session that uses beamlynx
@@ -1067,7 +1067,11 @@ export class GlobalStore {
     return this.accessPolicies;
   };
 
-  /** The templates: Settings -> Policy templates. Copied into a connection when attached. */
+  /**
+   * The templates: the rules a connection's data masking can start from.
+   * The UI never calls them templates: the built-in one is "Recommended",
+   * and any made before 0.72.0 are listed by name. Copied, never shared.
+   */
   get policyTemplates(): AccessPolicy[] {
     // The built-in Default first, then your own in the order they were made.
     const templates = this.accessPolicies.filter(p => !p.connectionId);
@@ -1153,19 +1157,17 @@ export class GlobalStore {
   };
 
   /**
-   * Opens Settings at one policy, with one of its rules picked out: where
-   * the results grid sends someone to change a rule that isn't about a
-   * single column. A connection's own policy is under Database
-   * Connections, a template under Policy templates.
+   * Opens the Agent page at one database, with its data masking open and
+   * one of its rules picked out when `ruleId` is given. Where the results
+   * grid and Database Connections send someone to change what agents see.
    */
-  openAccessPolicy = (policyId: string, ruleId?: string) => {
-    this.accessPolicyFocus = { policyId, ruleId };
-    const own = this.accessPolicies.find(p => p.id === policyId)?.connectionId;
-    this.setShowSettings(true, own ? 'connections' : 'access-policy');
+  openAgentDatabase = (connectionId: string, ruleId?: string) => {
+    this.agentDatabaseFocus = { connectionId, ruleId };
+    this.showSettingsSection('mcp');
   };
 
-  clearAccessPolicyFocus = () => {
-    this.accessPolicyFocus = null;
+  clearAgentDatabaseFocus = () => {
+    this.agentDatabaseFocus = null;
   };
 
   consumeReconnectHint = () => {
@@ -1819,7 +1821,7 @@ export class GlobalStore {
     await this.refreshPolicyState();
     const policy = this.accessPolicies.find(p => p.id === step.proposal.policyId);
     if (!policy || (step.after && !sameRules(policy.rules, step.after))) {
-      throw new Error('The masking policy has changed since this was applied. Undo it in Settings instead.');
+      throw new Error('The data masking has changed since this was applied. Undo it on the Agent page instead.');
     }
     if (!(await this.setAccessPolicyRules(step.proposal.policyId, step.before))) return false;
     this.investigations.find(i => i.id === investigationId)!.setProposal(proposalId, 'undone');
@@ -1963,9 +1965,9 @@ export class GlobalStore {
       runInAction(() => {
         this.connectionError =
           result.reason === 'no-active-policy'
-            ? "This connection's policy has no rule on, so it would mask nothing. Turn a rule on first."
+            ? "This database's data masking has no rule on, so it would mask nothing. Turn a rule on first."
             : result.reason === 'needs-template'
-              ? 'Pick a template to start the masking policy from.'
+              ? 'Choose the rules to start its data masking from.'
               : 'That connection no longer exists.';
       });
       return false;
@@ -2003,8 +2005,8 @@ export class GlobalStore {
       runInAction(() => {
         this.connectionError =
           result.reason === 'mcp-requires-policy'
-            ? 'MCP access is on for this connection -- pick "None" or a template with an active rule, or turn MCP off first.'
-            : 'That connection or template no longer exists.';
+            ? 'Agents can use this database, so its data masking needs a rule that is on. Pick other rules, or turn agents off for it first.'
+            : 'That database or those rules no longer exist.';
       });
       return false;
     }
@@ -2014,6 +2016,39 @@ export class GlobalStore {
       );
     });
     // The connection's new policy, and its old one gone.
+    await this.refreshAccessPolicies();
+    return true;
+  };
+
+  /**
+   * Gives a connection a fresh copy of another connection's data masking
+   * rules: "Same as <database>" on the Agent page. The two stay separate.
+   * See beamlynx-desktop's credential-store.ts copyPolicyFrom. A desktop
+   * app without it says so instead of failing silently.
+   */
+  copyPolicyFrom = async (id: string, sourceConnectionId: string): Promise<boolean> => {
+    const desktop = typeof window === 'undefined' ? undefined : window.beamlynxDesktop;
+    if (!desktop?.credentials.copyPolicyFrom) {
+      runInAction(() => {
+        this.connectionError = "This version of the app can't copy another database's rules.";
+      });
+      return false;
+    }
+    const result = await desktop.credentials.copyPolicyFrom(id, sourceConnectionId);
+    if (!result.ok) {
+      runInAction(() => {
+        this.connectionError =
+          result.reason === 'mcp-requires-policy'
+            ? 'That database has no masking rule on, so copying it would mask nothing.'
+            : 'That database no longer exists, or has no data masking.';
+      });
+      return false;
+    }
+    runInAction(() => {
+      this.connections = this.connections.map(c =>
+        c.id === id ? { ...c, mcpEnabled: result.profile.mcpEnabled, policyId: result.profile.policyId } : c,
+      );
+    });
     await this.refreshAccessPolicies();
     return true;
   };

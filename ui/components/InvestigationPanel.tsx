@@ -8,7 +8,7 @@ import {
   ErrorOutline,
   LightbulbOutlined,
   PolicyOutlined,
-  PowerOutlined,
+  SettingsOutlined,
   Send,
   VisibilityOutlined,
 } from '@mui/icons-material';
@@ -171,9 +171,9 @@ const ProposalStep = observer(
       setError('');
       try {
         const ok = await global.answerPolicyProposal(investigation.id, proposal.id, apply, comment.trim() || undefined);
-        if (!ok) setError("Couldn't save that to the masking policy, so nothing changed.");
+        if (!ok) setError("Couldn't save that to the data masking, so nothing changed.");
       } catch (e) {
-        setError(`Couldn't save that to the masking policy, so nothing changed. ${messageOf(e)}`);
+        setError(`Couldn't save that to the data masking, so nothing changed. ${messageOf(e)}`);
       } finally {
         setBusy(false);
       }
@@ -183,7 +183,7 @@ const ProposalStep = observer(
       setError('');
       try {
         const ok = await global.undoPolicyProposal(investigation.id, proposal.id);
-        if (!ok) setError("Couldn't put the masking policy back.");
+        if (!ok) setError("Couldn't put the data masking back.");
       } catch (e) {
         setError(messageOf(e));
       } finally {
@@ -204,7 +204,7 @@ const ProposalStep = observer(
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
           <PolicyOutlined sx={{ fontSize: 16, color: pending ? 'var(--notification-color)' : dim }} />
           <Typography sx={{ fontSize: 13, fontWeight: 600, color: 'var(--text-color)' }}>
-            The agent proposes a policy change
+            The agent proposes a change to data masking
           </Typography>
         </Box>
         {proposal.reason && (
@@ -279,7 +279,7 @@ const ProposalStep = observer(
         ) : (
           <>
             <Typography sx={{ fontSize: 12, color: dim, mb: 1, lineHeight: 1.4 }}>
-              Changes {connection ? `${connection.label}'s` : "this connection's"} masking policy. No other connection
+              Changes {connection ? `${connection.label}'s` : "this database's"} data masking. No other database
               changes.
             </Typography>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
@@ -340,7 +340,7 @@ const RevealStep = observer(
           </Typography>
         </Box>
         <Typography sx={{ fontSize: 12, color: dim, mb: 0.5, lineHeight: 1.4 }}>
-          Your masking policy masks some of what this query returns.
+          Data masking hides some of what this query returns.
           {step.reason ? ` Its reason: “${step.reason}”` : ''}
         </Typography>
         <Box
@@ -720,11 +720,11 @@ const InvestigationPanel = observer(({ investigation }: { investigation: Investi
           <IconButton
             size="small"
             onClick={() => global.showSettingsSection('mcp')}
-            aria-label="Connect another agent"
-            title="Connect another agent: set up Claude Code or another AI tool in Settings"
+            aria-label="Agent settings"
+            title="Agent settings: connect an agent, choose its databases, and data masking"
             sx={{ color: dim, mt: '-2px', '&:hover': { color: 'var(--text-color)' } }}
           >
-            <PowerOutlined sx={{ fontSize: 17 }} />
+            <SettingsOutlined sx={{ fontSize: 17 }} />
           </IconButton>
           <IconButton
             size="small"

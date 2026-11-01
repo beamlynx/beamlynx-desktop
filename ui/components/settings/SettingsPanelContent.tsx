@@ -9,7 +9,6 @@ import { TEXT_SIZE_SCALE } from '../../styles/text-size';
 import ConnectionsSection from './ConnectionsSection';
 import ThemeSection from './ThemeSection';
 import PreferencesSection from './PreferencesSection';
-import AccessPolicySection from './AccessPolicySection';
 import McpSection from './McpSection';
 import AboutSection from './AboutSection';
 import AccountSection from './AccountSection';
@@ -23,19 +22,19 @@ export const RAIL_ITEMS: { id: SettingsSection; label: string }[] = [
   { id: 'connections', label: 'Database Connections' },
   { id: 'theme', label: 'Appearance' },
   { id: 'preferences', label: 'Preferences' },
-  { id: 'access-policy', label: 'Masking templates' },
-  // No 'mcp' item: connecting an agent opens from the sidebar's Agent item
-  // (SideRail.tsx), where agents' work shows too. The section stays.
+  // No 'mcp' item: the Agent page opens from the sidebar's Agent item
+  // (SideRail.tsx), where agents' work shows too. It holds connecting an
+  // agent, the databases it can use, and their data masking: masking only
+  // matters once an agent is involved, so it has no item of its own.
   { id: 'account', label: 'Account' },
   { id: 'about', label: 'About' },
 ];
 
-// 'access-policy' is desktop-only for the same reason 'mcp' is: it exists
-// entirely to govern MCP access, which doesn't exist in browser mode.
+// 'mcp' and 'account' only exist in the desktop app.
 // Exported for the same reason RAIL_ITEMS is -- useSettingsKeybindings.ts's
 // j/k rail navigation skips these in browser mode too, off this exact list,
 // not a second hand-kept one.
-export const DESKTOP_ONLY_SECTIONS: SettingsSection[] = ['access-policy', 'mcp', 'account'];
+export const DESKTOP_ONLY_SECTIONS: SettingsSection[] = ['mcp', 'account'];
 
 /**
  * The open section's content -- the entire "what Settings actually shows"
@@ -110,7 +109,6 @@ const SettingsPanelContent = () => {
           {activeSection === 'connections' && <ConnectionsSection />}
           {activeSection === 'theme' && <ThemeSection />}
           {activeSection === 'preferences' && <PreferencesSection />}
-          {activeSection === 'access-policy' && <AccessPolicySection />}
           {activeSection === 'mcp' && <McpSection />}
           {activeSection === 'account' && <AccountSection />}
           {activeSection === 'about' && <AboutSection />}

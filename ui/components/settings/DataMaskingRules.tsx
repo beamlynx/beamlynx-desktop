@@ -1,26 +1,19 @@
-import AddIcon from '@mui/icons-material/Add';
 import BlockIcon from '@mui/icons-material/Block';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import CloseIcon from '@mui/icons-material/Close';
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import EditIcon from '@mui/icons-material/Edit';
 import { Box, Button, IconButton, MenuItem, Switch, TextField, Typography } from '@mui/material';
 import { observer } from 'mobx-react-lite';
-import { useEffect, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AccessPolicy, AccessPolicyModule, ColumnMatcher } from '../../store/client';
 import { useStores } from '../../store/store-container';
 import { describeMatcher } from '../../utils/accessPolicy';
-import ConfirmDialog from '../ConfirmDialog';
-import InfoHint from '../InfoHint';
 import ToggleRow from './ToggleRow';
 
 
 /**
- * Policy templates -- see GlobalStore.policyTemplates and
- * beamlynx-desktop's credential-store.ts. A template is never applied to a
- * query: attaching one to a connection (Database Connections section's own
- * per-row picker) copies its rules into that connection's own policy, whose
- * rules are edited there, with PolicyRules below.
+ * A database's data masking rules, edited on the Agent page (McpSection.tsx).
+ * Each connection has its own policy, copied from the recommended rules or
+ * from another database's (see beamlynx-desktop's credential-store.ts).
  *
  * A policy's rules are shown as two lists that read as one sentence: agents
  * see what the Allow rules match, except what the Except rules match. An
@@ -254,7 +247,7 @@ const RuleList = ({
 
 export const PolicyRules = observer(({ policy, focusedRuleId }: { policy: AccessPolicy; focusedRuleId?: string }) => {
   const { global } = useStores();
-  // The built-in Default template can't change: its rules are shown, not edited.
+  // The built-in recommended rules can't change: shown, not edited.
   const readOnly = !!policy.builtIn;
   const hides = policy.rules.filter(m => m.type === 'hide');
   const builtIns = policy.rules.filter(m => m.type !== 'hide' && m.builtIn);
@@ -268,9 +261,9 @@ export const PolicyRules = observer(({ policy, focusedRuleId }: { policy: Access
         setError('');
         return true;
       }
-      setError("Couldn't save that to the masking policy, so nothing changed. It may have been changed elsewhere.");
+      setError("Couldn't save that to the data masking, so nothing changed. It may have been changed elsewhere.");
     } catch (e) {
-      setError(`Couldn't save that to the masking policy, so nothing changed. ${e instanceof Error ? e.message : String(e)}`);
+      setError(`Couldn't save that to the data masking, so nothing changed. ${e instanceof Error ? e.message : String(e)}`);
     }
     // Show the policy as it is stored.
     void global.refreshAccessPolicies().catch(() => undefined);
@@ -282,12 +275,6 @@ export const PolicyRules = observer(({ policy, focusedRuleId }: { policy: Access
       {error && (
         <Typography variant="body2" role="alert" sx={{ color: 'var(--text-warning-color)', mb: 2 }}>
           {error}
-        </Typography>
-      )}
-      {readOnly && (
-        <Typography variant="body2" sx={{ color: 'var(--canvas-text-dim)', mb: 2 }}>
-          Built in, so it can&apos;t change. Every connection that starts from it gets these rules, and edits its own
-          copy. For other starting rules, make a new template.
         </Typography>
       )}
       <RuleList
@@ -336,217 +323,3 @@ export const PolicyRules = observer(({ policy, focusedRuleId }: { policy: Access
     </>
   );
 });
-
-const AccessPolicySection = () => {
-  const { global } = useStores();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [renamingId, setRenamingId] = useState<string | null>(null);
-  const [renameValue, setRenameValue] = useState('');
-  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
-  // Opened at one template and rule (openAccessPolicy): select that
-  // template, and keep the rule picked out until the next visit. A
-  // connection's own policy is opened under Database Connections instead.
-  const [focusedRuleId, setFocusedRuleId] = useState<string | undefined>();
-  const focus = global.accessPolicyFocus;
-  const templates = global.policyTemplates;
-  useEffect(() => {
-    if (!focus || !templates.some(t => t.id === focus.policyId)) return;
-    setSelectedId(focus.policyId);
-    setFocusedRuleId(focus.ruleId);
-    global.clearAccessPolicyFocus();
-  }, [focus, global, templates]);
-
-  // Keep a selection alive across policy list changes: default to the
-  // first policy once any exist, and fall back the same way if the
-  // currently-selected one gets deleted out from under it.
-  const selected = templates.find(p => p.id === selectedId) ?? templates[0];
-  if (selected && selected.id !== selectedId) setSelectedId(selected.id);
-
-  const startRename = (e: MouseEvent<SVGSVGElement>, id: string, currentName: string) => {
-    e.stopPropagation();
-    setRenamingId(id);
-    setRenameValue(currentName);
-  };
-
-  const commitRename = async (id: string) => {
-    const trimmed = renameValue.trim();
-    setRenamingId(null);
-    const current = templates.find(p => p.id === id);
-    if (!trimmed || trimmed === current?.name) return;
-    await global.renameAccessPolicy(id, trimmed);
-  };
-
-  // Deleting asks in a dialog, like every other choice that can't be undone.
-  const handleDeleteClick = (e: MouseEvent<SVGSVGElement>, id: string) => {
-    e.stopPropagation();
-    setConfirmingDeleteId(id);
-  };
-
-  const handleCreate = async () => {
-    const policy = await global.createAccessPolicy('New template');
-    if (policy) {
-      setSelectedId(policy.id);
-      setRenamingId(policy.id);
-      setRenameValue(policy.name);
-    }
-  };
-
-  return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <Box
-        sx={{
-          flexShrink: 0,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 0.75,
-          pb: 1.5,
-          mb: 2,
-          borderBottom: '1px solid var(--border-color)',
-        }}
-      >
-        <Typography variant="h6" component="h2" sx={{ color: 'var(--text-color)' }}>
-          Masking templates
-        </Typography>
-        <InfoHint
-          text="Masked columns come back as xxxxx. Agents can still filter and join on them."
-        />
-      </Box>
-
-      <Typography variant="body2" sx={{ flexShrink: 0, color: 'var(--canvas-text-dim)', mb: 2 }}>
-        Each connection starts from a copy of a template.
-      </Typography>
-
-      {/* The policies as a strip above the rules, not a column beside
-          them: the settings panel is narrow, and the rules need its width. */}
-      <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <Box
-          sx={{
-            flexShrink: 0,
-            display: 'flex',
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            gap: 0.5,
-            borderBottom: '1px solid var(--border-color)',
-            pb: 1.5,
-          }}
-        >
-          {templates.map(policy => (
-              <Box
-                key={policy.id}
-                onClick={() => setSelectedId(policy.id)}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 0.5,
-                  px: 1,
-                  py: 0.75,
-                  cursor: 'pointer',
-                  borderRadius: 1,
-                  maxWidth: '100%',
-                  backgroundColor: policy.id === selected?.id ? 'var(--node-column-bg)' : 'transparent',
-                  '&:hover': { backgroundColor: 'var(--node-column-bg)' },
-                }}
-              >
-                {renamingId === policy.id ? (
-                  <TextField
-                    autoFocus
-                    variant="standard"
-                    size="small"
-                    value={renameValue}
-                    onClick={e => e.stopPropagation()}
-                    onChange={e => setRenameValue(e.target.value)}
-                    onBlur={() => commitRename(policy.id)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        commitRename(policy.id);
-                      } else if (e.key === 'Escape') {
-                        setRenamingId(null);
-                      }
-                    }}
-                    sx={{
-                      width: 140,
-                      '& .MuiInput-input': { py: 0, fontFamily: 'var(--canvas-font)', fontSize: '13px', color: 'var(--text-color)' },
-                      '& .MuiInput-underline:before': { borderBottomColor: 'var(--border-color)' },
-                    }}
-                  />
-                ) : (
-                  <Typography
-                    component="span"
-                    variant="body2"
-                    sx={{
-                      minWidth: 0,
-                      fontFamily: 'var(--canvas-font)',
-                      fontSize: '13px',
-                      color: policy.id === selected?.id ? 'var(--text-color)' : 'var(--canvas-text-dim)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {policy.name}
-                  </Typography>
-                )}
-                {!policy.builtIn && (
-                  <>
-                    <EditIcon
-                      onClick={e => startRename(e, policy.id, policy.name)}
-                      titleAccess="Rename template"
-                      sx={{ fontSize: 14, cursor: 'pointer', opacity: 0.35, flexShrink: 0, '&:hover': { opacity: 0.9 } }}
-                    />
-                    <DeleteOutlineIcon
-                      onClick={e => handleDeleteClick(e, policy.id)}
-                      titleAccess="Delete template"
-                      sx={{ fontSize: 14, cursor: 'pointer', flexShrink: 0, opacity: 0.35, '&:hover': { opacity: 0.9 } }}
-                    />
-                  </>
-                )}
-              </Box>
-            ))}
-          <Box
-            onClick={handleCreate}
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 0.5,
-              px: 1,
-              py: 0.75,
-              cursor: 'pointer',
-              color: 'var(--canvas-text-dim)',
-              '&:hover': { color: 'var(--text-color)' },
-            }}
-          >
-            <AddIcon sx={{ fontSize: 16 }} />
-            <Typography variant="body2" sx={{ fontFamily: 'var(--canvas-font)', fontSize: '13px' }}>
-              New template
-            </Typography>
-          </Box>
-        </Box>
-
-        <Box className="styled-scrollbar" sx={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-          {!selected && (
-            <Typography variant="body2" color="text.secondary">
-              No templates yet -- create one to get started.
-            </Typography>
-          )}
-          {selected && <PolicyRules policy={selected} focusedRuleId={focusedRuleId} />}
-        </Box>
-      </Box>
-
-      <ConfirmDialog
-        open={confirmingDeleteId !== null}
-        title={`Delete the “${templates.find(t => t.id === confirmingDeleteId)?.name ?? ''}” template?`}
-        confirmLabel="Delete template"
-        danger
-        onConfirm={async () => {
-          if (confirmingDeleteId) await global.deleteAccessPolicy(confirmingDeleteId);
-        }}
-        onClose={() => setConfirmingDeleteId(null)}
-      >
-        <p>Connections that started from it keep their own copies of its rules.</p>
-      </ConfirmDialog>
-    </Box>
-  );
-};
-
-export default observer(AccessPolicySection);
