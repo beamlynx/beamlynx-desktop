@@ -7,6 +7,7 @@ import {
 } from '@codemirror/autocomplete';
 import { Extension } from '@codemirror/state';
 import { EditorView, ViewPlugin, ViewUpdate } from '@codemirror/view';
+import { panelPeekTarget } from '../store/canvas/json-peek';
 import { Hints, PathHint, TableHint } from '../store/client';
 
 // Configuration constants
@@ -226,6 +227,10 @@ function getPineCompletions(
 
   if (completions.length === 0) {
     const loading = pineContext.isLoading();
+    // Keys inside a JSON column aren't in the schema, so there is nothing
+    // to list after `content.`. The results pane peeks at the column instead
+    // (Session.peekAt), so "Nothing found" would only be in the way.
+    if (!loading && panelPeekTarget(context.state.doc.toString(), pos)) return null;
     completions.push({
       expression: '',
       label: '',

@@ -1,4 +1,4 @@
-import { makeAutoObservable, reaction, runInAction } from 'mobx';
+import { comparer, makeAutoObservable, reaction, runInAction } from 'mobx';
 import { Ast, columnName, PathHint, TableHint, whereConditions, whereLiteral } from '../client';
 import { Session } from '../session';
 import {
@@ -40,7 +40,8 @@ import {
 } from './pine-text';
 import * as actions from './pine-actions';
 import { hasValue, literalFor, setValue, valueNames } from '../values-blocks';
-import { probeBuild } from './probe';
+import { probeBuild, probeEval } from './probe';
+import { JsonPeek, peekExpression, peekOutcome } from './json-peek';
 import { canDeleteTraverse } from './traversal';
 import { computeDateBounds } from './relative-date';
 
@@ -556,10 +557,18 @@ export class CanvasStore {
         if (expression !== this.canvasWrittenExpression) this._cursor = null;
       },
     );
+    // A JSON column's key being typed in a picker: peek at its first value.
+    const disposePeek = reaction(
+      () => this.peekTarget,
+      target => void this.refreshPeek(target),
+      { equals: comparer.structural },
+    );
     return () => {
       disposeGraph();
       disposeCursorReset();
       disposeBlocks();
+      disposePeek();
+      this.jsonPeek = null;
     };
   }
 
@@ -1398,6 +1407,69 @@ export class CanvasStore {
     const offer = known?.length ? all : all.filter(a => a !== 'unnest');
     this.picker = { open: true, mode: 'more', alias, offer, isCheckpoint, anchor };
     if (all.includes('unnest') && known === undefined) void this.probeUnnestColumns(alias, key);
+  }
+
+  /**
+   * The first value of a JSON column whose key is being typed in a picker,
+   * shown in the results pane under the query that fetched it (see
+   * json-peek.ts). Null when no key is being typed.
+   */
+  jsonPeek: JsonPeek | null = null;
+  private peekSeq = 0;
+
+  /**
+   * The JSON column a key is being typed in: the filter starts with `data.`,
+   * after the { } › or typed. Only the column counts, not the key typed after
+   * it, so typing runs no more queries: the whole value shows which keys
+   * there are.
+   */
+  private get peekTarget(): { alias: string; column: string } | null {
+    const p = this.picker;
+    if (!p.open || p.mode !== 'list' || p.loading) return null;
+    const { request } = p;
+    if (!['select', 'where', 'order', 'group', 'unnest'].includes(request.kind) || !('alias' in request)) return null;
+    const item = p.groups.flatMap(g => g.items).find(i => i.json && p.filter.startsWith(`${i.value}.`));
+    return item ? { alias: request.alias, column: item.value } : null;
+  }
+
+  private async refreshPeek(target: { alias: string; column: string } | null) {
+    const seq = ++this.peekSeq;
+    if (!target) {
+      this.jsonPeek = null;
+      return;
+    }
+    const { alias, column } = target;
+    const { block, alias: scoped } = this.scopeOf(alias);
+    const context = this.contextOf(block);
+    const node = this.canvasGraph.nodes.find((n): n is CanvasTableNode => n.type === 'table-node' && n.id === alias);
+    const table = node?.data.table ?? alias;
+    // As for the select picker: without its select step, the stage may not
+    // build, when a join after it is on a name given there with `as`.
+    const queryFor = (keepSelect: boolean) =>
+      peekExpression(this.buildProbeExpression({ kind: 'select', alias }, keepSelect), scoped, column);
+    let expression = queryFor(false);
+    this.jsonPeek = { alias, table, column, expression, status: 'loading' };
+    const run = (text: string) =>
+      probeEval(text, this.session.connectionId, this.session.accessPolicy, context);
+    try {
+      let response = await run(expression);
+      if (response.error && seq === this.peekSeq) {
+        const full = queryFor(true);
+        if (full !== expression) {
+          expression = full;
+          response = await run(expression);
+        }
+      }
+      if (seq !== this.peekSeq) return;
+      runInAction(() => {
+        this.jsonPeek = { alias, table, column, expression, ...peekOutcome(response, column) };
+      });
+    } catch (e) {
+      if (seq !== this.peekSeq) return;
+      runInAction(() => {
+        this.jsonPeek = { alias, table, column, expression, status: 'error', error: (e as Error).message };
+      });
+    }
   }
 
   /** The JSON columns an `unnest:` can read, by unnestKey. See openMorePicker. */

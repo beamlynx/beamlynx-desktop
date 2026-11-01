@@ -320,6 +320,9 @@ const Picker: React.FC = observer(() => {
       const target = e.target instanceof Element ? e.target : null;
       if (rootRef.current?.contains(target)) return;
       if (target?.closest('.picker-trigger')) return;
+      // The peek at a JSON value (JsonPeek.tsx) belongs to the picker: its
+      // value can be scrolled and selected while the key is typed.
+      if (target?.closest('[data-json-peek]')) return;
       store.closePicker();
     };
     window.addEventListener('mousedown', onMouseDown, true);

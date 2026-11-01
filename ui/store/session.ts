@@ -6,6 +6,8 @@ import { csvCell } from '../utils/csv';
 import { mayChangeData } from './canvas/pine-text';
 import { formatSql } from '../utils/formatSql';
 import { CanvasStore } from './canvas/canvas.store';
+import { JsonPeek, panelPeekTarget, peekExpression, peekOutcome } from './canvas/json-peek';
+import { probeBuild, probeEval } from './canvas/probe';
 import {
   buildDeleteScript,
   DeleteOutcome,
@@ -1318,6 +1320,70 @@ export class Session {
 
   public updateCursorPosition(line: number, character: number) {
     this.cursorPosition = { line, character };
+  }
+
+  /**
+   * The first value of a JSON column whose key is being typed in the Pine
+   * panel, while its hints are open (Tab). Shown in the results pane like a
+   * canvas picker's peek (see json-peek.ts). Null otherwise.
+   */
+  panelPeek: JsonPeek | null = null;
+  private panelPeekKey = '';
+  private panelPeekSeq = 0;
+
+  /**
+   * Peeks at the JSON column a key is being typed in at `offset` in the
+   * editor's `text`, or stops peeking when `offset` is null or isn't in one. Runs
+   * again only when the column changes, so typing the key runs no more
+   * queries.
+   */
+  public async peekAt(text: string, offset: number | null) {
+    const target = offset === null ? null : panelPeekTarget(text, offset);
+    const key = target ? JSON.stringify(target) : '';
+    if (key === this.panelPeekKey) return;
+    this.panelPeekKey = key;
+    const seq = ++this.panelPeekSeq;
+    if (!target) {
+      this.panelPeek = null;
+      return;
+    }
+    const { context, prefix, candidates } = target;
+    try {
+      // Which guess names a JSON column: the server lists those after `unnest:`.
+      let found: { base: string; alias: string; column: string } | undefined;
+      for (const { alias, column } of candidates) {
+        const base = alias ? `${prefix} | from: ${alias}` : prefix;
+        const ast = await probeBuild(`${base} | unnest: `, this.connectionId, context);
+        if (seq !== this.panelPeekSeq) return;
+        const hint = ast?.hints.unnest?.find(h => h.column === column && (!alias || h.alias === alias));
+        if (hint) {
+          found = { base, alias: hint.alias, column };
+          break;
+        }
+      }
+      if (!found) {
+        runInAction(() => {
+          this.panelPeek = null;
+        });
+        return;
+      }
+      const { base, alias, column } = found;
+      const expression = peekExpression(base, alias, column);
+      const peek = { alias, table: alias, column, expression };
+      runInAction(() => {
+        this.panelPeek = { ...peek, status: 'loading' };
+      });
+      const response = await probeEval(expression, this.connectionId, this.accessPolicy, context);
+      if (seq !== this.panelPeekSeq) return;
+      runInAction(() => {
+        this.panelPeek = { ...peek, ...peekOutcome(response, column) };
+      });
+    } catch (e) {
+      if (seq !== this.panelPeekSeq) return;
+      runInAction(() => {
+        this.panelPeek = null;
+      });
+    }
   }
 
   public requestHints() {
