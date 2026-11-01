@@ -128,6 +128,19 @@ test('an unnest is added after the table own steps, and removed by its name', ()
   );
 });
 
+test('an unnest can be a path inside a column, or start at elements unnested on the node', () => {
+  assert.match(
+    actions.addUnnest(base(), 'a', 'options.officers', 'officer'),
+    /\| unnest: a\.options\.officers as officer$/,
+  );
+  assert.match(actions.addUnnest(base(), 'a', 'e.items', 'item', true), /\| unnest: e\.items as item$/);
+  assert.deepEqual(actions.elementKeyText('options.officers', ['data', 'options', 'e']), {
+    element: 'options',
+    text: 'options.officers',
+  });
+  assert.equal(actions.elementKeyText('other.officers', ['data', 'options']), null, 'Not a JSON column');
+});
+
 test('the elements are named after the array in the singular', () => {
   const none = new Set();
   assert.equal(actions.unnestName('changes', none), 'change');
@@ -137,6 +150,7 @@ test('the elements are named after the array in the singular', () => {
   assert.equal(actions.unnestName('status', none), 'status_1');
   assert.equal(actions.unnestName('data', none), 'data_1');
   assert.equal(actions.unnestName('changes', new Set(['change'])), 'change_1');
+  assert.equal(actions.unnestName("options.'home addresses'", none), 'home_address');
 });
 
 test('a typed key of the elements becomes Pine, each step quoted when it needs to be', () => {

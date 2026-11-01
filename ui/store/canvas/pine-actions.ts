@@ -636,7 +636,8 @@ export const setGroupColumns = (base: PinnedBase, alias: string, columns: string
  * column.
  */
 export const unnestName = (column: string, taken: Set<string>): string => {
-  const last = column.split('.').pop() ?? column;
+  // A quoted key, `'home addresses'`, is named without its quotes and spaces.
+  const last = (column.split('.').pop() ?? column).replace(/^'|'$/g, '').replace(/[^A-Za-z0-9_]+/g, '_');
   const lower = last.toLowerCase();
   const singular = /ies$/.test(lower)
     ? `${last.slice(0, -3)}y`
@@ -713,8 +714,14 @@ export const toggleElementPart = (
 };
 
 /** `unnest: c.data.changes as change`, after `alias`'s own steps. */
-export const addUnnest = (base: PinnedBase, alias: string, column: string, name: string): string =>
-  toText(appendOwnedSegment(base.segments, alias, 'unnest', `unnest: ${alias}.${column} as ${name}`));
+/**
+ * Adds `unnest: alias.<path> as <name>` to `alias`'s stage. `path` is a
+ * column, or a path inside one (`options.officers`). With `fromElement`, it
+ * starts at elements already unnested on this node (`o.items`), which are
+ * named without the table's alias.
+ */
+export const addUnnest = (base: PinnedBase, alias: string, path: string, name: string, fromElement = false): string =>
+  toText(appendOwnedSegment(base.segments, alias, 'unnest', `unnest: ${fromElement ? '' : `${alias}.`}${path} as ${name}`));
 
 /** The name of the elements an UNNEST chip shows: `e` in `data.changes as e :left`. */
 export const unnestChipName = (chip: string): string =>

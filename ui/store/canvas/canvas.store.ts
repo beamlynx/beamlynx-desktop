@@ -1073,14 +1073,24 @@ export class CanvasStore {
       const { request } = this.picker;
       // Keys inside JSON aren't in the schema, so a key of an `unnest:`'s
       // elements is typed: `e.field` becomes an item of its own.
+      const groups = this.picker.groups.filter(
+        g => g.label !== CanvasStore.typedKeyGroup && g.label !== CanvasStore.typedPathGroup,
+      );
+      // For unnest:, the array can be inside a JSON column, `options.officers`,
+      // or inside elements already unnested here, `o.items`.
       const typed =
-        request.kind === 'select' || request.kind === 'where' || request.kind === 'order' || request.kind === 'group'
-          ? actions.elementKeyText(filter, this.elementsOf(request.alias))
-          : null;
-      const groups = this.picker.groups.filter(g => g.label !== CanvasStore.typedKeyGroup);
+        request.kind === 'unnest'
+          ? actions.elementKeyText(filter, [
+              ...groups.flatMap(g => g.items.map(i => i.value)),
+              ...this.elementsOf(request.alias),
+            ])
+          : request.kind === 'select' || request.kind === 'where' || request.kind === 'order' || request.kind === 'group'
+            ? actions.elementKeyText(filter, this.elementsOf(request.alias))
+            : null;
+      const label = request.kind === 'unnest' ? CanvasStore.typedPathGroup : CanvasStore.typedKeyGroup;
       const withTyped =
         typed && typed.text !== typed.element
-          ? [{ label: CanvasStore.typedKeyGroup, items: [{ id: `key:${typed.text}`, label: filter.trim(), value: typed.text }] }, ...groups]
+          ? [{ label, items: [{ id: `key:${typed.text}`, label: filter.trim(), value: typed.text }] }, ...groups]
           : groups;
       this.picker = { ...this.picker, filter, groups: withTyped };
     }
@@ -1088,6 +1098,9 @@ export class CanvasStore {
 
   /** The picker group holding a typed key of an `unnest:`'s elements - see setPickerFilter. */
   private static readonly typedKeyGroup = 'key inside the elements';
+
+  /** The unnest picker's group holding a typed path to an array - see setPickerFilter. */
+  private static readonly typedPathGroup = 'array inside the JSON';
 
   /** Fallback anchor for a picker opened without a captured click position. */
   private static readonly defaultAnchor: PickerAnchor = { x: 24, y: 24 };
@@ -1399,7 +1412,11 @@ export class CanvasStore {
     });
   }
 
-  /** The JSON columns of `alias` to unnest. Picking one adds `unnest: alias.column as <name>`. */
+  /**
+   * The JSON columns of `alias` to unnest. Picking one adds `unnest:
+   * alias.column as <name>`. A path inside one, or inside elements unnested
+   * here, is typed: `options.officers`, `o.items`.
+   */
   openUnnestPicker(alias: string, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
     this.focusNode(alias);
     const request: PickerRequest = { kind: 'unnest', alias };
@@ -1417,9 +1434,11 @@ export class CanvasStore {
 
   /**
    * Adds `unnest: alias.column as <name>`, named after the array in the
-   * singular (see pine-actions.ts's unnestName).
+   * singular (see pine-actions.ts's unnestName). `column` can be a path,
+   * `options.officers`, or start at elements unnested here, `o.items`.
    */
   async commitUnnest(alias: string, column: string) {
+    const fromElement = this.elementsOf(alias).includes(column.split('.')[0]);
     this.closePicker();
     await this.commit(base => {
       const resolved = actions.resolveAlias(base, alias);
@@ -1428,7 +1447,7 @@ export class CanvasStore {
         ...(base.ast.unnests ?? []).map(u => u.alias),
         base.ast.current,
       ]);
-      return actions.addUnnest(base, resolved, column, actions.unnestName(column, taken));
+      return actions.addUnnest(base, resolved, column, actions.unnestName(column, taken), fromElement);
     }, alias);
   }
 

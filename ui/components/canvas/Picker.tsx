@@ -979,7 +979,7 @@ const Picker: React.FC = observer(() => {
       <div style={headerStyle}>
         <input
           autoFocus
-          placeholder="filter..."
+          placeholder={picker.request.kind === 'unnest' ? 'column, or a path: options.officers' : 'filter...'}
           value={picker.filter}
           onChange={e => {
             const value = e.target.value;
