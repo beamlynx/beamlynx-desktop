@@ -745,6 +745,30 @@ export function attachTemplate(id: string, templateId: string | null): AttachTem
   return { ok: true, profile: toMeta(store.connections[index]) };
 }
 
+// Gives a connection a fresh copy of another connection's rules, in place
+// of its own policy: "Same as <database>" on the Agent page. The two stay
+// separate after this. Changing one never changes the other.
+// attachTemplate refuses another connection's policy on purpose, so this
+// is its own function. It refuses the same cases: no such connection, a
+// source without a policy, and a source with no rule on while agents can
+// use this connection.
+export function copyPolicyFrom(id: string, sourceConnectionId: string): AttachTemplateResult {
+  const store = readStore();
+  const index = store.connections.findIndex(c => c.id === id);
+  const source = store.connections.find(c => c.id === sourceConnectionId);
+  if (index < 0 || !source || sourceConnectionId === id) return { ok: false, reason: 'not-found' };
+  const sourcePolicy = store.accessPolicies.find(p => p.id === source.policyId);
+  if (!sourcePolicy) return { ok: false, reason: 'not-found' };
+  const current = store.connections[index];
+  if (current.mcpEnabled && !policyIsActive(sourcePolicy)) return { ok: false, reason: 'mcp-requires-policy' };
+  const own = copyForConnection(sourcePolicy, current);
+  const accessPolicies = [...store.accessPolicies.filter(p => p.connectionId !== id), own];
+  store.connections[index] = { ...current, policyId: own.id };
+  writeStore({ ...store, accessPolicies });
+  console.log(`[credentials] copyPolicyFrom: id=${id} source=${sourceConnectionId}`);
+  return { ok: true, profile: toMeta(store.connections[index]) };
+}
+
 // Whether THIS connection's owner has switched the assigned policy on for
 // their own queries too -- see SavedConnectionMeta.applyPolicyToOwnQueries.
 // No precondition of its own, unlike attachTemplate/setMcpEnabled: it
@@ -1041,6 +1065,9 @@ export function registerCredentialIpc(onConnectionAdded?: (dbType: DbType) => vo
   );
   ipcMain.handle('credentials:attach-template', (_event, id: string, templateId: string | null) =>
     attachTemplate(id, templateId),
+  );
+  ipcMain.handle('credentials:copy-policy-from', (_event, id: string, sourceConnectionId: string) =>
+    copyPolicyFrom(id, sourceConnectionId),
   );
   ipcMain.handle('credentials:set-apply-policy-for-own-queries', (_event, id: string, apply: boolean) =>
     setApplyPolicyToOwnQueries(id, apply),
