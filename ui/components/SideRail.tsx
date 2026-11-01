@@ -5,7 +5,6 @@ import {
   KeyboardDoubleArrowRight,
   Notifications,
   SmartToyOutlined,
-  StorageOutlined,
   PaletteOutlined,
   TuneOutlined,
   HubOutlined,
@@ -20,6 +19,7 @@ import { isDesktop } from '../store/util';
 import type { Investigation } from '../store/investigations';
 import { DESKTOP_ONLY_SECTIONS, RAIL_ITEMS } from './settings/SettingsPanelContent';
 import ActiveConnection from './ActiveConnection';
+import DatabaseOutlined from './icons/DatabaseOutlined';
 import useAccountStatus from '../hooks/useAccountStatus';
 
 /**
@@ -45,7 +45,7 @@ import useAccountStatus from '../hooks/useAccountStatus';
 
 // Each settings section's icon: the item's only mark when collapsed.
 const SECTION_ICONS: Record<SettingsSection, SvgIconComponent> = {
-  connections: StorageOutlined,
+  connections: DatabaseOutlined,
   theme: PaletteOutlined,
   preferences: TuneOutlined,
   mcp: HubOutlined,
