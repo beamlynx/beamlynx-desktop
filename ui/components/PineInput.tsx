@@ -14,6 +14,7 @@ import { Session } from '../store/session';
 import { shouldShowTableColors } from '../store/table-colors.util';
 import { useStores } from '../store/store-container';
 import { editorChrome, editorDarkSyntax } from './editor-theme';
+import { panelPeekTarget } from '../store/canvas/json-peek';
 import { createPineAutocompletion } from './pine-autocomplete';
 import { pineLanguage } from './pine-language';
 import { tableColorDecoration } from './table-colors';
@@ -105,6 +106,25 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
     }
   }, [session.textInputFocused]);
 
+  // Tab or Ctrl/Cmd+Space after a key inside a JSON column, `s: content.`,
+  // peeks at the column's first value in the results pane (Session.peekAt).
+  // The peek follows the cursor until it leaves the key, Escape, or the
+  // focus leaves the editor for anything but the peek itself.
+  const peekingRef = useRef(false);
+  const startPeek = useCallback(
+    (view: EditorView) => {
+      peekingRef.current = true;
+      void session.peekAt(view.state.doc.toString(), view.state.selection.main.head);
+    },
+    [session],
+  );
+  const stopPeek = useCallback(() => {
+    if (!peekingRef.current) return false;
+    peekingRef.current = false;
+    void session.peekAt('', null);
+    return true;
+  }, [session]);
+
   // Cycle through candidate relations -- advances the CodeMirror completion
   // dropdown's selection if it's already open, otherwise opens it. This is
   // what Tab runs when the input itself is focused (see the keymap below);
@@ -117,10 +137,11 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
         return moveCompletionSelection(true)(view);
       } else {
         session.requestHints(); // Trigger rebuild
+        startPeek(view);
         return startCompletion(view);
       }
     },
-    [session],
+    [session, startPeek],
   );
 
   // Tab pressed while the graph (not this input) has focus -- session
@@ -234,8 +255,14 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
         line.number - 1, // Convert to 0-indexed
         pos - line.from,
       );
+      // A peek follows the cursor until it leaves the key (see startPeek).
+      if (peekingRef.current && (update.docChanged || update.selectionSet)) {
+        const text = update.state.doc.toString();
+        if (panelPeekTarget(text, pos)) void session.peekAt(text, pos);
+        else stopPeek();
+      }
     });
-  }, [session]);
+  }, [session, stopPeek]);
 
   // Only color segments when we should show table colors (pref + rows + in-sync)
   const showColors = shouldShowTableColors(global.pineTableColorsEnabled, session);
@@ -301,6 +328,7 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
             run: view => {
               // Trigger autocompletion with Cmd/Ctrl+Space
               session.requestHints(); // Trigger rebuild
+              startPeek(view);
               return startCompletion(view);
             },
           },
@@ -356,15 +384,16 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
       exts.push(Prec.high(vim()));
     }
 
-    // Escape stops a running query. Lowest precedence, so closing the
-    // completion list or leaving Vim's insert mode comes first.
+    // Escape ends a peek and stops a running query. Lowest precedence, so
+    // closing the completion list or leaving Vim's insert mode comes first.
     exts.push(
       Prec.lowest(
         keymap.of([
           {
             key: 'Escape',
             run: () => {
-              if (!session.loading || !session.runId) return false;
+              const peeked = stopPeek();
+              if (!session.loading || !session.runId) return peeked;
               session.stop();
               return true;
             },
@@ -387,6 +416,8 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
     global.vimMode,
     debouncedPrettifyOnPipe,
     cycleCompletion,
+    startPeek,
+    stopPeek,
   ]);
 
   // A fresh EditorState (created from initialValueRef.current, see below)
@@ -437,8 +468,10 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
       onFocus={() => {
         session.focusTextInput();
       }}
-      onBlur={() => {
+      onBlur={(e: React.FocusEvent) => {
         session.blurTextInput();
+        const to = e.relatedTarget as HTMLElement | null;
+        if (!to?.closest('[data-json-peek]')) stopPeek();
       }}
       onChange={handleChange}
       // Ctrl+O opens the recipe picker. Caught on the editor's container,

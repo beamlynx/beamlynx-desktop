@@ -14,6 +14,7 @@ import { MOTION, motionDuration } from '../styles/motion';
 import { getUserPreference, STORAGE_KEYS } from '../store/preferences';
 import { useStores } from '../store/store-container';
 import Canvas from './canvas/Canvas';
+import { JsonPeekCard } from './canvas/JsonPeek';
 import CollapsibleHeight from './CollapsibleHeight';
 import ErrorMessage from './ErrorMessage';
 import Input, { RunButton } from './Input';
@@ -87,8 +88,15 @@ const RightPane = observer(({ sessionId }: { sessionId: string }) => {
       >
         <ErrorMessage sessionId={sessionId} />
       </CollapsibleHeight>
-      <Box sx={{ flex: 1, minHeight: 0 }}>
+      <Box sx={{ flex: 1, minHeight: 0, position: 'relative' }}>
         <Result sessionId={sessionId} />
+        {/* A JSON column's first value while a key in it is typed, on the
+            canvas or in the Pine panel, and the query that fetched it. Over
+            the results, which stay as they are underneath. */}
+        <JsonPeekCard
+          peek={session.getCanvasStore().jsonPeek ?? session.panelPeek}
+          onLeave={() => void session.peekAt('', null)}
+        />
       </Box>
     </Box>
   );

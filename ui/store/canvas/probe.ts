@@ -1,4 +1,4 @@
-import { Ast, HttpClient } from '../client';
+import { AppliedAccessPolicy, Ast, HttpClient, Response } from '../client';
 
 // A dedicated, stateless client for speculative builds - never the visible
 // session's own client instance. No `onBuild` callback (there's nothing to
@@ -29,3 +29,15 @@ export const probeBuild = async (
   const response = await client.build([...context, expression], undefined, connectionId);
   return response.ast;
 };
+
+/**
+ * Speculative run, for a canvas peek (see json-peek.ts): never touches the
+ * session's own rows. Never writes, and the tab's access policy applies, so
+ * a masked column is masked here too.
+ */
+export const probeEval = (
+  expression: string,
+  connectionId: string | undefined,
+  accessPolicy: AppliedAccessPolicy,
+  context: string[] = [],
+): Promise<Response> => client.eval([...context, expression], connectionId, accessPolicy, false);
