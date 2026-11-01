@@ -582,7 +582,12 @@ const DesktopAgentPage = observer(() => {
         <Tab label="Databases" value="databases" sx={{ minHeight: 36, textTransform: 'none' }} />
         <Tab label="Setup" value="setup" sx={{ minHeight: 36, textTransform: 'none' }} />
       </Tabs>
-      <Box className="styled-scrollbar" sx={{ flex: 1, minHeight: 0, overflowY: 'auto', pr: 1 }}>
+      {/* The scrollbar's room is kept even when nothing overflows, so
+          opening a database doesn't shift the rows sideways. */}
+      <Box
+        className="styled-scrollbar"
+        sx={{ flex: 1, minHeight: 0, overflowY: 'auto', scrollbarGutter: 'stable', pr: 1 }}
+      >
         {tab === 'databases' ? (
           <AgentDatabases focus={focus} onFocused={clearFocus} />
         ) : (
