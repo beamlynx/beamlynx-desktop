@@ -745,7 +745,7 @@ test('Undo is refused once the policy changed after Apply, so a later edit is ne
   // The user hides a column afterwards.
   await store.addAccessPolicyRule('pol', { type: 'hide', match: { type: 'column', table: 'user', column: 'email' } });
   const before = calls.length;
-  await assert.rejects(store.undoPolicyProposal('claude-a', 'pp-1'), /Undo it in Settings/);
+  await assert.rejects(store.undoPolicyProposal('claude-a', 'pp-1'), /Undo it on the Agent page/);
   assert.equal(calls.length, before, 'nothing was written');
   assert.equal(store.investigations[0].proposal('pp-1').status, 'applied');
   assert.ok(store.accessPolicies[0].rules.some(r => r.type === 'hide' && r.match.column === 'email'));

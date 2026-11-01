@@ -7,7 +7,6 @@ import SecurityIcon from '@mui/icons-material/Security';
 import SmartToyOutlined from '@mui/icons-material/SmartToyOutlined';
 import BoltIcon from '@mui/icons-material/Bolt';
 import AddIcon from '@mui/icons-material/Add';
-import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import {
@@ -21,8 +20,6 @@ import {
   Tab,
   Tabs,
   TextField,
-  ToggleButton,
-  ToggleButtonGroup,
   Tooltip,
   Typography,
 } from '@mui/material';
@@ -32,11 +29,8 @@ import { useStores } from '../../store/store-container';
 import { CONNECTION_COLOR_PALETTE, isDesktop, isPlayground } from '../../store/util';
 import type { GlobalStore } from '../../store/global.store';
 import { buildConnectionString, parseConnectionString } from '../../utils/connectionString';
-import ToggleRow from './ToggleRow';
 import ConfirmDialog from '../ConfirmDialog';
-import InfoHint from '../InfoHint';
-import { agentAccessOf, type AgentAccess } from '../../store/client';
-import { PolicyRules } from './AccessPolicySection';
+import { agentAccessOf } from '../../store/client';
 
 // Every action that is a text button: in the accent colour, so it reads as
 // something to click, with its standard icon before the label where it has
@@ -534,24 +528,17 @@ const AddConnectionForm = ({
 };
 
 /**
- * One saved connection: a collapsed row (switch active, recolor, rename, a
- * quick "MCP" badge when it's on) plus, for desktop only, an expandable
- * panel holding everything else -- access policy, MCP access, the
- * apply-to-own-queries exception, refresh, and delete. Those five used to
- * all live as icons/popovers on the collapsed row at once, which made the
- * relationship between "MCP access" and "access policy" (MCP can only be on
- * once a policy with an active rule is assigned) hard to read at a glance.
- * Laid out top-to-bottom here in that same dependency order instead: pick a
- * policy, then turn MCP on. Rename stays on the collapsed row, as its own
- * pencil icon next to the name (matching AccessPolicySection's rename
- * pattern) -- unlike the other five, it isn't part of that dependency
- * chain, so tucking it behind the same expand affordance would only make
- * it a click further away for no reason.
+ * One saved connection: a collapsed row (switch active, recolor, rename,
+ * and the agent's robot when agents can use it) plus, for desktop only, an
+ * expandable panel with refresh and delete.
  *
- * Browser/playground mode never had this problem -- no MCP or policy
- * concept there at all -- so it keeps the old flat row (color, name,
- * refresh, delete) unchanged rather than gaining an expand affordance with
- * nothing worth hiding behind it.
+ * What agents can do on a database, and its data masking, is not set here.
+ * It is on the Agent page (McpSection.tsx): masking only matters once an
+ * agent is involved, and one place to set it is clearer than two. The
+ * robot opens that page at this database.
+ *
+ * Browser mode has no agents, so it keeps the flat row (color, name,
+ * refresh, delete) with nothing to expand.
  */
 const ConnectionRow = observer(
   ({
@@ -648,60 +635,11 @@ const ConnectionRow = observer(
       await global.deleteConnection(id).finally(() => setRemoving(false));
     };
 
-    // What agents can do here, and the policy behind it: the connection's
-    // own, never shared. A choice that weakens protection, or starts a
-    // policy, asks in a dialog (ConfirmDialog); the others apply at once.
+    // What agents can do here, shown as the robot after the name. It is set
+    // on the Agent page (McpSection.tsx), which the robot opens.
     const ownPolicy = global.connectionPolicy(id);
-    const fromTemplate = ownPolicy?.template;
     const rulesOn = ownPolicy?.rules.filter(m => m.enabled).length ?? 0;
     const access = agentAccessOf(global.connections.find(c => c.id === id));
-    const [asking, setAsking] = useState<'template' | 'every-column' | 'start-over' | null>(null);
-    const [templateId, setTemplateId] = useState<string>('');
-    const [showRules, setShowRules] = useState(false);
-    const [focusedRuleId, setFocusedRuleId] = useState<string | undefined>();
-    // Opened from the results grid at this connection's policy
-    // (openAccessPolicy): open the row at its rules.
-    const focus = global.accessPolicyFocus;
-    useEffect(() => {
-      if (!focus || !ownPolicy || focus.policyId !== ownPolicy.id) return;
-      setExpanded(true);
-      setShowRules(true);
-      setFocusedRuleId(focus.ruleId);
-      global.clearAccessPolicyFocus();
-    }, [focus, ownPolicy, global]);
-    const builtInId = global.policyTemplates.find(t => t.builtIn)?.id ?? global.policyTemplates[0]?.id ?? '';
-    const startOver = () => {
-      setTemplateId(builtInId);
-      setAsking('start-over');
-    };
-    // The templates to start a policy from: the built-in Default first, then
-    // your own (Settings -> Policy templates).
-    const templateSelect = (
-      <TextField
-        select
-        fullWidth
-        size="small"
-        value={templateId}
-        onChange={e => setTemplateId(e.target.value)}
-        sx={{ ...fieldSx, mt: 1 }}
-      >
-        {global.policyTemplates.map(p => (
-          <MenuItem key={p.id} value={p.id} disabled={!p.rules.some(m => m.enabled)}>
-            {p.name}
-            {!p.rules.some(m => m.enabled) ? ' (no rule on)' : ''}
-          </MenuItem>
-        ))}
-      </TextField>
-    );
-    const chooseAccess = (next: AgentAccess | null) => {
-      if (!next || next === access) return;
-      if (next === 'every-column') return setAsking('every-column');
-      if (next === 'masked' && !ownPolicy) {
-        setTemplateId(builtInId);
-        return setAsking('template');
-      }
-      void global.setAgentAccess(id, next);
-    };
     const disabledWhileBusy = switchDisabled || removing;
 
     return (
@@ -930,25 +868,39 @@ const ConnectionRow = observer(
               </Button>
             )}
             <Box sx={{ flex: 1 }} />
-            {/* What agents can do here, at rest and when expanded alike: the
-                sidebar's robot, dim when masked, in the warning colour when
-                agents read every column, absent when off. */}
+            {/* What agents can do here: the sidebar's robot, dim when
+                masked, in the warning colour when agents read every column,
+                absent when off. It opens the Agent page at this database,
+                where that is set. */}
             {desktop && access !== 'off' && (
               <Tooltip
                 title={
                   access === 'every-column'
-                    ? 'Agents read every column, unmasked'
-                    : `Agents: masked by its policy${ownPolicy ? `, ${rulesOn} rule${rulesOn === 1 ? '' : 's'} on` : ''}`
+                    ? 'Agents read every column, unmasked. Change it on the Agent page.'
+                    : `Agents: data masking, ${rulesOn} rule${rulesOn === 1 ? '' : 's'} on. Change it on the Agent page.`
                 }
               >
-                <SmartToyOutlined
-                  aria-label={access === 'every-column' ? 'Agents read every column' : 'Agents: masked'}
-                  sx={{
-                    fontSize: 16,
-                    flexShrink: 0,
-                    color: access === 'every-column' ? 'var(--text-warning-color)' : 'var(--canvas-text-dim)',
+                <IconButton
+                  size="small"
+                  onClick={e => {
+                    e.stopPropagation();
+                    global.openAgentDatabase(id);
                   }}
-                />
+                  onKeyDown={e => e.stopPropagation()}
+                  aria-label={
+                    access === 'every-column'
+                      ? `Agents read every column of ${label}: open the Agent page`
+                      : `Agents use ${label} with data masking: open the Agent page`
+                  }
+                  sx={{ p: 0.25, flexShrink: 0 }}
+                >
+                  <SmartToyOutlined
+                    sx={{
+                      fontSize: 16,
+                      color: access === 'every-column' ? 'var(--text-warning-color)' : 'var(--canvas-text-dim)',
+                    }}
+                  />
+                </IconButton>
               </Tooltip>
             )}
           </Box>
@@ -1062,146 +1014,6 @@ const ConnectionRow = observer(
               gap: 1.5,
             }}
           >
-            <Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.75 }}>
-                <Typography variant="body2" sx={{ color: 'var(--text-color)', fontWeight: 600 }}>
-                  Agent access
-                </Typography>
-                <InfoHint
-                  text={
-                    <>
-                      <b>Off:</b> agents can&apos;t use this connection.
-                      <br />
-                      <b>Masked:</b> agents see the columns its masking policy allows. The rest come back masked.
-                      <br />
-                      <b>Every column:</b> agents read every column, unmasked. The policy is kept for when you switch
-                      back.
-                    </>
-                  }
-                />
-              </Box>
-              <ToggleButtonGroup
-                exclusive
-                size="small"
-                value={access}
-                onChange={(_e, next) => chooseAccess(next)}
-                aria-label="Agent access"
-                sx={{
-                  '& .MuiToggleButton-root': { textTransform: 'none', px: 1.5, py: 0.25, fontSize: 13 },
-                  '& .MuiToggleButton-root.Mui-selected[value="every-column"]': {
-                    color: 'var(--text-warning-color)',
-                    borderColor: 'var(--text-warning-color)',
-                  },
-                }}
-              >
-                {/* What each choice means is in the info icon after the
-                    heading. */}
-                <ToggleButton value="off">Off</ToggleButton>
-                <ToggleButton value="masked">Masked</ToggleButton>
-                <ToggleButton value="every-column">Every column</ToggleButton>
-              </ToggleButtonGroup>
-
-
-              {access === 'masked' && ownPolicy && (
-                <Box sx={{ mt: 1 }}>
-                  <Typography variant="body2" sx={{ color: 'var(--canvas-text-dim)' }}>
-                    {rulesOn === 0
-                      ? 'No rule is on, so nothing is masked. Turn a rule on.'
-                      : `${rulesOn} rule${rulesOn === 1 ? '' : 's'} on${fromTemplate ? `, from the “${fromTemplate.name}” template` : ''}.`}
-                  </Typography>
-                  <Button
-                    size="small"
-                    startIcon={
-                      <ExpandMoreIcon
-                        sx={{ fontSize: 18, transform: showRules ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }}
-                      />
-                    }
-                    onClick={() => setShowRules(!showRules)}
-                    sx={{ ...actionSx, mt: 0.5 }}
-                  >
-                    {showRules ? 'Hide rules' : 'Edit rules'}
-                  </Button>
-                  <Button
-                    size="small"
-                    onClick={startOver}
-                    startIcon={<RestartAltIcon sx={actionIconSx} />}
-                    sx={{ ...actionSx, mt: 0.5 }}
-                  >
-                    Start over from a template…
-                  </Button>
-                  {showRules && (
-                    <Box sx={{ mt: 1.5 }}>
-                      <PolicyRules policy={ownPolicy} focusedRuleId={focusedRuleId} />
-                    </Box>
-                  )}
-                </Box>
-              )}
-
-              {access === 'every-column' && (
-                <Alert severity="warning" sx={{ mt: 1, py: 0.25, '& .MuiAlert-message': { fontSize: 13 } }}>
-                  Agents read every column of this database, unmasked.
-                </Alert>
-              )}
-            </Box>
-
-            {access === 'masked' && ownPolicy && (
-              <ToggleRow
-                label="Mask my own queries too"
-                description="See what agents see: the policy masks your own queries on this connection as well."
-                descriptionInTooltip
-                divider={false}
-                checked={!!applyPolicyToOwnQueries}
-                onChange={value => global.setApplyPolicyToOwnQueries(id, value)}
-              />
-            )}
-
-            <ConfirmDialog
-              open={asking === 'start-over'}
-              title={`Start ${label}'s policy over?`}
-              confirmLabel="Start over"
-              confirmDisabled={!templateId}
-              onConfirm={() => global.attachTemplate(id, templateId)}
-              onClose={() => setAsking(null)}
-            >
-              <p>
-                Its {ownPolicy?.rules.length ?? 0} current rules are replaced by a copy of the template you pick, including
-                any rule you added. No other connection changes.
-              </p>
-              {templateSelect}
-            </ConfirmDialog>
-
-            <ConfirmDialog
-              open={asking === 'template'}
-              title="Mask columns for agents"
-              confirmLabel="Mask columns"
-              confirmDisabled={!templateId}
-              onConfirm={() => global.setAgentAccess(id, 'masked', templateId)}
-              onClose={() => setAsking(null)}
-            >
-              <p>
-                {label} gets a masking policy of its own. Agents see the columns its rules allow, and the rest come back
-                masked. Start it from a template:
-              </p>
-              {templateSelect}
-            </ConfirmDialog>
-
-            <ConfirmDialog
-              open={asking === 'every-column'}
-              title="Let agents read every column?"
-              confirmLabel="Allow every column"
-              danger
-              onConfirm={() => global.setAgentAccess(id, 'every-column')}
-              onClose={() => setAsking(null)}
-            >
-              <p>
-                Agents on {label} will read every column of this database, unmasked, including any column your access
-                policy hides today. Nothing here will limit what they see.
-              </p>
-              {ownPolicy && (
-                <p>Its policy and its rules are kept. Switch back to Masked to apply them again.</p>
-              )}
-            </ConfirmDialog>
-
             <ConfirmDialog
               open={confirmingRemove}
               title={`Delete ${label}?`}
@@ -1210,7 +1022,7 @@ const ConnectionRow = observer(
               onConfirm={deleteConnection}
               onClose={() => setConfirmingRemove(false)}
             >
-              <p>Its saved details and its masking policy are deleted. This can&apos;t be undone.</p>
+              <p>Its saved details and its data masking are deleted. This can&apos;t be undone.</p>
             </ConfirmDialog>
 
 
@@ -1259,7 +1071,7 @@ const ConnectionRow = observer(
 
 /**
  * The Connections settings section: a list of saved connections (switch
- * active, rename, recolor, toggle MCP access, delete) plus an "add
+ * active, rename, recolor, delete) plus an "add
  * connection" sub-view. Absorbs what used to be pages/settings.tsx (the add
  * form) and the connection-management half of ActiveConnection.tsx's
  * dropdown menu -- that dropdown is now just a quick switcher, see

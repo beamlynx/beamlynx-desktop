@@ -1,6 +1,26 @@
-import { useEffect, useState } from 'react';
-import { Box, Button, Tab, Tabs, Typography } from '@mui/material';
+import { useEffect, useRef, useState } from 'react';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import RestartAltIcon from '@mui/icons-material/RestartAlt';
+import {
+  Alert,
+  Box,
+  Button,
+  MenuItem,
+  Tab,
+  Tabs,
+  TextField,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+} from '@mui/material';
+import { observer } from 'mobx-react-lite';
 import { isDesktop } from '../../store/util';
+import { useStores } from '../../store/store-container';
+import { agentAccessOf, type AgentAccess, type ConnectionInfo } from '../../store/client';
+import ConfirmDialog from '../ConfirmDialog';
+import InfoHint from '../InfoHint';
+import ToggleRow from './ToggleRow';
+import { PolicyRules } from './DataMaskingRules';
 
 const CopyBlock = ({ text }: { text: string }) => {
   const [copied, setCopied] = useState(false);
@@ -77,37 +97,349 @@ const DesktopMcpInstructions = () => {
     : 'Loading…';
 
   return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <Tabs value={tab} onChange={(_e, v) => setTab(v)} sx={{ flexShrink: 0, mb: 2, minHeight: 36 }}>
+    <Box>
+      <Tabs value={tab} onChange={(_e, v) => setTab(v)} sx={{ mb: 2, minHeight: 36 }}>
         <Tab label="Claude" value="claude" sx={{ minHeight: 36 }} />
         <Tab label="JSON" value="json" sx={{ minHeight: 36 }} />
       </Tabs>
 
       {tab === 'claude' ? (
-        <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0, mb: 1.5 }}>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
           Run in a terminal:
         </Typography>
       ) : (
-        <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0, mb: 1.5 }}>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
           This is the <code>mcpServers</code> shape most MCP clients use -- paste it into your client&apos;s config
           (e.g. Claude Code&apos;s <code>.mcp.json</code>, Claude Desktop&apos;s{' '}
           <code>claude_desktop_config.json</code>):
         </Typography>
       )}
 
-      {/* Only this code viewer scrolls -- the tabs, description above, and
-          the note below all stay put regardless of how long the command or
-          JSON snippet is. */}
-      <Box className="styled-scrollbar" sx={{ flex: 1, minHeight: 60, overflowY: 'auto' }}>
+      {/* A long command or JSON snippet scrolls inside its own box, so the
+          databases below stay in reach. */}
+      <Box className="styled-scrollbar" sx={{ maxHeight: 220, overflowY: 'auto' }}>
         <CopyBlock text={tab === 'claude' ? claudeCodeCommand : manualJson} />
       </Box>
-
-      <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0, display: 'block', mt: 2 }}>
-        Then turn on &quot;MCP access&quot; for a connection under Database Connections to let it be used.
-      </Typography>
     </Box>
   );
 };
+
+// A heading inside the Agent page, optionally folding what is under it.
+const PartHeading = ({
+  title,
+  open,
+  onToggle,
+}: {
+  title: string;
+  open?: boolean;
+  onToggle?: () => void;
+}) => (
+  <Box
+    component={onToggle ? 'button' : 'div'}
+    onClick={onToggle}
+    aria-expanded={onToggle ? open : undefined}
+    sx={{
+      all: 'unset',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 0.5,
+      mb: 1,
+      cursor: onToggle ? 'pointer' : 'default',
+      color: 'var(--text-color)',
+      '&:focus-visible': { outline: '2px solid var(--primary-color)', outlineOffset: 2 },
+    }}
+  >
+    {onToggle && (
+      <ExpandMoreIcon
+        sx={{ fontSize: 18, transform: open ? 'none' : 'rotate(-90deg)', transition: 'transform 150ms' }}
+      />
+    )}
+    <Typography variant="subtitle2" component="h3" sx={{ fontWeight: 600 }}>
+      {title}
+    </Typography>
+  </Box>
+);
+
+// Every action that is a text button, as in ConnectionsSection.tsx.
+const actionSx = { textTransform: 'none', color: 'var(--primary-color)', px: 0.75, fontSize: 13 } as const;
+const actionIconSx = { fontSize: 16 } as const;
+
+/**
+ * One database on the Agent page: whether agents can use it (Off, Masked,
+ * Every column), and, when masked, its data masking.
+ *
+ * Turning a database on masks it with the recommended rules straight away:
+ * the safe choice needs no question. Every column asks first, since it
+ * weakens protection. "Start over from" replaces the rules with a copy of
+ * the recommended ones or of another database's.
+ *
+ * The rules underneath are a policy copied from a template (GlobalStore.
+ * policyTemplates). The word "template" stays out of the UI: people think
+ * "the recommended rules" or "the same as my other database".
+ */
+const AgentDatabaseRow = observer(({ connection }: { connection: ConnectionInfo }) => {
+  const { global } = useStores();
+  const { id, label, applyPolicyToOwnQueries } = connection;
+  const ownPolicy = global.connectionPolicy(id);
+  const rulesOn = ownPolicy?.rules.filter(m => m.enabled).length ?? 0;
+  const access = agentAccessOf(connection);
+  const [asking, setAsking] = useState<'every-column' | 'start-over' | null>(null);
+  const [startFrom, setStartFrom] = useState('');
+  const [showRules, setShowRules] = useState(false);
+  const [focusedRuleId, setFocusedRuleId] = useState<string | undefined>();
+  const rowRef = useRef<HTMLDivElement>(null);
+
+  // Opened at this database (openAgentDatabase): from the results grid,
+  // or its robot under Database Connections. Show its rules, with the one
+  // asked about picked out.
+  const focus = global.agentDatabaseFocus;
+  useEffect(() => {
+    if (!focus || focus.connectionId !== id) return;
+    if (ownPolicy) setShowRules(true);
+    setFocusedRuleId(focus.ruleId);
+    rowRef.current?.scrollIntoView({ block: 'nearest' });
+    global.clearAgentDatabaseFocus();
+  }, [focus, id, ownPolicy, global]);
+
+  const recommendedId = global.policyTemplates.find(t => t.builtIn)?.id ?? global.policyTemplates[0]?.id ?? '';
+  // What the rules can start over from: the recommended ones, then each
+  // other database with a rule on, then rules saved by name in an older
+  // version of the app.
+  const otherDatabases = global.connections.filter(c => {
+    if (c.id === id) return false;
+    return !!global.connectionPolicy(c.id)?.rules.some(m => m.enabled);
+  });
+  const savedRules = global.policyTemplates.filter(t => !t.builtIn);
+
+  const chooseAccess = (next: AgentAccess | null) => {
+    if (!next || next === access) return;
+    if (next === 'every-column') return setAsking('every-column');
+    void global.setAgentAccess(id, next, next === 'masked' && !ownPolicy ? recommendedId : undefined);
+  };
+
+  const startOver = () => {
+    setStartFrom(`template:${recommendedId}`);
+    setAsking('start-over');
+  };
+  const applyStartOver = async () => {
+    const [kind, sourceId] = [startFrom.slice(0, startFrom.indexOf(':')), startFrom.slice(startFrom.indexOf(':') + 1)];
+    if (kind === 'database') await global.copyPolicyFrom(id, sourceId);
+    else await global.attachTemplate(id, sourceId);
+  };
+
+  return (
+    <Box ref={rowRef} sx={{ py: 1.5, borderBottom: '1px solid var(--border-color)' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+        <Box
+          sx={{
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            flexShrink: 0,
+            backgroundColor: global.getConnectionColor(id) || 'var(--border-color)',
+          }}
+        />
+        <Typography
+          variant="body2"
+          title={label}
+          sx={{
+            flex: 1,
+            minWidth: 80,
+            fontFamily: 'var(--canvas-font)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            color: 'var(--text-color)',
+          }}
+        >
+          {label}
+        </Typography>
+        <ToggleButtonGroup
+          exclusive
+          size="small"
+          value={access}
+          onChange={(_e, next) => chooseAccess(next)}
+          aria-label={`What agents can do on ${label}`}
+          sx={{
+            '& .MuiToggleButton-root': { textTransform: 'none', px: 1.25, py: 0.125, fontSize: 13 },
+            '& .MuiToggleButton-root.Mui-selected[value="every-column"]': {
+              color: 'var(--text-warning-color)',
+              borderColor: 'var(--text-warning-color)',
+            },
+          }}
+        >
+          <ToggleButton value="off">Off</ToggleButton>
+          <ToggleButton value="masked">Masked</ToggleButton>
+          <ToggleButton value="every-column">Every column</ToggleButton>
+        </ToggleButtonGroup>
+      </Box>
+
+      {access === 'masked' && ownPolicy && (
+        <Box sx={{ pl: 2, mt: 1 }}>
+          <Typography variant="body2" sx={{ color: 'var(--canvas-text-dim)' }}>
+            {rulesOn === 0
+              ? 'Data masking: no rule is on, so nothing is masked. Turn a rule on.'
+              : `Data masking: ${rulesOn} rule${rulesOn === 1 ? '' : 's'} on.`}
+          </Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5, ml: -0.75 }}>
+            <Button
+              size="small"
+              startIcon={
+                <ExpandMoreIcon
+                  sx={{ fontSize: 18, transform: showRules ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }}
+                />
+              }
+              onClick={() => setShowRules(!showRules)}
+              aria-expanded={showRules}
+              sx={actionSx}
+            >
+              {showRules ? 'Hide rules' : 'Edit rules'}
+            </Button>
+            <Button size="small" onClick={startOver} startIcon={<RestartAltIcon sx={actionIconSx} />} sx={actionSx}>
+              Start over from…
+            </Button>
+          </Box>
+          {showRules && (
+            <Box sx={{ mt: 1.5 }}>
+              <PolicyRules policy={ownPolicy} focusedRuleId={focusedRuleId} />
+            </Box>
+          )}
+          <ToggleRow
+            label="Mask my own queries too"
+            description="See what agents see: data masking applies to your own queries on this database as well."
+            descriptionInTooltip
+            divider={false}
+            checked={!!applyPolicyToOwnQueries}
+            onChange={value => global.setApplyPolicyToOwnQueries(id, value)}
+          />
+        </Box>
+      )}
+
+      {access === 'every-column' && (
+        <Alert severity="warning" sx={{ mt: 1, py: 0.25, '& .MuiAlert-message': { fontSize: 13 } }}>
+          Agents read every column of this database, unmasked.
+        </Alert>
+      )}
+
+      <ConfirmDialog
+        open={asking === 'start-over'}
+        title={`Start ${label}'s data masking over?`}
+        confirmLabel="Start over"
+        confirmDisabled={!startFrom}
+        onConfirm={applyStartOver}
+        onClose={() => setAsking(null)}
+      >
+        <p>
+          Its {ownPolicy?.rules.length ?? 0} rules are replaced by a copy of the ones you pick, including any rule you
+          added. No other database changes.
+        </p>
+        <TextField
+          select
+          fullWidth
+          size="small"
+          label="Start from"
+          value={startFrom}
+          onChange={e => setStartFrom(e.target.value)}
+          sx={{ mt: 1 }}
+        >
+          <MenuItem value={`template:${recommendedId}`}>Recommended</MenuItem>
+          {otherDatabases.map(c => (
+            <MenuItem key={c.id} value={`database:${c.id}`}>
+              Same as {c.label}
+            </MenuItem>
+          ))}
+          {savedRules.map(t => (
+            <MenuItem key={t.id} value={`template:${t.id}`} disabled={!t.rules.some(m => m.enabled)}>
+              {t.name}
+              {!t.rules.some(m => m.enabled) ? ' (no rule on)' : ''}
+            </MenuItem>
+          ))}
+        </TextField>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={asking === 'every-column'}
+        title="Let agents read every column?"
+        confirmLabel="Allow every column"
+        danger
+        onConfirm={() => global.setAgentAccess(id, 'every-column')}
+        onClose={() => setAsking(null)}
+      >
+        <p>
+          Agents on {label} will read every column of this database, unmasked, including any column data masking hides
+          today. Nothing here will limit what they see.
+        </p>
+        {ownPolicy && <p>Its data masking rules are kept. Switch back to Masked to apply them again.</p>}
+      </ConfirmDialog>
+    </Box>
+  );
+});
+
+/**
+ * The Agent page's second part: which saved databases agents can use, and
+ * each one's data masking. Every database starts Off. Adding a database
+ * asks nothing about agents.
+ */
+const AgentDatabases = observer(() => {
+  const { global } = useStores();
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+        <PartHeading title="Databases your agent can use" />
+        <Box sx={{ mb: 1 }}>
+          <InfoHint
+            text={
+              <>
+                <b>Off:</b> agents can&apos;t use this database.
+                <br />
+                <b>Masked:</b> data masking hides columns that may hold personal or secret data. They come back as
+                xxxxx. Agents can still filter and join on them.
+                <br />
+                <b>Every column:</b> agents read every column, unmasked.
+              </>
+            }
+          />
+        </Box>
+      </Box>
+      {global.connections.length === 0 ? (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+          <Typography variant="body2" color="text.secondary">
+            No databases yet.
+          </Typography>
+          <Button size="small" onClick={() => global.openAddConnection()} sx={actionSx}>
+            Add a database
+          </Button>
+        </Box>
+      ) : (
+        <Box sx={{ borderTop: '1px solid var(--border-color)' }}>
+          {global.connections.map(c => (
+            <AgentDatabaseRow key={c.id} connection={c} />
+          ))}
+        </Box>
+      )}
+    </Box>
+  );
+});
+
+/**
+ * The desktop Agent page: connect an agent, then choose the databases it
+ * can use. Connecting folds away once a database is on, since by then the
+ * agent is usually set up; opening the page at one database folds it too.
+ */
+const DesktopAgentPage = observer(() => {
+  const { global } = useStores();
+  const anyOn = global.connections.some(c => c.mcpEnabled);
+  const [connectOpen, setConnectOpen] = useState(!anyOn && !global.agentDatabaseFocus);
+  return (
+    <Box className="styled-scrollbar" sx={{ height: '100%', overflowY: 'auto', pr: 1 }}>
+      <Box sx={{ mb: 3 }}>
+        <PartHeading title="Connect your agent" open={connectOpen} onToggle={() => setConnectOpen(!connectOpen)} />
+        {connectOpen && <DesktopMcpInstructions />}
+      </Box>
+      <AgentDatabases />
+    </Box>
+  );
+});
 
 /**
  * Rail entry is always visible, even on web/playground builds, so the
@@ -138,13 +470,13 @@ const McpSection = () => (
       }}
     >
       <Typography variant="h6" component="h2" gutterBottom sx={{ color: 'var(--text-color)' }}>
-        Connect an agent
+        Agent
       </Typography>
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
         Experimental -- setup and behavior may change.
       </Typography>
     </Box>
-    <Box sx={{ flex: 1, minHeight: 0 }}>{isDesktop() ? <DesktopMcpInstructions /> : <WebMcpNotice />}</Box>
+    <Box sx={{ flex: 1, minHeight: 0 }}>{isDesktop() ? <DesktopAgentPage /> : <WebMcpNotice />}</Box>
   </Box>
 );
 

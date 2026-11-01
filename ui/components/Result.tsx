@@ -568,7 +568,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
     }
     if (!updated) {
       if (ownHide) await global.setAccessPolicyRules(policy.id, before).catch(() => null);
-      setNotice({ kind: 'error', text: "Couldn't change the masking policy, so nothing changed." });
+      setNotice({ kind: 'error', text: "Couldn't change the data masking, so nothing changed." });
       return;
     }
     markColumn(action.target, hide, rule);
@@ -591,13 +591,13 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
           label: 'Undo',
           onClick: async () => {
             if (!(await global.setAccessPolicyRules(policy.id, before))) {
-              setNotice({ kind: 'error', text: "Couldn't undo the change to the masking policy." });
+              setNotice({ kind: 'error', text: "Couldn't undo the change to the data masking." });
               return;
             }
             runInAction(() => {
               session.columnMetadata = { ...session.columnMetadata, colIndexToPolicyLookup: beforeLookup };
             });
-            setNotice({ kind: 'success', text: `${connection}'s masking policy is back as it was.` });
+            setNotice({ kind: 'success', text: `${connection}'s data masking is back as it was.` });
           },
         },
         ...(rerunButton
@@ -612,10 +612,10 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
             ]
           : []),
         {
-          label: 'Open policy',
+          label: 'Open data masking',
           onClick: () => {
             setNotice(null);
-            global.openAccessPolicy(policy.id);
+            if (policyConnection) global.openAgentDatabase(policyConnection.id);
           },
         },
       ],
@@ -652,7 +652,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
               key="policy"
               onClick={() => {
                 handleContextMenuClose();
-                if (connectionPolicy) global.openAccessPolicy(connectionPolicy.id, deciding?.id);
+                if (policyConnection) global.openAgentDatabase(policyConnection.id, deciding?.id);
               }}
               sx={itemSx}
             >
@@ -673,7 +673,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
               key="policy"
               onClick={() => {
                 handleContextMenuClose();
-                global.setShowSettings(true, 'connections');
+                if (policyConnection) global.openAgentDatabase(policyConnection.id);
               }}
               sx={itemSx}
             >
@@ -681,7 +681,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
                 <PolicyOutlined fontSize="small" />
               </ListItemIcon>
               <ListItemText
-                primary="Choose a masking policy…"
+                primary="Set up data masking…"
                 secondary="Agents see every column of this connection"
                 secondaryTypographyProps={{ sx: secondarySx }}
               />

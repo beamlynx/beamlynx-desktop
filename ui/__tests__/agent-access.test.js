@@ -69,3 +69,47 @@ test('templates list the built-in Default first, then your own', () => {
   });
   assert.deepEqual(store.policyTemplates.map(p => p.name), ['Default', 'Mine']);
 });
+
+test("copying another database's rules gives this one its own copy, and reloads the policies", async () => {
+  const store = new GlobalStore();
+  const calls = [];
+  const copy = { ...policy, id: 'copy', connectionId: 'p2' };
+  globalThis.window = {
+    beamlynxDesktop: {
+      credentials: {
+        copyPolicyFrom: async (id, sourceId) => {
+          calls.push([id, sourceId]);
+          return { ok: true, profile: { id, mcpEnabled: true, policyId: 'copy' } };
+        },
+      },
+      accessPolicy: { list: async () => [policy, copy] },
+    },
+  };
+  runInAction(() => {
+    store.connections = [
+      { id: 'p1', label: 'Prod', mcpEnabled: true, policyId: 'own' },
+      { id: 'p2', label: 'Staging', mcpEnabled: true, policyId: null },
+    ];
+  });
+  assert.equal(await store.copyPolicyFrom('p2', 'p1'), true);
+  assert.deepEqual(calls, [['p2', 'p1']]);
+  assert.equal(store.connectionPolicy('p2').id, 'copy');
+  assert.equal(store.connectionPolicy('p1').id, 'own');
+});
+
+test("copying another database's rules says so on an app that can't", async () => {
+  const store = new GlobalStore();
+  globalThis.window = { beamlynxDesktop: { credentials: {}, accessPolicy: { list: async () => [] } } };
+  assert.equal(await store.copyPolicyFrom('p2', 'p1'), false);
+  assert.match(store.connectionError, /can't copy another database's rules/);
+});
+
+test('opening a database on the Agent page opens that page, at that database and rule', () => {
+  const store = new GlobalStore();
+  store.openAgentDatabase('p1', 'r1');
+  assert.equal(store.showSettings, true);
+  assert.equal(store.settingsSection, 'mcp');
+  assert.deepEqual(store.agentDatabaseFocus, { connectionId: 'p1', ruleId: 'r1' });
+  store.clearAgentDatabaseFocus();
+  assert.equal(store.agentDatabaseFocus, null);
+});
