@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import EditIcon from '@mui/icons-material/Edit';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import {
@@ -16,7 +19,12 @@ import {
 import { observer } from 'mobx-react-lite';
 import { isDesktop } from '../../store/util';
 import { useStores } from '../../store/store-container';
-import { agentAccessOf, type AgentAccess, type ConnectionInfo } from '../../store/client';
+import {
+  agentAccessOf,
+  type AccessPolicy,
+  type AgentAccess,
+  type ConnectionInfo,
+} from '../../store/client';
 import ConfirmDialog from '../ConfirmDialog';
 import InfoHint from '../InfoHint';
 import ToggleRow from './ToggleRow';
@@ -201,7 +209,7 @@ const AccessStatus = ({ access, rulesOn }: { access: AgentAccess; rulesOn: numbe
  * Turning a database on masks it with the recommended rules straight away:
  * the safe choice needs no question. Every column asks first, since it
  * weakens protection. "Start over from" replaces the rules with a copy of
- * the recommended ones or of another database's.
+ * a rule set from the Masking tab.
  *
  * The rules underneath are a policy copied from a template (GlobalStore.
  * policyTemplates). The word "template" stays out of the UI: people think
@@ -236,13 +244,10 @@ const AgentDatabaseRow = observer(
 
     const recommendedId =
       global.policyTemplates.find(t => t.builtIn)?.id ?? global.policyTemplates[0]?.id ?? '';
-    // What the rules can start over from: the recommended ones, then each
-    // other database with a rule on, then rules saved by name in an older
-    // version of the app.
-    const otherDatabases = global.connections.filter(
-      c => c.id !== id && !!global.connectionPolicy(c.id)?.rules.some(m => m.enabled),
-    );
-    const savedRules = global.policyTemplates.filter(t => !t.builtIn);
+    // What the rules can start over from: the sets on the Masking tab,
+    // Recommended first. Never another database's rules: databases can
+    // have different schemas, so those rarely fit.
+    const ruleSets = global.policyTemplates;
 
     const chooseAccess = (next: AgentAccess | null) => {
       if (!next || next === access) return;
@@ -255,14 +260,11 @@ const AgentDatabaseRow = observer(
     };
 
     const startOver = () => {
-      setStartFrom(`template:${recommendedId}`);
+      setStartFrom(recommendedId);
       setAsking('start-over');
     };
     const applyStartOver = async () => {
-      const at = startFrom.indexOf(':');
-      const [kind, sourceId] = [startFrom.slice(0, at), startFrom.slice(at + 1)];
-      if (kind === 'database') await global.copyPolicyFrom(id, sourceId);
-      else await global.attachTemplate(id, sourceId);
+      await global.attachTemplate(id, startFrom);
     };
 
     return (
@@ -419,8 +421,9 @@ const AgentDatabaseRow = observer(
           onClose={() => setAsking(null)}
         >
           <p>
-            Its {ownPolicy?.rules.length ?? 0} rules are replaced by a copy of the ones you pick,
-            including any rule you added. No other database changes.
+            Its {ownPolicy?.rules.length ?? 0} rules are replaced by a copy of the set you pick,
+            including any rule you added. No other database changes. The sets are on the Masking
+            tab.
           </p>
           <TextField
             select
@@ -431,19 +434,9 @@ const AgentDatabaseRow = observer(
             onChange={e => setStartFrom(e.target.value)}
             sx={{ mt: 1 }}
           >
-            <MenuItem value={`template:${recommendedId}`}>Recommended</MenuItem>
-            {otherDatabases.map(c => (
-              <MenuItem key={c.id} value={`database:${c.id}`}>
-                Same as {c.label}
-              </MenuItem>
-            ))}
-            {savedRules.map(t => (
-              <MenuItem
-                key={t.id}
-                value={`template:${t.id}`}
-                disabled={!t.rules.some(m => m.enabled)}
-              >
-                {t.name}
+            {ruleSets.map(t => (
+              <MenuItem key={t.id} value={t.id} disabled={!t.rules.some(m => m.enabled)}>
+                {ruleSetName(t)}
                 {!t.rules.some(m => m.enabled) ? ' (no rule on)' : ''}
               </MenuItem>
             ))}
@@ -549,15 +542,227 @@ const AgentDatabases = observer(
 );
 
 /**
- * The desktop Agent page: two tabs. Databases chooses what agents can use
- * and how it is masked; Setup holds the instructions for connecting one.
+ * A rule set's name as people see it. The built-in one is stored as
+ * "Default"; on screen it is Recommended, as everywhere else.
+ */
+const ruleSetName = (set: AccessPolicy) => (set.builtIn ? 'Recommended' : set.name);
+
+/**
+ * The Masking tab: the rule sets a database's data masking starts from.
+ * Recommended is built in and can't change. People can make their own,
+ * named, and edit, rename or delete them. A database gets a copy, so a
+ * change here never reaches a database that already started from it.
+ *
+ * Underneath these are policy templates (GlobalStore.policyTemplates),
+ * but the UI never calls them that.
+ */
+const MaskingRuleSets = observer(() => {
+  const { global } = useStores();
+  const sets = global.policyTemplates;
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+
+  // Keep a selection: the first set, and again if the selected one is deleted.
+  const selected = sets.find(p => p.id === selectedId) ?? sets[0];
+  useEffect(() => {
+    if (selected && selected.id !== selectedId) setSelectedId(selected.id);
+  }, [selected, selectedId]);
+
+  const commitRename = async (id: string) => {
+    const trimmed = renameValue.trim();
+    setRenamingId(null);
+    const current = sets.find(p => p.id === id);
+    if (!trimmed || trimmed === current?.name) return;
+    await global.renameAccessPolicy(id, trimmed);
+  };
+
+  const create = async () => {
+    const set = await global.createAccessPolicy('New rule set');
+    if (set) {
+      setSelectedId(set.id);
+      setRenamingId(set.id);
+      setRenameValue(set.name);
+    }
+  };
+
+  const iconSx = {
+    fontSize: 14,
+    cursor: 'pointer',
+    opacity: 0.35,
+    flexShrink: 0,
+    '&:hover': { opacity: 0.9 },
+  } as const;
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1.5 }}>
+        <Typography variant="body2" color="text.secondary">
+          The rules a database starts from. Turning a database on uses Recommended. Pick another set
+          with Start over from… on the database.
+        </Typography>
+        <InfoHint text="Masked columns come back as xxxxx. Agents can still filter and join on them. A database gets a copy of the set, so changing a set here doesn't change databases that already use it." />
+      </Box>
+
+      {/* The sets as a strip above the rules, not a column beside them:
+          the panel is narrow, and the rules need its width. */}
+      <Box
+        sx={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: 0.5,
+          borderBottom: '1px solid var(--border-color)',
+          pb: 1.5,
+          mb: 2,
+        }}
+      >
+        {sets.map(set => (
+          <Box
+            key={set.id}
+            role="button"
+            tabIndex={0}
+            aria-pressed={set.id === selected?.id}
+            onClick={() => setSelectedId(set.id)}
+            onKeyDown={e => {
+              if (renamingId === set.id) return;
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setSelectedId(set.id);
+              }
+            }}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0.5,
+              px: 1,
+              py: 0.75,
+              cursor: 'pointer',
+              borderRadius: 1,
+              maxWidth: '100%',
+              outline: 'none',
+              backgroundColor: set.id === selected?.id ? 'var(--node-column-bg)' : 'transparent',
+              '&:hover': { backgroundColor: 'var(--node-column-bg)' },
+              '&:focus-visible': {
+                outline: '2px solid var(--primary-color)',
+                outlineOffset: '-2px',
+              },
+            }}
+          >
+            {renamingId === set.id ? (
+              <TextField
+                autoFocus
+                variant="standard"
+                size="small"
+                value={renameValue}
+                onClick={e => e.stopPropagation()}
+                onFocus={e => e.target.select()}
+                onChange={e => setRenameValue(e.target.value)}
+                onBlur={() => commitRename(set.id)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void commitRename(set.id);
+                  } else if (e.key === 'Escape') {
+                    setRenamingId(null);
+                  }
+                }}
+                sx={{
+                  width: 140,
+                  '& .MuiInput-input': {
+                    py: 0,
+                    fontFamily: 'var(--canvas-font)',
+                    fontSize: '13px',
+                    color: 'var(--text-color)',
+                  },
+                  '& .MuiInput-underline:before': { borderBottomColor: 'var(--border-color)' },
+                }}
+              />
+            ) : (
+              <Typography
+                component="span"
+                variant="body2"
+                sx={{
+                  minWidth: 0,
+                  fontFamily: 'var(--canvas-font)',
+                  fontSize: '13px',
+                  color: set.id === selected?.id ? 'var(--text-color)' : 'var(--canvas-text-dim)',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {ruleSetName(set)}
+              </Typography>
+            )}
+            {!set.builtIn && renamingId !== set.id && (
+              <>
+                <EditIcon
+                  onClick={e => {
+                    e.stopPropagation();
+                    setRenamingId(set.id);
+                    setRenameValue(set.name);
+                  }}
+                  titleAccess={`Rename ${set.name}`}
+                  sx={iconSx}
+                />
+                <DeleteOutlineIcon
+                  onClick={e => {
+                    e.stopPropagation();
+                    setConfirmingDeleteId(set.id);
+                  }}
+                  titleAccess={`Delete ${set.name}`}
+                  sx={iconSx}
+                />
+              </>
+            )}
+          </Box>
+        ))}
+        <Button
+          size="small"
+          onClick={create}
+          startIcon={<AddIcon sx={actionIconSx} />}
+          sx={actionSx}
+        >
+          New rule set
+        </Button>
+      </Box>
+
+      {selected?.builtIn && (
+        <Typography variant="body2" sx={{ color: 'var(--canvas-text-dim)', mb: 2 }}>
+          Built in, so it can&apos;t change. For other rules, make a new rule set.
+        </Typography>
+      )}
+      {selected && <PolicyRules policy={selected} />}
+
+      <ConfirmDialog
+        open={confirmingDeleteId !== null}
+        title={`Delete “${sets.find(t => t.id === confirmingDeleteId)?.name ?? ''}”?`}
+        confirmLabel="Delete rule set"
+        danger
+        onConfirm={async () => {
+          if (confirmingDeleteId) await global.deleteAccessPolicy(confirmingDeleteId);
+        }}
+        onClose={() => setConfirmingDeleteId(null)}
+      >
+        <p>Databases that started from it keep their own copies of its rules.</p>
+      </ConfirmDialog>
+    </Box>
+  );
+});
+
+/**
+ * The desktop Agent page: three tabs. Databases chooses what agents can use
+ * and how each is masked; Masking holds the rule sets they start from;
+ * Setup holds the instructions for connecting an agent.
  * It opens on Setup until a database is turned on, and on Databases after
  * that, or whenever it is opened at one database.
  */
 const DesktopAgentPage = observer(() => {
   const { global } = useStores();
   const anyOn = global.connections.some(c => c.mcpEnabled);
-  const [tab, setTab] = useState<'databases' | 'setup'>(
+  const [tab, setTab] = useState<'databases' | 'masking' | 'setup'>(
     anyOn || global.agentDatabaseFocus ? 'databases' : 'setup',
   );
   // The page stays mounted while Settings is closed (SettingsDock), so a
@@ -580,6 +785,7 @@ const DesktopAgentPage = observer(() => {
         sx={{ flexShrink: 0, mb: 2, minHeight: 36 }}
       >
         <Tab label="Databases" value="databases" sx={{ minHeight: 36, textTransform: 'none' }} />
+        <Tab label="Masking" value="masking" sx={{ minHeight: 36, textTransform: 'none' }} />
         <Tab label="Setup" value="setup" sx={{ minHeight: 36, textTransform: 'none' }} />
       </Tabs>
       {/* The scrollbar's room is kept even when nothing overflows, so
@@ -588,11 +794,9 @@ const DesktopAgentPage = observer(() => {
         className="styled-scrollbar"
         sx={{ flex: 1, minHeight: 0, overflowY: 'auto', scrollbarGutter: 'stable', pr: 1 }}
       >
-        {tab === 'databases' ? (
-          <AgentDatabases focus={focus} onFocused={clearFocus} />
-        ) : (
-          <SetupInstructions onDone={() => setTab('databases')} />
-        )}
+        {tab === 'databases' && <AgentDatabases focus={focus} onFocused={clearFocus} />}
+        {tab === 'masking' && <MaskingRuleSets />}
+        {tab === 'setup' && <SetupInstructions onDone={() => setTab('databases')} />}
       </Box>
     </Box>
   );

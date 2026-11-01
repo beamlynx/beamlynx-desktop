@@ -1068,9 +1068,9 @@ export class GlobalStore {
   };
 
   /**
-   * The templates: the rules a connection's data masking can start from.
-   * The UI never calls them templates: the built-in one is "Recommended",
-   * and any made before 0.72.0 are listed by name. Copied, never shared.
+   * The templates: the rules a connection's data masking can start from,
+   * on the Agent page's Masking tab. The UI calls them rule sets, and the
+   * built-in one Recommended. Copied into a connection, never shared.
    */
   get policyTemplates(): AccessPolicy[] {
     // The built-in Default first, then your own in the order they were made.
@@ -2016,39 +2016,6 @@ export class GlobalStore {
       );
     });
     // The connection's new policy, and its old one gone.
-    await this.refreshAccessPolicies();
-    return true;
-  };
-
-  /**
-   * Gives a connection a fresh copy of another connection's data masking
-   * rules: "Same as <database>" on the Agent page. The two stay separate.
-   * See beamlynx-desktop's credential-store.ts copyPolicyFrom. A desktop
-   * app without it says so instead of failing silently.
-   */
-  copyPolicyFrom = async (id: string, sourceConnectionId: string): Promise<boolean> => {
-    const desktop = typeof window === 'undefined' ? undefined : window.beamlynxDesktop;
-    if (!desktop?.credentials.copyPolicyFrom) {
-      runInAction(() => {
-        this.connectionError = "This version of the app can't copy another database's rules.";
-      });
-      return false;
-    }
-    const result = await desktop.credentials.copyPolicyFrom(id, sourceConnectionId);
-    if (!result.ok) {
-      runInAction(() => {
-        this.connectionError =
-          result.reason === 'mcp-requires-policy'
-            ? 'That database has no masking rule on, so copying it would mask nothing.'
-            : 'That database no longer exists, or has no data masking.';
-      });
-      return false;
-    }
-    runInAction(() => {
-      this.connections = this.connections.map(c =>
-        c.id === id ? { ...c, mcpEnabled: result.profile.mcpEnabled, policyId: result.profile.policyId } : c,
-      );
-    });
     await this.refreshAccessPolicies();
     return true;
   };

@@ -265,9 +265,6 @@ interface BeamlynxDesktopApi {
     ) => Promise<SetAgentAccessResult>;
     // A fresh copy of a template as the connection's own policy, or none (null).
     attachTemplate: (id: string, templateId: string | null) => Promise<AttachTemplateResult>;
-    // A fresh copy of another connection's data masking rules. Optional: a
-    // desktop app older than the Agent page's "Same as" doesn't have it.
-    copyPolicyFrom?: (id: string, sourceConnectionId: string) => Promise<AttachTemplateResult>;
     setApplyPolicyToOwnQueries: (id: string, apply: boolean) => Promise<SavedConnectionMeta | null>;
     rename: (id: string, label: string) => Promise<SavedConnectionMeta | null>;
     // Opens the OS file chooser for a SQLite database; resolves with the
