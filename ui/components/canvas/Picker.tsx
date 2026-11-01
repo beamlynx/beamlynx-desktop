@@ -15,6 +15,7 @@ import {
   WHERE_TODAY_OPERATOR,
 } from '../../store/canvas/canvas.model';
 import { looksLikeDateColumn } from '../../store/canvas/relative-date';
+import { selectName } from '../../store/canvas/pine-actions';
 import { useCanvasStore } from './canvas-context';
 
 const pluralize = (count: number, unit: string): string => (count === 1 ? unit : `${unit}s`);
@@ -205,11 +206,14 @@ const Picker: React.FC = observer(() => {
           ? node?.data.groupChips ?? []
           : (node?.data.orderChips ?? []).map(chip => chip.replace(/\s+(asc|desc)$/i, ''));
   }
+  // A select column can be picked again, for a copy with its own name, so it
+  // stays in its place in the list with a count rather than sinking.
+  const sunkColumns = picker.open && picker.mode === 'list' && picker.request.kind === 'select' ? [] : selectedColumns;
 
   const flatItems: PickerItem[] =
     picker.open && picker.mode === 'list' && !picker.loading && !picker.error
       ? picker.groups.flatMap(g =>
-          sinkSelected(filterItems(g.items, picker.filter), selectedColumns),
+          sinkSelected(filterItems(g.items, picker.filter), sunkColumns),
         )
       : [];
   const flatKey = flatItems.map(i => i.id).join('|');
@@ -241,6 +245,7 @@ const Picker: React.FC = observer(() => {
   // without this, arrowing past the visible area kept "moving" a selection
   // the scrollable body never actually followed.
   const itemRefs = useRef(new Map<string, HTMLDivElement>());
+  const filterRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const id = flatItems[highlighted]?.id;
     if (id) itemRefs.current.get(id)?.scrollIntoView({ block: 'nearest' });
@@ -612,6 +617,59 @@ const Picker: React.FC = observer(() => {
     );
   }
 
+  if (picker.mode === 'select-name') {
+    const node = store.canvasGraph.nodes.find(
+      (n): n is CanvasTableNode => n.id === picker.alias && n.type === 'table-node',
+    );
+    return (
+      <div
+        ref={rootRef}
+        style={{ ...anchoredStyle(picker.anchor), padding: 8, maxHeight: 'none' }}
+        data-testid="canvas-picker"
+      >
+        <div style={{ marginBottom: 6, opacity: 0.7 }}>
+          {node?.data.table ?? picker.alias}.{picker.column}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ opacity: 0.7, fontFamily: 'var(--code-font)' }}>as</span>
+          <input
+            autoFocus
+            data-testid="select-name-input"
+            placeholder="name"
+            value={picker.value}
+            onChange={e => store.setSelectNameValue(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') void store.commitSelectName();
+              if (e.key === 'Escape') store.closePicker();
+            }}
+            style={{ ...inputStyle, width: 160 }}
+          />
+        </div>
+        {/* What will be written: letters, digits and _ only. */}
+        {picker.value.trim() && selectName(picker.value) !== picker.value.trim() && (
+          <div data-testid="select-name-preview" style={{ marginTop: 4, opacity: 0.6 }}>
+            saved as <code>{selectName(picker.value)}</code>
+          </div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
+          <span
+            style={{ cursor: 'pointer', color: 'var(--canvas-warn)' }}
+            onClick={() =>
+              void store
+                .removeSelectColumn(picker.alias, picker.column, picker.occurrence)
+                .then(() => store.closePicker())
+            }
+          >
+            remove
+          </span>
+          <span style={{ cursor: 'pointer' }} onClick={() => void store.commitSelectName()}>
+            save
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   if (picker.mode === 'limit-value') {
     return (
       <div
@@ -922,7 +980,7 @@ const Picker: React.FC = observer(() => {
         // the just-typed filter in place would hide every other column
         // behind it, so clear it to hand the input back ready for the next.
         void (request.kind === 'select'
-          ? store.toggleSelectColumn(request.alias, item.value)
+          ? store.addSelectColumn(request.alias, item.value)
           : request.kind === 'order'
             ? store.toggleOrderColumn(request.alias, item.value)
             : store.toggleGroupColumn(request.alias, item.value));
@@ -949,7 +1007,34 @@ const Picker: React.FC = observer(() => {
     }
   };
 
+  // A JSON column's keys aren't in the schema, so its › (or Right on its
+  // row) starts typing a path inside it: the filter becomes `data.`, and
+  // what is typed next becomes a "nested" item (CanvasStore.setPickerFilter).
+  // The click lands on the row, so the focus is put back in the filter,
+  // with the caret after the dot, ready for the key.
+  const startPath = (item: PickerItem) => {
+    store.setPickerFilter(`${item.value}.`);
+    requestAnimationFrame(() => {
+      const input = filterRef.current;
+      if (!input) return;
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    });
+  };
+  const jsonItems = picker.groups.flatMap(g => g.items.filter(i => i.json));
+  // `data.` typed, or just opened with ›: say what to type next.
+  const pathStart = jsonItems.find(i => picker.filter === `${i.value}.`);
+
   const onListKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowRight') {
+      const item = flatItems[highlighted];
+      const input = e.target as HTMLInputElement;
+      if (item?.json && input.selectionStart === input.value.length) {
+        e.preventDefault();
+        startPath(item);
+      }
+      return;
+    }
     if (flatItems.length === 0) return;
     // Tab doubles as Down/Up (Shift+Tab) - moves through options rather
     // than leaving the picker, since it has nowhere else useful to go.
@@ -978,8 +1063,15 @@ const Picker: React.FC = observer(() => {
     <div ref={rootRef} style={anchoredStyle(picker.anchor)} data-testid="canvas-picker">
       <div style={headerStyle}>
         <input
+          ref={filterRef}
           autoFocus
-          placeholder="filter..."
+          placeholder={
+            picker.request.kind === 'unnest'
+              ? 'column, or a path: options.officers'
+              : jsonItems.length
+                ? `filter, or ${jsonItems[0].value}.key`
+                : 'filter...'
+          }
           value={picker.filter}
           onChange={e => {
             const value = e.target.value;
@@ -1004,10 +1096,16 @@ const Picker: React.FC = observer(() => {
       <div className="styled-scrollbar" style={bodyStyle}>
         {picker.loading && <div style={{ opacity: 0.7 }}>loading...</div>}
         {picker.error && <div style={{ color: 'var(--canvas-warn)' }}>{picker.error}</div>}
+        {pathStart && (
+          <div data-testid="picker-path-hint" style={{ opacity: 0.6, padding: '3px 4px' }}>
+            type a key inside {pathStart.value}, like <code>{pathStart.value}.name</code> or{' '}
+            <code>{pathStart.value}.tags[0]</code>
+          </div>
+        )}
         {!picker.loading &&
           !picker.error &&
           picker.groups.map(group => {
-            const items = sinkSelected(filterItems(group.items, picker.filter), selectedColumns);
+            const items = sinkSelected(filterItems(group.items, picker.filter), sunkColumns);
             if (items.length === 0) return null;
             return (
               <div key={group.label || 'default'} style={{ marginBottom: 6 }}>
@@ -1078,15 +1176,37 @@ const Picker: React.FC = observer(() => {
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span>
-                          {(picker.request.kind === 'select' ||
-                            picker.request.kind === 'order' ||
-                            picker.request.kind === 'group') &&
+                          {(picker.request.kind === 'order' || picker.request.kind === 'group') &&
                           selectedColumns.includes(item.value)
                             ? '☑ '
                             : ''}
                           {item.label}
+                          {picker.request.kind === 'select' && selectedColumns.includes(item.value) && (
+                            <span
+                              data-testid={`picker-count-${item.label}`}
+                              title="Already selected. Pick it again to add a copy with its own name."
+                              style={{ opacity: 0.5, marginLeft: 6 }}
+                            >
+                              ×{selectedColumns.filter(c => c === item.value).length}
+                            </span>
+                          )}
                         </span>
                         {item.detail && <span style={{ opacity: 0.5 }}>{item.detail}</span>}
+                        {item.json && (
+                          <span
+                            data-testid={`picker-path-${item.label}`}
+                            title={`A key inside ${item.label} (→)`}
+                            // Keeps the focus in the filter, where the key is typed.
+                            onMouseDown={e => e.preventDefault()}
+                            onClick={e => {
+                              e.stopPropagation();
+                              startPath(item);
+                            }}
+                            style={{ opacity: isHighlighted ? 0.9 : 0.45, padding: '0 4px', fontFamily: 'var(--code-font)' }}
+                          >
+                            {'{ } ›'}
+                          </span>
+                        )}
                       </div>
                       {/* Only rendered for a join candidate that shares its
                           table with another candidate in the same group -

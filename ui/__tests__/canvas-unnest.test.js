@@ -128,6 +128,19 @@ test('an unnest is added after the table own steps, and removed by its name', ()
   );
 });
 
+test('an unnest can be a path inside a column, or start at elements unnested on the node', () => {
+  assert.match(
+    actions.addUnnest(base(), 'a', 'options.officers', 'officer'),
+    /\| unnest: a\.options\.officers as officer$/,
+  );
+  assert.match(actions.addUnnest(base(), 'a', 'e.items', 'item', true), /\| unnest: e\.items as item$/);
+  assert.deepEqual(actions.typedPath('options.officers', ['data', 'options', 'e']), {
+    start: 'options',
+    text: 'options.officers',
+  });
+  assert.equal(actions.typedPath('other.officers', ['data', 'options']), null, 'Not a JSON column');
+});
+
 test('the elements are named after the array in the singular', () => {
   const none = new Set();
   assert.equal(actions.unnestName('changes', none), 'change');
@@ -137,20 +150,50 @@ test('the elements are named after the array in the singular', () => {
   assert.equal(actions.unnestName('status', none), 'status_1');
   assert.equal(actions.unnestName('data', none), 'data_1');
   assert.equal(actions.unnestName('changes', new Set(['change'])), 'change_1');
+  assert.equal(actions.unnestName("options.'home addresses'", none), 'home_address');
 });
 
 test('a typed key of the elements becomes Pine, each step quoted when it needs to be', () => {
-  assert.deepEqual(actions.elementKeyText('e.address.city', ['e']), {
-    element: 'e',
+  assert.deepEqual(actions.typedPath('e.address.city', ['e']), {
+    start: 'e',
     text: 'e.address.city',
   });
-  assert.deepEqual(actions.elementKeyText("e.home address.it's", ['e']), {
-    element: 'e',
+  assert.deepEqual(actions.typedPath("e.home address.it's", ['e']), {
+    start: 'e',
     text: "e.'home address'.'it''s'",
   });
-  assert.deepEqual(actions.elementKeyText('e', ['e']), { element: 'e', text: 'e' });
-  assert.equal(actions.elementKeyText('a.id', ['e']), null, 'Not an element');
-  assert.equal(actions.elementKeyText('e.', ['e']), null, 'No key yet');
+  assert.deepEqual(actions.typedPath('e', ['e']), { start: 'e', text: 'e' });
+  assert.equal(actions.typedPath('a.id', ['e']), null, 'Not an element');
+  assert.equal(actions.typedPath('e.', ['e']), null, 'No key yet');
+});
+
+test('a typed path inside a JSON column is written so it can only be read as keys', () => {
+  const columns = ['id', 'data'];
+  assert.deepEqual(actions.typedPath('data.address.city', columns), { start: 'data', text: 'data.address.city' });
+  assert.deepEqual(actions.typedPath('data.tags[0]', columns), { start: 'data', text: 'data.tags[0]' });
+  assert.deepEqual(actions.typedPath('data[1].name', columns), { start: 'data', text: 'data[1].name' });
+  assert.deepEqual(actions.typedPath("data.x' or 1=1 --", columns), {
+    start: 'data',
+    text: "data.'x'' or 1=1 --'",
+  });
+  assert.deepEqual(actions.typedPath('data.a | delete!', columns), { start: 'data', text: "data.'a | delete!'" });
+  assert.equal(actions.typedPath('data..x', columns), null, 'An empty step');
+  assert.equal(actions.typedPath('other.x', columns), null, 'Not a column of the table');
+});
+
+test('a condition on a typed path, or on an index of an element, is written after its alias', () => {
+  assert.equal(
+    actions.whereSegmentText([{ alias: 'a', column: "data.'home address'.city", operator: '=', value: 'Oslo' }]),
+    "where: a.data.'home address'.city = 'Oslo'",
+  );
+  assert.equal(
+    actions.whereSegmentText([{ alias: 'e', column: '[0]', operator: '=', value: 'x' }]),
+    "where: e[0] = 'x'",
+  );
+});
+
+test('a typed path is added to the select step like a column', () => {
+  assert.match(actions.setSelectColumns(base(), 'a', ['id', "data.'home address'"]), /select: a\.id, a\.data\.'home address', e\.field/);
 });
 
 test('an element item is added to, or removed from, the step the table owns', () => {
@@ -185,4 +228,9 @@ test('an unnest with :left shows it on its chip, and its name and x still work',
     aliasMap: new Map(),
   };
   assert.equal(actions.removeUnnest(b, 'e'), 'activity as a | where: a.type = 1');
+});
+
+test('a select column picked again goes before the elements, and a picked element is added only once', () => {
+  assert.match(actions.addSelectColumn(base(), 'a', 'id'), /select: a\.id, a\.id, e\.field/);
+  assert.equal(actions.toggleElementPart(base(), 'a', 'select', 'e.field', true), expression);
 });

@@ -298,6 +298,17 @@ export const whereEntriesFor = (ast: Ast, alias: string): WhereEntry[] =>
     .flatMap(s => s.source.where)
     .filter(w => whereConditions(w)[0].alias === alias);
 
+/**
+ * The name a select item was given with `as`, or null. Pine names some
+ * items itself: a key inside JSON after its path, `data.plan`, and
+ * `created_at => month` after the function. Those aren't shown.
+ */
+const selectItemName = (c: Column): string | null => {
+  const name = c['column-alias'];
+  if (!name || !/^[A-Za-z_][A-Za-z0-9_-]*$/.test(name) || name === c.column) return null;
+  return c['col-fn'] && name === c['col-fn'] ? null : name;
+};
+
 /** What a checkpoint's divider says: `limit 10`, `limit 1 per c.id`, `group t.title with count`. */
 const columnLabel = (c: CheckpointColumn): string => `${c.alias}.${columnName(c.column, c.path)}`;
 export const checkpointLabel = (checkpoint: Checkpoint): string => {
@@ -401,10 +412,17 @@ const deriveStage = (
   const orderChip = (name: string, o: OrderColumn) =>
     `${name} ${o.direction}${o.nulls ? ` nulls ${o.nulls.toLowerCase()}` : ''}`;
 
+  // A grouped column shows under group only. Each select item keeps the
+  // name it was given with `as`, or null.
+  const selectChips = (alias: string) => {
+    const shown = (selectByAlias[alias] ?? []).filter(
+      c => !groupedColumnNamesByAlias[alias]?.has(columnName(c.column, c.path)),
+    );
+    return { selectColumns: shown.map(c => columnName(c.column, c.path)), selectNames: shown.map(selectItemName) };
+  };
+
   const chipsFor = (alias: string) => ({
-    selectColumns: (selectByAlias[alias] ?? [])
-      .map(c => columnName(c.column, c.path))
-      .filter(column => !groupedColumnNamesByAlias[alias]?.has(column)),
+    ...selectChips(alias),
     whereChips: (whereByAlias[alias] ?? []).map(whereChip(alias)),
     orderChips: (orderByAlias[alias] ?? []).map(o => orderChip(columnName(o.column, o.path), o)),
     groupChips: (groupByAlias[alias] ?? []).map(g => columnName(g.column, g.path)),

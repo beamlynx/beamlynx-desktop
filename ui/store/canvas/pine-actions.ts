@@ -229,7 +229,87 @@ export const removeElementPart = (
 export const getSelectColumns = (base: PinnedBase, alias: string): string[] =>
   selectParts(base, alias)
     .filter(part => !isElementPart(base, part))
-    .map(part => columnAfterAlias(part, alias));
+    .map(part => selectPartColumn(part, alias));
+
+// `c_0.id as company_id`: the name a select item is given with `as`.
+const SELECT_NAME_RE = /\s+as\s+([A-Za-z_][A-Za-z0-9_-]*)\s*$/i;
+
+/** `c_0.id as company_id` -> `id`; `c_0.created_at => month` -> `created_at`. */
+const selectPartColumn = (part: string, alias: string): string =>
+  columnAfterAlias(part.replace(SELECT_NAME_RE, '').split(/\s+=>\s+/)[0].trim(), alias);
+
+/**
+ * A name typed for a select item, made safe to write after `as`: letters,
+ * digits and `_` only, not starting with a digit. Empty means no name.
+ */
+export const selectName = (typed: string): string => {
+  const name = typed.trim().replace(/[^A-Za-z0-9_]+/g, '_');
+  return /^[0-9]/.test(name) ? `_${name}` : name;
+};
+
+/**
+ * Rewrites the `occurrence`th select item of `alias` on `column` (the same
+ * column can be selected more than once, each under its own name) with
+ * `edit`; null removes it. The other items stay as written.
+ */
+const editSelectPart = (
+  base: PinnedBase,
+  alias: string,
+  column: string,
+  occurrence: number,
+  edit: (part: string) => string | null,
+): string => {
+  const parts = selectParts(base, alias);
+  let seen = 0;
+  const index = parts.findIndex(
+    part => !isElementPart(base, part) && selectPartColumn(part, alias) === column && seen++ === occurrence,
+  );
+  if (index < 0) return toText(base.segments);
+  const edited = edit(parts[index]);
+  const next = edited === null ? parts.filter((_, i) => i !== index) : parts.map((p, i) => (i === index ? edited : p));
+  return toText(upsertOwnedSegment(base.segments, alias, 'select', next.length ? `select: ${next.join(', ')}` : null));
+};
+
+/**
+ * Adds `alias.column` for each of `columns` to the select step, even one
+ * already there: a second copy can get its own name. The items already
+ * there stay as written.
+ */
+export const addSelectColumns = (base: PinnedBase, alias: string, columns: string[]): string => {
+  if (columns.length === 0) return toText(base.segments);
+  const parts = selectParts(base, alias);
+  // Before the elements' items, which are listed apart (see setSelectColumns).
+  const at = parts.findIndex(part => isElementPart(base, part));
+  const next = [...parts];
+  next.splice(at < 0 ? parts.length : at, 0, ...columns.map(c => `${alias}.${c}`));
+  return toText(upsertOwnedSegment(base.segments, alias, 'select', `select: ${next.join(', ')}`));
+};
+
+export const addSelectColumn = (base: PinnedBase, alias: string, column: string): string =>
+  addSelectColumns(base, alias, [column]);
+
+/** Removes one select item: the × on its chip. */
+export const removeSelectColumn = (base: PinnedBase, alias: string, column: string, occurrence: number): string =>
+  editSelectPart(base, alias, column, occurrence, () => null);
+
+/** Names one select item with `as`, or drops its name when `name` is empty. */
+export const setSelectName = (
+  base: PinnedBase,
+  alias: string,
+  column: string,
+  occurrence: number,
+  name: string,
+): string => {
+  const safe = selectName(name);
+  return editSelectPart(base, alias, column, occurrence, part => {
+    const bare = part.replace(SELECT_NAME_RE, '').trim();
+    return safe ? `${bare} as ${safe}` : bare;
+  });
+};
+
+/** Which copy of its column the chip at `index` is: `id`, `id as a`, `id as b` are copies 0, 1 and 2. */
+export const occurrenceAt = (columns: string[], index: number): number =>
+  columns.slice(0, index).filter(c => c === columns[index]).length;
 
 /**
  * `c_0.data.plan` -> `data.plan`: the column, and any path into its JSON
@@ -308,8 +388,9 @@ export const whereSegmentText = (conditions: WhereConditionDraft[]): string =>
 // pine-lang already written as Pine with its own aliases, so it isn't
 // prefixed with one.
 // An element of `unnest:` by itself has no column: just `e`.
+// An index into it, `[0]`, follows it directly: `e[0]`.
 const whereLeft = (alias: string, column: string): string =>
-  column.includes('(') ? column : column === '' ? alias : `${alias}.${column}`;
+  column.includes('(') ? column : column === '' || column.startsWith('[') ? `${alias}${column}` : `${alias}.${column}`;
 
 // `index` is this alias's where-conditions in pipeline order - the same
 // order `ast.where` reports them in (see layout.ts's whereChips), since a new
@@ -636,7 +717,8 @@ export const setGroupColumns = (base: PinnedBase, alias: string, columns: string
  * column.
  */
 export const unnestName = (column: string, taken: Set<string>): string => {
-  const last = column.split('.').pop() ?? column;
+  // A quoted key, `'home addresses'`, is named without its quotes and spaces.
+  const last = (column.split('.').pop() ?? column).replace(/^'|'$/g, '').replace(/[^A-Za-z0-9_]+/g, '_');
   const lower = last.toLowerCase();
   const singular = /ies$/.test(lower)
     ? `${last.slice(0, -3)}y`
@@ -652,19 +734,27 @@ export const unnestName = (column: string, taken: Set<string>): string => {
 };
 
 /**
- * What is typed in a column picker, `e.address.city`, as Pine: the element
- * `e` and the key's steps, each quoted when it isn't a plain name
- * (`e.'home address'`). Null unless it starts with one of `elements`.
- * Keys inside JSON aren't in the schema, so they are typed, not picked.
+ * What is typed in a picker, `data.address.city`, as Pine: one of `starts`
+ * (a column, or the elements of an `unnest:`) and a path inside it. Keys
+ * inside JSON aren't in the schema, so they are typed, not picked.
+ *
+ * The text becomes part of the query, so each key is written in a form
+ * Pine reads as a key and nothing else: a plain name as it is, anything
+ * else quoted, `data.'home address'`, with a quote inside doubled. `[n]`
+ * after a key is an array index. Null unless it starts with one of
+ * `starts`, or when a step is empty.
  */
-export const elementKeyText = (typed: string, elements: string[]): { element: string; text: string } | null => {
+export const typedPath = (typed: string, starts: string[]): { start: string; text: string } | null => {
   const [first, ...steps] = typed.trim().split('.');
-  if (!elements.includes(first) || steps.some(s => s === '')) return null;
-  const text = steps.reduce(
-    (name, step) => (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(step) ? `${name}.${step}` : `${name}.'${step.replace(/'/g, "''")}'`),
-    first,
-  );
-  return { element: first, text };
+  const [, start, firstIndexes] = first.match(/^(.*?)((?:\[\d+\])*)$/) ?? [];
+  if (!start || !starts.includes(start)) return null;
+  let text = `${start}${firstIndexes}`;
+  for (const step of steps) {
+    const [, key, indexes] = step.match(/^(.*?)((?:\[\d+\])*)$/) ?? [];
+    if (!key) return null;
+    text += /^[A-Za-z_][A-Za-z0-9_-]*$/.test(key) ? `.${key}${indexes}` : `.'${key.replace(/'/g, "''")}'${indexes}`;
+  }
+  return { start, text };
 };
 
 /**
@@ -677,6 +767,7 @@ export const toggleElementPart = (
   alias: string,
   kind: 'select' | 'order' | 'group',
   text: string,
+  addOnly = false,
 ): string => {
   const column = (part: string) => splitOrderItem(part).column.toLowerCase();
   const present =
@@ -691,7 +782,7 @@ export const toggleElementPart = (
             '',
           ),
         ).some(p => column(p) === column(text));
-  if (present) return removeElementPart(base, alias, kind, text);
+  if (present) return addOnly ? toText(base.segments) : removeElementPart(base, alias, kind, text);
   if (kind === 'group') {
     const index = stageGroupIndex(base.segments, alias);
     if (index >= 0) {
@@ -713,8 +804,14 @@ export const toggleElementPart = (
 };
 
 /** `unnest: c.data.changes as change`, after `alias`'s own steps. */
-export const addUnnest = (base: PinnedBase, alias: string, column: string, name: string): string =>
-  toText(appendOwnedSegment(base.segments, alias, 'unnest', `unnest: ${alias}.${column} as ${name}`));
+/**
+ * Adds `unnest: alias.<path> as <name>` to `alias`'s stage. `path` is a
+ * column, or a path inside one (`options.officers`). With `fromElement`, it
+ * starts at elements already unnested on this node (`o.items`), which are
+ * named without the table's alias.
+ */
+export const addUnnest = (base: PinnedBase, alias: string, path: string, name: string, fromElement = false): string =>
+  toText(appendOwnedSegment(base.segments, alias, 'unnest', `unnest: ${fromElement ? '' : `${alias}.`}${path} as ${name}`));
 
 /** The name of the elements an UNNEST chip shows: `e` in `data.changes as e :left`. */
 export const unnestChipName = (chip: string): string =>
