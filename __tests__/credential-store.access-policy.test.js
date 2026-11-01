@@ -61,6 +61,7 @@ const {
   saveConnection,
   setMcpEnabled,
   attachTemplate,
+  copyPolicyFrom,
   forgetConnection,
   setApplyPolicyToOwnQueries,
   listConnections,
@@ -162,6 +163,38 @@ test('attachTemplate refuses an unknown template, and another connection\'s poli
   assert.deepEqual(attachTemplate(conn.id, 'missing'), { ok: false, reason: 'not-found' });
   assert.deepEqual(attachTemplate(conn.id, other.policyId), { ok: false, reason: 'not-found' });
   assert.deepEqual(attachTemplate('missing', null), { ok: false, reason: 'not-found' });
+});
+
+test('copyPolicyFrom gives a connection its own copy of another connection\'s rules', () => {
+  const source = addConnection();
+  addAccessPolicyRule(source.policyId, { type: 'hide', match: { name: { contains: 'secret' } } });
+  const conn = addConnection();
+  const oldPolicyId = conn.policyId;
+  const result = copyPolicyFrom(conn.id, source.id);
+  assert.equal(result.ok, true);
+  const copy = policyById(result.profile.policyId);
+  assert.notEqual(copy.id, source.policyId);
+  assert.equal(copy.connectionId, conn.id);
+  const ruleOf = ({ id: _id, ...rule }) => rule;
+  assert.deepEqual(copy.rules.map(ruleOf), policyById(source.policyId).rules.map(ruleOf));
+  // Its old policy is gone, and the source's is untouched.
+  assert.equal(policyById(oldPolicyId), undefined);
+  // The two stay separate: changing the copy leaves the source alone.
+  disableAllRules(copy.id);
+  assert.ok(policyById(source.policyId).rules.some(r => r.enabled));
+});
+
+test('copyPolicyFrom refuses an unknown or policy-less source, itself, and a source with no rule on while agents use it', () => {
+  const conn = addConnection();
+  const bare = addConnection({ noPolicy: true });
+  assert.deepEqual(copyPolicyFrom(conn.id, 'missing'), { ok: false, reason: 'not-found' });
+  assert.deepEqual(copyPolicyFrom(conn.id, bare.id), { ok: false, reason: 'not-found' });
+  assert.deepEqual(copyPolicyFrom(conn.id, conn.id), { ok: false, reason: 'not-found' });
+  assert.deepEqual(copyPolicyFrom('missing', conn.id), { ok: false, reason: 'not-found' });
+  const empty = addConnection();
+  disableAllRules(empty.policyId);
+  assert.equal(setMcpEnabled(conn.id, true).ok, true);
+  assert.deepEqual(copyPolicyFrom(conn.id, empty.id), { ok: false, reason: 'mcp-requires-policy' });
 });
 
 test('setMcpEnabled(id, true) succeeds when the connection\'s policy is null ("None" -- deliberate, unrestricted access)', () => {

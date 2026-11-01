@@ -5,6 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 ### Changed
+- **Data masking is on the Agent page.** Open **Agent** in the sidebar to choose the databases your agent can use and what each one masks. A database can start from another database's rules. (bundled beamlynx-ui)
 - **Beamlynx now always counts each launch, and who is signed in.** Each launch sends the app version and OS. If you are signed in, it also sends your name and email. The **Send detailed usage stats** switch in Settings → Account now covers only query counts and the database types you add. If you had turned usage stats off, launches are now counted again.
 
 ## [0.26.0] - 2026-10-28

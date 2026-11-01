@@ -153,6 +153,9 @@ contextBridge.exposeInMainWorld('beamlynxDesktop', {
     ): Promise<SetAgentAccessResult> => ipcRenderer.invoke('credentials:set-agent-access', id, access, templateId),
     attachTemplate: (id: string, templateId: string | null): Promise<AttachTemplateResult> =>
       ipcRenderer.invoke('credentials:attach-template', id, templateId),
+    // A fresh copy of another connection's rules as this one's own policy.
+    copyPolicyFrom: (id: string, sourceConnectionId: string): Promise<AttachTemplateResult> =>
+      ipcRenderer.invoke('credentials:copy-policy-from', id, sourceConnectionId),
     setApplyPolicyToOwnQueries: (id: string, apply: boolean): Promise<SavedConnectionMeta | null> =>
       ipcRenderer.invoke('credentials:set-apply-policy-for-own-queries', id, apply),
     rename: (id: string, label: string): Promise<SavedConnectionMeta | null> =>
