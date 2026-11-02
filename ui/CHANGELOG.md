@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.72.2] - 2026-11-02
 ### Fixed
 - **Typing a key of an unnested element shows its first value.** After `unnest: companies as c`, typing `c.` in the Pine panel or in a canvas picker shows the first element, so you can see its keys. Before, the value showed only for a JSON column.
 
