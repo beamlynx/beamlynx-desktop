@@ -309,6 +309,18 @@ const selectItemName = (c: Column): string | null => {
   return c['col-fn'] && name === c['col-fn'] ? null : name;
 };
 
+/**
+ * The name a select item on the elements of an `unnest:` was given with
+ * `as`, or null. Pine names `e` itself after the elements, and `e.field`
+ * after its last key. Those aren't shown.
+ */
+const elementItemName = (c: Column): string | null => {
+  const name = c['column-alias'];
+  if (!name || !/^[A-Za-z_][A-Za-z0-9_-]*$/.test(name)) return null;
+  const last = c.path?.length ? c.path[c.path.length - 1] : c.alias;
+  return name === String(last) ? null : name;
+};
+
 /** What a checkpoint's divider says: `limit 10`, `limit 1 per c.id`, `group t.title with count`. */
 const columnLabel = (c: CheckpointColumn): string => `${c.alias}.${columnName(c.column, c.path)}`;
 export const checkpointLabel = (checkpoint: Checkpoint): string => {
@@ -421,6 +433,15 @@ const deriveStage = (
     return { selectColumns: shown.map(c => columnName(c.column, c.path)), selectNames: shown.map(selectItemName) };
   };
 
+  // As for a table's own: a grouped key shows under group only. Each item
+  // keeps the name it was given with `as`, or null.
+  const elementSelectChips = (alias: string) => {
+    const shown = (elementSelectByTable[alias] ?? []).filter(
+      c => !(elementGroupByTable[alias] ?? []).some(g => elementName(g.alias, g.path) === elementName(c.alias, c.path)),
+    );
+    return { select: shown.map(c => elementName(c.alias, c.path)), selectNames: shown.map(elementItemName) };
+  };
+
   const chipsFor = (alias: string) => ({
     ...selectChips(alias),
     whereChips: (whereByAlias[alias] ?? []).map(whereChip(alias)),
@@ -428,10 +449,7 @@ const deriveStage = (
     groupChips: (groupByAlias[alias] ?? []).map(g => columnName(g.column, g.path)),
     unnestChips: (unnestsByTable[alias] ?? []).map(u => `${u.text} as ${u.alias}${u.left ? ' :left' : ''}`),
     elementChips: {
-      // As for a table's own: a grouped key shows under group only.
-      select: (elementSelectByTable[alias] ?? [])
-        .map(c => elementName(c.alias, c.path))
-        .filter(name => !(elementGroupByTable[alias] ?? []).some(g => elementName(g.alias, g.path) === name)),
+      ...elementSelectChips(alias),
       where: (elementWhereByTable[alias] ?? []).map(whereChip(alias)),
       order: (elementOrderByTable[alias] ?? []).map(o => orderChip(elementName(o.alias, o.path), o)),
       group: (elementGroupByTable[alias] ?? []).map(g => elementName(g.alias, g.path)),
