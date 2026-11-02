@@ -23,6 +23,16 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.72.2',
+    date: '2026-11-02',
+    fixed: [
+      {
+        title: "Typing a key of an unnested element shows its first value",
+        description: "After `unnest: companies as c`, typing `c.` in the Pine panel or in a canvas picker shows the first element, so you can see its keys. Before, the value showed only for a JSON column.",
+      },
+    ],
+  },
+  {
     version: '0.72.1',
     date: '2026-11-02',
     breaking: [
@@ -2740,4 +2750,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.72.1';
+export const LATEST_VERSION = '0.72.2';
