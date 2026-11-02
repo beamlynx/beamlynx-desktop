@@ -23,6 +23,71 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.72.0',
+    date: '2026-11-02',
+    breaking: [
+      {
+        title: "Needs pine-lang 0.53.0 or later (was 0.51.0)",
+        description:
+          "Unnest on the canvas, editing values inside unnested elements, and joins on names you give all need it. Connecting to an older server shows the upgrade-required screen.",
+      },
+    ],
+    added: [
+      {
+        title: "The canvas shows `unnest:` on its table",
+        description:
+          "`unnest: data as e` gives one row for each element of a JSON array. The table's node shows it in an unnest row, and the keys the query reads from the elements, like `e.field`, in its other rows. Typing `unnest: ` in the Pine panel suggests the table's JSON columns.",
+      },
+      {
+        title: "Edit values inside unnested elements in the results",
+        description:
+          "After `unnest: data as e`, a cell like `e.after` can be edited like any other. The change goes into that one element of the row's JSON array.",
+      },
+      {
+        title: "Joins on a name you give show on the canvas",
+        description:
+          "`s: resourceableId as company_id | company` joins each row to the company it names. The canvas draws that join dashed, like a join guessed from column names, because nothing in the database says it. A join from unnested elements starts at their table.",
+      },
+      {
+        title: "See a JSON column's keys while you type one",
+        description:
+          "Start a key inside a JSON column, like `content.`, on the canvas with { } ›, or in the Pine panel and press Tab. The results pane shows the column's first value, marked peek, under the query that fetched it, until you leave the key.",
+      },
+      {
+        title: "Select a column more than once, each with its own name",
+        description:
+          "On the canvas, clicking a column in the select picker always adds it, and only the × on its chip removes it. Click a chip to name it, and it reads `id as company_id`.",
+      },
+      {
+        title: "Pick a key inside a JSON column on the canvas",
+        description:
+          "In the select, where, order, group and unnest pickers, a JSON column has a { } ›. Click it, or press → on its row, and type the key: `data.address.city` or `data.tags[0]`. A key that isn't a plain name is quoted for you, so what you type is always read as a key.",
+      },
+      {
+        title: "Unnest from the canvas",
+        description:
+          "A table with a JSON column has unnest in its + menu. Pick the column, or type a path to an array inside it, like `options.officers`. The elements are named after the array in the singular: `officers` becomes `officer`. In the select, where, order and group pickers, type a key of the elements, like `change.field`, to use it. The pickers list them under unnested. Every chip of an unnest, and of what is read from its elements, can be removed with its ×. An unnest that keeps rows with no elements shows `:left` on its chip.",
+      },
+    ],
+    changed: [
+      {
+        title: "Database Connections has a database icon in the sidebar",
+        description:
+          "In place of one that looked like a server.",
+      },
+      {
+        title: "Data masking is on the Agent page",
+        description:
+          "Open Agent in the sidebar to connect an agent, choose the databases it can use, and set what each one masks. Turning a database on masks it with the recommended rules. Your own sets of rules are on the Masking tab, and Start over from… applies one to a database.",
+      },
+      {
+        title: "The usage stats switch now covers only the detailed stats",
+        description:
+          "It is called Send detailed usage stats, in Settings → Account, and covers query counts and the database types you add. Each launch, the app version and who is signed in are now always sent. The first-run screen says so.",
+      },
+    ],
+  },
+  {
     version: '0.71.0',
     date: '2026-10-28',
     added: [
@@ -2705,4 +2770,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.71.0';
+export const LATEST_VERSION = '0.72.0';
