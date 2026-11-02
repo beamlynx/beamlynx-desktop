@@ -36,7 +36,14 @@ export type CanvasTableNodeData = {
    * chips. Shown only: the chip actions edit a table's own columns.
    */
   unnestChips?: string[];
-  elementChips?: { select: string[]; where: string[]; order: string[]; group: string[] };
+  elementChips?: {
+    select: string[];
+    /** The name each of `select` was given with `as`, or null. */
+    selectNames?: (string | null)[];
+    where: string[];
+    order: string[];
+    group: string[];
+  };
   leftHandles: CanvasHandle[];
   rightHandles: CanvasHandle[];
   /**
@@ -318,6 +325,8 @@ export type PickerState =
       column: string;
       /** Which copy of `column` in the select step, as in actions.occurrenceAt. */
       occurrence: number;
+      /** `column` is read from the elements of an `unnest:`: `e.field`. */
+      element?: boolean;
       /** The input's live text, seeded with the item's current name. */
       value: string;
       anchor: PickerAnchor;

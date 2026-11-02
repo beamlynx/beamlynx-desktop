@@ -631,7 +631,8 @@ const Picker: React.FC = observer(() => {
         data-testid="canvas-picker"
       >
         <div style={{ marginBottom: 6, opacity: 0.7 }}>
-          {node?.data.table ?? picker.alias}.{picker.column}
+          {/* An element's item is written as typed: `company.id`. */}
+          {picker.element ? picker.column : `${node?.data.table ?? picker.alias}.${picker.column}`}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ opacity: 0.7, fontFamily: 'var(--code-font)' }}>as</span>

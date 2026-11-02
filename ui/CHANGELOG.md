@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Fixed
+- **Name a value read from an unnested element on the canvas.** Click its chip under **sel**, such as `company.id`, to name it, as in `company.id as company_id`. Before, only a table's own columns could be named there.
 
 ## [0.72.2] - 2026-11-02
 ### Fixed

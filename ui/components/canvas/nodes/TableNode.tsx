@@ -328,6 +328,7 @@ const ChipRow = ({
   onRemove,
   onRemoveReadOnly,
   onSelect,
+  onSelectReadOnly,
   highlightIndex,
 }: {
   label: string;
@@ -339,6 +340,8 @@ const ChipRow = ({
   onRemoveReadOnly?: (index: number) => void;
   /** Reopens this chip's own config panel with its current value prefilled - see CanvasStore.openWhereEditor. Only offered for "where" today; select/order/group chips are already fully edited by toggling. */
   onSelect?: (index: number, anchor: { x: number; y: number }) => void;
+  /** A click on a chip of `readOnlyChips`: on select, a field for its name. */
+  onSelectReadOnly?: (index: number, anchor: { x: number; y: number }) => void;
   /** The chip at this index is CanvasStore.focusedConfigItem's current target - drawn with the same "current" ring TableNode's own border uses for keyboard focus. */
   highlightIndex?: number;
 }) => {
@@ -416,7 +419,16 @@ const ChipRow = ({
       {readOnlyChips.map((chip, i) => (
         <div
           key={`ro-${chip}-${i}`}
+          onClick={
+            onSelectReadOnly
+              ? e => {
+                  e.stopPropagation();
+                  onSelectReadOnly(i, { x: e.clientX, y: e.clientY });
+                }
+              : undefined
+          }
           style={{
+            cursor: onSelectReadOnly ? 'pointer' : undefined,
             fontSize: 'calc(10px * var(--text-scale, 1))',
             fontFamily: 'var(--canvas-font)',
             background: 'var(--canvas-chip-bg)',
@@ -906,8 +918,16 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
           const name = data.selectNames?.[i];
           return name ? `${column} as ${name}` : column;
         })}
-        readOnlyChips={data.elementChips?.select}
+        readOnlyChips={(data.elementChips?.select ?? []).map((chip, i) => {
+          const name = data.elementChips?.selectNames?.[i];
+          return name ? `${chip} as ${name}` : chip;
+        })}
         onRemoveReadOnly={i => void canvasStore.removeElementPart(data.alias, 'select', data.elementChips?.select[i] ?? '')}
+        // Like a column's chip: a click names the item with `as`.
+        onSelectReadOnly={(i, anchor) => {
+          const chips = data.elementChips?.select ?? [];
+          void canvasStore.openSelectNameEditor(data.alias, chips[i], occurrenceAt(chips, i), anchor, true);
+        }}
         // The same column can be selected more than once: a chip is one copy.
         onRemove={i =>
           void canvasStore.removeSelectColumn(data.alias, data.selectColumns[i], occurrenceAt(data.selectColumns, i))

@@ -234,3 +234,12 @@ test('a select column picked again goes before the elements, and a picked elemen
   assert.match(actions.addSelectColumn(base(), 'a', 'id'), /select: a\.id, a\.id, e\.field/);
   assert.equal(actions.toggleElementPart(base(), 'a', 'select', 'e.field', true), expression);
 });
+
+test('an element select item is named with as, and its name dropped', () => {
+  assert.match(actions.setElementSelectName(base(), 'a', 'e.field', 0, 'company_id'), /\| s(elect)?: a\.id, e\.field as company_id \|/);
+  // A name made safe, as for a column's item.
+  assert.match(actions.setElementSelectName(base(), 'a', 'e.field', 0, 'company id'), /e\.field as company_id \|/);
+  assert.match(actions.setElementSelectName(base(), 'a', 'e.field', 0, ''), /\| s(elect)?: a\.id, e\.field \|/);
+  // A table's own column isn't an element item: nothing changes.
+  assert.equal(actions.setElementSelectName(base(), 'a', 'a.id', 0, 'x').includes(' as x'), false);
+});

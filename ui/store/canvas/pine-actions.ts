@@ -199,7 +199,8 @@ export const removeElementPart = (
   kind: 'select' | 'order' | 'group',
   chip: string,
 ): string => {
-  const column = (part: string) => splitOrderItem(part).column.toLowerCase();
+  // A select item may have a name: `e.field as label` is the item `e.field`.
+  const column = (part: string) => splitOrderItem(part.replace(SELECT_NAME_RE, '')).column.toLowerCase();
   const target = column(chip);
   if (kind === 'group') {
     const index = stageGroupIndex(base.segments, alias);
@@ -305,6 +306,30 @@ export const setSelectName = (
     const bare = part.replace(SELECT_NAME_RE, '').trim();
     return safe ? `${bare} as ${safe}` : bare;
   });
+};
+
+/**
+ * Names one select item on the elements of an `unnest:`, `e.field`, with
+ * `as`, or drops its name when `name` is empty. `occurrence` is which copy
+ * of `chip`, as for setSelectName.
+ */
+export const setElementSelectName = (
+  base: PinnedBase,
+  alias: string,
+  chip: string,
+  occurrence: number,
+  name: string,
+): string => {
+  const safe = selectName(name);
+  const bareOf = (part: string) => part.replace(SELECT_NAME_RE, '').trim();
+  const parts = selectParts(base, alias);
+  let seen = 0;
+  const index = parts.findIndex(
+    part => isElementPart(base, part) && bareOf(part).toLowerCase() === chip.toLowerCase() && seen++ === occurrence,
+  );
+  if (index < 0) return toText(base.segments);
+  const next = parts.map((p, i) => (i === index ? (safe ? `${bareOf(p)} as ${safe}` : bareOf(p)) : p));
+  return toText(upsertOwnedSegment(base.segments, alias, 'select', `select: ${next.join(', ')}`));
 };
 
 /** Which copy of its column the chip at `index` is: `id`, `id as a`, `id as b` are copies 0, 1 and 2. */
@@ -769,7 +794,8 @@ export const toggleElementPart = (
   text: string,
   addOnly = false,
 ): string => {
-  const column = (part: string) => splitOrderItem(part).column.toLowerCase();
+  // A select item may have a name: `e.field as label` is the item `e.field`.
+  const column = (part: string) => splitOrderItem(part.replace(SELECT_NAME_RE, '')).column.toLowerCase();
   const present =
     kind === 'group'
       ? (() => {

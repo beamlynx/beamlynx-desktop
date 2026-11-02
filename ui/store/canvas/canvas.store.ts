@@ -1977,20 +1977,39 @@ export class CanvasStore {
     );
   }
 
-  /** A select chip's click: a field for the name the item is given with `as`. A second click closes it. */
-  openSelectNameEditor(alias: string, column: string, occurrence: number, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
+  /**
+   * A select chip's click: a field for the name the item is given with `as`.
+   * A second click closes it. With `element`, the chip is one read from the
+   * elements of an `unnest:`, `e.field`.
+   */
+  openSelectNameEditor(
+    alias: string,
+    column: string,
+    occurrence: number,
+    anchor: PickerAnchor = CanvasStore.defaultAnchor,
+    element = false,
+  ) {
     const p = this.picker;
-    if (p.open && p.mode === 'select-name' && p.alias === alias && p.column === column && p.occurrence === occurrence) {
+    if (
+      p.open &&
+      p.mode === 'select-name' &&
+      p.alias === alias &&
+      p.column === column &&
+      p.occurrence === occurrence &&
+      !!p.element === element
+    ) {
       this.closePicker();
       return;
     }
     const node = this.canvasGraph.nodes.find((n): n is CanvasTableNode => n.type === 'table-node' && n.id === alias);
-    const columns = node?.data.selectColumns ?? [];
+    const columns = (element ? node?.data.elementChips?.select : node?.data.selectColumns) ?? [];
+    const names = element ? node?.data.elementChips?.selectNames : node?.data.selectNames;
     let seen = 0;
     const index = columns.findIndex(c => c === column && seen++ === occurrence);
-    const value = (index >= 0 ? node?.data.selectNames?.[index] : null) ?? '';
-    this.focusConfigItem(alias, { kind: 'select', column, occurrence });
-    this.picker = { open: true, mode: 'select-name', alias, column, occurrence, value, anchor };
+    const value = (index >= 0 ? names?.[index] : null) ?? '';
+    if (element) this.focusNode(alias);
+    else this.focusConfigItem(alias, { kind: 'select', column, occurrence });
+    this.picker = { open: true, mode: 'select-name', alias, column, occurrence, element, value, anchor };
   }
 
   setSelectNameValue(value: string) {
@@ -2000,12 +2019,10 @@ export class CanvasStore {
   /** Writes the typed name after `as`, made safe by actions.selectName. Empty drops the name. */
   async commitSelectName() {
     if (!this.picker.open || this.picker.mode !== 'select-name') return;
-    const { alias, column, occurrence, value } = this.picker;
+    const { alias, column, occurrence, element, value } = this.picker;
     this.closePicker();
-    await this.commit(
-      base => actions.setSelectName(base, actions.resolveAlias(base, alias), column, occurrence, value),
-      alias,
-    );
+    const setName = element ? actions.setElementSelectName : actions.setSelectName;
+    await this.commit(base => setName(base, actions.resolveAlias(base, alias), column, occurrence, value), alias);
   }
 
   /**
