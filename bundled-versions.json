@@ -1,5 +1,5 @@
 {
-  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang bumped to its tagged 0.52.0 (join on ids inside a JSON array; masking applies to output only); beamlynx-ui bumped to its tagged 0.71.0 (query time in the results; access policies renamed masking policies). beamlynx-ui 0.71.0 still needs pine-lang 0.51 (its RequiredVersion).",
-  "pineLangRef": "0.52.0",
-  "beamlynxUiRef": "0.71.0"
+  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang bumped to its tagged 0.53.0 (rows from JSON arrays with unnest:, joins on names given with as); beamlynx-ui bumped to its tagged 0.72.0 (unnest on the canvas, data masking on the Agent page). beamlynx-ui 0.72.0 needs pine-lang 0.53 (its RequiredVersion).",
+  "pineLangRef": "0.53.0",
+  "beamlynxUiRef": "0.72.0"
 }
