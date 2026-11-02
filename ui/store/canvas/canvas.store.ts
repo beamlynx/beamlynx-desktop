@@ -41,7 +41,7 @@ import {
 import * as actions from './pine-actions';
 import { hasValue, literalFor, setValue, valueNames } from '../values-blocks';
 import { probeBuild, probeEval } from './probe';
-import { JsonPeek, peekExpression, peekOutcome } from './json-peek';
+import { elementLabel, JsonPeek, peekExpression, peekOutcome } from './json-peek';
 import { canDeleteTraverse } from './traversal';
 import { computeDateBounds } from './relative-date';
 
@@ -1423,32 +1423,39 @@ export class CanvasStore {
    * it, so typing runs no more queries: the whole value shows which keys
    * there are.
    */
-  private get peekTarget(): { alias: string; column: string } | null {
+  /** The JSON column, or the elements of an `unnest:` (`element`), a key is being typed in. */
+  private get peekTarget(): { alias: string; column: string; element: boolean } | null {
     const p = this.picker;
     if (!p.open || p.mode !== 'list' || p.loading) return null;
     const { request } = p;
     if (!['select', 'where', 'order', 'group', 'unnest'].includes(request.kind) || !('alias' in request)) return null;
     const item = p.groups.flatMap(g => g.items).find(i => i.json && p.filter.startsWith(`${i.value}.`));
-    return item ? { alias: request.alias, column: item.value } : null;
+    if (!item) return null;
+    return { alias: request.alias, column: item.value, element: this.elementsOf(request.alias).includes(item.value) };
   }
 
-  private async refreshPeek(target: { alias: string; column: string } | null) {
+  private async refreshPeek(target: { alias: string; column: string; element: boolean } | null) {
     const seq = ++this.peekSeq;
     if (!target) {
       this.jsonPeek = null;
       return;
     }
-    const { alias, column } = target;
+    const { alias, column, element } = target;
     const { block, alias: scoped } = this.scopeOf(alias);
     const context = this.contextOf(block);
     const node = this.canvasGraph.nodes.find((n): n is CanvasTableNode => n.type === 'table-node' && n.id === alias);
-    const table = node?.data.table ?? alias;
+    // An element is labelled by the array it comes from: `dp.companies[*]`.
+    const chips = node?.data.unnestChips ?? [];
+    const chip = element ? chips.find(c => actions.unnestChipName(c) === column) : undefined;
+    const label = chip
+      ? elementLabel({ table: node?.data.table ?? alias, text: chip.split(/\s+as\s+/)[0] }, chips.map(actions.unnestChipName))
+      : { table: node?.data.table ?? alias, column };
     // As for the select picker: without its select step, the stage may not
     // build, when a join after it is on a name given there with `as`.
     const queryFor = (keepSelect: boolean) =>
-      peekExpression(this.buildProbeExpression({ kind: 'select', alias }, keepSelect), scoped, column);
+      peekExpression(this.buildProbeExpression({ kind: 'select', alias }, keepSelect), element ? null : scoped, column);
     let expression = queryFor(false);
-    this.jsonPeek = { alias, table, column, expression, status: 'loading' };
+    this.jsonPeek = { alias, ...label, expression, status: 'loading' };
     const run = (text: string) =>
       probeEval(text, this.session.connectionId, this.session.accessPolicy, context);
     try {
@@ -1462,12 +1469,12 @@ export class CanvasStore {
       }
       if (seq !== this.peekSeq) return;
       runInAction(() => {
-        this.jsonPeek = { alias, table, column, expression, ...peekOutcome(response, column) };
+        this.jsonPeek = { alias, ...label, expression, ...peekOutcome(response, column) };
       });
     } catch (e) {
       if (seq !== this.peekSeq) return;
       runInAction(() => {
-        this.jsonPeek = { alias, table, column, expression, status: 'error', error: (e as Error).message };
+        this.jsonPeek = { alias, ...label, expression, status: 'error', error: (e as Error).message };
       });
     }
   }
@@ -1798,7 +1805,8 @@ export class CanvasStore {
           ? [
               {
                 label: 'unnested',
-                items: elements.map(e => ({ id: `element:${e}`, label: e, value: e })),
+                // JSON values, like a JSON column: a › starts a path, and a key being typed peeks.
+                items: elements.map(e => ({ id: `element:${e}`, label: e, value: e, json: true })),
               },
             ]
           : [];

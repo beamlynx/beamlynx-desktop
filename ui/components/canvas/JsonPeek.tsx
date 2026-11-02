@@ -39,7 +39,7 @@ const PeekLine = ({ loading }: { loading: boolean }) => (
 /** The first value of the JSON column, and the query that fetched it, over the results pane. */
 export const JsonPeekCard = observer(({ peek, onLeave }: { peek: JsonPeek | null; onLeave?: () => void }) => {
   if (!peek) return null;
-  const name = `${peek.table}.${peek.column}`;
+  const name = peek.table ? `${peek.table}.${peek.column}` : peek.column;
   return (
     <Box
       data-json-peek

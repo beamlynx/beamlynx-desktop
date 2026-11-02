@@ -77,3 +77,29 @@ test('the Pine panel sends the earlier blocks and values blocks along', () => {
   assert.deepEqual(target.context, ['$x = 1', 'company | g: id |= ids', '$y = 2']);
   assert.equal(target.prefix, 'ids');
 });
+
+test('the elements of an unnest: are peeked at by their name alone', () => {
+  assert.equal(
+    peekExpression('documents_package as dp | unnest: companies as c | s: id', null, 'c'),
+    'documents_package as dp | unnest: companies as c | s: id | w: c is not null | s: c | l: 1',
+  );
+  assert.deepEqual(peekValue([['__dp__id', '__c__index', 'c'], [1, 0, '{"id":"993b"}']], 'c'), {
+    found: true,
+    value: { id: '993b' },
+  });
+});
+
+test('a peek at elements is labelled by the array they come from', () => {
+  const { elementLabel } = require('../store/canvas/json-peek.ts');
+  assert.deepEqual(elementLabel({ table: 'dp', text: 'companies' }, ['c']), { table: 'dp', column: 'companies[*]' });
+  // Elements of elements start at the outer ones.
+  assert.deepEqual(elementLabel({ table: 'dp', text: 'o.items' }, ['o', 'i']), { table: '', column: 'o.items[*]' });
+});
+
+test('the Pine panel guesses an element name as a column, the last guess', () => {
+  assert.deepEqual(at('dp | unnest: companies as c | s: c.^').candidates, [{ column: 'c' }]);
+  assert.deepEqual(at('dp | unnest: companies as c | w: c.address.ci^').candidates, [
+    { alias: 'c', column: 'address' },
+    { column: 'c' },
+  ]);
+});
