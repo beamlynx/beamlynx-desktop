@@ -5,6 +5,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.27.2] - 2026-11-02
+### Fixed
+- **Typing a key of an unnested element shows its first value.** After `unnest: companies as c`, typing `c.` in the Pine panel or in a canvas picker shows the first element, so you can see its keys. (bundled beamlynx-ui 0.72.2)
+
 ## [0.27.1] - 2026-11-02
 ### Changed
 - **What's new is shorter.** It lists each new feature of this release once. (bundled beamlynx-ui 0.72.1)
