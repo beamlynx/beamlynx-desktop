@@ -6,7 +6,7 @@ import { csvCell } from '../utils/csv';
 import { mayChangeData } from './canvas/pine-text';
 import { formatSql } from '../utils/formatSql';
 import { CanvasStore } from './canvas/canvas.store';
-import { JsonPeek, panelPeekTarget, peekExpression, peekOutcome } from './canvas/json-peek';
+import { elementLabel, JsonPeek, panelPeekTarget, peekExpression, peekOutcome } from './canvas/json-peek';
 import { probeBuild, probeEval } from './canvas/probe';
 import {
   buildDeleteScript,
@@ -1349,6 +1349,28 @@ export class Session {
     }
     const { context, prefix, candidates } = target;
     try {
+      // The name before the first dot may be the elements of an `unnest:`
+      // before the cursor, `e.`: the peek is then at an element. It is the
+      // last guess, the one without an alias.
+      const name = candidates[candidates.length - 1].column;
+      const built = await probeBuild(`${prefix} | s: `, this.connectionId, context);
+      if (seq !== this.panelPeekSeq) return;
+      const unnests = built?.unnests ?? [];
+      const unnest = unnests.find(u => u.alias === name);
+      if (unnest) {
+        const expression = peekExpression(prefix, null, name);
+        const label = elementLabel(unnest, unnests.map(u => u.alias));
+        const peek = { alias: name, ...label, expression };
+        runInAction(() => {
+          this.panelPeek = { ...peek, status: 'loading' };
+        });
+        const response = await probeEval(expression, this.connectionId, this.accessPolicy, context);
+        if (seq !== this.panelPeekSeq) return;
+        runInAction(() => {
+          this.panelPeek = { ...peek, ...peekOutcome(response, name) };
+        });
+        return;
+      }
       // Which guess names a JSON column: the server lists those after `unnest:`.
       let found: { base: string; alias: string; column: string } | undefined;
       for (const { alias, column } of candidates) {

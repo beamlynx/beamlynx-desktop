@@ -30,10 +30,13 @@ export type JsonPeek = {
  * node's stage, focused on the node with `from:`, then the first row where
  * the column has a value. Without `is not null`, the first row is often
  * one without a value, which says nothing about the keys.
+ *
+ * With no alias, `column` is the name of an `unnest:`'s elements, `e`,
+ * which is read by that name alone.
  */
-export const peekExpression = (selectProbe: string, alias: string, column: string): string => {
+export const peekExpression = (selectProbe: string, alias: string | null, column: string): string => {
   const base = selectProbe.replace(/\|\s*(s|select):\s*$/i, '').trimEnd();
-  const target = `${alias}.${column}`;
+  const target = alias ? `${alias}.${column}` : column;
   return `${base} | w: ${target} is not null | s: ${target} | l: 1`;
 };
 
@@ -53,6 +56,19 @@ export const peekValue = (result: unknown[][] | undefined, column: string): { fo
   const parsed = parseJsonCellValue(raw);
   return { found: true, value: parsed === undefined ? raw : parsed };
 };
+
+/**
+ * How a peek at the elements of an `unnest:` is labelled: the array they
+ * come from, `dp.companies[*]`, as a join would write every element. The
+ * elements of elements start at the outer ones: `o.items[*]`.
+ */
+export const elementLabel = (
+  unnest: { table: string; text: string },
+  elements: string[],
+): Pick<JsonPeek, 'table' | 'column'> => ({
+  table: elements.includes(unnest.text.split('.')[0]) ? '' : unnest.table,
+  column: `${unnest.text}[*]`,
+});
 
 /** What a peek shows once its query has run: the value, or why there is none. */
 export const peekOutcome = (
