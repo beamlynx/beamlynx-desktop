@@ -1163,7 +1163,10 @@ export class GlobalStore {
    */
   openAgentDatabase = (connectionId: string, ruleId?: string) => {
     this.agentDatabaseFocus = { connectionId, ruleId };
-    this.showSettingsSection('mcp');
+    // No attention flash (showSettingsSection): the page already shows
+    // what changed, by opening that database's line. The flash's left
+    // edge also didn't show on the owner's screen (beamlynx-plans #22).
+    this.setShowSettings(true, 'mcp');
   };
 
   clearAgentDatabaseFocus = () => {
