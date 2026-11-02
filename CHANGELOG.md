@@ -5,6 +5,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.27.1] - 2026-11-02
+### Changed
+- **What's new is shorter.** It lists each new feature of this release once. (bundled beamlynx-ui 0.72.1)
+
 ## [0.27.0] - 2026-11-02
 ### Added
 - **One row for each element of a JSON array:** `activity | unnest: data.changes as e | where: e.field = 'giin'`. On the canvas, a table with a JSON column has **unnest** in its **+** menu, and a value inside an element can be edited in the results. (bundled pine-lang 0.53.0, beamlynx-ui 0.72.0)
