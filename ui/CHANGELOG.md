@@ -5,23 +5,20 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
-## [0.72.0] - 2026-11-02
+## [0.72.1] - 2026-11-02
 ### Breaking
-- **Needs pine-lang 0.53.0 or later (was 0.51.0).** Unnest on the canvas, editing values inside unnested elements, and joins on names you give all need it. Connecting to an older server shows the upgrade-required screen.
+- **Needs pine-lang 0.53.0 or later (was 0.51.0).** Connecting to an older server shows the upgrade-required screen.
 
 ### Added
-- **The canvas shows `unnest:` on its table.** `unnest: data as e` gives one row for each element of a JSON array. The table's node shows it in an **unnest** row, and the keys the query reads from the elements, like `e.field`, in its other rows. Typing `unnest: ` in the Pine panel suggests the table's JSON columns.
-- **Edit values inside unnested elements in the results.** After `unnest: data as e`, a cell like `e.after` can be edited like any other. The change goes into that one element of the row's JSON array.
-- **Joins on a name you give show on the canvas.** `s: resourceableId as company_id | company` joins each row to the company it names. The canvas draws that join dashed, like a join guessed from column names, because nothing in the database says it. A join from unnested elements starts at their table.
-- **See a JSON column's keys while you type one.** Start a key inside a JSON column, like `content.`, on the canvas with **{ } ›**, or in the Pine panel and press Tab. The results pane shows the column's first value, marked **peek**, under the query that fetched it, until you leave the key.
-- **Select a column more than once, each with its own name.** On the canvas, clicking a column in the select picker always adds it, and only the **×** on its chip removes it. Click a chip to name it, and it reads `id as company_id`.
-- **Pick a key inside a JSON column on the canvas.** In the select, where, order, group and unnest pickers, a JSON column has a **{ } ›**. Click it, or press → on its row, and type the key: `data.address.city` or `data.tags[0]`. A key that isn't a plain name is quoted for you, so what you type is always read as a key.
-- **Unnest from the canvas.** A table with a JSON column has **unnest** in its **+** menu. Pick the column, or type a path to an array inside it, like `options.officers`. The elements are named after the array in the singular: `officers` becomes `officer`. In the select, where, order and group pickers, type a key of the elements, like `change.field`, to use it. The pickers list them under **unnested**. Every chip of an unnest, and of what is read from its elements, can be removed with its ×. An unnest that keeps rows with no elements shows `:left` on its chip.
+- **One row for each element of a JSON array.** `unnest: data.changes as e` gives each element its own row, and `e.field` reads a key of it. On the canvas, **unnest** is in a table's **+** menu, and a value inside an element can be edited in the results.
+- **Pick a key inside a JSON column on the canvas.** A JSON column has **{ } ›** in the pickers. While you type a key, the results show the column's first value.
+- **Join on a name you give.** `s: resourceableId as company_id | company` joins each row to the company it names. The canvas draws that join dashed.
+- **Select a column more than once, each with its own name.** Click its chip on the canvas to name it, as in `id as company_id`.
 
 ### Changed
-- **Database Connections has a database icon in the sidebar,** in place of one that looked like a server.
-- **Data masking is on the Agent page.** Open **Agent** in the sidebar to connect an agent, choose the databases it can use, and set what each one masks. Turning a database on masks it with the recommended rules. Your own sets of rules are on the **Masking** tab, and **Start over from…** applies one to a database.
-- **The usage stats switch now covers only the detailed stats.** It is called **Send detailed usage stats**, in Settings → Account, and covers query counts and the database types you add. Each launch, the app version and who is signed in are now always sent. The first-run screen says so.
+- **Data masking is on the Agent page.** Open **Agent** in the sidebar to choose the databases your agent can use and what each one masks. Your own sets of rules are on its **Masking** tab.
+- **Database Connections has a database icon in the sidebar.**
+- **The usage stats switch covers only the detailed stats.** Launches and who is signed in are always sent. **Send detailed usage stats**, in Settings → Account, covers query counts and the database types you add.
 
 ## [0.71.0] - 2026-10-28
 ### Added
@@ -61,7 +58,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [0.69.0] - 2026-10-26
 ### Breaking
-- **Needs pine-lang 0.51.0 and the matching beamlynx-desktop release.**
+- **Needs pine-lang 0.51.0 or later (was 0.50.0).** Use it with the matching beamlynx-desktop release.
 
 ### Added
 - **Sign in to Beamlynx with GitHub, or skip.** On desktop, a first-run screen asks you to sign in, so we know who uses Beamlynx. Skipping is final, and you can sign in or out later in **Settings → Account**.
@@ -184,9 +181,6 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ### Changed
 - **The hosted web app is no longer updated.** The last version deployed stays online.
-- **The web app builds on Node.js 24.** Hosting providers stopped building with Node.js 20.
-- **A development copy shows an amber DEV chip in the header.** A desktop dev build shows it too, so it can't be mistaken for the installed app.
-- **A desktop dev build can run next to the installed app.** It uses its own port, and its agent setup is named `beamlynx-dev`.
 
 ### Fixed
 - **The Access Policy section says that a hidden column can still be used in a query's conditions.** So a query could test a guess about its values, for example by counting rows. This was always true, but wasn't written down.
