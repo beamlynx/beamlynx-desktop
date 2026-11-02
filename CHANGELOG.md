@@ -4,9 +4,22 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.27.0] - 2026-11-02
+### Added
+- **One row for each element of a JSON array:** `activity | unnest: data.changes as e | where: e.field = 'giin'`. On the canvas, a table with a JSON column has **unnest** in its **+** menu, and a value inside an element can be edited in the results. (bundled pine-lang 0.53.0, beamlynx-ui 0.72.0)
+- **Join on a name you give with `as`:** `s: resourceableId as company_id | company` joins each row to the company it names. The canvas draws that join dashed. (bundled pine-lang 0.53.0, beamlynx-ui 0.72.0)
+- **Pick a key inside a JSON column on the canvas** with **{ } ›**, and see the column's first value while you type the key. (bundled beamlynx-ui 0.72.0)
+- **Select a column more than once, each with its own name.** Click its chip on the canvas to name it. (bundled beamlynx-ui 0.72.0)
+- **SQL to Pine converts lateral `jsonb_array_elements` joins and `->>` keys in `WHERE`.** (bundled pine-lang 0.53.0)
+
 ### Changed
-- **Data masking is on the Agent page.** Open **Agent** in the sidebar to choose the databases your agent can use and what each one masks. Your own sets of rules are on its **Masking** tab. (bundled beamlynx-ui)
+- **Data masking is on the Agent page.** Open **Agent** in the sidebar to choose the databases your agent can use and what each one masks. Your own sets of rules are on its **Masking** tab. (bundled beamlynx-ui 0.72.0)
+- **Database Connections has a database icon in the sidebar.** (bundled beamlynx-ui 0.72.0)
 - **Beamlynx now always counts each launch, and who is signed in.** Each launch sends the app version and OS. If you are signed in, it also sends your name and email. The **Send detailed usage stats** switch in Settings → Account now covers only query counts and the database types you add. If you had turned usage stats off, launches are now counted again.
+
+### Fixed
+- **MySQL: a JSON null reads as NULL,** as on Postgres and SQLite. (bundled pine-lang 0.53.0)
 
 ## [0.26.0] - 2026-10-28
 ### Added
