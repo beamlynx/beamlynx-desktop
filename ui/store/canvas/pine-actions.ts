@@ -230,14 +230,14 @@ export const removeElementPart = (
 export const getSelectColumns = (base: PinnedBase, alias: string): string[] =>
   selectParts(base, alias)
     .filter(part => !isElementPart(base, part))
-    .map(part => selectPartColumn(part, alias));
+    .map(part => selectPartColumn(base, part, alias));
 
 // `c_0.id as company_id`: the name a select item is given with `as`.
 const SELECT_NAME_RE = /\s+as\s+([A-Za-z_][A-Za-z0-9_-]*)\s*$/i;
 
 /** `c_0.id as company_id` -> `id`; `c_0.created_at => month` -> `created_at`. */
-const selectPartColumn = (part: string, alias: string): string =>
-  columnAfterAlias(part.replace(SELECT_NAME_RE, '').split(/\s+=>\s+/)[0].trim(), alias);
+const selectPartColumn = (base: PinnedBase, part: string, alias: string): string =>
+  columnAfterAlias(base, part.replace(SELECT_NAME_RE, '').split(/\s+=>\s+/)[0].trim(), alias);
 
 /**
  * A name typed for a select item, made safe to write after `as`: letters,
@@ -263,7 +263,7 @@ const editSelectPart = (
   const parts = selectParts(base, alias);
   let seen = 0;
   const index = parts.findIndex(
-    part => !isElementPart(base, part) && selectPartColumn(part, alias) === column && seen++ === occurrence,
+    part => !isElementPart(base, part) && selectPartColumn(base, part, alias) === column && seen++ === occurrence,
   );
   if (index < 0) return toText(base.segments);
   const edited = edit(parts[index]);
@@ -338,13 +338,16 @@ export const occurrenceAt = (columns: string[], index: number): number =>
 
 /**
  * `c_0.data.plan` -> `data.plan`: the column, and any path into its JSON
- * value, without the owning alias. Text the canvas wrote always starts with
- * the alias. Otherwise the part after the last dot is taken, as before.
+ * value, without the alias in front. Text the canvas wrote always starts
+ * with the owning alias. Typed text may start with another table's alias,
+ * or with no alias at all: `data.plan` is a column and its JSON path.
  */
-const columnAfterAlias = (part: string, alias: string): string => {
+const columnAfterAlias = (base: PinnedBase, part: string, alias: string): string => {
   if (part.startsWith(`${alias}.`)) return part.slice(alias.length + 1);
-  const dot = part.lastIndexOf('.');
-  return dot >= 0 ? part.slice(dot + 1) : part;
+  const dot = part.indexOf('.');
+  if (dot < 0) return part;
+  const aliases = (base.ast['selected-tables'] ?? []).map(t => t.alias);
+  return aliases.includes(part.slice(0, dot)) ? part.slice(dot + 1) : part;
 };
 
 /** `$name`: a value typed as a variable in the where editor. */
@@ -506,7 +509,7 @@ export const getOrderColumns = (base: PinnedBase, alias: string): string[] => {
   return splitTopLevel(body)
     .filter(part => !isElementPart(base, part))
     .map(part => {
-      return columnAfterAlias(splitOrderItem(part).column, alias);
+      return columnAfterAlias(base, splitOrderItem(part).column, alias);
     });
 };
 

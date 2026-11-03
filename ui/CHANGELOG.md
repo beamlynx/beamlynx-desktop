@@ -6,6 +6,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ## [Unreleased]
 ### Fixed
 - **Name a value read from an unnested element on the canvas.** Click its chip under **sel**, such as `company.id`, to name it, as in `company.id as company_id`. Before, only a table's own columns could be named there.
+- **Name a key inside a JSON column that you typed without the table's alias.** After typing `s: data.company.id` in the Pine panel, clicking its chip on the canvas now names it. Before, the name was silently dropped.
 
 ## [0.72.2] - 2026-11-02
 ### Fixed
