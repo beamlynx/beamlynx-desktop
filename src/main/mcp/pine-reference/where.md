@@ -64,10 +64,13 @@ orders | where: id in (17, 42, 108)
 ```
 customers | where: billing_country = shipping_country
 customers | where: billing_country != shipping_country
+orders | where: shipped_at > ordered_at
+products | where: name ilike pattern
 ```
 
-An unquoted name on the right is read as a column, not a string. Only `=` and `!=` compare two
-columns. `<`, `>`, `like` and the rest take a value on the right.
+An unquoted name on the right is read as a column, not a string. Every comparison takes a column on
+the right: `=`, `!=`, `<`, `>`, `<=`, `>=`, `like`, `ilike` and their `not` forms. `is` and `is not`
+take only `null`.
 
 ### Comparison operators
 
