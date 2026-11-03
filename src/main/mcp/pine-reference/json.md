@@ -60,7 +60,8 @@ customer | select: data.tags[0]
 customer | select: data.'home address', data.'it''s'
 ```
 
-`[0]` is the first element. Quote a key that has spaces or other characters, and write an
+`[0]` is the first element. For a row per element, see the `unnest` topic. To join on values
+inside an array, see `[*]` in the `join` topic. Quote a key that has spaces or other characters, and write an
 apostrophe inside it twice. A key with `-` needs no quotes: `data.first-name`.
 
 ### The type or length of a value

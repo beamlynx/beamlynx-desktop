@@ -67,7 +67,7 @@ Once a named result is used, its underlying tables are no longer visible — onl
 company | limit: 10 | employee
 ```
 
-group: and limit: produce a final, bounded result. Piping into another table after one of them automatically takes an unnamed checkpoint first, so the join applies on top of the limited or grouped result instead of corrupting it. Name that checkpoint yourself with |= placed right after the group:/limit: step.
+group: and limit: produce a final, bounded result. Piping into another table after one of them automatically takes an unnamed checkpoint first, so the join applies on top of the limited or grouped result instead of corrupting it. Unnamed checkpoints are called `result_1`, `result_2`, and so on, and can be used like any named result. Name one yourself with |= placed right after the group:/limit: step.
 
 ### Combine multiple aggregates per row
 

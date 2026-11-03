@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Fixed
+- **AI agents learn all of today's Pine.** The Pine reference agents read now covers `unnest:`, joins on ids in a JSON array (`[*]`), joins on a name given with `as`, and `update!`, and a few wrong statements in it are corrected.
 
 ## [0.27.2] - 2026-11-02
 ### Fixed

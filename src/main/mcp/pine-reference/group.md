@@ -51,6 +51,15 @@ categories | group: name | select: name, count
 `with count` is optional. Grouping alone already produces a `count` column, which later
 operations can select, rename or order by.
 
+### Totals over every row: no keys
+
+```
+orders | group: with count as n, total => sum as revenue
+```
+
+With nothing before `with`, the whole result is one group, and you get one row of totals. Use it
+to name a count, since `count:` always calls its column `count`.
+
 ### Group by several columns
 
 ```

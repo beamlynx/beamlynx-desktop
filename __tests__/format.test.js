@@ -597,3 +597,13 @@ for (const error of [
     assert.match(text, /propose_policy_change/);
   });
 }
+
+test('a mistyped unnest: resolves to its doc', () => {
+  const err = 'Parse error at line 1, column 17:\nactivity | unnst: data as e\n                ^\nExpected one of:\n|\n';
+  assert.equal(pickDocTopic(err)?.topic, 'unnest');
+});
+
+test('an update! resolves to its doc', () => {
+  const err = "Parse error at line 1, column 29:\nuser | where: id = 1 | update! \n                            ^\nExpected one of:\n'\n";
+  assert.equal(pickDocTopic(err)?.topic, 'update');
+});

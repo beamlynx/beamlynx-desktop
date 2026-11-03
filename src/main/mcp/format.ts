@@ -630,7 +630,7 @@ export function formatRevealStatus(response: RevealStatusResponse): string {
 // Pine operation names, and the doc topic that teaches each. Short forms
 // are included because an agent that saw `s:` in a hint may well mistype
 // that rather than the long form.
-const OPERATION_DOCS: Record<string, string> = {
+export const OPERATION_DOCS: Record<string, string> = {
   select: 'select',
   s: 'select',
   where: 'where',
@@ -645,8 +645,13 @@ const OPERATION_DOCS: Record<string, string> = {
   c: 'count',
   from: 'from',
   f: 'from',
+  unnest: 'unnest',
   delete: 'delete',
   'delete!': 'delete',
+  'd!': 'delete',
+  update: 'update',
+  'update!': 'update',
+  'u!': 'update',
 };
 
 function levenshtein(a: string, b: string): number {

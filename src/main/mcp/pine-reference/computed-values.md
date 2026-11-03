@@ -40,11 +40,11 @@ These are the only functions, with the date buckets (`month`, `year`, ...). Ther
 `x => f` is `f(x)`, and `x => f(a, b)` is `f(x, a, b)`: the value on the left is the first
 argument. Both forms mean the same. The arrow appends a step to a value you already have:
 
-```
-created_at => month                       month(created_at)
-title => coalesce('untitled')             coalesce(title, 'untitled')
-title => coalesce('x') => concat('!')     concat(coalesce(title, 'x'), '!')
-```
+| Arrow | Same as |
+|---|---|
+| `created_at => month` | `month(created_at)` |
+| `title => coalesce('untitled')` | `coalesce(title, 'untitled')` |
+| `title => coalesce('x') => concat('!')` | `concat(coalesce(title, 'x'), '!')` |
 
 Use the arrow for a function of one value, and the call for anything else: `coalesce(a, b)` keeps
 the arguments in order, and `any(type = 'x')` keeps a condition whole. A condition before an arrow
