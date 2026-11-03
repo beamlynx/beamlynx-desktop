@@ -4,7 +4,10 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.73.0] - 2026-11-04
 ### Added
+- **Lists on the canvas find what you type even when it isn't the start of a name.** Typing `crat` in a column list finds `created_at`. Exact matches come first, then names that start with what you typed, then names that contain it, then names that have its letters in order.
 - **Rename an unnest's elements on the canvas.** Click its chip under **unnest**, such as `data.companies as company`, and type a new name. The keyboard reaches it too, like any other chip. The steps that read the elements, such as `company.id`, change with it.
 
 ### Fixed
