@@ -16,6 +16,7 @@ import {
 } from '../../store/canvas/canvas.model';
 import { looksLikeDateColumn } from '../../store/canvas/relative-date';
 import { selectName } from '../../store/canvas/pine-actions';
+import { fuzzyFilter } from '../../store/canvas/fuzzy';
 import { useCanvasStore } from './canvas-context';
 
 const pluralize = (count: number, unit: string): string => (count === 1 ? unit : `${unit}s`);
@@ -122,9 +123,7 @@ const anchoredStyle = (anchor: PickerAnchor): React.CSSProperties => {
 };
 
 const filterItems = (items: PickerItem[], filter: string): PickerItem[] => {
-  if (!filter.trim()) return items;
-  const f = filter.toLowerCase();
-  return items.filter(i => i.label.toLowerCase().includes(f));
+  return fuzzyFilter(items, filter, i => i.label);
 };
 
 /** Already-selected columns sink to the bottom - they're done, so the columns still worth picking stay up top. */
@@ -763,9 +762,11 @@ const Picker: React.FC = observer(() => {
           onChange={e => store.setPerFilter(e.target.value)}
           onKeyDown={e => {
             if (e.key === 'Enter') {
-              const first = (picker.perOptions ?? []).find(
-                o => !picker.per.includes(o) && o.toLowerCase().includes(picker.perFilter.toLowerCase()),
-              );
+              const first = fuzzyFilter(
+                (picker.perOptions ?? []).filter(o => !picker.per.includes(o)),
+                picker.perFilter,
+                o => o,
+              )[0];
               if (picker.perFilter && first) store.togglePer(first);
               else void store.submitLimit();
             }
@@ -774,8 +775,11 @@ const Picker: React.FC = observer(() => {
         />
         {picker.perFilter && (
           <div style={{ maxHeight: 140, overflowY: 'auto', marginTop: 2 }}>
-            {(picker.perOptions ?? [])
-              .filter(o => !picker.per.includes(o) && o.toLowerCase().includes(picker.perFilter.toLowerCase()))
+            {fuzzyFilter(
+              (picker.perOptions ?? []).filter(o => !picker.per.includes(o)),
+              picker.perFilter,
+              o => o,
+            )
               .slice(0, 8)
               .map(o => (
                 <div
@@ -925,8 +929,11 @@ const Picker: React.FC = observer(() => {
                   block when the condition is added. */}
               {condition.value.startsWith('$') &&
                 (() => {
-                  const typed = condition.value.slice(1).toLowerCase();
-                  const names = store.variableNames.filter(n => n.toLowerCase().startsWith(typed) && `$${n}` !== condition.value);
+                  const names = fuzzyFilter(
+                    store.variableNames.filter(n => `$${n}` !== condition.value),
+                    condition.value.slice(1),
+                    n => n,
+                  );
                   const isNew = /^\$[A-Za-z_][A-Za-z0-9_]*$/.test(condition.value) && !store.variableNames.includes(condition.value.slice(1));
                   return (
                     <div style={{ marginTop: 2, fontSize: 'calc(11px * var(--text-scale, 1))' }}>
