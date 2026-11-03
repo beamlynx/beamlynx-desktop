@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- **Rename an unnest's elements on the canvas.** Click its chip under **unnest**, such as `data.companies as company`, and type a new name. The keyboard reaches it too, like any other chip. The steps that read the elements, such as `company.id`, change with it.
+
 ### Fixed
 - **Name a value read from an unnested element on the canvas.** Click its chip under **sel**, such as `company.id`, to name it, as in `company.id as company_id`. Before, only a table's own columns could be named there.
 - **Picking a key of an unnested element works when columns were picked first.** Before, if you picked a table's column and then added **unnest**, the key went into the earlier **select**, before the `unnest:`, and the query stopped with "`company` is neither an alias nor a column". The key now goes in a **select** after the `unnest:`.

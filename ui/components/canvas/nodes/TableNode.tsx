@@ -23,6 +23,7 @@ export const pickerAliasFor = (picker: PickerState): string | null => {
     picker.mode === 'traverse' ||
     picker.mode === 'order-direction' ||
     picker.mode === 'select-name' ||
+    picker.mode === 'unnest-name' ||
     picker.mode === 'limit-value'
   )
     return picker.alias;
@@ -71,6 +72,8 @@ export const activeOperationFor = (picker: PickerState, alias: string): Operatio
   if (picker.mode === 'order-direction') return picker.alias === alias ? 'order' : null;
   // A select chip's name field is still editing that node's select.
   if (picker.mode === 'select-name') return picker.alias === alias ? 'select' : null;
+  // An unnest chip's name field: unnest is in the "+" menu.
+  if (picker.mode === 'unnest-name') return picker.alias === alias ? 'more' : null;
   // The limit number-entry popover - same dimming as any other open picker,
   // even though `limit:` itself isn't owned by `alias` (see
   // CanvasStore.openLimitEditor).
@@ -906,6 +909,16 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
       <ChipRow
         label="unnest"
         chips={data.unnestChips ?? []}
+        // A click renames the elements: `as company`.
+        onSelect={(i, anchor) => {
+          const name = unnestChipName((data.unnestChips ?? [])[i] ?? '');
+          if (name) canvasStore.openUnnestNameEditor(data.alias, name, anchor);
+        }}
+        highlightIndex={
+          cursorItem?.kind === 'unnest'
+            ? (data.unnestChips ?? []).findIndex(chip => unnestChipName(chip) === cursorItem.name)
+            : undefined
+        }
         onRemove={i => {
           // A chip reads `data.changes as change`: the name is after `as`.
           const name = unnestChipName((data.unnestChips ?? [])[i] ?? '');

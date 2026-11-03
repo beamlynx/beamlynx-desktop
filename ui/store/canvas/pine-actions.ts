@@ -9,6 +9,7 @@ import {
   ensureExplicitCheckpointName,
   isCheckpointOp,
   isRemovableNode,
+  mapOutsideQuotes,
   removeNode,
   Segment,
   segmentsFromAst,
@@ -875,6 +876,25 @@ export const addUnnest = (base: PinnedBase, alias: string, path: string, name: s
 /** The name of the elements an UNNEST chip shows: `e` in `data.changes as e :left`. */
 export const unnestChipName = (chip: string): string =>
   chip.replace(/\s+:left\s*$/i, '').split(/\s+as\s+/).pop() ?? '';
+
+/**
+ * Renames the elements of an `unnest:`: `as company` becomes `as typed`, made
+ * safe as for a select item's name. The steps after it that read the
+ * elements, `company.id`, follow. A table step, quoted text, a column named
+ * the same (`c.company`) and a name given with `as` are left alone.
+ */
+export const renameUnnest = (base: PinnedBase, name: string, typed: string): string => {
+  const next = selectName(typed);
+  const at = base.segments.findIndex(s => s.kind === 'unnest' && unnestChipName(s.text) === name);
+  if (!next || next === name || at < 0) return toText(base.segments);
+  const reference = new RegExp(`(?<![\\w.$-])(?<!\\bas\\s+)${name}(?![\\w-])`, 'g');
+  const segments = base.segments.map((s, i) => {
+    if (i === at) return { ...s, text: s.text.replace(new RegExp(`(\\bas\\s+)${name}(?=(\\s+:left)?\\s*$)`, 'i'), `$1${next}`) };
+    if (i < at || s.kind === 'table') return s;
+    return { ...s, text: mapOutsideQuotes(s.text, chunk => chunk.replace(reference, next)) };
+  });
+  return toText(segments);
+};
 
 /**
  * Removes the `unnest:` that names its elements `name`. A step after it that

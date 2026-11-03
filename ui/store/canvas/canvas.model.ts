@@ -261,6 +261,8 @@ export const ORDER_DIRECTIONS: { direction: OrderDirection; label: string; key: 
  * item still being highlighted.
  */
 export type ConfigItem =
+  // An unnest chip, by the name of its elements.
+  | { kind: 'unnest'; name: string }
   // The same column can be selected more than once: `occurrence` says which copy.
   | { kind: 'select'; column: string; occurrence: number }
   | { kind: 'join-type' }
@@ -328,6 +330,16 @@ export type PickerState =
       /** `column` is read from the elements of an `unnest:`: `e.field`. */
       element?: boolean;
       /** The input's live text, seeded with the item's current name. */
+      value: string;
+      anchor: PickerAnchor;
+    }
+  | {
+      open: true;
+      mode: 'unnest-name';
+      alias: string;
+      /** The elements' current name: `company` in `data.companies as company`. */
+      name: string;
+      /** The input's live text, seeded with `name`. */
       value: string;
       anchor: PickerAnchor;
     }

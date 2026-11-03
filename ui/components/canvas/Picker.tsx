@@ -620,6 +620,43 @@ const Picker: React.FC = observer(() => {
     );
   }
 
+  if (picker.mode === 'unnest-name') {
+    return (
+      <div
+        ref={rootRef}
+        style={{ ...anchoredStyle(picker.anchor), padding: 8, maxHeight: 'none' }}
+        data-testid="canvas-picker"
+      >
+        <div style={{ marginBottom: 6, opacity: 0.7 }}>The name of the elements, as in {picker.name}.field</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ opacity: 0.7, fontFamily: 'var(--code-font)' }}>as</span>
+          <input
+            autoFocus
+            data-testid="unnest-name-input"
+            placeholder="name"
+            value={picker.value}
+            onChange={e => store.setSelectNameValue(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') void store.commitUnnestName();
+              if (e.key === 'Escape') store.closePicker();
+            }}
+            style={{ ...inputStyle, width: 160 }}
+          />
+        </div>
+        {picker.value.trim() && selectName(picker.value) !== picker.value.trim() && (
+          <div style={{ marginTop: 4, opacity: 0.6 }}>
+            saved as <code>{selectName(picker.value)}</code>
+          </div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
+          <span style={{ cursor: 'pointer' }} onClick={() => void store.commitUnnestName()}>
+            save
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   if (picker.mode === 'select-name') {
     const node = store.canvasGraph.nodes.find(
       (n): n is CanvasTableNode => n.id === picker.alias && n.type === 'table-node',
