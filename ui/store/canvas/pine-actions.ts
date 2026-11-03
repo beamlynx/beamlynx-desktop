@@ -188,6 +188,47 @@ export const removeElementWhereAt = (base: PinnedBase, alias: string, index: num
   return toText(target ? base.segments.filter(s => s !== target) : base.segments);
 };
 
+const STEP_PREFIX = { select: /^(select:|s:)\s*/i, order: /^(order:|o:)\s*/i };
+
+/**
+ * The select: or order: step that holds items on the elements of `alias`'s
+ * `unnest:`: the table's last such step after its last `unnest:`. A step
+ * before the `unnest:` can't read the elements, and Pine refuses it. -1
+ * when there is none.
+ */
+const elementStepIndex = (segments: Segment[], alias: string, kind: 'select' | 'order'): number => {
+  let unnest = -1;
+  segments.forEach((s, i) => {
+    if (s.owner === alias && s.kind === 'unnest') unnest = i;
+  });
+  if (unnest < 0) return -1;
+  for (let i = segments.length - 1; i > unnest; i--) {
+    if (segments[i].owner === alias && segments[i].kind === kind) return i;
+  }
+  return -1;
+};
+
+/** The items of the step elementStepIndex finds, or none. */
+const elementStepParts = (base: PinnedBase, alias: string, kind: 'select' | 'order'): string[] => {
+  const index = elementStepIndex(base.segments, alias, kind);
+  return index < 0 ? [] : splitTopLevel(base.segments[index].text.replace(STEP_PREFIX[kind], ''));
+};
+
+/**
+ * Writes `parts` as the step elementStepIndex finds. Without one, a new
+ * step is added after the table's own steps, so after its `unnest:`. No
+ * parts removes the step.
+ */
+const withElementStep = (base: PinnedBase, alias: string, kind: 'select' | 'order', parts: string[]): string => {
+  const index = elementStepIndex(base.segments, alias, kind);
+  const text = parts.length ? `${kind}: ${parts.join(', ')}` : null;
+  if (index < 0) return toText(text ? appendOwnedSegment(base.segments, alias, kind, text) : base.segments);
+  const next = [...base.segments];
+  if (text) next[index] = { ...next[index], text };
+  else next.splice(index, 1);
+  return toText(next);
+};
+
 /**
  * Removes one element item, `e.field`, from `alias`'s own select:, order:
  * or group: step - the × on an element chip. An order chip carries its
@@ -212,11 +253,8 @@ export const removeElementPart = (
     next[index] = { ...next[index], text: `group: ${rest.join(', ')}${aggregates ? ` with ${aggregates}` : ''}` };
     return toText(next);
   }
-  const prefix = kind === 'select' ? /^(select:|s:)\s*/i : /^(order:|o:)\s*/i;
-  const existing = base.segments.find(s => s.owner === alias && s.kind === kind);
-  if (!existing) return toText(base.segments);
-  const rest = splitTopLevel(existing.text.replace(prefix, '')).filter(part => column(part) !== target);
-  return toText(upsertOwnedSegment(base.segments, alias, kind, rest.length ? `${kind}: ${rest.join(', ')}` : null));
+  if (elementStepIndex(base.segments, alias, kind) < 0) return toText(base.segments);
+  return withElementStep(base, alias, kind, elementStepParts(base, alias, kind).filter(part => column(part) !== target));
 };
 
 /**
@@ -322,14 +360,14 @@ export const setElementSelectName = (
 ): string => {
   const safe = selectName(name);
   const bareOf = (part: string) => part.replace(SELECT_NAME_RE, '').trim();
-  const parts = selectParts(base, alias);
+  const parts = elementStepParts(base, alias, 'select');
   let seen = 0;
   const index = parts.findIndex(
     part => isElementPart(base, part) && bareOf(part).toLowerCase() === chip.toLowerCase() && seen++ === occurrence,
   );
   if (index < 0) return toText(base.segments);
   const next = parts.map((p, i) => (i === index ? (safe ? `${bareOf(p)} as ${safe}` : bareOf(p)) : p));
-  return toText(upsertOwnedSegment(base.segments, alias, 'select', `select: ${next.join(', ')}`));
+  return withElementStep(base, alias, 'select', next);
 };
 
 /** Which copy of its column the chip at `index` is: `id`, `id as a`, `id as b` are copies 0, 1 and 2. */
@@ -805,12 +843,7 @@ export const toggleElementPart = (
           const index = stageGroupIndex(base.segments, alias);
           return index >= 0 && splitTopLevel(groupBody(base.segments[index]).keys).some(p => column(p) === column(text));
         })()
-      : splitTopLevel(
-          (base.segments.find(s => s.owner === alias && s.kind === kind)?.text ?? '').replace(
-            /^(select:|s:|order:|o:)\s*/i,
-            '',
-          ),
-        ).some(p => column(p) === column(text));
+      : elementStepParts(base, alias, kind).some(p => column(p) === column(text));
   if (present) return addOnly ? toText(base.segments) : removeElementPart(base, alias, kind, text);
   if (kind === 'group') {
     const index = stageGroupIndex(base.segments, alias);
@@ -825,11 +858,8 @@ export const toggleElementPart = (
     const segment: Segment = { text: `group: ${text}`, start: -1, end: -1, kind: 'group', owner: null };
     return toText([...base.segments.slice(0, at), segment, ...base.segments.slice(at)]);
   }
-  const prefix = kind === 'select' ? /^(select:|s:)\s*/i : /^(order:|o:)\s*/i;
-  const existing = base.segments.find(s => s.owner === alias && s.kind === kind);
-  const parts = existing ? splitTopLevel(existing.text.replace(prefix, '')) : [];
   const part = kind === 'order' ? `${text} desc` : text;
-  return toText(upsertOwnedSegment(base.segments, alias, kind, `${kind}: ${[...parts, part].join(', ')}`));
+  return withElementStep(base, alias, kind, [...elementStepParts(base, alias, kind), part]);
 };
 
 /** `unnest: c.data.changes as change`, after `alias`'s own steps. */
