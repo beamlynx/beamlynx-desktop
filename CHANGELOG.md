@@ -4,7 +4,17 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.28.0] - 2026-11-04
+### Added
+- **Lists on the canvas find what you type even when it isn't the start of a name.** Typing `crat` in a column list finds `created_at`. (bundled beamlynx-ui 0.73.0)
+- **Rename an unnest's elements on the canvas.** Click its chip under **unnest** and type a new name. The steps that read the elements change with it. (bundled beamlynx-ui 0.73.0)
+
 ### Fixed
+- **`where:` compares two columns with any operator,** such as `where: shipped_at > ordered_at`. Only `=` and `!=` worked before. (bundled pine-lang 0.53.1)
+- **Name a key of an unnested element on the canvas.** Click its chip under **sel**, such as `company.id`, to give it a name. Picking such a key after picking a column no longer breaks the query. (bundled beamlynx-ui 0.73.0)
+- **Name a JSON key you typed without the table's alias,** such as `s: data.company.id`, from its chip on the canvas. (bundled beamlynx-ui 0.73.0)
+- **A join on a name you give with `as` is listed under "belongs to",** since each row names one row of that table. It was under "has". (bundled pine-lang 0.53.1)
 - **AI agents learn all of today's Pine.** The Pine reference agents read now covers `unnest:`, joins on ids in a JSON array (`[*]`), joins on a name given with `as`, and `update!`, and a few wrong statements in it are corrected.
 
 ## [0.27.2] - 2026-11-02
