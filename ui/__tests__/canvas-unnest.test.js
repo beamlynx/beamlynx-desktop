@@ -243,3 +243,50 @@ test('an element select item is named with as, and its name dropped', () => {
   // A table's own column isn't an element item: nothing changes.
   assert.equal(actions.setElementSelectName(base(), 'a', 'a.id', 0, 'x').includes(' as x'), false);
 });
+
+// A column picked before the `unnest:` was added leaves a select: step in
+// front of it. Element items can't go there: Pine can't read the elements
+// before the `unnest:`.
+const range = (start, end) => ({ alias: 'c_0', start: { line: 0, character: start }, end: { line: 0, character: end } });
+const companies = { alias: 'company', table: 'c_0', index: 2, source: 'c_0', column: 'data', path: ['companies'], left: false, text: 'data.companies' };
+const baseOf = (text, ranges) => {
+  const shaped = { ...ast, 'selected-tables': [{ schema: null, table: 'customer', alias: 'c_0' }], current: 'c_0', ranges, unnests: [companies], where: [], order: [] };
+  return { expression: text, ast: shaped, segments: segmentsFromAst(text, shaped), aliasMap: new Map() };
+};
+const before = 'customer | select: c_0.id | unnest: c_0.data.companies as company';
+const both = `${before} | select: company.id`;
+const beforeBase = () => baseOf(before, [range(0, 8), range(11, 25), range(28, 65)]);
+const bothBase = () => baseOf(both, [range(0, 8), range(11, 25), range(28, 65), range(68, 86)]);
+
+test('an element item picked after a select: before the unnest: gets its own step after it', () => {
+  assert.equal(actions.toggleElementPart(beforeBase(), 'c_0', 'select', 'company.id', true), both);
+  // Picked again, it is already there.
+  assert.equal(actions.toggleElementPart(bothBase(), 'c_0', 'select', 'company.id', true), both);
+});
+
+test('an element item in the step after the unnest: is named and removed there', () => {
+  assert.equal(actions.setElementSelectName(bothBase(), 'c_0', 'company.id', 0, 'company_id'), `${both} as company_id`);
+  assert.equal(actions.removeElementPart(bothBase(), 'c_0', 'select', 'company.id'), before);
+});
+
+test('a click on an unnest chip renames its elements, and the steps that read them follow', () => {
+  const text = "customer as c | unnest: c.data.companies as company :left | w: company.name = 'company' | s: c.company, company.id, company.id as company";
+  // Each step's range, as pine-lang's /build gives it: the text between pipes.
+  let at = 0;
+  const r = text.split(' | ').map(step => {
+    const start = at;
+    at += step.length + 3;
+    return { ...range(start, start + step.length), alias: 'c' };
+  });
+  const shaped = { ...ast, 'selected-tables': [{ schema: null, table: 'customer', alias: 'c' }], current: 'c', ranges: r, unnests: [{ ...companies, table: 'c', source: 'c' }], where: [], order: [] };
+  const b = { expression: text, ast: shaped, segments: segmentsFromAst(text, shaped), aliasMap: new Map() };
+  // Quoted text, the column c.company and a name given with `as` stay.
+  assert.equal(
+    actions.renameUnnest(b, 'company', 'firm'),
+    "customer as c | unnest: c.data.companies as firm :left | w: firm.name = 'company' | s: c.company, firm.id, firm.id as company",
+  );
+  // Made safe as a select item's name; empty or the same name changes nothing.
+  assert.match(actions.renameUnnest(b, 'company', 'my firm'), /as my_firm :left \| w: my_firm\.name/);
+  assert.equal(actions.renameUnnest(b, 'company', ''), text);
+  assert.equal(actions.renameUnnest(b, 'company', 'company'), text);
+});

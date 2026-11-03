@@ -9,6 +9,7 @@ import {
   ensureExplicitCheckpointName,
   isCheckpointOp,
   isRemovableNode,
+  mapOutsideQuotes,
   removeNode,
   Segment,
   segmentsFromAst,
@@ -188,6 +189,47 @@ export const removeElementWhereAt = (base: PinnedBase, alias: string, index: num
   return toText(target ? base.segments.filter(s => s !== target) : base.segments);
 };
 
+const STEP_PREFIX = { select: /^(select:|s:)\s*/i, order: /^(order:|o:)\s*/i };
+
+/**
+ * The select: or order: step that holds items on the elements of `alias`'s
+ * `unnest:`: the table's last such step after its last `unnest:`. A step
+ * before the `unnest:` can't read the elements, and Pine refuses it. -1
+ * when there is none.
+ */
+const elementStepIndex = (segments: Segment[], alias: string, kind: 'select' | 'order'): number => {
+  let unnest = -1;
+  segments.forEach((s, i) => {
+    if (s.owner === alias && s.kind === 'unnest') unnest = i;
+  });
+  if (unnest < 0) return -1;
+  for (let i = segments.length - 1; i > unnest; i--) {
+    if (segments[i].owner === alias && segments[i].kind === kind) return i;
+  }
+  return -1;
+};
+
+/** The items of the step elementStepIndex finds, or none. */
+const elementStepParts = (base: PinnedBase, alias: string, kind: 'select' | 'order'): string[] => {
+  const index = elementStepIndex(base.segments, alias, kind);
+  return index < 0 ? [] : splitTopLevel(base.segments[index].text.replace(STEP_PREFIX[kind], ''));
+};
+
+/**
+ * Writes `parts` as the step elementStepIndex finds. Without one, a new
+ * step is added after the table's own steps, so after its `unnest:`. No
+ * parts removes the step.
+ */
+const withElementStep = (base: PinnedBase, alias: string, kind: 'select' | 'order', parts: string[]): string => {
+  const index = elementStepIndex(base.segments, alias, kind);
+  const text = parts.length ? `${kind}: ${parts.join(', ')}` : null;
+  if (index < 0) return toText(text ? appendOwnedSegment(base.segments, alias, kind, text) : base.segments);
+  const next = [...base.segments];
+  if (text) next[index] = { ...next[index], text };
+  else next.splice(index, 1);
+  return toText(next);
+};
+
 /**
  * Removes one element item, `e.field`, from `alias`'s own select:, order:
  * or group: step - the × on an element chip. An order chip carries its
@@ -212,11 +254,8 @@ export const removeElementPart = (
     next[index] = { ...next[index], text: `group: ${rest.join(', ')}${aggregates ? ` with ${aggregates}` : ''}` };
     return toText(next);
   }
-  const prefix = kind === 'select' ? /^(select:|s:)\s*/i : /^(order:|o:)\s*/i;
-  const existing = base.segments.find(s => s.owner === alias && s.kind === kind);
-  if (!existing) return toText(base.segments);
-  const rest = splitTopLevel(existing.text.replace(prefix, '')).filter(part => column(part) !== target);
-  return toText(upsertOwnedSegment(base.segments, alias, kind, rest.length ? `${kind}: ${rest.join(', ')}` : null));
+  if (elementStepIndex(base.segments, alias, kind) < 0) return toText(base.segments);
+  return withElementStep(base, alias, kind, elementStepParts(base, alias, kind).filter(part => column(part) !== target));
 };
 
 /**
@@ -230,14 +269,14 @@ export const removeElementPart = (
 export const getSelectColumns = (base: PinnedBase, alias: string): string[] =>
   selectParts(base, alias)
     .filter(part => !isElementPart(base, part))
-    .map(part => selectPartColumn(part, alias));
+    .map(part => selectPartColumn(base, part, alias));
 
 // `c_0.id as company_id`: the name a select item is given with `as`.
 const SELECT_NAME_RE = /\s+as\s+([A-Za-z_][A-Za-z0-9_-]*)\s*$/i;
 
 /** `c_0.id as company_id` -> `id`; `c_0.created_at => month` -> `created_at`. */
-const selectPartColumn = (part: string, alias: string): string =>
-  columnAfterAlias(part.replace(SELECT_NAME_RE, '').split(/\s+=>\s+/)[0].trim(), alias);
+const selectPartColumn = (base: PinnedBase, part: string, alias: string): string =>
+  columnAfterAlias(base, part.replace(SELECT_NAME_RE, '').split(/\s+=>\s+/)[0].trim(), alias);
 
 /**
  * A name typed for a select item, made safe to write after `as`: letters,
@@ -263,7 +302,7 @@ const editSelectPart = (
   const parts = selectParts(base, alias);
   let seen = 0;
   const index = parts.findIndex(
-    part => !isElementPart(base, part) && selectPartColumn(part, alias) === column && seen++ === occurrence,
+    part => !isElementPart(base, part) && selectPartColumn(base, part, alias) === column && seen++ === occurrence,
   );
   if (index < 0) return toText(base.segments);
   const edited = edit(parts[index]);
@@ -322,14 +361,14 @@ export const setElementSelectName = (
 ): string => {
   const safe = selectName(name);
   const bareOf = (part: string) => part.replace(SELECT_NAME_RE, '').trim();
-  const parts = selectParts(base, alias);
+  const parts = elementStepParts(base, alias, 'select');
   let seen = 0;
   const index = parts.findIndex(
     part => isElementPart(base, part) && bareOf(part).toLowerCase() === chip.toLowerCase() && seen++ === occurrence,
   );
   if (index < 0) return toText(base.segments);
   const next = parts.map((p, i) => (i === index ? (safe ? `${bareOf(p)} as ${safe}` : bareOf(p)) : p));
-  return toText(upsertOwnedSegment(base.segments, alias, 'select', `select: ${next.join(', ')}`));
+  return withElementStep(base, alias, 'select', next);
 };
 
 /** Which copy of its column the chip at `index` is: `id`, `id as a`, `id as b` are copies 0, 1 and 2. */
@@ -338,13 +377,16 @@ export const occurrenceAt = (columns: string[], index: number): number =>
 
 /**
  * `c_0.data.plan` -> `data.plan`: the column, and any path into its JSON
- * value, without the owning alias. Text the canvas wrote always starts with
- * the alias. Otherwise the part after the last dot is taken, as before.
+ * value, without the alias in front. Text the canvas wrote always starts
+ * with the owning alias. Typed text may start with another table's alias,
+ * or with no alias at all: `data.plan` is a column and its JSON path.
  */
-const columnAfterAlias = (part: string, alias: string): string => {
+const columnAfterAlias = (base: PinnedBase, part: string, alias: string): string => {
   if (part.startsWith(`${alias}.`)) return part.slice(alias.length + 1);
-  const dot = part.lastIndexOf('.');
-  return dot >= 0 ? part.slice(dot + 1) : part;
+  const dot = part.indexOf('.');
+  if (dot < 0) return part;
+  const aliases = (base.ast['selected-tables'] ?? []).map(t => t.alias);
+  return aliases.includes(part.slice(0, dot)) ? part.slice(dot + 1) : part;
 };
 
 /** `$name`: a value typed as a variable in the where editor. */
@@ -506,7 +548,7 @@ export const getOrderColumns = (base: PinnedBase, alias: string): string[] => {
   return splitTopLevel(body)
     .filter(part => !isElementPart(base, part))
     .map(part => {
-      return columnAfterAlias(splitOrderItem(part).column, alias);
+      return columnAfterAlias(base, splitOrderItem(part).column, alias);
     });
 };
 
@@ -802,12 +844,7 @@ export const toggleElementPart = (
           const index = stageGroupIndex(base.segments, alias);
           return index >= 0 && splitTopLevel(groupBody(base.segments[index]).keys).some(p => column(p) === column(text));
         })()
-      : splitTopLevel(
-          (base.segments.find(s => s.owner === alias && s.kind === kind)?.text ?? '').replace(
-            /^(select:|s:|order:|o:)\s*/i,
-            '',
-          ),
-        ).some(p => column(p) === column(text));
+      : elementStepParts(base, alias, kind).some(p => column(p) === column(text));
   if (present) return addOnly ? toText(base.segments) : removeElementPart(base, alias, kind, text);
   if (kind === 'group') {
     const index = stageGroupIndex(base.segments, alias);
@@ -822,11 +859,8 @@ export const toggleElementPart = (
     const segment: Segment = { text: `group: ${text}`, start: -1, end: -1, kind: 'group', owner: null };
     return toText([...base.segments.slice(0, at), segment, ...base.segments.slice(at)]);
   }
-  const prefix = kind === 'select' ? /^(select:|s:)\s*/i : /^(order:|o:)\s*/i;
-  const existing = base.segments.find(s => s.owner === alias && s.kind === kind);
-  const parts = existing ? splitTopLevel(existing.text.replace(prefix, '')) : [];
   const part = kind === 'order' ? `${text} desc` : text;
-  return toText(upsertOwnedSegment(base.segments, alias, kind, `${kind}: ${[...parts, part].join(', ')}`));
+  return withElementStep(base, alias, kind, [...elementStepParts(base, alias, kind), part]);
 };
 
 /** `unnest: c.data.changes as change`, after `alias`'s own steps. */
@@ -842,6 +876,25 @@ export const addUnnest = (base: PinnedBase, alias: string, path: string, name: s
 /** The name of the elements an UNNEST chip shows: `e` in `data.changes as e :left`. */
 export const unnestChipName = (chip: string): string =>
   chip.replace(/\s+:left\s*$/i, '').split(/\s+as\s+/).pop() ?? '';
+
+/**
+ * Renames the elements of an `unnest:`: `as company` becomes `as typed`, made
+ * safe as for a select item's name. The steps after it that read the
+ * elements, `company.id`, follow. A table step, quoted text, a column named
+ * the same (`c.company`) and a name given with `as` are left alone.
+ */
+export const renameUnnest = (base: PinnedBase, name: string, typed: string): string => {
+  const next = selectName(typed);
+  const at = base.segments.findIndex(s => s.kind === 'unnest' && unnestChipName(s.text) === name);
+  if (!next || next === name || at < 0) return toText(base.segments);
+  const reference = new RegExp(`(?<![\\w.$-])(?<!\\bas\\s+)${name}(?![\\w-])`, 'g');
+  const segments = base.segments.map((s, i) => {
+    if (i === at) return { ...s, text: s.text.replace(new RegExp(`(\\bas\\s+)${name}(?=(\\s+:left)?\\s*$)`, 'i'), `$1${next}`) };
+    if (i < at || s.kind === 'table') return s;
+    return { ...s, text: mapOutsideQuotes(s.text, chunk => chunk.replace(reference, next)) };
+  });
+  return toText(segments);
+};
 
 /**
  * Removes the `unnest:` that names its elements `name`. A step after it that

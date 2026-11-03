@@ -561,7 +561,7 @@ export const removeNode = (segments: Segment[], alias: string): Segment[] =>
 const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Applies `replacer` to the parts of `text` outside single-quoted string literals. */
-const mapOutsideQuotes = (text: string, replacer: (chunk: string) => string): string =>
+export const mapOutsideQuotes = (text: string, replacer: (chunk: string) => string): string =>
   text
     .split(/('(?:[^'])*')/)
     .map((chunk, i) => (i % 2 === 1 ? chunk : replacer(chunk)))

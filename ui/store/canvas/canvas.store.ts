@@ -287,6 +287,8 @@ export class CanvasStore {
       (n): n is CanvasTableNode => n.type === 'table-node' && n.id === alias,
     );
     const items: ConfigItem[] = [];
+    // The unnest row is the first chip row on the node.
+    (node?.data.unnestChips ?? []).forEach(chip => items.push({ kind: 'unnest', name: actions.unnestChipName(chip) }));
     const selectColumns = node?.data.selectColumns ?? [];
     selectColumns.forEach((column, i) =>
       items.push({ kind: 'select', column, occurrence: actions.occurrenceAt(selectColumns, i) }),
@@ -333,6 +335,7 @@ export class CanvasStore {
   /** Identifies a ConfigItem for equality checks below - not just its array position, which select/order/group deliberately don't carry (see canvas.model.ts's own comment on ConfigItem). */
   private static configItemKey(item: ConfigItem): string {
     if (item.kind === 'join-type') return 'join-type';
+    if (item.kind === 'unnest') return `unnest:${item.name}`;
     if (item.kind === 'where') return `where:${item.index}`;
     if (item.kind === 'select') return `select:${item.column}#${item.occurrence}`;
     return `${item.kind}:${item.column}`;
@@ -415,6 +418,9 @@ export class CanvasStore {
       case 'select':
         this.openSelectNameEditor(alias, item.column, item.occurrence, anchor);
         return;
+      case 'unnest':
+        this.openUnnestNameEditor(alias, item.name, anchor);
+        return;
       case 'group':
         // These two don't have a per-chip value/operator to prefill the way
         // a where condition or a join's type do (see canvas.model.ts's
@@ -467,6 +473,9 @@ export class CanvasStore {
         return;
       case 'select':
         await this.removeSelectColumn(alias, item.column, item.occurrence);
+        return;
+      case 'unnest':
+        await this.removeUnnest(alias, item.name);
         return;
       case 'group':
         await this.toggleGroupColumn(alias, item.column);
@@ -2013,7 +2022,28 @@ export class CanvasStore {
   }
 
   setSelectNameValue(value: string) {
-    if (this.picker.open && this.picker.mode === 'select-name') this.picker = { ...this.picker, value };
+    if (this.picker.open && (this.picker.mode === 'select-name' || this.picker.mode === 'unnest-name')) {
+      this.picker = { ...this.picker, value };
+    }
+  }
+
+  /** A click on an unnest chip: a field to rename its elements. A second click closes it. */
+  openUnnestNameEditor(alias: string, name: string, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
+    const p = this.picker;
+    if (p.open && p.mode === 'unnest-name' && p.alias === alias && p.name === name) {
+      this.closePicker();
+      return;
+    }
+    this.focusConfigItem(alias, { kind: 'unnest', name });
+    this.picker = { open: true, mode: 'unnest-name', alias, name, value: name, anchor };
+  }
+
+  /** Renames the elements to the typed name. An empty name keeps the old one. */
+  async commitUnnestName() {
+    if (!this.picker.open || this.picker.mode !== 'unnest-name') return;
+    const { alias, name, value } = this.picker;
+    this.closePicker();
+    await this.commit(base => actions.renameUnnest(base, name, value), alias);
   }
 
   /** Writes the typed name after `as`, made safe by actions.selectName. Empty drops the name. */

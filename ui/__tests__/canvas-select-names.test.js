@@ -78,3 +78,17 @@ test('* adds the columns not selected yet, and keeps names and copies', () => {
     /: c\.id, c\.id as company_id, c\.created_at => month, c\.data\.plan, c\.name$/,
   );
 });
+
+test('a JSON path typed without the alias is named too', () => {
+  const typed = 'company as c | s: data.company.id';
+  const typedAst = {
+    ...ast,
+    ranges: [
+      { alias: 'c', start: { line: 0, character: 0 }, end: { line: 0, character: 12 } },
+      { alias: 'c', start: { line: 0, character: 15 }, end: { line: 0, character: typed.length } },
+    ],
+    columns: [{ alias: 'c', column: 'data', path: ['company', 'id'], 'column-alias': 'data.company.id' }],
+  };
+  const typedBase = { expression: typed, ast: typedAst, segments: segmentsFromAst(typed, typedAst), aliasMap: new Map() };
+  assert.match(actions.setSelectName(typedBase, 'c', 'data.company.id', 0, 'company_id'), /: data\.company\.id as company_id$/);
+});
