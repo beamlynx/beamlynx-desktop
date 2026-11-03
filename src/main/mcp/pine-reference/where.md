@@ -62,10 +62,12 @@ orders | where: id in (17, 42, 108)
 ### Compare two columns
 
 ```
-customers | where: created_at < updated_at
+customers | where: billing_country = shipping_country
+customers | where: billing_country != shipping_country
 ```
 
-An unquoted name on the right is read as a column, not a string.
+An unquoted name on the right is read as a column, not a string. Only `=` and `!=` compare two
+columns. `<`, `>`, `like` and the rest take a value on the right.
 
 ### Comparison operators
 

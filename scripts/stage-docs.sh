@@ -9,12 +9,9 @@ set -e
 # place whether running from source (dev) or packaged by electron-builder
 # (see src/main/resources.ts's getResourcesRoot()).
 #
-# src/main/mcp/pine-reference/*.md is hand-maintained and git-tracked in
-# this repo, not generated -- kept in sync with beamlynx.com's documentation
-# pages by whoever (human or Claude) updates either one, the same way
-# beamlynx-ui/CHANGELOG.md and utils/changelog.data.ts are two independently
-# maintained files kept in sync by discipline, not a build script. See
-# src/main/mcp/pine-reference/README.md.
+# src/main/mcp/pine-reference/*.md is written by hand and git-tracked in
+# this repo, not generated. It follows the bundled pine-lang version; see
+# src/main/mcp/pine-reference/README.md for how it is kept current.
 
 cd "$(dirname "$0")/.."
 

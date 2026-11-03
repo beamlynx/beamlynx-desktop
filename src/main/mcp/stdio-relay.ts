@@ -247,9 +247,9 @@ function buildDeepLink(profileId: string, expression: string): string {
 // topic none of those surfaced.
 //
 // These are staged into the packaged app by scripts/stage-docs.sh from
-// src/main/mcp/pine-reference/ -- hand-maintained, and deliberately
-// carrying no SQL translations, unlike beamlynx.com's human-facing
-// documentation. See that directory's README.md.
+// src/main/mcp/pine-reference/ -- written by hand for the bundled pine-lang
+// version, and deliberately carrying no SQL translations, unlike
+// beamlynx.com's human-facing documentation. See that directory's README.md.
 function getDocsDir(): string {
   return path.join(getResourcesRoot(), 'docs');
 }
@@ -541,8 +541,8 @@ async function registerTools(server: McpServer): Promise<void> {
   // Listing the topics in the description itself, rather than behind a
   // separate list_pine_docs tool, removes a round trip: an agent that needs
   // `where:` can fetch it directly instead of calling one tool to learn the
-  // name of the topic it already guessed. The whole doc set is ~13KB, so
-  // there was never enough here to be worth paginating over two calls.
+  // name of the topic it already guessed. A topic is a few KB, so there is
+  // nothing to gain from paginating the list over two calls.
   const docTopics = listDocs()
     .map(d => d.topic)
     .sort();

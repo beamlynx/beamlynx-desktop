@@ -3,7 +3,7 @@
 Removes rows from a table. Every operation in Pine that modifies data ends in `!`, which is what
 marks it as a side effect rather than a query.
 
-**Operation(s):** `delete!`
+**Operation(s):** `delete!`, `d!`
 
 **Syntax:**
 ```
@@ -46,6 +46,8 @@ Something has to narrow the rows. A `delete!` with no `where:` and no `limit:` b
 remove every row of the table, and is refused. So is one after `group:`, one across a join with
 no relation between the two tables, and one on a named result.
 
-**This is disabled over MCP.** `delete!` is refused before it reaches the database unless the
-machine is explicitly configured to allow it. Check what a filter matches with `count:` first —
-a delete cannot be undone.
+**You can't run this.** Over MCP, `run_query` refuses every `delete!` and `update!` before it
+reaches the database. Only the user can change data. To propose a delete, write the expression and
+pass it to `open_in_desktop`. The link it returns opens the expression in a new tab without running
+it, so the user can check it and press Run. Check what the same pipeline matches with `count:`
+first: a delete cannot be undone.

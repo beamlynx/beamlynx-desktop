@@ -119,6 +119,12 @@ jobs:
         working-directory: beamlynx-desktop
         run: ./scripts/stage-docs.sh
 
+      # The agent's Pine reference is written by hand. Every example in it
+      # has to parse with the pine-lang this build bundles.
+      - name: Check Pine reference examples
+        working-directory: beamlynx-desktop
+        run: ./scripts/check-pine-reference.sh
+
       - name: Install beamlynx-desktop deps
         working-directory: beamlynx-desktop
         run: npm ci

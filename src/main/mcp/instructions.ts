@@ -36,7 +36,9 @@ Inside one where:, join conditions with \`or\`. To require several, add a where:
   user | where: status = 'blocked' or status = 'active'     either condition
   user | where: status = 'active' | where: country = 'SE'    both conditions
 
-Operations: select: (s:), where: (w:), order: (o:), limit: (l:), group: (g:), count:, from: (f:)
+Operations: select: (s:), where: (w:), order: (o:), limit: (l:), group: (g:), count:, from: (f:),
+unnest: (a row for each element of a JSON array). get_pine_doc "pine-lang" lists every part of
+the language and the topic that covers it.
 
 A value can be computed, and named with \`as\` (get_pine_doc "computed-values"). \`x => f\` applies
 a function, the same as \`f(x)\`. In group:, the keys come first, then \`with\` and the aggregates:
