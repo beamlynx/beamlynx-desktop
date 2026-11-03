@@ -11,6 +11,9 @@ import type { DbType } from '../utils/dbType';
 const getBaseUrl = () => {
   const desktopUrl = typeof window !== 'undefined' ? window.beamlynxDesktop?.pineServerUrl : undefined;
   if (desktopUrl) return desktopUrl;
+  // This page's own server forwards /api/v1 to pine (PINE_SERVER_PROXY_URL in
+  // next.config.js), so pine is on this origin: relative URLs.
+  if (process.env.NEXT_PUBLIC_PINE_SAME_ORIGIN === '1') return '';
   return isPlayground() ? 'https://api.playground.beamlynx.com' : 'http://localhost:33333';
 };
 

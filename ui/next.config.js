@@ -1,6 +1,14 @@
 
 const isDesktop = process.env.NEXT_DESKTOP === '1';
 
+// Where this server should forward /api/v1/* to, e.g. http://localhost:33333.
+// For a hosted dev copy (a cloud preview): the browser there can't reach the
+// pine server at its own localhost:33333, so the UI calls pine on this page's
+// origin instead (getBaseUrl in store/client.ts) and this server passes the
+// calls on. Unset everywhere else, which changes nothing. Not for the desktop
+// build: a static export has no server to forward anything.
+const pineProxyUrl = isDesktop ? undefined : process.env.PINE_SERVER_PROXY_URL?.replace(/\/+$/, '');
+
 // Walks Next's webpack rules and sets the publicPath of the loader that
 // extracts CSS into files (mini-css-extract-plugin's).
 function setCssExtractPublicPath(rules, publicPath) {
@@ -23,7 +31,17 @@ const nextConfig = {
   // (unlike GlobalStore.version, which comes from the connected pine-lang
   // server) and no Electron main process to ask (unlike the desktop app's
   // own version, see desktop.d.ts's getAppVersion).
-  env: { NEXT_PUBLIC_APP_VERSION: require('./package.json').version },
+  env: {
+    NEXT_PUBLIC_APP_VERSION: require('./package.json').version,
+    ...(pineProxyUrl ? { NEXT_PUBLIC_PINE_SAME_ORIGIN: '1' } : {}),
+  },
+  ...(pineProxyUrl
+    ? {
+        async rewrites() {
+          return [{ source: '/api/v1/:path*', destination: `${pineProxyUrl}/api/v1/:path*` }];
+        },
+      }
+    : {}),
   // The desktop app (beamlynx-desktop) bundles a static export and loads it
   // via file://, which needs relative asset URLs and real index.html files
   // per route -- Next's defaults (absolute /_next/... paths, extensionless
