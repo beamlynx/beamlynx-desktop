@@ -23,6 +23,34 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.73.0',
+    date: '2026-11-04',
+    added: [
+      {
+        title: "Lists on the canvas find what you type even when it isn't the start of a name",
+        description: "Typing `crat` in a column list finds `created_at`. Exact matches come first, then names that start with what you typed, then names that contain it, then names that have its letters in order.",
+      },
+      {
+        title: "Rename an unnest's elements on the canvas",
+        description: "Click its chip under **unnest**, such as `data.companies as company`, and type a new name. The keyboard reaches it too, like any other chip. The steps that read the elements, such as `company.id`, change with it.",
+      },
+    ],
+    fixed: [
+      {
+        title: "Name a value read from an unnested element on the canvas",
+        description: "Click its chip under **sel**, such as `company.id`, to name it, as in `company.id as company_id`. Before, only a table's own columns could be named there.",
+      },
+      {
+        title: "Picking a key of an unnested element works when columns were picked first",
+        description: "Before, if you picked a table's column and then added **unnest**, the key went into the earlier **select**, before the `unnest:`, and the query stopped with \"`company` is neither an alias nor a column\". The key now goes in a **select** after the `unnest:`.",
+      },
+      {
+        title: "Name a key inside a JSON column that you typed without the table's alias",
+        description: "After typing `s: data.company.id` in the Pine panel, clicking its chip on the canvas now names it. Before, the name was silently dropped.",
+      },
+    ],
+  },
+  {
     version: '0.72.2',
     date: '2026-11-02',
     fixed: [
@@ -2750,4 +2778,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.72.2';
+export const LATEST_VERSION = '0.73.0';
