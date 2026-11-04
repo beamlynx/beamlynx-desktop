@@ -603,9 +603,9 @@ export class GlobalStore {
   // the keyboard (it may have since closed, or focus may have wandered
   // somewhere neither Canvas nor Input claim), and the getter is what
   // resolves that ambiguity rather than every caller re-deriving it.
-  focusedPanelId: 'graph' | 'settings' | 'input' | null = null;
+  focusedPanelId: 'graph' | 'settings' | 'library' | 'input' | null = null;
 
-  setFocusedPanelId = (id: 'graph' | 'settings' | 'input' | null) => {
+  setFocusedPanelId = (id: 'graph' | 'settings' | 'library' | 'input' | null) => {
     this.focusedPanelId = id;
   };
 
@@ -628,9 +628,14 @@ export class GlobalStore {
   // default that's actually predictable while it's open. Falls back to
   // 'graph' only once Settings itself is closed too, which is the original,
   // pre-panel-routing default this whole mechanism is layered on top of.
-  get activeKeyboardPanel(): 'graph' | 'settings' | 'input' {
+  // The Library panel (components/recipes/LibraryPanel.tsx) shares Settings'
+  // docked slot. It handles its own keys (Up/Down/Enter) on its root, so it
+  // is 'library' rather than 'settings': Settings' Up/Down would otherwise
+  // move between Settings sections behind it.
+  get activeKeyboardPanel(): 'graph' | 'settings' | 'library' | 'input' {
     if (this.focusedPanelId === 'input' && this.newLayoutPanelVisible) return 'input';
     if (this.focusedPanelId === 'graph') return 'graph';
+    if (this.showLibrary) return 'library';
     if (this.showSettings) return 'settings';
     return 'graph';
   }
@@ -672,6 +677,11 @@ export class GlobalStore {
   showSaveRecipe = false;
   saveRecipeRequestCount = 0;
   showRecipePicker = false;
+  // The sidebar's Library: saved recipes in Settings' docked slot. Library
+  // and Settings replace each other there (setShowLibrary/setShowSettings).
+  showLibrary = false;
+  // Counts recipes saved from this window, so an open Library lists them again.
+  recipesChangedCount = 0;
 
   // See PendingConnectionSwitch.
   pendingConnectionSwitch: PendingConnectionSwitch | null = null;
@@ -1193,6 +1203,7 @@ export class GlobalStore {
   openAddConnection = () => {
     runInAction(() => {
       this.showSettings = true;
+      this.showLibrary = false;
       this.settingsSection = 'connections';
       this.settingsConnectionsAdding = true;
     });
@@ -2958,6 +2969,7 @@ export class GlobalStore {
 
   setShowSettings = (show: boolean, section?: SettingsSection) => {
     this.showSettings = show;
+    if (show) this.showLibrary = false;
     if (section) {
       this.settingsSection = section;
     }
@@ -3026,6 +3038,16 @@ export class GlobalStore {
 
   setShowRecipePicker = (show: boolean) => {
     this.showRecipePicker = show;
+  };
+
+  /** Opens or closes the Library panel, in the slot Settings docks in. */
+  setShowLibrary = (show: boolean) => {
+    this.showLibrary = show;
+    if (show) this.showSettings = false;
+  };
+
+  noteRecipesChanged = () => {
+    this.recipesChangedCount++;
   };
 
   /**

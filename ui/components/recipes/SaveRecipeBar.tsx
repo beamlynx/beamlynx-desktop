@@ -62,6 +62,7 @@ const SaveRecipeBar = observer(({ session }: { session: Session }) => {
       runInAction(() => {
         session.message = `Saved recipe "${saved.title}". Press Ctrl+O to use it.`;
       });
+      global.noteRecipesChanged();
       close();
     } catch (e) {
       setError(

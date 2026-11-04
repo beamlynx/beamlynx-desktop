@@ -27,6 +27,12 @@ It masks output only. A masked column comes back as `xxxxx`, but a query may sti
 
 The UI calls pine-lang at the browser's `http://localhost:33333` (or the desktop bridge's URL). A dev copy served from somewhere else (a cloud preview) sets `PINE_SERVER_PROXY_URL` (e.g. `http://localhost:33333`) for `next dev`: next.config.js then forwards `/api/v1/*` to it, and `getBaseUrl` in `store/client.ts` returns `''` so the UI calls pine on its own origin. Unset, nothing changes. Not for the desktop static export.
 
+## Library and Settings share one docked slot
+
+The sidebar's Library (saved recipes, `components/recipes/LibraryPanel.tsx`) opens in `SettingsDock`, the slot Settings uses. `GlobalStore.showLibrary` and `showSettings` replace each other: anything that opens Settings closes Library. While Library is open, `activeKeyboardPanel` is `'library'` (not `'settings'`), so Settings' Up/Down rail keys and the canvas keys stay off; Library listens for its own keys on the document. Ctrl+O's picker and Library's Use both insert through `components/recipes/insertRecipe.ts`.
+
+Desktop-only UI can be checked in a browser: run the dev server with `NEXT_PUBLIC_DESKTOP=1` and give the page a stand-in `window.beamlynxDesktop` (the project QA guide's `desktop-bridge` simulator does this).
+
 ## Crediting Contributors
 
 When updating the changelog (CHANGELOG.md and utils/changelog.data.ts), contributors should be credited in the changelog entries themselves. The format is:

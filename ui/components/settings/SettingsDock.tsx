@@ -29,7 +29,15 @@ import SettingsDockedPanel from './SettingsDockedPanel';
 const SettingsDock = observer(() => {
   const { global } = useStores();
   const [width, setWidth] = useState(DEFAULT_SETTINGS_PANEL_WIDTH);
-  const settings = usePanelPresence<HTMLDivElement>(global.showSettings);
+  // Library (the sidebar's saved recipes) opens in this same slot, with the
+  // same width and divider; the two replace each other. While the slot
+  // closes, it keeps showing whichever was open, so the closing animation
+  // doesn't flip to the other one.
+  const settings = usePanelPresence<HTMLDivElement>(global.showSettings || global.showLibrary);
+  const lastKind = useRef<'settings' | 'library'>('settings');
+  if (global.showLibrary) lastKind.current = 'library';
+  else if (global.showSettings) lastKind.current = 'settings';
+  const kind = lastKind.current;
 
   useEffect(() => {
     setWidth(getUserPreference(STORAGE_KEYS.SETTINGS_PANEL_WIDTH, DEFAULT_SETTINGS_PANEL_WIDTH, isFiniteNumber));
@@ -153,7 +161,7 @@ const SettingsDock = observer(() => {
           transition: 'outline-color 0.4s ease',
         }}
       >
-        <SettingsDockedPanel open={settings.open} />
+        <SettingsDockedPanel open={settings.open} kind={kind} />
       </Box>
       <NewLayoutSettingsPanelDivider settingsPanelWidth={width} setSettingsPanelWidth={setWidth} />
     </Box>

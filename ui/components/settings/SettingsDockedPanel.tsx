@@ -1,6 +1,7 @@
 import { Box } from '@mui/material';
 import { useEffect, useRef } from 'react';
 import SettingsPanelContent from './SettingsPanelContent';
+import LibraryPanel from '../recipes/LibraryPanel';
 
 /**
  * Settings' shell -- a plain docked panel, not a Modal. The app can show
@@ -20,7 +21,7 @@ import SettingsPanelContent from './SettingsPanelContent';
  * sits open in the background. Closed only by its own IconButton
  * (SettingsPanelContent) or the gear icon.
  */
-const SettingsDockedPanel = ({ open }: { open: boolean }) => {
+const SettingsDockedPanel = ({ open, kind }: { open: boolean; kind: 'settings' | 'library' }) => {
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Opening Settings (the gear icon, Ctrl/Cmd+,, the command palette, a
@@ -44,14 +45,17 @@ const SettingsDockedPanel = ({ open }: { open: boolean }) => {
   // reopening -- inside that window -- reuses the same instance and would
   // never re-run a mount-time effect, silently losing the focus grab and
   // with it the whole fix above.
+  //
+  // Library shares this slot (SettingsDock), so switching between it and
+  // Settings while open takes focus too.
   useEffect(() => {
     if (open) rootRef.current?.focus();
-  }, [open]);
+  }, [open, kind]);
 
   return (
     <Box
       ref={rootRef}
-      data-keyboard-panel="settings"
+      data-keyboard-panel={kind}
       // -1, not a real Tab stop: closing Settings (its own IconButton, or
       // the gear icon) is the way back to the Canvas panel -- Tab was tried
       // as a second way to cross panels and reverted (broke the focus ring
@@ -78,7 +82,13 @@ const SettingsDockedPanel = ({ open }: { open: boolean }) => {
         outline: 'none',
       }}
     >
-      <SettingsPanelContent />
+      {/* Settings' contents stay mounted while Library shows (see
+          SettingsDock on why they are kept). Library reads the recipes
+          afresh each time it opens (LibraryPanel). */}
+      <Box sx={{ height: '100%', display: kind === 'settings' ? 'block' : 'none' }}>
+        <SettingsPanelContent />
+      </Box>
+      {kind === 'library' && <LibraryPanel />}
     </Box>
   );
 };

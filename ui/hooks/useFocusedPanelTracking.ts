@@ -29,6 +29,7 @@ export const useFocusedPanelTracking = ({ global }: FocusedPanelTrackingProps) =
       const panelId = panelRoot?.getAttribute('data-keyboard-panel') as
         | 'graph'
         | 'settings'
+        | 'library'
         | 'input'
         | null;
       global.setFocusedPanelId(panelId ?? null);

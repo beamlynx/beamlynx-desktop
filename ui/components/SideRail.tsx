@@ -10,6 +10,7 @@ import {
   HubOutlined,
   InfoOutlined,
   AccountCircleOutlined,
+  LibraryBooksOutlined,
 } from '@mui/icons-material';
 import type { SvgIconComponent } from '@mui/icons-material';
 import type { SettingsSection } from '../store/global.store';
@@ -218,21 +219,36 @@ const SideRail = observer(({ hasUnreadUpdates, onOpenChangelog }: { hasUnreadUpd
       {/* Settings' sections, each an item of its own: one opens Settings at
           that section, and the open one closes it again. */}
       {/* Account isn't a setting of the app: it's at the bottom. */}
-      {RAIL_ITEMS.filter(item => item.id !== 'account').map(item => {
+      {/* Library (saved recipes) sits second, after Database Connections:
+          it opens in the same docked slot, and the two replace each other.
+          Desktop only: recipes are stored by the desktop app. */}
+      {RAIL_ITEMS.filter(item => item.id !== 'account').map((item, index) => {
         const open = global.showSettings && item.id === global.settingsSection;
         const desktopOnly = DESKTOP_ONLY_SECTIONS.includes(item.id) && !isDesktop();
         const Icon = SECTION_ICONS[item.id];
         return (
-          <RailItem
-            key={item.id}
-            icon={<Icon sx={{ fontSize: 20, opacity: desktopOnly ? 0.55 : 1 }} />}
-            label={desktopOnly ? `${item.label} (desktop)` : item.label}
-            ariaLabel={open ? `Close ${item.label}` : item.label}
-            tooltip={desktopOnly ? `${item.label} (desktop app only)` : item.label}
-            expanded={expanded}
-            active={open}
-            onClick={() => (open ? global.setShowSettings(false) : global.setShowSettings(true, item.id))}
-          />
+          <React.Fragment key={item.id}>
+            <RailItem
+              icon={<Icon sx={{ fontSize: 20, opacity: desktopOnly ? 0.55 : 1 }} />}
+              label={desktopOnly ? `${item.label} (desktop)` : item.label}
+              ariaLabel={open ? `Close ${item.label}` : item.label}
+              tooltip={desktopOnly ? `${item.label} (desktop app only)` : item.label}
+              expanded={expanded}
+              active={open}
+              onClick={() => (open ? global.setShowSettings(false) : global.setShowSettings(true, item.id))}
+            />
+            {index === 0 && isDesktop() && (
+              <RailItem
+                icon={<LibraryBooksOutlined sx={{ fontSize: 20 }} />}
+                label="Library"
+                ariaLabel={global.showLibrary ? 'Close Library' : 'Library'}
+                tooltip="Library: your saved recipes"
+                expanded={expanded}
+                active={global.showLibrary}
+                onClick={() => global.setShowLibrary(!global.showLibrary)}
+              />
+            )}
+          </React.Fragment>
         );
       })}
 

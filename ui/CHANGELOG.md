@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- **Library: browse your saved recipes from the sidebar.** The new **Library** item, under Database Connections, opens your recipes beside the sidebar, where Settings opens. Search them, click one to see its query, and click **Use** to add it to the end of the current tab. Nothing runs. Each recipe can be deleted there too. Ctrl+S and Ctrl+O work as before. Desktop app only. (by @ahmadnazir)
 
 ## [0.73.0] - 2026-11-04
 ### Added

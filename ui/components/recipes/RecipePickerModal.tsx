@@ -3,7 +3,8 @@ import { Box, Typography } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useStores } from '../../store/store-container';
-import { recipeSummary, recipeText, textToInsert, type Recipe } from '../../utils/recipes';
+import { matchRecipes, recipeSummary, type Recipe } from '../../utils/recipes';
+import { insertRecipe } from './insertRecipe';
 import ModalSurface from '../ModalSurface';
 
 /**
@@ -48,13 +49,7 @@ const RecipePickerModal = observer(() => {
     return () => window.clearTimeout(focusTimer);
   }, [open]);
 
-  const matches = useMemo(() => {
-    const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-    return (recipes ?? []).filter(r => {
-      const hay = `${r.title} ${r.explanation} ${r.expression}`.toLowerCase();
-      return words.every(w => hay.includes(w));
-    });
-  }, [recipes, query]);
+  const matches = useMemo(() => matchRecipes(recipes ?? [], query), [recipes, query]);
 
   const index = Math.min(selected, Math.max(0, matches.length - 1));
   const recipe = matches[index];
@@ -70,17 +65,7 @@ const RecipePickerModal = observer(() => {
 
   const applyRecipe = (r: Recipe | undefined) => {
     if (!r) return;
-    // The Agent and Needs approval tabs belong to the agent, and the next
-    // agent query overwrites them, so a recipe goes into a new tab instead.
-    const activeId = global.activeSessionId;
-    if (global.agentSessionIds.includes(activeId)) global.addTab();
-    const session = global.sessions[global.activeSessionId];
-    if (!session) return;
-    const existing = session.expression.replace(/\s+$/, '');
-    const prefix = existing ? `${existing}\n\n` : '';
-    const full = prefix + textToInsert(existing, recipeText(r));
-    session.setExpressionWithSelection(full, { anchor: full.length, head: full.length });
-    close();
+    if (insertRecipe(global, r)) close();
   };
 
   // First click arms it, a second within 3 seconds deletes.

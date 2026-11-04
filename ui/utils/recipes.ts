@@ -360,3 +360,19 @@ export function recipeText(r: { expression: string; inputs: RecipeInputDef[] }):
     .map(i => `$${i.name} = ${i.kind === 'number' ? i.example : `'${i.example.replace(/'/g, '')}'`}`);
   return lines.length ? `${lines.join('\n')}\n\n${r.expression}` : r.expression;
 }
+
+/**
+ * The recipes a search finds: every word of the query in the title, the
+ * explanation or the expression, in any case. Ctrl+O's picker and the
+ * sidebar's Library search the same way.
+ */
+export function matchRecipes<T extends { title: string; explanation: string; expression: string }>(
+  recipes: T[],
+  query: string,
+): T[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  return recipes.filter(r => {
+    const hay = `${r.title} ${r.explanation} ${r.expression}`.toLowerCase();
+    return words.every(w => hay.includes(w));
+  });
+}

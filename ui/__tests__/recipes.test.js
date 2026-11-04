@@ -142,3 +142,80 @@ test('a tab without values gets the recipe as it is', () => {
   const recipe = "$x = 'Acme'\n\ncompany | where: name = $x";
   assert.equal(textToInsert('user | count:', recipe), recipe);
 });
+
+// matchRecipes: the search Ctrl+O's picker (RecipePickerModal) and the
+// sidebar's Library (LibraryPanel) share. Every word of the query must appear,
+// in any case, in the title, the explanation or the expression.
+const { matchRecipes } = require('../utils/recipes.ts');
+
+const searchable = [
+  { id: 'a', title: 'Failed requests', explanation: 'For a company, by tenant.', expression: "request | where: status = 'failed'", savedFrom: 'zebra.local' },
+  { id: 'b', title: 'Admins', explanation: '', expression: "user | where: role = 'admin'", source: 'agent', agent: 'claude-code' },
+  { id: 'c', title: 'Active Companies', explanation: 'Companies still paying.', expression: 'company | where: active = true' },
+];
+const ids = rs => rs.map(r => r.id);
+
+test('an empty or blank search finds every recipe, in their order', () => {
+  assert.deepEqual(ids(matchRecipes(searchable, '')), ['a', 'b', 'c']);
+  assert.deepEqual(ids(matchRecipes(searchable, '   \t\n ')), ['a', 'b', 'c']);
+  assert.deepEqual(matchRecipes([], 'anything'), []);
+  assert.deepEqual(matchRecipes([], ''), []);
+});
+
+test('a word is found in the title, the explanation or the expression', () => {
+  assert.deepEqual(ids(matchRecipes(searchable, 'Admins')), ['b'], 'title');
+  assert.deepEqual(ids(matchRecipes(searchable, 'tenant')), ['a'], 'explanation');
+  assert.deepEqual(ids(matchRecipes(searchable, 'role')), ['b'], 'expression');
+  assert.deepEqual(ids(matchRecipes(searchable, 'compan')), ['a', 'c'], 'part of a word, in any of the three');
+});
+
+test('the search ignores case, in the query and in the recipe', () => {
+  assert.deepEqual(ids(matchRecipes(searchable, 'ADMIN')), ['b']);
+  assert.deepEqual(ids(matchRecipes(searchable, 'active companies')), ['c']);
+  assert.deepEqual(ids(matchRecipes(searchable, 'FaIlEd')), ['a']);
+  assert.deepEqual(ids(matchRecipes(searchable, 'WHERE')), ['a', 'b', 'c']);
+});
+
+test('every word must be found, each in any of the three fields', () => {
+  assert.deepEqual(ids(matchRecipes(searchable, 'where admin')), ['b']);
+  // "paying" is only in c's explanation, "true" only in its expression.
+  assert.deepEqual(ids(matchRecipes(searchable, 'paying true')), ['c']);
+  // "failed" from a's title and expression, "tenant" from its explanation.
+  assert.deepEqual(ids(matchRecipes(searchable, 'tenant failed')), ['a']);
+  assert.deepEqual(ids(matchRecipes(searchable, 'admin paying')), [], 'each word in a different recipe');
+  assert.deepEqual(ids(matchRecipes(searchable, 'where zzz')), [], 'one word missing');
+});
+
+test('words may be split by any run of whitespace, in any order', () => {
+  assert.deepEqual(ids(matchRecipes(searchable, '  user\t\twhere\n ')), ['b']);
+  assert.deepEqual(ids(matchRecipes(searchable, 'true company')), ['c']);
+});
+
+test('a word is not found across the gap between two fields', () => {
+  // a's title ends "requests", its explanation starts "For": "requestsfor"
+  // exists in neither.
+  assert.deepEqual(ids(matchRecipes(searchable, 'requestsfor')), []);
+  assert.deepEqual(ids(matchRecipes([{ id: 'x', title: 'ab', explanation: 'cd', expression: 'ef' }], 'bc')), []);
+  assert.deepEqual(ids(matchRecipes([{ id: 'x', title: 'ab', explanation: '', expression: 'ef' }], 'bef')), []);
+});
+
+test('other recipe fields (saved from, agent, id) are not searched', () => {
+  assert.deepEqual(ids(matchRecipes(searchable, 'zebra')), [], 'savedFrom');
+  assert.deepEqual(ids(matchRecipes(searchable, 'claude-code')), [], 'agent');
+});
+
+test('matchRecipes hands back the same recipe objects and leaves its input alone', () => {
+  const copy = searchable.map(r => ({ ...r }));
+  const found = matchRecipes(searchable, 'where');
+  assert.notEqual(found, searchable, 'a new array');
+  assert.equal(found[0], searchable[0]);
+  assert.equal(found[1], searchable[1]);
+  assert.deepEqual(searchable, copy);
+});
+
+test('a search with regular expression characters is matched as plain text', () => {
+  assert.deepEqual(ids(matchRecipes(searchable, "'admin'")), ['b']);
+  assert.deepEqual(ids(matchRecipes(searchable, '|')), ['a', 'b', 'c']);
+  assert.deepEqual(ids(matchRecipes(searchable, '.*')), []);
+  assert.deepEqual(ids(matchRecipes(searchable, '(')), []);
+});
