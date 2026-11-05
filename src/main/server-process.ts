@@ -1,14 +1,14 @@
 import { ChildProcess, spawn } from 'child_process';
 import { app } from 'electron';
 import * as fs from 'fs';
-import * as http from 'http';
 import * as path from 'path';
-import { isPineServerProcess, waitForReadyOrExit } from './child-watch';
+import { isPineServerProcess } from './child-watch';
 import { describePortInUse, isPortInUse, PINE_PORT } from './ports';
 import { getResourcesRoot } from './resources';
+import { waitForServerReady, watchForReadyLine } from './server-ready';
+import { mark } from './startup-marks';
 
 const READY_TIMEOUT_MS = 15000;
-const READY_POLL_INTERVAL_MS = 250;
 const KILL_GRACE_PERIOD_MS = 5000;
 
 // A SIGKILL (force-quit, crash, task-killed) can't be intercepted, so
@@ -80,60 +80,6 @@ function getExpectedVersion(): string {
   return fs.readFileSync(versionFile, 'utf-8').trim();
 }
 
-// -main returns immediately (:join? false in pine.core), so a live process
-// tells us nothing about Jetty actually being up -- poll the API instead.
-function pollReady(port: number, token: string, timeoutMs: number): Promise<{ version: string }> {
-  const deadline = Date.now() + timeoutMs;
-  return new Promise((resolve, reject) => {
-    const retryOrFail = () => {
-      if (Date.now() > deadline) {
-        // A dev build passes PINE_PORT=43333. A pine-server staged before
-        // pine-lang read PINE_PORT ignores it and binds 33333 instead, so
-        // this wait would time out with no hint why.
-        const hint = app.isPackaged
-          ? ''
-          : ` If the staged pine-server predates PINE_PORT support, rebuild it and re-run scripts/stage-server.sh.`;
-        reject(new ServerProcessError(`pine-server did not become ready on port ${port} within ${timeoutMs}ms.${hint}`));
-        return;
-      }
-      setTimeout(attempt, READY_POLL_INTERVAL_MS);
-    };
-    const attempt = () => {
-      const req = http.get(
-        {
-          host: '127.0.0.1',
-          port,
-          path: '/api/v1/connections',
-          timeout: 1000,
-          headers: { Authorization: `Bearer ${token}` },
-        },
-        res => {
-          let body = '';
-          res.on('data', chunk => (body += chunk));
-          res.on('end', () => {
-            try {
-              const version = JSON.parse(body)?.result?.version;
-              if (version) {
-                resolve({ version });
-                return;
-              }
-            } catch {
-              // not ready yet, or not valid JSON -- retry
-            }
-            retryOrFail();
-          });
-        },
-      );
-      req.on('error', retryOrFail);
-      req.on('timeout', () => {
-        req.destroy();
-        retryOrFail();
-      });
-    };
-    attempt();
-  });
-}
-
 // `token` is this launch's pine-server token (launch-secrets.ts). The server
 // refuses every request without it.
 export async function startServer(token: string): Promise<ServerHandle> {
@@ -169,12 +115,14 @@ export async function startServer(token: string): Promise<ServerHandle> {
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  mark('spawn');
   if (child.pid) {
     fs.writeFileSync(getPidFilePath(), String(child.pid));
   }
 
   let stopping = false;
   let stderrTail = '';
+  const readyLine = watchForReadyLine();
   let unexpectedExitCb: ((info: UnexpectedExitInfo) => void) | undefined;
 
   // BOTH pipes must be drained, always. A piped stdio stream nothing reads
@@ -204,8 +152,10 @@ export async function startServer(token: string): Promise<ServerHandle> {
   // Folded into the same tail as stderr rather than kept separately: this
   // exists to keep the pipe empty and to give an unexpected-exit report
   // something to show, and pine-lang's startup diagnostics go to stdout.
+  // Also where the server says it's ready (see server-ready.ts).
   child.stdout?.on('data', chunk => {
     stderrTail = keepTail(stderrTail, chunk);
+    readyLine.feed(String(chunk));
   });
 
   // Always listened for: a spawn failure (EACCES, a missing loader) is
@@ -246,11 +196,21 @@ export async function startServer(token: string): Promise<ServerHandle> {
 
   try {
     const expectedVersion = getExpectedVersion();
-    const { version } = await waitForReadyOrExit(
-      child,
-      pollReady(PINE_PORT, token, READY_TIMEOUT_MS),
-      () => stderrTail,
-    );
+    // -main returns immediately (:join? false in pine.core), so a live
+    // process tells us nothing about Jetty actually being up.
+    const { version, via } = await waitForServerReady(child, readyLine.ready, {
+      port: PINE_PORT,
+      token,
+      timeoutMs: READY_TIMEOUT_MS,
+      // A dev build passes PINE_PORT=43333. A pine-server staged before
+      // pine-lang read PINE_PORT ignores it and binds 33333 instead, so
+      // this wait would time out with no hint why.
+      timeoutHint: app.isPackaged
+        ? ''
+        : ` If the staged pine-server predates PINE_PORT support, rebuild it and re-run scripts/stage-server.sh.`,
+      output: () => stderrTail,
+    });
+    mark(`server-ready (${via})`);
     if (version !== expectedVersion) {
       await stop();
       // A build-integrity tripwire, not something a correctly assembled

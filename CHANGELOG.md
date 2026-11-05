@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Changed
+- **Beamlynx opens faster.** Its server now starts while the window opens, not after. On a Linux test machine the app was ready about a quarter of a second sooner.
+
+### Fixed
+- **Clicking a `beamlynx://` link while Beamlynx is closed opens it.** On Linux and Windows the app showed a JavaScript error instead of opening.
 
 ## [0.28.0] - 2026-11-04
 ### Added

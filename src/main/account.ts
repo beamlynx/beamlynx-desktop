@@ -10,14 +10,19 @@
 // encrypted with safeStorage. Who the person is also goes in app-db's meta
 // table, so the app knows it offline and never asks again. A dev build has
 // its own data folder, so it has its own sign-in.
-import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js';
+import type { Session, SupabaseClient } from '@supabase/supabase-js';
 import { app, BrowserWindow, ipcMain, net, safeStorage, shell } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
-import { PostHog } from 'posthog-node';
 import { getAppDb } from './app-db-ipc';
 import { startCallbackServer, type CallbackServer } from './loopback';
 import { loadServiceConfig, type ServiceConfig } from './service-config';
+
+// supabase-js and posthog-node take ~35 ms to load together. They are loaded
+// on first use, once the window is up, so they don't hold up the start of
+// the pine server (see runDesktopApp in index.ts).
+const loadPostHog = () => (require('posthog-node') as typeof import('posthog-node')).PostHog;
+const loadSupabase = () => (require('@supabase/supabase-js') as typeof import('@supabase/supabase-js')).createClient;
 import { createUsageStats, type MetaStore, type UsageStats } from './usage-stats';
 
 export type Provider = 'github' | 'google';
@@ -72,7 +77,7 @@ export function getUsageStats(): UsageStats {
   if (!usageStats) {
     config ??= loadServiceConfig(app.isPackaged);
     const client = config.posthogKey
-      ? new PostHog(config.posthogKey, {
+      ? new (loadPostHog())(config.posthogKey, {
           host: config.posthogHost,
           flushAt: 20,
           flushInterval: 30_000,
@@ -142,7 +147,7 @@ function sessionStorage() {
 function getSupabase(): SupabaseClient | null {
   config ??= loadServiceConfig(app.isPackaged);
   if (!config.supabaseUrl || !config.supabaseKey) return null;
-  supabase ??= createClient(config.supabaseUrl, config.supabaseKey, {
+  supabase ??= loadSupabase()(config.supabaseUrl, config.supabaseKey, {
     auth: {
       flowType: 'pkce',
       storage: sessionStorage(),

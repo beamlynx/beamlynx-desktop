@@ -1,5 +1,12 @@
 import { app, BrowserWindow } from 'electron';
-import { autoUpdater } from 'electron-updater';
+import type { AppUpdater } from 'electron-updater';
+
+// electron-updater takes ~30 ms to load. It is loaded on first use, after the
+// window and the pine server are already on their way, instead of while the
+// app starts.
+export function getAutoUpdater(): AppUpdater {
+  return (require('electron-updater') as typeof import('electron-updater')).autoUpdater;
+}
 
 export type UpdateStatus =
   | { state: 'checking' }
@@ -30,6 +37,7 @@ export function initAutoUpdater(mainWindow: BrowserWindow): void {
   // A dev/unpackaged build has no update metadata to check against --
   // this would just fail noisily every launch.
   if (!app.isPackaged) return;
+  const autoUpdater = getAutoUpdater();
 
   const send = (status: UpdateStatus) => {
     if (!mainWindow.isDestroyed()) {
