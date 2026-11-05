@@ -1,7 +1,7 @@
 import * as View from '@codemirror/view';
 import type { DecorationSet } from '@codemirror/view';
-import { StateField } from '@codemirror/state';
-import type { EditorState } from '@codemirror/state';
+import { StateEffect, StateField } from '@codemirror/state';
+import type { EditorState, Extension } from '@codemirror/state';
 import type { Ast, PineRange } from '../store/client';
 import { getColorByTableIndex } from '../store/graph.util';
 
@@ -51,22 +51,31 @@ function buildDecorations(state: EditorState, ast: Ast, isDark: boolean): Decora
   return View.Decoration.set(decos);
 }
 
+const setTableColorsEffect = StateEffect.define<{ ast: Ast | null; isDark: boolean }>();
+
 /**
- * CodeMirror extension that decorates expression segments with background colors
- * based on the AST's ranges and table ordering (same colors as the result grid).
- *
- * Creates a fresh StateField per call — react-codemirror reconfiguration
- * calls create() with the latest closure data each time the ast changes.
+ * Decorates expression segments with background colors based on the AST's
+ * ranges and table ordering (same colors as the result grid). One field for
+ * the editor's lifetime: its colors change through setTableColors, so a new
+ * build never reconfigures the editor.
  */
-export function tableColorDecoration(ast: Ast | null, isDark: boolean) {
-  const field = StateField.define<DecorationSet>({
-    create(state) {
-      if (!ast) return View.Decoration.none;
-      return buildDecorations(state, ast, isDark);
-    },
-    update(value) {
-      return value;
-    },
-  });
-  return [field, View.EditorView.decorations.from(field)];
+export const tableColors: Extension = StateField.define<DecorationSet>({
+  create() {
+    return View.Decoration.none;
+  },
+  update(value, tr) {
+    for (const effect of tr.effects) {
+      if (effect.is(setTableColorsEffect)) {
+        const { ast, isDark } = effect.value;
+        return ast ? buildDecorations(tr.state, ast, isDark) : View.Decoration.none;
+      }
+    }
+    return tr.docChanged ? value.map(tr.changes) : value;
+  },
+  provide: field => View.EditorView.decorations.from(field),
+});
+
+/** Color the editor's text from `ast`, or clear the colors when it is null. */
+export function setTableColors(view: View.EditorView, ast: Ast | null, isDark: boolean) {
+  view.dispatch({ effects: setTableColorsEffect.of({ ast, isDark }) });
 }

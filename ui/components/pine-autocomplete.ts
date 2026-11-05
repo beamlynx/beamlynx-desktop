@@ -3,7 +3,12 @@ import {
   Completion,
   CompletionContext,
   CompletionResult,
+  completionStatus,
+  currentCompletions,
   selectedCompletion,
+  selectedCompletionIndex,
+  setSelectedCompletion,
+  startCompletion,
 } from '@codemirror/autocomplete';
 import { Extension } from '@codemirror/state';
 import { EditorView, ViewPlugin, ViewUpdate } from '@codemirror/view';
@@ -19,7 +24,10 @@ interface PineCompletion extends Completion {
 }
 
 interface PineCompletionContext {
-  hints: Hints | null;
+  // Live getters, read on every completion query, so the extension is made
+  // once per editor and never rebuilt when a build brings new hints. A new
+  // extension would replace the completion source, and the open list with it.
+  hints: () => Hints | null;
   // A live getter rather than a snapshot value: reading it fresh on every
   // completion query reflects the current build status without needing the
   // (memoized, teardown-on-change) autocompletion extension to be rebuilt
@@ -39,7 +47,7 @@ function getPineCompletions(
   pineContext: PineCompletionContext,
   callbacks?: AutocompleteCallbacks,
 ): CompletionResult | null {
-  const { hints } = pineContext;
+  const hints = pineContext.hints();
   const { pos } = context;
   const line = context.state.doc.lineAt(pos);
   const lineText = line.text;
@@ -258,6 +266,24 @@ function getPineCompletions(
   };
 }
 
+// The option each editor had highlighted when refreshCompletions asked for
+// new options, to highlight again once they arrive.
+const highlightToRestore = new WeakMap<EditorView, string>();
+const optionKey = (c: PineCompletion) => `${c.label}\u0000${c.expression ?? ''}`;
+
+/**
+ * Query the completion list again, if it is open, keeping it open and the
+ * same option highlighted where it is still offered. Called when a build
+ * brings new hints: the list may be showing "Loading..." or hints for text
+ * that has changed since.
+ */
+export function refreshCompletions(view: EditorView) {
+  if (!completionStatus(view.state)) return;
+  const selected = selectedCompletion(view.state) as PineCompletion | null;
+  if (selected) highlightToRestore.set(view, optionKey(selected));
+  startCompletion(view);
+}
+
 // ViewPlugin to detect autocomplete selection changes
 function createAutocompleteListener(callbacks?: AutocompleteCallbacks): Extension {
   return ViewPlugin.fromClass(
@@ -270,7 +296,27 @@ function createAutocompleteListener(callbacks?: AutocompleteCallbacks): Extensio
       }
 
       update(update: ViewUpdate) {
+        this.restoreHighlight(update.view);
         this.checkSelectionChange(update.view);
+      }
+
+      // The refreshed options are new objects, so the list highlights its
+      // first one. Move the highlight back to the option it was on.
+      private restoreHighlight(view: EditorView) {
+        const key = highlightToRestore.get(view);
+        if (key === undefined) return;
+        const status = completionStatus(view.state);
+        if (status === 'pending') return;
+        highlightToRestore.delete(view);
+        if (status !== 'active') return;
+        const index = currentCompletions(view.state).findIndex(c => optionKey(c) === key);
+        if (index < 0 || index === selectedCompletionIndex(view.state)) return;
+        // Not during this update: CodeMirror refuses a dispatch inside one.
+        queueMicrotask(() => {
+          if (completionStatus(view.state) === 'active') {
+            view.dispatch({ effects: setSelectedCompletion(index) });
+          }
+        });
       }
 
       private checkSelectionChange(view: any) {
