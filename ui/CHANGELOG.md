@@ -6,6 +6,8 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ## [Unreleased]
 ### Added
 - **Library: browse your saved recipes from the sidebar.** The new **Library** item, under Database Connections, opens your recipes beside the sidebar, where Settings opens. Search them, click one to see its query, and click **Use** to add it to the end of the current tab. Nothing runs. Each recipe can be deleted there too. Ctrl+S and Ctrl+O work as before. Desktop app only. (by @ahmadnazir)
+- **The canvas draws any tab, one query at a time.** A tab can hold several queries, separated by blank lines. A row of chips at the top of the canvas has one per query: its `|= name`, or its number. A red dot marks a query that changes data. Click a chip to draw that query; Run then runs it too, even with the Pine panel closed. Clicking in the Pine panel switches the same way. Before, the canvas drew nothing and said each query above the last had to end in `|= name`.
+- **The canvas shows what an update or delete changes.** When a query ends in `update!`, the table it changes lists what it writes, such as `status = 'sent'`, in red under **update**. When it ends in `delete!`, the table says its rows are deleted, and by which columns.
 
 ## [0.73.0] - 2026-11-04
 ### Added

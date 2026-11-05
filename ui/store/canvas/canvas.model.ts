@@ -46,6 +46,8 @@ export type CanvasTableNodeData = {
   };
   leftHandles: CanvasHandle[];
   rightHandles: CanvasHandle[];
+  /** Set on the table an `update!` or `delete!` changes - see CanvasWrite. */
+  write?: Omit<CanvasWrite, 'alias'>;
   /**
    * Set when this node is a checkpoint's sealed result rather than a table:
    * the node below a checkpoint's divider, named after the checkpoint
@@ -105,9 +107,16 @@ export type CanvasContainerNodeData = {
  * chips say which block is made from which; joins stay in the graph below.
  */
 export type CanvasLineageNodeData = {
-  /** The block's `|= name`, or '' for the last block - the query the canvas draws. */
-  name: string;
-  /** What the block ends in, when it's a checkpoint: `limit 1 per company_id`. */
+  /** The block's index among the tab's query blocks. */
+  block: number;
+  /** `|= name`, or the block's number when it has no name. */
+  label: string;
+  name: string | null;
+  /** It ends in update! or delete!. */
+  write: boolean;
+  /** It is the block the canvas draws. */
+  active: boolean;
+  /** What a nested block ends in, when it's a checkpoint: `limit 1 per company_id`. */
   detail?: string;
   /** Its nested query is the one expanded on the canvas. */
   expanded: boolean;
@@ -146,9 +155,15 @@ export type CanvasGraph = {
   edges: CanvasEdge[];
   /** false once the expression stops parsing - see the plan doc's degrade behavior. */
   parsing: boolean;
-  /** false when the session currently holds more than one blank-line-separated block - out of scope for phase 1. */
-  singleBlock: boolean;
 };
+
+/**
+ * The change a query makes when it ends in `update!` or `delete!`, drawn on
+ * the node of the table it changes (`alias`). `items` are the assignments
+ * an update writes (`status = 'sent'`), or the columns a delete finds the
+ * rows by (`id`).
+ */
+export type CanvasWrite = { kind: 'update' | 'delete'; alias: string; items: string[] };
 
 // --- pickers -------------------------------------------------------------
 

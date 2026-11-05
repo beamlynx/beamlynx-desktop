@@ -82,14 +82,10 @@ const Flow: React.FC<{
   const reactFlowInstance = useReactFlow();
   const { canvasGraph } = canvasStore;
 
-  // The start node is a gesture surface (clicking it calls
-  // canvasStore.commitFirstTable, which overwrites session.expression
-  // wholesale - see StartNode.tsx). Showing it while singleBlock is false
-  // would let a click destroy a multi-block expression the canvas isn't
-  // even parsing; gate it on singleBlock too, not just an empty node list.
+  // An empty query shows the start node, whose click picks the first table.
   const derivedNodes: CanvasNode[] = useMemo(
     () =>
-      canvasGraph.singleBlock && canvasGraph.nodes.length === 0
+      canvasGraph.nodes.length === 0
         ? [
             {
               id: START_NODE_ID,
@@ -99,7 +95,7 @@ const Flow: React.FC<{
             } as CanvasNode,
           ]
         : canvasGraph.nodes,
-    [canvasGraph.nodes, canvasGraph.singleBlock],
+    [canvasGraph.nodes],
   );
 
   // ReactFlow's `nodes` prop is "controlled", but that doesn't mean it can
@@ -152,8 +148,9 @@ const Flow: React.FC<{
     if (derivedNodes.length === 0) return;
     const t = setTimeout(() => reactFlowInstance.fitView({ duration: 200 }), 50);
     return () => clearTimeout(t);
+    // Switching to another query block refits too, whatever its node count.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [derivedNodes.length, canvasGraph.edges.length, recenterRequestCount, canvasStore.layoutResets]);
+  }, [derivedNodes.length, canvasGraph.edges.length, recenterRequestCount, canvasStore.layoutResets, canvasStore.mainBlock]);
 
   const onNodeDragStop = (_e: React.MouseEvent, node: CanvasNode) => {
     if (node.type === 'table-node' || node.type === 'lineage-node') {
@@ -252,17 +249,13 @@ const Flow: React.FC<{
         background: 'var(--canvas-bg)',
       }}
     >
-      {!canvasGraph.singleBlock && (
-        <Banner>The canvas draws the last query. Each query above it needs to end in |= name</Banner>
-      )}
-      {canvasGraph.singleBlock && !canvasGraph.parsing && canvasStore.isConnecting && (
+      {!canvasGraph.parsing && canvasStore.isConnecting && (
         <Banner variant="info">Connecting…</Banner>
       )}
       {/* No banner while the database can't be reached: nothing is wrong
           with the expression, and the band above the results says why, once
           (ErrorMessage.tsx). */}
-      {canvasGraph.singleBlock &&
-        !canvasGraph.parsing &&
+      {!canvasGraph.parsing &&
         !canvasStore.isConnecting &&
         !canvasStore.session.databaseUnreachable && <Banner>Not parsing - showing last valid graph</Banner>}
       {/* What this query is for, in the author's own words - see PineDoc.tsx.
@@ -276,8 +269,8 @@ const Flow: React.FC<{
         style={{
           width: '100%',
           height: '100%',
-          opacity: canvasGraph.singleBlock && canvasGraph.parsing ? 1 : 0.4,
-          pointerEvents: canvasGraph.singleBlock && canvasGraph.parsing ? 'auto' : 'none',
+          opacity: canvasGraph.parsing ? 1 : 0.4,
+          pointerEvents: canvasGraph.parsing ? 'auto' : 'none',
         }}
       >
         <ReactFlow

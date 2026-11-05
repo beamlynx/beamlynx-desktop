@@ -355,8 +355,11 @@ export class Session {
     edges: [],
   };
 
-  /** Cursor position */
-  cursorPosition?: { line: number; character: number };
+  /**
+   * Cursor position. Initialised so MobX observes it: the canvas draws the
+   * query block it is in.
+   */
+  cursorPosition: { line: number; character: number } | undefined = undefined;
 
   /**
    * Cursor position used by the most recently resolved build. Lets
@@ -1310,7 +1313,7 @@ export class Session {
    * `expression` when a recipe is used, so its first value is selected (or,
    * in Vim mode, the cursor sits on it). PineInput clears it once applied.
    */
-  pendingSelection: { anchor: number; head: number } | null = null;
+  pendingSelection: { anchor: number; head: number; focus?: boolean } | null = null;
 
   public setExpressionWithSelection(expression: string, selection: { anchor: number; head: number } | null) {
     this.pendingSelection = selection;
@@ -1320,6 +1323,20 @@ export class Session {
 
   public updateCursorPosition(line: number, character: number) {
     this.cursorPosition = { line, character };
+  }
+
+  /**
+   * Put the cursor at the start of `line`, from outside the editor: the
+   * canvas's strip picking a query block. The editor applies it as it does a
+   * recipe's selection, now or when it next opens, without taking focus. The
+   * session then builds the block the cursor is in.
+   */
+  public moveCursorToLine(line: number) {
+    const lines = this.expression.split('\n');
+    const offset = lines.slice(0, line).reduce((n, l) => n + l.length + 1, 0);
+    this.cursorPosition = { line, character: 0 };
+    this.pendingSelection = { anchor: offset, head: offset, focus: false };
+    this.requestHints();
   }
 
   /**

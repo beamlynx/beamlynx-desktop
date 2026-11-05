@@ -93,7 +93,7 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
       const anchor = Math.min(pending.anchor, max);
       const head = global.vimMode ? anchor : Math.min(pending.head, max);
       view.dispatch({ selection: { anchor, head }, scrollIntoView: true });
-      view.focus();
+      if (pending.focus !== false) view.focus();
       runInAction(() => {
         session.pendingSelection = null;
       });
@@ -430,7 +430,23 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
   // Set it explicitly, once, right after creation.
   const onCreateEditor = useCallback(
     (view: EditorView) => {
-      view.dispatch({ selection: { anchor: initialValueRef.current.length } });
+      // The cursor starts where the session has it, so opening the panel
+      // keeps the query block the canvas draws (CanvasStore.selectQuery may
+      // have moved it while the panel was closed). Without one, at the end.
+      const pending = session.pendingSelection;
+      const cursor = session.cursorPosition;
+      const doc = view.state.doc;
+      let anchor = doc.length;
+      if (pending) {
+        anchor = Math.min(pending.anchor, doc.length);
+        runInAction(() => {
+          session.pendingSelection = null;
+        });
+      } else if (cursor && cursor.line < doc.lines) {
+        const line = doc.line(cursor.line + 1);
+        anchor = line.from + Math.min(cursor.character, line.length);
+      }
+      view.dispatch({ selection: { anchor } });
 
       // If focus was already requested (session.focusTextInput()) before this
       // editor finished mounting -- e.g. GlobalStore.togglePinePanel firing

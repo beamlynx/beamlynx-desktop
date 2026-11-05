@@ -36,7 +36,7 @@ const CanvasVariables = observer(({ canvasStore }: { canvasStore: CanvasStore })
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
 
-  if (!report || report.used.length === 0 || !canvasStore.canvasGraph.singleBlock) return null;
+  if (!report || report.used.length === 0) return null;
 
   const start = (name: string) => {
     setEditing(name);

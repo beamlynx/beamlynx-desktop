@@ -1,4 +1,5 @@
 import { Ast, Checkpoint, PineRange, Table } from '../client';
+import { CanvasWrite } from './canvas.model';
 
 // Canvas mode never parses Pine itself — the server does that (see /build's
 // `ast.ranges`). This module only re-slices the original expression string
@@ -75,6 +76,45 @@ export const offsetFromPosition = (
  */
 export const mayChangeData = (expression: string): boolean =>
   /(^|\|)\s*(delete!|d!|update!|u!)/i.test(expression);
+
+/**
+ * The expression's text split at its commas, leaving out commas inside a
+ * string or inside a function call's parentheses.
+ */
+const splitTopLevel = (text: string): string[] => {
+  const parts: string[] = [];
+  let depth = 0;
+  let quoted = false;
+  let from = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === "'") quoted = !quoted;
+    else if (quoted) continue;
+    else if (c === '(') depth++;
+    else if (c === ')') depth = Math.max(depth - 1, 0);
+    else if (c === ',' && depth === 0) {
+      parts.push(text.slice(from, i));
+      from = i + 1;
+    }
+  }
+  parts.push(text.slice(from));
+  return parts.map(p => p.trim()).filter(p => p !== '');
+};
+
+/**
+ * The change an expression makes, when it ends in update! or delete!: the
+ * table it changes, and what it writes or which columns find the rows. Only
+ * the last step counts: pine-lang runs a write only when it ends the
+ * expression.
+ */
+export const writeOf = (segments: Segment[] | null): CanvasWrite | null => {
+  const last = segments?.[segments.length - 1];
+  if (!last?.owner || (last.kind !== 'update' && last.kind !== 'delete-action')) return null;
+  const items = splitTopLevel(last.text.replace(/^(update!|u!|delete!|d!)/i, ''));
+  return last.kind === 'update'
+    ? { kind: 'update', alias: last.owner, items }
+    : { kind: 'delete', alias: last.owner, items: items.map(c => c.replace(/^\./, '')) };
+};
 
 const classifyKind = (text: string): SegmentKind => {
   if (/^(select:|s:)/i.test(text)) return 'select';

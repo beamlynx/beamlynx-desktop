@@ -333,6 +333,7 @@ const ChipRow = ({
   onSelect,
   onSelectReadOnly,
   highlightIndex,
+  warn = false,
 }: {
   label: string;
   chips: string[];
@@ -347,6 +348,8 @@ const ChipRow = ({
   onSelectReadOnly?: (index: number, anchor: { x: number; y: number }) => void;
   /** The chip at this index is CanvasStore.focusedConfigItem's current target - drawn with the same "current" ring TableNode's own border uses for keyboard focus. */
   highlightIndex?: number;
+  /** Drawn in the warning colour: the row says what an update! or delete! changes. */
+  warn?: boolean;
 }) => {
   // Hover rings the chip under the pointer, but only locally - it must not
   // move CanvasStore's keyboard cursor. A hidden pointer (some window
@@ -372,7 +375,7 @@ const ChipRow = ({
           textTransform: 'uppercase',
           fontWeight: 700,
           letterSpacing: '0.3px',
-          color: 'var(--canvas-text-dim)',
+          color: warn ? 'var(--canvas-warn)' : 'var(--canvas-text-dim)',
         }}
       >
         {label}
@@ -437,14 +440,16 @@ const ChipRow = ({
             background: 'var(--canvas-chip-bg)',
             padding: '2px 6px',
             borderRadius: '3px',
-            border: '1px solid var(--canvas-chip-border)',
+            border: `1px solid ${warn ? 'var(--canvas-warn)' : 'var(--canvas-chip-border)'}`,
             color: 'var(--canvas-text)',
             display: 'flex',
             alignItems: 'center',
             gap: '4px',
           }}
         >
-          <span style={{ width: 4, height: 4, flexShrink: 0, background: 'var(--canvas-pin)' }} />
+          <span
+            style={{ width: 4, height: 4, flexShrink: 0, background: warn ? 'var(--canvas-warn)' : 'var(--canvas-pin)' }}
+          />
           <span>{chip}</span>
           {onRemoveReadOnly && (
             <span
@@ -991,6 +996,17 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
         onSelect={(i, anchor) => canvasStore.openColumnPicker('group', data.alias, anchor, data.groupChips[i])}
         highlightIndex={cursorItem?.kind === 'group' ? data.groupChips.indexOf(cursorItem.column) : undefined}
       />
+      {/* What the query's update! or delete! does to this table's rows. */}
+      {data.write && (
+        <ChipRow
+          warn
+          label={data.write.kind}
+          chips={[]}
+          readOnlyChips={
+            data.write.kind === 'update' ? data.write.items : [`these rows, by ${data.write.items.join(', ')}`]
+          }
+        />
+      )}
     </div>
   );
 });
