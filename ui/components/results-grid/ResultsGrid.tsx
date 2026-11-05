@@ -21,7 +21,7 @@ import { observer } from 'mobx-react-lite';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStores } from '../../store/store-container';
 import type { Row } from '../../store/session';
-import { parseJsonCellValue } from '../json-cell.util';
+import { jsonCellDisplay } from '../json-cell.util';
 import {
   BASE_HEADER_HEIGHT,
   BASE_ROW_HEIGHT,
@@ -68,10 +68,12 @@ export interface ResultsGridColumn {
    * another.
    */
   cellReadOnlyReason?: (row: Row) => string | undefined;
-  /** Header background, for the per-table "Table colors" tint and the canvas hover spotlight. */
+  /** Header background, for the per-table "Table colors" tint. */
   headerColor?: string;
-  /** This column's table is the one hovered on the canvas. */
-  spotlight?: boolean;
+  /** The alias of the table this column comes from, when the result has several. */
+  table?: string;
+  /** Header background while this column's table is the spotlit one (see spotlightTable). */
+  spotlightColor?: string;
   /**
    * The connection's access policy hides this column from agents. The
    * header gets a crossed-out eye before its name.
@@ -82,6 +84,11 @@ export interface ResultsGridColumn {
 export interface ResultsGridProps {
   columns: ResultsGridColumn[];
   rows: Row[];
+  /**
+   * The table hovered on the canvas: its columns' headers are tinted and
+   * marked. A prop of its own, so hovering doesn't change `columns`.
+   */
+  spotlightTable?: string | null;
   /** A column's width was dragged to a new size (once, at the end of the drag). */
   onColumnResize: (field: string, width: number) => void;
   onJsonOpen: (row: Row, field: string) => void;
@@ -178,7 +185,7 @@ function useGridTheme(): ResolvedGridTheme | null {
 }
 
 const ResultsGrid: React.FC<ResultsGridProps> = observer(props => {
-  const { columns, rows } = props;
+  const { columns, rows, spotlightTable } = props;
   const resolved = useGridTheme();
   const gridRef = useRef<DataEditorRef>(null);
 
@@ -231,22 +238,29 @@ const ResultsGrid: React.FC<ResultsGridProps> = observer(props => {
     setSelection(NO_SELECTION);
   }, []);
 
+  const isSpotlit = useCallback(
+    (c: ResultsGridColumn | undefined) => !!c?.table && c.table === spotlightTable,
+    [spotlightTable],
+  );
   const gridColumns = useMemo<GridColumn[]>(
     () =>
-      columns.map(c => ({
-        id: c.field,
-        title: c.title,
-        width: dragWidths[c.field] ?? c.width,
-        ...(c.hiddenFromAgents && { icon: 'hiddenFromAgents' }),
-        ...(c.headerColor && {
-          themeOverride: {
-            bgHeader: c.headerColor,
-            bgHeaderHovered: c.headerColor,
-            bgHeaderHasFocus: c.headerColor,
-          },
-        }),
-      })),
-    [columns, dragWidths],
+      columns.map(c => {
+        const header = isSpotlit(c) ? (c.spotlightColor ?? c.headerColor) : c.headerColor;
+        return {
+          id: c.field,
+          title: c.title,
+          width: dragWidths[c.field] ?? c.width,
+          ...(c.hiddenFromAgents && { icon: 'hiddenFromAgents' }),
+          ...(header && {
+            themeOverride: {
+              bgHeader: header,
+              bgHeaderHovered: header,
+              bgHeaderHasFocus: header,
+            },
+          }),
+        };
+      }),
+    [columns, dragWidths, isSpotlit],
   );
 
   // The glow lives in a ref and only its one cell is redrawn each frame, so
@@ -304,15 +318,14 @@ const ResultsGrid: React.FC<ResultsGridProps> = observer(props => {
       const column = columns[col];
       const value = rows[row]?.[column.field];
       if (column.json) {
-        const parsed = parseJsonCellValue(value);
-        const text = parsed === undefined ? displayText(value) : JSON.stringify(parsed);
+        const { text, opens } = jsonCellDisplay(rows[row], column.field);
         return {
           kind: GridCellKind.Text,
           data: text,
           displayData: text,
           allowOverlay: false,
           readonly: true,
-          ...(parsed !== undefined && { cursor: 'pointer' }),
+          ...(opens && { cursor: 'pointer' }),
         };
       }
       const text = pendingEdits.current.get(`${row}:${column.field}`) ?? displayText(value);
@@ -358,11 +371,11 @@ const ResultsGrid: React.FC<ResultsGridProps> = observer(props => {
   const drawHeader = useCallback<DrawHeaderCallback>(
     (args, drawContent) => {
       drawContent();
-      if (!columns[args.columnIndex]?.spotlight || !resolved) return;
+      if (!isSpotlit(columns[args.columnIndex]) || !resolved) return;
       args.ctx.fillStyle = resolved.trace;
       args.ctx.fillRect(args.rect.x, args.rect.y, args.rect.width, 2);
     },
-    [columns, resolved],
+    [columns, resolved, isSpotlit],
   );
 
   // The cell editor: an input plus an Inspect button that opens the update
@@ -472,7 +485,7 @@ const ResultsGrid: React.FC<ResultsGridProps> = observer(props => {
     const column = currentColumns[col];
     if (!column?.json) return;
     const target = currentRows[row];
-    if (target && parseJsonCellValue(target[column.field]) !== undefined) onJsonOpen(target, column.field);
+    if (target && jsonCellDisplay(target, column.field).opens) onJsonOpen(target, column.field);
   }, []);
 
   const onHeaderContextMenu = useCallback(

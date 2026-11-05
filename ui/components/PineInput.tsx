@@ -10,7 +10,6 @@ import { observer } from 'mobx-react-lite';
 import { comparer, reaction, runInAction } from 'mobx';
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Session } from '../store/session';
-import { shouldShowTableColors } from '../store/table-colors.util';
 import { useStores } from '../store/store-container';
 import { editorChrome, editorDarkSyntax } from './editor-theme';
 import { panelPeekTarget } from '../store/canvas/json-peek';
@@ -294,7 +293,7 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
   }, [session, stopPeek]);
 
   // Only color segments when we should show table colors (pref + rows + in-sync)
-  const showColors = shouldShowTableColors(global.pineTableColorsEnabled, session);
+  const showColors = session.tableColorsShown;
   const colorAst = showColors ? session.ast : null;
   const isDark = global.theme === 'dark';
 

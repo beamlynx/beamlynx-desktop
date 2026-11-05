@@ -33,17 +33,29 @@ export function useResizeDrag(options: {
     const startY = e.pageY;
     const startValue = value;
 
+    // The size is set once per frame, however many mousemoves arrive in it,
+    // and saved once, on release: saving writes to storage (on the desktop,
+    // the app's database), which it did on every mousemove.
+    let latest: number | null = null;
+    let frame = 0;
+    const apply = () => {
+      frame = 0;
+      if (latest !== null) setValue(latest);
+    };
+
     const handleMouseMove = (e: MouseEvent) => {
       const effectiveMax = typeof max === 'function' ? max() : max;
       const rawDelta = axis === 'x' ? e.pageX - startX : startY - e.pageY;
       const delta = invert ? -rawDelta : rawDelta;
       const newValue = startValue + delta;
-      const constrained = Math.min(Math.max(newValue, min), effectiveMax);
-      setValue(constrained);
-      setUserPreference(storageKey, constrained);
+      latest = Math.min(Math.max(newValue, min), effectiveMax);
+      if (!frame) frame = requestAnimationFrame(apply);
     };
 
     const handleMouseUp = () => {
+      if (frame) cancelAnimationFrame(frame);
+      apply();
+      if (latest !== null) setUserPreference(storageKey, latest);
       document.body.classList.remove('is-resizing');
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);

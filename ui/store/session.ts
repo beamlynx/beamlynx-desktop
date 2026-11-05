@@ -5,6 +5,7 @@ import { EvaluateOptions } from '../plugin/plugin.interface';
 import { csvCell } from '../utils/csv';
 import { mayChangeData } from './canvas/pine-text';
 import { formatSql } from '../utils/formatSql';
+import { shouldShowTableColors } from './table-colors.util';
 import { CanvasStore } from './canvas/canvas.store';
 import { elementLabel, JsonPeek, panelPeekTarget, peekExpression, peekOutcome } from './canvas/json-peek';
 import { probeBuild, probeEval } from './canvas/probe';
@@ -308,6 +309,15 @@ export class Session {
    * doc is. The canvas's Variables list reads it.
    */
   variablesReport: VariablesReport | null = null;
+  /**
+   * Whether the Pine text and the results show table colors: the preference
+   * is on, there are rows, and the text is what ran. A computed value, so
+   * what reads it re-renders when the answer changes, not on every keystroke.
+   */
+  get tableColorsShown(): boolean {
+    return shouldShowTableColors(!!this.globalStore?.pineTableColorsEnabled, this);
+  }
+
   /**
    * The SQL panel's text: what was typed there, or else the last build's
    * SQL, formatted, with or without the hidden columns as the preference
