@@ -181,10 +181,7 @@ const addJoins = (
       addHandle(handles.left, toNode, child, 'l', fromNode);
     }
     const [{ parent: parentCol, child: childCol }] = oriented;
-    // A join from a name given with `as` is the query's word, not the
-    // schema's, so it is drawn as uncertain too.
-    const uncertain =
-      resolution === 'heuristic' || resolution === 'synthetic' || resolution === 'alias';
+    const uncertain = isUncertainResolution(resolution);
     edges.push({
       id: `${fromNode}->${toNode}:${parentCol}=${childCol}`,
       source: fromNode,
@@ -337,8 +334,16 @@ export const checkpointLabel = (checkpoint: Checkpoint): string => {
 };
 
 /**
- * One stage -> nodes/edges (no positions yet), mirroring generateGraph's
- * join direction logic (store/graph.util.ts). `order` numbers every node in
+ * Whether a join is a guess rather than a foreign key: a naming-convention
+ * match (heuristic), a made-up id=id join (synthetic), or a join from a
+ * name given with `as`, which is the query's word, not the schema's (alias).
+ * Its trace is drawn dashed.
+ */
+export const isUncertainResolution = (resolution: string | null | undefined): boolean =>
+  resolution === 'heuristic' || resolution === 'synthetic' || resolution === 'alias';
+
+/**
+ * One stage -> nodes/edges (no positions yet). `order` numbers every node in
  * the pipeline top to bottom, starting at `firstOrder` - it drives the
  * vertical stacking within the stage and CanvasStore's keyboard order.
  */

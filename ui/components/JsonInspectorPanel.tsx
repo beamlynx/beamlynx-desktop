@@ -27,6 +27,10 @@ interface JsonInspectorPanelProps {
   onInspect: (text: string) => void;
 }
 
+// A module constant: a new `basicSetup` object reconfigures the whole editor
+// on every render (see PineInput.tsx).
+const basicSetup = { foldGutter: true, highlightActiveLine: false };
+
 /**
  * The one place a JSON cell's value is viewed AND edited - opened by
  * clicking the cell in the results grid, closed by its own X, Escape, or the
@@ -371,7 +375,7 @@ const JsonInspectorPanel: React.FC<JsonInspectorPanelProps> = ({
               value={textRef.current}
               autoFocus
               theme="none"
-              basicSetup={{ foldGutter: true, highlightActiveLine: false }}
+              basicSetup={basicSetup}
               indentWithTab={false}
               extensions={editExtensions}
               onChange={newText => {
@@ -386,7 +390,7 @@ const JsonInspectorPanel: React.FC<JsonInspectorPanelProps> = ({
               value={prettyJson(parsed)}
               theme="none"
               editable={false}
-              basicSetup={{ foldGutter: true, highlightActiveLine: false }}
+              basicSetup={basicSetup}
               extensions={viewExtensions}
             />
           )}

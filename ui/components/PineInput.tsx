@@ -31,6 +31,19 @@ interface PineInputProps {
   autoFocus?: boolean;
 }
 
+// Module constants, not literals in the JSX: @uiw/react-codemirror
+// reconfigures the whole editor whenever `basicSetup` is a new object (it is
+// in the dependency list of its reconfigure effect), and this component
+// renders on every keystroke and every build.
+const basicSetup = {
+  tabSize: 2,
+  foldGutter: false,
+  dropCursor: false,
+  allowMultipleSelections: false,
+  crosshairCursor: false,
+};
+const editorStyle = { outline: 'none' };
+
 const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = true }) => {
   const { global } = useStores();
   const inputRef = useRef<ReactCodeMirrorRef | null>(null);
@@ -218,10 +231,10 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
   const onHighlight = useCallback(
     (completion: any) => {
       runInAction(() => {
-        session.graph.candidate = completion?.expression ? { pine: completion.expression } : null;
+        session.candidate = completion?.expression ? { pine: completion.expression } : null;
       });
     },
-    [session.graph], // Only depend on graph, not entire session
+    [session],
   );
 
   const onPipe = useCallback(
@@ -504,16 +517,8 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
         global.executeCommand('use-recipe');
       }}
       indentWithTab={false}
-      basicSetup={{
-        tabSize: 2,
-        foldGutter: false,
-        dropCursor: false,
-        allowMultipleSelections: false,
-        crosshairCursor: false,
-      }}
-      style={{
-        outline: 'none',
-      }}
+      basicSetup={basicSetup}
+      style={editorStyle}
       autoFocus={autoFocus}
       placeholder=""
     />
