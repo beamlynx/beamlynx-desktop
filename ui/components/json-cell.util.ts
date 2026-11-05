@@ -21,6 +21,41 @@ export function parseJsonCellValue(value: unknown): unknown | undefined {
   }
 }
 
+/** What a JSON column's cell shows on its one line, and whether it opens the JSON panel. */
+export interface JsonCellDisplay {
+  text: string;
+  /** The value is JSON, so a click opens it in the JSON panel. */
+  opens: boolean;
+}
+
+// Per row object, per field. The grid asks for every visible cell on every
+// draw (scrolling, hover, selection), and a multi-KB JSON value costs a
+// parse and a stringify each time. A new result is new row objects, so the
+// old entries go with the old rows.
+const jsonCellCache = new WeakMap<object, Map<string, JsonCellDisplay>>();
+
+/**
+ * A JSON column's cell on one line: the value compacted when it parses as
+ * JSON, otherwise as text (a null shows empty). Worked out once per row
+ * object and field.
+ */
+export function jsonCellDisplay(row: Record<string, unknown> | undefined, field: string): JsonCellDisplay {
+  const cached = row && jsonCellCache.get(row)?.get(field);
+  if (cached) return cached;
+  const value = row?.[field];
+  const parsed = parseJsonCellValue(value);
+  const display: JsonCellDisplay =
+    parsed === undefined
+      ? { text: value === null || value === undefined ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value), opens: false }
+      : { text: JSON.stringify(parsed), opens: true };
+  if (row) {
+    let fields = jsonCellCache.get(row);
+    if (!fields) jsonCellCache.set(row, (fields = new Map()));
+    fields.set(field, display);
+  }
+  return display;
+}
+
 /**
  * Whether `field` should be treated as a JSON column across the whole grid -
  * sampling rather than checking every row so a huge result set doesn't pay

@@ -44,7 +44,7 @@ import { pineString } from '../store/util';
 import { columnName, type JsonPathStep } from '../store/client';
 import { elementEditTarget } from '../store/element-edit.util';
 import { jsonCellReadOnlyReason, jsonEditLiteral } from '../store/json-edit.util';
-import { getColorForAlias, shouldShowTableColors } from '../store/table-colors.util';
+import { getColorForAlias } from '../store/table-colors.util';
 import { estimateColumnWidth } from './column-width.util';
 import { columnWidthKey, loadColumnWidths, saveColumnWidth } from '../store/column-widths';
 import { MIN_RESULT_COLUMN_WIDTH, MAX_RESULT_COLUMN_WIDTH } from '../constants';
@@ -147,8 +147,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
   );
   const hasMultipleTables = uniqueAliases.length > 1;
 
-  const showResultColors =
-    hasMultipleTables && shouldShowTableColors(global.pineTableColorsEnabled, session);
+  const showResultColors = hasMultipleTables && session.tableColorsShown;
   // Only ever constructs a CanvasStore for sessions that have actually used
   // Canvas (see getCanvasStore's own comment on why that's lazy) - reading
   // it unconditionally here would force one into existence for every plain
@@ -294,10 +293,11 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
         // on the canvas. Tinting every cell read as noise across a full
         // table; the header alone says which table a column belongs to. The
         // spotlight shows whether or not the preference is on, and both use
-        // the same alias -> color mapping so they never disagree.
-        const spotlight = !!alias && alias === hoveredAlias;
+        // the same alias -> color mapping so they never disagree. The
+        // hovered table is the grid's own prop (spotlightTable), so hovering
+        // doesn't rebuild these columns.
         const hiddenFromAgents = !!session.columnMetadata.colIndexToPolicyLookup?.[column.field]?.hidden;
-        const tinted = (showResultColors && !!alias) || spotlight;
+        const tableColor = alias && hasMultipleTables ? getColorForAlias(alias, ast, isDark) : undefined;
         return {
           field: column.field,
           title: column.headerName ?? column.field,
@@ -319,8 +319,9 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
           editable: column.editable && !isJsonColumn && !readOnlyReason,
           readOnlyReason,
           cellReadOnlyReason: readOnlyReason ? undefined : cellReadOnlyReasonFor(column.field),
-          headerColor: tinted ? getColorForAlias(alias, ast, isDark) : undefined,
-          spotlight,
+          headerColor: showResultColors ? tableColor : undefined,
+          table: alias || undefined,
+          spotlightColor: tableColor,
           hiddenFromAgents,
         };
       }),
@@ -333,7 +334,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
       session.columnMetadata,
       colIndexToAlias,
       showResultColors,
-      hoveredAlias,
+      hasMultipleTables,
       jsonColumnFields,
       resizedColumnWidths,
       savedColumnWidths,
@@ -478,17 +479,18 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
 
   // Whether the data has a bar chart's shape: two columns, the second one
   // numeric. Computed once per result rather than on every render, since it
-  // scans every row. An empty string or Infinity is not a number to chart:
+  // scans every row. Keyed on the result's own columns, not `columns`,
+  // which a build or a resized column also replaces. An empty string or Infinity is not a number to chart:
   // Number('') is 0 and Number('Infinity') isn't NaN, so both used to pass.
   const barChartShape = useMemo(() => {
-    const visibleColumns = columns.filter(col => col.field !== '_id');
+    const visibleColumns = baseColumns.filter(col => col.field !== '_id');
     if (visibleColumns.length !== 2 || rows.length === 0) return false;
     const secondColField = visibleColumns[1].field;
     return rows.every(row => {
       const value = row[secondColField];
       return value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
     });
-  }, [columns, rows]);
+  }, [baseColumns, rows]);
   // One bar, tooltip and label per row: past a couple of thousand the tab
   // stops responding, so the chart is offered only below that.
   const MAX_CHART_ROWS = 2000;
@@ -1152,6 +1154,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
             <ResultsGrid
               columns={visibleColumns}
               rows={rows}
+              spotlightTable={hoveredAlias}
               onColumnResize={handleColumnWidthChange}
               onJsonOpen={(row, field) =>
                 // Straight into edit mode, unless the value can't be changed:
