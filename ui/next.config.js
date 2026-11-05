@@ -1,3 +1,4 @@
+const path = require('path');
 
 const isDesktop = process.env.NEXT_DESKTOP === '1';
 
@@ -48,19 +49,26 @@ const nextConfig = {
   // routes) 404 under file://. Gated behind an env flag so the hosted build
   // is unaffected.
   ...(isDesktop ? { output: 'export', assetPrefix: './', trailingSlash: true } : {}),
-  // CSS asset URLs (the bundled fonts' files) have to be relative to the
-  // CSS file itself under file://. Next writes them as
-  // `${assetPrefix}/_next/...`, which with a relative assetPrefix resolves
-  // against the stylesheet's folder (_next/static/css/) and misses. `../../`
-  // from there is _next/, where the files are.
-  ...(isDesktop
-    ? {
-        webpack: config => {
-          setCssExtractPublicPath(config.module.rules, '../../');
-          return config;
-        },
-      }
-    : {}),
+  webpack: config => {
+    // The results grid's library (Glide) imports `marked` and
+    // `react-responsive-carousel` for Markdown and Image cells, which the
+    // grid never draws. Both point at a stub that throws if ever called.
+    // See components/results-grid/glide-unused-peers.ts before drawing
+    // either kind of cell.
+    const unusedPeers = path.resolve(__dirname, 'components/results-grid/glide-unused-peers.ts');
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      marked$: unusedPeers,
+      'react-responsive-carousel$': unusedPeers,
+    };
+    // CSS asset URLs (the bundled fonts' files) have to be relative to the
+    // CSS file itself under file://. Next writes them as
+    // `${assetPrefix}/_next/...`, which with a relative assetPrefix resolves
+    // against the stylesheet's folder (_next/static/css/) and misses. `../../`
+    // from there is _next/, where the files are.
+    if (isDesktop) setCssExtractPublicPath(config.module.rules, '../../');
+    return config;
+  },
 }
 
 module.exports = nextConfig

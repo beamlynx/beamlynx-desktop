@@ -5,7 +5,6 @@ import {
 } from '@codemirror/autocomplete';
 import { Prec } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
-import { vim } from '@replit/codemirror-vim';
 import CodeMirror, { ReactCodeMirrorRef } from '@uiw/react-codemirror';
 import { observer } from 'mobx-react-lite';
 import { comparer, reaction, runInAction } from 'mobx';
@@ -18,6 +17,7 @@ import { panelPeekTarget } from '../store/canvas/json-peek';
 import { createPineAutocompletion, refreshCompletions } from './pine-autocomplete';
 import { pineLanguage } from './pine-language';
 import { setTableColors, tableColors } from './table-colors';
+import { useVimExtension } from './vim-mode';
 
 interface PineInputProps {
   session: Session;
@@ -308,6 +308,8 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
     if (view) setTableColors(view, colorAst, isDark);
   }, [colorAst, isDark]);
 
+  const vimExtension = useVimExtension(global.vimMode);
+
   // Create extensions array with Pine language support and custom keymap
   //
   // Memoized: react-codemirror reconfigures (tears down and rebuilds) the entire editor
@@ -411,9 +413,9 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
       ),
     ];
 
-    if (global.vimMode) {
+    if (vimExtension) {
       // Add vim mode with high precedence, but lower than browser shortcuts
-      exts.push(Prec.high(vim()));
+      exts.push(Prec.high(vimExtension));
     }
 
     // Escape ends a peek and stops a running query. Lowest precedence, so
@@ -435,16 +437,16 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
     );
 
     return exts;
-    // global.vimMode is listed deliberately, not redundantly: session itself is a stable
-    // reference for this component's lifetime (each tab is keyed by sessionId), so depending
-    // on session alone would never re-run this memo when vim mode is toggled.
+    // vimExtension is listed deliberately: session itself is a stable reference for this
+    // component's lifetime (each tab is keyed by sessionId), so depending on session alone
+    // would never re-run this memo when vim mode is toggled, or once Vim has loaded.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     isDark,
     autocompletionExtension,
     cursorUpdateExtension,
     session,
-    global.vimMode,
+    vimExtension,
     debouncedPrettifyOnPipe,
     cycleCompletion,
     startPeek,

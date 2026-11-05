@@ -3,7 +3,6 @@ import { Check, Close, Code, ContentCopy, Edit, Undo } from '@mui/icons-material
 import { json } from '@codemirror/lang-json';
 import { Prec } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
-import { vim } from '@replit/codemirror-vim';
 import CodeMirror from '@uiw/react-codemirror';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_JSON_PANEL_WIDTH, MIN_JSON_PANEL_WIDTH } from '../constants';
@@ -12,6 +11,7 @@ import { getUserPreference, isFiniteNumber, STORAGE_KEYS } from '../store/prefer
 import { useStores } from '../store/store-container';
 import { editorChrome, editorDarkSyntax } from './editor-theme';
 import { prettyJson } from './json-cell.util';
+import { useVimExtension } from './vim-mode';
 
 interface JsonInspectorPanelProps {
   open: boolean;
@@ -180,15 +180,16 @@ const JsonInspectorPanel: React.FC<JsonInspectorPanelProps> = ({
   // search panel) while vim is off/in normal mode - neither is wired up
   // here today, so there's nothing for it to break yet, but a future
   // extension that binds Escape itself needs a higher Prec than this one.
+  const vimExtension = useVimExtension(global.vimMode);
   const editExtensions = useMemo(
     () => [
       ...baseExtensions,
-      ...(global.vimMode ? [Prec.high(vim())] : []),
+      ...(vimExtension ? [Prec.high(vimExtension)] : []),
       Prec.highest(keymap.of([{ key: 'Mod-Enter', run: () => (handleCommit(), true) }])),
       Prec.lowest(keymap.of([{ key: 'Escape', run: () => true }])),
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [baseExtensions, global.vimMode],
+    [baseExtensions, vimExtension],
   );
 
   const handleClose = () => {

@@ -18,7 +18,7 @@ import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
 import { isDesktop } from '../store/util';
 import type { Investigation } from '../store/investigations';
-import { DESKTOP_ONLY_SECTIONS, RAIL_ITEMS } from './settings/SettingsPanelContent';
+import { DESKTOP_ONLY_SECTIONS, RAIL_ITEMS } from './settings/settings-sections';
 import ActiveConnection from './ActiveConnection';
 import DatabaseOutlined from './icons/DatabaseOutlined';
 import useAccountStatus from '../hooks/useAccountStatus';

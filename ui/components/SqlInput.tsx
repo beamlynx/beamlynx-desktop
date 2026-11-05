@@ -12,10 +12,10 @@ import React, { useRef, useEffect, useCallback, useMemo } from 'react';
 import { Session } from '../store/session';
 import { observer } from 'mobx-react-lite';
 import { runInAction } from 'mobx';
-import { vim } from '@replit/codemirror-vim';
 import { Box } from '@mui/material';
 import { useStores } from '../store/store-container';
 import { editorChrome, editorDarkSyntax } from './editor-theme';
+import { useVimExtension } from './vim-mode';
 import { sqlCompletionConfig } from '../utils/sqlCompletion';
 import { sqlConversionLines } from '../utils/sqlConversionStatus';
 import { sqlJoinSource } from '../utils/sqlJoinCompletion';
@@ -116,7 +116,7 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true 
   );
 
   const isDark = global.theme === 'dark';
-  const vimMode = global.vimMode;
+  const vimExtension = useVimExtension(global.vimMode);
 
   // Table and column names to complete, loaded again when the connection
   // changes or is reindexed.
@@ -203,8 +203,8 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true 
       ),
     ];
 
-    if (vimMode) {
-      extensions.push(Prec.high(vim()));
+    if (vimExtension) {
+      extensions.push(Prec.high(vimExtension));
     }
 
     // Escape stops a running query, as in the Pine editor (PineInput.tsx).
@@ -223,7 +223,7 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true 
       ),
     );
     return extensions;
-  }, [isDark, vimMode, sqlLanguage, selectionUpdateExtension, session]);
+  }, [isDark, vimExtension, sqlLanguage, selectionUpdateExtension, session]);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>

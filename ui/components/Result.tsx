@@ -40,7 +40,6 @@ import {
 } from '../utils/accessPolicy';
 import UpdateModal from './UpdateModal';
 import { useRetainedValue } from '../hooks/useRetainedValue';
-import DownloadResultsModal from './DownloadResultsModal';
 import { pineString } from '../store/util';
 import { columnName, type JsonPathStep } from '../store/client';
 import { elementEditTarget } from '../store/element-edit.util';
@@ -49,17 +48,23 @@ import { getColorForAlias, shouldShowTableColors } from '../store/table-colors.u
 import { estimateColumnWidth } from './column-width.util';
 import { columnWidthKey, loadColumnWidths, saveColumnWidth } from '../store/column-widths';
 import { MIN_RESULT_COLUMN_WIDTH, MAX_RESULT_COLUMN_WIDTH } from '../constants';
-import { BarChart } from './BarChart';
-import TraversalResult from './TraversalResult';
 import ResultsGrid, { type ResultsGridColumn } from './results-grid/ResultsGrid';
 import ResultNotice, { type Notice } from './results-grid/ResultNotice';
-import JsonInspectorPanel from './JsonInspectorPanel';
+import dynamic from 'next/dynamic';
 import {
   columnLooksLikeJson,
   minifyJsonText,
   parseJsonCellValue,
   prettyJson,
 } from './json-cell.util';
+
+// Loaded when first shown, not with the app: the chart, a traversal's
+// results, the export dialog and the JSON inspector (which brings its own
+// JSON editor).
+const BarChart = dynamic(() => import('./BarChart').then(m => m.BarChart), { ssr: false });
+const TraversalResult = dynamic(() => import('./TraversalResult'), { ssr: false });
+const DownloadResultsModal = dynamic(() => import('./DownloadResultsModal'), { ssr: false });
+const JsonInspectorPanel = dynamic(() => import('./JsonInspectorPanel'), { ssr: false });
 
 // Room for the crossed-out eye a column hidden from agents has before its
 // name (ResultsGrid's HEADER_ICONS), so the name isn't cut off.

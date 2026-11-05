@@ -7,7 +7,11 @@ import { getUserPreference, isFiniteNumber, STORAGE_KEYS } from '../../store/pre
 import { useStores } from '../../store/store-container';
 import { isDesktop } from '../../store/util';
 import { NewLayoutSettingsPanelDivider } from '../ResizableDividers';
-import SettingsDockedPanel from './SettingsDockedPanel';
+import dynamic from 'next/dynamic';
+
+// Settings and Library load with the prewarm below, when the browser is
+// first idle, not with the app.
+const SettingsDockedPanel = dynamic(() => import('./SettingsDockedPanel'), { ssr: false });
 
 /**
  * Settings' docked column, plus the divider that resizes it, plus the

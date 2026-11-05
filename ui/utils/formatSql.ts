@@ -1,4 +1,20 @@
-import { format } from 'sql-formatter';
+import { observable, runInAction } from 'mobx';
+
+// sql-formatter is loaded the first time something formats SQL, not with
+// the app: it is about 220 KB, all nineteen of its dialects in one module
+// that can't be split, and nothing shows formatted SQL until the SQL panel
+// opens. Until it has loaded, formatSql returns the SQL as it is. The
+// loaded module is observable, so whatever showed the unformatted SQL
+// (Session's `query`) shows it formatted once it arrives.
+type SqlFormatter = typeof import('sql-formatter');
+const formatter = observable.box<SqlFormatter | null>(null, { deep: false });
+let loading: Promise<void> | null = null;
+
+/** Load the formatter. formatSql formats from the moment this resolves. */
+export function loadSqlFormatter(): Promise<void> {
+  loading ??= import('sql-formatter').then(m => runInAction(() => formatter.set(m)));
+  return loading;
+}
 
 // sql-formatter needs an explicit dialect and has no ambiguity-tolerant
 // mode: MySQL's backtick-quoted identifiers throw a hard parse error under
@@ -24,7 +40,8 @@ const paramTypes = {
 
 /**
  * Pretty-prints a compiled SQL query for display, dialect-detected from the
- * query text. Falls back to the raw, unformatted query (not '') on a
+ * query text. Returns it as it is until the formatter has loaded (see
+ * loadSqlFormatter). Falls back to the raw, unformatted query (not '') on a
  * formatter error - the SQL panel/preview showing something unformatted is
  * far better than it silently showing nothing, which is exactly the bug
  * this replaced: sql-formatter throwing on MySQL's backtick identifiers
@@ -33,8 +50,13 @@ const paramTypes = {
  */
 export function formatSql(query: string): string {
   if (!query) return '';
+  const loaded = formatter.get();
+  if (!loaded) {
+    void loadSqlFormatter().catch(e => console.warn('formatSql: could not load the formatter', e));
+    return query;
+  }
   try {
-    return format(query, {
+    return loaded.format(query, {
       language: detectLanguage(query),
       indentStyle: 'tabularRight',
       denseOperators: false,
