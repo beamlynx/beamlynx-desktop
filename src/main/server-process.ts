@@ -6,6 +6,7 @@ import * as path from 'path';
 import { isPineServerProcess, waitForReadyOrExit } from './child-watch';
 import { describePortInUse, isPortInUse, PINE_PORT } from './ports';
 import { getResourcesRoot } from './resources';
+import { mark } from './startup-marks';
 
 const READY_TIMEOUT_MS = 15000;
 const READY_POLL_INTERVAL_MS = 250;
@@ -169,6 +170,7 @@ export async function startServer(token: string): Promise<ServerHandle> {
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  mark('spawn');
   if (child.pid) {
     fs.writeFileSync(getPidFilePath(), String(child.pid));
   }
@@ -251,6 +253,7 @@ export async function startServer(token: string): Promise<ServerHandle> {
       pollReady(PINE_PORT, token, READY_TIMEOUT_MS),
       () => stderrTail,
     );
+    mark('server-ready');
     if (version !== expectedVersion) {
       await stop();
       // A build-integrity tripwire, not something a correctly assembled

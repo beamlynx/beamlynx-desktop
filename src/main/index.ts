@@ -1,3 +1,5 @@
+// First, so loading it marks when this script began. See startup-marks.ts.
+import { logStartupMarks, mark } from './startup-marks';
 import { app, BrowserWindow, dialog, ipcMain, Menu, session, shell } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import * as http from 'http';
@@ -344,6 +346,14 @@ async function flushRendererStorage(): Promise<void> {
 
 function loadRealUi(): void {
   if (!mainWindow) return;
+  mark('ui-load');
+  // A dev build prints how long this launch took, once the real UI is in.
+  if (!app.isPackaged) {
+    mainWindow.webContents.once('did-finish-load', () => {
+      mark('ui-loaded');
+      logStartupMarks();
+    });
+  }
 
   // Dev-only escape hatch: point the window at a running `next dev` server
   // instead of the staged static export, so UI changes hot-reload without
@@ -389,6 +399,7 @@ function watchServer(handle: ServerHandle): void {
 }
 
 async function main(): Promise<void> {
+  mark('ready');
   Menu.setApplicationMenu(buildMenu());
   registerCredentialIpc(dbType => getUsageStats().capture('connection_added', { database_type: dbType }));
   registerRevealIpc();
