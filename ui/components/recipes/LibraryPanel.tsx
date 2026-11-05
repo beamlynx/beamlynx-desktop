@@ -113,7 +113,7 @@ const LibraryPanel = observer(() => {
     if (used && used.id !== r.id) setUsed(null);
   };
 
-  const use = (r: Recipe | undefined) => {
+  const applyRecipe = (r: Recipe | undefined) => {
     if (!r) return;
     const tabId = insertRecipe(global, r);
     if (!tabId) return;
@@ -168,7 +168,7 @@ const LibraryPanel = observer(() => {
       // which Up and Down may have moved away from the focused row.
       if (target?.tagName === 'BUTTON' && !target.hasAttribute('data-recipe-select')) return;
       e.preventDefault();
-      use(selected);
+      applyRecipe(selected);
     }
   };
   useEffect(() => {
@@ -406,7 +406,7 @@ const LibraryPanel = observer(() => {
                       variant="contained"
                       size="small"
                       disableElevation
-                      onClick={() => use(r)}
+                      onClick={() => applyRecipe(r)}
                     >
                       Use
                     </Button>
