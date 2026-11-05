@@ -116,8 +116,6 @@ export type InvestigationStep =
       // Applied after the agent's call stopped waiting, so it wasn't told.
       agentGone?: boolean;
     }
-  // A note the user wrote to the agent.
-  | { id: string; kind: 'note'; at: number; text: string; delivered: boolean }
   // The agent asking to see a query's real values (request_reveal). The
   // query runs once, read-only and unmasked, for the user to look at:
   // `preview`, and `rows`, the run's rows as Approve sends them.
@@ -395,16 +393,6 @@ export class Investigation {
   reveal(requestId: string) {
     const step = this.steps.find(s => s.kind === 'reveal' && s.requestId === requestId);
     return step?.kind === 'reveal' ? step : undefined;
-  }
-
-  addNote(id: string, text: string) {
-    this.steps.push(newStep({ id, kind: 'note', at: Date.now(), text, delivered: false }));
-  }
-
-  markDelivered(ids: string[]) {
-    for (const step of this.steps) {
-      if (step.kind === 'note' && ids.includes(step.id)) step.delivered = true;
-    }
   }
 
   setTabOpen(open: boolean) {
