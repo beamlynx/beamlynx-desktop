@@ -36,7 +36,6 @@ import {
   SqlToPineResponse,
   VariablesReport,
 } from './client';
-import { generateGraph, getCandidateIndex, Graph } from './graph.util';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
 import { debounce } from './util';
 import { captureUsage } from '../utils/usage-stats';
@@ -343,17 +342,12 @@ export class Session {
   /** Currently selected text in the SQL editor, if any. Running a query while text is
    * selected runs only the selection instead of the full query. */
   querySelection: string = '';
-  hints: Hints | null = null; // observable
 
-  /** Graph */
-  candidateIndex: number | undefined = undefined; // observable
-
-  graph: Graph = {
-    candidate: null,
-    selectedNodes: [],
-    suggestedNodes: [],
-    edges: [],
-  };
+  /**
+   * The completion highlighted in the Pine editor's list, if it adds a step.
+   * Its Pine shows as the tab's message.
+   */
+  candidate: { pine: string } | null = null;
 
   /**
    * Cursor position. Initialised so MobX observes it: the canvas draws the
@@ -514,6 +508,16 @@ export class Session {
       columnMetadata: observable.ref,
       // Replaced whole, and can hold thousands of tables.
       sqlSchema: observable.ref,
+      // A build's answer, and what is taken from it: replaced whole on
+      // every build, never edited in place. Deep observation wrapped every
+      // hint in a Proxy on the way in (about 3 ms at 300 table hints, 12 ms
+      // at 1,000), and every reader then read through them.
+      response: observable.ref,
+      ast: observable.ref,
+      operation: observable.ref,
+      // Replaced whole on every move (updateCursorPosition).
+      cursorPosition: observable.ref,
+      candidate: observable.ref,
     });
 
     // Turning the hidden columns on or off swaps the SQL shown, unless it was
@@ -610,9 +614,6 @@ export class Session {
         // not a replacement for the canvas) - so, unlike before Canvas mode
         // existed, a build always runs here even in SQL mode.
         runInAction(() => {
-          // reset the candidate
-          this.candidateIndex = undefined;
-
           if (expression.trim() === '' && this.mode === 'graph') {
             this.mode = 'documentation';
           } else if (expression.trim() !== '' && this.mode === 'documentation') {
@@ -733,55 +734,11 @@ export class Session {
     );
 
     /**
-     * Handle the ast
-     * - Graph
-     */
-    reaction(
-      () => this.ast,
-      ast => {
-        if (!ast) return;
-
-        const isDark = this.globalStore?.theme === 'dark';
-        const graph = generateGraph(ast, this.id, isDark);
-        runInAction(() => {
-          this.graph = graph;
-        });
-      },
-    );
-
-    /**
-     * Handle the candidate index
-     * - Candidate
-     */
-    reaction(
-      () => this.candidateIndex,
-      ci => {
-        if (ci === undefined) return;
-        const ast = this.ast;
-        if (!ast?.hints) return;
-
-        const {
-          hints: { table: suggestedTables },
-        } = ast;
-
-        const sanitizedCandidateIndex = getCandidateIndex(suggestedTables, ci);
-        for (const { h, i } of suggestedTables.map((h, i) => ({ h, i }))) {
-          if (i === sanitizedCandidateIndex) {
-            runInAction(() => {
-              this.graph.candidate = h;
-            });
-            break;
-          }
-        }
-      },
-    );
-
-    /**
      * Handle the candidate
      * - Suggested Pine Expression
      */
     reaction(
-      () => this.graph.candidate,
+      () => this.candidate,
       candidate => {
         if (!candidate) return;
         const { pine } = candidate;
@@ -790,18 +747,6 @@ export class Session {
         });
       },
     );
-  }
-
-  public selectNextCandidate(offset: number) {
-    this.candidateIndex = this.candidateIndex === undefined ? 0 : this.candidateIndex + offset;
-  }
-
-  private async getExpressionUsingCandidate() {
-    if (!this.graph.candidate) {
-      throw new Error('Unable to update the expression as no candidate is selected.');
-    }
-    const { pine } = this.graph.candidate;
-    return await this.pipeExpression(pine, true);
   }
 
   private async pipeExpression(pine: string, overwriteLastOperation: boolean) {
@@ -814,13 +759,6 @@ export class Session {
     const expression = parts.join('|');
     const prettified = await client.prettify(expression, this.connectionId);
     return prettified + '\n | ';
-  }
-
-  public async updateExpressionUsingCandidate() {
-    const expression = await this.getExpressionUsingCandidate();
-    runInAction(() => {
-      this.expression = expression;
-    });
   }
 
   public async prettifyExpression(
@@ -1322,6 +1260,10 @@ export class Session {
   }
 
   public updateCursorPosition(line: number, character: number) {
+    // The editor reports on every update, most of which don't move the
+    // cursor. Only a move is a change: the canvas draws the block it is in.
+    const at = this.cursorPosition;
+    if (at && at.line === line && at.character === character) return;
     this.cursorPosition = { line, character };
   }
 

@@ -28,6 +28,20 @@ interface SqlInputProps {
   autoFocus?: boolean;
 }
 
+// Module constants: a new `basicSetup` object reconfigures the whole editor
+// (see PineInput.tsx), and this component renders on every build.
+const basicSetup = {
+  // Configured in extensions, so hints don't open while typing.
+  autocompletion: false,
+  tabSize: 2,
+  foldGutter: false,
+  dropCursor: false,
+  allowMultipleSelections: false,
+  crosshairCursor: false,
+  lineNumbers: true,
+};
+const editorStyle = { outline: 'none' };
+
 const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true }) => {
   const { global } = useStores();
   const inputRef = useRef<ReactCodeMirrorRef | null>(null);
@@ -230,19 +244,8 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true 
           }}
           onChange={handleChange}
           indentWithTab={false}
-          basicSetup={{
-            // Configured in extensions, so hints don't open while typing.
-            autocompletion: false,
-            tabSize: 2,
-            foldGutter: false,
-            dropCursor: false,
-            allowMultipleSelections: false,
-            crosshairCursor: false,
-            lineNumbers: true,
-          }}
-          style={{
-            outline: 'none',
-          }}
+          basicSetup={basicSetup}
+          style={editorStyle}
           autoFocus={autoFocus}
           placeholder="Enter your SQL query here..."
         />

@@ -5,8 +5,7 @@
 // Run with: node -r tsx/cjs --test __tests__
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { buildCanvasGraph } = require('../store/canvas/layout.ts');
-const { isUncertainResolution } = require('../store/graph.util.ts');
+const { buildCanvasGraph, isUncertainResolution } = require('../store/canvas/layout.ts');
 
 // pine-lang's /build for
 // `activity | unnest: data as e | s: e.companyId as company_id | company`.

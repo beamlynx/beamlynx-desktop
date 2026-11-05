@@ -1,4 +1,4 @@
-import { comparer, makeAutoObservable, reaction, runInAction } from 'mobx';
+import { comparer, makeAutoObservable, observable, reaction, runInAction } from 'mobx';
 import { Ast, columnName, PathHint, TableHint, whereConditions, whereLiteral } from '../client';
 import { Session } from '../session';
 import {
@@ -64,10 +64,8 @@ const emptyGraph: CanvasGraph = { nodes: [], edges: [], parsing: true };
 type FocusStop = { kind: 'node'; alias: string } | { kind: 'config'; alias: string; item: ConfigItem };
 
 /**
- * One per session, mirroring how `session.graph` (store/graph.util.ts) works
- * for the existing graph - except here `canvasGraph` is recomputed from
- * `session.ast`/`session.expression` via a reaction rather than a getter,
- * since committing a gesture needs to synchronously write another observable
+ * One per session. `canvasGraph` is recomputed from the query block's
+ * build via a reaction rather than a getter, since committing a gesture needs to synchronously write another observable
  * (session.expression) and MobX computed values may not have side effects.
  *
  * The single source of truth is still `session.expression` - every commit*
@@ -522,7 +520,13 @@ export class CanvasStore {
 
   constructor(session: Session) {
     this.session = session;
-    makeAutoObservable<CanvasStore, 'session'>(this, { session: false });
+    makeAutoObservable<CanvasStore, 'session'>(this, {
+      session: false,
+      // Built whole and replaced whole, never edited in place. As deep
+      // observables, every build wrapped each node and AST in Proxies.
+      canvasGraph: observable.ref,
+      blockAsts: observable.ref,
+    });
     this.recompute();
   }
 
@@ -555,10 +559,15 @@ export class CanvasStore {
    * actually current the moment it subscribes, independent of that race.
    */
   start(): () => void {
+    // Keyed on what the graph is drawn from, not on the text: a keystroke
+    // changes the text at once, but the graph only once its build comes
+    // back with a new AST. Laying it out per keystroke drew the last build's
+    // graph again, with dagre, on every key. The empty flag is here because
+    // an empty query draws no graph whatever the last build was.
     const disposeGraph = reaction(
-      () => [this.session.expression, this.session.ast, this.blockAsts, this.mainBlock] as const,
+      () => [this.mainAst, this.queryText.trim() === '', this.mainBlock, this.blockAsts] as const,
       () => this.recompute(),
-      { fireImmediately: true },
+      { fireImmediately: true, equals: comparer.shallow },
     );
     // A tab with several query blocks: the canvas builds each block itself,
     // since the session builds only the block under the editor's cursor.

@@ -187,8 +187,7 @@ const Flow: React.FC<{
   // color from `uncertain` (a heuristic/synthetic-resolved join - a real,
   // working join that just isn't backed by a real FK constraint) - these
   // are different kinds of "not quite right" (one is broken, one is just a
-  // guess worth double-checking, matching how the classic graph's
-  // store/graph.util.ts uncertainEdgeStyle draws the same distinction) and
+  // guess worth double-checking) and
   // sharing a color would blur that. A plain, fully-resolved join is
   // deliberately NOT drawn in the accent color, unlike those two - the
   // accent is reserved for TraceEdge.tsx's own join-type icon now (see its
@@ -196,7 +195,8 @@ const Flow: React.FC<{
   // neutral tone as a node's own border) and only something worth a
   // second look (broken, or a guess) or something clickable (the icon)
   // draws the eye.
-  const edges = canvasGraph.edges.map(e => {
+  // Memoized on the graph's edges: the list is new only when the graph is.
+  const edges = useMemo(() => canvasGraph.edges.map(e => {
     // The lineage strip's arrows: one block is made from another. A curve
     // with an arrowhead, dashed in the nested-query colour, so it never
     // reads as a join's square trace (see LineageEdge.tsx).
@@ -238,7 +238,7 @@ const Flow: React.FC<{
       };
     }
     return base;
-  });
+  }), [canvasGraph.edges]);
 
   return (
     <div
