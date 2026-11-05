@@ -1,5 +1,5 @@
 import { Ast, deleteOp, HttpClient, pipesAtLineStart, TableHint } from '../client';
-import { formatSql } from '../../utils/formatSql';
+import { formatSql, loadSqlFormatter } from '../../utils/formatSql';
 
 // Walking the tables that hang off the current one by foreign key, and doing
 // something at each: counting rows, or building the DELETE that would empty
@@ -612,6 +612,7 @@ export const buildDeleteScript = async (
   }
   parts.push('COMMIT;');
   // Comments pass through untouched; only the statements are formatted.
+  await loadSqlFormatter();
   const script = parts.map(part => (part.startsWith('--') ? part : formatSql(part))).join('\n\n');
   return { script, queries };
 };

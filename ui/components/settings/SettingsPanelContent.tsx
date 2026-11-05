@@ -13,32 +13,9 @@ import McpSection from './McpSection';
 import AboutSection from './AboutSection';
 import AccountSection from './AccountSection';
 
-// Exported so useSettingsKeybindings.ts can drive j/k rail navigation off
-// the exact same order shown here, rather than a second, hand-kept list.
-export const RAIL_ITEMS: { id: SettingsSection; label: string }[] = [
-  // "Database" is deliberate, not filler -- a future "connection to the pine
-  // server itself" concept will also use the word "connection", so this
-  // stays unambiguous about which kind it means from the rail alone.
-  { id: 'connections', label: 'Database Connections' },
-  { id: 'theme', label: 'Appearance' },
-  { id: 'preferences', label: 'Preferences' },
-  // No 'mcp' item: the Agent page opens from the sidebar's Agent item
-  // (SideRail.tsx), where agents' work shows too. It holds connecting an
-  // agent, the databases it can use, and their data masking: masking only
-  // matters once an agent is involved, so it has no item of its own.
-  { id: 'account', label: 'Account' },
-  { id: 'about', label: 'About' },
-];
-
-// 'mcp' and 'account' only exist in the desktop app.
-// Exported for the same reason RAIL_ITEMS is -- useSettingsKeybindings.ts's
-// j/k rail navigation skips these in browser mode too, off this exact list,
-// not a second hand-kept one.
-export const DESKTOP_ONLY_SECTIONS: SettingsSection[] = ['mcp', 'account'];
-
 /**
  * The open section's content -- the entire "what Settings actually shows"
- * surface. The sections (RAIL_ITEMS) are items in the sidebar
+ * surface. The sections (settings-sections.ts's RAIL_ITEMS) are items in the sidebar
  * (SideRail.tsx), so there is one column of navigation, not two side by
  * side. Its shell (SettingsDockedPanel.tsx) contributes nothing
  * but its own outer positioning/chrome. Fills whatever box its shell gives

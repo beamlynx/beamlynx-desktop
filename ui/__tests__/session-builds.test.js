@@ -1,11 +1,13 @@
 // The session's builds: only the latest one's answer is used, a newer one
 // cancels the one in flight, and the SQL panel's text is formatted only when
 // something reads it. Every request is stubbed.
-const { test } = require('node:test');
+const { before, test } = require('node:test');
 const { observable } = require('mobx');
 const assert = require('node:assert/strict');
 const { Session } = require('../store/session.ts');
-const { formatSql } = require('../utils/formatSql.ts');
+const { formatSql, loadSqlFormatter } = require('../utils/formatSql.ts');
+
+before(() => loadSqlFormatter());
 
 const wait = ms => new Promise(r => setTimeout(r, ms));
 

@@ -9,8 +9,6 @@ import { isDesktop, isPlayground } from '../store/util';
 import { useState, useEffect, useCallback } from 'react';
 import { getUserPreference, STORAGE_KEYS } from '../store/preferences';
 
-import AnalysisModal from './AnalysisModal';
-import ChangelogModal from './ChangelogModal';
 import CommandPalette from './CommandPalette';
 import RecipePickerModal from './recipes/RecipePickerModal';
 import ChangeConnectionModal from './ChangeConnectionModal';
@@ -21,9 +19,16 @@ import DevModeChip from './DevModeChip';
 import { useGlobalKeybindings } from '../hooks/useGlobalKeybindings';
 import { useFocusedPanelTracking } from '../hooks/useFocusedPanelTracking';
 import { useSettingsKeybindings } from '../hooks/useSettingsKeybindings';
-import { LATEST_VERSION } from '../utils/changelog.data';
 import { compare, valid } from 'semver';
 import { getKeybindingDisplayForCommand } from '../utils/keybindings';
+import dynamic from 'next/dynamic';
+import { useHasBeenTrue } from '../hooks/useHasBeenTrue';
+
+// Loaded the first time they open, not with the app. The changelog's
+// entries are the largest file the app has. Kept mounted once opened, so
+// they still animate closed.
+const AnalysisModal = dynamic(() => import('./AnalysisModal'), { ssr: false });
+const ChangelogModal = dynamic(() => import('./ChangelogModal'), { ssr: false });
 
 // The hosted playground's backend has been intentionally shut down (not a
 // bug) -- send visitors to the download page instead. The redirect is a
@@ -64,6 +69,8 @@ const AppView = observer(() => {
   const session = global.getSession(global.activeSessionId);
   const [mounted, setMounted] = useState(false);
   const [hasUnreadUpdates, setHasUnreadUpdates] = useState(false);
+  const analysisOpened = useHasBeenTrue(global.showAnalysis);
+  const changelogOpened = useHasBeenTrue(global.showChangelog);
   // The docked Settings panel is a sibling of PineTabs, not part of
   // NewLayoutView, since global.showSettings is app-wide state rather than
   // per-session: nesting the dock inside a specific tab's own render tree
@@ -101,9 +108,17 @@ const AppView = observer(() => {
     setMounted(true);
 
     // Check for unread updates
+    // After the first paint: the version is in the changelog's own module.
     const lastReadVersion = getUserPreference(STORAGE_KEYS.LAST_READ_VERSION, '0.0.0', v => typeof v === 'string' && valid(v) !== null);
-    const hasUpdates = compare(LATEST_VERSION, lastReadVersion) > 0;
-    setHasUnreadUpdates(hasUpdates);
+    let cancelled = false;
+    import('../utils/changelog.data')
+      .then(({ LATEST_VERSION }) => {
+        if (!cancelled) setHasUnreadUpdates(compare(LATEST_VERSION, lastReadVersion) > 0);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -162,8 +177,8 @@ const AppView = observer(() => {
 
   return (
     <>
-      <AnalysisModal />
-      <ChangelogModal open={global.showChangelog} onClose={handleCloseChangelog} />
+      {analysisOpened && <AnalysisModal />}
+      {changelogOpened && <ChangelogModal open={global.showChangelog} onClose={handleCloseChangelog} />}
       <CommandPalette />
       <RecipePickerModal />
       <ChangeConnectionModal />

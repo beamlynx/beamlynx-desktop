@@ -33,6 +33,18 @@ The sidebar's Library (saved recipes, `components/recipes/LibraryPanel.tsx`) ope
 
 Desktop-only UI can be checked in a browser: run the dev server with `NEXT_PUBLIC_DESKTOP=1` and give the page a stand-in `window.beamlynxDesktop` (the project QA guide's `desktop-bridge` simulator does this).
 
+## What loads with the app
+
+Anything most sessions never use loads the first time it is shown, not with the first page:
+- Vim mode: `components/vim-mode.ts`.
+- The SQL formatter: `utils/formatSql.ts`. It returns SQL unformatted until the formatter loads.
+- Settings and Library, which `SettingsDock` prewarms when the browser is idle.
+- The changelog, the analysis dialog, the bar chart, traversal results, the export dialog and the JSON inspector, through `next/dynamic`.
+
+Keep new heavy, rarely used parts out of the first load the same way. Check with `next build`'s First Load JS for `/`.
+
+The results grid draws Text cells only. `next.config.js` aliases `marked` and `react-responsive-carousel` (Glide's Markdown and Image cells) to a stub. Read `components/results-grid/glide-unused-peers.ts` before using another cell kind.
+
 ## Crediting Contributors
 
 When updating the changelog (CHANGELOG.md and utils/changelog.data.ts), contributors should be credited in the changelog entries themselves. The format is:

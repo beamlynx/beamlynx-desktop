@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { GlobalStore } from '../store/global.store';
 import { isDesktop } from '../store/util';
-import { RAIL_ITEMS, DESKTOP_ONLY_SECTIONS } from '../components/settings/SettingsPanelContent';
+import { RAIL_ITEMS, DESKTOP_ONLY_SECTIONS } from '../components/settings/settings-sections';
 
 interface SettingsKeybindingsProps {
   global: GlobalStore;
