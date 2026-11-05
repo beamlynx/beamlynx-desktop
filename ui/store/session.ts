@@ -308,7 +308,20 @@ export class Session {
    * doc is. The canvas's Variables list reads it.
    */
   variablesReport: VariablesReport | null = null;
-  query: string = '';
+  /**
+   * The SQL panel's text: what was typed there, or else the last build's
+   * SQL, formatted, with or without the hidden columns as the preference
+   * says. Formatted only when read, so a build costs nothing for it while
+   * the panel is closed.
+   */
+  get query(): string {
+    return this.sqlPanelText ?? this.shownBuiltQuery(!!this.globalStore?.showHiddenSqlColumns);
+  }
+  set query(text: string) {
+    this.sqlPanelText = text;
+  }
+  /** Typed in the SQL panel since the last build replaced it. null: the panel shows the built SQL. */
+  private sqlPanelText: string | null = null;
   /**
    * SQL to Pine (pine-lang's docs/sql-to-pine.md). Typing in the SQL panel
    * converts the SQL, debounced, and the result replaces the tab's Pine, so
@@ -335,10 +348,17 @@ export class Session {
   private sqlConversionSeq = 0;
   /** Called on every edit of the SQL text. Debounced; see convertSql. */
   sqlEdited: () => void;
-  // The last build's SQL, with and without the hidden columns. `query` is
-  // one of them until it is edited by hand in SQL mode.
-  builtQuery: string = '';
-  builtQueryWithoutHidden: string = '';
+  // The last build's SQL, with and without the hidden columns, as pine-lang
+  // sent it. `query` shows one of them, formatted, until it is edited by
+  // hand in SQL mode.
+  private builtSql: string = '';
+  private builtSqlWithoutHidden: string = '';
+  get builtQuery(): string {
+    return formatSql(this.builtSql);
+  }
+  get builtQueryWithoutHidden(): string {
+    return this.builtSqlWithoutHidden ? formatSql(this.builtSqlWithoutHidden) : this.builtQuery;
+  }
   /** Currently selected text in the SQL editor, if any. Running a query while text is
    * selected runs only the selection instead of the full query. */
   querySelection: string = '';
@@ -520,15 +540,6 @@ export class Session {
       candidate: observable.ref,
     });
 
-    // Turning the hidden columns on or off swaps the SQL shown, unless it was
-    // edited by hand since the last build.
-    reaction(
-      () => !!this.globalStore?.showHiddenSqlColumns,
-      show => {
-        if (this.query === this.shownBuiltQuery(!show)) this.query = this.shownBuiltQuery(show);
-      },
-    );
-
     /** Evaluation plugins */
     this.plugins = {
       default: new DefaultPlugin(this),
@@ -574,6 +585,16 @@ export class Session {
       void this.convertSql();
     }, 300);
 
+    // Each build's number, and a way to cancel the one in flight. A build
+    // can take longer than the pause before the next, and answers can
+    // arrive out of order: only the latest build's answer is used, and
+    // starting a build cancels the one before it. buildRequests counts the
+    // changes that ask for a build, so a build only ends the loading state
+    // when nothing has asked for another since it started.
+    let buildSeq = 0;
+    let buildInFlight: AbortController | null = null;
+    let buildRequests = 0;
+
     /**
      * Mark hints as loading the moment a build is queued, not once it starts
      * running. The debounced reaction below only flips `hintsLoading` back to
@@ -591,11 +612,13 @@ export class Session {
         trigger: this.hintsRequestedCounter,
       }),
       () => {
+        buildRequests++;
         runInAction(() => {
           this.hintsLoading = true;
         });
       },
     );
+
 
     /**
      * Handle the expression and explicit hint requests
@@ -621,6 +644,12 @@ export class Session {
           }
         });
 
+        const seq = ++buildSeq;
+        const requestsAtStart = buildRequests;
+        buildInFlight?.abort();
+        const controller = new AbortController();
+        buildInFlight = controller;
+
         // response - use current cursor position (not watched, but always current)
         try {
           const blocks = splitExpressions(expression);
@@ -633,7 +662,9 @@ export class Session {
             adjustedCursor,
             this.connectionId,
             this.accessPolicy,
+            controller.signal,
           );
+          if (seq !== buildSeq) return;
           runInAction(() => {
             this.response = response;
             // Only a build that produced an AST has fresh hints for this
@@ -647,13 +678,18 @@ export class Session {
             }
           });
         } catch (e) {
+          // A newer build replaced this one: its error, if any, is the one to show.
+          if (seq !== buildSeq) return;
           runInAction(() => {
             this.error = (e as any).message || 'Failed to build';
           });
         } finally {
-          runInAction(() => {
-            this.hintsLoading = false;
-          });
+          if (seq === buildSeq) buildInFlight = null;
+          if (seq === buildSeq && requestsAtStart === buildRequests) {
+            runInAction(() => {
+              this.hintsLoading = false;
+            });
+          }
         }
       }, 200),
     );
@@ -700,17 +736,15 @@ export class Session {
 
           // query: what the SQL panel shows. With or without the hidden
           // columns, as the preference says; both are kept, so turning it
-          // doesn't need another build.
-          this.builtQuery = formatSql(response.query);
-          this.builtQueryWithoutHidden = response['query-without-hidden']
-            ? formatSql(response['query-without-hidden'])
-            : this.builtQuery;
+          // doesn't need another build. Formatted when read (see `query`).
+          this.builtSql = response.query ?? '';
+          this.builtSqlWithoutHidden = response['query-without-hidden'] ?? '';
           // Not while the Pine is a translation of the SQL panel's text:
           // that text is what the user wrote, and the source of the Pine.
           // Once it shows the Pine's SQL again, there is no conversion to
           // report.
           if (this.expression !== this.sqlTranslatedExpression) {
-            this.query = this.shownBuiltQuery(!!this.globalStore?.showHiddenSqlColumns);
+            this.sqlPanelText = null;
             this.sqlConversion = { status: 'idle', message: '', warnings: [] };
           }
 
@@ -1373,10 +1407,8 @@ export class Session {
     // build reaction above is keyed on `expression`, not cursor position, and
     // won't refire on its own. If the cursor hasn't moved since the last
     // build, hints are already fresh for it: skip the rebuild. Firing it
-    // anyway would still resolve to the same hints, but the new (structurally
-    // identical) response replaces `ast`, which recreates the CodeMirror
-    // autocompletion extension mid-open and flickers the just-highlighted
-    // candidate.
+    // anyway would resolve to the same hints, and refill the open list with
+    // them for nothing (PineInput's refreshCompletions).
     const { cursorPosition, lastHintsCursorPosition } = this;
     if (
       cursorPosition &&

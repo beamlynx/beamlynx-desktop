@@ -10,6 +10,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **The canvas shows what an update or delete changes.** When a query ends in `update!`, the table it changes lists what it writes, such as `status = 'sent'`, in red under **update**. When it ends in `delete!`, the table says its rows are deleted, and by which columns.
 
 ### Changed
+- **The Pine panel's suggestion list stays put when a build finishes.** The list keeps the option you had highlighted, instead of jumping back to the first one. A slow answer about older text never replaces a newer one, and the SQL is formatted only when the SQL panel shows it.
 - **Typing in the Pine panel does less work per keystroke.** The canvas lays out its graph again only when a build comes back, not on every key, and the editor no longer rebuilds its setup each time it redraws.
 - **An agent's timeline is quieter.** Each run of queries and lookups is one grey line saying what the agent is doing, or last did, and how many steps it took. Click the line to see the steps, and click a query there to see its result again. Findings stand out in larger text, and requests waiting for your answer look the same as before.
 

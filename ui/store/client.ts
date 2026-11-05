@@ -763,7 +763,7 @@ export class HttpClient {
     return `${res.status} ${res.statusText || 'Request failed'}`;
   }
 
-  private async post(path: string, body: object): Promise<Response | undefined> {
+  private async post(path: string, body: object, signal?: AbortSignal): Promise<Response | undefined> {
     const res = await fetch(`${getBaseUrl()}/api/v1/${path}`, {
       method: 'POST',
       headers: {
@@ -771,6 +771,7 @@ export class HttpClient {
         ...authHeaders(),
       },
       body: JSON.stringify(body),
+      ...(signal ? { signal } : {}),
     });
     if (res.status === 401) {
       throw new ServerRejectedError();
@@ -913,6 +914,9 @@ export class HttpClient {
     cursor?: CursorPosition,
     connectionId?: string,
     accessPolicy?: AppliedAccessPolicy,
+    // Aborts the request: the session's build passes one so a newer build
+    // cancels an older one still in flight.
+    signal?: AbortSignal,
   ): Promise<Response> {
     const body: {
       expressions: string[];
@@ -926,7 +930,7 @@ export class HttpClient {
     if (cursor) {
       body.cursor = cursor;
     }
-    const response = await this.post('build', this.withConnectionId(body, connectionId));
+    const response = await this.post('build', this.withConnectionId(body, connectionId), signal);
     if (!response) {
       throw new Error('No response when trying to build');
     }

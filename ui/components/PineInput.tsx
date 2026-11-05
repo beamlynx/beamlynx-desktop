@@ -8,16 +8,16 @@ import { EditorView, keymap } from '@codemirror/view';
 import { vim } from '@replit/codemirror-vim';
 import CodeMirror, { ReactCodeMirrorRef } from '@uiw/react-codemirror';
 import { observer } from 'mobx-react-lite';
-import { runInAction } from 'mobx';
+import { comparer, reaction, runInAction } from 'mobx';
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Session } from '../store/session';
 import { shouldShowTableColors } from '../store/table-colors.util';
 import { useStores } from '../store/store-container';
 import { editorChrome, editorDarkSyntax } from './editor-theme';
 import { panelPeekTarget } from '../store/canvas/json-peek';
-import { createPineAutocompletion } from './pine-autocomplete';
+import { createPineAutocompletion, refreshCompletions } from './pine-autocomplete';
 import { pineLanguage } from './pine-language';
-import { tableColorDecoration } from './table-colors';
+import { setTableColors, tableColors } from './table-colors';
 
 interface PineInputProps {
   session: Session;
@@ -245,11 +245,12 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
     [debouncedPrettifyOnPipe],
   );
 
-  // Create autocompletion extension that updates with hints
+  // Made once per tab: it reads the hints when the list is queried. A new
+  // completion source per build closed the open list, or reopened it empty.
   const autocompletionExtension = useMemo(() => {
     return createPineAutocompletion(
       {
-        hints: session.ast?.hints || null,
+        hints: () => session.ast?.hints || null,
         isLoading: () => session.hintsLoading,
       },
       {
@@ -257,7 +258,22 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
         onPipe,
       },
     );
-  }, [session.ast?.hints, onHighlight, onPipe]);
+  }, [session, onHighlight, onPipe]);
+
+  // A build that finishes while the list is open fills it with the new
+  // hints, in place of "Loading..." or the last build's.
+  useEffect(
+    () =>
+      reaction(
+        () => [session.ast?.hints, session.hintsLoading] as const,
+        ([, loading]) => {
+          const view = inputRef.current?.view;
+          if (view && !loading) refreshCompletions(view);
+        },
+        { equals: comparer.shallow },
+      ),
+    [session],
+  );
 
   // Create cursor tracking extension
   const cursorUpdateExtension = useMemo(() => {
@@ -282,12 +298,15 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
   const colorAst = showColors ? session.ast : null;
   const isDark = global.theme === 'dark';
 
-  // tableColorDecoration builds a brand-new CodeMirror StateField every call, so it must
-  // only be recreated when the underlying ast/theme actually changes, not on every render.
-  const tableColorExtension = useMemo(
-    () => tableColorDecoration(colorAst, isDark),
-    [colorAst, isDark],
-  );
+  // The colors change through an effect on the editor's one table-color
+  // field, not a new extension, so a build doesn't reconfigure the editor.
+  // onCreateEditor applies them to an editor created after this runs.
+  const colorsRef = useRef({ ast: colorAst, isDark });
+  colorsRef.current = { ast: colorAst, isDark };
+  useEffect(() => {
+    const view = inputRef.current?.view;
+    if (view) setTableColors(view, colorAst, isDark);
+  }, [colorAst, isDark]);
 
   // Create extensions array with Pine language support and custom keymap
   //
@@ -304,7 +323,7 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
       ...(isDark ? [editorDarkSyntax] : []),
       autocompletionExtension,
       cursorUpdateExtension,
-      ...tableColorExtension,
+      tableColors,
       // Browser shortcuts - highest precedence to ensure they always work
       Prec.highest(
         keymap.of([
@@ -424,7 +443,6 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
     isDark,
     autocompletionExtension,
     cursorUpdateExtension,
-    tableColorExtension,
     session,
     global.vimMode,
     debouncedPrettifyOnPipe,
@@ -460,6 +478,7 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
         anchor = line.from + Math.min(cursor.character, line.length);
       }
       view.dispatch({ selection: { anchor } });
+      setTableColors(view, colorsRef.current.ast, colorsRef.current.isDark);
 
       // If focus was already requested (session.focusTextInput()) before this
       // editor finished mounting -- e.g. GlobalStore.togglePinePanel firing
