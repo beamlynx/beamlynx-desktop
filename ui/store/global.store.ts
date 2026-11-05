@@ -1855,18 +1855,6 @@ export class GlobalStore {
     this.getOrCreateInvestigation(event.investigationId).apply(event);
   };
 
-  /** A note for an investigation's agent, delivered with its next beamlynx call. */
-  sendInvestigationNote = async (investigationId: string, text: string) => {
-    const note = await desktopMcp()?.addNote?.(investigationId, text);
-    if (!note) return false;
-    this.investigations.find(i => i.id === investigationId)?.addNote(note.id, note.text);
-    return true;
-  };
-
-  markNotesDelivered = (investigationId: string, ids: string[]) => {
-    this.investigations.find(i => i.id === investigationId)?.markDelivered(ids);
-  };
-
   /**
    * Called when any tab finishes running (Session.evaluate). In an
    * investigation's tab, a run that isn't the agent's is the user's own: it

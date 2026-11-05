@@ -9,7 +9,6 @@ import {
   LightbulbOutlined,
   PolicyOutlined,
   SettingsOutlined,
-  Send,
   VisibilityOutlined,
 } from '@mui/icons-material';
 import { observer } from 'mobx-react-lite';
@@ -21,8 +20,8 @@ import type { PolicyChange } from '../desktop';
 
 /**
  * The timeline of an agent's investigation (store/investigations.ts), beside
- * its canvas and results: every step it took and what it saw, the decisions
- * it is waiting on, and a box to write to it.
+ * its canvas and results: every step it took and what it saw, and the
+ * decisions it is waiting on.
  *
  * Clicking a query shows its result again, without running anything. The
  * tab follows the newest query until you pick an older one.
@@ -449,28 +448,6 @@ const Step = observer(({ investigation, step }: { investigation: Investigation; 
           <Typography sx={{ fontSize: 13, color: 'var(--text-color)', lineHeight: 1.45 }}>{step.text}</Typography>
         </Box>
       );
-    case 'note':
-      return (
-        <Box sx={{ alignSelf: 'flex-end', maxWidth: '88%' }}>
-          <Box
-            sx={{
-              px: 1.25,
-              py: 0.75,
-              borderRadius: 1,
-              backgroundColor: 'var(--canvas-chip-bg)',
-              fontSize: 13,
-              color: 'var(--text-color)',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-            }}
-          >
-            {step.text}
-          </Box>
-          <Typography sx={{ fontSize: 11, color: dim, textAlign: 'right', mt: 0.25 }}>
-            {step.delivered ? 'The agent has it' : 'Waiting for the agent’s next call'}
-          </Typography>
-        </Box>
-      );
     case 'call':
       return <CallLine step={step} />;
   }
@@ -550,59 +527,6 @@ function grouped(steps: InvestigationStep[]): (InvestigationStep | CallStep[])[]
   return items;
 }
 
-const NoteComposer = observer(({ investigation }: { investigation: Investigation }) => {
-  const { global } = useStores();
-  const [text, setText] = useState('');
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState('');
-  const send = async () => {
-    if (!text.trim() || sending) return;
-    setSending(true);
-    setError('');
-    try {
-      const ok = await global.sendInvestigationNote(investigation.id, text);
-      if (ok) setText('');
-      else setError("Couldn't send it. Is the desktop app up to date?");
-    } catch (e) {
-      setError(`Couldn't send it. ${messageOf(e)}`);
-    } finally {
-      setSending(false);
-    }
-  };
-  return (
-    <Box sx={{ borderTop: '1px solid var(--border-color)', p: 1.25 }}>
-      <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 0.75 }}>
-        <TextField
-          multiline
-          maxRows={6}
-          fullWidth
-          size="small"
-          placeholder="Tell the agent…"
-          value={text}
-          onChange={e => setText(e.target.value)}
-          onKeyDown={e => {
-            // Enter sends; Shift+Enter is a new line. Kept from reaching the
-            // app's own keybindings while typing here.
-            e.stopPropagation();
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              void send();
-            }
-          }}
-          sx={{ '& .MuiInputBase-input': { fontSize: 13 } }}
-          inputProps={{ 'aria-label': 'Tell the agent' }}
-        />
-        <IconButton size="small" onClick={send} disabled={!text.trim() || sending} aria-label="Send to the agent">
-          <Send sx={{ fontSize: 18 }} />
-        </IconButton>
-      </Box>
-      <Typography sx={{ fontSize: 11, color: error ? failed : dim, mt: 0.5 }}>
-        {error || 'Arrives with the agent’s next call to beamlynx.'}
-      </Typography>
-    </Box>
-  );
-});
-
 const InvestigationPanel = observer(({ investigation }: { investigation: Investigation }) => {
   const { global } = useStores();
   const activity = global.agentActivity;
@@ -616,8 +540,7 @@ const InvestigationPanel = observer(({ investigation }: { investigation: Investi
   }, []);
 
   // Follow the newest step, as it arrives and as it grows, until the user
-  // scrolls up. Scrolling back to the bottom follows again. A note the user
-  // just sent is always brought into view.
+  // scrolls up. Scrolling back to the bottom follows again.
   const content = useRef<HTMLDivElement>(null);
   const following = useRef(true);
   const [behind, setBehind] = useState(false);
@@ -639,13 +562,6 @@ const InvestigationPanel = observer(({ investigation }: { investigation: Investi
     observer.observe(content.current);
     return () => observer.disconnect();
   }, []);
-  const lastStep = investigation.steps.at(-1);
-  const lastNote = lastStep?.kind === 'note' ? lastStep.id : undefined;
-  useEffect(() => {
-    if (!lastNote) return;
-    following.current = true;
-    toBottom();
-  }, [lastNote]);
   const backToLatest = () => {
     following.current = true;
     setBehind(false);
@@ -769,7 +685,6 @@ const InvestigationPanel = observer(({ investigation }: { investigation: Investi
         </Box>
       )}
 
-      <NoteComposer investigation={investigation} />
     </Box>
   );
 });

@@ -9,6 +9,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **The canvas draws any tab, one query at a time.** A tab can hold several queries, separated by blank lines. A row of chips at the top of the canvas has one per query: its `|= name`, or its number. A red dot marks a query that changes data. Click a chip to draw that query; Run then runs it too, even with the Pine panel closed. Clicking in the Pine panel switches the same way. Before, the canvas drew nothing and said each query above the last had to end in `|= name`.
 - **The canvas shows what an update or delete changes.** When a query ends in `update!`, the table it changes lists what it writes, such as `status = 'sent'`, in red under **update**. When it ends in `delete!`, the table says its rows are deleted, and by which columns.
 
+### Removed
+- **The "Tell the agent…" box under an agent's timeline.** Talk to the agent in the tool you run it from instead. The agent is still told when you run a query yourself in the tab that shows its work.
+
 ## [0.73.0] - 2026-11-04
 ### Added
 - **Lists on the canvas find what you type even when it isn't the start of a name.** Typing `crat` in a column list finds `created_at`. Exact matches come first, then names that start with what you typed, then names that contain it, then names that have its letters in order.

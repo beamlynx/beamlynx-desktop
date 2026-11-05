@@ -293,17 +293,6 @@ test('the user running a query in the agent\'s tab goes in the timeline and is t
   assert.match(sent.notes[0].text, /2 rows/);
 });
 
-test('a note is shown as waiting, then as received', async () => {
-  const store = storeWithFakeDatabase(() => ({ rows: [] }));
-  store.getOrCreateInvestigation('claude-a');
-  stubBridge();
-  assert.equal(await store.sendInvestigationNote('claude-a', 'logins are auth.login'), true);
-  const note = store.investigations[0].steps.at(-1);
-  assert.equal(note.delivered, false);
-  store.markNotesDelivered('claude-a', [note.id]);
-  assert.equal(note.delivered, true);
-});
-
 test('an investigation\'s tab is out of the strip until the robot opens it, at the end', async () => {
   const store = storeWithFakeDatabase(() => ({ rows: [] }));
   const own = store.createSession();

@@ -53,8 +53,6 @@ const McpBridge = () => {
         void global.handleRevealRequest(request);
       }),
       desktop.mcpReveal.onExpired?.(id => global.expireRevealRequest(id)),
-      // Notes the user wrote to an investigation's agent, now received by it.
-      mcp.onNotesDelivered?.(({ investigationId, ids }) => global.markNotesDelivered(investigationId, ids)),
     ];
     mcp.notifyBridgeReady?.();
     return () => offs.forEach(off => off?.());
