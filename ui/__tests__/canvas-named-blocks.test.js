@@ -27,10 +27,10 @@ test('the tab splits into values blocks, named blocks and the last query', () =>
     '$n = 1',
     'company as c | where: id = 1 | limit: 10 |= top',
   ]);
-  // An earlier query without a name can't be drawn: the banner.
-  assert.equal(tabBlocks('company\n\nemployee'), null);
-  // Nor a values block after the last query.
-  assert.equal(tabBlocks('company\n\n$n = 1'), null);
+  // An earlier query without a name is a query of its own.
+  assert.deepEqual(tabBlocks('company\n\nemployee').names, [null, null]);
+  // A values block can come after the last query.
+  assert.deepEqual(tabBlocks('company\n\n$n = 1').queries, [0]);
 });
 
 test('a gesture rewrites only its own block', () => {
@@ -79,10 +79,16 @@ test('expanded: the block is drawn above, in a container, with its own node ids 
 
 test('a named block the last query does not join has no node, only a container while expanded', () => {
   const blocks = [{ name: 'other', prefix: 'b0/', ast: asts.block }];
-  const lineage = lineageOf([{ name: 'other', text: 'company |= other' }], 'company | where: id in other');
+  const lineage = lineageOf(
+    [
+      { name: 'other', text: 'company |= other' },
+      { name: null, text: 'company | where: id in other' },
+    ],
+    1,
+  );
   const collapsed = buildCanvasGraph(asts.block, {}, undefined, blocks, lineage);
   // The strip shows it.
-  assert.ok(collapsed.nodes.some(n => n.id === 'lineage:other'));
+  assert.ok(collapsed.nodes.some(n => n.id === 'lineage:0'));
   assert.ok(!collapsed.nodes.some(n => n.id === 'container:other'));
   const open = buildCanvasGraph(asts.block, {}, 'other', blocks, lineage);
   assert.ok(!open.nodes.some(n => n.id === 'named:other'));
@@ -123,53 +129,83 @@ const DEDUPE = [
 const DEDUPE_MAIN = 'company_document as d | grouped as g .id = .id | where: id not in keep_final | from: d | update! deleted_at = now()';
 
 test('the lineage of a script: each block points at what is made from it', () => {
-  const lineage = lineageOf(DEDUPE, DEDUPE_MAIN);
-  assert.deepEqual(lineage.names, ['sp_docs', 'grouped', 'edited', 'ranked', 'keep_final']);
+  const lineage = lineageOf([...DEDUPE, { name: null, text: DEDUPE_MAIN }], 5);
+  assert.deepEqual(
+    lineage.blocks.map(b => [b.id, b.label, b.write]),
+    [
+      ['0', '|= sp_docs', false],
+      ['1', '|= grouped', false],
+      ['2', '|= edited', false],
+      ['3', '|= ranked', false],
+      ['4', '|= keep_final', false],
+      ['5', '6', true],
+    ],
+  );
   assert.deepEqual(lineage.edges, [
-    { from: 'sp_docs', to: 'grouped', use: 'table' },
-    { from: 'grouped', to: 'edited', use: 'table' },
-    { from: 'grouped', to: 'ranked', use: 'table' },
-    { from: 'edited', to: 'ranked', use: 'in' },
-    { from: 'ranked', to: 'keep_final', use: 'table' },
-    { from: 'grouped', to: '', use: 'table' },
-    { from: 'keep_final', to: '', use: 'in' },
+    { from: '0', to: '1', use: 'table' },
+    { from: '1', to: '2', use: 'table' },
+    { from: '1', to: '3', use: 'table' },
+    { from: '2', to: '3', use: 'in' },
+    { from: '3', to: '4', use: 'table' },
+    { from: '1', to: '5', use: 'table' },
+    { from: '4', to: '5', use: 'in' },
   ]);
 });
 
+test('a name used twice: a block reads the nearest one above it', () => {
+  const lineage = lineageOf(
+    [
+      { name: 'x', text: 'company |= x' },
+      { name: 'x', text: 'x | limit: 1 |= x' },
+      { name: null, text: 'x | employee' },
+    ],
+    2,
+  );
+  assert.deepEqual(lineage.edges.map(e => [e.from, e.to]), [
+    ['0', '1'],
+    ['1', '2'],
+  ]);
+});
+
+const TWO = [
+  { name: 'top', text: 'company as c | limit: 10 |= top' },
+  { name: null, text: 'top | employee as e' },
+];
+
 test('the lineage strip sits above the join graph, its arrows apart from the joins', () => {
-  const lineage = lineageOf([{ name: 'top', text: 'company as c | limit: 10 |= top' }], 'top | employee as e');
+  const lineage = lineageOf(TWO, 1);
   const graph = buildCanvasGraph(asts.main, {}, undefined, blocks, lineage);
   const chips = graph.nodes.filter(n => n.type === 'lineage-node');
   assert.deepEqual(
-    chips.map(n => [n.id, n.data.detail]),
+    chips.map(n => [n.id, n.data.label, n.data.detail, n.data.active]),
     [
-      ['lineage:top', 'limit 10'],
-      ['lineage:query', undefined],
+      ['lineage:0', '|= top', 'limit 10', false],
+      ['lineage:1', '2', undefined, true],
     ],
   );
   const arrow = graph.edges.find(e => e.derivation);
-  assert.deepEqual([arrow.source, arrow.target, arrow.derivation], ['lineage:top', 'lineage:query', 'table']);
+  assert.deepEqual([arrow.source, arrow.target, arrow.derivation], ['lineage:0', 'lineage:1', 'table']);
   // Every table is below the strip.
   const stripBottom = Math.max(...chips.map(n => n.position.y + n.data.height));
   for (const n of graph.nodes.filter(n => n.type === 'table-node')) assert.ok(n.position.y > stripBottom);
   // The chip of the expanded block says so.
   const open = buildCanvasGraph(asts.main, {}, 'top', blocks, lineage);
-  assert.equal(open.nodes.find(n => n.id === 'lineage:top').data.expanded, true);
+  assert.equal(open.nodes.find(n => n.id === 'lineage:0').data.expanded, true);
   // One query block: no strip.
   assert.ok(!buildCanvasGraph(asts.main, {}).nodes.some(n => n.type === 'lineage-node'));
 });
 
 test('a dragged chip keeps its place, and the tables make room for it', () => {
-  const lineage = lineageOf([{ name: 'top', text: 'company as c | limit: 10 |= top' }], 'top | employee as e');
+  const lineage = lineageOf(TWO, 1);
   const laid = buildCanvasGraph(asts.main, {}, undefined, blocks, lineage);
   const tables = g => g.nodes.filter(n => n.type === 'table-node').map(n => n.position);
   // Along the strip: kept, and nothing else moves.
-  const along = buildCanvasGraph(asts.main, { 'lineage:top': { x: 300, y: 0 } }, undefined, blocks, lineage);
-  assert.deepEqual(along.nodes.find(n => n.id === 'lineage:top').position, { x: 300, y: 0 });
+  const along = buildCanvasGraph(asts.main, { 'lineage:0': { x: 300, y: 0 } }, undefined, blocks, lineage);
+  assert.deepEqual(along.nodes.find(n => n.id === 'lineage:0').position, { x: 300, y: 0 });
   assert.deepEqual(tables(along), tables(laid));
   // Well down: kept, and every table is below it.
-  const down = buildCanvasGraph(asts.main, { 'lineage:top': { x: 300, y: 200 } }, undefined, blocks, lineage);
-  const chip = down.nodes.find(n => n.id === 'lineage:top');
+  const down = buildCanvasGraph(asts.main, { 'lineage:0': { x: 300, y: 200 } }, undefined, blocks, lineage);
+  const chip = down.nodes.find(n => n.id === 'lineage:0');
   assert.deepEqual(chip.position, { x: 300, y: 200 });
   for (const p of tables(down)) assert.ok(p.y > chip.position.y + chip.data.height);
 });

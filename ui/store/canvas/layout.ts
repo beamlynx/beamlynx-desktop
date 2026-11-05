@@ -25,8 +25,9 @@ import {
   CanvasNode,
   CanvasTableNode,
   CanvasTableNodeData,
+  CanvasWrite,
 } from './canvas.model';
-import { Lineage, LINEAGE_MAIN } from './lineage';
+import { Lineage } from './lineage';
 import { inProgressTable } from './pine-text';
 
 // Deliberately not importing store/graph.util.ts or store/node-layout.ts -
@@ -79,6 +80,7 @@ const chipsHeight = (data: CanvasTableNodeData): number =>
     [...data.whereChips, ...(data.elementChips?.where ?? [])],
     [...data.orderChips, ...(data.elementChips?.order ?? [])],
     [...data.groupChips, ...(data.elementChips?.group ?? [])],
+    data.write?.items ?? [],
   ].reduce(
     (height, chips) => (chips.length ? height + chipRowHeight * Math.ceil(chips.length / 2) : height),
     0,
@@ -681,6 +683,7 @@ const layoutPipeline = (
   top: number,
   order: number,
   dropLastStage = false,
+  write: CanvasWrite | null = null,
 ) => {
   const checkpoints = ast.checkpoints ?? [];
   const checkpointNames = new Set(checkpoints.map(c => c.name));
@@ -699,6 +702,12 @@ const layoutPipeline = (
   stages.forEach((stage, k) => {
     if (k < firstStage || k > lastStage) return;
     const derived = deriveStage(stage, checkpointNames, order);
+    // The table an update!/delete! changes says what it does to it.
+    if (write) {
+      for (const n of derived.nodes) {
+        if (n.id === write.alias) n.data = { ...n.data, write: { kind: write.kind, items: write.items } };
+      }
+    }
     order += derived.nodes.length;
     const placed = layoutStage(derived.nodes, derived.edges).map(n => {
       const position = { x: n.position.x, y: n.position.y + top };
@@ -753,12 +762,13 @@ const layoutPipeline = (
 const lineageChipHeight = 26;
 const lineageDetailHeight = 14;
 const lineageGap = 36;
-export const lineageId = (name: string) => `lineage:${name || 'query'}`;
+export const lineageId = (id: string) => `lineage:${id}`;
 
 /**
  * The lineage strip's chips and arrows, at the top left from y = 0, and the
- * strip's height. Nothing when the tab has a single query block: there is no
- * derivation to show. A chip is as wide as its text.
+ * strip's height. Nothing when the tab has a single query block: there is
+ * nothing to switch to. A chip is as wide as its text. `details` are what
+ * the named blocks above the drawn one end in, by name.
  */
 const layoutLineage = (
   lineage: Lineage,
@@ -766,32 +776,46 @@ const layoutLineage = (
   expandedBlock: string | null,
   positions: Record<string, { x: number; y: number }>,
 ): { nodes: CanvasLineageNode[]; edges: CanvasEdge[]; height: number } => {
-  if (lineage.names.length === 0) return { nodes: [], edges: [], height: 0 };
-  const names = [...lineage.names, LINEAGE_MAIN];
+  if (lineage.blocks.length < 2) return { nodes: [], edges: [], height: 0 };
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({ rankdir: 'LR', nodesep: 10, ranksep: 40, marginx: 0, marginy: 0 });
-  const size = (name: string) => {
-    const text = name ? `|= ${name}` : 'query';
-    const detail = details[name];
-    const chars = Math.max(text.length, detail ? detail.length * 0.85 : 0);
-    return { width: Math.max(64, Math.round(chars * 7.2) + 24), height: lineageChipHeight + (detail ? lineageDetailHeight : 0) };
+  const nested = (k: number) => k < lineage.active && !!lineage.blocks[k].name;
+  const detailOf = (k: number) => (nested(k) ? details[lineage.blocks[k].name!] : undefined);
+  const size = (k: number) => {
+    const { label, write } = lineage.blocks[k];
+    const detail = detailOf(k);
+    const chars = Math.max(label.length + (write ? 2 : 0), detail ? detail.length * 0.85 : 0);
+    return {
+      width: Math.max(40, Math.round(chars * 7.2) + 24),
+      height: lineageChipHeight + (detail ? lineageDetailHeight : 0),
+    };
   };
-  names.forEach(name => g.setNode(lineageId(name), size(name)));
+  lineage.blocks.forEach((b, k) => g.setNode(lineageId(b.id), size(k)));
   lineage.edges.forEach(e => g.setEdge(lineageId(e.from), lineageId(e.to)));
   dagre.layout(g);
-  const nodes: CanvasLineageNode[] = names.map(name => {
-    const p = g.node(lineageId(name));
-    const { width, height } = size(name);
+  const nodes: CanvasLineageNode[] = lineage.blocks.map((b, k) => {
+    const p = g.node(lineageId(b.id));
+    const { width, height } = size(k);
     return {
-      id: lineageId(name),
+      id: lineageId(b.id),
       type: 'lineage-node',
       position: { x: p.x - width / 2, y: p.y - height / 2 },
       targetPosition: Position.Left,
       sourcePosition: Position.Right,
       selectable: false,
       focusable: false,
-      data: { name, detail: details[name], expanded: !!name && name === expandedBlock, width, height },
+      data: {
+        block: k,
+        label: b.label,
+        name: b.name,
+        write: b.write,
+        active: k === lineage.active,
+        detail: detailOf(k),
+        expanded: nested(k) && b.name === expandedBlock,
+        width,
+        height,
+      },
     };
   });
   const minX = Math.min(...nodes.map(n => n.position.x));
@@ -805,7 +829,7 @@ const layoutLineage = (
   }
   const height = Math.max(...nodes.map(n => n.position.y + n.data.height));
   const edges: CanvasEdge[] = lineage.edges.map(e => ({
-    id: `lineage:${e.from}->${e.to || 'query'}`,
+    id: `lineage:${e.from}->${e.to}`,
     source: lineageId(e.from),
     target: lineageId(e.to),
     derivation: e.use,
@@ -845,7 +869,8 @@ export const buildCanvasGraph = (
   positions: Record<string, { x: number; y: number }>,
   expanded?: string | null,
   blocks: NamedBlock[] = [],
-  lineage: Lineage = { names: [], edges: [] },
+  lineage: Lineage = { blocks: [], edges: [], active: 0 },
+  write: CanvasWrite | null = null,
 ): CanvasGraph => {
   const stages = stagesOf(ast);
   const expansion = expansionOf(ast, blocks, expanded);
@@ -891,7 +916,7 @@ export const buildCanvasGraph = (
     top = blockLaid.bottom + containerPad + connectorGap;
   }
 
-  const main = layoutPipeline(ast, '', firstStage, expansion.mainOpen, top, order);
+  const main = layoutPipeline(ast, '', firstStage, expansion.mainOpen, top, order, false, write);
   nodes.push(...main.nodes);
   edges.push(...main.edges);
   containers.push(...main.containers);
@@ -973,6 +998,5 @@ export const buildCanvasGraph = (
     nodes: [...strip.nodes, ...containerNodes, ...finalNodes],
     edges: [...strip.edges, ...edges],
     parsing: true,
-    singleBlock: true,
   };
 };

@@ -22,7 +22,7 @@ import {
   WhereDraft,
 } from './canvas.model';
 import { buildCanvasGraph, expansionOf, NamedBlock, newCheckpointName, whereEntriesFor } from './layout';
-import { contextFor, queryText, replaceQuery, TabBlocks, tabBlocks } from './tab-blocks';
+import { contextFor, mainQuery, queryText, replaceQuery, TabBlocks, tabBlocks } from './tab-blocks';
 import { Lineage, lineageOf } from './lineage';
 import {
   Segment,
@@ -33,6 +33,7 @@ import {
   limitValue,
   makeAlias,
   segmentsFromAst,
+  writeOf,
   replaceDoc,
   stageEnd,
   toText,
@@ -50,7 +51,7 @@ import { computeDateBounds } from './relative-date';
 const requestKey = (r: PickerRequest): string =>
   r.kind === 'table' ? 'table' : r.kind === 'path-route' ? `path-route:${r.alias}:${r.target}` : `${r.kind}:${r.alias}`;
 
-const emptyGraph: CanvasGraph = { nodes: [], edges: [], parsing: true, singleBlock: true };
+const emptyGraph: CanvasGraph = { nodes: [], edges: [], parsing: true };
 
 /**
  * One stop in CanvasStore's single flattened navigation sequence (see
@@ -76,7 +77,13 @@ type FocusStop = { kind: 'node'; alias: string } | { kind: 'config'; alias: stri
  * one path plus the read-only probeBuild used for picker options.
  */
 export class CanvasStore {
-  positions: Record<string, { x: number; y: number }> = {};
+  /**
+   * Where each dragged node was dropped, by the query block the canvas drew
+   * it in: two queries in one tab can use the same alias.
+   */
+  positions: Record<number, Record<string, { x: number; y: number }>> = {};
+  /** Where each dragged chip of the strip at the top was dropped: the strip is the same for every block. */
+  stripPositions: Record<string, { x: number; y: number }> = {};
   picker: PickerState = { open: false };
 
   canvasGraph: CanvasGraph = emptyGraph;
@@ -549,7 +556,7 @@ export class CanvasStore {
    */
   start(): () => void {
     const disposeGraph = reaction(
-      () => [this.session.expression, this.session.ast, this.blockAsts] as const,
+      () => [this.session.expression, this.session.ast, this.blockAsts, this.mainBlock] as const,
       () => this.recompute(),
       { fireImmediately: true },
     );
@@ -583,14 +590,8 @@ export class CanvasStore {
 
   private recompute() {
     const ast = this.mainAst;
-    // The canvas draws the last query block, with values blocks anywhere
-    // above it and earlier blocks ending in `|= name` as nested queries
-    // (see tab-blocks.ts). Anything else gets the banner.
-    const tab = this.tab;
-    if (!tab) {
-      this.canvasGraph = { ...this.canvasGraph, singleBlock: false };
-      return;
-    }
+    // The canvas draws the query block under the cursor, with earlier blocks
+    // ending in `|= name` as nested queries (see tab-blocks.ts).
     const expression = this.queryText;
     if (expression.trim() === '') {
       // A brand-new session has never run a build (session.ast starts null
@@ -603,7 +604,7 @@ export class CanvasStore {
     if (!ast || !ast['selected-tables'] || !ast.ranges) {
       // Degrade: keep the last good graph on screen (dimmed by the UI layer
       // via `parsing: false`) rather than blanking out mid-edit.
-      this.canvasGraph = { ...this.canvasGraph, parsing: false, singleBlock: true };
+      this.canvasGraph = { ...this.canvasGraph, parsing: false };
       return;
     }
     // Deliberately does NOT proactively pin a checkpoint's `|= name` here -
@@ -616,7 +617,14 @@ export class CanvasStore {
     // A picked checkpoint missing from this ast falls back to the default
     // (buildCanvasGraph). It isn't cleared here: right after a commit the ast
     // can still be the one from before, without the checkpoint just added.
-    this.canvasGraph = buildCanvasGraph(ast, this.positions, this.expandedNested, this.namedBlocks, this.lineage);
+    this.canvasGraph = buildCanvasGraph(
+      ast,
+      { ...this.stripPositions, ...this.positions[this.mainBlock] },
+      this.expandedNested,
+      this.namedBlocks,
+      this.lineage,
+      writeOf(segmentsFromAst(expression, ast)),
+    );
     if (!this.hasSeededHoverAlias && this.orderedFocusTargets.length > 0) {
       this.hasSeededHoverAlias = true;
       this.setHoveredAlias(this.focusedAlias);
@@ -635,19 +643,22 @@ export class CanvasStore {
 
   // --- the tab's blocks ------------------------------------------------
 
-  /** The tab split into blocks for the canvas, or null when it can't be drawn - see tab-blocks.ts. */
-  get tab(): TabBlocks | null {
+  /** The tab split into blocks for the canvas - see tab-blocks.ts. */
+  get tab(): TabBlocks {
     return tabBlocks(this.session.expression);
   }
 
-  /** The index (into `tab.queries`) of the query block the canvas draws: the last one. */
+  /**
+   * The index (into `tab.queries`) of the query block the canvas draws: the
+   * one under the editor's cursor, which is also the one that runs.
+   */
   get mainBlock(): number {
-    return Math.max((this.tab?.queries.length ?? 1) - 1, 0);
+    return mainQuery(this.tab, this.session.cursorPosition?.line);
   }
 
-  /** Whether the tab has earlier query blocks, so the canvas builds each block itself. */
+  /** Whether the tab has more than one query block, so the canvas builds each block itself. */
   private get multiBlock(): boolean {
-    return (this.tab?.queries.length ?? 0) > 1;
+    return this.tab.queries.length > 1;
   }
 
   /**
@@ -663,14 +674,12 @@ export class CanvasStore {
 
   /** Query block `block`'s text. */
   textOf(block: number): string {
-    const tab = this.tab;
-    return tab ? queryText(tab, block) : this.session.expression;
+    return queryText(this.tab, block);
   }
 
   /** What a build of query block `block` sends before it - see tab-blocks.ts's contextFor. */
   contextOf(block: number): string[] {
-    const tab = this.tab;
-    return tab ? contextFor(tab, block) : [];
+    return contextFor(this.tab, block);
   }
 
   /**
@@ -689,22 +698,32 @@ export class CanvasStore {
     return this.astOf(this.mainBlock);
   }
 
-  /** The tab's earlier query blocks, for layout.ts - each with its name, node-id prefix and build. */
+  /** The named query blocks above the one drawn, for layout.ts - each with its name, node-id prefix and build. */
   private get namedBlocks(): NamedBlock[] {
-    const tab = this.tab;
-    if (!tab) return [];
-    return tab.names.flatMap((name, k) => {
-      const ast = name ? this.astOf(k) : undefined;
+    const main = this.mainBlock;
+    return this.tab.names.flatMap((name, k) => {
+      const ast = name && k < main ? this.astOf(k) : undefined;
       return name && ast ? [{ name, prefix: `b${k}/`, ast }] : [];
     });
   }
 
   /** Which of the tab's query blocks is made from which - see lineage.ts. */
   private get lineage(): Lineage {
-    const tab = this.tab;
-    if (!tab || tab.queries.length < 2) return { names: [], edges: [] };
-    const named = tab.names.flatMap((name, k) => (name ? [{ name, text: this.textOf(k) }] : []));
-    return lineageOf(named, this.textOf(this.mainBlock));
+    return lineageOf(
+      this.tab.names.map((name, k) => ({ name, text: this.textOf(k) })),
+      this.mainBlock,
+    );
+  }
+
+  /**
+   * Draw query block `block` (an index into `tab.queries`): a chip of the
+   * strip at the top. Moves the editor's cursor to the block's first line, so
+   * Run runs the block the canvas draws, with or without the Pine panel open.
+   */
+  selectQuery(block: number) {
+    const at = this.tab.queries[block];
+    if (at === undefined || block === this.mainBlock) return;
+    this.session.moveCursorToLine(this.tab.blocks[at].startLine);
   }
 
   /**
@@ -714,7 +733,7 @@ export class CanvasStore {
    */
   private async refreshBlockAsts(): Promise<void> {
     const tab = this.tab;
-    if (!tab || tab.queries.length < 2) {
+    if (tab.queries.length < 2) {
       if (this.blockAsts.length) runInAction(() => (this.blockAsts = []));
       return;
     }
@@ -749,7 +768,8 @@ export class CanvasStore {
   }
 
   setNodePosition(id: string, position: { x: number; y: number }) {
-    this.positions[id] = position;
+    if (id.startsWith('lineage:')) this.stripPositions = { ...this.stripPositions, [id]: position };
+    else this.positions[this.mainBlock] = { ...this.positions[this.mainBlock], [id]: position };
     // A dropped strip chip can make the strip taller, and a dropped table
     // can resize its container: lay the rest out again around it.
     this.recompute();
@@ -757,7 +777,7 @@ export class CanvasStore {
 
   /** Whether a node has been dragged since the layout was last reset: the toolbar then offers a reset. */
   get hasMovedNodes(): boolean {
-    return Object.keys(this.positions).length > 0;
+    return Object.keys({ ...this.stripPositions, ...this.positions[this.mainBlock] }).length > 0;
   }
 
   /**
@@ -766,9 +786,10 @@ export class CanvasStore {
    */
   layoutResets = 0;
 
-  /** Forgets every dragged node's position and lays the canvas out again. UI-only. */
+  /** Forgets where the nodes of the query drawn were dragged, and lays it out again. UI-only. */
   resetLayout() {
-    this.positions = {};
+    this.positions = { ...this.positions, [this.mainBlock]: {} };
+    this.stripPositions = {};
     this.layoutResets += 1;
     this.recompute();
   }
@@ -809,7 +830,7 @@ export class CanvasStore {
     const tab = this.tab;
     const old = this.textOf(block);
     const query = options?.preserveDoc === false ? rawExpression : withDoc(old, rawExpression);
-    const replaced = tab ? replaceQuery(this.session.expression, tab, block, query) : query;
+    const replaced = replaceQuery(this.session.expression, tab, block, query);
     const expression = options?.after ? options.after(replaced) : replaced;
     // A no-op gesture (e.g. deleteNode/setLimit returning the same text)
     // shouldn't push a snapshot that's identical to what undo would already
@@ -901,7 +922,7 @@ export class CanvasStore {
   setDoc(text: string) {
     this.docEditing = false;
     // The tab's doc comment is the one at the top of its first block.
-    const first = this.tab && this.tab.queries.length > 0 && this.tab.queries[0] === 0 ? 0 : this.mainBlock;
+    const first = this.tab.queries.length > 0 && this.tab.queries[0] === 0 ? 0 : this.mainBlock;
     this.applyExpression(replaceDoc(this.textOf(first), text), {
       skipAutoRun: true,
       preserveDoc: false,
@@ -2404,13 +2425,6 @@ export class CanvasStore {
    * one down the chain, or none for the last. UI-only - the text doesn't
    * change, so no commit.
    */
-  /** Collapses whatever nested query is expanded - the lineage strip's `query` chip. UI-only. */
-  collapseNested() {
-    if (this.expandedNested === undefined) return;
-    this.expandedNested = undefined;
-    this.recompute();
-  }
-
   toggleNested(name: string) {
     const ast = this.mainAst;
     if (!ast) return;

@@ -1,14 +1,15 @@
-// A tab as the canvas sees it: its query blocks, the last of which is the
-// query the canvas draws, and the earlier ones, each ending in `|= name`, as
-// nested queries of it. Values blocks can be anywhere above the last query.
+// A tab as the canvas sees it: its query blocks and its values blocks. The
+// canvas draws one query: the one under the editor's cursor (see mainQuery),
+// picked in the strip at the top of the canvas. Earlier blocks ending in
+// `|= name` are nested queries of it.
 // Pure text work, no network: the canvas store builds each block itself.
-import { ExpressionBlock, isValuesBlock, splitExpressions } from '../blocks';
+import { ExpressionBlock, findActiveQueryBlock, isValuesBlock, splitExpressions } from '../blocks';
 
 export type TabBlocks = {
   blocks: ExpressionBlock[];
-  /** Indices into `blocks` of the query blocks, in order. The last is the canvas's query. */
+  /** Indices into `blocks` of the query blocks, in order. */
   queries: number[];
-  /** Each earlier query block's `|= name`; the last block's entry is null. */
+  /** Each query block's `|= name`, or null for a query of its own. The last block's entry is always null. */
   names: (string | null)[];
 };
 
@@ -23,22 +24,24 @@ export const blockName = (text: string): string | null => {
   return m ? m[1] : null;
 };
 
-/**
- * The tab split for the canvas, or null when the canvas can't draw it:
- * a query block that isn't last and doesn't end in `|= name` (nothing could
- * use its result, and it isn't the query that runs), or a values block after
- * the last query. A tab with no query block has an empty last query.
- */
-export function tabBlocks(expression: string): TabBlocks | null {
+/** The tab split for the canvas. A tab with no query block has an empty last query. */
+export function tabBlocks(expression: string): TabBlocks {
   const blocks = splitExpressions(expression);
   const queries = blocks.map((b, i) => (isValuesBlock(b.text) ? -1 : i)).filter(i => i >= 0);
-  if (queries.length === 0) return { blocks, queries: [], names: [] };
-  if (queries[queries.length - 1] !== blocks.length - 1) return null;
-  const names = queries.map((q, k) =>
-    k === queries.length - 1 ? null : blockName(blocks[q].text),
-  );
-  if (names.slice(0, -1).some(n => n === null)) return null;
+  const names = queries.map((q, k) => (k === queries.length - 1 ? null : blockName(blocks[q].text)));
   return { blocks, queries, names };
+}
+
+/**
+ * The query block the canvas draws (an index into `queries`): the one under
+ * the cursor, the same block the session builds and runs. Without a cursor,
+ * the last.
+ */
+export function mainQuery(tab: TabBlocks, cursorLine: number | undefined): number {
+  const last = Math.max(tab.queries.length - 1, 0);
+  if (cursorLine === undefined || tab.queries.length === 0) return last;
+  const at = tab.queries.indexOf(findActiveQueryBlock(tab.blocks, cursorLine));
+  return at < 0 ? last : at;
 }
 
 /** The text of query block `k` (an index into `queries`), or '' when there is none. */
