@@ -443,9 +443,9 @@ const Step = observer(({ investigation, step }: { investigation: Investigation; 
       return <ProposalStep investigation={investigation} step={step} />;
     case 'finding':
       return (
-        <Box sx={{ display: 'flex', gap: 0.75, px: 0.25 }}>
-          <LightbulbOutlined sx={{ fontSize: 16, color: 'var(--notification-color)', mt: '2px' }} />
-          <Typography sx={{ fontSize: 13, color: 'var(--text-color)', lineHeight: 1.45 }}>{step.text}</Typography>
+        <Box sx={{ display: 'flex', gap: 1, px: 0.5, py: 0.75 }}>
+          <LightbulbOutlined sx={{ fontSize: 17, color: 'var(--notification-color)', mt: '3px', flexShrink: 0 }} />
+          <Typography sx={{ fontSize: 14, color: 'var(--text-color)', lineHeight: 1.5 }}>{step.text}</Typography>
         </Box>
       );
     case 'call':
@@ -515,9 +515,26 @@ const CallGroup = observer(({ steps }: { steps: CallStep[] }) => {
   );
 });
 
-/** The steps, with each run of lookup calls in one group. */
-function grouped(steps: InvestigationStep[]): (InvestigationStep | CallStep[])[] {
-  const items: (InvestigationStep | CallStep[])[] = [];
+type WorkStep = Extract<InvestigationStep, { kind: 'query' | 'call' }>;
+
+/**
+ * The steps, with each run of queries and lookups in one group: the agent
+ * at work. Findings and decisions stand between them, on their own.
+ */
+function grouped(steps: InvestigationStep[]): (InvestigationStep | WorkStep[])[] {
+  const items: (InvestigationStep | WorkStep[])[] = [];
+  for (const step of steps) {
+    const previous = items[items.length - 1];
+    if (step.kind !== 'query' && step.kind !== 'call') items.push(step);
+    else if (Array.isArray(previous)) previous.push(step);
+    else items.push([step]);
+  }
+  return items;
+}
+
+/** Each run of lookup calls in one line, inside an open group. */
+function callRuns(steps: WorkStep[]): (WorkStep | CallStep[])[] {
+  const items: (WorkStep | CallStep[])[] = [];
   for (const step of steps) {
     const previous = items[items.length - 1];
     if (step.kind !== 'call') items.push(step);
@@ -526,6 +543,107 @@ function grouped(steps: InvestigationStep[]): (InvestigationStep | CallStep[])[]
   }
   return items;
 }
+
+/** What a step was for, in words: a query's reason, or a lookup's summary. */
+const purpose = (step: WorkStep): string | undefined => (step.kind === 'query' ? step.reason : step.summary);
+
+/**
+ * A run of the agent's work as one quiet line: what it is doing, or last
+ * did, and how many steps that took. Clicking it opens the steps, and each
+ * query there shows its result again.
+ */
+const WorkGroup = observer(({ investigation, steps }: { investigation: Investigation; steps: WorkStep[] }) => {
+  const { global } = useStores();
+  const [userOpen, setUserOpen] = useState<boolean | null>(null);
+  const now = global.agentActivity.now;
+  const busy = steps.some(s => (s.kind === 'query' ? s.running : s.endedAt === undefined && !isStaleCall(s, now)));
+  // A query picked from the canvas's results, or by an older click, is
+  // shown: its group opens.
+  const holdsSelected = steps.some(s => s.id === investigation.selectedStepId);
+  const open = userOpen ?? holdsSelected;
+  const failures = steps.filter(s => (s.kind === 'query' ? !!s.error : s.ok === false)).length;
+  const queries = steps.filter(s => s.kind === 'query').length;
+  // While it works, the newest step says what it is doing. After, the
+  // newest reason says what the run was for.
+  const latest = steps[steps.length - 1];
+  const label =
+    (busy ? purpose(latest) : undefined) ??
+    [...steps].reverse().map(s => (s.kind === 'query' ? s.reason : undefined)).find(Boolean) ??
+    purpose(latest) ??
+    (queries === 1 ? 'Ran a query' : `Ran ${queries} queries`);
+  const toggle = () => setUserOpen(!open);
+
+  return (
+    <Box>
+      <Box
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        onClick={toggle}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggle();
+          }
+        }}
+        title={label}
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0.5,
+          px: 0.5,
+          py: 0.25,
+          borderRadius: 1,
+          cursor: 'pointer',
+          color: dim,
+          '&:hover': { color: 'var(--text-color)' },
+          '&:focus-visible': { outline: '1px solid var(--canvas-trace)', outlineOffset: -1 },
+        }}
+      >
+        <ChevronRight
+          sx={{
+            fontSize: 16,
+            flexShrink: 0,
+            transform: open ? 'rotate(90deg)' : 'none',
+            transition: 'transform 120ms ease',
+            '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
+          }}
+        />
+        <Typography sx={{ flex: 1, minWidth: 0, fontSize: 12.5, color: 'inherit', ...oneLine }}>{label}</Typography>
+        {busy ? (
+          <CircularProgress size={10} thickness={6} sx={{ color: 'var(--canvas-trace)', flexShrink: 0, mr: 0.5 }} />
+        ) : (
+          <Typography sx={{ fontSize: 11, color: failures ? failed : dim, flexShrink: 0, pr: 0.5 }}>
+            {steps.length} step{steps.length === 1 ? '' : 's'}
+            {failures ? `, ${failures} failed` : ''}
+          </Typography>
+        )}
+      </Box>
+      {open && (
+        <Box
+          sx={{
+            ml: 1.25,
+            pl: 0.5,
+            mt: 0.25,
+            mb: 0.5,
+            borderLeft: '1px solid var(--border-color)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 0.25,
+          }}
+        >
+          {callRuns(steps).map(item =>
+            Array.isArray(item) ? (
+              <CallGroup key={item[0].id} steps={item} />
+            ) : (
+              <Step key={item.id} investigation={investigation} step={item} />
+            ),
+          )}
+        </Box>
+      )}
+    </Box>
+  );
+});
 
 const InvestigationPanel = observer(({ investigation }: { investigation: Investigation }) => {
   const { global } = useStores();
@@ -575,8 +693,9 @@ const InvestigationPanel = observer(({ investigation }: { investigation: Investi
   // After a pause, say why it may be quiet: the agent also uses other
   // tools, which beamlynx can't see.
   const sinceLastCall = investigation.lastCallAt ? now - investigation.lastCallAt : undefined;
+  // While it works, its newest group in the timeline says with what.
   const status = working
-    ? current!.summary
+    ? 'Working…'
     : sinceLastCall === undefined
       ? 'Waiting for the agent'
       : sinceLastCall < 15000
@@ -661,7 +780,7 @@ const InvestigationPanel = observer(({ investigation }: { investigation: Investi
         className="styled-scrollbar"
         sx={{ flex: 1, minHeight: 0, overflowY: 'auto' }}
       >
-        <Box ref={content} sx={{ p: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+        <Box ref={content} sx={{ p: 1, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
           {investigation.steps.length === 0 && (
             <Typography sx={{ fontSize: 13, color: dim }}>
               Each step the agent takes here shows up as it happens, with what it saw.
@@ -669,7 +788,7 @@ const InvestigationPanel = observer(({ investigation }: { investigation: Investi
           )}
           {grouped(investigation.steps).map(item =>
             Array.isArray(item) ? (
-              <CallGroup key={item[0].id} steps={item} />
+              <WorkGroup key={item[0].id} investigation={investigation} steps={item} />
             ) : (
               <Step key={item.id} investigation={investigation} step={item} />
             ),
