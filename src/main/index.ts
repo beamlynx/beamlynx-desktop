@@ -1,11 +1,10 @@
 // First, so loading it marks when this script began. See startup-marks.ts.
 import { logStartupMarks, mark } from './startup-marks';
 import { app, BrowserWindow, dialog, ipcMain, Menu, session, shell } from 'electron';
-import { autoUpdater } from 'electron-updater';
 import * as http from 'http';
 import * as path from 'path';
 import { getUsageStats, onAppStarted, registerAccountIpc, shutdownAccount } from './account';
-import { initAutoUpdater } from './auto-update';
+import { getAutoUpdater, initAutoUpdater } from './auto-update';
 import { closeAppDb, registerAppDbIpc } from './app-db-ipc';
 import { registerCredentialIpc } from './credential-store';
 import { useSeparateDevDataDir } from './data-dir';
@@ -13,7 +12,6 @@ import { startControlPlaneServer } from './mcp/control-plane-server';
 import { registerInvestigationIpc } from './mcp/investigations';
 import { watchBridge } from './mcp/render-bridge';
 import { registerRevealIpc } from './mcp/reveal-requests';
-import { startMcpRelay } from './mcp/stdio-relay';
 import { CONTROL_PLANE_PORT, describePortInUse, isPortInUse, PINE_PORT } from './ports';
 import { getLaunchPath, getResourcesRoot } from './resources';
 import { ServerHandle, startServer } from './server-process';
@@ -22,6 +20,9 @@ import { generateToken, removeControlPlaneInfo, writeControlPlaneInfo } from './
 
 let mainWindow: BrowserWindow | null = null;
 let serverHandle: ServerHandle | null = null;
+// The pine server starting up. Started before Electron is ready, so the JVM
+// boots while Electron does. main() waits for it.
+let serverStarting: Promise<ServerHandle> | null = null;
 let controlPlaneServer: http.Server | null = null;
 let quitting = false;
 
@@ -43,23 +44,6 @@ let quitting = false;
 if (process.argv.includes('--app-version')) {
   console.log(app.getVersion());
   process.exit(0);
-}
-
-// `beamlynx --mcp` is what Claude Code/Claude Desktop actually spawn (see
-// beamlynx-plans/completed/2026-08-15-mcp-server-and-url-scheme.md) -- a thin
-// stdio relay, not a second GUI. Checked before anything else in this file
-// runs: it must never contend for the single-instance lock below (that's
-// the GUI's lock to hold), never create a window, and must have nothing
-// else in this module's normal startup path racing it.
-useSeparateDevDataDir();
-
-if (process.argv.includes('--mcp')) {
-  startMcpRelay().catch(err => {
-    console.error('[mcp] fatal error starting MCP relay:', err);
-    process.exit(1);
-  });
-} else {
-  runDesktopApp();
 }
 
 // --- Deep link handling (beamlynx://run?connection=<id>&expression=<pine-expr>) ---
@@ -412,6 +396,12 @@ async function main(): Promise<void> {
   // startServer(), after it has reaped any server a crashed run left behind.
   if (await isPortInUse(CONTROL_PLANE_PORT)) {
     dialog.showErrorBox("Beamlynx can't start", await describePortInUse(CONTROL_PLANE_PORT));
+    // The pine server is already starting (see runDesktopApp). Stop it, or it
+    // outlives the app: before-quit only stops a server that finished starting.
+    await serverStarting?.then(
+      handle => handle.stop(),
+      () => {},
+    );
     app.quit();
     return;
   }
@@ -431,15 +421,15 @@ async function main(): Promise<void> {
   });
 
   // Show the window (with a loading splash) immediately instead of waiting
-  // on startServer() (JVM boot + port-readiness polling, up to ~15s) --
-  // previously nothing rendered at all during that gap.
+  // for the pine server (JVM boot, up to ~15s) -- previously nothing
+  // rendered at all during that gap.
   createWindow();
   // Usage stats and the daily profile sync. Only here, in the GUI app: the
   // --mcp relay never reaches main(), so an agent starting it isn't counted.
   onAppStarted();
 
   try {
-    serverHandle = await startServer(pineToken);
+    serverHandle = await (serverStarting ?? startServer(pineToken));
   } catch (err) {
     dialog.showErrorBox("Beamlynx can't start", err instanceof Error ? err.message : String(err));
     app.quit();
@@ -519,6 +509,15 @@ function runDesktopApp(): void {
     return;
   }
 
+  // Start the pine server now, not on 'ready'. The JVM takes about a second
+  // to boot, and Electron takes a while longer to get ready, so the two
+  // overlap instead of following each other. Nothing in startServer() needs
+  // Electron to be ready: it only reads paths, checks a port and spawns. A
+  // failure is shown in main(), once a dialog can be. The empty catch only
+  // stops Node from reporting the failure as unhandled before main() sees it.
+  serverStarting = startServer(pineToken);
+  serverStarting.catch(() => {});
+
   app.on('second-instance', (_event, argv) => {
     const deepLinkArg = findDeepLinkArg(argv);
     if (deepLinkArg) {
@@ -597,7 +596,7 @@ function runDesktopApp(): void {
     if (serverHandle) {
       await serverHandle.stop();
     }
-    autoUpdater.quitAndInstall();
+    getAutoUpdater().quitAndInstall();
   });
 
   app.on('ready', main);
@@ -618,4 +617,31 @@ function runDesktopApp(): void {
     await serverHandle.stop();
     app.quit();
   });
+}
+
+// `beamlynx --mcp` is what Claude Code/Claude Desktop actually spawn (see
+// beamlynx-plans/completed/2026-08-15-mcp-server-and-url-scheme.md) -- a thin
+// stdio relay, not a second GUI. It must never contend for the single-instance
+// lock in runDesktopApp (that's the GUI's lock to hold), never create a
+// window, and must have nothing else in this module's normal startup path
+// racing it.
+//
+// At the end of the file, so every variable above is initialised before
+// either path runs. runDesktopApp() reads some of them straight away: a
+// beamlynx:// link in argv at a cold start used to crash here with "Cannot
+// access 'rendererReady' before initialization".
+//
+// The relay's module (and the MCP SDK and zod it loads, ~50 ms) is loaded only
+// on this path, so the GUI app never pays for it.
+useSeparateDevDataDir();
+
+if (process.argv.includes('--mcp')) {
+  import('./mcp/stdio-relay')
+    .then(({ startMcpRelay }) => startMcpRelay())
+    .catch(err => {
+      console.error('[mcp] fatal error starting MCP relay:', err);
+      process.exit(1);
+    });
+} else {
+  runDesktopApp();
 }
