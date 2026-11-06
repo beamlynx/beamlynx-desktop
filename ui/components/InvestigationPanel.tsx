@@ -6,7 +6,6 @@ import {
   ChevronRight,
   CheckCircleOutline,
   ErrorOutline,
-  LightbulbOutlined,
   PolicyOutlined,
   SettingsOutlined,
   VisibilityOutlined,
@@ -443,10 +442,7 @@ const Step = observer(({ investigation, step }: { investigation: Investigation; 
       return <ProposalStep investigation={investigation} step={step} />;
     case 'finding':
       return (
-        <Box sx={{ display: 'flex', gap: 1, px: 0.5, py: 0.75 }}>
-          <LightbulbOutlined sx={{ fontSize: 17, color: 'var(--notification-color)', mt: '3px', flexShrink: 0 }} />
-          <Typography sx={{ fontSize: 14, color: 'var(--text-color)', lineHeight: 1.5 }}>{step.text}</Typography>
-        </Box>
+        <Typography sx={{ fontSize: 14, color: 'var(--text-color)', lineHeight: 1.5, px: 0.5 }}>{step.text}</Typography>
       );
     case 'call':
       return <CallLine step={step} />;
@@ -547,6 +543,71 @@ function callRuns(steps: WorkStep[]): (WorkStep | CallStep[])[] {
 /** What a step was for, in words: a query's reason, or a lookup's summary. */
 const purpose = (step: WorkStep): string | undefined => (step.kind === 'query' ? step.reason : step.summary);
 
+/** Whether any step of a run is still going. A call whose end never arrived stops counting. */
+const isBusy = (steps: WorkStep[], now: number) =>
+  steps.some(s => (s.kind === 'query' ? s.running : s.endedAt === undefined && !isStaleCall(s, now)));
+
+/**
+ * One entry of the timeline: a dot on the line that runs down its left
+ * side, so the entries can be scanned from top to bottom. `dotTop` is the
+ * middle of the entry's first line, where the dot sits. The line runs
+ * from the first entry's dot to the last one's.
+ */
+const TimelineEntry = ({ color, dotTop, children }: { color: string; dotTop: number; children: React.ReactNode }) => (
+  <Box
+    sx={{
+      position: 'relative',
+      pl: 2.25,
+      pb: 1,
+      '&::before': {
+        content: '""',
+        position: 'absolute',
+        left: 5,
+        top: 0,
+        bottom: 0,
+        width: '1px',
+        backgroundColor: 'var(--border-color)',
+      },
+      '&:first-of-type::before': { top: dotTop },
+      '&:last-of-type': { pb: 0 },
+      '&:last-of-type::before': { bottom: 'auto', height: dotTop },
+      '&:only-of-type::before': { display: 'none' },
+    }}
+  >
+    <Box
+      aria-hidden
+      sx={{
+        position: 'absolute',
+        left: 2,
+        top: dotTop - 3.5,
+        width: 7,
+        height: 7,
+        borderRadius: '50%',
+        backgroundColor: color,
+        // A ring in the panel's colour keeps the dot clear of the line.
+        boxShadow: '0 0 0 2px var(--background-color)',
+      }}
+    />
+    {children}
+  </Box>
+);
+
+/** Where an entry's dot sits, and its colour: what needs you, what is running, the rest dim. */
+function dotOf(item: InvestigationStep | WorkStep[], now: number): { color: string; dotTop: number } {
+  const notice = 'var(--notification-color)';
+  if (Array.isArray(item)) return { color: isBusy(item, now) ? 'var(--canvas-trace)' : dim, dotTop: 12 };
+  switch (item.kind) {
+    case 'finding':
+      return { color: notice, dotTop: 10.5 };
+    case 'proposal':
+      return { color: item.status === 'pending' ? notice : dim, dotTop: 19 };
+    case 'reveal':
+      return { color: item.status === 'pending' || item.status === 'running' ? notice : dim, dotTop: 19 };
+    default:
+      return { color: dim, dotTop: 12 };
+  }
+}
+
 /**
  * A run of the agent's work as one quiet line: what it is doing, or last
  * did, and how many steps that took. Clicking it opens the steps, and each
@@ -556,7 +617,7 @@ const WorkGroup = observer(({ investigation, steps }: { investigation: Investiga
   const { global } = useStores();
   const [userOpen, setUserOpen] = useState<boolean | null>(null);
   const now = global.agentActivity.now;
-  const busy = steps.some(s => (s.kind === 'query' ? s.running : s.endedAt === undefined && !isStaleCall(s, now)));
+  const busy = isBusy(steps, now);
   // A query picked from the canvas's results, or by an older click, is
   // shown: its group opens.
   const holdsSelected = steps.some(s => s.id === investigation.selectedStepId);
@@ -786,13 +847,20 @@ const InvestigationPanel = observer(({ investigation }: { investigation: Investi
               Each step the agent takes here shows up as it happens, with what it saw.
             </Typography>
           )}
-          {grouped(investigation.steps).map(item =>
-            Array.isArray(item) ? (
-              <WorkGroup key={item[0].id} investigation={investigation} steps={item} />
-            ) : (
-              <Step key={item.id} investigation={investigation} step={item} />
-            ),
-          )}
+          <Box>
+            {grouped(investigation.steps).map(item => (
+              <TimelineEntry
+                key={Array.isArray(item) ? item[0].id : item.id}
+                {...dotOf(item, global.agentActivity.now)}
+              >
+                {Array.isArray(item) ? (
+                  <WorkGroup investigation={investigation} steps={item} />
+                ) : (
+                  <Step investigation={investigation} step={item} />
+                )}
+              </TimelineEntry>
+            ))}
+          </Box>
         </Box>
       </Box>
 
