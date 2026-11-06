@@ -444,6 +444,9 @@ const Step = observer(({ investigation, step }: { investigation: Investigation; 
       );
     case 'call':
       return <CallLine step={step} />;
+    case 'question':
+      // A question heads its section (Section), not a line of its own.
+      return null;
   }
 });
 
@@ -525,6 +528,103 @@ function grouped(steps: InvestigationStep[]): (InvestigationStep | WorkStep[])[]
   }
   return items;
 }
+
+type QuestionStep = Extract<InvestigationStep, { kind: 'question' }>;
+type Section = { question?: QuestionStep; steps: InvestigationStep[] };
+
+/**
+ * The steps split by question: each question the agent set starts a
+ * section of the steps after it. Steps before the first question, if any,
+ * are a section without one.
+ */
+function sections(steps: InvestigationStep[]): Section[] {
+  const result: Section[] = [];
+  for (const step of steps) {
+    if (step.kind === 'question') result.push({ question: step, steps: [] });
+    else if (result.length === 0) result.push({ steps: [step] });
+    else result[result.length - 1].steps.push(step);
+  }
+  return result.filter(s => s.question || s.steps.length > 0);
+}
+
+/** A section's steps, with each run of work in one group. */
+const SectionSteps = ({ investigation, steps }: { investigation: Investigation; steps: InvestigationStep[] }) => (
+  <>
+    {grouped(steps).map(item =>
+      Array.isArray(item) ? (
+        <WorkGroup key={item[0].id} investigation={investigation} steps={item} />
+      ) : (
+        <Step key={item.id} investigation={investigation} step={item} />
+      ),
+    )}
+  </>
+);
+
+/**
+ * An earlier question, as one line: the question and how much work it
+ * took. Clicking opens its steps. It opens on its own while the query
+ * shown in the tab is one of them.
+ */
+const EarlierQuestion = observer(({ investigation, section }: { investigation: Investigation; section: Section }) => {
+  const [userOpen, setUserOpen] = useState<boolean | null>(null);
+  const holdsSelected = section.steps.some(s => s.id === investigation.selectedStepId);
+  const open = userOpen ?? holdsSelected;
+  const findings = section.steps.filter(s => s.kind === 'finding').length;
+  const work = section.steps.filter(s => s.kind === 'query' || s.kind === 'call').length;
+  const text = section.question?.text ?? 'Before the first question';
+  const toggle = () => setUserOpen(!open);
+  return (
+    <Box>
+      <Box
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        onClick={toggle}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggle();
+          }
+        }}
+        title={text}
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0.5,
+          px: 0.5,
+          py: 0.25,
+          borderRadius: 1,
+          cursor: 'pointer',
+          color: dim,
+          '&:hover': { color: 'var(--text-color)' },
+          '&:focus-visible': { outline: '1px solid var(--canvas-trace)', outlineOffset: -1 },
+        }}
+      >
+        <ChevronRight
+          sx={{
+            fontSize: 16,
+            flexShrink: 0,
+            transform: open ? 'rotate(90deg)' : 'none',
+            transition: 'transform 120ms ease',
+            '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
+          }}
+        />
+        <Typography sx={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, color: 'inherit', ...oneLine }}>
+          {text}
+        </Typography>
+        <Typography sx={{ fontSize: 11, color: dim, flexShrink: 0, pr: 0.5 }}>
+          {work} step{work === 1 ? '' : 's'}
+          {findings ? `, ${findings} finding${findings === 1 ? '' : 's'}` : ''}
+        </Typography>
+      </Box>
+      {open && (
+        <Box sx={{ pl: 1.5, pt: 0.5, pb: 0.75, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+          <SectionSteps investigation={investigation} steps={section.steps} />
+        </Box>
+      )}
+    </Box>
+  );
+});
 
 /** Each run of lookup calls in one line, inside an open group. */
 function callRuns(steps: WorkStep[]): (WorkStep | CallStep[])[] {
@@ -759,6 +859,11 @@ const InvestigationPanel = observer(({ investigation }: { investigation: Investi
   };
 
   // What this investigation's own agent is doing: several can work at once.
+  // The timeline by question: the latest one in full, the earlier ones folded.
+  const split = sections(investigation.steps);
+  const latest = split[split.length - 1] ?? { steps: [] };
+  const earlier = split.slice(0, -1);
+
   const current = activity.currentFor(investigation.id);
   const working = activity.workingFor(investigation.id) && current;
   // After a pause, say why it may be quiet: the agent also uses other
@@ -814,18 +919,22 @@ const InvestigationPanel = observer(({ investigation }: { investigation: Investi
         sx={{ flex: 1, minHeight: 0, overflowY: 'auto' }}
       >
         <Box ref={content} sx={{ p: 1, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-          {investigation.steps.length === 0 && (
+          {earlier.length === 0 && latest.steps.length === 0 && (
             <Typography sx={{ fontSize: 13, color: dim }}>
               Each step the agent takes here shows up as it happens, with what it saw.
             </Typography>
           )}
-          {grouped(investigation.steps).map(item =>
-            Array.isArray(item) ? (
-              <WorkGroup key={item[0].id} investigation={investigation} steps={item} />
-            ) : (
-              <Step key={item.id} investigation={investigation} step={item} />
-            ),
-          )}
+          {/* Earlier questions fold to one line each. The current one is the
+              header's, so its steps follow without a heading. */}
+          {earlier.map(section => (
+            <EarlierQuestion
+              key={section.question?.id ?? 'before'}
+              investigation={investigation}
+              section={section}
+            />
+          ))}
+          {earlier.length > 0 && <Box sx={{ borderTop: '1px solid var(--border-color)', my: 0.25 }} />}
+          <SectionSteps investigation={investigation} steps={latest.steps} />
         </Box>
       </Box>
 

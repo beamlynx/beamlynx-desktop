@@ -336,10 +336,24 @@ test('the activity feed fills the timeline: question, findings and calls, but no
   assert.equal(investigation.question, 'Logins per tenant');
   assert.deepEqual(
     investigation.steps.map(s => s.kind),
-    ['call', 'finding'],
+    ['question', 'call', 'finding'],
   );
-  assert.equal(investigation.steps[0].endedAt, at + 5);
+  assert.equal(investigation.steps[1].endedAt, at + 5);
   assert.equal(investigation.lastCallAt, at + 5);
+});
+
+test('a different question starts a new section; the same one again carries on', () => {
+  const investigation = new Investigation('claude-a', 's1');
+  const ask = (id, detail) => investigation.apply({ id, tool: 'set_question', phase: 'start', at: 1, summary: '', detail });
+  ask('1', 'Logins per tenant');
+  investigation.apply({ id: '2', tool: 'note_finding', phase: 'start', at: 2, summary: '', detail: 'Only activity records logins' });
+  ask('3', ' Logins per tenant ');
+  ask('4', 'Which tenants never logged in?');
+  assert.deepEqual(
+    investigation.steps.map(s => (s.kind === 'question' ? `? ${s.text}` : s.kind)),
+    ['? Logins per tenant', 'finding', '? Which tenants never logged in?'],
+  );
+  assert.equal(investigation.question, 'Which tenants never logged in?');
 });
 
 test('a query\'s reason is its leading comment', () => {
