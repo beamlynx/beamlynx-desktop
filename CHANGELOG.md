@@ -8,6 +8,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **Open Beamlynx's own data file as a database.** The command palette has **Open Beamlynx's data file**, which connects to `beamlynx.db`: your preferences, recipes and column widths. (Needs the matching beamlynx-ui.)
 
 ### Changed
+- **An agent starts a new section of its timeline for each new question.** Its instructions now say to set a new question when you ask something new, and not while it is still on the same one. They no longer say you can write to it from Beamlynx; you talk to it in the tool that runs it.
 - **Beamlynx's settings file no longer shows your databases' addresses.** Recipes and column widths now record a database by a hash of its address. Each saved connection in `connections.json` keeps its address and that hash side by side, to make problems easier to trace.
 - **Beamlynx opens faster.** Its server now starts while the window opens, not after. On a Linux test machine the app was ready about a quarter of a second sooner.
 
