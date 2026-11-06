@@ -5,6 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 ### Added
+- **Switch a tab's database from the command palette.** Press Ctrl+K and pick **Switch Connection**. It lists your connections, marks the one the tab is on, and switches the tab to the one you choose. A tab with a query in it asks first, as the sidebar does.
 - **A recipe goes in at the cursor.** Using a recipe, from the Library or with Ctrl+O, puts its queries where your cursor is: on a blank line between queries, right there, or just after the query the cursor is in. Before, it always went at the end of the tab.
 - **Saving a recipe saves the whole tab.** Ctrl+S keeps every query in the tab, with its values and comments, in the order you wrote them, so queries that belong together, such as an update and the delete after it, stay together. Before, it saved only the query under the cursor and the blocks it used. The title is still offered from the query under the cursor.
 - **A recipe opens on the database it was saved from.** When you use a recipe saved from another of your connections, from the Library or with Ctrl+O, Beamlynx asks whether to switch the current tab to that database, which Enter picks, or to open it in a new tab. To run it on the current tab's database instead, such as staging, click **Use in this tab** in the Library. A recipe from a database you have no connection to still goes in the current tab.

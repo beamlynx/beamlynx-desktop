@@ -1405,6 +1405,28 @@ export class GlobalStore {
   }
 
   /**
+   * Switch the active tab to one of the listed connections, as the sidebar's
+   * connection menu does (ActiveConnection.tsx): the command palette's
+   * Switch Connection. A tab with a query in it asks first
+   * (ChangeConnectionModal). On desktop a saved connection that fails to
+   * decrypt opens Settings, where only its password needs typing again.
+   */
+  switchActiveTabConnection = async (id: string): Promise<void> => {
+    if (!isDesktop()) return this.selectConnection(id);
+    if (id === this.activeProfileId) return;
+    if (this.sessions[this.activeSessionId]?.expression.trim()) {
+      this.requestConnectionSwitch({ kind: 'connectToSavedProfile', id });
+      return;
+    }
+    try {
+      await this.connectToSavedProfile(id);
+    } catch (e) {
+      // connectToSavedProfile already shows the failure (connectionError).
+      if (e instanceof DecryptionFailedError) this.setShowSettings(true, 'connections');
+    }
+  };
+
+  /**
    * Select an existing server connection from the picker and assign it to the
    * active tab. If that tab has a non-empty Pine expression, the switch is
    * held in `pendingConnectionSwitch` and ChangeConnectionModal warns the
