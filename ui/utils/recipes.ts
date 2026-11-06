@@ -305,6 +305,34 @@ export function textToInsert(existing: string, recipe: string): string {
     .join('\n\n');
 }
 
+/**
+ * A tab's text with `addition` put in at the cursor, as blocks of its own,
+ * and where the cursor goes after: the end of what was added.
+ * - On a blank line between blocks, it goes there.
+ * - Inside a block, it goes right after that block, so no query is cut in two.
+ * - Without a cursor, it goes at the end.
+ * One blank line separates it from the blocks around it.
+ */
+export function insertAtCursor(
+  text: string,
+  cursorLine: number | undefined,
+  addition: string,
+): { text: string; cursor: number } {
+  const lines = text.split('\n');
+  let at = lines.length; // the line the addition goes before
+  if (cursorLine !== undefined && cursorLine < lines.length) {
+    at = cursorLine;
+    if (lines[cursorLine].trim()) {
+      // Inside a block: after its last line.
+      while (at < lines.length && lines[at].trim()) at++;
+    }
+  }
+  const before = lines.slice(0, at).join('\n').replace(/\s+$/, '');
+  const after = lines.slice(at).join('\n').replace(/^\s+/, '').replace(/\s+$/, '');
+  const head = before ? `${before}\n\n${addition}` : addition;
+  return { text: after ? `${head}\n\n${after}` : head, cursor: head.length };
+}
+
 export function recipeText(r: { expression: string; inputs: RecipeInputDef[] }): string {
   const lines = r.inputs
     .filter(i => i.example !== '')
