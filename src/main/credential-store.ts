@@ -9,6 +9,7 @@ import { BrowserWindow, dialog, ipcMain, safeStorage } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getSharedDataDir } from './data-dir';
+import { databaseKeyOf, hashKey } from './database-key';
 
 // Mirrors pine-lang's pine.access-policy rule shape 1:1 (see its
 // docs/access-policy.md) -- these travel verbatim (minus `id`, `enabled` and
@@ -208,6 +209,12 @@ export type SavedConnectionMeta = {
   // connection -- that's governed by mcpEnabled/policyId alone. Moot when
   // policyId is null (nothing to apply either way).
   applyPolicyToOwnQueries: boolean;
+  // Which database this is (database-key.ts), and its hash: the value
+  // beamlynx.db stores for it. Kept in the file to make debugging easier,
+  // and rewritten on every write, so they always match the fields above.
+  // Missing in a record an older app wrote, until the next write.
+  databaseKey?: string;
+  databaseKeyHash?: string;
 };
 
 type StoredConnectionRecord = SavedConnectionMeta & { dbPasswordEncrypted: string };
@@ -340,7 +347,8 @@ function readStore(): StoreFile {
   }
   const ruleIds = migrateToRuleIds(parsed);
   const own = ensureOwnPolicies(parsed as StoreFile);
-  if (ruleIds || own) {
+  const keys = withDatabaseKeys(parsed as StoreFile);
+  if (ruleIds || own || keys) {
     writeStore(parsed as StoreFile);
   }
   return parsed as StoreFile;
@@ -495,9 +503,25 @@ function ensureOwnPolicies(store: StoreFile): boolean {
   return changed;
 }
 
+// Sets each connection's databaseKey and databaseKeyHash. True when any
+// changed, so a file an older app wrote gets them on the next read.
+function withDatabaseKeys(store: StoreFile): boolean {
+  let changed = false;
+  for (const c of store.connections) {
+    const key = databaseKeyOf(c);
+    if (c.databaseKey !== key || c.databaseKeyHash !== hashKey(key)) {
+      c.databaseKey = key;
+      c.databaseKeyHash = hashKey(key);
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 // Write-to-temp-then-rename is atomic on POSIX and NTFS, so a hard kill
 // mid-write can't leave a truncated/corrupt connections.json behind.
 function writeStore(store: StoreFile): void {
+  withDatabaseKeys(store);
   const storePath = getStorePath();
   // Per process, because a dev build and the installed app can both write
   // this file. A shared temp name could have one rename the other's

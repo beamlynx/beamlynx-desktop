@@ -99,3 +99,19 @@ test('saving the same file again updates its profile; another file is another pr
   assert.notEqual(other.id, first.id);
   assert.equal(listConnections().length, 2);
 });
+
+test("connections.json keeps each connection's database key and its hash", () => {
+  const { hashKey } = require(path.join(__dirname, '..', 'dist', 'main', 'database-key.js'));
+  saveConnection(sqlite('/Users/me/shop.db'));
+  const file = path.join(userDataDir, 'connections.json');
+  const [stored] = JSON.parse(fs.readFileSync(file, 'utf-8')).connections;
+  assert.equal(stored.databaseKey, 'sqlite:///Users/me/shop.db');
+  assert.equal(stored.databaseKeyHash, hashKey('sqlite:///Users/me/shop.db'));
+  // A record an older app wrote, without them, gains them on the next read.
+  const store = JSON.parse(fs.readFileSync(file, 'utf-8'));
+  delete store.connections[0].databaseKey;
+  delete store.connections[0].databaseKeyHash;
+  fs.writeFileSync(file, JSON.stringify(store));
+  assert.equal(listConnections()[0].databaseKeyHash, hashKey('sqlite:///Users/me/shop.db'));
+  assert.equal(JSON.parse(fs.readFileSync(file, 'utf-8')).connections[0].databaseKeyHash, hashKey('sqlite:///Users/me/shop.db'));
+});
