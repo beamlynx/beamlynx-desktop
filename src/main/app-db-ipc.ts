@@ -71,6 +71,8 @@ export function registerAppDbIpc(): void {
     event.returnValue = loadStartupState(getAppDb);
   });
   ipcMain.handle('app-db:status', () => getAppDb().status());
+  // Where the file is, so the app can open it as a database of its own.
+  ipcMain.handle('app-db:path', () => getAppDbPath());
   ipcMain.handle('app-db:load-preferences', () => getAppDb().loadPreferences());
   ipcMain.handle('app-db:set-preferences', (_event, changes: Record<string, string | null>) =>
     getAppDb().setPreferences(changes),

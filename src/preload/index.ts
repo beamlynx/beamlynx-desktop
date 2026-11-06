@@ -91,6 +91,8 @@ contextBridge.exposeInMainWorld('beamlynxDesktop', {
     // Blocks while the main process reads the file. Called once, at startup.
     loadStartupState: (): StartupState => ipcRenderer.sendSync('app-db:load-startup-state'),
     status: (): Promise<AppDbStatus> => ipcRenderer.invoke('app-db:status'),
+    // The file's absolute path. Missing from an older app.
+    path: (): Promise<string> => ipcRenderer.invoke('app-db:path'),
     loadPreferences: (): Promise<Record<string, string>> => ipcRenderer.invoke('app-db:load-preferences'),
     setPreferences: (changes: Record<string, string | null>): Promise<void> =>
       ipcRenderer.invoke('app-db:set-preferences', changes),
