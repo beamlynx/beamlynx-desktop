@@ -397,7 +397,7 @@ const LibraryPanel = observer(() => {
                       title={
                         home
                           ? `It was saved from ${home.label}: asks whether to switch this tab there or open a new tab. Nothing runs.`
-                          : 'Adds the query to the end of the current tab. Nothing runs.'
+                          : 'Adds the query to the current tab, at the cursor. Nothing runs.'
                       }
                       sx={{ flexShrink: 0 }}
                     >
@@ -409,7 +409,7 @@ const LibraryPanel = observer(() => {
                       <Button
                         size="small"
                         onClick={() => void applyRecipe(r, true)}
-                        title="Adds the query to the end of the current tab, on its database. Nothing runs."
+                        title="Adds the query to the current tab, at the cursor, on its database. Nothing runs."
                         sx={{ flexShrink: 0, color: dim, '&:hover': { color: 'var(--text-color)' } }}
                       >
                         Use in this tab
@@ -426,7 +426,7 @@ const LibraryPanel = observer(() => {
                       }}
                     >
                       {used?.id === r.id
-                        ? `Added to the end of ${used.tab}`
+                        ? `Added to ${used.tab}`
                         : recipeByline(r, savedFromLabel(r.savedFrom, global.connections))}
                     </Typography>
                   </Box>

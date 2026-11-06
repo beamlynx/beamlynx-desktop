@@ -1,12 +1,13 @@
 import { runInAction } from 'mobx';
 import type { GlobalStore } from '../../store/global.store';
 import type { ConnectionInfo } from '../../store/client';
-import { recipeText, savedFromConnection, textToInsert, type Recipe } from '../../utils/recipes';
+import { insertAtCursor, recipeText, savedFromConnection, textToInsert, type Recipe } from '../../utils/recipes';
 
 /**
- * Puts a recipe's query at the end of the active tab, as plain text. Nothing
- * runs. Shared by Ctrl+O's picker (RecipePickerModal) and the sidebar's
- * Library (LibraryPanel), so the two never insert differently.
+ * Puts a recipe's query into the active tab at the cursor, as blocks of its
+ * own (insertAtCursor), and leaves the cursor at its end. Nothing runs.
+ * Shared by Ctrl+O's picker (RecipePickerModal) and the sidebar's Library
+ * (LibraryPanel), so the two never insert differently.
  *
  * The Agent and Needs approval tabs belong to the agent, and the next agent
  * query overwrites them, so a recipe goes into a new tab instead.
@@ -17,10 +18,13 @@ export function insertRecipe(global: GlobalStore, r: Recipe): string | null {
   if (global.agentSessionIds.includes(global.activeSessionId)) global.addTab();
   const session = global.sessions[global.activeSessionId];
   if (!session) return null;
-  const existing = session.expression.replace(/\s+$/, '');
-  const prefix = existing ? `${existing}\n\n` : '';
-  const full = prefix + textToInsert(existing, recipeText(r));
-  session.setExpressionWithSelection(full, { anchor: full.length, head: full.length });
+  const existing = session.expression;
+  const { text, cursor } = insertAtCursor(
+    existing,
+    session.cursorPosition?.line,
+    textToInsert(existing, recipeText(r)),
+  );
+  session.setExpressionWithSelection(text, { anchor: cursor, head: cursor });
   return session.id;
 }
 
@@ -46,7 +50,7 @@ export type RecipeTarget = 'switch' | 'new' | 'here';
 /**
  * Use: puts a recipe's query in a tab, as `target` says. A recipe already
  * on the active tab's database, or saved from one you have no connection
- * to, always goes at the end of the active tab (insertRecipe). Nothing runs.
+ * to, always goes into the active tab at the cursor (insertRecipe). Nothing runs.
  *
  * Returns the id of the tab it went into. Throws when the connection fails.
  */

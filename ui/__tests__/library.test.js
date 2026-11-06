@@ -100,6 +100,27 @@ test("the tab's trailing whitespace is trimmed first, so there is exactly one bl
   assert.equal(tab2.expression, '\n  user\n\n\n | count:\n\ncompany');
 });
 
+test('a recipe goes in at the cursor: on a blank line there, inside a query just after it', () => {
+  const TAB = 'user | count:\n\ncompany\n | limit: 5\n\norder';
+  const at = line => {
+    const tab = fakeSession('s1', TAB);
+    tab.cursorPosition = { line, character: 0 };
+    insertRecipe(fakeGlobal([tab], 's1'), recipe('tenant'));
+    return tab;
+  };
+  // On the blank line between the first two queries.
+  assert.equal(at(1).expression, 'user | count:\n\ntenant\n\ncompany\n | limit: 5\n\norder');
+  // Inside the multi-line query: after its last line, never inside it.
+  assert.equal(at(2).expression, 'user | count:\n\ncompany\n | limit: 5\n\ntenant\n\norder');
+  assert.equal(at(3).expression, at(2).expression);
+  // In the last query: at the end.
+  assert.equal(at(5).expression, `${TAB}\n\ntenant`);
+  // The cursor is left at the end of what was added.
+  const tab = at(1);
+  const end = 'user | count:\n\ntenant'.length;
+  assert.deepEqual(tab.sets[0].selection, { anchor: end, head: end });
+});
+
 test('an old recipe with inputs goes in with its values block above the query', () => {
   const tab = fakeSession('s1', 'user');
   const global = fakeGlobal([tab], 's1');
