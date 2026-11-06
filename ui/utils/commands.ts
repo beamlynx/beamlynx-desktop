@@ -2,6 +2,7 @@ import { runInAction } from 'mobx';
 import { GlobalStore } from '../store/global.store';
 import { Session } from '../store/session';
 import { getSchemaColor } from '../store/graph.util';
+import { isDesktop } from '../store/util';
 
 export type CommandCategory = 'View' | 'Query' | 'Preferences' | 'Experimental' | 'Help';
 
@@ -113,6 +114,24 @@ const COMMANDS: Command[] = [
     handler: global => global.openAppDataFile(),
     // Desktop only, and only when the desktop app can say where the file is.
     isEnabled: () => typeof window !== 'undefined' && !!window.beamlynxDesktop?.appDb?.path,
+  },
+  {
+    id: 'switch-connection',
+    label: 'Switch Connection',
+    category: 'View',
+    // Lists the connections; picking one switches the active tab to it, as
+    // the sidebar's connection menu does (switchActiveTabConnection).
+    handler: async global => {
+      if (!global.connectionsLoaded) await global.refreshConnections();
+      const current = isDesktop() ? global.activeProfileId : global.sessions[global.activeSessionId]?.connectionId;
+      return global.connections.map(c => ({
+        id: c.id,
+        label: c.id === current ? `${c.label} (this tab)` : c.label,
+        detail: c.dbName && c.dbName !== c.label ? c.dbName : undefined,
+        handler: (g: GlobalStore) => void g.switchActiveTabConnection(c.id),
+      }));
+    },
+    isEnabled: ALWAYS_ENABLED,
   },
   {
     id: 'toggle-zen-mode',
