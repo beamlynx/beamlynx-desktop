@@ -299,9 +299,11 @@ function reportActivity(event: AgentActivity): void {
 
 let activityCounter = 0;
 
-// Notes the user typed in this investigation's tab go at the top of the next
-// result, whatever the tool: beamlynx can't send the agent a message, only
-// answer its calls. Never fails the call: without the app, there are none.
+// Notes from this investigation's tab, such as a query the user ran there
+// themselves, go at the top of the next result, whatever the tool: beamlynx
+// can't send the agent a message, only answer its calls. The user doesn't
+// write to the agent from beamlynx; they talk to it in the tool that runs
+// it. Never fails the call: without the app, there are none.
 // Asked with a short timeout, so a busy or reloading app adds 2 s at most.
 async function withUserNotes<T extends { content?: unknown[] }>(result: T): Promise<T> {
   const { notes } = await controlPlaneRequest('POST', '/investigation/notes', undefined, {
@@ -309,7 +311,7 @@ async function withUserNotes<T extends { content?: unknown[] }>(result: T): Prom
   }).catch(() => ({ notes: [] }));
   if (!Array.isArray(notes) || notes.length === 0) return result;
   const text =
-    'The user wrote to you from beamlynx, while you worked:\n' +
+    'From beamlynx, while you worked:\n' +
     notes.map((n: { text: string }) => `- ${n.text}`).join('\n') +
     '\n\nTake this into account before you go on. The result of your call follows.';
   return { ...result, content: [{ type: 'text' as const, text }, ...(result.content ?? [])] };
@@ -516,7 +518,8 @@ async function registerTools(server: McpServer): Promise<void> {
       description:
         'Tell the user, in beamlynx, what you are investigating. It becomes the title of the beamlynx tab that ' +
         'shows your queries and their results. Call it once, before your first query, in the user\'s terms: ' +
-        '"Logins per tenant over the last 30 days". Call it again if the question changes.',
+        '"Logins per tenant over the last 30 days". When the user asks something new, call it again with the new ' +
+        'question: it starts a new section in their timeline. Not while you are still on the same question.',
       inputSchema: {
         question: z.string().min(1).max(300).describe('The question, in one line'),
       },

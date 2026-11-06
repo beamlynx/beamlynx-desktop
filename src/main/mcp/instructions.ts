@@ -130,8 +130,11 @@ The user can follow your work in beamlynx, in a tab of its own: every query, its
 its result. Help them follow it:
 
 - Call set_question first, with what you are investigating, in their terms.
+- When the user asks something new, call set_question again with the new question. It starts a
+  new section in their timeline, and the earlier question folds away. Don't call it again while
+  you are still on the same question.
 - Call note_finding when you learn something that matters to the answer, from this database or
   from another tool you are using.
 
-The user can also write to you from that tab. Their words arrive at the top of a tool result,
-starting "The user wrote to you from beamlynx". Treat them like a message from the user.`;
+When the user runs a query themselves in that tab, you are told at the top of your next tool
+result, in a note starting "From beamlynx".`;
