@@ -97,6 +97,10 @@ export type InvestigationStep =
       snapshot?: QuerySnapshot;
     }
   | { id: string; kind: 'finding'; at: number; text: string }
+  // The agent starting on a question (set_question). Each one begins a
+  // section of the timeline; the steps after it, up to the next question,
+  // are its work.
+  | { id: string; kind: 'question'; at: number; text: string }
   // The agent proposing a change to its connection's access policy
   // (propose_policy_change), waiting for the user to apply or decline it.
   | {
@@ -215,7 +219,13 @@ export class Investigation {
   apply(event: AgentActivity) {
     this.lastCallAt = Math.max(this.lastCallAt ?? 0, event.at);
     if (event.tool === 'set_question') {
-      if (event.phase === 'start' && event.detail) this.question = event.detail;
+      // A different question starts a new section. The same one again, as
+      // when the agent restates it, carries on in the current section.
+      const text = event.phase === 'start' ? event.detail?.trim() : undefined;
+      if (text && text !== this.question?.trim()) {
+        this.question = text;
+        this.steps.push(newStep({ id: `question-${event.id}`, kind: 'question', at: event.at, text }));
+      }
       return;
     }
     if (event.tool === 'note_finding') {
