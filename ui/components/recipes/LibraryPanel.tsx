@@ -8,7 +8,7 @@ import { useStores } from '../../store/store-container';
 import { createSettingsTheme } from '../../styles/theme';
 import { TEXT_SIZE_SCALE } from '../../styles/text-size';
 import { matchRecipes, recipeSummary, savedFromLabel, type Recipe } from '../../utils/recipes';
-import { insertRecipe } from './insertRecipe';
+import { openRecipe, recipeHome } from './insertRecipe';
 
 /**
  * The sidebar's Library: saved recipes, in the slot Settings docks in
@@ -119,10 +119,18 @@ const LibraryPanel = observer(() => {
     if (used && used.id !== r.id) setUsed(null);
   };
 
-  const applyRecipe = (r: Recipe | undefined) => {
+  // On the database it was saved from, or with `here` in the active tab.
+  const applyRecipe = async (r: Recipe | undefined, here = false) => {
     if (!r) return;
-    const tabId = insertRecipe(global, r);
+    let tabId: string | null;
+    try {
+      tabId = await openRecipe(global, r, here);
+    } catch (e) {
+      setError(`Couldn't connect to the recipe's database. ${e instanceof Error ? e.message : String(e)}`);
+      return;
+    }
     if (!tabId) return;
+    setError('');
     setSelectedId(r.id);
     setUsed({ id: r.id, tab: global.getSessionName(tabId) });
   };
@@ -174,7 +182,7 @@ const LibraryPanel = observer(() => {
       // which Up and Down may have moved away from the focused row.
       if (target?.tagName === 'BUTTON' && !target.hasAttribute('data-recipe-select')) return;
       e.preventDefault();
-      applyRecipe(selected);
+      void applyRecipe(selected);
     }
   };
   useEffect(() => {
@@ -254,6 +262,8 @@ const LibraryPanel = observer(() => {
       >
         {matches.map(r => {
           const isSelected = selected?.id === r.id;
+          // Another of your connections, when it was saved there: Use opens it there.
+          const home = isSelected ? recipeHome(global, r) : undefined;
           const armed = confirmingId === r.id;
           return (
             <Box
@@ -379,12 +389,28 @@ const LibraryPanel = observer(() => {
                       variant="contained"
                       size="small"
                       disableElevation
-                      onClick={() => applyRecipe(r)}
-                      title="Adds the query to the end of the current tab. Nothing runs."
+                      onClick={() => void applyRecipe(r)}
+                      title={
+                        home
+                          ? `Opens it in a new tab on ${home.label}, where it was saved. Nothing runs.`
+                          : 'Adds the query to the end of the current tab. Nothing runs.'
+                      }
                       sx={{ flexShrink: 0 }}
                     >
                       Use
                     </Button>
+                    {/* Saved from another of your databases: Use opens it there,
+                        and this keeps it on the current tab's, such as staging. */}
+                    {home && (
+                      <Button
+                        size="small"
+                        onClick={() => void applyRecipe(r, true)}
+                        title="Adds the query to the end of the current tab, on its database. Nothing runs."
+                        sx={{ flexShrink: 0, color: dim, '&:hover': { color: 'var(--text-color)' } }}
+                      >
+                        Use in this tab
+                      </Button>
+                    )}
                     <Typography
                       variant="caption"
                       role={used?.id === r.id ? 'status' : undefined}

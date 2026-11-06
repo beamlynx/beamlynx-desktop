@@ -5,6 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 ### Added
+- **A recipe opens on the database it was saved from.** When you use a recipe saved from another of your connections, from the Library or with Ctrl+O, it opens in a new tab connected there. To run it on the current tab's database instead, such as staging, click **Use in this tab** in the Library. A recipe from a database you have no connection to still goes in the current tab.
 - **A follow-up question gets its own section in an agent's timeline.** When the agent moves on to a new question, the earlier one folds to a single line with how many steps and findings it took. Click it to see that work again. While the agent keeps working on the same question, its steps carry on where they are.
 - **Open Beamlynx's own data file from the command palette.** **Open Beamlynx's data file** connects to `beamlynx.db`, where your preferences, recipes and column widths are kept, in a new tab. The first time, it saves the connection as "Beamlynx data (beamlynx.db)". Desktop app only.
 - **Library: browse your saved recipes from the sidebar.** The new **Library** item, under Database Connections, opens your recipes beside the sidebar, where Settings opens. Each shows its title and one line of what it is for. Search them, click one to read the whole description and its query, and click **Use** to add it to the end of the current tab. Nothing runs. Point at a recipe to delete it. Ctrl+S and Ctrl+O work as before. Desktop app only. (by @ahmadnazir)

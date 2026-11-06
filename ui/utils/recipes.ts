@@ -386,8 +386,11 @@ export function matchRecipes<T extends { title: string; explanation: string; exp
 export const savedFromLabel = (
   savedFrom: string | null,
   connections: { label: string; databaseKey?: string; databaseKeyHash?: string }[],
-): string | null => {
-  if (!savedFrom) return null;
-  const match = connections.find(c => c.databaseKeyHash === savedFrom || c.databaseKey === savedFrom);
-  return match?.label ?? null;
-};
+): string | null => savedFromConnection(savedFrom, connections)?.label ?? null;
+
+/** The saved connection a recipe was saved from, or undefined when it isn't one of yours. */
+export const savedFromConnection = <C extends { databaseKey?: string; databaseKeyHash?: string }>(
+  savedFrom: string | null,
+  connections: C[],
+): C | undefined =>
+  savedFrom ? connections.find(c => c.databaseKeyHash === savedFrom || c.databaseKey === savedFrom) : undefined;
