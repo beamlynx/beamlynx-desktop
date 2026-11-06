@@ -20,6 +20,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ### Removed
 - **The "Tell the agent…" box under an agent's timeline.** Talk to the agent in the tool you run it from instead. The agent is still told when you run a query yourself in the tab that shows its work.
+- **Folding an agent's timeline to a thin bar.** The bar showed nothing but an arrow. The timeline now always shows; Zen mode gives the canvas the whole window instead.
 
 ## [0.73.0] - 2026-11-04
 ### Added

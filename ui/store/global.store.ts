@@ -223,14 +223,6 @@ export class GlobalStore {
   // (openInvestigationTab); then it is an ordinary tab, at the end of
   // theirs. Closing it only takes it out of the strip again.
   investigations: Investigation[] = [];
-  // The timeline beside an investigation's canvas, folded to a slim rail to
-  // give the canvas and results the width. One setting for every
-  // investigation tab.
-  investigationPanelCollapsed = false;
-
-  setInvestigationPanelCollapsed = (collapsed: boolean) => {
-    this.investigationPanelCollapsed = collapsed;
-  };
   // True from the moment an MCP-driven query finishes until its
   // investigation is next opened (openInvestigationTab clears it). It turns
   // the sidebar's robot amber: the only way to know a result landed while
