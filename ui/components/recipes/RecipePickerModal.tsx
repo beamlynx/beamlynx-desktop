@@ -4,7 +4,7 @@ import { observer } from 'mobx-react-lite';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useStores } from '../../store/store-container';
 import { matchRecipes, recipeSummary, savedFromLabel, type Recipe } from '../../utils/recipes';
-import { insertRecipe } from './insertRecipe';
+import { openRecipe } from './insertRecipe';
 import ModalSurface from '../ModalSurface';
 
 /**
@@ -63,9 +63,14 @@ const RecipePickerModal = observer(() => {
 
   const close = () => global.setShowRecipePicker(false);
 
-  const applyRecipe = (r: Recipe | undefined) => {
+  // The same as the Library's Use: on the database it was saved from.
+  const applyRecipe = async (r: Recipe | undefined) => {
     if (!r) return;
-    if (insertRecipe(global, r)) close();
+    try {
+      if (await openRecipe(global, r)) close();
+    } catch (e) {
+      setError(`Couldn't connect to the recipe's database. ${e instanceof Error ? e.message : String(e)}`);
+    }
   };
 
   // First click arms it, a second within 3 seconds deletes.
@@ -96,7 +101,7 @@ const RecipePickerModal = observer(() => {
       setSelected(Math.max(0, index - 1));
     } else if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'BUTTON') {
       e.preventDefault();
-      applyRecipe(recipe);
+      void applyRecipe(recipe);
     }
   };
 
