@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- **Open Beamlynx's own data file as a database.** The command palette has **Open Beamlynx's data file**, which connects to `beamlynx.db`: your preferences, recipes and column widths. (Needs the matching beamlynx-ui.)
+
 ### Changed
 - **Beamlynx's settings file no longer shows your databases' addresses.** Recipes and column widths now record a database by a hash of its address. Each saved connection in `connections.json` keeps its address and that hash side by side, to make problems easier to trace.
 - **Beamlynx opens faster.** Its server now starts while the window opens, not after. On a Linux test machine the app was ready about a quarter of a second sooner.
