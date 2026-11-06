@@ -9,6 +9,7 @@ import { createSettingsTheme } from '../../styles/theme';
 import { TEXT_SIZE_SCALE } from '../../styles/text-size';
 import { matchRecipes, recipeSummary, savedFromLabel, type Recipe } from '../../utils/recipes';
 import { openRecipe, recipeHome } from './insertRecipe';
+import RecipeDatabaseDialog from './RecipeDatabaseDialog';
 
 /**
  * The sidebar's Library: saved recipes, in the slot Settings docks in
@@ -119,20 +120,23 @@ const LibraryPanel = observer(() => {
     if (used && used.id !== r.id) setUsed(null);
   };
 
-  // On the database it was saved from, or with `here` in the active tab.
-  const applyRecipe = async (r: Recipe | undefined, here = false) => {
-    if (!r) return;
-    let tabId: string | null;
-    try {
-      tabId = await openRecipe(global, r, here);
-    } catch (e) {
-      setError(`Couldn't connect to the recipe's database. ${e instanceof Error ? e.message : String(e)}`);
-      return;
-    }
-    if (!tabId) return;
+  const showUsed = (r: Recipe, tabId: string) => {
     setError('');
     setSelectedId(r.id);
     setUsed({ id: r.id, tab: global.getSessionName(tabId) });
+  };
+
+  // Saved from another of your connections: ask where it goes
+  // (RecipeDatabaseDialog). Otherwise, or with `here`, the active tab.
+  const [asking, setAsking] = useState<Recipe | null>(null);
+  const applyRecipe = async (r: Recipe | undefined, here = false) => {
+    if (!r) return;
+    if (!here && recipeHome(global, r)) {
+      setAsking(r);
+      return;
+    }
+    const tabId = await openRecipe(global, r, 'here');
+    if (tabId) showUsed(r, tabId);
   };
 
   // First click arms it, a second within 3 seconds deletes.
@@ -166,7 +170,7 @@ const LibraryPanel = observer(() => {
   const onKey = useRef<(e: KeyboardEvent) => void>(() => undefined);
   onKey.current = (e: KeyboardEvent) => {
     if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
-    if (!global.showLibrary || global.activeKeyboardPanel !== 'library') return;
+    if (!global.showLibrary || global.activeKeyboardPanel !== 'library' || asking) return;
     const target = e.target instanceof HTMLElement ? e.target : null;
     if (target && target !== document.body && !target.closest('[data-keyboard-panel="library"]')) return;
     if (!matches.length) return;
@@ -392,15 +396,15 @@ const LibraryPanel = observer(() => {
                       onClick={() => void applyRecipe(r)}
                       title={
                         home
-                          ? `Opens it in a new tab on ${home.label}, where it was saved. Nothing runs.`
+                          ? `It was saved from ${home.label}: asks whether to switch this tab there or open a new tab. Nothing runs.`
                           : 'Adds the query to the end of the current tab. Nothing runs.'
                       }
                       sx={{ flexShrink: 0 }}
                     >
                       Use
                     </Button>
-                    {/* Saved from another of your databases: Use opens it there,
-                        and this keeps it on the current tab's, such as staging. */}
+                    {/* Saved from another of your databases: Use asks to move the
+                        tab there, and this keeps it on the current tab's, such as staging. */}
                     {home && (
                       <Button
                         size="small"
@@ -567,6 +571,11 @@ const LibraryPanel = observer(() => {
           </Typography>
         </Box>
       </Box>
+      <RecipeDatabaseDialog
+        recipe={asking}
+        onDone={tabId => asking && showUsed(asking, tabId)}
+        onClose={() => setAsking(null)}
+      />
     </ThemeProvider>
   );
 });

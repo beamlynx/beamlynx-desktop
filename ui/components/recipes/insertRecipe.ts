@@ -34,20 +34,30 @@ export function recipeHome(global: GlobalStore, r: Recipe): ConnectionInfo | und
 }
 
 /**
- * Use: a recipe goes onto the database it was saved from. When that is
- * another of your connections, it opens in a new tab connected there;
- * otherwise, or with `here`, it goes at the end of the active tab
- * (insertRecipe). A recipe from a database you have no connection to also
- * goes in the active tab. Nothing runs.
+ * Where Use puts a recipe saved from another of your connections (see
+ * RecipeDatabaseDialog, which asks):
+ * - switch: the active tab moves to the recipe's database, and the query
+ *   goes at its end. The default.
+ * - new: a new tab, connected to the recipe's database.
+ * - here: the active tab, on the database it is on, such as staging.
+ */
+export type RecipeTarget = 'switch' | 'new' | 'here';
+
+/**
+ * Use: puts a recipe's query in a tab, as `target` says. A recipe already
+ * on the active tab's database, or saved from one you have no connection
+ * to, always goes at the end of the active tab (insertRecipe). Nothing runs.
  *
- * Returns the id of the tab it went into. Throws when the connection fails;
- * the new tab stays, empty, on it.
+ * Returns the id of the tab it went into. Throws when the connection fails.
  */
 // Not named use…: React's lint rule would take a use… function for a hook.
-export async function openRecipe(global: GlobalStore, r: Recipe, here = false): Promise<string | null> {
-  const home = here ? undefined : recipeHome(global, r);
+export async function openRecipe(global: GlobalStore, r: Recipe, target: RecipeTarget = 'here'): Promise<string | null> {
+  const home = target === 'here' ? undefined : recipeHome(global, r);
   if (!home) return insertRecipe(global, r);
-  runInAction(() => global.addTab());
+  // An agent's tab is never switched: its next query would overwrite it.
+  if (target === 'new' || global.agentSessionIds.includes(global.activeSessionId)) {
+    runInAction(() => global.addTab());
+  }
   // Connected first, so the query builds against its own database.
   await global.connectToSavedProfile(home.id);
   return insertRecipe(global, r);

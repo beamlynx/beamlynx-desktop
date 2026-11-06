@@ -4,7 +4,8 @@ import { observer } from 'mobx-react-lite';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useStores } from '../../store/store-container';
 import { matchRecipes, recipeSummary, savedFromLabel, type Recipe } from '../../utils/recipes';
-import { openRecipe } from './insertRecipe';
+import { openRecipe, recipeHome } from './insertRecipe';
+import RecipeDatabaseDialog from './RecipeDatabaseDialog';
 import ModalSurface from '../ModalSurface';
 
 /**
@@ -63,14 +64,16 @@ const RecipePickerModal = observer(() => {
 
   const close = () => global.setShowRecipePicker(false);
 
-  // The same as the Library's Use: on the database it was saved from.
+  // The same as the Library's Use: saved from another of your connections,
+  // it asks where it goes (RecipeDatabaseDialog); otherwise the active tab.
+  const [asking, setAsking] = useState<Recipe | null>(null);
   const applyRecipe = async (r: Recipe | undefined) => {
     if (!r) return;
-    try {
-      if (await openRecipe(global, r)) close();
-    } catch (e) {
-      setError(`Couldn't connect to the recipe's database. ${e instanceof Error ? e.message : String(e)}`);
+    if (recipeHome(global, r)) {
+      setAsking(r);
+      return;
     }
+    if (await openRecipe(global, r, 'here')) close();
   };
 
   // First click arms it, a second within 3 seconds deletes.
@@ -267,6 +270,7 @@ const RecipePickerModal = observer(() => {
           Click a recipe or press Enter to use it. Arrow keys move. Esc closes.
         </Typography>
       </Box>
+      <RecipeDatabaseDialog recipe={asking} onDone={close} onClose={() => setAsking(null)} />
     </ModalSurface>
   );
 });
