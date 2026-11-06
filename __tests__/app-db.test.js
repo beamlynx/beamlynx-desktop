@@ -116,6 +116,7 @@ test('the localStorage import is recorded once per file', () => {
 
 // ---------- recipes ----------
 const { databaseKeyOf } = require(DIST);
+const { hashKey } = require(path.join(__dirname, '..', 'dist', 'main', 'database-key.js'));
 
 test('a database key leaves out the login and treats 127.0.0.1 as localhost', () => {
   const a = databaseKeyOf({ dbType: 'postgres', dbHost: '127.0.0.1', dbPort: '5432', dbName: 'shop' });
@@ -143,7 +144,8 @@ test('recipes are global: every recipe is listed, whichever database it was save
   const staging = db.saveRecipe(recipeInput());
   const unknown = db.saveRecipe(recipeInput({ savedFrom: undefined, title: 'From nowhere in particular' }));
   assert.match(staging.id, /^[0-9a-f-]{36}$/);
-  assert.equal(staging.savedFrom, 'postgres://staging.example.internal:5432/shop');
+  // Only the hash is stored: the address is not in the file.
+  assert.equal(staging.savedFrom, hashKey('postgres://staging.example.internal:5432/shop'));
   assert.equal(unknown.savedFrom, null);
   assert.equal(staging.source, 'person');
   assert.equal(staging.author, 'local');
@@ -262,4 +264,45 @@ test('meta values are kept across reopen, and a null deletes one', () => {
   db.setMeta('account.userId', null);
   assert.equal(db.getMeta('account.userId'), null);
   db.close();
+});
+
+test('a database address is stored only as its hash, and a file an older app wrote still matches', () => {
+  // A file as migration 2 left it, with addresses in it.
+  const raw = new DatabaseSync(file);
+  raw.exec(`CREATE TABLE preference (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL);
+    CREATE TABLE column_width (connection TEXT NOT NULL, column_key TEXT NOT NULL, width INTEGER NOT NULL, used_at INTEGER NOT NULL, PRIMARY KEY (connection, column_key));
+    CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    PRAGMA user_version = 1;`);
+  raw.close();
+  let db = openAppDb(file);
+  db.close();
+  const old = new DatabaseSync(file);
+  old.exec(`PRAGMA user_version = 2;
+    INSERT INTO recipe (id, database_key, title, expression, author, source, created_at, updated_at)
+      VALUES ('r1', 'postgres://db.internal:5432/shop', 'Old', 'company', 'local', 'person', 1, 1),
+             ('r2', '', 'Nowhere', 'company', 'local', 'person', 1, 1);
+    INSERT INTO column_width VALUES ('db.internal:5432:shop', 'public.user.email', 200, 1);`);
+  old.close();
+
+  db = openAppDb(file);
+  assert.equal(db.getRecipe('r1').savedFrom, hashKey('postgres://db.internal:5432/shop'));
+  assert.equal(db.getRecipe('r2').savedFrom, null);
+  assert.deepEqual(db.getColumnWidths('db.internal:5432:shop'), { 'public.user.email': 200 });
+  db.close();
+  const check = new DatabaseSync(file);
+  const text = JSON.stringify([check.prepare('SELECT * FROM recipe').all(), check.prepare('SELECT * FROM column_width').all()]);
+  assert.ok(!text.includes('db.internal'), 'no address is left in the file');
+
+  // An older app, after a downgrade, writes the address itself: still read.
+  check.exec(`INSERT INTO column_width VALUES ('other:5432:x', 'a', 90, 2)`);
+  check.close();
+  db = openAppDb(file);
+  assert.deepEqual(db.getColumnWidths('other:5432:x'), { a: 90 });
+  // Writing replaces it with the hash.
+  db.setColumnWidths('other:5432:x', { a: 95 });
+  assert.deepEqual(db.getColumnWidths('other:5432:x'), { a: 95 });
+  db.close();
+  const after = new DatabaseSync(file);
+  assert.equal(after.prepare("SELECT COUNT(*) AS n FROM column_width WHERE connection = 'other:5432:x'").get().n, 0);
+  after.close();
 });

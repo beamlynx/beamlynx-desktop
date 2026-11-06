@@ -11,6 +11,9 @@
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import { DatabaseSync } from 'node:sqlite';
+import { hashKey, isHashedKey, storedKeyCandidates, toStoredKey } from './database-key';
+
+export { databaseKeyOf } from './database-key';
 
 // Each entry runs once, in order, and PRAGMA user_version records how many
 // have run. Only ever append. Migrations must also be additive (new tables
@@ -60,6 +63,17 @@ const MIGRATIONS: string[] = [
     database_key  TEXT NOT NULL
   );
   `,
+  // A database's address is stored only as its hash (see database-key.ts),
+  // so this file never shows it. beamlynx_sha256 is registered in
+  // openAppDb. A value that already is a hash is left alone.
+  `
+  UPDATE recipe SET database_key = beamlynx_sha256(database_key)
+    WHERE database_key <> '' AND NOT beamlynx_is_hash(database_key);
+  UPDATE column_width SET connection = beamlynx_sha256(connection)
+    WHERE NOT beamlynx_is_hash(connection);
+  UPDATE database_link SET database_key = beamlynx_sha256(database_key)
+    WHERE database_key <> '' AND NOT beamlynx_is_hash(database_key);
+  `,
 ];
 
 // Past this many remembered column widths, the least recently used go.
@@ -84,7 +98,9 @@ export type RecipeInputDef = {
 // staging and production database usually share one schema, and a recipe
 // describes the schema, not the server. savedFrom only records where it was
 // saved, as context. (Stored in the database_key column, which was written
-// when recipes were per database; '' means unknown.)
+// when recipes were per database; '' means unknown.) It is the hash of the
+// database's key (see database-key.ts), or the key itself in a row an older
+// app wrote.
 export type Recipe = {
   id: string;
   savedFrom: string | null;
@@ -116,28 +132,9 @@ export type SaveRecipeInput = {
   agent?: string | null;
 };
 
-const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
-const DEFAULT_PORTS: Record<string, string> = { postgres: '5432', mysql: '3306' };
-
-// Which database a saved connection points at, as a string such as
-// 'postgres://localhost:5432/shop', recorded as a recipe's savedFrom. The
-// user name is left out, and 127.0.0.1 and ::1 count as localhost, so the
-// same database saved two ways reads the same.
-//
 // Migration 2 also created a database_link table and an index by database,
 // from when recipes were per database. Nothing uses them now. They stay
 // because migrations are only ever appended, never edited.
-export function databaseKeyOf(c: { dbType?: string; dbHost: string; dbPort: string; dbName: string }): string {
-  const type = c.dbType || 'postgres';
-  // A SQLite database is a file: its key is its path, with no host or port.
-  if (type === 'sqlite') {
-    return `sqlite://${c.dbName.trim()}`;
-  }
-  const rawHost = c.dbHost.trim().toLowerCase();
-  const host = LOCAL_HOSTS.has(rawHost) ? 'localhost' : rawHost;
-  const port = c.dbPort.trim() || DEFAULT_PORTS[type] || '';
-  return `${type}://${host}:${port}/${c.dbName.trim()}`;
-}
 
 const INPUT_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const MAX_TITLE = 200;
@@ -200,6 +197,7 @@ export type AppDb = {
   loadPreferences(): Record<string, string>;
   // A null value deletes the key. All changes in one call are one write.
   setPreferences(changes: Record<string, string | null>): void;
+  // `connection` is the connection's id. It is stored as its hash.
   getColumnWidths(connection: string): Record<string, number>;
   // A null width forgets the column. Prunes past COLUMN_WIDTH_CAP.
   setColumnWidths(connection: string, changes: Record<string, number | null>): void;
@@ -255,6 +253,9 @@ export function openAppDb(file: string, now: () => number = Date.now): AppDb {
     wasReset = true;
     db = openAndCheck(file);
   }
+  // For migration 3, and kept for the life of the connection.
+  db.function('beamlynx_sha256', { deterministic: true }, (v: unknown) => hashKey(String(v)));
+  db.function('beamlynx_is_hash', { deterministic: true }, (v: unknown) => (isHashedKey(String(v)) ? 1 : 0));
   migrate(db);
 
   const getMeta = db.prepare('SELECT value FROM meta WHERE key = ?');
@@ -329,8 +330,11 @@ export function openAppDb(file: string, now: () => number = Date.now): AppDb {
     getColumnWidths: connection => {
       checkKey(connection);
       const result: Record<string, number> = {};
-      for (const row of widthsFor.all(connection) as { column_key: string; width: number }[]) {
-        result[row.column_key] = row.width;
+      // The hash last, so its widths win over a row an older app wrote.
+      for (const stored of storedKeyCandidates(connection).reverse()) {
+        for (const row of widthsFor.all(stored) as { column_key: string; width: number }[]) {
+          result[row.column_key] = row.width;
+        }
       }
       return result;
     },
@@ -346,9 +350,10 @@ export function openAppDb(file: string, now: () => number = Date.now): AppDb {
       }
       const at = now();
       inTransaction(() => {
+        const stored = toStoredKey(connection);
         for (const [key, width] of entries) {
-          if (width === null) deleteWidth.run(connection, key);
-          else upsertWidth.run(connection, key, width, at);
+          for (const candidate of storedKeyCandidates(connection)) deleteWidth.run(candidate, key);
+          if (width !== null) upsertWidth.run(stored, key, width, at);
         }
         const { n } = countWidths.get() as { n: number };
         if (n > COLUMN_WIDTH_CAP) pruneWidths.run(n - COLUMN_WIDTH_CAP);
@@ -406,7 +411,7 @@ export function openAppDb(file: string, now: () => number = Date.now): AppDb {
       const id = randomUUID();
       const source = input.source ?? 'person';
       insertRecipe.run(
-        id, input.savedFrom ?? '', input.title.trim(), explanation, input.expression, inputs,
+        id, input.savedFrom ? toStoredKey(input.savedFrom) : '', input.title.trim(), explanation, input.expression, inputs,
         input.author ?? 'local', source, source === 'agent' ? (input.agent ?? 'An agent') : null, at, at,
       );
       return toRecipe(recipeById.get(id) as RecipeRow);
