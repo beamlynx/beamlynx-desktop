@@ -8,12 +8,9 @@ import { draftFromTab } from '../../utils/recipes';
 
 /**
  * Ctrl+S: a one-line bar above the tab, asking only for a title. It saves the
- * block under the cursor, plus any block above it that the query uses, as it
- * is: its comments are the recipe's explanation. No dialog, so the query and
- * canvas stay in view.
- *
- * A query's $variables travel as text: the values blocks that set them are
- * saved with it (see draftFromTab).
+ * whole tab as it is (see draftFromTab): every query, its values blocks, and
+ * its comments, which are the recipe's explanation. No dialog, so the query
+ * and canvas stay in view.
  */
 const SaveRecipeBar = observer(({ session }: { session: Session }) => {
   const { global } = useStores();
@@ -22,8 +19,8 @@ const SaveRecipeBar = observer(({ session }: { session: Session }) => {
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Follows the cursor while the bar is open, so it's always the block that
-  // would be saved right now.
+  // Follows the tab while the bar is open, so it's always what would be
+  // saved right now. The cursor only picks the suggested title.
   const draft = useMemo(
     () => draftFromTab(session.expression, session.cursorPosition?.line),
     [session.expression, session.cursorPosition?.line],
@@ -89,9 +86,9 @@ const SaveRecipeBar = observer(({ session }: { session: Session }) => {
   const note = !draft
     ? 'There is no query to save. Write one first.'
     : error ||
-      (draft.includedNames.length
-        ? `Saves the query under the cursor, with the blocks it uses (${draft.includedNames.join(', ')}). Comments are saved with it.`
-        : 'Saves the query under the cursor. Comments are saved with it.');
+      (draft.queryCount > 1
+        ? `Saves the whole tab: all ${draft.queryCount} queries, with their values and comments.`
+        : 'Saves the whole tab: the query, with its values and comments.');
 
   return (
     <Box
