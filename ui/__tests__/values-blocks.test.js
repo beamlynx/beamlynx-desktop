@@ -60,9 +60,9 @@ test('restoreValues: an agent run keeps its values in the tab', () => {
   assert.equal(restoreValues('user', 'user', { n: "O'Brien" }), 'user');
 });
 
-test('recipes: values saved above the query; the summary is the query comment', () => {
+test('recipes: values saved where they are in the tab; the summary is the query comment', () => {
   const draft = draftFromTab("company | where: name = $x\n\n$x = 'Acme'", 0);
-  assert.equal(draft.expression, "$x = 'Acme'\n\ncompany | where: name = $x");
-  assert.equal(draftFromTab('$x = 1\n\n-- uses $x later\nuser', 2).expression, '-- uses $x later\nuser');
+  assert.equal(draft.expression, "company | where: name = $x\n\n$x = 'Acme'");
+  assert.equal(draftFromTab('$x = 1\n\n-- uses $x later\nuser', 2).expression, '$x = 1\n\n-- uses $x later\nuser');
   assert.equal(recipeSummary({ expression: "$x = 'Acme'\n\n/* Find a company */\ncompany | where: name = $x" }), 'Find a company');
 });

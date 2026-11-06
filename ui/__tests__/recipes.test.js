@@ -59,24 +59,30 @@ test('variable names are made safe and unique; the same value twice under one na
   assert.equal(applyVariables('t | where: n = 3', findLiterals('t | where: n = 3'), { 0: '9lives' }).inputs[0].name, 'v_9lives');
 });
 
-test('Ctrl+S takes the block under the cursor, keeps its comments, and offers a title', () => {
+test('Ctrl+S saves the whole tab, with its comments; the query under the cursor offers the title', () => {
   const tab = "user | limit: 5\n\n-- Failed requests for a company.\n-- Requests belong to tenants.\ncompany | where: name = 'Acme'";
   const d = draftFromTab(tab, 4);
-  assert.equal(d.expression, "-- Failed requests for a company.\n-- Requests belong to tenants.\ncompany | where: name = 'Acme'");
+  assert.equal(d.expression, tab);
   assert.equal(d.title, 'Failed requests for a company');
-  assert.deepEqual(d.includedNames, []);
-  assert.equal(draftFromTab(tab, 0).expression, 'user | limit: 5');
+  assert.equal(d.queryCount, 2);
+  // Wherever the cursor is, the same text is saved; only the title follows it.
+  assert.equal(draftFromTab(tab, 0).expression, tab);
   assert.equal(draftFromTab(tab, 0).title, 'user | limit: 5');
   assert.equal(draftFromTab('/* Admins. */\nuser', 0).title, 'Admins');
   assert.equal(draftFromTab('x'.repeat(100), 0).title.length, 80);
   assert.equal(draftFromTab('   ', 0), null);
 });
 
-test('a block that uses a named result from a block above brings that block along', () => {
-  const tab = "company | where: active = true |= active_companies\n\nuser | limit: 3\n\nactive_companies\n | user .company_id\n | where: role = 'admin'";
-  const d = draftFromTab(tab, 5);
-  assert.equal(d.expression, "company | where: active = true |= active_companies\n\nactive_companies\n | user .company_id\n | where: role = 'admin'");
-  assert.deepEqual(d.includedNames, ['active_companies']);
+test('independent queries, such as an update and the delete after it, are saved together', () => {
+  const tab =
+    "signature_request as sr | where: id = 1 | update! status = 'sent'\n\n\n\nsignature_request as sr | signature_request_event .signature_request_id | delete! .id\n";
+  const d = draftFromTab(tab, 0);
+  assert.equal(
+    d.expression,
+    "signature_request as sr | where: id = 1 | update! status = 'sent'\n\nsignature_request as sr | signature_request_event .signature_request_id | delete! .id",
+    'blank lines between blocks become one',
+  );
+  assert.equal(d.queryCount, 2);
 });
 
 test('a recipe summary is the first line of its explanation, or of its top comment', () => {
@@ -87,14 +93,14 @@ test('a recipe summary is the first line of its explanation, or of its top comme
   assert.equal(recipeSummary({ expression: 'user', explanation: '' }), '');
 });
 
-test('Ctrl+S brings along the values blocks for the variables the query uses', () => {
+test('Ctrl+S saves the values blocks as they are; a tab of only values has nothing to save', () => {
   const { draftFromTab } = require('../utils/recipes.ts');
   const tab = "$company = 'Acme'\n$unused = 1\n\n$status = 'failed'\n\nrequest | where: status = $status";
   const d = draftFromTab(tab, 5);
-  assert.equal(d.expression, "$status = 'failed'\n\nrequest | where: status = $status");
-  assert.deepEqual(d.includedNames, ['$status']);
-  // The cursor in a values block saves the query below it.
-  assert.equal(draftFromTab(tab, 0).expression, d.expression);
+  assert.equal(d.expression, tab);
+  assert.equal(d.queryCount, 1);
+  // The cursor in a values block offers the query's title.
+  assert.equal(draftFromTab(tab, 0).title, 'request | where: status = $status');
   assert.equal(draftFromTab("$a = 1", 0), null);
 });
 

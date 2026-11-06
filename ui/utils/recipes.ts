@@ -95,15 +95,6 @@ export function mask(text: string): string {
 // What Ctrl+S saves
 // ---------------------------------------------------------------------------
 
-const NAMED_RESULT = /\|=\s*([A-Za-z_][A-Za-z0-9_-]*)/g;
-
-const definedNames = (masked: string) => Array.from(masked.matchAll(NAMED_RESULT)).map(m => m[1]);
-
-const usesName = (masked: string, name: string) =>
-  new RegExp(`(^|[^A-Za-z0-9_.$-])${name.replace(/-/g, '\\-')}($|[^A-Za-z0-9_-])`).test(
-    masked.replace(NAMED_RESULT, ''),
-  );
-
 /** The doc comment's text, without its comment markers. */
 export function docText(rawComment: string): string {
   const raw = rawComment.trim();
@@ -125,82 +116,42 @@ export function docText(rawComment: string): string {
 
 export type SaveDraft = {
   /**
-   * The query to save: the block under the cursor, plus any block above it
-   * that it needs. Comments are kept: they are the recipe's explanation.
+   * What to save: the whole tab, every block in order, with its comments.
+   * The comments are the recipe's explanation.
    */
   expression: string;
-  /** A title to offer: the first line of the block's doc comment, or else of its query. */
-  title: string;
   /**
-   * What else is saved with the query: named results (`|= name`) defined in
-   * blocks above that it uses, and `$variables` whose values blocks it uses.
+   * A title to offer: the first line of the doc comment of the query under
+   * the cursor, or else of the query itself.
    */
-  includedNames: string[];
+  title: string;
+  /** How many queries the tab holds, not counting values blocks. */
+  queryCount: number;
 };
 
 /**
- * What Ctrl+S saves from a tab. The block under the cursor is the query that
- * runs, but running it also sends every block above it (session.ts), so a
- * block can use a named result defined further up. Those blocks are included
- * too, or the recipe wouldn't run on its own. Comments stay in the query,
- * because they are what explains it.
+ * What Ctrl+S saves from a tab: all of it. A tab can hold several queries
+ * that belong together, such as an update and the delete after it, and a
+ * recipe keeps them together. Blank lines between blocks become one. The
+ * query under the cursor only suggests the title. A tab with only values
+ * and no query has nothing to save.
  */
 export function draftFromTab(text: string, cursorLine: number | undefined): SaveDraft | null {
-  const blocks = splitExpressions(text);
-  if (!blocks.length) return null;
-  const active = Math.max(0, findActiveQueryBlock(blocks, cursorLine));
-  if (isValuesBlock(blocks[active].text)) return null;
+  const blocks = splitExpressions(text).filter(b => b.text.trim());
+  const queries = blocks.filter(b => !isValuesBlock(b.text));
+  if (!queries.length) return null;
+  const expression = blocks.map(b => b.text.trim()).join('\n\n');
 
-  const take = new Set([active]);
-  let grew = true;
-  while (grew) {
-    grew = false;
-    for (const i of Array.from(take)) {
-      for (let j = 0; j < i; j++) {
-        if (take.has(j)) continue;
-        if (definedNames(mask(blocks[j].text)).some(n => usesName(mask(blocks[i].text), n))) {
-          take.add(j);
-          grew = true;
-        }
-      }
-    }
-  }
-
-  // The values blocks that set any $variable the saved blocks use, wherever
-  // they are in the tab: a value applies to the whole tab.
-  const usedVariables = new Set(
-    Array.from(take).flatMap(i => Array.from(mask(blocks[i].text).matchAll(/\$([A-Za-z_][A-Za-z0-9_]*)/g)).map(m => m[1])),
-  );
-  const valueNames: string[] = [];
-  blocks.forEach((b, i) => {
-    if (!isValuesBlock(b.text)) return;
-    const defined = Array.from(b.text.matchAll(/^\s*\$([A-Za-z_][A-Za-z0-9_]*)\s*=/gm)).map(m => m[1]);
-    const used = defined.filter(n => usedVariables.has(n));
-    if (used.length) {
-      take.add(i);
-      valueNames.push(...used.map(n => `$${n}`));
-    }
-  });
-
-  // Values first, then the queries in tab order: a recipe reads top-down,
-  // and its values are what someone changes before running it.
-  const ordered = Array.from(take).sort(
-    (a, b) => Number(!isValuesBlock(blocks[a].text)) - Number(!isValuesBlock(blocks[b].text)) || a - b,
-  );
-  const expression = ordered.map(i => blocks[i].text.trim()).filter(Boolean).join('\n\n');
-  if (!expression) return null;
-
-  const doc = leadingDoc(blocks[active].text);
+  const at = findActiveQueryBlock(blocks, cursorLine);
+  const titled = at >= 0 && !isValuesBlock(blocks[at].text) ? blocks[at].text : queries[0].text;
+  const doc = leadingDoc(titled);
   const firstQueryLine =
-    blocks[active].text.slice(blocks[active].text.indexOf(doc) + doc.length).split('\n').map(l => l.trim()).find(Boolean) ?? '';
+    titled.slice(titled.indexOf(doc) + doc.length).split('\n').map(l => l.trim()).find(Boolean) ?? '';
   const titleSource = doc ? docText(doc).split('\n')[0] : firstQueryLine;
   return {
     expression,
     title: shorten(titleSource.replace(/\.\s*$/, '').trim(), 80),
-    includedNames: [
-      ...ordered.filter(i => i !== active && !isValuesBlock(blocks[i].text)).flatMap(i => definedNames(mask(blocks[i].text))),
-      ...valueNames,
-    ],
+    queryCount: queries.length,
   };
 }
 
