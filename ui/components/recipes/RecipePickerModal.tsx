@@ -3,7 +3,7 @@ import { Box, Typography } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useStores } from '../../store/store-container';
-import { matchRecipes, recipeSummary, type Recipe } from '../../utils/recipes';
+import { matchRecipes, recipeSummary, savedFromLabel, type Recipe } from '../../utils/recipes';
 import { insertRecipe } from './insertRecipe';
 import ModalSurface from '../ModalSurface';
 
@@ -216,13 +216,13 @@ const RecipePickerModal = observer(() => {
             <Box sx={{ overflow: 'auto', p: 2, display: 'grid', gap: 1.5, alignContent: 'start' }}>
               {/* Context, not something to act on: one dim line at the top, so
                   it never needs scrolling to, cut short if the address is long. */}
-              {recipe.savedFrom && (
+              {savedFromLabel(recipe.savedFrom, global.connections) && (
                 <Typography
                   variant="caption"
-                  title={`Saved from ${recipe.savedFrom}`}
+                  title={`Saved from ${savedFromLabel(recipe.savedFrom, global.connections)}`}
                   sx={{ color: dim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                 >
-                  Saved from {recipe.savedFrom}
+                  Saved from {savedFromLabel(recipe.savedFrom, global.connections)}
                 </Typography>
               )}
               {/* Recipes saved with the old dialog keep their values as a list;

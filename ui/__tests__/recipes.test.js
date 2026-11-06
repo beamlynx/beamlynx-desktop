@@ -219,3 +219,17 @@ test('a search with regular expression characters is matched as plain text', () 
   assert.deepEqual(ids(matchRecipes(searchable, '.*')), []);
   assert.deepEqual(ids(matchRecipes(searchable, '(')), []);
 });
+
+test('a recipe says which of your connections it was saved from, never the address', () => {
+  const { savedFromLabel } = require('../utils/recipes.ts');
+  const connections = [
+    { label: 'Staging', databaseKey: 'postgres://staging:5432/shop', databaseKeyHash: 'a'.repeat(64) },
+  ];
+  assert.equal(savedFromLabel('a'.repeat(64), connections), 'Staging');
+  // An older app stored the address itself: it still matches.
+  assert.equal(savedFromLabel('postgres://staging:5432/shop', connections), 'Staging');
+  // Not one of yours: nothing is shown.
+  assert.equal(savedFromLabel('b'.repeat(64), connections), null);
+  assert.equal(savedFromLabel('postgres://elsewhere:5432/x', connections), null);
+  assert.equal(savedFromLabel(null, connections), null);
+});

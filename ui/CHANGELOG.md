@@ -10,6 +10,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **The canvas shows what an update or delete changes.** When a query ends in `update!`, the table it changes lists what it writes, such as `status = 'sent'`, in red under **update**. When it ends in `delete!`, the table says its rows are deleted, and by which columns.
 
 ### Changed
+- **A recipe says which of your connections it was saved from.** It shows the connection's name instead of the database's address. A recipe saved from a database you have no connection to shows no source.
 - **The results do less work while you scroll, hover and resize.** JSON cells are drawn without re-reading their JSON each time. Hovering a table on the canvas no longer rebuilds the result's columns. Dragging a divider saves its size once, when you let go.
 - **The app has a fifth less to load before it starts.** Vim mode, the SQL formatter, Settings, the list of updates, charts and the JSON viewer now load the first time you use them. With Vim mode on, its keys work a moment after the editor appears.
 - **The Pine panel's suggestion list stays put when a build finishes.** The list keeps the option you had highlighted, instead of jumping back to the first one. A slow answer about older text never replaces a newer one, and the SQL is formatted only when the SQL panel shows it.

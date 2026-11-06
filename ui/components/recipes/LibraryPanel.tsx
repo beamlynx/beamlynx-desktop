@@ -7,7 +7,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStores } from '../../store/store-container';
 import { createSettingsTheme } from '../../styles/theme';
 import { TEXT_SIZE_SCALE } from '../../styles/text-size';
-import { matchRecipes, recipeSummary, type Recipe } from '../../utils/recipes';
+import { matchRecipes, recipeSummary, savedFromLabel, type Recipe } from '../../utils/recipes';
 import { insertRecipe } from './insertRecipe';
 
 /**
@@ -350,10 +350,10 @@ const LibraryPanel = observer(() => {
                         : 'Updated'}{' '}
                       {formatDate(r.updatedAt)}
                     </Typography>
-                    {r.savedFrom && (
+                    {savedFromLabel(r.savedFrom, global.connections) && (
                       <Typography
                         variant="caption"
-                        title={`Saved from ${r.savedFrom}`}
+                        title={`Saved from ${savedFromLabel(r.savedFrom, global.connections)}`}
                         sx={{
                           color: dim,
                           overflow: 'hidden',
@@ -361,7 +361,7 @@ const LibraryPanel = observer(() => {
                           whiteSpace: 'nowrap',
                         }}
                       >
-                        Saved from {r.savedFrom}
+                        Saved from {savedFromLabel(r.savedFrom, global.connections)}
                       </Typography>
                     )}
                     {/* Recipes saved with the old dialog keep their values as a list. */}

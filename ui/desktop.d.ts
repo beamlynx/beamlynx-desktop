@@ -28,6 +28,11 @@ type SavedConnectionMeta = {
   dbType: DbType;
   createdAt: string;
   lastUsedAt: string;
+  // Which database this is, such as 'postgres://localhost:5432/shop', and its
+  // hash: what beamlynx.db stores, such as a recipe's savedFrom. Missing
+  // from an older desktop app.
+  databaseKey?: string;
+  databaseKeyHash?: string;
   // MCP always uses this connection's own assigned policy whenever this is
   // true -- there's no "on but unprotected" state (credential-store.ts's
   // setMcpEnabled refuses turning this on unless policyId already resolves

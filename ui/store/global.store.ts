@@ -1027,6 +1027,8 @@ export class GlobalStore {
           dbHost: p.dbHost,
           dbPort: p.dbPort,
           dbName: p.dbName,
+          databaseKey: p.databaseKey,
+          databaseKeyHash: p.databaseKeyHash,
           mcpEnabled: p.mcpEnabled,
           policyId: p.policyId,
           applyPolicyToOwnQueries: p.applyPolicyToOwnQueries,
