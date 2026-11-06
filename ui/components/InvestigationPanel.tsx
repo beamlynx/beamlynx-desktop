@@ -6,6 +6,7 @@ import {
   ChevronRight,
   CheckCircleOutline,
   ErrorOutline,
+  LightbulbOutlined,
   PolicyOutlined,
   SettingsOutlined,
   VisibilityOutlined,
@@ -442,7 +443,10 @@ const Step = observer(({ investigation, step }: { investigation: Investigation; 
       return <ProposalStep investigation={investigation} step={step} />;
     case 'finding':
       return (
-        <Typography sx={{ fontSize: 14, color: 'var(--text-color)', lineHeight: 1.5, px: 0.5 }}>{step.text}</Typography>
+        <Box sx={{ display: 'flex', gap: 1, px: 0.5, py: 0.75 }}>
+          <LightbulbOutlined sx={{ fontSize: 17, color: 'var(--notification-color)', mt: '3px', flexShrink: 0 }} />
+          <Typography sx={{ fontSize: 14, color: 'var(--text-color)', lineHeight: 1.5 }}>{step.text}</Typography>
+        </Box>
       );
     case 'call':
       return <CallLine step={step} />;
@@ -548,8 +552,8 @@ const isBusy = (steps: WorkStep[], now: number) =>
   steps.some(s => (s.kind === 'query' ? s.running : s.endedAt === undefined && !isStaleCall(s, now)));
 
 /**
- * One entry of the timeline: a dot on the line that runs down its left
- * side, so the entries can be scanned from top to bottom. `dotTop` is the
+ * One step of an opened run: a dot on the line that runs down its left
+ * side, so the steps can be scanned from top to bottom. `dotTop` is the
  * middle of the entry's first line, where the dot sits. The line runs
  * from the first entry's dot to the last one's.
  */
@@ -558,7 +562,7 @@ const TimelineEntry = ({ color, dotTop, children }: { color: string; dotTop: num
     sx={{
       position: 'relative',
       pl: 2.25,
-      pb: 1,
+      pb: 0.25,
       '&::before': {
         content: '""',
         position: 'absolute',
@@ -592,20 +596,20 @@ const TimelineEntry = ({ color, dotTop, children }: { color: string; dotTop: num
   </Box>
 );
 
-/** Where an entry's dot sits, and its colour: what needs you, what is running, the rest dim. */
-function dotOf(item: InvestigationStep | WorkStep[], now: number): { color: string; dotTop: number } {
-  const notice = 'var(--notification-color)';
-  if (Array.isArray(item)) return { color: isBusy(item, now) ? 'var(--canvas-trace)' : dim, dotTop: 12 };
-  switch (item.kind) {
-    case 'finding':
-      return { color: notice, dotTop: 10.5 };
-    case 'proposal':
-      return { color: item.status === 'pending' ? notice : dim, dotTop: 19 };
-    case 'reveal':
-      return { color: item.status === 'pending' || item.status === 'running' ? notice : dim, dotTop: 19 };
-    default:
-      return { color: dim, dotTop: 12 };
-  }
+/**
+ * Where a step's dot sits inside an opened run, and its colour: blue while
+ * it runs, red when it failed, dim otherwise. A run of lookups shares one dot.
+ */
+function stepDot(item: WorkStep | CallStep[], now: number): { color: string; dotTop: number } {
+  const steps = Array.isArray(item) ? item : [item];
+  const color = isBusy(steps, now)
+    ? 'var(--canvas-trace)'
+    : steps.some(s => (s.kind === 'query' ? !!s.error : s.ok === false))
+      ? failed
+      : dim;
+  // The middle of the first line: a query's is 13 px type with 4 px above,
+  // a lookup's is 12 px type.
+  return { color, dotTop: !Array.isArray(item) && item.kind === 'query' ? 13 : 9 };
 }
 
 /**
@@ -681,25 +685,16 @@ const WorkGroup = observer(({ investigation, steps }: { investigation: Investiga
         )}
       </Box>
       {open && (
-        <Box
-          sx={{
-            ml: 1.25,
-            pl: 0.5,
-            mt: 0.25,
-            mb: 0.5,
-            borderLeft: '1px solid var(--border-color)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 0.25,
-          }}
-        >
-          {callRuns(steps).map(item =>
-            Array.isArray(item) ? (
-              <CallGroup key={item[0].id} steps={item} />
-            ) : (
-              <Step key={item.id} investigation={investigation} step={item} />
-            ),
-          )}
+        <Box sx={{ ml: 0.75, mt: 0.25, mb: 0.5 }}>
+          {callRuns(steps).map(item => (
+            <TimelineEntry key={Array.isArray(item) ? item[0].id : item.id} {...stepDot(item, now)}>
+              {Array.isArray(item) ? (
+                <CallGroup steps={item} />
+              ) : (
+                <Step investigation={investigation} step={item} />
+              )}
+            </TimelineEntry>
+          ))}
         </Box>
       )}
     </Box>
@@ -847,20 +842,13 @@ const InvestigationPanel = observer(({ investigation }: { investigation: Investi
               Each step the agent takes here shows up as it happens, with what it saw.
             </Typography>
           )}
-          <Box>
-            {grouped(investigation.steps).map(item => (
-              <TimelineEntry
-                key={Array.isArray(item) ? item[0].id : item.id}
-                {...dotOf(item, global.agentActivity.now)}
-              >
-                {Array.isArray(item) ? (
-                  <WorkGroup investigation={investigation} steps={item} />
-                ) : (
-                  <Step investigation={investigation} step={item} />
-                )}
-              </TimelineEntry>
-            ))}
-          </Box>
+          {grouped(investigation.steps).map(item =>
+            Array.isArray(item) ? (
+              <WorkGroup key={item[0].id} investigation={investigation} steps={item} />
+            ) : (
+              <Step key={item.id} investigation={investigation} step={item} />
+            ),
+          )}
         </Box>
       </Box>
 
