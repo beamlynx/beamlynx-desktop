@@ -80,19 +80,22 @@ const QueryStep = observer(
           }
         }}
         title={tooltip}
+        aria-current={selected ? 'true' : undefined}
         sx={{
-          borderLeft: '2px solid',
-          borderColor: selected ? 'var(--canvas-trace)' : 'transparent',
-          borderRadius: '0 4px 4px 0',
+          // The step shown in the tab is marked by its dot (stepDot) and a
+          // soft background; the others stay quiet until hovered.
+          borderRadius: 1,
           px: 1,
           py: 0.5,
           cursor: step.snapshot ? 'pointer' : 'default',
+          color: selected ? 'var(--text-color)' : dim,
           backgroundColor: selected ? 'var(--canvas-chip-bg)' : 'transparent',
-          '&:hover': { backgroundColor: 'var(--canvas-chip-bg)' },
+          '&:hover': { backgroundColor: 'var(--canvas-chip-bg)', color: 'var(--text-color)' },
+          '&:focus-visible': { outline: '1px solid var(--canvas-trace)', outlineOffset: -1 },
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
-          <Typography sx={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--text-color)', ...oneLine }}>
+          <Typography sx={{ flex: 1, minWidth: 0, fontSize: 13, color: 'inherit', ...oneLine }}>
             {label}
           </Typography>
           {step.running ? (
@@ -549,7 +552,17 @@ const isBusy = (steps: WorkStep[], now: number) =>
  * middle of the entry's first line, where the dot sits. The line runs
  * from the first entry's dot to the last one's.
  */
-const TimelineEntry = ({ color, dotTop, children }: { color: string; dotTop: number; children: React.ReactNode }) => (
+const TimelineEntry = ({
+  color,
+  dotTop,
+  size = 7,
+  children,
+}: {
+  color: string;
+  dotTop: number;
+  size?: number;
+  children: React.ReactNode;
+}) => (
   <Box
     sx={{
       position: 'relative',
@@ -574,10 +587,10 @@ const TimelineEntry = ({ color, dotTop, children }: { color: string; dotTop: num
       aria-hidden
       sx={{
         position: 'absolute',
-        left: 2,
-        top: dotTop - 3.5,
-        width: 7,
-        height: 7,
+        left: 5.5 - size / 2,
+        top: dotTop - size / 2,
+        width: size,
+        height: size,
         borderRadius: '50%',
         backgroundColor: color,
         // A ring in the panel's colour keeps the dot clear of the line.
@@ -590,10 +603,19 @@ const TimelineEntry = ({ color, dotTop, children }: { color: string; dotTop: num
 
 /**
  * Where a step's dot sits inside an opened run, and its colour: blue while
- * it runs, red when it failed, dim otherwise. A run of lookups shares one dot.
+ * it runs, red when it failed, dim otherwise, and larger and in the accent
+ * colour for the query shown in the tab. A run of lookups shares one dot.
  */
-function stepDot(item: WorkStep | CallStep[], now: number): { color: string; dotTop: number } {
+function stepDot(
+  item: WorkStep | CallStep[],
+  now: number,
+  selectedId: string | undefined,
+): { color: string; dotTop: number; size?: number } {
   const steps = Array.isArray(item) ? item : [item];
+  // The query shown in the tab: a larger dot in the accent colour.
+  if (!Array.isArray(item) && item.id === selectedId) {
+    return { color: 'var(--canvas-trace)', dotTop: 13, size: 9 };
+  }
   const color = isBusy(steps, now)
     ? 'var(--canvas-trace)'
     : steps.some(s => (s.kind === 'query' ? !!s.error : s.ok === false))
@@ -617,6 +639,8 @@ const WorkGroup = observer(({ investigation, steps }: { investigation: Investiga
   // A query picked from the canvas's results, or by an older click, is
   // shown: its group opens.
   const holdsSelected = steps.some(s => s.id === investigation.selectedStepId);
+  // The query shown in the tab: the one picked, or else the latest.
+  const shownId = investigation.selectedStepId ?? investigation.latestQuery?.id;
   const open = userOpen ?? holdsSelected;
   const failures = steps.filter(s => (s.kind === 'query' ? !!s.error : s.ok === false)).length;
   const queries = steps.filter(s => s.kind === 'query').length;
@@ -679,7 +703,7 @@ const WorkGroup = observer(({ investigation, steps }: { investigation: Investiga
       {open && (
         <Box sx={{ ml: 0.75, mt: 0.25, mb: 0.5 }}>
           {callRuns(steps).map(item => (
-            <TimelineEntry key={Array.isArray(item) ? item[0].id : item.id} {...stepDot(item, now)}>
+            <TimelineEntry key={Array.isArray(item) ? item[0].id : item.id} {...stepDot(item, now, shownId)}>
               {Array.isArray(item) ? (
                 <CallGroup steps={item} />
               ) : (
