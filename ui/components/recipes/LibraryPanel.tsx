@@ -27,6 +27,12 @@ const dim = 'var(--node-secondary-text-color)';
 const formatDate = (ms: number) =>
   new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 
+// Who saved a recipe, where from, and when, as one short line.
+const recipeByline = (r: Recipe, from: string | null): string => {
+  const who = r.source === 'agent' ? `Saved by ${r.agent ?? 'an agent'}` : 'Saved';
+  return `${who}${from ? ` from ${from}` : ''}, ${formatDate(r.updatedAt)}`;
+};
+
 const LibraryPanel = observer(() => {
   const { global } = useStores();
 
@@ -256,7 +262,9 @@ const LibraryPanel = observer(() => {
               data-recipe-id={r.id}
               sx={{
                 borderBottom: '1px solid var(--border-color)',
-                backgroundColor: isSelected ? 'var(--node-candidate-bg)' : 'transparent',
+                backgroundColor: isSelected ? 'var(--canvas-chip-bg)' : 'transparent',
+                // Delete shows on the open recipe, and on hover or focus.
+                '&:hover [data-recipe-delete], &:focus-within [data-recipe-delete]': { opacity: 0.6 },
               }}
             >
               <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, px: 3, py: 1 }}>
@@ -286,43 +294,27 @@ const LibraryPanel = observer(() => {
                     sx={{ color: 'var(--text-color)', fontWeight: 500, overflowWrap: 'anywhere' }}
                   >
                     {r.title}
-                    {r.source === 'agent' && (
-                      <Box
-                        component="span"
-                        sx={{
-                          ml: 1,
-                          px: 0.75,
-                          py: '1px',
-                          borderRadius: 1,
-                          fontSize: '0.7rem',
-                          fontWeight: 500,
-                          verticalAlign: 'middle',
-                          whiteSpace: 'nowrap',
-                          color: 'var(--text-color)',
-                          backgroundColor: 'var(--canvas-chip-bg, var(--node-column-bg))',
-                          border: '1px solid var(--border-color)',
-                        }}
-                      >
-                        {r.agent ?? 'agent'}
-                      </Box>
-                    )}
                   </Typography>
-                  <Typography
-                    component="span"
-                    variant="caption"
-                    sx={{
-                      color: armed ? 'var(--text-warning-color)' : dim,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {armed ? 'Click again to delete' : recipeSummary(r) || 'No comment'}
-                  </Typography>
+                  {/* Closed: one line of what it is for. Open: the whole text shows below instead. */}
+                  {(armed || (!isSelected && recipeSummary(r))) && (
+                    <Typography
+                      component="span"
+                      variant="caption"
+                      sx={{
+                        color: armed ? 'var(--text-warning-color)' : dim,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {armed ? 'Click again to delete' : recipeSummary(r)}
+                    </Typography>
+                  )}
                 </Box>
                 <Box
                   component="button"
                   type="button"
+                  data-recipe-delete
                   aria-label={armed ? `Click again to delete ${r.title}` : `Delete ${r.title}`}
                   title={armed ? 'Click again to delete' : 'Delete recipe'}
                   onClick={() => void onDeleteClick(r)}
@@ -334,44 +326,15 @@ const LibraryPanel = observer(() => {
                     p: 0.5,
                     cursor: 'pointer',
                     color: armed ? 'var(--text-warning-color)' : 'var(--text-color)',
-                    opacity: armed ? 1 : 0.35,
-                    '&:hover, &:focus-visible': { opacity: 0.9 },
+                    opacity: armed ? 1 : isSelected ? 0.6 : 0,
+                    '&:hover, &:focus-visible': { opacity: '0.9 !important' },
                   }}
                 >
                   <DeleteOutlineIcon sx={{ fontSize: 16 }} />
                 </Box>
               </Box>
               {isSelected && (
-                <Box sx={{ px: 3, pb: 1.5, display: 'grid', gap: 1, minWidth: 0 }}>
-                  <Box sx={{ display: 'grid', gap: 0.25, minWidth: 0 }}>
-                    <Typography variant="caption" sx={{ color: dim }}>
-                      {r.source === 'agent'
-                        ? `Saved by ${r.agent ?? 'an agent'}, updated`
-                        : 'Updated'}{' '}
-                      {formatDate(r.updatedAt)}
-                    </Typography>
-                    {savedFromLabel(r.savedFrom, global.connections) && (
-                      <Typography
-                        variant="caption"
-                        title={`Saved from ${savedFromLabel(r.savedFrom, global.connections)}`}
-                        sx={{
-                          color: dim,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        Saved from {savedFromLabel(r.savedFrom, global.connections)}
-                      </Typography>
-                    )}
-                    {/* Recipes saved with the old dialog keep their values as a list. */}
-                    {r.inputs.length > 0 && (
-                      <Typography variant="caption" sx={{ color: dim }}>
-                        Sets{' '}
-                        {r.inputs.map(v => `$${v.name} to ${v.example || 'nothing'}`).join(', ')}.
-                      </Typography>
-                    )}
-                  </Box>
+                <Box sx={{ px: 3, pb: 1.5, display: 'grid', gap: 1.25, minWidth: 0 }}>
                   {r.explanation && (
                     <Typography
                       variant="body2"
@@ -379,50 +342,63 @@ const LibraryPanel = observer(() => {
                         color: 'var(--text-color)',
                         whiteSpace: 'pre-wrap',
                         overflowWrap: 'anywhere',
+                        lineHeight: 1.5,
                       }}
                     >
                       {r.explanation}
                     </Typography>
                   )}
+                  {/* The query, quiet: it is what Use adds, not the first thing to read. */}
                   <Box
                     component="pre"
+                    title={r.expression}
                     sx={{
                       m: 0,
                       fontFamily: 'var(--code-font)',
-                      fontSize: '0.85rem',
+                      fontSize: '0.78rem',
+                      lineHeight: 1.5,
                       whiteSpace: 'pre-wrap',
                       wordBreak: 'break-word',
-                      color: 'var(--text-color)',
-                      backgroundColor: 'var(--background-color)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: 1,
-                      p: 1.5,
+                      color: dim,
+                      display: '-webkit-box',
+                      WebkitLineClamp: 4,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
                     }}
                   >
                     {r.expression}
                   </Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+                  {/* Recipes saved with the old dialog keep their values as a list. */}
+                  {r.inputs.length > 0 && (
+                    <Typography variant="caption" sx={{ color: dim }}>
+                      Sets {r.inputs.map(v => `$${v.name} to ${v.example || 'nothing'}`).join(', ')}.
+                    </Typography>
+                  )}
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
                     <Button
                       variant="contained"
                       size="small"
                       disableElevation
                       onClick={() => applyRecipe(r)}
+                      title="Adds the query to the end of the current tab. Nothing runs."
+                      sx={{ flexShrink: 0 }}
                     >
                       Use
                     </Button>
-                    {used?.id === r.id ? (
-                      <Typography
-                        variant="caption"
-                        role="status"
-                        sx={{ color: 'var(--text-color)' }}
-                      >
-                        Added to the end of {used.tab}
-                      </Typography>
-                    ) : (
-                      <Typography variant="caption" sx={{ color: dim }}>
-                        Adds the query to the end of the current tab. Nothing runs.
-                      </Typography>
-                    )}
+                    <Typography
+                      variant="caption"
+                      role={used?.id === r.id ? 'status' : undefined}
+                      sx={{
+                        color: used?.id === r.id ? 'var(--text-color)' : dim,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {used?.id === r.id
+                        ? `Added to the end of ${used.tab}`
+                        : recipeByline(r, savedFromLabel(r.savedFrom, global.connections))}
+                    </Typography>
                   </Box>
                 </Box>
               )}
@@ -561,7 +537,7 @@ const LibraryPanel = observer(() => {
 
         <Box sx={{ borderTop: '1px solid var(--border-color)', px: 3, py: 1 }}>
           <Typography variant="caption" sx={{ color: dim }}>
-            Up and Down move, Enter uses. Ctrl+O opens the same recipes as a quick picker.
+            Up and Down to move, Enter to use. Ctrl+O opens them as a quick picker.
           </Typography>
         </Box>
       </Box>
