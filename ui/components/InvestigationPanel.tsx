@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { Box, Button, CircularProgress, IconButton, TextField, Typography } from '@mui/material';
 import {
   ArrowDownward,
-  ChevronLeft,
   ChevronRight,
   CheckCircleOutline,
   ErrorOutline,
@@ -774,35 +773,6 @@ const InvestigationPanel = observer(({ investigation }: { investigation: Investi
         ? 'Last call just now'
         : `Last call ${ago(sinceLastCall)}. The agent may be working in another tool.`;
 
-  if (global.investigationPanelCollapsed) {
-    const waiting = investigation.pendingDecisions.length > 0;
-    return (
-      <Box
-        sx={{
-          width: 36,
-          flexShrink: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          pt: 1,
-          borderRight: '1px solid var(--border-color)',
-          backgroundColor: 'var(--background-color)',
-        }}
-        data-testid="investigation-panel"
-      >
-        <IconButton
-          size="small"
-          onClick={() => global.setInvestigationPanelCollapsed(false)}
-          aria-label={waiting ? 'Show the timeline: the agent is waiting for your answer' : 'Show the timeline'}
-          title={waiting ? 'The agent is waiting for your answer' : 'Show the timeline'}
-          sx={{ color: waiting ? 'var(--notification-color)' : dim }}
-        >
-          <ChevronRight sx={{ fontSize: 20 }} />
-        </IconButton>
-      </Box>
-    );
-  }
-
   return (
     <Box
       sx={{
@@ -829,18 +799,9 @@ const InvestigationPanel = observer(({ investigation }: { investigation: Investi
             onClick={() => global.showSettingsSection('mcp')}
             aria-label="Agent settings"
             title="Agent settings: connect an agent, choose its databases, and data masking"
-            sx={{ color: dim, mt: '-2px', '&:hover': { color: 'var(--text-color)' } }}
+            sx={{ color: dim, mt: '-2px', mr: '-6px', '&:hover': { color: 'var(--text-color)' } }}
           >
             <SettingsOutlined sx={{ fontSize: 17 }} />
-          </IconButton>
-          <IconButton
-            size="small"
-            onClick={() => global.setInvestigationPanelCollapsed(true)}
-            aria-label="Hide the timeline"
-            title="Hide the timeline"
-            sx={{ color: dim, mt: '-2px', mr: '-6px' }}
-          >
-            <ChevronLeft sx={{ fontSize: 20 }} />
           </IconButton>
         </Box>
         <Typography sx={{ fontSize: 12, color: working ? 'var(--canvas-trace)' : dim, mt: 0.25 }}>{status}</Typography>
