@@ -2663,6 +2663,35 @@ export class GlobalStore {
    * Add a new tab and switch to it.
    * This is the proper way to create a new tab in the UI.
    */
+  /**
+   * Opens Beamlynx's own data file, beamlynx.db (preferences, recipes and
+   * column widths), as a SQLite connection in a new tab. A saved connection
+   * to the file is reused; otherwise one is saved, named after it.
+   * Desktop only.
+   */
+  openAppDataFile = async (): Promise<void> => {
+    const file = await window.beamlynxDesktop?.appDb?.path?.();
+    if (!file) return;
+    runInAction(() => {
+      const session = this.createSession();
+      this.activeSessionId = session.id;
+    });
+    const saved = this.connections.find(c => c.dbName === file && !c.dbHost);
+    if (saved) {
+      await this.connectToSavedProfile(saved.id);
+    } else {
+      await this.connect({
+        dbType: 'sqlite',
+        dbName: file,
+        dbHost: '',
+        dbPort: '',
+        dbUser: '',
+        dbPassword: '',
+        label: 'Beamlynx data (beamlynx.db)',
+      });
+    }
+  };
+
   addTab = () => {
     const activeSession = this.sessions[this.activeSessionId];
     const session = this.createSession();

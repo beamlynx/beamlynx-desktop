@@ -107,6 +107,14 @@ const COMMANDS: Command[] = [
     isEnabled: ALWAYS_ENABLED,
   },
   {
+    id: 'open-app-data-file',
+    label: "Open Beamlynx's data file",
+    category: 'View',
+    handler: global => global.openAppDataFile(),
+    // Desktop only, and only when the desktop app can say where the file is.
+    isEnabled: () => typeof window !== 'undefined' && !!window.beamlynxDesktop?.appDb?.path,
+  },
+  {
     id: 'toggle-zen-mode',
     label: 'Toggle Zen Mode',
     category: 'View',
