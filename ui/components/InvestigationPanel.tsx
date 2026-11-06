@@ -43,8 +43,9 @@ const oneLine = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'now
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /**
- * A query as two short lines: why the agent ran it and how it went, then
- * the query itself. Without a reason the query is the first line.
+ * A query as one line: why the agent ran it, and how it went. The query
+ * itself, and any error, are in the tooltip, and clicking the line shows
+ * the query and its result in the tab.
  */
 const QueryStep = observer(
   ({ investigation, step }: { investigation: Investigation; step: Extract<InvestigationStep, { kind: 'query' }> }) => {
@@ -61,8 +62,12 @@ const QueryStep = observer(
       .replace(/^\s*--.*\n/, '')
       .replace(/\s+/g, ' ')
       .trim();
-    const prefix = step.by === 'user' ? 'You: ' : asSql ? 'SQL: ' : '';
-    const code = { fontFamily: 'var(--code-font)', fontSize: 12 } as const;
+    // Without a reason, say what it read: the table it starts from.
+    const table = /^[A-Za-z_][\w.]*/.exec(query)?.[0];
+    const label =
+      step.reason ??
+      (asSql ? 'Sent SQL' : `${step.by === 'user' ? 'You queried' : 'Queried'} ${table ?? 'the database'}`);
+    const tooltip = [`${asSql ? 'SQL: ' : ''}${query}`, step.error].filter(Boolean).join('\n\n');
     return (
       <Box
         role="button"
@@ -74,7 +79,7 @@ const QueryStep = observer(
             global.showInvestigationStep(investigation.id, step.id);
           }
         }}
-        title={query}
+        title={tooltip}
         sx={{
           borderLeft: '2px solid',
           borderColor: selected ? 'var(--canvas-trace)' : 'transparent',
@@ -87,10 +92,8 @@ const QueryStep = observer(
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
-          <Typography
-            sx={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--text-color)', ...oneLine, ...(step.reason ? {} : code) }}
-          >
-            {step.reason ?? `${prefix}${query}`}
+          <Typography sx={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--text-color)', ...oneLine }}>
+            {label}
           </Typography>
           {step.running ? (
             <CircularProgress size={10} thickness={6} sx={{ color: 'var(--canvas-trace)', flexShrink: 0 }} />
@@ -109,17 +112,6 @@ const QueryStep = observer(
             </Typography>
           )}
         </Box>
-        {step.reason && (
-          <Typography sx={{ ...code, color: dim, ...oneLine }}>
-            {prefix}
-            {query}
-          </Typography>
-        )}
-        {step.error && (
-          <Typography sx={{ fontSize: 12, color: failed, ...oneLine }} title={step.error}>
-            {step.error}
-          </Typography>
-        )}
       </Box>
     );
   },
