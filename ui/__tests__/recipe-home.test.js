@@ -27,10 +27,18 @@ function store(on) {
   return { s, connected };
 }
 
-test('saved from another of your connections: it opens in a new tab connected there', async () => {
+test('saved from another of your connections, "Switch this tab": the tab moves there and gets the query', async () => {
   const { s, connected } = store('staging');
   const first = s.activeSessionId;
-  const tab = await openRecipe(s, recipe(PROD.databaseKeyHash));
+  assert.equal(await openRecipe(s, recipe(PROD.databaseKeyHash), 'switch'), first);
+  assert.deepEqual(connected, [{ id: 'prod', tab: first }]);
+  assert.match(s.sessions[first].expression, /company \| limit: 1/);
+});
+
+test('"Open in a new tab": a new tab connected there', async () => {
+  const { s, connected } = store('staging');
+  const first = s.activeSessionId;
+  const tab = await openRecipe(s, recipe(PROD.databaseKeyHash), 'new');
   assert.notEqual(tab, first, 'a new tab');
   assert.deepEqual(connected, [{ id: 'prod', tab }]);
   assert.match(s.sessions[tab].expression, /company \| limit: 1/);
@@ -40,15 +48,17 @@ test('saved from another of your connections: it opens in a new tab connected th
 test('"Use in this tab" keeps it on the current tab and its database', async () => {
   const { s, connected } = store('staging');
   const first = s.activeSessionId;
-  assert.equal(await openRecipe(s, recipe(PROD.databaseKeyHash), true), first);
+  assert.equal(await openRecipe(s, recipe(PROD.databaseKeyHash), 'here'), first);
   assert.deepEqual(connected, []);
 });
 
-test('already on its database, or saved from one you have no connection to: the current tab', async () => {
+test('already on its database, or saved from one you have no connection to: the current tab, whatever was asked', async () => {
   for (const savedFrom of [PROD.databaseKeyHash, 'c'.repeat(64), null]) {
-    const { s, connected } = store('prod');
-    const first = s.activeSessionId;
-    assert.equal(await openRecipe(s, recipe(savedFrom)), first);
-    assert.deepEqual(connected, []);
+    for (const target of ['switch', 'new']) {
+      const { s, connected } = store('prod');
+      const first = s.activeSessionId;
+      assert.equal(await openRecipe(s, recipe(savedFrom), target), first);
+      assert.deepEqual(connected, []);
+    }
   }
 });
