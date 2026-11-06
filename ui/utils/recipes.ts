@@ -376,3 +376,18 @@ export function matchRecipes<T extends { title: string; explanation: string; exp
     return words.every(w => hay.includes(w));
   });
 }
+
+/**
+ * The name of the saved connection a recipe was saved from, or null when it
+ * isn't one of yours. A recipe stores the database's hash, so its address is
+ * never shown. One an older app saved stores the address itself, so both are
+ * matched.
+ */
+export const savedFromLabel = (
+  savedFrom: string | null,
+  connections: { label: string; databaseKey?: string; databaseKeyHash?: string }[],
+): string | null => {
+  if (!savedFrom) return null;
+  const match = connections.find(c => c.databaseKeyHash === savedFrom || c.databaseKey === savedFrom);
+  return match?.label ?? null;
+};

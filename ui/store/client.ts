@@ -490,6 +490,9 @@ export type ConnectionInfo = {
   dbHost?: string;
   dbPort?: string;
   dbName?: string;
+  // Desktop-only: which database this is, and its hash (desktop.d.ts).
+  databaseKey?: string;
+  databaseKeyHash?: string;
   // Desktop-only: whether this saved connection has been opted in to MCP
   // access. See GlobalStore.setMcpEnabled and
   // beamlynx-plans/completed/2026-08-15-mcp-server-and-url-scheme.md.
