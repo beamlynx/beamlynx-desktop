@@ -245,6 +245,8 @@ interface BeamlynxDesktopApi {
   appDb?: {
     // Blocks while the main process reads the file. Called once, at startup.
     loadStartupState?: () => AppDbStartupState;
+    // The file's absolute path. Missing from an older desktop app.
+    path?: () => Promise<string>;
     // A null value deletes the key. All changes in one call are one write.
     setPreferences: (changes: Record<string, string | null>) => Promise<void>;
     markImportedFromLocalStorage: () => Promise<void>;
