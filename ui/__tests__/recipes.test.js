@@ -149,8 +149,7 @@ test('a tab without values gets the recipe as it is', () => {
   assert.equal(textToInsert('user | count:', recipe), recipe);
 });
 
-// matchRecipes: the search Ctrl+O's picker (RecipePickerModal) and the
-// sidebar's Library (LibraryPanel) share. Every word of the query must appear,
+// matchRecipes: the Library's search (LibraryPanel). Every word of the query must appear,
 // in any case, in the title, the explanation or the expression.
 const { matchRecipes } = require('../utils/recipes.ts');
 

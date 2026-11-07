@@ -15,11 +15,11 @@ import RecipeDatabaseDialog from './RecipeDatabaseDialog';
  * The sidebar's Library: saved recipes, in the slot Settings docks in
  * (SettingsDock). Desktop only: recipes are stored by beamlynx-desktop.
  *
- * A browsing view of what Ctrl+O's picker (RecipePickerModal) offers: the
- * same search, the same insert (insertRecipe) and the same two-click delete.
- * Unlike the picker, clicking a row selects it and shows its query in place;
- * Use puts it into the tab, and the panel stays open. Editing a recipe is
- * not built yet.
+ * The one place to find a recipe: the sidebar's Library item and Ctrl+O
+ * both open it, Ctrl+O with the search box focused (findRecipe). Clicking a
+ * row, or Up and Down, selects it and shows its query in place; Use, or
+ * Enter, puts it into the tab (openRecipe), and the panel stays open.
+ * Editing a recipe is not built yet.
  */
 const DELETE_CONFIRM_TIMEOUT_MS = 3000;
 
@@ -103,6 +103,20 @@ const LibraryPanel = observer(() => {
     [],
   );
 
+  // Ctrl+O (findRecipe): the search box, ready to type in, with what was
+  // typed last time selected so typing replaces it. After the panel has
+  // opened, which moves focus to the panel itself.
+  const searchRef = useRef<HTMLInputElement>(null);
+  const findCount = global.libraryFindCount;
+  useEffect(() => {
+    if (!findCount) return;
+    const timer = window.setTimeout(() => {
+      searchRef.current?.focus();
+      searchRef.current?.select();
+    }, 50);
+    return () => window.clearTimeout(timer);
+  }, [findCount]);
+
   const matches = useMemo(() => matchRecipes(recipes ?? [], query), [recipes, query]);
   // The selected recipe if the search still shows it, else the first match.
   const selected = matches.find(r => r.id === selectedId) ?? matches[0];
@@ -160,13 +174,13 @@ const LibraryPanel = observer(() => {
     }
   };
 
-  // Up and Down move the selection and Enter uses it, as in Ctrl+O's picker.
+  // Up and Down move the selection and Enter uses it.
   // Listened for on the document, like Settings' keys
   // (useSettingsKeybindings): opening Library focuses the docked panel's
   // root (SettingsDockedPanel), which sits above this component, so a
   // handler on this component's own box would never see those keys. Only
   // keys from inside the Library panel, or from nowhere in particular,
-  // count: a dialog on top (the Ctrl+O picker) or the editor keeps its own.
+  // count: a dialog on top or the editor keeps its own.
   const onKey = useRef<(e: KeyboardEvent) => void>(() => undefined);
   onKey.current = (e: KeyboardEvent) => {
     if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -520,6 +534,7 @@ const LibraryPanel = observer(() => {
               <SearchIcon sx={{ fontSize: 18, color: dim }} />
               <Box
                 component="input"
+                ref={searchRef}
                 type="search"
                 aria-label="Find a recipe"
                 placeholder="Find a recipe"
@@ -567,7 +582,7 @@ const LibraryPanel = observer(() => {
 
         <Box sx={{ borderTop: '1px solid var(--border-color)', px: 3, py: 1 }}>
           <Typography variant="caption" sx={{ color: dim }}>
-            Up and Down to move, Enter to use. Ctrl+O opens them as a quick picker.
+            Up and Down to move, Enter to use. Ctrl+O opens the Library from anywhere.
           </Typography>
         </Box>
       </Box>

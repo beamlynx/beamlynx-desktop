@@ -226,7 +226,8 @@ const COMMANDS: Command[] = [
     id: 'use-recipe',
     label: 'Use a Recipe',
     category: 'Query',
-    handler: global => global.setShowRecipePicker(true),
+    // The Library, with its search focused: the one place to find a recipe.
+    handler: global => global.findRecipe(),
     isEnabled: () => recipesAvailable(),
   },
 

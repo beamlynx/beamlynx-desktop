@@ -9,8 +9,8 @@ import { openRecipe, recipeHome, type RecipeTarget } from './insertRecipe';
 /**
  * Asked when a recipe is used from a tab on another database than the one it
  * was saved from: switch this tab to that database (the default, so Enter
- * picks it), or open it in a new tab. Shared by the Library and Ctrl+O's
- * picker. Escape closes it and nothing changes.
+ * picks it), or open it in a new tab. Used by the Library. Escape closes it
+ * and nothing changes.
  */
 const RecipeDatabaseDialog = observer(
   ({

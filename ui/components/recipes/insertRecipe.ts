@@ -6,8 +6,7 @@ import { insertAtCursor, recipeText, savedFromConnection, textToInsert, type Rec
 /**
  * Puts a recipe's query into the active tab at the cursor, as blocks of its
  * own (insertAtCursor), and leaves the cursor at its end. Nothing runs.
- * Shared by Ctrl+O's picker (RecipePickerModal) and the sidebar's Library
- * (LibraryPanel), so the two never insert differently.
+ * Used by the Library (LibraryPanel), which the sidebar and Ctrl+O open.
  *
  * The Agent and Needs approval tabs belong to the agent, and the next agent
  * query overwrites them, so a recipe goes into a new tab instead.

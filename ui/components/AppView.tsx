@@ -10,7 +10,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { getUserPreference, STORAGE_KEYS } from '../store/preferences';
 
 import CommandPalette from './CommandPalette';
-import RecipePickerModal from './recipes/RecipePickerModal';
 import ChangeConnectionModal from './ChangeConnectionModal';
 import SideRail from './SideRail';
 import SettingsDock from './settings/SettingsDock';
@@ -180,7 +179,6 @@ const AppView = observer(() => {
       {analysisOpened && <AnalysisModal />}
       {changelogOpened && <ChangelogModal open={global.showChangelog} onClose={handleCloseChangelog} />}
       <CommandPalette />
-      <RecipePickerModal />
       <ChangeConnectionModal />
       {/* Hidden entirely in Zen mode, not just visually de-emphasized -- Zen
           mode's whole point is a graph-only view, and every one of these

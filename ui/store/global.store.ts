@@ -663,15 +663,16 @@ export class GlobalStore {
   showChangelog = false;
 
   // Save-as-file modal (Ctrl/Cmd+S)
-  // Ctrl+S's "Save as recipe" bar above the active tab, and Ctrl+O's recipe
-  // picker (components/recipes/). Desktop only: recipes are stored by the
-  // desktop app.
+  // Ctrl+S's "Save as recipe" bar above the active tab (components/recipes/).
+  // Desktop only: recipes are stored by the desktop app.
   showSaveRecipe = false;
   saveRecipeRequestCount = 0;
-  showRecipePicker = false;
   // The sidebar's Library: saved recipes in Settings' docked slot. Library
   // and Settings replace each other there (setShowLibrary/setShowSettings).
+  // Ctrl+O opens it too (findRecipe), and each time it does, the Library
+  // focuses its search box.
   showLibrary = false;
+  libraryFindCount = 0;
   // Counts recipes saved from this window, so an open Library lists them again.
   recipesChangedCount = 0;
 
@@ -3069,8 +3070,10 @@ export class GlobalStore {
     if (show) this.saveRecipeRequestCount++;
   };
 
-  setShowRecipePicker = (show: boolean) => {
-    this.showRecipePicker = show;
+  /** Ctrl+O: opens the Library, with its search box focused to type in. */
+  findRecipe = () => {
+    this.setShowLibrary(true);
+    this.libraryFindCount++;
   };
 
   /** Opens or closes the Library panel, in the slot Settings docks in. */

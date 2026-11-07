@@ -342,8 +342,7 @@ export function recipeText(r: { expression: string; inputs: RecipeInputDef[] }):
 
 /**
  * The recipes a search finds: every word of the query in the title, the
- * explanation or the expression, in any case. Ctrl+O's picker and the
- * sidebar's Library search the same way.
+ * explanation or the expression, in any case: the Library's search.
  */
 export function matchRecipes<T extends { title: string; explanation: string; expression: string }>(
   recipes: T[],
