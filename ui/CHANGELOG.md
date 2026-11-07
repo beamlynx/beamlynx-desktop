@@ -5,6 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 ### Added
+- **Run runs every query in the tab.** Each query, separated by a blank line, runs in turn from the top, and its result gets its own section, where cells can be edited as usual. A query that fails stops the ones below it. To run only some queries, select lines in them first. Before, Run ran only the last query.
 - **Ctrl+O opens the Library.** There is now one place to find a recipe. Ctrl+O opens the Library in the sidebar with its search box ready, and Up, Down and Enter work as they did in the old quick picker, which is gone.
 - **Switch a tab's database from the command palette.** Press Ctrl+K and pick **Switch Connection**. It lists your connections, marks the one the tab is on, and switches the tab to the one you choose. A tab with a query in it asks first, as the sidebar does.
 - **A recipe goes in at the cursor.** Using a recipe, from the Library or with Ctrl+O, puts its queries where your cursor is: on a blank line between queries, right there, or just after the query the cursor is in. Before, it always went at the end of the tab.

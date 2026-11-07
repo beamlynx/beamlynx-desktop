@@ -27,6 +27,8 @@ export class DefaultPlugin implements PluginInterface {
       // the pane render a traversal instead of rows, so clearing it here is
       // the whole handover.
       session.traversal = null;
+      // One result now, in place of the sections of a Run of several blocks.
+      session.blockRuns = [];
     });
 
     // In SQL mode, running with text selected runs only the selection.
@@ -49,7 +51,7 @@ export class DefaultPlugin implements PluginInterface {
       const response = runsSql
         ? await this.client.sql(sqlQuery, session.connectionId, runId)
         : await this.client.eval(
-            session.expressions,
+            opts?.expressions ?? session.expressions,
             session.connectionId,
             session.accessPolicy,
             opts?.allowWrites,

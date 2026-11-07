@@ -167,7 +167,7 @@ const COMMANDS: Command[] = [
     id: 'run-query',
     label: 'Run Query',
     category: 'Query',
-    handler: (_global, session) => session.evaluate(),
+    handler: (_global, session) => session.run(),
     isEnabled: (_global, session) => !!(session.expression || session.query) && !session.loading,
   },
   {
