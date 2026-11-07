@@ -180,7 +180,7 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true 
           {
             key: 'Mod-Enter',
             run: () => {
-              session.evaluate();
+              session.run();
               return true;
             },
           },
@@ -232,6 +232,7 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true 
           ref={inputRef}
           id="sql-input"
           value={session.query}
+          readOnly={!!session.blockSql}
           height="100%"
           theme="none"
           extensions={extensions}
@@ -261,7 +262,11 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true 
  */
 const SqlConversionStatus: React.FC<{ session: Session }> = observer(({ session }) => {
   const { status, message } = session.sqlConversion;
-  const lines = status === 'idle' ? [] : sqlConversionLines(session.sqlConversion);
+  const lines = session.blockSql
+    ? ['This tab has several queries, so their SQL is read-only. Edit them in the Pine panel.']
+    : status === 'idle'
+      ? []
+      : sqlConversionLines(session.sqlConversion);
   // Rendered empty rather than unmounted: a screen reader announces changes
   // to a status region that is already there.
   return (
