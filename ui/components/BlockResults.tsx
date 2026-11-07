@@ -1,18 +1,9 @@
 import { Box } from '@mui/material';
 import { observer } from 'mobx-react-lite';
+import { blockTitle } from '../store/blocks';
 import type { BlockRun, Session } from '../store/session';
 import ErrorMessage from './ErrorMessage';
 import Result from './Result';
-
-/** A block's first line, as a section's title: a leading comment's words, or
- * the start of the query. */
-export function blockTitle(text: string): string {
-  const first = text.split('\n').find(l => l.trim()) ?? '';
-  return first
-    .replace(/^\s*(--|\/\*+)\s*/, '')
-    .replace(/\s*\*\/\s*$/, '')
-    .trim();
-}
 
 function status(run: BlockRun, stopped: boolean): string {
   const s = run.session;

@@ -47,6 +47,7 @@ import type { HiddenColumn, QuerySnapshot } from './investigations';
 // values-block helpers can use them without importing this store.
 import {
   blocksForBuild,
+  blockTitle,
   blocksToRun,
   cursorForBuild,
   findActiveBlock,
@@ -344,8 +345,19 @@ export class Session {
    * the panel is closed.
    */
   get query(): string {
+    if (this.blockSql) {
+      return this.globalStore?.showHiddenSqlColumns ? this.blockSql.withHidden : this.blockSql.withoutHidden;
+    }
     return this.sqlPanelText ?? this.shownBuiltQuery(!!this.globalStore?.showHiddenSqlColumns);
   }
+  /**
+   * The SQL of every query block, while the SQL panel is open on a tab with
+   * more than one; null otherwise. Each block's SQL is under a comment with
+   * its first line. Read-only: converting SQL back to Pine takes one
+   * statement, and would replace every block with it. Set by the reaction in
+   * the constructor.
+   */
+  blockSql: { withHidden: string; withoutHidden: string } | null = null;
   set query(text: string) {
     this.sqlPanelText = text;
   }
@@ -558,6 +570,7 @@ export class Session {
       blockRunStopped: false,
       // Each one holds a session, which observes itself.
       blockRuns: observable.ref,
+      blockSql: observable.ref,
       pineSelection: observable.ref,
       // A result is only ever replaced whole (plugin/default.plugin.tsx),
       // never edited in place, so nothing needs to observe inside it. Deep
@@ -628,6 +641,59 @@ export class Session {
     this.sqlEdited = debounce(() => {
       void this.convertSql();
     }, 300);
+
+    // The SQL panel on a tab with several query blocks shows the SQL of
+    // each (blockSql). Built only while the panel is open: one build per
+    // block, on top of the canvas's own.
+    let blockSqlSeq = 0;
+    reaction(
+      () => ({
+        open: this.inputMode === 'sql',
+        expression: this.expression,
+        connectionId: this.connectionId,
+        policy: this.accessPolicy,
+      }),
+      debounce(async ({ open, expression, connectionId, policy }) => {
+        const seq = ++blockSqlSeq;
+        const blocks = splitExpressions(expression);
+        const chosen = blocksToRun(blocks, null);
+        if (!open || chosen.length <= 1) {
+          if (this.blockSql) runInAction(() => (this.blockSql = null));
+          return;
+        }
+        const parts = await Promise.all(
+          chosen.map(async index => {
+            const head = `-- ${blockTitle(blocks[index].text)}`;
+            try {
+              const r = await client.build(blocksForBuild(blocks, index), undefined, connectionId, policy);
+              if (r?.error || !r?.query) {
+                const why = `-- Not built: ${(r?.error || 'no SQL').split('\n')[0]}`;
+                return { withHidden: `${head}\n${why}`, withoutHidden: `${head}\n${why}` };
+              }
+              const without = r['query-without-hidden'] || r.query;
+              // Each statement ends in one `;`. The formatter keeps one
+              // that is already there.
+              const statement = (q: string) => `${formatSql(q).replace(/;\s*$/, '')};`;
+              return {
+                withHidden: `${head}\n${statement(r.query)}`,
+                withoutHidden: `${head}\n${statement(without)}`,
+              };
+            } catch (e) {
+              const why = `-- Not built: ${e instanceof Error ? e.message : String(e)}`;
+              return { withHidden: `${head}\n${why}`, withoutHidden: `${head}\n${why}` };
+            }
+          }),
+        );
+        if (seq !== blockSqlSeq) return;
+        runInAction(() => {
+          this.blockSql = {
+            withHidden: parts.map(p => p.withHidden).join('\n\n'),
+            withoutHidden: parts.map(p => p.withoutHidden).join('\n\n'),
+          };
+        });
+      }, 200),
+      { fireImmediately: true },
+    );
 
     // Each build's number, and a way to cancel the one in flight. A build
     // can take longer than the pause before the next, and answers can
@@ -1245,12 +1311,18 @@ export class Session {
    * tab does too: its one result is what the agent reads.
    */
   public async run() {
-    if (this.inputMode === 'sql' || this.isAgentSession) return this.evaluate();
+    // The SQL panel showing several blocks' SQL is read-only: Run runs their
+    // Pine, as from the Pine panel.
+    const sqlRun = this.inputMode === 'sql' && !this.blockSql;
+    if (sqlRun || this.isAgentSession) return this.evaluate();
     const blocks = splitExpressions(this.expression);
-    const chosen = blocksToRun(blocks, this.pineSelection);
+    const chosen = blocksToRun(blocks, this.inputMode === 'sql' ? null : this.pineSelection);
     if (chosen.length <= 1) {
       const only = chosen[0];
-      return this.evaluate(only === undefined ? undefined : { expressions: blocksForBuild(blocks, only) });
+      return this.evaluate({
+        forcePine: true,
+        ...(only === undefined ? {} : { expressions: blocksForBuild(blocks, only) }),
+      });
     }
 
     const runs: BlockRun[] = chosen.map(index => {

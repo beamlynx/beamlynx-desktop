@@ -116,6 +116,16 @@ export function blocksForBuild(blocks: ExpressionBlock[], activeIdx: number): st
   ];
 }
 
+/** A block's first line, as its title: a leading comment's words, or the
+ * start of the query. */
+export function blockTitle(text: string): string {
+  const first = text.split('\n').find(l => l.trim()) ?? '';
+  return first
+    .replace(/^\s*(--|\/\*+)\s*/, '')
+    .replace(/\s*\*\/\s*$/, '')
+    .trim();
+}
+
 /**
  * The blocks Run runs, in order: every query block, or, when lines are
  * selected, the query blocks the selection touches. Values blocks have no
