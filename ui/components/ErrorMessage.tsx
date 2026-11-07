@@ -2,9 +2,12 @@ import { Box, Typography } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
 import { UNREACHABLE_RETRY_MS } from '../store/global.store';
+import type { Session } from '../store/session';
 
 interface ErrorMessageProps {
   sessionId: string;
+  /** A block's own session in a Run of several blocks (BlockResults). */
+  session?: Session;
 }
 
 /**
@@ -28,9 +31,9 @@ interface ErrorMessageProps {
  * It isn't an error in the expression, so it's not in the error colour,
  * and it says the tab is trying again (GlobalStore's UNREACHABLE_RETRY_MS).
  */
-const ErrorMessage = observer(({ sessionId }: ErrorMessageProps) => {
+const ErrorMessage = observer(({ sessionId, session: blockSession }: ErrorMessageProps) => {
   const { global } = useStores();
-  const session = global.getSession(sessionId);
+  const session = blockSession ?? global.getSession(sessionId);
 
   if (session.unreachable !== null) {
     return (

@@ -2,7 +2,7 @@ import { runInAction } from 'mobx';
 import { observer } from 'mobx-react-lite';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useStores } from '../store/store-container';
-import type { Row } from '../store/session';
+import type { Row, Session } from '../store/session';
 import {
   Box,
   IconButton,
@@ -72,6 +72,9 @@ const HIDDEN_FROM_AGENTS_ICON_WIDTH = 24;
 
 interface ResultProps {
   sessionId: string;
+  /** A block's own session in a Run of several blocks (BlockResults), shown
+   * inside the tab `sessionId`. */
+  session?: Session;
 }
 
 interface ContextMenuState {
@@ -120,9 +123,9 @@ interface JsonPanelState {
   editing: boolean;
 }
 
-const Result: React.FC<ResultProps> = observer(({ sessionId }) => {
+const Result: React.FC<ResultProps> = observer(({ sessionId, session: blockSession }) => {
   const { global } = useStores();
-  const session = global.getSession(sessionId);
+  const session = blockSession ?? global.getSession(sessionId);
   // Plain arrays, stable until the next eval replaces them: the session
   // stores a result as a ref, not a deep observable (see its
   // makeAutoObservable call). That stability is what the memos below key on.

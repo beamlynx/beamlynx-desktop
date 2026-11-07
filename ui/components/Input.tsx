@@ -40,7 +40,7 @@ export const RunButton: React.FC<{ session: Session; onRun?: () => void | Promis
     return (
       <Button
         variant="contained"
-        onClick={stoppable ? () => session.stop() : onRun || (() => session.evaluate())}
+        onClick={stoppable ? () => session.stop() : onRun || (() => session.run())}
         disabled={isDisabled}
         startIcon={stoppable ? <Stop /> : session.loading ? <Loop /> : <PlayArrow />}
         size="small"

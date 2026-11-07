@@ -279,6 +279,13 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
     return EditorView.updateListener.of(update => {
       const pos = update.state.selection.main.head;
       const line = update.state.doc.lineAt(pos);
+      // Selected lines narrow Run to the blocks they touch.
+      const { from, to, empty } = update.state.selection.main;
+      session.setPineSelection(
+        empty
+          ? null
+          : { from: update.state.doc.lineAt(from).number - 1, to: update.state.doc.lineAt(to).number - 1 },
+      );
       session.updateCursorPosition(
         line.number - 1, // Convert to 0-indexed
         pos - line.from,
@@ -351,8 +358,8 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
           {
             key: 'Mod-Enter',
             run: () => {
-              // Trigger evaluation with Cmd/Ctrl+Enter
-              session.evaluate();
+              // Cmd/Ctrl+Enter runs, the same as the Run button.
+              session.run();
               return true;
             },
           },

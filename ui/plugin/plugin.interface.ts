@@ -31,6 +31,10 @@ export type EvaluateOptions = {
   // field, overriding any written in its values blocks. Set only by the MCP
   // path, with the values an agent passed.
   variables?: Record<string, VariableValue>;
+
+  // The blocks to send instead of the whole tab's: Session.run passes the
+  // blocks up to the one it runs, when that isn't the last.
+  expressions?: string[];
 };
 
 export interface PluginInterface {

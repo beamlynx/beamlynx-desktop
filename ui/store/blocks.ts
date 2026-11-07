@@ -117,6 +117,26 @@ export function blocksForBuild(blocks: ExpressionBlock[], activeIdx: number): st
 }
 
 /**
+ * The blocks Run runs, in order: every query block, or, when lines are
+ * selected, the query blocks the selection touches. Values blocks have no
+ * query of their own, so they never run alone. A selection that touches
+ * only values blocks runs every query block.
+ */
+export function blocksToRun(
+  blocks: ExpressionBlock[],
+  selection: { from: number; to: number } | null,
+): number[] {
+  const queries = blocks.map((_, i) => i).filter(i => !isValuesBlock(blocks[i].text));
+  if (!selection) return queries;
+  const touched = queries.filter(i => {
+    const start = blocks[i].startLine;
+    const end = start + blocks[i].text.split('\n').length - 1;
+    return start <= selection.to && end >= selection.from;
+  });
+  return touched.length ? touched : queries;
+}
+
+/**
  * The cursor as the server sees it: its position within the block being
  * built, or none when it is above that block. That happens with the cursor in
  * a values block, which builds the query below it. A position before the

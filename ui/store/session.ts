@@ -47,6 +47,7 @@ import type { HiddenColumn, QuerySnapshot } from './investigations';
 // values-block helpers can use them without importing this store.
 import {
   blocksForBuild,
+  blocksToRun,
   cursorForBuild,
   findActiveBlock,
   findActiveQueryBlock,
@@ -82,6 +83,24 @@ export type SqlConversion = {
 };
 
 export type Row = { [key: string]: any };
+
+/**
+ * One block's part of a Run that ran more than one block. Its result lives in
+ * a session of its own, whose expression is the blocks up to this one, so
+ * the results grid can show it, and edit its cells, like any tab's.
+ * `waiting` until its turn, `skipped` when an earlier block failed or Stop
+ * was pressed first.
+ */
+export type BlockRun = {
+  index: number;
+  text: string;
+  session: Session;
+  state: 'waiting' | 'running' | 'done' | 'skipped';
+};
+
+/** The tab's runId while Run works through blocks: each block's session has
+ * its own, and Stop stops them (Session.stop). */
+const BLOCK_RUN_ID = 'blocks';
 
 /**
  * One column of a result, as the results grid needs it. `field` is the
@@ -373,6 +392,17 @@ export class Session {
    * selected runs only the selection instead of the full query. */
   querySelection: string = '';
 
+  /** The lines selected in the Pine editor (0-based, inclusive), or null when
+   * nothing is selected. Run then runs only the blocks the selection touches. */
+  pineSelection: { from: number; to: number } | null = null;
+
+  /** The blocks the last Run ran, when it ran more than one; empty otherwise.
+   * The results pane shows a section for each. Replaced whole. */
+  blockRuns: BlockRun[] = [];
+
+  /** Set by Stop while Run works through blocks, so it starts no more. */
+  private blockRunStopped = false;
+
   /**
    * The completion highlighted in the Pine editor's list, if it adds a step.
    * Its Pine shows as the tab's message.
@@ -522,9 +552,13 @@ export class Session {
     // was assigned, so the object read back would never be identical to the
     // one handed to the walk -- which is exactly the bug that left a traversal
     // stuck on "walking" forever. Nothing renders it either.
-    makeAutoObservable<Session, 'traversalSignal' | 'runSignal'>(this, {
+    makeAutoObservable<Session, 'traversalSignal' | 'runSignal' | 'blockRunStopped'>(this, {
       traversalSignal: false,
       runSignal: false,
+      blockRunStopped: false,
+      // Each one holds a session, which observes itself.
+      blockRuns: observable.ref,
+      pineSelection: observable.ref,
       // A result is only ever replaced whole (plugin/default.plugin.tsx),
       // never edited in place, so nothing needs to observe inside it. Deep
       // observation wrapped every row of every result in a Proxy on the way
@@ -1154,6 +1188,11 @@ export class Session {
    * "Query stopped.".
    */
   public async stop() {
+    if (this.runId === BLOCK_RUN_ID) {
+      this.blockRunStopped = true;
+      await Promise.all(this.blockRuns.map(b => b.session.stop()));
+      return;
+    }
     const runId = this.runId;
     if (!runId) return;
     try {
@@ -1191,6 +1230,79 @@ export class Session {
   /** Builds the expression again, as it is. */
   public rebuild() {
     this.hintsRequestedCounter++;
+  }
+
+  /**
+   * What Run does (the Run button, Ctrl+Enter, the Run Query command). With
+   * one query block, or in SQL mode, it is evaluate(). With several, each
+   * block runs in turn, top to bottom, and its result gets its own section
+   * (blockRuns). Lines selected in the Pine editor narrow it to the blocks
+   * they touch. A block that fails stops the ones after it, which may build
+   * on it.
+   *
+   * Every other way a tab runs (canvas gestures, an agent's queries, a
+   * preview) still calls evaluate(), which runs the last block. An agent's
+   * tab does too: its one result is what the agent reads.
+   */
+  public async run() {
+    if (this.inputMode === 'sql' || this.isAgentSession) return this.evaluate();
+    const blocks = splitExpressions(this.expression);
+    const chosen = blocksToRun(blocks, this.pineSelection);
+    if (chosen.length <= 1) {
+      const only = chosen[0];
+      return this.evaluate(only === undefined ? undefined : { expressions: blocksForBuild(blocks, only) });
+    }
+
+    const runs: BlockRun[] = chosen.map(index => {
+      const session = new Session(`${this.id}-block-${index}`, this.globalStore);
+      session.connectionId = this.connectionId;
+      session.profileId = this.profileId;
+      session.expression = blocksForBuild(blocks, index).join('\n\n');
+      return { index, text: blocks[index].text, session, state: 'waiting' };
+    });
+    const setState = (run: BlockRun, state: BlockRun['state']) =>
+      runInAction(() => {
+        this.blockRuns = this.blockRuns.map(r => (r.index === run.index ? { ...r, state } : r));
+      });
+    this.blockRunStopped = false;
+    runInAction(() => {
+      this.blockRuns = runs;
+      this.error = '';
+      this.evalErrorType = '';
+      this.evalHiddenColumn = null;
+      this.traversal = null;
+      this.mode = 'result';
+      this.loading = true;
+      this.runId = BLOCK_RUN_ID;
+    });
+    // Each block's evaluate() counts itself as a run.
+    try {
+      let failed = false;
+      for (const run of runs) {
+        if (failed || this.blockRunStopped) {
+          setState(run, 'skipped');
+          continue;
+        }
+        setState(run, 'running');
+        await run.session.evaluate();
+        setState(run, 'done');
+        if (run.session.error) failed = true;
+      }
+    } finally {
+      runInAction(() => {
+        this.loading = false;
+        if (this.runId === BLOCK_RUN_ID) this.runId = null;
+        this.expressionAtLastEval = this.expression;
+      });
+    }
+    return [];
+  }
+
+  public setPineSelection(selection: { from: number; to: number } | null) {
+    const same =
+      selection === this.pineSelection ||
+      (selection && this.pineSelection && selection.from === this.pineSelection.from && selection.to === this.pineSelection.to);
+    if (!same) this.pineSelection = selection;
   }
 
   public async evaluate(opts?: EvaluateOptions) {
