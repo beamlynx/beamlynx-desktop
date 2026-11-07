@@ -523,7 +523,7 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
         if (!to?.closest('[data-json-peek]')) stopPeek();
       }}
       onChange={handleChange}
-      // Ctrl+O opens the recipe picker. Caught on the editor's container,
+      // Ctrl+O opens the Library to find a recipe. Caught on the editor's container,
       // before the editor sees the key: Vim reads Ctrl+O as "jump back" (normal
       // mode) or "run one normal command" (insert mode) and handles it ahead
       // of any keymap, and a key the editor handles never reaches the

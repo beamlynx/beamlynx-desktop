@@ -1,5 +1,5 @@
 // The sidebar's Library (components/recipes/LibraryPanel.tsx): the shared
-// insert both it and Ctrl+O's picker use (components/recipes/insertRecipe.ts),
+// insert it uses (components/recipes/insertRecipe.ts),
 // and the store state behind the panel (GlobalStore.showLibrary and friends).
 //
 // insertRecipe only reads agentSessionIds, activeSessionId, addTab() and
