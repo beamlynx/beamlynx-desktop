@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useStores } from '../store/store-container';
 import { isDesktop } from '../store/util';
+import { bridgeSafe } from '../utils/bridge-safe';
 import type { McpQueryRequest, RevealRequest } from '../desktop';
 
 /**
@@ -33,11 +34,15 @@ const McpBridge = () => {
     const offs = [
       mcp.onQueryRequest(async (request: McpQueryRequest) => {
         const { kind, profileId, expression, sql, variables, investigationId, requestId } = request;
+        // Plain data only: the desktop app's side can't take MobX state
+        // (utils/bridge-safe.ts).
         if (kind === 'build') {
-          return global.explainMcpQuery({ profileId, expression });
+          return bridgeSafe(await global.explainMcpQuery({ profileId, expression }));
         }
         // sql: run_sql_as_pine's SQL, which runMcpQuery converts to Pine and never runs.
-        return global.runMcpQuery({ profileId, expression, sql, variables, investigationId, requestId });
+        return bridgeSafe(
+          await global.runMcpQuery({ profileId, expression, sql, variables, investigationId, requestId }),
+        );
       }),
       // An agent's query past its time limit: stop it.
       mcp.onQueryCancel?.(({ requestId }) => global.cancelMcpQuery(requestId)),

@@ -30,6 +30,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **Folding an agent's timeline to a thin bar.** The bar showed nothing but an arrow. The timeline now always shows; Zen mode gives the canvas the whole window instead.
 
 ### Fixed
+- **An agent's query no longer fails with "An object could not be cloned."** Beamlynx now always hands an agent's result back as plain data. In October, every agent query that touched a masked column failed this way.
 - **The SQL panel scrolls.** SQL longer than the panel was cut off at the bottom, with no scroll bar to reach the rest.
 
 ## [0.73.0] - 2026-11-04
