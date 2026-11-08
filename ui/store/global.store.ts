@@ -12,7 +12,7 @@ import {
   ServerRejectedError,
   VariableValue,
 } from './client';
-import type { CredentialsStatus, PolicyProposal, RevealOutcome, RevealRequest } from '../desktop';
+import type { CredentialsStatus, PolicyProposal } from '../desktop';
 import type { DbType } from '../utils/dbType';
 import { Session, Theme, InputMode } from './session';
 import { THEME_MODE, ThemeId } from '../styles/palette/tokens';
@@ -56,7 +56,6 @@ import { CONNECTION_COLOR_PALETTE, isDesktop, isDevelopment, isPlayground, pineS
 import {
   runMcpQuery as runMcpQueryImpl,
   explainMcpQuery as explainMcpQueryImpl,
-  ensureConnection,
 } from './mcp-query';
 
 /**
@@ -234,10 +233,6 @@ export class GlobalStore {
   // The agent's queries the desktop app sent, by its request id, so it can
   // stop one that ran past its time (cancelMcpQuery). Not observable.
   private mcpRuns = new Map<string, { sessionId: string; cancelled: boolean; started: boolean }>();
-  // How long a reveal request's read-only run may take before it is
-  // declined for the agent (handleRevealRequest). A field so tests can
-  // shorten it.
-  revealPreviewTimeoutMs = 60_000;
   // The longest an agent's query may hold its investigation's queue
   // (runQueuedMcpQuery): a little over the desktop app's own 60 s limit,
   // after which it should have been stopped already.
@@ -1900,9 +1895,8 @@ export class GlobalStore {
     const step = stepId
       ? investigation.steps.find(s => s.id === stepId)
       : investigation.latestQuery;
-    // A query's result as the agent saw it, or a reveal request's real
-    // values, for the user to look at before deciding.
-    const snapshot = step?.kind === 'query' ? step.snapshot : step?.kind === 'reveal' ? step.preview : undefined;
+    // A query's result as the agent saw it.
+    const snapshot = step?.kind === 'query' ? step.snapshot : undefined;
     if (!snapshot) return;
     investigation.select(stepId);
     session.showSnapshot(snapshot);
@@ -1917,22 +1911,6 @@ export class GlobalStore {
     return explainMcpQueryImpl(this.mcpQueryDeps(), args);
   };
 
-  /**
-   * Resolve a saved profile to a live pine-lang connection id the same way
-   * an MCP query does (mcp-query.ts's ensureConnection, reused here) --
-   * never pine-lang's shared "active connection" singleton, and never
-   * activeSessionId either. McpBridge.tsx uses this instead of
-   * connectToSavedProfile for exactly that second reason: a reveal-review
-   * tab must not steal focus onto itself the way connectToSavedProfile
-   * does. Refreshes connections afterward, same as connect() does, so the
-   * new session's (human-branch) accessPolicyRules and this connection's
-   * live/label state are current by the time it evaluates.
-   */
-  ensureProfileConnection = async (profileId: string): Promise<string> => {
-    const connectionId = await ensureConnection(this.mcpQueryDeps(), profileId);
-    await this.refreshConnections();
-    return connectionId;
-  };
 
   /**
    * Toggles whether MCP clients may use a saved connection at all -- the
@@ -2061,122 +2039,6 @@ export class GlobalStore {
         c.id === id ? { ...c, applyPolicyToOwnQueries: updated.applyPolicyToOwnQueries } : c,
       );
     });
-  };
-
-  /**
-   * Reports what the connection owner decided on a pending request_reveal
-   * (answerReveal, handleRevealRequest) -- a plain, side-effect-free forward
-   * to main's in-memory queue (reveal-requests.ts's resolveRevealRequest),
-   * which is what the agent's matching check_reveal poll reads.
-   */
-  // null when the desktop app no longer waits on the request (it expired).
-  resolveRevealRequest = async (id: string, outcome: RevealOutcome): Promise<RevealRequest | null | undefined> => {
-    if (typeof window === 'undefined' || !window.beamlynxDesktop) return undefined;
-    // A reveal outcome's columns/rows come straight from Session state
-    // (session.columns is a MobX-observable array), and Electron IPC's
-    // structured clone cannot serialize a MobX Proxy -- confirmed the hard
-    // way: "An object could not be cloned." thrown synchronously from this
-    // call. Same fix mcp-query.ts's toPlainJson uses at the equivalent
-    // main<-renderer IPC boundary: a JSON round-trip forces a plain,
-    // guaranteed-cloneable copy, which loses nothing since this data is
-    // already JSON-shaped.
-    return window.beamlynxDesktop.mcpReveal.resolve(id, JSON.parse(JSON.stringify(outcome)));
-  };
-
-  /**
-   * An agent's request_reveal, as a card in its investigation
-   * (store/investigations.ts). The query runs once, read-only and unmasked,
-   * so the user can look at the real values before deciding; Approve sends
-   * exactly those rows. The run happens in a session of its own that is
-   * never a tab: not the investigation's, whose queries are the agent's and
-   * masked. pendingRevealRequestId makes that session refuse writes
-   * (Session.isAgentSession). A query that changes data is declined without
-   * asking, and so is one whose connection can't be reached.
-   */
-  handleRevealRequest = async (request: RevealRequest) => {
-    const investigation = this.getOrCreateInvestigation(request.investigationId);
-    // The desktop app sends a request again after the window reloads. One
-    // already here has its card, and its run.
-    if (!investigation.addReveal(request.id, request.expression, request.reason)) return;
-    runInAction(() => {
-      this.mcpHasUnseenActivity = true;
-    });
-    const decline = async (note: string) => {
-      investigation.setReveal(request.id, 'declined', note);
-      await this.resolveRevealRequest(request.id, { ok: false, comment: note });
-    };
-    const preview = new Session(`reveal-${request.id}`, this);
-    // A run that never ends would leave the card running, and the robot
-    // saying the agent waits for an answer, for good.
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timedOut = new Promise<'timeout'>(resolve => {
-      timer = setTimeout(() => resolve('timeout'), this.revealPreviewTimeoutMs);
-      // Node's timers keep a process alive (the tests); a browser's are numbers.
-      (timer as { unref?: () => void }).unref?.();
-    });
-    const run = async () => {
-      const connectionId = await this.ensureProfileConnection(request.profileId).catch(e => {
-        throw new Error(`Could not connect to this database: ${e instanceof Error ? e.message : String(e)}`);
-      });
-      runInAction(() => {
-        preview.connectionId = connectionId;
-        preview.profileId = request.profileId;
-        preview.expression = request.expression;
-        preview.pendingRevealRequestId = request.id;
-      });
-      return { rows: await preview.evaluate({ applyServerPrettified: true, allowWrites: false }) };
-    };
-    let outcome: { rows: unknown } | 'timeout';
-    try {
-      outcome = await Promise.race([run(), timedOut]);
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      await decline(message.startsWith('Could not connect') ? message : `The query failed: ${message}`);
-      return;
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
-    if (outcome === 'timeout') {
-      void preview.stop();
-      await decline(
-        `The query took longer than ${Math.round(this.revealPreviewTimeoutMs / 1000)} s to run, so it was stopped. ` +
-          'Narrow it down and ask again.',
-      );
-      return;
-    }
-    if (preview.evalErrorType === 'write-refused') {
-      await decline('Refused: the expression changes data. Reveal requests are read-only.');
-      return;
-    }
-    investigation.setRevealPreview(request.id, snapshotOf(preview), toJS(outcome.rows));
-  };
-
-  /** A reveal request the agent stopped waiting on: its card can no longer be answered. */
-  expireRevealRequest = (requestId: string) => {
-    for (const investigation of this.investigations) investigation.setReveal(requestId, 'expired');
-  };
-
-  /** The user's answer to a reveal card: the previewed rows, or a decline with their reason. */
-  answerReveal = async (investigationId: string, requestId: string, reveal: boolean, comment?: string) => {
-    const investigation = this.investigations.find(i => i.id === investigationId);
-    const step = investigation?.reveal(requestId);
-    if (!investigation || step?.status !== 'pending') return false;
-    const sent =
-      reveal && step.preview
-        ? await this.resolveRevealRequest(requestId, {
-            ok: true,
-            expression: step.preview.expression,
-            columns: step.preview.columns,
-            rows: step.rows,
-          })
-        : await this.resolveRevealRequest(requestId, { ok: false, comment });
-    // The agent had stopped waiting: nothing was sent.
-    if (sent === null) {
-      investigation.setReveal(requestId, 'expired');
-      return false;
-    }
-    investigation.setReveal(requestId, reveal && step.preview ? 'revealed' : 'declined');
-    return true;
   };
 
   /**
@@ -2322,8 +2184,7 @@ export class GlobalStore {
    * profile" UI actions (see PendingConnectionSwitch); this primitive is also
    * called by flows with no tab-content concern to warn about at all: the
    * "Add Connection" form (a brand-new connection, not a switch) and the
-   * deep-link/reveal-request handlers (which always target a fresh tab they
-   * just created).
+   * deep-link handler (which always targets a fresh tab it just created).
    *
    * @param knownProfileId Pass the saved profile id when it's already known
    * (connectToSavedProfile) so the session can be tagged with it directly,
@@ -2745,11 +2606,6 @@ export class GlobalStore {
    * If it's the pinned MCP tab, just drops it -- the agent's next query
    * recreates it (getOrCreateMcpSession), so there's no "last tab" case to
    * special-case the way there is for the user's own tabs below.
-   * If it's a pinned reveal-request tab, drops it AND declines the request
-   * on the owner's behalf -- without this, the agent's check_reveal poll
-   * would spin forever with no way to find out the owner just closed the
-   * tab instead of using Reveal/Decline (see finishRevealSession for the
-   * counterpart once a request IS actually resolved through the banner).
    * Otherwise, if it's the last one of the user's own tabs, resets it
    * instead of closing.
    *
@@ -2830,7 +2686,7 @@ export class GlobalStore {
 
     const reordered: Record<string, Session> = {};
     ids.forEach(id => (reordered[id] = this.sessions[id]));
-    // No pinned session (the MCP one, or any pending reveal-request ones) is
+    // No pinned session (the MCP one) is
     // part of the draggable strip -- carry each over unchanged rather than
     // dropping it, since none of them are in `ids` above (visibleSessionIds)
     // and would otherwise vanish from `sessions`. Keyed off whatever isn't
@@ -3022,7 +2878,7 @@ export class GlobalStore {
     this.settingsAttentionCount++;
   };
 
-  /** Decisions an agent is blocked on: proposed policy changes and reveal requests. */
+  /** Decisions an agent is blocked on: its proposed policy changes. */
   get agentDecisionsWaiting(): number {
     return this.investigations.reduce((n, i) => n + i.pendingDecisions.length, 0);
   }

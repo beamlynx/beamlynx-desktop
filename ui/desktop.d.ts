@@ -113,11 +113,6 @@ type McpQueryResult =
   | { requestId: string; ok: true; result: unknown }
   | { requestId: string; ok: false; error: string };
 
-// Sent by the main process (control-plane-server.ts, behind the MCP
-// request_reveal tool) when the connection's access policy is redacting
-// something the agent says it legitimately needs -- McpBridge.tsx
-// opens a real tab for the owner to review it in. See
-// beamlynx-desktop's src/main/mcp/reveal-requests.ts.
 // One MCP tool call starting or ending -- see beamlynx-desktop's
 // src/main/mcp/activity.ts, the source of truth for this shape.
 export type AgentActivity = {
@@ -132,26 +127,6 @@ export type AgentActivity = {
   // The Claude session the call came from (store/investigations.ts).
   investigationId?: string;
 };
-
-type RevealRequest = {
-  id: string;
-  profileId: string;
-  expression: string;
-  reason?: string;
-  createdAt: number;
-  // expired: nobody answered in time, and the agent stopped waiting.
-  status: 'pending' | 'revealed' | 'declined' | 'expired';
-  // The Claude session that asked (store/investigations.ts). Absent from a
-  // desktop app older than investigations.
-  investigationId?: string;
-};
-
-// What RevealRequestBanner.tsx reports back once the owner decides --
-// `expression` on the reveal case is whatever actually ran, which may differ
-// from the request's own if the owner edited it first.
-type RevealOutcome =
-  | { ok: true; expression: string; columns: unknown; rows: unknown }
-  | { ok: false; comment?: string };
 
 // Matches beamlynx-desktop's StartupState (src/main/app-db.ts). Not ok when
 // the file couldn't be opened; preferences then stay in localStorage.
@@ -334,24 +309,9 @@ interface BeamlynxDesktopApi {
     onQueryCancel?: (callback: (event: { requestId: string }) => void) => () => void;
     // Called once every handler above is registered (McpBridge.tsx). Until
     // then the desktop app answers requests that need this window with 503,
-    // and afterwards it sends pending proposals and reveal requests again.
+    // and afterwards it sends pending proposals again.
     // Absent from an older desktop app.
     notifyBridgeReady?: () => void;
-  };
-  // request_reveal/check_reveal's renderer half -- see
-  // McpBridge.tsx and RevealRequestBanner.tsx. onRequest fires as
-  // soon as an agent's request_reveal call is created (fire-and-forget, no
-  // response for it to wait on -- see control-plane-server.ts); resolve
-  // reports what the owner decided, which the agent's check_reveal poll
-  // reads back.
-  mcpReveal: {
-    // Sent again, with the same id, once the bridge is ready after a reload.
-    onRequest: (callback: (request: RevealRequest) => void) => () => void;
-    // A request nobody answered in time, by its id. The agent stopped
-    // waiting. Optional: absent from an older desktop app.
-    onExpired?: (callback: (id: string) => void) => () => void;
-    // null when the request is no longer waiting, such as one that expired.
-    resolve: (id: string, outcome: RevealOutcome) => Promise<RevealRequest | null>;
   };
   // Sign in once, and usage stats. Optional: absent from a desktop app
   // older than them. See FirstRunScreen.tsx and settings/AccountSection.tsx.
@@ -397,8 +357,6 @@ export type {
   GetConnectionResult,
   McpQueryRequest,
   McpQueryResult,
-  RevealRequest,
-  RevealOutcome,
   AccountStatus,
   SignInResult,
   UsageEvent,

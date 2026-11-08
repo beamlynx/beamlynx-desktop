@@ -17,7 +17,7 @@ afterEach(() => {
 
 /** A fake desktop bridge, recording what the store sends it. */
 function stubBridge() {
-  const sent = { notes: [], proposals: [], reveals: [] };
+  const sent = { notes: [], proposals: [] };
   globalThis.window = {
     beamlynxDesktop: {
       mcp: {
@@ -28,13 +28,6 @@ function stubBridge() {
         resolvePolicyProposal: async (id, outcome) => {
           sent.proposals.push({ id, outcome });
           return true;
-        },
-      },
-      mcpReveal: {
-        // As the desktop app answers a request still waiting.
-        resolve: async (id, outcome) => {
-          sent.reveals.push({ id, outcome });
-          return { id, status: outcome.ok ? 'revealed' : 'declined' };
         },
       },
     },
@@ -379,93 +372,6 @@ test('overlapping agent runs in one tab are all the agent\'s, never told back as
   assert.equal(sent.notes.length, 0);
 });
 
-/**
- * A store whose reveal previews run against a fake database: every
- * DefaultPlugin.evaluate answers with `result`, and records its options.
- */
-function storeForReveals(result) {
-  const store = storeWithFakeDatabase(() => ({ rows: [] }));
-  store.ensureProfileConnection = async () => 'conn-1';
-  const runs = [];
-  const original = DefaultPlugin.prototype.evaluate;
-  DefaultPlugin.prototype.evaluate = async function (opts) {
-    runs.push(opts);
-    const session = this.session;
-    runInAction(() => {
-      session.rows = result.rows ?? [];
-      session.columns = [];
-      session.error = result.error ?? '';
-      session.evalErrorType = result.errorType ?? '';
-    });
-    return result.raw ?? [];
-  };
-  return { store, runs, restore: () => (DefaultPlugin.prototype.evaluate = original) };
-}
-
-const revealRequest = {
-  id: 'rv-1',
-  profileId: 'p1',
-  expression: '/* Ada\'s email */\ncustomer | where: id = 1 | s: email',
-  reason: 'To match her support ticket',
-  createdAt: 0,
-  status: 'pending',
-  investigationId: 'claude-a',
-};
-
-test('a reveal request is a card in its investigation: previewed read-only, then revealed as previewed', async () => {
-  const { store, runs, restore } = storeForReveals({ rows: [{ email: 'ada@example.com' }], raw: [['email'], ['ada@example.com']] });
-  try {
-    const sent = stubBridge();
-    const tabsBefore = Object.keys(store.sessions).length;
-    await store.handleRevealRequest(revealRequest);
-    const investigation = store.investigations.find(i => i.id === 'claude-a');
-    const step = investigation.reveal('rv-1');
-    assert.equal(step.status, 'pending');
-    assert.equal(step.reason, 'To match her support ticket');
-    assert.deepEqual(step.preview.rows, [{ email: 'ada@example.com' }]);
-    assert.equal(runs[0].allowWrites, false);
-    // The preview's session is never a tab: only the investigation's is new.
-    assert.equal(Object.keys(store.sessions).length, tabsBefore + 1);
-    assert.equal(store.agentDecisionsWaiting, 1);
-
-    assert.equal(await store.answerReveal('claude-a', 'rv-1', true), true);
-    assert.equal(sent.reveals.length, 1);
-    assert.equal(sent.reveals[0].outcome.ok, true);
-    assert.deepEqual(sent.reveals[0].outcome.rows, [['email'], ['ada@example.com']]);
-    assert.equal(step.status, 'revealed');
-    assert.equal(store.agentDecisionsWaiting, 0);
-  } finally {
-    restore();
-  }
-});
-
-test('a reveal request whose query changes data is declined without asking', async () => {
-  const { store, restore } = storeForReveals({ error: 'refused', errorType: 'write-refused' });
-  try {
-    const sent = stubBridge();
-    await store.handleRevealRequest({ ...revealRequest, id: 'rv-2', expression: 'customer | delete! .id' });
-    const step = store.investigations[0].reveal('rv-2');
-    assert.equal(step.status, 'declined');
-    assert.match(step.note, /changes data/);
-    assert.equal(sent.reveals[0].outcome.ok, false);
-  } finally {
-    restore();
-  }
-});
-
-test('declining a reveal sends the user\'s reason', async () => {
-  const { store, restore } = storeForReveals({ rows: [{ email: 'x' }] });
-  try {
-    const sent = stubBridge();
-    await store.handleRevealRequest({ ...revealRequest, id: 'rv-3' });
-    await store.answerReveal('claude-a', 'rv-3', false, 'Not in production');
-    assert.deepEqual(sent.reveals[0].outcome, { ok: false, comment: 'Not in production' });
-    assert.equal(store.investigations[0].reveal('rv-3').status, 'declined');
-  } finally {
-    restore();
-  }
-});
-
 
 test('a connection\'s policy is the one it points at, never "None", and attaching a template refreshes both', async () => {
   const store = new GlobalStore();
@@ -754,55 +660,6 @@ test('Undo is refused once the policy changed after Apply, so a later edit is ne
   assert.ok(store.accessPolicies[0].rules.some(r => r.type === 'hide' && r.match.column === 'email'));
 });
 
-test('a reveal request sent again, as after a reload, keeps its one card and isn\'t run twice', async () => {
-  const { store, runs, restore } = storeForReveals({ rows: [{ email: 'x' }] });
-  try {
-    stubBridge();
-    await store.handleRevealRequest({ ...revealRequest, id: 'rv-again' });
-    await store.handleRevealRequest({ ...revealRequest, id: 'rv-again' });
-    const cards = store.investigations[0].steps.filter(s => s.kind === 'reveal');
-    assert.equal(cards.length, 1);
-    assert.equal(runs.length, 1);
-  } finally {
-    restore();
-  }
-});
-
-test('a reveal preview that never finishes is declined for the agent, and nothing waits on it', async () => {
-  const store = storeWithFakeDatabase(() => ({ rows: [] }));
-  store.ensureProfileConnection = async () => 'conn-1';
-  store.revealPreviewTimeoutMs = 20;
-  const original = DefaultPlugin.prototype.evaluate;
-  DefaultPlugin.prototype.evaluate = () => new Promise(() => {});
-  try {
-    const sent = stubBridge();
-    await store.handleRevealRequest({ ...revealRequest, id: 'rv-slow' });
-    const card = store.investigations[0].reveal('rv-slow');
-    assert.equal(card.status, 'declined');
-    assert.match(card.note, /took longer than/);
-    assert.equal(sent.reveals[0].outcome.ok, false);
-    assert.equal(store.agentDecisionsWaiting, 0);
-  } finally {
-    DefaultPlugin.prototype.evaluate = original;
-  }
-});
-
-test('a reveal request the agent stopped waiting on can no longer be answered', async () => {
-  const { store, restore } = storeForReveals({ rows: [{ email: 'x' }] });
-  try {
-    const sent = stubBridge();
-    await store.handleRevealRequest({ ...revealRequest, id: 'rv-exp' });
-    store.expireRevealRequest('rv-exp');
-    const card = store.investigations[0].reveal('rv-exp');
-    assert.equal(card.status, 'expired');
-    assert.equal(store.agentDecisionsWaiting, 0);
-    assert.equal(await store.answerReveal('claude-a', 'rv-exp', true), false);
-    assert.equal(sent.reveals.length, 0);
-  } finally {
-    restore();
-  }
-});
-
 test('past the limit, the oldest finished investigation is dropped with its tab; one in use never is', () => {
   const store = new GlobalStore();
   const old = Date.now() - INVESTIGATION_IDLE_MS - 1000;
@@ -828,20 +685,6 @@ test('asking for a Settings section that is already open still draws attention t
   assert.equal(store.showSettings, true);
   assert.equal(store.settingsSection, 'mcp');
   assert.equal(store.settingsAttentionCount, 2);
-});
-
-test('an answer the desktop app no longer waits for marks the card expired', async () => {
-  const { store, restore } = storeForReveals({ rows: [{ email: 'x' }] });
-  try {
-    const sent = stubBridge();
-    window.beamlynxDesktop.mcpReveal.resolve = async (id, outcome) => (sent.reveals.push({ id, outcome }), null);
-    await store.handleRevealRequest({ ...revealRequest, id: 'rv-late' });
-    assert.equal(await store.answerReveal('claude-a', 'rv-late', true), false);
-    assert.equal(store.investigations[0].reveal('rv-late').status, 'expired');
-    assert.equal(store.agentDecisionsWaiting, 0);
-  } finally {
-    restore();
-  }
 });
 
 test('a proposal sent again after a reload keeps its one card', () => {
