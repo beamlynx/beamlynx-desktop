@@ -108,7 +108,8 @@ export type OperationType =
   | 'update-action'
   | 'update-partial'
   | 'paths'
-  | 'describe';
+  | 'describe'
+  | 'references';
 export type Operation = {
   type: OperationType;
   // Shape varies by operation type (e.g. `{schema, table, alias?}` for

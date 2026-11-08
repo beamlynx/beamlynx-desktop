@@ -214,9 +214,9 @@ const Result: React.FC<ResultProps> = observer(({ sessionId, session: blockSessi
   const tableForAlias = (alias: string): string =>
     ast?.['selected-tables']?.find(t => t.alias === alias)?.table ?? alias;
 
-  // Whether what ran ends in `describe:`: its rows describe a table's
-  // columns and joins (pine-lang's docs/describe.md), and none is a row of a
-  // table.
+  // Whether what ran ends in `describe:` or `references:`: its rows describe
+  // a table's columns or relations (pine-lang's docs/describe.md and
+  // docs/references.md), and none is a row of a table.
   const describesSchema = describesTable(session.expressionAtLastEval);
 
   // Why a column's values can't be edited, if they can't. An update finds

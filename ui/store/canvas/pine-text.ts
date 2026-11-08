@@ -17,6 +17,7 @@ export type SegmentKind =
   | 'group'
   | 'count'
   | 'describe'
+  | 'references'
   | 'delete-action'
   | 'update'
   | 'assign'
@@ -127,6 +128,7 @@ const classifyKind = (text: string): SegmentKind => {
   if (/^count:/i.test(text)) return 'count';
   // Describes the table before it, like count: counts it. Not a table.
   if (/^describe:/i.test(text)) return 'describe';
+  if (/^references:/i.test(text)) return 'references';
   if (/^(delete!|d!)/i.test(text)) return 'delete-action';
   if (/^(update!|u!)/i.test(text)) return 'update';
   if (/^=\s*\S/.test(text)) return 'assign';

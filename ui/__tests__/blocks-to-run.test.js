@@ -39,4 +39,6 @@ test('describesTable: the last block ends in describe:', () => {
   assert.equal(describesTable('user | document | describe: -- its columns'), true);
   assert.equal(describesTable('user | describe:\n\nuser | count:'), false);
   assert.equal(describesTable('describe'), false);
+  assert.equal(describesTable('user | references:'), true);
+  assert.equal(describesTable('references'), false);
 });
