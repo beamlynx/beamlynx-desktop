@@ -40,6 +40,10 @@ Two rules when editing:
 
 - **Mark an example that must fail** with `-- parse error` at the end of its line. The check script
   then expects it to fail.
+- **Mark an example the bundled Pine doesn't have yet** with `-- pine-lang #N`, the pine-lang PR
+  that added it. Then the reference can teach a merged feature before the release that bundles
+  it, and the check still passes. When `pineLangRef` moves, the script lists each marked example
+  that now parses: remove those markers.
 - **Every topic needs real examples.** These are a fallback the agent is handed at the exact
   moment it got something wrong, so an empty example block is worse than no topic at all. Four
   files used to ship with literally empty code fences.

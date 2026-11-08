@@ -66,6 +66,10 @@ export type EvalResponse = {
   // how that Pine differs from the SQL without changing the rows.
   pine?: string;
   warnings?: string[];
+  // The most rows Pine returns when the expression sets no limit: of its
+  // own (250, or 10,000 for a group:), or null. A result this long may have
+  // been cut off.
+  rowCap?: number | null;
 };
 
 /** A saved-connection record as the control plane's /connections route returns it. */
@@ -492,7 +496,16 @@ function formatRowsOnly(response: EvalResponse): string {
   }
 
   const count = `${data.length} row${data.length === 1 ? '' : 's'}`;
-  if (lines.length === data.length) return [count, '', headerLine, ...lines].join('\n');
+  // Pine stopped at its own cap: there may be more rows than came back.
+  const capped =
+    response.rowCap && data.length >= response.rowCap
+      ? [
+          '',
+          `The result stopped at ${response.rowCap} rows, the most Pine returns without a limit:. There may be ` +
+            'more. Count them with `| count:`, or narrow the rows with where:.',
+        ]
+      : [];
+  if (lines.length === data.length) return [count, '', headerLine, ...lines, ...capped].join('\n');
   const omitted = data.length - lines.length;
   return [
     `${count}, showing the first ${lines.length}`,
@@ -502,6 +515,7 @@ function formatRowsOnly(response: EvalResponse): string {
     '',
     `${omitted} more row${omitted === 1 ? '' : 's'} not shown: the result is larger than ${MAX_RESULT_CHARS} ` +
       'characters. Select only the columns you need with select:, or narrow the rows with where: or limit:.',
+    ...capped,
   ].join('\n');
 }
 
@@ -545,6 +559,8 @@ export const OPERATION_DOCS: Record<string, string> = {
   from: 'from',
   f: 'from',
   unnest: 'unnest',
+  describe: 'describe',
+  references: 'references',
   delete: 'delete',
   'delete!': 'delete',
   'd!': 'delete',

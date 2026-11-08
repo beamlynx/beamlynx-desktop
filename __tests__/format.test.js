@@ -530,3 +530,13 @@ test('an update! resolves to its doc', () => {
   const err = "Parse error at line 1, column 29:\nuser | where: id = 1 | update! \n                            ^\nExpected one of:\n'\n";
   assert.equal(pickDocTopic(err)?.topic, 'update');
 });
+
+test('a result that reached Pine\'s row cap says it may have been cut off', () => {
+  const rows = n => [['id'], ...Array.from({ length: n }, (_, i) => [String(i)])];
+  const capped = formatRows({ rows: rows(3), rowCap: 3 });
+  assert.match(capped, /stopped at 3 rows, the most Pine returns without a limit:/);
+  assert.match(capped, /\| count:/);
+  assert.doesNotMatch(formatRows({ rows: rows(2), rowCap: 3 }), /stopped at/);
+  assert.doesNotMatch(formatRows({ rows: rows(3), rowCap: null }), /stopped at/);
+  assert.doesNotMatch(formatRows({ rows: rows(3) }), /stopped at/);
+});

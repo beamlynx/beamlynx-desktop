@@ -423,6 +423,28 @@ async function registerTools(server: McpServer): Promise<void> {
   const sayWhy =
     'Lead it with a `/* ... */` comment saying what you are looking for and why -- the tab this opens ' +
     'renders it as a note above the query, which is how the user sees your reasoning rather than just rows. ';
+  const rowCapNote =
+    'With no limit: of its own, a result stops at 250 rows (10,000 for a group:), and says so when it does. ';
+  // What the user watching sees in their timeline. On every query, so an
+  // agent needs no separate call for them (set_question and note_finding).
+  const questionInput = z
+    .string()
+    .max(300)
+    .optional()
+    .describe(
+      'What you are investigating, in one line in the user\'s terms: "Logins per tenant over the last 30 days". ' +
+        'Send it with your first query. It titles the user\'s timeline in Beamlynx. Send it again only when the ' +
+        'user asks something new: a new question starts a new section.',
+    );
+  const findingInput = z
+    .string()
+    .max(2000)
+    .optional()
+    .describe(
+      'Something you have learned that matters to the answer, from earlier results or another source, in a ' +
+        'sentence or two: "public.activity is the only table that records logins". Shown to the user in ' +
+        'Beamlynx, above this query.',
+    );
   async function runOnControlPlane(body: Record<string, unknown>, signal?: AbortSignal) {
     try {
       await ensureGuiRunning();
@@ -438,9 +460,11 @@ async function registerTools(server: McpServer): Promise<void> {
     {
       description:
         'Run a Pine expression against a connection (must be one returned by list_connections) and return the ' +
-        'rows. Opens or updates a visible tab in the Beamlynx app so the user can see what ran. Build the ' +
-        'expression with find_tables and complete_query rather than guessing at table or column names. ' +
-        'To run SQL, use run_sql_as_pine. Results are capped by the server at 250 rows. ' +
+        'rows. Opens or updates a visible tab in the Beamlynx app so the user can see what ran. Learn a table ' +
+        'with `table | describe:` (its columns) and `table | references:` (how it joins), and check a next ' +
+        'step with complete_query, rather than guessing at table or column names. To run SQL, use ' +
+        'run_sql_as_pine. ' +
+        rowCapNote +
         sayWhy +
         'If the expression contains `$name` variables, pass their values in `variables`; they are bound as ' +
         'values, never pasted into the query (see get_pine_doc "variables").',
@@ -448,8 +472,12 @@ async function registerTools(server: McpServer): Promise<void> {
         connection_id: z.string().describe('A connection id from list_connections'),
         expression: z.string().describe('The Pine expression to run'),
         variables: variablesInput,
+        question: questionInput,
+        finding: findingInput,
       },
     },
+    // question and finding reach the user's timeline through the activity
+    // event every call reports (activity.ts's callContext). Nothing to send.
     async (
       {
         connection_id,
@@ -479,7 +507,7 @@ async function registerTools(server: McpServer): Promise<void> {
         'to write the same query with run_query. SQL that Pine can\'t say runs nothing and says why; write that ' +
         'query in Pine with run_query instead. An UPDATE or DELETE converts and is shown in the tab, but is ' +
         'refused when it runs: only the user can run a change. ' +
-        'Results are capped by the server at 250 rows. ' +
+        rowCapNote +
         sayWhy +
         'SQL `$name` placeholders are Pine variables: pass their values in `variables`.',
       inputSchema: {
@@ -488,6 +516,8 @@ async function registerTools(server: McpServer): Promise<void> {
           .string()
           .describe('SQL: a SELECT, or one UPDATE or DELETE, with WITH queries. It is converted to Pine, never run as SQL.'),
         variables: variablesInput,
+        question: questionInput,
+        finding: findingInput,
       },
     },
     async (
@@ -510,14 +540,16 @@ async function registerTools(server: McpServer): Promise<void> {
   // The investigation's question and findings, for the user watching in
   // beamlynx (see investigations.ts). Nothing else happens: the activity
   // event every call reports already carries them to the app.
+  // Deprecated: run_query and run_sql_as_pine take `question` and `finding`.
+  // Kept for one release, so an agent that learned them still works.
   server.registerTool(
     'set_question',
     {
       description:
-        'Tell the user, in beamlynx, what you are investigating. It becomes the title of the beamlynx tab that ' +
-        'shows your queries and their results. Call it once, before your first query, in the user\'s terms: ' +
-        '"Logins per tenant over the last 30 days". When the user asks something new, call it again with the new ' +
-        'question: it starts a new section in their timeline. Not while you are still on the same question.',
+        'Deprecated: send `question` with run_query or run_sql_as_pine instead. ' +
+        'Tells the user, in beamlynx, what you are investigating. It becomes the title of the beamlynx tab that ' +
+        'shows your queries and their results. When the user asks something new, a new question starts a new ' +
+        'section in their timeline.',
       inputSchema: {
         question: z.string().min(1).max(300).describe('The question, in one line'),
       },
@@ -529,9 +561,9 @@ async function registerTools(server: McpServer): Promise<void> {
     'note_finding',
     {
       description:
-        'Record something you found, so the user sees it in beamlynx next to the queries that led to it. Use it ' +
-        'for what matters to the answer, from this database or from another source: "public.activity is the ' +
-        'only table that records logins", "Sentry shows auth errors for tenant 12 since Tuesday".',
+        'Deprecated: send `finding` with run_query or run_sql_as_pine instead, or use this for a last finding ' +
+        'with no query after it. Records something you found, so the user sees it in beamlynx next to the ' +
+        'queries that led to it: "public.activity is the only table that records logins".',
       inputSchema: {
         finding: z.string().min(1).max(2000).describe('What you found, in a sentence or two'),
       },
