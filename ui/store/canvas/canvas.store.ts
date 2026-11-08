@@ -1621,9 +1621,9 @@ export class CanvasStore {
       if (!isCheckpoint) this.openUnnestPicker(alias, anchor);
       return;
     }
-    if (action === 'describe') {
-      // Plain nodes only: a checkpoint's node isn't offered it.
-      if (!isCheckpoint) this.describeNode(alias);
+    if (action === 'describe' || action === 'references') {
+      // Plain nodes only: a checkpoint's node isn't offered them.
+      if (!isCheckpoint) this.describeNode(alias, action);
       return;
     }
     if (action === 'traverse') {
@@ -1747,12 +1747,13 @@ export class CanvasStore {
   }
 
   /**
-   * "+" -> describe: opens `<table> | describe:` in a new tab, so this tab's
-   * query stays as it is. The result lists the node's columns and the tables
-   * it joins to and from (pine-lang's docs/describe.md). The table is the
-   * node's real one, named with its schema; a named result is named as is.
+   * "+" -> describe or references: opens `<table> | describe:` (the node's
+   * columns, pine-lang's docs/describe.md) or `<table> | references:` (its
+   * relations both ways, docs/references.md) in a new tab, so this tab's
+   * query stays as it is. The table is the node's real one, named with its
+   * schema; a named result is named as is.
    */
-  describeNode(id: string) {
+  describeNode(id: string, op: 'describe' | 'references' = 'describe') {
     this.closePicker();
     const { block, alias } = this.scopeOf(id);
     const ast = this.astOf(block);
@@ -1765,7 +1766,7 @@ export class CanvasStore {
       ast?.['selected-tables']?.find(t => t.alias === alias) ?? typed;
     if (!table?.table) return;
     const name = table.schema ? `${table.schema}.${table.table}` : table.table;
-    void this.session.globalStore?.openExpressionInNewTab?.(`${name} | describe:`);
+    void this.session.globalStore?.openExpressionInNewTab?.(`${name} | ${op}:`);
   }
 
   /**
