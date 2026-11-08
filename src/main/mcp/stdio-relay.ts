@@ -31,7 +31,7 @@ import { readControlPlaneInfo } from '../launch-secrets';
 import { CONTROL_PLANE_PORT } from '../ports';
 import { getLaunchPath, getResourcesRoot } from '../resources';
 import { SERVER_INSTRUCTIONS } from './instructions';
-import { describeCall, outcomeOf, type AgentActivity } from './activity';
+import { callContext, describeCall, outcomeOf, type AgentActivity } from './activity';
 import { INVESTIGATION_HEADER } from './investigations';
 import { proposeAndWait, type ControlPlaneRequest } from './policy-proposals';
 import { readUtf8Body } from './read-body';
@@ -325,7 +325,7 @@ function reportEveryCall(server: McpServer): void {
   (server as any).registerTool = (name: string, config: unknown, handler: (args: any, extra: any) => Promise<any>) =>
     register(name, config, async (args: any, extra: any) => {
       const id = `${process.pid}-${Date.now()}-${++activityCounter}`;
-      const call = describeCall(name, args ?? {});
+      const call = { ...describeCall(name, args ?? {}), ...callContext(args ?? {}) };
       reportActivity({ id, tool: name, phase: 'start', at: Date.now(), ...call });
       try {
         const result = await handler(args, extra);

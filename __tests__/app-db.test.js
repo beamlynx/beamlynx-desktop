@@ -306,3 +306,41 @@ test('a database address is stored only as its hash, and a file an older app wro
   assert.equal(after.prepare("SELECT COUNT(*) AS n FROM column_width WHERE connection = 'other:5432:x'").get().n, 0);
   after.close();
 });
+
+test('an agent call is saved at its start and finished at its end, without its rows', () => {
+  const { AGENT_CALL_CAP } = require(DIST);
+  const db = openAppDb(file);
+  const key = 'postgres://localhost:5432/shop';
+  db.recordAgentCall({ id: 'c1', investigationId: 'i1', tool: 'run_query', phase: 'start', at: 10, input: 'user | l: 5', databaseKey: key });
+  assert.equal(db.listAgentCalls()[0].ok, null, 'still running');
+  db.recordAgentCall({ id: 'c1', investigationId: 'i1', tool: 'run_query', phase: 'end', at: 15, ok: true, rows: 5, error: 'ignored' });
+  db.recordAgentCall({ id: 'c2', investigationId: 'i1', tool: 'run_query', phase: 'end', at: 20, ok: false, error: 'Parse error' });
+  const [first, second] = db.listAgentCalls();
+  assert.deepEqual(first, {
+    id: 'c1', investigationId: 'i1', tool: 'run_query', input: 'user | l: 5',
+    databaseKey: require('../dist/main/database-key').hashKey(key),
+    question: null, finding: null, startedAt: 10, endedAt: 15, ok: true, error: null, rows: 5,
+  });
+  assert.equal(second.ok, false, 'an end without a start is saved too');
+  assert.equal(second.error, 'Parse error');
+  assert.deepEqual(db.listAgentCalls(16).map(c => c.id), ['c2']);
+  assert.ok(AGENT_CALL_CAP > 1000);
+  db.close();
+});
+
+test('the oldest agent calls go once there are more than the cap', () => {
+  const db = openAppDb(file);
+  const raw = new DatabaseSync(file);
+  const { AGENT_CALL_CAP } = require(DIST);
+  raw.exec('BEGIN');
+  const insert = raw.prepare("INSERT INTO agent_call (id, investigation_id, tool, started_at) VALUES (?, 'i', 'find_tables', ?)");
+  for (let i = 0; i < AGENT_CALL_CAP; i++) insert.run(`old-${i}`, i);
+  raw.exec('COMMIT');
+  raw.close();
+  db.recordAgentCall({ id: 'new', investigationId: 'i', tool: 'find_tables', phase: 'start', at: AGENT_CALL_CAP + 1 });
+  const calls = db.listAgentCalls();
+  assert.equal(calls.length, AGENT_CALL_CAP);
+  assert.equal(calls[0].id, 'old-1', 'the oldest went');
+  assert.equal(calls.at(-1).id, 'new');
+  db.close();
+});

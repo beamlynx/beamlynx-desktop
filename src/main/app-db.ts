@@ -1,5 +1,5 @@
 // The app's own data, in one SQLite file: settings, open tabs, column widths,
-// and saved recipes. See
+// saved recipes, and a log of agents' tool calls. See
 // beamlynx-plans/pending/2026-09-27-app-storage-in-sqlite.md and
 // beamlynx-plans/pending/2026-10-01-recipes-shared-database-knowledge.md.
 //
@@ -74,12 +74,82 @@ const MIGRATIONS: string[] = [
   UPDATE database_link SET database_key = beamlynx_sha256(database_key)
     WHERE database_key <> '' AND NOT beamlynx_is_hash(database_key);
   `,
+  // Every MCP tool call an agent made, for a retro on how agents use
+  // Beamlynx (agent-log.ts, scripts/agent-retro.mjs). What the agent sent
+  // and how the call went, never the rows it got back: these are often
+  // production reads. Capped at AGENT_CALL_CAP.
+  `
+  CREATE TABLE IF NOT EXISTS agent_call (
+    id               TEXT PRIMARY KEY,   -- the relay's id for the call
+    investigation_id TEXT NOT NULL,      -- one Claude session (mcp/investigations.ts)
+    tool             TEXT NOT NULL,
+    input            TEXT,               -- the Pine, SQL, search or topic it sent
+    database_key     TEXT NOT NULL DEFAULT '', -- hash of the database's key, '' when none
+    question         TEXT,
+    finding          TEXT,
+    started_at       INTEGER NOT NULL,
+    ended_at         INTEGER,            -- null while running, or when it never ended
+    ok               INTEGER,            -- 1 or 0, null while running
+    error            TEXT,               -- the error, when it failed
+    row_count        INTEGER             -- rows a query returned, never the rows
+  );
+  CREATE INDEX IF NOT EXISTS agent_call_by_time ON agent_call (started_at);
+  `,
 ];
+
+// Past this many saved agent calls, the oldest go.
+export const AGENT_CALL_CAP = 20_000;
+
+// ---------- agent calls ----------
+
+export type AgentCallEvent = {
+  id: string;
+  investigationId: string;
+  tool: string;
+  phase: 'start' | 'end';
+  at: number;
+  input?: string;
+  databaseKey?: string | null;
+  question?: string;
+  finding?: string;
+  ok?: boolean;
+  error?: string;
+  rows?: number;
+};
+
+export type AgentCall = {
+  id: string;
+  investigationId: string;
+  tool: string;
+  input: string | null;
+  databaseKey: string | null;
+  question: string | null;
+  finding: string | null;
+  startedAt: number;
+  endedAt: number | null;
+  ok: boolean | null;
+  error: string | null;
+  rows: number | null;
+};
+
+type AgentCallRow = {
+  id: string; investigation_id: string; tool: string; input: string | null; database_key: string;
+  question: string | null; finding: string | null; started_at: number; ended_at: number | null;
+  ok: number | null; error: string | null; row_count: number | null;
+};
+
+export const toAgentCall = (r: AgentCallRow): AgentCall => ({
+  id: r.id, investigationId: r.investigation_id, tool: r.tool, input: r.input, databaseKey: r.database_key || null,
+  question: r.question, finding: r.finding, startedAt: r.started_at, endedAt: r.ended_at,
+  ok: r.ok === null ? null : r.ok === 1, error: r.error, rows: r.row_count,
+});
 
 // Past this many remembered column widths, the least recently used go.
 export const COLUMN_WIDTH_CAP = 5000;
 
 const MAX_KEY_LENGTH = 512;
+const MAX_AGENT_TEXT = 4000;
+const MAX_AGENT_ERROR = 2000;
 const MAX_VALUE_LENGTH = 5_000_000;
 
 // ---------- recipes ----------
@@ -217,6 +287,12 @@ export type AppDb = {
   saveRecipe(input: SaveRecipeInput): Recipe;
   deleteRecipe(id: string): boolean;
   countRecipes(): number;
+
+  // One phase of an agent's tool call: its start adds the call, its end
+  // records how it went. An end without a start adds the call too.
+  recordAgentCall(event: AgentCallEvent): void;
+  // Agent calls that started at or after `since`, oldest first.
+  listAgentCalls(since?: number): AgentCall[];
   close(): void;
 };
 
@@ -287,6 +363,18 @@ export function openAppDb(file: string, now: () => number = Date.now): AppDb {
   const countAll = db.prepare('SELECT COUNT(*) AS n FROM recipe');
   const pruneWidths = db.prepare(
     'DELETE FROM column_width WHERE rowid IN (SELECT rowid FROM column_width ORDER BY used_at ASC LIMIT ?)',
+  );
+  const startAgentCall = db.prepare(
+    'INSERT OR IGNORE INTO agent_call (id, investigation_id, tool, input, database_key, question, finding, started_at) ' +
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+  );
+  const endAgentCall = db.prepare(
+    'UPDATE agent_call SET ended_at = ?, ok = ?, error = ?, row_count = ? WHERE id = ?',
+  );
+  const agentCallsSince = db.prepare('SELECT * FROM agent_call WHERE started_at >= ? ORDER BY started_at ASC, rowid ASC');
+  const countAgentCalls = db.prepare('SELECT COUNT(*) AS n FROM agent_call');
+  const pruneAgentCalls = db.prepare(
+    'DELETE FROM agent_call WHERE rowid IN (SELECT rowid FROM agent_call ORDER BY started_at ASC LIMIT ?)',
   );
 
   const inTransaction = (fn: () => void) => {
@@ -420,6 +508,32 @@ export function openAppDb(file: string, now: () => number = Date.now): AppDb {
     deleteRecipe: id => typeof id === 'string' && Number(removeRecipe.run(id).changes) > 0,
 
     countRecipes: () => (countAll.get() as { n: number }).n,
+
+    recordAgentCall: e => {
+      checkKey(e.id);
+      checkKey(e.investigationId);
+      checkKey(e.tool);
+      const clipped = (text: string | undefined, max: number) =>
+        typeof text === 'string' && text ? text.slice(0, max) : null;
+      const key = e.databaseKey ? toStoredKey(e.databaseKey) : '';
+      inTransaction(() => {
+        startAgentCall.run(
+          e.id, e.investigationId, e.tool, clipped(e.input, MAX_AGENT_TEXT), key,
+          clipped(e.question, MAX_AGENT_TEXT), clipped(e.finding, MAX_AGENT_TEXT), e.at,
+        );
+        if (e.phase === 'end') {
+          endAgentCall.run(
+            e.at, e.ok === undefined ? null : e.ok ? 1 : 0, e.ok === false ? clipped(e.error, MAX_AGENT_ERROR) : null,
+            typeof e.rows === 'number' ? e.rows : null, e.id,
+          );
+        } else {
+          const { n } = countAgentCalls.get() as { n: number };
+          if (n > AGENT_CALL_CAP) pruneAgentCalls.run(n - AGENT_CALL_CAP);
+        }
+      });
+    },
+
+    listAgentCalls: (since = 0) => (agentCallsSince.all(since) as AgentCallRow[]).map(toAgentCall),
 
     close: () => db.close(),
   };
