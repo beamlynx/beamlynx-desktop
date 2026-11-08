@@ -217,14 +217,6 @@ export class Session {
   connecting: boolean = false;
 
   /**
-   * Desktop-only: set on the session that runs an MCP agent's request_reveal
-   * query for the user to look at (GlobalStore.handleRevealRequest) -- the
-   * id the agent's check_reveal poll is waiting on. That session is never a
-   * tab. With this set, it never writes (Session.isAgentSession).
-   */
-  pendingRevealRequestId?: string;
-
-  /**
    * Set when a beamlynx://run link opened this tab (DeepLinkHandler.tsx).
    * The link's expression is put in the editor but not run: anyone can write
    * such a link, so the person checks the expression and the connection and
@@ -528,9 +520,8 @@ export class Session {
   }
 
   /**
-   * True for a tab whose expression came from an AI agent: the MCP tab, or a
-   * tab opened to review a request_reveal call. evaluate() never lets such a
-   * tab change data, whoever presses Run.
+   * True for a tab whose expression came from an AI agent: the MCP tab.
+   * evaluate() never lets such a tab change data, whoever presses Run.
    */
   get isAgentSession(): boolean {
     return agentSessionNeverWrites(this);
@@ -1386,11 +1377,6 @@ export class Session {
     // (allow-writes defaults to allowed server-side, for the person's own
     // editor). It also covers the person pressing Run on an agent's tab,
     // where the expression on screen is the agent's, not theirs.
-    //
-    // A reveal-review tab is an agent's tab too: McpBridge.tsx runs
-    // the agent's expression the moment the request arrives, so the owner
-    // can see the data before deciding. Without this, `user | delete!` sent
-    // as a reveal request deleted rows before anyone was asked.
     const effectiveOpts: EvaluateOptions | undefined = this.isAgentSession
       ? { ...opts, allowWrites: false }
       : opts;
@@ -1809,13 +1795,9 @@ const handleOperation = (response: Response): Operation => {
 
 /**
  * Whether a session's expression came from an AI agent, so it must never
- * change data: the dedicated MCP tab, or a tab reviewing a request_reveal
- * call. Exported for tests.
+ * change data: the dedicated MCP tab. Exported for tests.
  */
-export const agentSessionNeverWrites = (session: {
-  isMcpSession: boolean;
-  pendingRevealRequestId?: string;
-}): boolean => session.isMcpSession || !!session.pendingRevealRequestId;
+export const agentSessionNeverWrites = (session: { isMcpSession: boolean }): boolean => session.isMcpSession;
 
 const handleError = (response: Response): { error: string; errorType: string } => {
   return {

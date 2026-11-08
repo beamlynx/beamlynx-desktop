@@ -119,30 +119,11 @@ export type InvestigationStep =
       after?: AccessPolicyModule[];
       // Applied after the agent's call stopped waiting, so it wasn't told.
       agentGone?: boolean;
-    }
-  // The agent asking to see a query's real values (request_reveal). The
-  // query runs once, read-only and unmasked, for the user to look at:
-  // `preview`, and `rows`, the run's rows as Approve sends them.
-  | {
-      id: string;
-      kind: 'reveal';
-      at: number;
-      requestId: string;
-      expression: string;
-      reason?: string;
-      // expired: the agent stopped waiting before anyone answered.
-      status: 'running' | 'pending' | 'revealed' | 'declined' | 'expired';
-      preview?: QuerySnapshot;
-      rows?: unknown;
-      // Why it was declined without asking, such as a query that changes data.
-      note?: string;
     };
 
 // These tools are shown as the query they ran, or as the question and
 // findings they carry. Their activity events add nothing else.
 const QUERY_TOOLS = new Set(['run_query', 'run_sql_as_pine', 'propose_policy_change']);
-// Waiting is shown as the proposal or reveal it waits on.
-const QUIET_TOOLS = new Set(['check_reveal']);
 
 
 export { DEFAULT_INVESTIGATION };
@@ -234,7 +215,7 @@ export class Investigation {
       }
       return;
     }
-    if (QUERY_TOOLS.has(event.tool) || QUIET_TOOLS.has(event.tool)) return;
+    if (QUERY_TOOLS.has(event.tool)) return;
     const existing = this.steps.find(s => s.kind === 'call' && s.id === event.id);
     if (event.phase === 'start') {
       if (existing) return;
@@ -363,48 +344,6 @@ export class Investigation {
     if (card) card.agentGone = true;
   }
 
-  /** A new card, or false when this request already has one (the desktop app sends it again after a reload). */
-  addReveal(requestId: string, expression: string, reason: string | undefined): boolean {
-    if (this.reveal(requestId)) return false;
-    this.steps.push(
-      newStep({
-        id: stepId(),
-        kind: 'reveal',
-        at: Date.now(),
-        requestId,
-        expression,
-        reason,
-        status: 'running',
-        preview: undefined,
-        rows: undefined,
-      }),
-    );
-    return true;
-  }
-
-  /** The reveal's read-only run is done: ready for the user's decision, or declined already. */
-  setRevealPreview(requestId: string, preview: QuerySnapshot, rows: unknown) {
-    const card = this.reveal(requestId);
-    if (card?.status !== 'running') return;
-    card.preview = preview;
-    card.rows = rows;
-    card.status = 'pending';
-  }
-
-  setReveal(requestId: string, status: 'revealed' | 'declined' | 'expired', note?: string) {
-    const card = this.reveal(requestId);
-    if (!card || card.status === 'revealed' || card.status === 'declined' || card.status === 'expired') return;
-    card.status = status;
-    if (note) card.note = note;
-    // Approve sent the rows, or nothing will: they needn't be kept.
-    card.rows = undefined;
-  }
-
-  reveal(requestId: string) {
-    const step = this.steps.find(s => s.kind === 'reveal' && s.requestId === requestId);
-    return step?.kind === 'reveal' ? step : undefined;
-  }
-
   setTabOpen(open: boolean) {
     this.tabOpen = open;
   }
@@ -422,12 +361,8 @@ export class Investigation {
     return undefined;
   }
 
-  /** Everything the agent is waiting on the user for: proposals and reveal requests. */
+  /** Everything the agent is waiting on the user for: its proposed policy changes. */
   get pendingDecisions() {
-    return this.steps.filter(
-      s =>
-        (s.kind === 'proposal' && s.status === 'pending') ||
-        (s.kind === 'reveal' && (s.status === 'pending' || s.status === 'running')),
-    );
+    return this.steps.filter(s => s.kind === 'proposal' && s.status === 'pending');
   }
 }

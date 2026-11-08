@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useStores } from '../store/store-container';
 import { isDesktop } from '../store/util';
 import { bridgeSafe } from '../utils/bridge-safe';
-import type { McpQueryRequest, RevealRequest } from '../desktop';
+import type { McpQueryRequest } from '../desktop';
 
 /**
  * Registers every renderer handler for the MCP server, then tells the
@@ -14,7 +14,7 @@ import type { McpQueryRequest, RevealRequest } from '../desktop';
  *
  * One effect, so notifyBridgeReady comes after every subscription: until
  * it, the desktop app answers requests that need this window with 503, and
- * after it, it sends the proposals and reveal requests still waiting again.
+ * after it, it sends the proposals still waiting again.
  */
 const McpBridge = () => {
   const { global } = useStores();
@@ -52,12 +52,6 @@ const McpBridge = () => {
       // the card expiring once the agent stops waiting for it.
       mcp.onPolicyProposal?.(proposal => global.handlePolicyProposal(proposal)),
       mcp.onPolicyProposalExpired?.(id => global.expirePolicyProposal(id)),
-      // An agent's request_reveal: a card in its investigation, and the
-      // same expiry.
-      desktop.mcpReveal.onRequest((request: RevealRequest) => {
-        void global.handleRevealRequest(request);
-      }),
-      desktop.mcpReveal.onExpired?.(id => global.expireRevealRequest(id)),
     ];
     mcp.notifyBridgeReady?.();
     return () => offs.forEach(off => off?.());

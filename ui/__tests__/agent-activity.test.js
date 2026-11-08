@@ -46,7 +46,7 @@ test('an end with no start is still logged', () => {
 
 test('waiting for the person is not working', () => {
   const store = new AgentActivityStore();
-  store.apply(start('r', 'check_reveal'));
+  store.apply(start('r', 'propose_policy_change'));
   assert.equal(store.working, false);
   assert.equal(store.current.id, 'r');
   store.tick(Date.now() + STALE_MS);

@@ -4,7 +4,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
  * Measures an element so it can be collapsed to nothing and back.
  *
  * `height: auto` is not animatable, and the surfaces this is for -- the
- * app header, the error band above Results, the reveal-request banner --
+ * app header, the error band above Results --
  * have no height anyone can hardcode: they wrap differently per theme,
  * text size, connection name and error message. Picking a generous
  * `maxHeight` instead is the usual shortcut and it shows: the transition

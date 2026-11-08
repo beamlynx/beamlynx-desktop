@@ -28,6 +28,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Removed
 - **The "Tell the agent…" box under an agent's timeline.** Talk to the agent in the tool you run it from instead. The agent is still told when you run a query yourself in the tab that shows its work.
 - **Folding an agent's timeline to a thin bar.** The bar showed nothing but an arrow. The timeline now always shows; Zen mode gives the canvas the whole window instead.
+- **Reveal requests.** To see a masked column, an agent now proposes a change to the masking rules, which you apply or decline in its timeline. The separate reveal request, and its card, are gone.
 
 ### Fixed
 - **An agent's query no longer fails with "An object could not be cloned."** Beamlynx now always hands an agent's result back as plain data. In October, every agent query that touched a masked column failed this way.
