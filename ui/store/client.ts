@@ -414,6 +414,11 @@ export type Response = {
   // `error-type: "write-refused"`. Absent against a server older than the
   // feature. See pine-lang's docs/side-effects.md.
   writes?: boolean;
+  // eval: the most rows Pine returns when the expression sets no limit: of
+  // its own (250, or 10,000 for a group:), or null when its own limit:
+  // decides. As many rows as this may mean the result was cut off. Absent
+  // against an older server.
+  'row-cap'?: number | null;
   // Nicely formatted rendering of the expression that ran - pine-lang
   // computes it on every build or eval alike (see client.prettify()'s own
   // use of ast.prettified for build), so it comes back here for free
