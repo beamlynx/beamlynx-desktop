@@ -788,6 +788,7 @@ export function formatExpressionError(
   }
 
   const match = pickDocTopic(errorText);
+  let inlined = false;
   if (match) {
     if (match.operation !== `${match.token.toLowerCase()}:`) {
       sections.push(`\`${match.token}\` is not a Pine operation. Closest match: \`${match.operation}\``);
@@ -795,8 +796,15 @@ export function formatExpressionError(
     const doc = getDoc(match.topic);
     if (doc) {
       sections.push(`--- Pine reference: ${match.topic} ---\n${doc.trimEnd()}`);
+      inlined = true;
     }
   }
+
+  // pine-lang ends a parse error with "Pine docs: <topic>", the operation it
+  // failed in. Say how to read it, unless it is already inlined above.
+  sections[0] = sections[0].replace(/^Pine docs: ([a-z-]+)$/m, (line, topic: string) =>
+    inlined ? line : `Pine docs: ${topic}. Read it with get_pine_doc "${topic}".`,
+  );
 
   return sections.join('\n\n');
 }
