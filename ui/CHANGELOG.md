@@ -5,6 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 ### Added
+- **See a table's columns and joins.** End a query with `| describe:`, or pick **describe** from a table's **+** menu on the canvas, which opens it in a new tab. The result lists each column with its type and key, then the tables it joins to and from, with the Pine to type for each. Its rows can't be edited: they describe the table, not its data.
 - **Run runs every query in the tab.** Each query, separated by a blank line, runs in turn from the top, and its result gets its own section, where cells can be edited as usual. A query that fails stops the ones below it. To run only some queries, select lines in them first. Before, Run ran only the last query. The SQL panel shows the SQL of every query too, read-only while there is more than one.
 - **Ctrl+O opens the Library.** There is now one place to find a recipe. Ctrl+O opens the Library in the sidebar with its search box ready, and Up, Down and Enter work as they did in the old quick picker, which is gone.
 - **Switch a tab's database from the command palette.** Press Ctrl+K and pick **Switch Connection**. It lists your connections, marks the one the tab is on, and switches the tab to the one you choose. A tab with a query in it asks first, as the sidebar does.

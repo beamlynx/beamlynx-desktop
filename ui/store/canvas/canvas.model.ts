@@ -405,7 +405,7 @@ export type PickerState =
     };
 
 /** The actions tucked behind a node's "+" overflow trigger - see TableNode.tsx. */
-export type MoreAction = 'order' | 'group' | 'path' | 'limit' | 'traverse' | 'unnest';
+export type MoreAction = 'order' | 'group' | 'path' | 'limit' | 'traverse' | 'unnest' | 'describe';
 export const MORE_ACTIONS: { action: MoreAction; label: string; key: string }[] = [
   { action: 'order', label: 'order', key: 'o' },
   { action: 'group', label: 'group', key: 'g' },
@@ -413,6 +413,8 @@ export const MORE_ACTIONS: { action: MoreAction; label: string; key: string }[] 
   { action: 'path', label: 'path', key: 'p' },
   { action: 'traverse', label: 'traverse', key: 't' },
   { action: 'unnest', label: 'unnest', key: 'u' },
+  // Opens `<table> | describe:` in a new tab: its columns and joins.
+  { action: 'describe', label: 'describe', key: 'd' },
 ];
 
 /**
@@ -428,7 +430,7 @@ export const MORE_ACTIONS: { action: MoreAction; label: string; key: string }[] 
  */
 // `unnest` is only offered on a table with a JSON column: see
 // CanvasStore.openMorePicker.
-export const MORE_ACTIONS_FOR_TABLE: MoreAction[] = ['order', 'group', 'limit', 'path', 'traverse', 'unnest'];
+export const MORE_ACTIONS_FOR_TABLE: MoreAction[] = ['order', 'group', 'limit', 'path', 'traverse', 'unnest', 'describe'];
 // `limit` on a checkpoint's node limits its sealed result.
 export const MORE_ACTIONS_FOR_CHECKPOINT: MoreAction[] = ['order', 'limit', 'path'];
 

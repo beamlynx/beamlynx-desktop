@@ -32,3 +32,11 @@ test('blocksToRun: a selection on blank lines or a values block runs every query
   assert.deepEqual(blocksToRun(blocks, { from: 2, to: 3 }), [0, 2, 3]);
   assert.deepEqual(blocksToRun(blocks, { from: 6, to: 6 }), [0, 2, 3]);
 });
+
+test('describesTable: the last block ends in describe:', () => {
+  const { describesTable } = require('../store/blocks.ts');
+  assert.equal(describesTable('user | describe:'), true);
+  assert.equal(describesTable('user | document | describe: -- its columns'), true);
+  assert.equal(describesTable('user | describe:\n\nuser | count:'), false);
+  assert.equal(describesTable('describe'), false);
+});

@@ -80,6 +80,16 @@ export function splitExpressions(text: string): ExpressionBlock[] {
 }
 
 /**
+ * Whether the tab's last block ends in `describe:`, so what it returns
+ * describes a table rather than holding its rows. A comment after it is
+ * allowed.
+ */
+export function describesTable(text: string): boolean {
+  const last = splitExpressions(text).at(-1)?.text ?? '';
+  return /\|\s*describe:\s*(--[^\n]*)?$/i.test(last);
+}
+
+/**
  * Whether a block is a values block (`$name = value` lines only, see
  * store/values-blocks.ts): its first character after comments is `$`.
  *

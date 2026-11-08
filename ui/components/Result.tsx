@@ -3,6 +3,7 @@ import { observer } from 'mobx-react-lite';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useStores } from '../store/store-container';
 import type { Row, Session } from '../store/session';
+import { describesTable } from '../store/blocks';
 import {
   Box,
   IconButton,
@@ -213,10 +214,18 @@ const Result: React.FC<ResultProps> = observer(({ sessionId, session: blockSessi
   const tableForAlias = (alias: string): string =>
     ast?.['selected-tables']?.find(t => t.alias === alias)?.table ?? alias;
 
+  // Whether what ran ends in `describe:`: its rows describe a table's
+  // columns and joins (pine-lang's docs/describe.md), and none is a row of a
+  // table.
+  const describesSchema = describesTable(session.expressionAtLastEval);
+
   // Why a column's values can't be edited, if they can't. An update finds
   // its row by that table's primary key, so the table needs one, and the key
   // itself is the one thing it can't change.
   const readOnlyReasonFor = (field: string, headerName: string): string | undefined => {
+    if (describesSchema) {
+      return "These rows describe a table, from the schema Pine read. They aren't stored in a table, so they can't be edited.";
+    }
     const pathTarget = session.columnMetadata.colIndexToPathLookup[field];
     // A value inside the elements of `unnest:` is edited in its table's row.
     const unnest = ast?.unnests?.find(u => u.alias === colIndexToAlias[field]);
