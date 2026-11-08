@@ -414,6 +414,22 @@ test('grammar regex terminals are stripped from parse errors', () => {
   );
 });
 
+// pine-lang's parse error since pine-lang #174: what was expected in words,
+// what fits, and the docs topic.
+const PARSE_ERROR_TEACHING = [
+  'Parse error at line 1, column 25:',
+  "company | where: id = 1 and name = 'x'",
+  '                        ^',
+  'Expected: `|`, `or`, `::`',
+  'Pine docs: where',
+].join('\n');
+
+test('the docs topic in a parse error says how to read it', () => {
+  const out = formatExpressionError("company | where: id = 1 and name = 'x'", PARSE_ERROR_TEACHING, noDocs);
+  assert.match(out, /^Pine docs: where\. Read it with get_pine_doc "where"\.$/m);
+  assert.match(out, /^Expected: `\|`, `or`, `::`$/m, 'the expected line passes through as it is');
+});
+
 // ---------------------------------------------------------------------------
 // Connections
 // ---------------------------------------------------------------------------

@@ -5,6 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 ### Added
+- **An agent's parse error says where to read about it.** The error names the Pine docs topic for the operation that failed, and tells the agent to read it with `get_pine_doc`. (Needs the matching pine-lang.)
 - **Beamlynx keeps a log of what agents do.** Every tool call an AI agent makes is saved in `beamlynx.db`: the tool, the query it sent, any error, and how many rows came back. The rows themselves are never saved, and a database is recorded only by a hash of its address. The newest 20,000 calls are kept. `scripts/agent-retro.mjs` reads the log and reports how agents did and why their calls failed, to find what to improve.
 - **Open Beamlynx's own data file as a database.** The command palette has **Open Beamlynx's data file**, which connects to `beamlynx.db`: your preferences, recipes and column widths. (Needs the matching beamlynx-ui.)
 
