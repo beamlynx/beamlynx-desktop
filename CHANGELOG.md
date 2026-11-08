@@ -17,6 +17,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Fixed
 - **Clicking a `beamlynx://` link while Beamlynx is closed opens it.** On Linux and Windows the app showed a JavaScript error instead of opening.
 
+### Removed
+- **Reveal requests.** To see a masked column, an agent now proposes a change to the masking rules, which you apply or decline in its timeline. The separate reveal request, and the tab it opened, are gone.
+
 ## [0.28.0] - 2026-11-04
 ### Added
 - **Lists on the canvas find what you type even when it isn't the start of a name.** Typing `crat` in a column list finds `created_at`. (bundled beamlynx-ui 0.73.0)

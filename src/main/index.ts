@@ -11,7 +11,6 @@ import { useSeparateDevDataDir } from './data-dir';
 import { startControlPlaneServer } from './mcp/control-plane-server';
 import { registerInvestigationIpc } from './mcp/investigations';
 import { watchBridge } from './mcp/render-bridge';
-import { registerRevealIpc } from './mcp/reveal-requests';
 import { CONTROL_PLANE_PORT, describePortInUse, isPortInUse, PINE_PORT } from './ports';
 import { getLaunchPath, getResourcesRoot } from './resources';
 import { ServerHandle, startServer } from './server-process';
@@ -386,7 +385,6 @@ async function main(): Promise<void> {
   mark('ready');
   Menu.setApplicationMenu(buildMenu());
   registerCredentialIpc(dbType => getUsageStats().capture('connection_added', { database_type: dbType }));
-  registerRevealIpc();
   registerInvestigationIpc();
   registerAppDbIpc();
   registerAccountIpc();

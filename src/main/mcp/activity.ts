@@ -65,14 +65,10 @@ export function describeCall(tool: string, args: Record<string, unknown>): { sum
       return { summary: 'Converting SQL to Pine and running it', detail: text('sql') };
     case 'open_in_desktop':
       return { summary: 'Opening a query in a tab', detail: text('expression') };
-    case 'request_reveal':
-      return { summary: 'Asking you to reveal hidden values', detail: text('reason') ?? text('expression') };
     case 'get_access_policy':
       return { summary: 'Reading the access policy' };
     case 'propose_policy_change':
       return { summary: 'Proposing a change to the access policy', detail: text('reason') };
-    case 'check_reveal':
-      return { summary: 'Waiting for your decision on a reveal request' };
     case 'set_question':
       return { summary: 'Naming the question it is investigating', detail: text('question') };
     case 'note_finding':

@@ -22,8 +22,6 @@ const {
   formatConnections,
   formatTableMatches,
   formatRows,
-  formatRevealCreated,
-  formatRevealStatus,
   formatExpressionError,
   pickDocTopic,
 } = require(DIST);
@@ -455,97 +453,6 @@ test('list_connections exposes only the id and label, not stored credentials', (
 
 test('list_connections explains how to enable one when there are none', () => {
   assert.match(formatConnections([]), /Enable for MCP access/);
-});
-
-// ---------------------------------------------------------------------------
-// request_reveal / check_reveal
-// ---------------------------------------------------------------------------
-
-test('formatRevealCreated tells the agent to poll check_reveal, not to expect an answer yet', () => {
-  const out = formatRevealCreated({ requestId: 'req-1', status: 'pending' });
-  assert.match(out, /req-1/);
-  assert.match(out, /check_reveal/);
-  assert.match(out, /not resolved yet|pending/i);
-});
-
-test('formatRevealCreated surfaces a control-plane error verbatim', () => {
-  assert.equal(formatRevealCreated({ error: 'boom' }), 'boom');
-});
-
-test('formatRevealStatus says pending plainly, with no results to leak', () => {
-  const out = formatRevealStatus({ request: { id: 'req-1', expression: 'user', status: 'pending' } });
-  assert.match(out, /pending/i);
-});
-
-test('formatRevealStatus renders a decline with the user\'s comment', () => {
-  const out = formatRevealStatus({
-    request: {
-      id: 'req-1',
-      expression: 'user | select: email',
-      status: 'declined',
-      outcome: { comment: 'that column is off-limits for agents' },
-    },
-  });
-  assert.match(out, /Declined/);
-  assert.match(out, /off-limits for agents/);
-});
-
-test('formatRevealStatus says so when a decline carries no comment', () => {
-  const out = formatRevealStatus({
-    request: { id: 'req-1', expression: 'user', status: 'declined', outcome: {} },
-  });
-  assert.match(out, /No comment was given/);
-});
-
-test('formatRevealStatus renders revealed rows through the same formatRows convention as run_query', () => {
-  const out = formatRevealStatus({
-    request: {
-      id: 'req-1',
-      expression: 'user | select: email',
-      status: 'revealed',
-      outcome: { expression: 'user | select: email', columns: [], rows: [['email'], ['real@example.com']] },
-    },
-  });
-  assert.match(out, /real@example\.com/);
-  assert.ok(!/xxxxx/.test(out), 'a revealed result must never still show the redacted placeholder');
-});
-
-test('formatRevealStatus flags it when the user edited the expression before revealing', () => {
-  const out = formatRevealStatus({
-    request: {
-      id: 'req-1',
-      expression: 'user | select: email, ssn',
-      status: 'revealed',
-      outcome: { expression: 'user | select: email', columns: [], rows: [['email'], ['real@example.com']] },
-    },
-  });
-  assert.match(out, /edited the expression/);
-  assert.ok(out.includes('user | select: email'));
-  assert.ok(!out.includes('ssn'), 'must render what actually ran, not the agent\'s original expression');
-});
-
-// The review tab round-trips the expression through pine-lang's
-// prettifier, which puts each `|` on its own line. Compared raw, every
-// single reveal came back claiming the user had edited it.
-test('formatRevealStatus does not call a re-prettified expression an edit', () => {
-  const out = formatRevealStatus({
-    request: {
-      id: 'req-1',
-      expression: 'user | select: email',
-      status: 'revealed',
-      outcome: {
-        expression: 'user\n | select: email',
-        columns: [],
-        rows: [['email'], ['real@example.com']],
-      },
-    },
-  });
-  assert.ok(!/edited the expression/.test(out), 'only a real change is worth making the agent re-read');
-  assert.match(out, /Revealed:/);
-});
-
-test('formatRevealStatus reports an unknown request id rather than throwing', () => {
-  assert.match(formatRevealStatus({}), /No such reveal request/);
 });
 
 test('a cell longer than MAX_CELL_CHARS is cut, saying how much was left out', () => {

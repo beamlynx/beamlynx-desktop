@@ -101,7 +101,6 @@ test('while the page is not ready, page work gets a 503 saying to try again', as
 
 test('long-polls are answered while the page is not ready', async () => {
   assert.deepEqual(await call('GET', '/policy-proposal/unknown-id'), { status: 200, body: { status: 'unknown' } });
-  assert.deepEqual(await call('GET', '/reveal/unknown-id'), { status: 200, body: { request: null } });
 });
 
 test('/ready needs the token like every other route', async () => {
