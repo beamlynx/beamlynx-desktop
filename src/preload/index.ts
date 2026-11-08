@@ -49,21 +49,6 @@ type AgentActivity = {
   investigationId?: string;
 };
 
-// Matches beamlynx-ui's desktop.d.ts RevealRequest/RevealOutcome -- see
-// src/main/mcp/reveal-requests.ts, the source of truth for both shapes.
-type RevealRequest = {
-  id: string;
-  profileId: string;
-  expression: string;
-  reason?: string;
-  createdAt: number;
-  status: 'pending' | 'revealed' | 'declined' | 'expired';
-  investigationId?: string;
-};
-type RevealOutcome =
-  | { ok: true; expression: string; columns: unknown; rows: unknown }
-  | { ok: false; comment?: string };
-
 // Passed by main through webPreferences.additionalArguments (see createWindow).
 const pineServerUrl = process.argv
   .find(arg => arg.startsWith('--pine-server-url='))
@@ -232,8 +217,8 @@ contextBridge.exposeInMainWorld('beamlynxDesktop', {
     // Called by McpBridge once it listens on every MCP channel. Until then,
     // and again from the moment the page reloads, main tells agents to try
     // again in a few seconds instead of sending work nobody would answer.
-    // Becoming ready re-sends every proposal and reveal request still
-    // waiting, so their cards come back after a reload.
+    // Becoming ready re-sends every proposal still waiting, so their cards
+    // come back after a reload.
     notifyBridgeReady: (): void => ipcRenderer.send('mcp:bridge-ready'),
     // Each MCP tool call as it starts and ends (see src/main/mcp/activity.ts),
     // so the app can show that an agent is working.
@@ -272,31 +257,6 @@ contextBridge.exposeInMainWorld('beamlynxDesktop', {
     // the agent no longer waits for it.
     resolvePolicyProposal: (id: string, outcome: { applied: boolean; comment?: string }): Promise<boolean> =>
       ipcRenderer.invoke('mcp:policy-proposal-resolve', id, outcome),
-  },
-  // control-plane-server.ts's POST /reveal (behind the MCP request_reveal
-  // tool) creates a request and fires 'mcp:reveal-request' here rather than
-  // awaiting a response the way onQueryRequest above does -- a human review
-  // can take minutes, far past what one HTTP call should block on. onRequest
-  // is how RevealRequestHandler.tsx (beamlynx-ui) learns a new one arrived,
-  // so it can open a real tab for the owner to look at; resolve is how
-  // RevealRequestBanner.tsx reports back what the owner decided, which
-  // check_reveal (the matching poll-side MCP tool) then reads.
-  mcpReveal: {
-    onRequest: (callback: (request: RevealRequest) => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, request: RevealRequest) => callback(request);
-      ipcRenderer.on('mcp:reveal-request', listener);
-      return () => ipcRenderer.removeListener('mcp:reveal-request', listener);
-    },
-    // A request nobody answered within 10 minutes (see
-    // src/main/mcp/reveal-requests.ts). Its card should say it expired:
-    // resolve() now returns null for it.
-    onExpired: (callback: (id: string) => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, id: string) => callback(id);
-      ipcRenderer.on('mcp:reveal-request-expired', listener);
-      return () => ipcRenderer.removeListener('mcp:reveal-request-expired', listener);
-    },
-    resolve: (id: string, outcome: RevealOutcome): Promise<RevealRequest | null> =>
-      ipcRenderer.invoke('mcp:reveal-resolve', id, outcome),
   },
   onDeepLink: (callback: (params: { connection?: string; expression?: string }) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, params: { connection?: string; expression?: string }) =>

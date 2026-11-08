@@ -43,7 +43,6 @@ test('stdio-relay.ts registers exactly the expected tool set', () => {
   assert.deepEqual(
     registered.sort(),
     [
-      'check_reveal',
       'complete_query',
       'find_tables',
       'get_access_policy',
@@ -52,7 +51,6 @@ test('stdio-relay.ts registers exactly the expected tool set', () => {
       'note_finding',
       'open_in_desktop',
       'propose_policy_change',
-      'request_reveal',
       'run_query',
       'run_sql_as_pine',
       'set_question',
@@ -115,7 +113,7 @@ test('run_sql_as_pine forwards SQL only to the control plane /query route', () =
   // over what the user typed for the agent.
   // /policy only reads the connection's own rules. /ready only asks whether
   // the window can take work.
-  assert.ok(sends.every(route => ['/ready', '/connections', '/explain', '/query', '/reveal', '/reveal-status', '/activity', '/investigation/notes', '/policy'].some(r => route.startsWith(r))), sends.join(', '));
+  assert.ok(sends.every(route => ['/ready', '/connections', '/explain', '/query', '/activity', '/investigation/notes', '/policy'].some(r => route.startsWith(r))), sends.join(', '));
   assert.ok(/runOnControlPlane\(\{ profileId: connection_id, sql, variables \}, extra\.signal\)/.test(STDIO_RELAY_SOURCE));
   assert.ok(/controlPlaneRequest\('POST', '\/query', body, \{ signal \}\)/.test(STDIO_RELAY_SOURCE));
   // policy-proposals.ts sends a proposal, and asks for the user's answer.

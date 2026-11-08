@@ -40,8 +40,6 @@ import {
   formatCompletion,
   formatConnections,
   formatPolicy,
-  formatRevealCreated,
-  formatRevealStatus,
   formatRows,
   formatTableMatches,
 } from './format';
@@ -105,7 +103,7 @@ function describeRequestError(err: NodeJS.ErrnoException): Error {
 
 // Default timeout per route (see the constants at the top).
 function defaultTimeout(method: string, path: string): number {
-  if (path === '/query' || path === '/explain' || (method === 'POST' && path === '/reveal')) {
+  if (path === '/query' || path === '/explain') {
     return PAGE_REQUEST_TIMEOUT_MS;
   }
   return LONG_POLL_REQUEST_TIMEOUT_MS;
@@ -635,77 +633,6 @@ async function registerTools(server: McpServer): Promise<void> {
           extra.signal,
         );
         return isError ? errorResult(text) : textResult(text);
-      } catch (e) {
-        return errorResult(e instanceof Error ? e.message : String(e));
-      }
-    },
-  );
-
-  server.registerTool(
-    'request_reveal',
-    {
-      description:
-        'Ask the user to reveal the real, unredacted results of a query the connection\'s access policy is ' +
-        'currently redacting (shown as "xxxxx" in run_query output). Use this only when a redacted value is ' +
-        'blocking something you legitimately need -- not as a default way around the policy. The request shows ' +
-        'in Beamlynx, in the investigation that follows your work, where the user can look at the real results, ' +
-        'then reveal them to you or decline (optionally explaining why). Returns immediately with a request id -- the user has not ' +
-        'responded yet. Call check_reveal with that id to wait for what they decide.',
-      inputSchema: {
-        connection_id: z.string().describe('A connection id from list_connections'),
-        expression: z
-          .string()
-          .describe(
-            'The Pine expression whose real results you want to see. This tool takes no `variables`: write any ' +
-              '$variable\'s value in a values block above the query (`$name = \'value\'`, then a blank line).',
-          ),
-        reason: z
-          .string()
-          .optional()
-          .describe('Why you need the real data -- shown to the user to help them decide'),
-      },
-    },
-    async (
-      { connection_id, expression, reason }: { connection_id: string; expression: string; reason?: string },
-      extra: ToolExtra,
-    ) => {
-      try {
-        await ensureGuiRunning();
-        const result = await controlPlaneRequest(
-          'POST',
-          '/reveal',
-          { profileId: connection_id, expression, reason },
-          { signal: extra.signal },
-        );
-        return textResult(formatRevealCreated(result));
-      } catch (e) {
-        return errorResult(e instanceof Error ? e.message : String(e));
-      }
-    },
-  );
-
-  server.registerTool(
-    'check_reveal',
-    {
-      description:
-        'Wait for the outcome of a request_reveal call. Blocks for up to 25 seconds for the user to respond, ' +
-        'so just call it once and wait -- no need for your own delay between calls. If it comes back still ' +
-        'pending, the user simply hasn\'t decided yet; call it again to keep waiting. Returns the real rows if ' +
-        'revealed, or a decline, with the ' +
-        'user\'s comment if they left one, if not.',
-      inputSchema: {
-        request_id: z.string().describe('The request id returned by request_reveal'),
-      },
-    },
-    // Cancelling stops this wait only. The request stays on offer until it
-    // expires, since the agent may call check_reveal again.
-    async ({ request_id }: { request_id: string }, extra: ToolExtra) => {
-      try {
-        await ensureGuiRunning();
-        const result = await controlPlaneRequest('GET', `/reveal/${encodeURIComponent(request_id)}`, undefined, {
-          signal: extra.signal,
-        });
-        return textResult(formatRevealStatus(result));
       } catch (e) {
         return errorResult(e instanceof Error ? e.message : String(e));
       }

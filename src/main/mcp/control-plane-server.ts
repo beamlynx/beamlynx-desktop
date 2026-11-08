@@ -24,29 +24,17 @@ import {
 import { authorizeControlPlaneRequest } from './control-plane-auth';
 import { BodyTooLargeError, readUtf8Body } from './read-body';
 import { isBridgeReady, NOT_READY_MESSAGE, onBridgeReady, runInRenderer } from './render-bridge';
-import {
-  countPendingRevealRequests,
-  createRevealRequest,
-  expireRevealRequest,
-  getRevealRequest,
-  listPendingRevealRequests,
-  REVEAL_EXPIRY_MS,
-  waitForRevealRequest,
-} from './reveal-requests';
 
 // Enough for any expression and its variables. Nothing an MCP client sends
 // legitimately comes close.
 const MAX_BODY_BYTES = 1024 * 1024;
 
-// An agent in a loop could otherwise open a new pinned tab per call.
-const MAX_PENDING_REVEALS_PER_CONNECTION = 3;
-
-// How long GET /reveal/:id and GET /policy-proposal/:id block waiting for a
-// decision before returning "still pending". stdio-relay.ts's
-// controlPlaneRequest gives these calls a 35 s client-side timeout
-// (LONG_POLL_REQUEST_TIMEOUT_MS there), so this stays well under it. The
-// routes that wait on the page (/query, /explain, POST /reveal) have their
-// own, longer budget: render-bridge.ts's 60 s, and 70 s in the relay.
+// How long GET /policy-proposal/:id blocks waiting for a decision before
+// returning "still pending". stdio-relay.ts's controlPlaneRequest gives
+// these calls a 35 s client-side timeout (LONG_POLL_REQUEST_TIMEOUT_MS
+// there), so this stays well under it. The routes that wait on the page
+// (/query, /explain) have their own, longer budget: render-bridge.ts's 60 s,
+// and 70 s in the relay.
 const LONG_POLL_TIMEOUT_MS = 25000;
 
 // How long a proposed policy change stays on offer. stdio-relay.ts's
@@ -174,7 +162,6 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
   // on the user is sent again; beamlynx-ui keeps one card per id.
   onBridgeReady(() => {
     for (const proposal of listPendingProposals()) sendToWindow('mcp:policy-proposal', proposal);
-    for (const request of listPendingRevealRequests()) sendToWindow('mcp:reveal-request', request);
   });
 
   const server = http.createServer(async (req, res) => {
@@ -325,89 +312,6 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
           { signal: hungUp.signal },
         );
         return sendJson(res, 200, { result });
-      }
-
-      // request_reveal (see stdio-relay.ts). Returns immediately with a
-      // request id rather than blocking on the human's response the way
-      // /query and /explain block on the renderer's -- a review can take
-      // minutes, far past any timeout an MCP client or this server itself
-      // would tolerate on one call. check_reveal (GET /reveal/:id below) is
-      // how the agent finds out what happened.
-      if (req.method === 'POST' && req.url === '/reveal') {
-        const body = await readJsonBody(req);
-        const { profileId, expression, reason } = body ?? {};
-        if (!profileId || typeof expression !== 'string') {
-          return sendJson(res, 400, { error: 'profileId and expression are required' });
-        }
-        assertWhitelisted(profileId);
-
-        const mainWindow = windowOr503(res);
-        if (!mainWindow) return;
-
-        if (countPendingRevealRequests(profileId) >= MAX_PENDING_REVEALS_PER_CONNECTION) {
-          return sendJson(res, 429, {
-            error: `There are already ${MAX_PENDING_REVEALS_PER_CONNECTION} reveal requests waiting for this connection. Wait for the user to answer them.`,
-          });
-        }
-
-        // A reveal is read-only. Build the expression first and refuse one
-        // that changes data, so the owner is never asked to approve a write.
-        // Fails closed: only a build that succeeded and says writes: false
-        // passes. An older pine-lang that doesn't report `writes` is refused
-        // too, rather than trusted.
-        const built = (await runInRenderer(mainWindow, { kind: 'build', profileId, expression })) as
-          | { error?: string; writes?: boolean }
-          | undefined;
-        if (!built || built.error || built.writes !== false) {
-          return sendJson(res, 400, {
-            error: built?.error
-              ? `Couldn't check this expression: ${built.error}`
-              : built?.writes
-                ? 'Refusing to reveal an expression that changes data. Reveal requests are read-only.'
-                : "Couldn't confirm this expression is read-only, so it wasn't sent for review.",
-          });
-        }
-
-        const request = createRevealRequest(
-          profileId,
-          expression,
-          typeof reason === 'string' ? reason : undefined,
-          investigationId,
-        );
-        // Unanswered, it expires like a proposal, and stops counting toward
-        // the limit above. The card says so.
-        const expiry = setTimeout(() => {
-          if (expireRevealRequest(request.id)) sendToWindow('mcp:reveal-request-expired', request.id);
-        }, REVEAL_EXPIRY_MS);
-        expiry.unref();
-        // Fire-and-forget: RevealRequestHandler.tsx (beamlynx-ui) opens a
-        // real tab for the owner to review. Nothing here awaits that --
-        // the whole point is that this HTTP call returns right away.
-        sendToWindow('mcp:reveal-request', request);
-        return sendJson(res, 200, { requestId: request.id, status: request.status });
-      }
-
-      // check_reveal (see stdio-relay.ts). Long-polls: blocks up to
-      // LONG_POLL_TIMEOUT_MS for the request to stop being pending,
-      // rather than returning "pending" immediately and leaving the agent to
-      // invent its own retry delay. Still always 200, even for an id this
-      // process has never seen (a stale id from a previous app run, or a
-      // typo) or one that's still pending once the wait elapses --
-      // `request: null`/a pending request are both normal, expected outcomes
-      // check_reveal has to render a message for (format.ts's
-      // formatRevealStatus), not transport-level failures the relay's
-      // controlPlaneRequest should reject on.
-      //
-      // The connection must still be open to agents, before the wait and
-      // again after it: the user may have turned agent access off while the
-      // request waited, and revealed rows must not go out after that.
-      if (req.method === 'GET' && req.url?.startsWith('/reveal/')) {
-        const id = decodeURIComponent(req.url.slice('/reveal/'.length));
-        const known = getRevealRequest(id);
-        if (known) assertWhitelisted(known.profileId);
-        const request = await waitForRevealRequest(id, LONG_POLL_TIMEOUT_MS);
-        if (request) assertWhitelisted(request.profileId);
-        return sendJson(res, 200, { request: request ?? null });
       }
 
       sendJson(res, 404, { error: 'Not found' });

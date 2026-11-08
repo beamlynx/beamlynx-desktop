@@ -109,10 +109,7 @@ labelled "guessed from column naming" was inferred from a naming pattern with no
 behind it, so confirm it returns sensible rows before relying on it.
 
 Some columns come back as "xxxxx" -- the masking policy on that connection masked them, not a
-real value. If one is genuinely blocking something you need, call request_reveal (with a reason)
-to ask the user to look at it and decide; it returns a request id right away, not the answer --
-call check_reveal with that id and it waits for the user's decision, so no delay of your own is
-needed. Do not reach for this by default; most redacted columns are meant to stay that way.
+real value. Most masked columns are meant to stay that way.
 
 The policy masks what comes back, not what you ask. You may filter, sort and join on a masked
 column with a value you supply: \`where: email = 'ann@example.com'\` finds the rows that hold it.
