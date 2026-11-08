@@ -868,3 +868,13 @@ test('an agent query that never ends gives up its place, so the next one still r
   assert.match(stuck.error, /ran for more than/);
   assert.equal(next.rowCount, 1);
 });
+
+test('an agent query that touches a masked column answers in plain data the desktop app can take', async () => {
+  const store = storeWithFakeDatabase(() => ({ error: 'hidden', errorType: 'policy', hidden: hiddenType }));
+  const result = await run(store, 'claude-a', 'user | select: email');
+  // As McpBridge.tsx hands it over: structuredClone fails on MobX state the
+  // way Electron's contextBridge does ("An object could not be cloned.").
+  const { bridgeSafe } = require('../utils/bridge-safe.ts');
+  assert.doesNotThrow(() => structuredClone(bridgeSafe(result)));
+  assert.equal(result.error, 'hidden');
+});
