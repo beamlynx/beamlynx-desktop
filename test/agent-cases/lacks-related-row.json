@@ -1,0 +1,10 @@
+{
+  "question": "Which users have never logged in?",
+  "kind": "rows that lack a related row",
+  "fixture": "fixture.sql",
+  "expect": {
+    "rows": 1,
+    "contains": [["dana@initech.example"]]
+  },
+  "good_pine": "user | activity .user_id :left | where: a_1.id is null | select: u_0.email"
+}

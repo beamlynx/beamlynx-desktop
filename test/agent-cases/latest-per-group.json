@@ -1,0 +1,15 @@
+{
+  "question": "What is each tenant's most recent login? Give the tenant's name and the time.",
+  "kind": "latest N per group",
+  "fixture": "fixture.sql",
+  "expect": {
+    "rows": 3,
+    "columns": ["name", "created_at"],
+    "contains": [
+      ["Acme", "2026-11-03 09:15"],
+      ["Globex", "2026-11-05 17:40"],
+      ["Initech", "2026-10-28 08:02"]
+    ]
+  },
+  "good_pine": "activity | where: type = 'login' | order: created_at desc | limit: 1 per tenant_id | tenant | select: t_1.name, a_0.created_at"
+}
