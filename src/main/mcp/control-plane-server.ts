@@ -11,6 +11,7 @@ import { BrowserWindow, dialog } from 'electron';
 import * as http from 'http';
 import { getConnectionPolicy, getMcpAccessStatus, listMcpEnabledConnections } from '../credential-store';
 import { readActivity } from './activity';
+import { recordAgentActivity } from './agent-log';
 import { readInvestigationId, takeNotes } from './investigations';
 import {
   checkChanges,
@@ -199,6 +200,7 @@ export function startControlPlaneServer(options: StartControlPlaneServerOptions)
         if (!event) return sendJson(res, 400, { error: 'Not an activity event' });
         sendJson(res, 200, {});
         sendToWindow('mcp:activity', { ...event, investigationId });
+        recordAgentActivity(event, investigationId);
         return;
       }
 

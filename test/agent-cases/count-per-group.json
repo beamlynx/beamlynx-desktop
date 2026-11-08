@@ -1,0 +1,14 @@
+{
+  "question": "How many logins has each tenant had?",
+  "kind": "count per group",
+  "fixture": "fixture.sql",
+  "expect": {
+    "rows": 3,
+    "contains": [
+      ["Acme", 3],
+      ["Globex", 3],
+      ["Initech", 1]
+    ]
+  },
+  "good_pine": "tenant | activity .tenant_id | where: type = 'login' | group: t_0.name with count"
+}

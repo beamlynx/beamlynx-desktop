@@ -23,6 +23,14 @@ export type AgentActivity = {
   ok?: boolean;
   /** On `end`: one line saying how it went, or the error. */
   outcome?: string;
+  /** On `end` of a query that returned rows: how many. Never the rows. */
+  rows?: number;
+  /** The saved connection the call used, when it named one. */
+  connectionId?: string;
+  /** The question the agent says it is working on (set_question, or a call's `question`). */
+  question?: string;
+  /** What the agent says it found (note_finding, or a call's `finding`). */
+  finding?: string;
   /**
    * The Claude session the call came from (see investigations.ts). Set by the
    * control plane from the request, never taken from the body.
@@ -74,13 +82,37 @@ export function describeCall(tool: string, args: Record<string, unknown>): { sum
   }
 }
 
+/**
+ * What a call is about, from its arguments: the connection it used, and the
+ * question or finding the agent stated. Saved with the call
+ * (agent-log.ts), so a retro can tell sessions and databases apart.
+ */
+export function callContext(args: Record<string, unknown>): Pick<AgentActivity, 'connectionId' | 'question' | 'finding'> {
+  const text = (key: string, max: number) =>
+    typeof args[key] === 'string' && (args[key] as string).trim() ? clip((args[key] as string).trim(), max) : undefined;
+  const connectionId = text('connection_id', MAX_ID);
+  const question = text('question', MAX_DETAIL);
+  const finding = text('finding', MAX_DETAIL);
+  return {
+    ...(connectionId ? { connectionId } : {}),
+    ...(question ? { question } : {}),
+    ...(finding ? { finding } : {}),
+  };
+}
+
+// format.ts's formatRows starts a result with "N rows" (or "N rows, showing
+// the first M"), or "No rows.", after any "Ran as Pine:" lines.
+const ROW_COUNT = /^(\d+) rows?\b/m;
+
 /** How a tool's result went: an MCP result says it failed with `isError`, it doesn't throw. */
-export function outcomeOf(result: unknown): { ok: boolean; outcome?: string } {
+export function outcomeOf(result: unknown): { ok: boolean; outcome?: string; rows?: number } {
   const r = result as { isError?: boolean; content?: { type?: string; text?: string }[] } | undefined;
   const text = r?.content?.find(c => c?.type === 'text')?.text ?? '';
   const first = text.split('\n').find(line => line.trim() !== '')?.trim();
   if (r?.isError) return { ok: false, outcome: first ? clip(text.trim(), MAX_OUTCOME) : 'Failed' };
-  return { ok: true, outcome: first ? clip(first, MAX_OUTCOME) : undefined };
+  const count = ROW_COUNT.exec(text);
+  const rows = count ? Number(count[1]) : /^No rows\.$/m.test(text) ? 0 : undefined;
+  return { ok: true, outcome: first ? clip(first, MAX_OUTCOME) : undefined, ...(rows !== undefined ? { rows } : {}) };
 }
 
 /**
@@ -91,7 +123,7 @@ export function outcomeOf(result: unknown): { ok: boolean; outcome?: string } {
 export function readActivity(body: unknown): AgentActivity | null {
   const b = body as Record<string, unknown> | null;
   if (!b || typeof b !== 'object') return null;
-  const { id, tool, phase, at, summary, detail, ok, outcome } = b;
+  const { id, tool, phase, at, summary, detail, ok, outcome, rows, connectionId, question, finding } = b;
   if (typeof id !== 'string' || !id || id.length > MAX_ID) return null;
   if (typeof tool !== 'string' || !/^[a-z_]{1,40}$/.test(tool)) return null;
   if (phase !== 'start' && phase !== 'end') return null;
@@ -106,5 +138,9 @@ export function readActivity(body: unknown): AgentActivity | null {
     ...(typeof detail === 'string' && detail ? { detail: clip(detail, MAX_DETAIL) } : {}),
     ...(typeof ok === 'boolean' ? { ok } : {}),
     ...(typeof outcome === 'string' && outcome ? { outcome: clip(outcome, MAX_OUTCOME) } : {}),
+    ...(typeof rows === 'number' && Number.isInteger(rows) && rows >= 0 ? { rows } : {}),
+    ...(typeof connectionId === 'string' && connectionId && connectionId.length <= MAX_ID ? { connectionId } : {}),
+    ...(typeof question === 'string' && question ? { question: clip(question, MAX_DETAIL) } : {}),
+    ...(typeof finding === 'string' && finding ? { finding: clip(finding, MAX_DETAIL) } : {}),
   };
 }
