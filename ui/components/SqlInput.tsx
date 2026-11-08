@@ -40,7 +40,10 @@ const basicSetup = {
   crosshairCursor: false,
   lineNumbers: true,
 };
-const editorStyle = { outline: 'none' };
+// The height is for CodeMirror's outer wrapper. Without it, the wrapper grows
+// to fit all the SQL, the box around it cuts the overflow off, and the
+// editor never scrolls.
+const editorStyle = { outline: 'none', height: '100%' };
 
 const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true }) => {
   const { global } = useStores();

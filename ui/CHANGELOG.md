@@ -29,6 +29,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **The "Tell the agent…" box under an agent's timeline.** Talk to the agent in the tool you run it from instead. The agent is still told when you run a query yourself in the tab that shows its work.
 - **Folding an agent's timeline to a thin bar.** The bar showed nothing but an arrow. The timeline now always shows; Zen mode gives the canvas the whole window instead.
 
+### Fixed
+- **The SQL panel scrolls.** SQL longer than the panel was cut off at the bottom, with no scroll bar to reach the rest.
+
 ## [0.73.0] - 2026-11-04
 ### Added
 - **Lists on the canvas find what you type even when it isn't the start of a name.** Typing `crat` in a column list finds `created_at`. Exact matches come first, then names that start with what you typed, then names that contain it, then names that have its letters in order.
