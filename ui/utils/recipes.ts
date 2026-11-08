@@ -184,7 +184,7 @@ const CONDITION = new RegExp(
   'g',
 );
 const IN_LIST = new RegExp(String.raw`(?<![A-Za-z0-9_.$-])((?:${SYMBOL}\.)?(${SYMBOL}))\s*(?:not\s+)?in\s*\(([^)]*)\)`, 'g');
-const OPERATION_WORDS = new Set(['where', 'w', 'select', 's', 'order', 'o', 'limit', 'l', 'group', 'g', 'count', 'from', 'f', 'delete', 'update']);
+const OPERATION_WORDS = new Set(['where', 'w', 'select', 's', 'order', 'o', 'limit', 'l', 'group', 'g', 'count', 'describe', 'from', 'f', 'delete', 'update']);
 
 /** The table of the pipe segment that `pos` sits in, looking back to the nearest one that starts with a table. */
 function tableBefore(masked: string, pos: number): string {

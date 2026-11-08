@@ -107,7 +107,8 @@ export type OperationType =
   | 'where-partial'
   | 'update-action'
   | 'update-partial'
-  | 'paths';
+  | 'paths'
+  | 'describe';
 export type Operation = {
   type: OperationType;
   // Shape varies by operation type (e.g. `{schema, table, alias?}` for

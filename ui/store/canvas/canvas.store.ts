@@ -1621,6 +1621,11 @@ export class CanvasStore {
       if (!isCheckpoint) this.openUnnestPicker(alias, anchor);
       return;
     }
+    if (action === 'describe') {
+      // Plain nodes only: a checkpoint's node isn't offered it.
+      if (!isCheckpoint) this.describeNode(alias);
+      return;
+    }
     if (action === 'traverse') {
       // Plain nodes only. Following a foreign key out of a checkpoint's
       // sealed result isn't a thing - its node doesn't offer it either.
@@ -1739,6 +1744,28 @@ export class CanvasStore {
     if (!this.picker.open || this.picker.mode !== 'limit-value') return;
     await this.commitLimit(null, this.picker.alias, this.picker.checkpoint);
     this.closePicker();
+  }
+
+  /**
+   * "+" -> describe: opens `<table> | describe:` in a new tab, so this tab's
+   * query stays as it is. The result lists the node's columns and the tables
+   * it joins to and from (pine-lang's docs/describe.md). The table is the
+   * node's real one, named with its schema; a named result is named as is.
+   */
+  describeNode(id: string) {
+    this.closePicker();
+    const { block, alias } = this.scopeOf(id);
+    const ast = this.astOf(block);
+    // A bare table still last in the pipe isn't in selected-tables yet.
+    const typed =
+      ast?.operation?.type === 'table' && ast.current === alias
+        ? (ast.operation.value as { schema?: string | null; table?: string })
+        : undefined;
+    const table: { schema?: string | null; table?: string } | undefined =
+      ast?.['selected-tables']?.find(t => t.alias === alias) ?? typed;
+    if (!table?.table) return;
+    const name = table.schema ? `${table.schema}.${table.table}` : table.table;
+    void this.session.globalStore?.openExpressionInNewTab?.(`${name} | describe:`);
   }
 
   /**

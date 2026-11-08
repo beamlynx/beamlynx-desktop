@@ -47,7 +47,7 @@ const pineLanguage = StreamLanguage.define<PineLanguageState>({
     }
 
     // Check for operations first
-    if (stream.match(/^(select|where|limit|from|order|group|delete|count|s|w|l|f|o|g|d)[:!]/i)) {
+    if (stream.match(/^(select|where|limit|from|order|group|delete|count|describe|s|w|l|f|o|g|d)[:!]/i)) {
       // Try different standard CodeMirror token types:
       // 'keyword' - usually bold, theme-specific color
       // 'operator' - usually colorful, for operators
