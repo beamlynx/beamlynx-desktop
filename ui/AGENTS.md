@@ -23,13 +23,26 @@ Users see it as the **masking policy**. The code, the stored settings and the pi
 
 It masks output only. A masked column comes back as `xxxxx`, but a query may still filter, sort and join on it with a value it supplies. This is deliberate. Don't add UI that treats a filter or a join on a masked column as a leak. The full principle is in `pine-lang/docs/access-policy.md`, "What it protects".
 
+## Never store a database's address, only its hash
+
+A database's address is its type, host, port and name, such as `postgres://localhost:5432/shop`. The desktop app calls it the database key (`databaseKeyOf` in beamlynx-desktop's `src/main/database-key.ts`). It tells anyone who reads a file where your databases are.
+
+- Anything that needs to remember a database stores `databaseKeyHash`, the SHA-256 of the key. This covers recipes, column widths, links and logs.
+- Never write `databaseKey`, a host, a port or pine-lang's connection id (`host:port:dbname`) to local storage, beamlynx.db, a log, usage stats or anything sent off the machine.
+- The UI may hold `ConnectionInfo.databaseKey` in memory, to match rows an older app wrote. It never persists it.
+- The only place an address is kept on disk is the desktop's connection store (`credential-store.ts`). It needs the address to connect.
+
+A hash hides the address from someone reading the file. It is not a secret: anyone who guesses the address can hash it and compare. So never use the hash as a credential.
+
+Known exception, still to fix: the UI's local storage keeps pine-lang's connection id, which is `host:port:dbname`. It is in each saved tab (`pine-sessions`, `connectionId`) and in the connection colours (`pine-connection-colors`). Don't add more.
+
 ## Reaching pine-lang from a hosted dev copy
 
 The UI calls pine-lang at the browser's `http://localhost:33333` (or the desktop bridge's URL). A dev copy served from somewhere else (a cloud preview) sets `PINE_SERVER_PROXY_URL` (e.g. `http://localhost:33333`) for `next dev`: next.config.js then forwards `/api/v1/*` to it, and `getBaseUrl` in `store/client.ts` returns `''` so the UI calls pine on its own origin. Unset, nothing changes. Not for the desktop static export.
 
 ## Library and Settings share one docked slot
 
-The sidebar's Library (saved recipes, `components/recipes/LibraryPanel.tsx`) opens in `SettingsDock`, the slot Settings uses. `GlobalStore.showLibrary` and `showSettings` replace each other: anything that opens Settings closes Library. While Library is open, `activeKeyboardPanel` is `'library'` (not `'settings'`), so Settings' Up/Down rail keys and the canvas keys stay off; Library listens for its own keys on the document. Ctrl+O's picker and Library's Use both insert through `components/recipes/insertRecipe.ts`.
+The sidebar's Library (saved recipes, `components/recipes/LibraryPanel.tsx`) opens in `SettingsDock`, the slot Settings uses. `GlobalStore.showLibrary` and `showSettings` replace each other: anything that opens Settings closes Library. The one exception is Ctrl+, (`toggleSidebarPanel`). It closes whichever of the two is open, or reopens the one open last (`lastSidebarPanel`). While Library is open, `activeKeyboardPanel` is `'library'` (not `'settings'`), so Settings' Up/Down rail keys and the canvas keys stay off; Library listens for its own keys on the document. Ctrl+O opens the Library. Its Use inserts through `components/recipes/insertRecipe.ts`.
 
 Desktop-only UI can be checked in a browser: run the dev server with `NEXT_PUBLIC_DESKTOP=1` and give the page a stand-in `window.beamlynxDesktop` (the project QA guide's `desktop-bridge` simulator does this).
 
