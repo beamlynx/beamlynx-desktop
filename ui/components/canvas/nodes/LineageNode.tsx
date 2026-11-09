@@ -29,7 +29,7 @@ const LineageNode: React.FC<NodeProps<CanvasLineageNodeData>> = observer(({ data
       data-testid={`lineage-${data.block}`}
       title={
         data.active
-          ? 'The query the canvas draws, and Run runs'
+          ? 'The query the canvas draws'
           : `Draw this query${data.write ? '. It changes data' : ''}`
       }
       onMouseDown={e => {
