@@ -1,11 +1,13 @@
 // A tab with several queries of their own: the canvas draws the one under
 // the cursor. A query ending in update! or delete! shows what it changes on
-// the table it changes.
+// the table it changes, and one ending in describe: or references: the table
+// it describes.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const asts = require('./fixtures/named-block-asts.json');
 const { mainQuery, tabBlocks } = require('../store/canvas/tab-blocks.ts');
-const { writeOf } = require('../store/canvas/pine-text.ts');
+const { describeOf, withoutDescribe, withoutDescribeSegments, writeOf } = require('../store/canvas/pine-text.ts');
+const { describeTable } = require('../store/canvas/pine-actions.ts');
 const { buildCanvasGraph } = require('../store/canvas/layout.ts');
 const { lineageOf } = require('../store/canvas/lineage.ts');
 
@@ -64,6 +66,49 @@ test('the table a write changes carries it, and only that table', () => {
     written.map(n => [n.id, n.data.write]),
     [['e', { kind: 'delete', items: ['id'] }]],
   );
+});
+
+// describe: and references: stay in the tab, shown on the table they
+// describe, the way a write is.
+test('a describe: or references: names the table the pipe left off at', () => {
+  assert.deepEqual(
+    describeOf([segment('company as c', 'table', 'c'), segment('employee as e', 'table', 'e'), segment('describe:', 'describe', 'e')]),
+    { kind: 'describe', alias: 'e' },
+  );
+  assert.deepEqual(
+    describeOf([segment('company as c', 'table', 'c'), segment('from: c', 'from', 'c'), segment('references:', 'references', 'c')]),
+    { kind: 'references', alias: 'c' },
+  );
+  assert.equal(describeOf([segment('company as c', 'table', 'c')]), null);
+});
+
+test('the table a describe: describes carries it', () => {
+  const blocks = [{ name: 'top', prefix: 'b0/', ast: asts.block }];
+  const graph = buildCanvasGraph(asts.main, {}, undefined, blocks, undefined, null, { kind: 'references', alias: 'e' });
+  const described = graph.nodes.filter(n => n.data && n.data.describe);
+  assert.deepEqual(
+    described.map(n => [n.id, n.data.describe]),
+    [['e', 'references']],
+  );
+});
+
+test('a gesture works on the query without its describe step', () => {
+  assert.equal(withoutDescribe('company as c | employee as e | describe:'), 'company as c | employee as e');
+  assert.equal(withoutDescribe('company as c | employee as e | from: c | references: '), 'company as c | employee as e');
+  assert.equal(withoutDescribe('company as c\n  | f: c\n  | describe:'), 'company as c');
+  assert.equal(withoutDescribe('company as c | where: id = 1'), 'company as c | where: id = 1');
+  // A picker's probe builds on segments the same way.
+  const pipe = [segment('company as c', 'table', 'c'), segment('employee as e', 'table', 'e')];
+  assert.deepEqual(withoutDescribeSegments([...pipe, segment('from: c', 'from', 'c'), segment('describe:', 'describe', 'c')]), pipe);
+  assert.deepEqual(withoutDescribeSegments([...pipe, segment('references:', 'references', 'e')]), pipe);
+  assert.deepEqual(withoutDescribeSegments(pipe), pipe);
+});
+
+test('describing a table adds from: only when the pipe ends at another one', () => {
+  const base = segments => ({ segments });
+  const pipe = [segment('company as c', 'table', 'c'), segment('employee as e', 'table', 'e')];
+  assert.equal(describeTable(base(pipe), 'describe', 'e'), 'company as c | employee as e | describe:');
+  assert.equal(describeTable(base(pipe), 'references', 'c'), 'company as c | employee as e | from: c | references:');
 });
 
 test('a tab of queries of their own: a chip for each, numbered, the drawn one active', () => {

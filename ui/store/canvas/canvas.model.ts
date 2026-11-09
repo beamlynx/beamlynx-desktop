@@ -48,6 +48,8 @@ export type CanvasTableNodeData = {
   rightHandles: CanvasHandle[];
   /** Set on the table an `update!` or `delete!` changes - see CanvasWrite. */
   write?: Omit<CanvasWrite, 'alias'>;
+  /** Set on the table a `describe:` or `references:` describes - see CanvasDescribe. */
+  describe?: CanvasDescribe['kind'];
   /**
    * Set when this node is a checkpoint's sealed result rather than a table:
    * the node below a checkpoint's divider, named after the checkpoint
@@ -164,6 +166,13 @@ export type CanvasGraph = {
  * rows by (`id`).
  */
 export type CanvasWrite = { kind: 'update' | 'delete'; alias: string; items: string[] };
+
+/**
+ * The table a query describes when it ends in `describe:` (its columns) or
+ * `references:` (how it joins), drawn on that table's node (`alias`) like a
+ * CanvasWrite.
+ */
+export type CanvasDescribe = { kind: 'describe' | 'references'; alias: string };
 
 // --- pickers -------------------------------------------------------------
 
@@ -413,8 +422,8 @@ export const MORE_ACTIONS: { action: MoreAction; label: string; key: string }[] 
   { action: 'path', label: 'path', key: 'p' },
   { action: 'traverse', label: 'traverse', key: 't' },
   { action: 'unnest', label: 'unnest', key: 'u' },
-  // Open `<table> | describe:` (its columns) or `<table> | references:` (its
-  // relations, both ways) in a new tab.
+  // End the query with `describe:` (the table's columns) or `references:`
+  // (its relations, both ways). The node says so; its × takes it off.
   { action: 'describe', label: 'describe', key: 'd' },
   { action: 'references', label: 'references', key: 'r' },
 ];

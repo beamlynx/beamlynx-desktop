@@ -594,6 +594,18 @@ export const removeOrderColumnAt = (base: PinnedBase, alias: string, index: numb
 };
 
 /**
+ * Ends the query with `describe:` or `references:` on `alias`'s table. They
+ * describe the table the pipe left off at, so a `from:` picks `alias` first
+ * when the pipe ends elsewhere. `base` has no describe step of its own (see
+ * CanvasStore.pinnedBase).
+ */
+export const describeTable = (base: PinnedBase, op: 'describe' | 'references', alias: string): string => {
+  const last = base.segments[base.segments.length - 1];
+  const from = last?.owner === alias ? [] : [`from: ${alias}`];
+  return [toText(base.segments), ...from, `${op}:`].join(' | ');
+};
+
+/**
  * Removes `alias`'s table (see removeNode). A checkpoint with no table left
  * before it - `limit: 10` once `company as c | limit: 10` loses its only
  * table - is removed with it, since it has nothing left to seal. Returns
