@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Changed
+- **A recipe from another database goes in the current tab by default.** When you use a recipe saved from another of your connections, Beamlynx asks whether to use it in this tab, on this tab's database, which Enter picks, or to open it on the database it was saved from in a new tab. It no longer offers to switch the current tab to that database, and the Library's separate **Use in this tab** button is gone.
 
 ## [0.74.0] - 2026-11-09
 ### Breaking

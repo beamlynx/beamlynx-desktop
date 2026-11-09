@@ -140,12 +140,13 @@ const LibraryPanel = observer(() => {
     setUsed({ id: r.id, tab: global.getSessionName(tabId) });
   };
 
-  // Saved from another of your connections: ask where it goes
-  // (RecipeDatabaseDialog). Otherwise, or with `here`, the active tab.
+  // Use, and Enter, put the recipe in the active tab. Saved from another of
+  // your connections, it asks first (RecipeDatabaseDialog): this tab, on its
+  // database, or a new tab on the one it was saved from.
   const [asking, setAsking] = useState<Recipe | null>(null);
-  const applyRecipe = async (r: Recipe | undefined, here = false) => {
+  const applyRecipe = async (r: Recipe | undefined) => {
     if (!r) return;
-    if (!here && recipeHome(global, r)) {
+    if (recipeHome(global, r)) {
       setAsking(r);
       return;
     }
@@ -410,25 +411,13 @@ const LibraryPanel = observer(() => {
                       onClick={() => void applyRecipe(r)}
                       title={
                         home
-                          ? `It was saved from ${home.label}: asks whether to switch this tab there or open a new tab. Nothing runs.`
+                          ? `It was saved from ${home.label}: asks whether to use it in this tab or open it on ${home.label} in a new tab. Nothing runs.`
                           : 'Adds the query to the current tab, at the cursor. Nothing runs.'
                       }
                       sx={{ flexShrink: 0 }}
                     >
                       Use
                     </Button>
-                    {/* Saved from another of your databases: Use asks to move the
-                        tab there, and this keeps it on the current tab's, such as staging. */}
-                    {home && (
-                      <Button
-                        size="small"
-                        onClick={() => void applyRecipe(r, true)}
-                        title="Adds the query to the current tab, at the cursor, on its database. Nothing runs."
-                        sx={{ flexShrink: 0, color: dim, '&:hover': { color: 'var(--text-color)' } }}
-                      >
-                        Use in this tab
-                      </Button>
-                    )}
                     <Typography
                       variant="caption"
                       role={used?.id === r.id ? 'status' : undefined}

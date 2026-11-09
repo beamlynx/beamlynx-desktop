@@ -29,7 +29,8 @@ export function insertRecipe(global: GlobalStore, r: Recipe): string | null {
 
 /**
  * The saved connection a recipe was saved from, when it is one of yours and
- * not the one the active tab is on. Use then opens the recipe there.
+ * not the one the active tab is on. Use then asks whether to use the recipe
+ * here or open it there, in a new tab (RecipeDatabaseDialog).
  */
 export function recipeHome(global: GlobalStore, r: Recipe): ConnectionInfo | undefined {
   const home = savedFromConnection(r.savedFrom, global.connections);
@@ -37,30 +38,24 @@ export function recipeHome(global: GlobalStore, r: Recipe): ConnectionInfo | und
 }
 
 /**
- * Where Use puts a recipe saved from another of your connections (see
- * RecipeDatabaseDialog, which asks):
- * - switch: the active tab moves to the recipe's database, and the query
- *   goes at its end. The default.
- * - new: a new tab, connected to the recipe's database.
- * - here: the active tab, on the database it is on, such as staging.
+ * Where a recipe's query goes:
+ * - here: the active tab at the cursor, on the database it is on, such as
+ *   staging for a recipe saved from production. The default.
+ * - home: a new tab, connected to the database the recipe was saved from.
+ *   Without such a connection (recipeHome), the same as here.
  */
-export type RecipeTarget = 'switch' | 'new' | 'here';
+export type RecipeTarget = 'here' | 'home';
 
 /**
- * Use: puts a recipe's query in a tab, as `target` says. A recipe already
- * on the active tab's database, or saved from one you have no connection
- * to, always goes into the active tab at the cursor (insertRecipe). Nothing runs.
+ * Puts a recipe's query in a tab, as `target` says. Nothing runs.
  *
  * Returns the id of the tab it went into. Throws when the connection fails.
  */
 // Not named use…: React's lint rule would take a use… function for a hook.
 export async function openRecipe(global: GlobalStore, r: Recipe, target: RecipeTarget = 'here'): Promise<string | null> {
-  const home = target === 'here' ? undefined : recipeHome(global, r);
+  const home = target === 'home' ? recipeHome(global, r) : undefined;
   if (!home) return insertRecipe(global, r);
-  // An agent's tab is never switched: its next query would overwrite it.
-  if (target === 'new' || global.agentSessionIds.includes(global.activeSessionId)) {
-    runInAction(() => global.addTab());
-  }
+  runInAction(() => global.addTab());
   // Connected first, so the query builds against its own database.
   await global.connectToSavedProfile(home.id);
   return insertRecipe(global, r);
