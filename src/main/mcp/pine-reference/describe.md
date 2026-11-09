@@ -16,7 +16,7 @@ table_name | describe:
 ### One table
 
 ```
-user | describe: -- pine-lang #175
+user | describe:
 ```
 
 One row per column of `user`: its name, its type, its key (if it is part of one), whether it may
@@ -25,7 +25,7 @@ be empty, and whether it is masked. A masked column is listed, but its values ne
 ### After a join
 
 ```
-user | activity .user_id | describe: -- pine-lang #175
+user | activity .user_id | describe:
 ```
 
 Describes the table the pipe ends on: here `activity`.
@@ -35,7 +35,7 @@ Describes the table the pipe ends on: here `activity`.
 ```
 user | select: id, email |= people
 
-people | describe: -- pine-lang #175
+people | describe:
 ```
 
 Lists only the columns the named result keeps, under the names it keeps them by.
