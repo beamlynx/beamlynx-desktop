@@ -667,6 +667,9 @@ export class GlobalStore {
   // Ctrl+O opens it too (findRecipe), and each time it does, the Library
   // focuses its search box.
   showLibrary = false;
+  // Which of the two was open last, so Ctrl+, brings it back
+  // (toggleSidebarPanel).
+  lastSidebarPanel: 'settings' | 'library' = 'settings';
   libraryFindCount = 0;
   // Counts recipes saved from this window, so an open Library lists them again.
   recipesChangedCount = 0;
@@ -2859,9 +2862,28 @@ export class GlobalStore {
 
   setShowSettings = (show: boolean, section?: SettingsSection) => {
     this.showSettings = show;
-    if (show) this.showLibrary = false;
+    if (show) {
+      this.showLibrary = false;
+      this.lastSidebarPanel = 'settings';
+    }
     if (section) {
       this.settingsSection = section;
+    }
+  };
+
+  /**
+   * Ctrl+,: closes the panel beside the sidebar when one is open, Settings
+   * or the Library. Otherwise opens the one that was open last, at the
+   * section it was on.
+   */
+  toggleSidebarPanel = () => {
+    if (this.showSettings || this.showLibrary) {
+      this.showSettings = false;
+      this.showLibrary = false;
+    } else if (this.lastSidebarPanel === 'library') {
+      this.setShowLibrary(true);
+    } else {
+      this.setShowSettings(true);
     }
   };
 
@@ -2935,7 +2957,10 @@ export class GlobalStore {
   /** Opens or closes the Library panel, in the slot Settings docks in. */
   setShowLibrary = (show: boolean) => {
     this.showLibrary = show;
-    if (show) this.showSettings = false;
+    if (show) {
+      this.showSettings = false;
+      this.lastSidebarPanel = 'library';
+    }
   };
 
   noteRecipesChanged = () => {
