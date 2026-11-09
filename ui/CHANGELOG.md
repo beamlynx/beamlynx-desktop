@@ -5,6 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 ### Added
+- **An agent's question and findings can come with its query.** When an agent sends what it is investigating, or what it found so far, along with a query, the agent's timeline shows them as it did when they came separately: the question opens a section, and the finding sits above the query.
 - **See a table's columns and its relations.** End a query with `| describe:` to list each column with its type, and whether it is the key, may be empty or is masked. End it with `| references:` to list every relation that touches the table, both ways, with how Pine knows it and the Pine to follow it. A table's **+** menu on the canvas offers both, and opens them in a new tab. Their rows can't be edited: they describe the table, not its data.
 - **Run runs every query in the tab.** Each query, separated by a blank line, runs in turn from the top, and its result gets its own section, where cells can be edited as usual. A query that fails stops the ones below it. To run only some queries, select lines in them first. Before, Run ran only the last query. The SQL panel shows the SQL of every query too, read-only while there is more than one.
 - **Ctrl+O opens the Library.** There is now one place to find a recipe. Ctrl+O opens the Library in the sidebar with its search box ready, and Up, Down and Enter work as they did in the old quick picker, which is gone.

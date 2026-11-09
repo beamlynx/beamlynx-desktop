@@ -349,6 +349,21 @@ test('a different question starts a new section; the same one again carries on',
   assert.equal(investigation.question, 'Which tenants never logged in?');
 });
 
+test('run_query\'s own question and finding show as set_question and note_finding do', () => {
+  const investigation = new Investigation('claude-a', 's1');
+  const run = (id, extra) =>
+    investigation.apply({ id, tool: 'run_query', phase: 'start', at: 1, summary: 'Running a query', ...extra });
+  run('1', { question: 'Logins per tenant' });
+  run('2', { question: 'Logins per tenant' });
+  run('3', { finding: 'Only activity records logins', question: 'Which tenants never logged in?' });
+  investigation.apply({ id: '3', tool: 'run_query', phase: 'end', at: 2, summary: '', ok: true, finding: 'x' });
+  assert.deepEqual(
+    investigation.steps.map(s => (s.kind === 'question' ? `? ${s.text}` : `${s.kind}: ${s.text}`)),
+    ['? Logins per tenant', 'finding: Only activity records logins', '? Which tenants never logged in?'],
+  );
+  assert.equal(investigation.question, 'Which tenants never logged in?');
+});
+
 test('a query\'s reason is its leading comment', () => {
   assert.equal(queryReason('/* Logins\n   per tenant */\nactivity'), 'Logins per tenant');
   assert.equal(queryReason('-- Why\nactivity'), 'Why');

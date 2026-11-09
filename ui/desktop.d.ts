@@ -126,6 +126,11 @@ export type AgentActivity = {
   outcome?: string;
   // The Claude session the call came from (store/investigations.ts).
   investigationId?: string;
+  // The question the agent says it is on, and what it says it found: from
+  // set_question and note_finding, or from run_query's own `question` and
+  // `finding`.
+  question?: string;
+  finding?: string;
 };
 
 // Matches beamlynx-desktop's StartupState (src/main/app-db.ts). Not ok when

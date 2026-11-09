@@ -200,20 +200,19 @@ export class Investigation {
   apply(event: AgentActivity) {
     this.lastCallAt = Math.max(this.lastCallAt ?? 0, event.at);
     if (event.tool === 'set_question') {
-      // A different question starts a new section. The same one again, as
-      // when the agent restates it, carries on in the current section.
-      const text = event.phase === 'start' ? event.detail?.trim() : undefined;
-      if (text && text !== this.question?.trim()) {
-        this.question = text;
-        this.steps.push(newStep({ id: `question-${event.id}`, kind: 'question', at: event.at, text }));
-      }
+      if (event.phase === 'start') this.startQuestion(event.id, event.at, event.detail);
       return;
     }
     if (event.tool === 'note_finding') {
-      if (event.phase === 'start' && event.detail) {
-        this.steps.push(newStep({ id: `finding-${event.id}`, kind: 'finding', at: event.at, text: event.detail }));
-      }
+      if (event.phase === 'start') this.addFinding(event.id, event.at, event.detail);
       return;
+    }
+    // run_query and run_sql_as_pine carry them too. The finding is what the
+    // agent learned so far, so it closes the section it belongs to before
+    // a new question opens one, and both come before the query.
+    if (event.phase === 'start') {
+      this.addFinding(event.id, event.at, event.finding);
+      this.startQuestion(event.id, event.at, event.question);
     }
     if (QUERY_TOOLS.has(event.tool)) return;
     const existing = this.steps.find(s => s.kind === 'call' && s.id === event.id);
@@ -249,6 +248,23 @@ export class Investigation {
         }),
       );
     }
+  }
+
+  /**
+   * A different question starts a new section. The same one again, as when
+   * the agent restates it, carries on in the current section.
+   */
+  private startQuestion(eventId: string, at: number, question: string | undefined) {
+    const text = question?.trim();
+    if (!text || text === this.question?.trim()) return;
+    this.question = text;
+    this.steps.push(newStep({ id: `question-${eventId}`, kind: 'question', at, text }));
+  }
+
+  private addFinding(eventId: string, at: number, finding: string | undefined) {
+    const text = finding?.trim();
+    if (!text) return;
+    this.steps.push(newStep({ id: `finding-${eventId}`, kind: 'finding', at, text }));
   }
 
   startQuery(expression: string, by: 'agent' | 'user', sql?: string): string {

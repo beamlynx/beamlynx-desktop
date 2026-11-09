@@ -185,7 +185,15 @@ export async function runMcpQuery(
     sql,
     variables,
   }: { profileId: string; expression: string; sql?: string; variables?: Record<string, VariableValue> },
-): Promise<{ tabId: string; columns: unknown; rows: unknown; error: string; pine?: string; warnings?: string[] }> {
+): Promise<{
+  tabId: string;
+  columns: unknown;
+  rows: unknown;
+  error: string;
+  pine?: string;
+  warnings?: string[];
+  rowCap?: number | null;
+}> {
   assertServerSupportsWriteRefusal(deps.getServerVersion());
   const connectionId = await ensureConnection(deps, profileId);
   // Refreshes GlobalStore.connections as a side effect (see this file's top
@@ -238,13 +246,16 @@ export async function runMcpQuery(
   const columns = toPlainJson(session.columns);
   const plainRows = toPlainJson(rows);
   const error = session.error;
+  // The most rows Pine returned without a limit: of the agent's, so its
+  // result can say it may have been cut off (beamlynx-desktop's format.ts).
+  const rowCap = session.rowCap;
   // Write the values this run used back into the tab, above the query, so
   // the person can see them and run it again.
   const shown = restoreValues(session.expression, expression, variables ?? {});
   if (shown !== session.expression) session.expression = shown;
   // The Pine that ran, for an agent that sent SQL: it is how it learns Pine.
   const converted = sql !== undefined ? { pine: expression, warnings } : {};
-  return { tabId, columns, rows: plainRows, error, ...converted };
+  return { tabId, columns, rows: plainRows, error, rowCap, ...converted };
 }
 
 export async function explainMcpQuery(

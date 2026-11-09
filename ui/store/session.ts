@@ -257,6 +257,12 @@ export class Session {
    * run, such as an investigation's earlier step.
    */
   runMs: number | null = null;
+  /**
+   * The cap Pine put on the last run's rows because the expression set no
+   * limit: of its own, or null. As many rows as this may mean there were
+   * more. An agent's result says so (store/mcp-query.ts).
+   */
+  rowCap: number | null = null;
 
   /** Mode - controls the main view */
   mode: Mode = 'documentation';
