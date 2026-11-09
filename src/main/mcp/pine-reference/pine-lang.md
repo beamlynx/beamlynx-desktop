@@ -25,6 +25,8 @@ A pipeline reads in the order it executes, so a query can be built up one step a
 | `count:` | The number of rows | `count` |
 | `from:` (`f:`) | Go back to an earlier table | `from` |
 | `unnest:` | One row for each element of a JSON array | `unnest` |
+| `describe:` | A table's columns, from the schema Pine holds | `describe` |
+| `references:` | How a table joins to others, both ways, and what to type for each | `references` |
 | `data.plan` | A key inside a JSON column | `json` |
 | `\|= name` | Name a result, to use it later | `named-results` |
 | `$name` | A value passed in separately | `variables` |

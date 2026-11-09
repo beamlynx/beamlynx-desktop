@@ -7,6 +7,9 @@
 ;; separate expressions, and `$name = value` lines are values, not queries.
 ;; Skipped: the block after a **Syntax:** line, which is a template.
 ;; A line marked `-- parse error` must fail to parse.
+;; A line marked `-- pine-lang #N` uses Pine from that pine-lang PR, which the
+;; bundled pine-lang may not have yet. It may fail to parse. Once it parses,
+;; the script says to remove the marker (see the README's release step).
 (require '[pine.parser :as p] '[clojure.string :as s] '[clojure.java.io :as io])
 
 (def dir (first *command-line-args*))
@@ -29,11 +32,19 @@
         :when (and (s/ends-with? name ".md") (not= name "README.md"))
         line (examples (slurp f))
         :let [expect-fail (s/includes? line "-- parse error")
-              ok (= (not expect-fail) (parses? line))]]
-    {:file name :line line :ok ok :expect-fail expect-fail}))
+              waiting (re-find #"-- pine-lang #\d+" line)
+              parses (parses? line)
+              ok (or (and waiting (not expect-fail)) (= (not expect-fail) parses))]]
+    {:file name :line line :ok ok :expect-fail expect-fail :waiting waiting :parses parses}))
 
 (doseq [{:keys [file line expect-fail]} (remove :ok results)]
   (println (if expect-fail "PARSES, but is marked as a parse error:" "DOES NOT PARSE:") file)
+  (println "   " (s/replace line "\n" "\n    ")))
+
+(doseq [{:keys [file line waiting parses]} (filter :waiting results)]
+  (println (if parses
+             (str "PARSES now: remove the `" waiting "` marker in " file ":")
+             (str "Waiting for " (subs waiting 3) " (not in this pine-lang yet), in " file ":")))
   (println "   " (s/replace line "\n" "\n    ")))
 
 (let [bad (count (remove :ok results))]
