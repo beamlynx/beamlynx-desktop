@@ -331,7 +331,7 @@ export const KEYBINDINGS: KeybindingConfig[] = [
     // comment above), so it isn't reserved here; free to mean the same thing
     // in this app as it does everywhere else.
     name: 'open-settings',
-    description: 'Toggle Settings',
+    description: 'Toggle Sidebar Panel',
     display: createKeybindingDisplay(['ctrl'], ','),
     combos: [{ combo: { mod: true, shift: false, key: ',' } }],
     commandId: 'open-settings',

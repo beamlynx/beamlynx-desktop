@@ -97,14 +97,13 @@ const COMMANDS: Command[] = [
   },
   {
     id: 'open-settings',
-    label: 'Open Settings',
+    // Kept as open-settings so the palette's recent commands still find it.
+    label: 'Toggle Sidebar Panel',
     category: 'View',
-    // No section arg -- leaves whatever section was last open, matching
-    // the header gear icon's own behavior (see SettingsDockedPanel.tsx).
-    // Toggles rather than always opening, matching that same gear icon's --
-    // makes the keybinding bound to this (see keybindings.ts) useful as a
-    // press-again-to-close, not just an open.
-    handler: global => global.setShowSettings(!global.showSettings),
+    // Ctrl+, (keybindings.ts): closes Settings or the Library, whichever is
+    // open beside the sidebar, or brings back the one open last, at the
+    // section it was on (toggleSidebarPanel).
+    handler: global => global.toggleSidebarPanel(),
     isEnabled: ALWAYS_ENABLED,
   },
   {

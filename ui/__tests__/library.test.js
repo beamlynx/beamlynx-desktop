@@ -257,7 +257,8 @@ test('every other way into Settings closes Library too', () => {
     openAddConnection: s => s.openAddConnection(),
     showSettingsSection: s => s.showSettingsSection('connections'),
     openAgentDatabase: s => s.openAgentDatabase('db-1'),
-    'command: open-settings': s => getCommandById('open-settings').handler(s, s.sessions[s.activeSessionId]),
+    // Not open-settings (Ctrl+,): with the Library open, it closes it. See
+    // "Ctrl+, brings back the panel open last" below.
     'command: open-appearance': s => getCommandById('open-appearance').handler(s, s.sessions[s.activeSessionId]),
     'command: list-connections': s => getCommandById('list-connections').handler(s, s.sessions[s.activeSessionId]),
   };
@@ -361,4 +362,33 @@ test("the focused panel can be 'library' (data-keyboard-panel on Library's root)
   assert.equal(store.focusedPanelId, 'library');
   // Library closed with focus left on it: back to the canvas.
   assert.equal(store.activeKeyboardPanel, 'graph');
+});
+
+test('Ctrl+, brings back the panel open last: the Library, or Settings at its section', () => {
+  const store = new GlobalStore();
+  store.toggleSidebarPanel();
+  assert.equal(store.showSettings, true, 'Settings at first');
+
+  store.setShowLibrary(true);
+  store.toggleSidebarPanel();
+  assert.equal(store.showLibrary, false, 'closes the Library');
+  assert.equal(store.showSettings, false, 'and does not swap in Settings');
+  store.toggleSidebarPanel();
+  assert.equal(store.showLibrary, true, 'the Library comes back');
+  assert.equal(store.showSettings, false);
+
+  store.setShowSettings(true, 'theme');
+  store.toggleSidebarPanel();
+  store.toggleSidebarPanel();
+  assert.equal(store.showSettings, true, 'Settings comes back');
+  assert.equal(store.settingsSection, 'theme', 'at its section');
+  assert.equal(store.showLibrary, false);
+});
+
+test('the sidebar closing the Library still leaves it as the panel Ctrl+, brings back', () => {
+  const store = new GlobalStore();
+  store.setShowLibrary(true);
+  store.setShowLibrary(false);
+  store.toggleSidebarPanel();
+  assert.equal(store.showLibrary, true);
 });
