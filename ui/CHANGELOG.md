@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.74.0] - 2026-11-09
+### Breaking
+- **Needs pine-lang 0.54.0 or later (was 0.53.0).** Connecting to an older server shows the upgrade-required screen.
+
 ### Added
 - **An agent's question and findings can come with its query.** When an agent sends what it is investigating, or what it found so far, along with a query, the agent's timeline shows them as it did when they came separately: the question opens a section, and the finding sits above the query.
 - **See a table's columns and its relations.** End a query with `| describe:` to list each column with its type, and whether it is the key, may be empty or is masked. End it with `| references:` to list every relation that touches the table, both ways, with how Pine knows it and the Pine to follow it. A table's **+** menu on the canvas offers both, and opens them in a new tab. Their rows can't be edited: they describe the table, not its data.
