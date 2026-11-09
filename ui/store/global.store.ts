@@ -68,9 +68,15 @@ import {
 type PersistedSession = {
   expression: string;
   inputMode: InputMode;
-  connectionId: string;
+  // Pine's id, `host:port:dbname`. Saved by the web build, and on desktop by
+  // older versions only (snapshotSessions).
+  connectionId?: string;
   profileId: string;
 };
+
+// A database's hash, as the desktop app makes it (databaseKeyHash): SHA-256
+// as 64 lowercase hex characters.
+const isHashedKey = (value: string): boolean => /^[0-9a-f]{64}$/.test(value);
 
 type PersistedSessionsState = {
   sessions: PersistedSession[];
@@ -823,11 +829,27 @@ export class GlobalStore {
     return {
       sessions: ids.map(id => {
         const session = this.sessions[id];
+        if (!isDesktop()) {
+          return {
+            expression: session.expression,
+            inputMode: session.inputMode,
+            connectionId: session.connectionId,
+            profileId: session.profileId,
+          };
+        }
+        // Desktop: a tab reconnects through its saved connection's id
+        // (ensureSessionConnected), which is random and local. Pine's own id
+        // is `host:port:dbname`, a database's address, so it is never saved.
+        // A tab an older version saved with only pine's id keeps it until the
+        // saved connections load, rather than losing its connection. Then it
+        // resolves to one, or never can, so it is dropped either way.
+        const profileId = session.profileId || this.resolveConnectionEntry(session.connectionId)?.id || '';
+        const keepOldId = !profileId && !this.connectionsLoaded && session.connectionId;
         return {
           expression: session.expression,
           inputMode: session.inputMode,
-          connectionId: session.connectionId,
-          profileId: session.profileId,
+          ...(keepOldId ? { connectionId: session.connectionId } : {}),
+          profileId,
         };
       }),
       activeIndex: Math.max(ids.indexOf(this.activeSessionId), 0),
@@ -964,9 +986,65 @@ export class GlobalStore {
       : id;
   };
 
+  /**
+   * Where a connection's colour is kept: its database's hash, so the stored
+   * colours never show a database's address (see AGENTS.md). Without a saved
+   * connection to hash, its own id, kept in memory only on desktop
+   * (persistConnectionColors).
+   */
+  private colorKeyFor = (connectionId: string): string => {
+    const entry = this.resolveConnectionEntry(connectionId);
+    return entry?.databaseKeyHash || entry?.id || connectionId;
+  };
+
   getConnectionColor = (connectionId: string): string => {
-    const key = this.resolveConnectionEntry(connectionId)?.id ?? connectionId;
-    return this.connectionColors[key] ?? '';
+    const entry = this.resolveConnectionEntry(connectionId);
+    // The hash first. Then the keys older versions stored, until
+    // migrateConnectionColors moves them: the saved connection's id, or
+    // pine's own id for it.
+    return (
+      (entry?.databaseKeyHash && this.connectionColors[entry.databaseKeyHash]) ||
+      (entry && this.connectionColors[entry.id]) ||
+      this.connectionColors[connectionId] ||
+      ''
+    );
+  };
+
+  /**
+   * Desktop: moves colours older versions stored under a saved connection's
+   * id, or under pine's `host:port:dbname` id, to the database's hash. A
+   * colour already under the hash wins, and colours stored under the saved
+   * connection's id are moved before pine's ids, so each connection keeps
+   * the colour it had. Runs once the saved connections have loaded, before
+   * pruneConnectionColors, which would drop the old keys.
+   */
+  private migrateConnectionColors = () => {
+    const keys = Object.keys(this.connectionColors).filter(k => !isHashedKey(k));
+    const byConnectionIdFirst = [
+      ...keys.filter(k => this.connections.some(c => c.id === k)),
+      ...keys.filter(k => !this.connections.some(c => c.id === k)),
+    ];
+    for (const key of byConnectionIdFirst) {
+      const hash = this.resolveConnectionEntry(key)?.databaseKeyHash;
+      if (!hash) continue;
+      if (!this.connectionColors[hash]) this.connectionColors[hash] = this.connectionColors[key];
+      delete this.connectionColors[key];
+    }
+  };
+
+  /**
+   * Saves the colours. On desktop only under a database's hash, and only
+   * once the saved connections have loaded: before that, a colour can only
+   * be kept under pine's id, which is the database's address.
+   */
+  private persistConnectionColors = () => {
+    if (!isDesktop()) {
+      setUserPreference(STORAGE_KEYS.CONNECTION_COLORS, this.connectionColors);
+      return;
+    }
+    if (!this.connectionsLoaded) return;
+    const hashed = Object.fromEntries(Object.entries(this.connectionColors).filter(([k]) => isHashedKey(k)));
+    setUserPreference(STORAGE_KEYS.CONNECTION_COLORS, hashed);
   };
 
   getConnectionLabel = (connectionId: string): string => {
@@ -991,9 +1069,7 @@ export class GlobalStore {
         changed = true;
       }
     }
-    if (changed) {
-      setUserPreference(STORAGE_KEYS.CONNECTION_COLORS, this.connectionColors);
-    }
+    if (changed) this.persistConnectionColors();
   };
 
   refreshConnections = async (): Promise<ConnectionInfo[]> => {
@@ -1025,15 +1101,21 @@ export class GlobalStore {
           applyPolicyToOwnQueries: p.applyPolicyToOwnQueries,
           agentsSeeEveryColumn: p.agentsSeeEveryColumn,
         }));
+        // Before anything else touches the colours: the prune below would
+        // drop the keys older versions stored.
+        this.migrateConnectionColors();
         this.connections.forEach(c => this.assignConnectionColor(c.id));
-        // Keep the active pine connection's own color alive even though it's
-        // keyed differently from the saved-profile list (see connect() below)
-        // -- otherwise this prune would delete it the instant it's assigned,
-        // since it's never "in" this desktop-mode list of profile ids.
-        this.pruneConnectionColors(
-          [...this.connections.map(c => c.id), this.connection].filter(Boolean),
-        );
         this.connectionsLoaded = true;
+        // Keep the active pine connection's own colour alive even when no
+        // saved connection matches it (see connect() below): otherwise this
+        // prune would delete it the instant it's assigned.
+        this.pruneConnectionColors(
+          [...this.connections.map(c => this.colorKeyFor(c.id)), this.connection && this.colorKeyFor(this.connection)].filter(Boolean),
+        );
+        // Rewrites what older versions saved with addresses in it: colours
+        // and tabs are saved under hashes and saved connections' ids now.
+        this.persistConnectionColors();
+        setUserPreference(STORAGE_KEYS.SESSIONS, this.snapshotSessions());
       });
       return this.connections;
     }
@@ -1219,19 +1301,17 @@ export class GlobalStore {
   };
 
   setConnectionColor = (connectionId: string, color: string) => {
-    const key = this.resolveConnectionEntry(connectionId)?.id ?? connectionId;
-    this.connectionColors[key] = color;
-    setUserPreference(STORAGE_KEYS.CONNECTION_COLORS, this.connectionColors);
+    this.connectionColors[this.colorKeyFor(connectionId)] = color;
+    this.persistConnectionColors();
   };
 
   private assignConnectionColor = (connectionId: string) => {
     if (!connectionId) return;
-    // Resolve first: connectionId may be pine's own id for a connection that
-    // already has a color stored under its saved-profile id -- checking the
-    // raw id here would miss that and reassign a new color on every
-    // reconnect.
-    const existingKey = this.resolveConnectionEntry(connectionId)?.id ?? connectionId;
-    if (this.connectionColors[existingKey]) return;
+    // getConnectionColor resolves first: connectionId may be pine's own id
+    // for a connection whose colour is kept under its hash, or under a key an
+    // older version used. Checking the raw id alone would reassign a new
+    // colour on every reconnect.
+    if (this.getConnectionColor(connectionId)) return;
     const used = new Set(Object.values(this.connectionColors));
     const color =
       CONNECTION_COLOR_PALETTE.find(c => !used.has(c)) ??
