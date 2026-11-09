@@ -34,7 +34,15 @@ A database's address is its type, host, port and name, such as `postgres://local
 
 A hash hides the address from someone reading the file. It is not a secret: anyone who guesses the address can hash it and compare. So never use the hash as a credential.
 
-Known exception, still to fix: the UI's local storage keeps pine-lang's connection id, which is `host:port:dbname`. It is in each saved tab (`pine-sessions`, `connectionId`) and in the connection colours (`pine-connection-colors`). Don't add more.
+Why a hash: two people with the same database get the same hash, so a recipe or anything else can be shared for that database without showing where it is. A saved connection's id is random and local to one client. It shows nothing, but it also can't be matched across clients.
+
+On desktop, preferences are saved in beamlynx.db as well as local storage (`store/preferences.ts`). So the same rule applies to every preference:
+- Saved tabs (`pine-sessions`) keep the saved connection's id (`profileId`), never pine's id.
+- Connection colours (`pine-connection-colors`) are keyed by `databaseKeyHash`.
+
+Older versions saved pine's id in both. `GlobalStore` still reads those values, and rewrites them once the saved connections load (`migrateConnectionColors`, `snapshotSessions`). Keep reading both forms whenever you change a stored key, so existing users lose nothing.
+
+Known exception: the web build has no saved connections, so its tabs and colours still use pine's id.
 
 ## Reaching pine-lang from a hosted dev copy
 

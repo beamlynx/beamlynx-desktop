@@ -6,12 +6,14 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ## [Unreleased]
 ### Changed
 - **Ctrl+, brings back the Library too.** The Library is one of the panels beside the sidebar, like Settings. Ctrl+, closes whichever is open, and opens the one you had open last. Before, it only knew Settings: with the Library open, it swapped in Settings, and it never reopened the Library.
-### Changed
 - **A recipe from another database goes in the current tab by default.** When you use a recipe saved from another of your connections, Beamlynx asks whether to use it in this tab, on this tab's database, which Enter picks, or to open it on the database it was saved from in a new tab. It no longer offers to switch the current tab to that database, and the Library's separate **Use in this tab** button is gone.
 - **The Library lists recipes by connection, then by name.** Each connection's recipes start under a heading tinted with the connection's colour, with its dot from the connection list, so you can see where a recipe was saved before you use it. Recipes from databases you have no connection to come last, under **Other databases**. Before, the newest came first. The Library's line of keyboard hints is gone. The sidebar's Library tooltip now shows Ctrl+O instead.
 
 ### Fixed
 - **The keyboard works when switching a tab that has a query.** Opening another connection from such a tab, from the sidebar or with **Switch Connection** in Ctrl+K, asks whether to open it in a new tab or switch this tab. Enter now picks the new tab, the default, and Up and Down move between the two choices. Before, neither key did anything.
+
+### Security
+- **Saved tabs and connection colours no longer show where your databases are.** The desktop app used to save each tab's database, and the colours of your connections, under the database's address (host, port and name). Tabs now remember the saved connection, and colours are kept under a hash of the database. What older versions saved is rewritten the first time the app starts, and your tabs and colours stay as they were. Two saved connections to the same database now share one colour.
 
 ## [0.74.0] - 2026-11-09
 ### Breaking
