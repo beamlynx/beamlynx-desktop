@@ -90,3 +90,21 @@ test("tabs keep the saved connection's id and drop pine's id, which is an addres
   const first = Object.values(store.sessions).find(s => s.expression === 'a');
   assert.equal(first.connectionId, 'prod.example.com:5432:shop', 'the open tab still knows it in memory');
 });
+
+test("a tab saved with only its saved connection's id reconnects at startup", async () => {
+  const { store } = await desktopStore({
+    [STORAGE_KEYS.SESSIONS]: { sessions: [{ expression: '', inputMode: 'pine', profileId: 'profile-b' }], activeIndex: 0 },
+  });
+  const asked = [];
+  store.getSavedProfileCredentials = async profileId => {
+    asked.push(profileId);
+    return {};
+  };
+  store.establishConnection = async () => ({ id: 'prod.example.com:5432:shop', version: '0.54.0' });
+  // Pine comes up, which reconnects the open tab, as at startup.
+  store.version = '0.54.0';
+  for (let i = 0; i < 20 && !store.connection; i++) await new Promise(r => setImmediate(r));
+  assert.deepEqual(asked, ['profile-b']);
+  assert.equal(store.sessions[store.activeSessionId].connectionId, 'prod.example.com:5432:shop');
+  assert.equal(store.connection, 'prod.example.com:5432:shop');
+});
