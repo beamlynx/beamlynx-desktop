@@ -425,6 +425,13 @@ async function registerTools(server: McpServer): Promise<void> {
     'renders it as a note above the query, which is how the user sees your reasoning rather than just rows. ';
   const rowCapNote =
     'With no limit: of its own, a result stops at 250 rows (10,000 for a group:), and says so when it does. ';
+  // Said in the descriptions, not only the instructions: a reviewer that
+  // vets tool calls (Claude Code's auto mode) reads these, and refused a
+  // query on a table with a secret column, assuming the secret came back.
+  const maskNote =
+    'A masked column is safe to query: Beamlynx writes "xxxxx" in its place in the SQL it sends, so its ' +
+    'values never leave the database, and never reach Beamlynx or you. That holds for `select: *` and for ' +
+    'queries with no select:. You may still filter, sort and join on a masked column with a value you supply. ';
   // What the user watching sees in their timeline. On every query, so an
   // agent needs no separate call for them (set_question and note_finding).
   const questionInput = z
@@ -465,6 +472,7 @@ async function registerTools(server: McpServer): Promise<void> {
         'step with complete_query, rather than guessing at table or column names. To run SQL, use ' +
         'run_sql_as_pine. ' +
         rowCapNote +
+        maskNote +
         sayWhy +
         'If the expression contains `$name` variables, pass their values in `variables`; they are bound as ' +
         'values, never pasted into the query (see get_pine_doc "variables").',
@@ -508,6 +516,7 @@ async function registerTools(server: McpServer): Promise<void> {
         'query in Pine with run_query instead. An UPDATE or DELETE converts and is shown in the tab, but is ' +
         'refused when it runs: only the user can run a change. ' +
         rowCapNote +
+        maskNote +
         sayWhy +
         'SQL `$name` placeholders are Pine variables: pass their values in `variables`.',
       inputSchema: {
