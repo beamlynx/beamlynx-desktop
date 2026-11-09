@@ -7,6 +7,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Changed
 - **A recipe from another database goes in the current tab by default.** When you use a recipe saved from another of your connections, Beamlynx asks whether to use it in this tab, on this tab's database, which Enter picks, or to open it on the database it was saved from in a new tab. It no longer offers to switch the current tab to that database, and the Library's separate **Use in this tab** button is gone.
 
+### Fixed
+- **The keyboard works when switching a tab that has a query.** Opening another connection from such a tab, from the sidebar or with **Switch Connection** in Ctrl+K, asks whether to open it in a new tab or switch this tab. Enter now picks the new tab, the default, and Up and Down move between the two choices. Before, neither key did anything.
+
 ## [0.74.0] - 2026-11-09
 ### Breaking
 - **Needs pine-lang 0.54.0 or later (was 0.53.0).** Connecting to an older server shows the upgrade-required screen.
