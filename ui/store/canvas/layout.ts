@@ -25,6 +25,7 @@ import {
   CanvasNode,
   CanvasTableNode,
   CanvasTableNodeData,
+  CanvasDescribe,
   CanvasWrite,
 } from './canvas.model';
 import { Lineage } from './lineage';
@@ -81,6 +82,7 @@ const chipsHeight = (data: CanvasTableNodeData): number =>
     [...data.orderChips, ...(data.elementChips?.order ?? [])],
     [...data.groupChips, ...(data.elementChips?.group ?? [])],
     data.write?.items ?? [],
+    data.describe ? [data.describe] : [],
   ].reduce(
     (height, chips) => (chips.length ? height + chipRowHeight * Math.ceil(chips.length / 2) : height),
     0,
@@ -689,6 +691,7 @@ const layoutPipeline = (
   order: number,
   dropLastStage = false,
   write: CanvasWrite | null = null,
+  describe: CanvasDescribe | null = null,
 ) => {
   const checkpoints = ast.checkpoints ?? [];
   const checkpointNames = new Set(checkpoints.map(c => c.name));
@@ -711,6 +714,12 @@ const layoutPipeline = (
     if (write) {
       for (const n of derived.nodes) {
         if (n.id === write.alias) n.data = { ...n.data, write: { kind: write.kind, items: write.items } };
+      }
+    }
+    // So does the table a describe: or references: describes.
+    if (describe) {
+      for (const n of derived.nodes) {
+        if (n.id === describe.alias) n.data = { ...n.data, describe: describe.kind };
       }
     }
     order += derived.nodes.length;
@@ -876,6 +885,7 @@ export const buildCanvasGraph = (
   blocks: NamedBlock[] = [],
   lineage: Lineage = { blocks: [], edges: [], active: 0 },
   write: CanvasWrite | null = null,
+  describe: CanvasDescribe | null = null,
 ): CanvasGraph => {
   const stages = stagesOf(ast);
   const expansion = expansionOf(ast, blocks, expanded);
@@ -921,7 +931,7 @@ export const buildCanvasGraph = (
     top = blockLaid.bottom + containerPad + connectorGap;
   }
 
-  const main = layoutPipeline(ast, '', firstStage, expansion.mainOpen, top, order, false, write);
+  const main = layoutPipeline(ast, '', firstStage, expansion.mainOpen, top, order, false, write, describe);
   nodes.push(...main.nodes);
   edges.push(...main.edges);
   containers.push(...main.containers);

@@ -34,6 +34,9 @@ import {
   makeAlias,
   segmentsFromAst,
   writeOf,
+  describeOf,
+  withoutDescribe,
+  withoutDescribeSegments,
   replaceDoc,
   stageEnd,
   toText,
@@ -626,13 +629,15 @@ export class CanvasStore {
     // A picked checkpoint missing from this ast falls back to the default
     // (buildCanvasGraph). It isn't cleared here: right after a commit the ast
     // can still be the one from before, without the checkpoint just added.
+    const segments = segmentsFromAst(expression, ast);
     this.canvasGraph = buildCanvasGraph(
       ast,
       { ...this.stripPositions, ...this.positions[this.mainBlock] },
       this.expandedNested,
       this.namedBlocks,
       this.lineage,
-      writeOf(segmentsFromAst(expression, ast)),
+      writeOf(segments),
+      describeOf(segments),
     );
     if (!this.hasSeededHoverAlias && this.orderedFocusTargets.length > 0) {
       this.hasSeededHoverAlias = true;
@@ -993,7 +998,10 @@ export class CanvasStore {
   }
 
   private async pinnedBase(block: number): Promise<actions.PinnedBase | null> {
-    const expression = this.textOf(block);
+    // Nothing can follow describe: or references:, so a gesture works on the
+    // query without them: picking a column or joining a table ends the
+    // describing. describeNode adds the step back at the end.
+    const expression = withoutDescribe(this.textOf(block));
     const context = this.contextOf(block);
     // Not `this.session.ast` - it's kept up to date by the session's own,
     // separately-debounced build and can still describe the *previous*
@@ -1171,7 +1179,8 @@ export class CanvasStore {
     // A node of an earlier block probes that block, with its own alias.
     const { block, alias } = this.scopeOf(request.alias);
     const text = this.textOf(block);
-    const segments = segmentsFromAst(text, this.astOf(block)) ?? [];
+    // Nothing can follow describe: or references:, and a pick ends them (see pinnedBase).
+    const segments = withoutDescribeSegments(segmentsFromAst(text, this.astOf(block)) ?? []);
     // The probe stops at the end of the target's own stage (see stageEnd):
     // a hint probe built after a checkpoint reflects the sealed output's
     // shape (just the grouped columns, plus aggregate function names), not
@@ -1631,7 +1640,7 @@ export class CanvasStore {
       // Plain nodes only. Following a foreign key out of a checkpoint's
       // sealed result isn't a thing - its node doesn't offer it either.
       if (isCheckpoint) return;
-      this.openTraversePicker(alias, anchor);
+      void this.openTraversePicker(alias, anchor);
       return;
     }
     if (isCheckpoint) {
@@ -1657,7 +1666,7 @@ export class CanvasStore {
   openLimitEditor(alias: string, anchor: PickerAnchor = CanvasStore.defaultAnchor, checkpoint?: string) {
     this.focusNode(alias);
     const { block, alias: plain } = this.scopeOf(alias);
-    const segments = segmentsFromAst(this.textOf(block), this.astOf(block)) ?? [];
+    const segments = withoutDescribeSegments(segmentsFromAst(this.textOf(block), this.astOf(block)) ?? []);
     const plainCheckpoint = checkpoint === undefined ? undefined : this.scopeOf(checkpoint).alias;
     const opIndex = plainCheckpoint ? checkpointOpIndex(segments, plainCheckpoint) : -1;
     const current = plainCheckpoint
@@ -1748,26 +1757,21 @@ export class CanvasStore {
   }
 
   /**
-   * "+" -> describe or references: opens `<table> | describe:` (the node's
-   * columns, pine-lang's docs/describe.md) or `<table> | references:` (its
-   * relations both ways, docs/references.md) in a new tab, so this tab's
-   * query stays as it is. The table is the node's real one, named with its
-   * schema; a named result is named as is.
+   * "+" -> describe or references: ends this tab's query with `describe:`
+   * (the node's columns, pine-lang's docs/describe.md) or `references:` (its
+   * relations both ways, docs/references.md), as update! and delete! end
+   * one. The node shows it, and removeDescribe takes it off again; so does
+   * any other gesture (see pinnedBase).
    */
-  describeNode(id: string, op: 'describe' | 'references' = 'describe') {
+  async describeNode(id: string, op: 'describe' | 'references' = 'describe') {
     this.closePicker();
-    const { block, alias } = this.scopeOf(id);
-    const ast = this.astOf(block);
-    // A bare table still last in the pipe isn't in selected-tables yet.
-    const typed =
-      ast?.operation?.type === 'table' && ast.current === alias
-        ? (ast.operation.value as { schema?: string | null; table?: string })
-        : undefined;
-    const table: { schema?: string | null; table?: string } | undefined =
-      ast?.['selected-tables']?.find(t => t.alias === alias) ?? typed;
-    if (!table?.table) return;
-    const name = table.schema ? `${table.schema}.${table.table}` : table.table;
-    void this.session.globalStore?.openExpressionInNewTab?.(`${name} | ${op}:`);
+    const { alias } = this.scopeOf(id);
+    await this.commit(base => actions.describeTable(base, op, actions.resolveAlias(base, alias)), id);
+  }
+
+  /** The × on a node's describe/references chip: the query goes back to its rows. */
+  async removeDescribe(id: string) {
+    await this.commit(base => toText(base.segments), id);
   }
 
   /**
@@ -1779,13 +1783,23 @@ export class CanvasStore {
    * is made once at open time and carried on the picker rather than
    * re-derived per click.
    */
-  openTraversePicker(alias: string, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
+  async openTraversePicker(alias: string, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
     if (this.picker.open && this.picker.mode === 'traverse' && this.picker.alias === alias) {
       this.closePicker();
       return;
     }
     this.focusNode(alias);
-    const verdict = canDeleteTraverse(this.astOf(this.scopeOf(alias).block));
+    // A traversal walks the query without its describe step (see
+    // startTraversal), so whether it may delete is judged on that query: the
+    // step's own `from:` doesn't move where it starts.
+    const { block } = this.scopeOf(alias);
+    const text = this.textOf(block);
+    const plain = withoutDescribe(text);
+    const ast =
+      plain === text
+        ? this.astOf(block)
+        : await probeBuild(plain, this.session.connectionId, this.contextOf(block)).catch(() => undefined);
+    const verdict = canDeleteTraverse(ast);
     this.picker = {
       open: true,
       mode: 'traverse',

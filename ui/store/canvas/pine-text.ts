@@ -1,5 +1,5 @@
 import { Ast, Checkpoint, PineRange, Table } from '../client';
-import { CanvasWrite } from './canvas.model';
+import { CanvasDescribe, CanvasWrite } from './canvas.model';
 
 // Canvas mode never parses Pine itself — the server does that (see /build's
 // `ast.ranges`). This module only re-slices the original expression string
@@ -116,6 +116,37 @@ export const writeOf = (segments: Segment[] | null): CanvasWrite | null => {
   return last.kind === 'update'
     ? { kind: 'update', alias: last.owner, items }
     : { kind: 'delete', alias: last.owner, items: items.map(c => c.replace(/^\./, '')) };
+};
+
+/**
+ * The table a query describes, when it ends in `describe:` or `references:`:
+ * the table the pipe left off at, after any `from:`.
+ */
+export const describeOf = (segments: Segment[] | null): CanvasDescribe | null => {
+  const last = segments?.[segments.length - 1];
+  if (!last?.owner || (last.kind !== 'describe' && last.kind !== 'references')) return null;
+  return { kind: last.kind, alias: last.owner };
+};
+
+// A last `describe:` or `references:` step, and the `from:` right before it
+// that picks the table it describes.
+const DESCRIBE_TAIL = new RegExp(`\\s*\\|\\s*(?:(?:from:|f:)\\s*${ALIAS}\\s*\\|\\s*)?(?:describe:|references:)\\s*$`, 'i');
+
+/**
+ * The expression without its last `describe:` or `references:` step, and
+ * without a `from:` right before it. Every canvas gesture works on this:
+ * nothing can follow those steps, so a gesture ends the describing. A
+ * `from:` someone typed before `describe:` goes too. It picked only the
+ * table to describe.
+ */
+export const withoutDescribe = (expression: string): string => expression.replace(DESCRIBE_TAIL, '');
+
+/** withoutDescribe on segments: what a picker's probe builds on. */
+export const withoutDescribeSegments = (segments: Segment[]): Segment[] => {
+  const last = segments[segments.length - 1];
+  if (!last || (last.kind !== 'describe' && last.kind !== 'references')) return segments;
+  const end = segments[segments.length - 2]?.kind === 'from' ? segments.length - 2 : segments.length - 1;
+  return segments.slice(0, end);
 };
 
 const classifyKind = (text: string): SegmentKind => {

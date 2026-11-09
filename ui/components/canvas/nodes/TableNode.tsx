@@ -1007,6 +1007,15 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
           }
         />
       )}
+      {/* The query's describe: or references: lists this table's columns or relations. */}
+      {data.describe && (
+        <ChipRow
+          label={data.describe}
+          chips={[]}
+          readOnlyChips={[data.describe === 'describe' ? 'its columns' : 'how it joins']}
+          onRemoveReadOnly={() => void canvasStore.removeDescribe(data.alias)}
+        />
+      )}
     </div>
   );
 });

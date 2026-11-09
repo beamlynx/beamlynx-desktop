@@ -3,7 +3,7 @@ import { TOTAL_BARS } from '../constants';
 import { DefaultPlugin } from '../plugin/default.plugin';
 import { EvaluateOptions } from '../plugin/plugin.interface';
 import { csvCell } from '../utils/csv';
-import { mayChangeData } from './canvas/pine-text';
+import { mayChangeData, withoutDescribe } from './canvas/pine-text';
 import { formatSql } from '../utils/formatSql';
 import { shouldShowTableColors } from './table-colors.util';
 import { CanvasStore } from './canvas/canvas.store';
@@ -1045,7 +1045,9 @@ export class Session {
    * already points where it should.
    */
   async startTraversal(verb: TraversalVerb) {
-    const rootExpression = this.expression.trim();
+    // Nothing can follow describe: or references:, so the walk starts from the
+    // query without them (see CanvasStore.openTraversePicker).
+    const rootExpression = withoutDescribe(this.expression).trim();
     if (!rootExpression) return;
     this.getCanvasStore().closePicker();
 
