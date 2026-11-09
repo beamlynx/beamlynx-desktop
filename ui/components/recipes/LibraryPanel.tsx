@@ -35,11 +35,12 @@ const dim = 'var(--node-secondary-text-color)';
 const formatDate = (ms: number) =>
   new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 
-// Who saved a recipe, where from, and when, as one short line.
-const recipeByline = (r: Recipe, from: string | null): string => {
-  const who = r.source === 'agent' ? `Saved by ${r.agent ?? 'an agent'}` : 'Saved';
-  return `${who}${from ? ` from ${from}` : ''}, ${formatDate(r.updatedAt)}`;
-};
+// Who saved a recipe, and when, as one short line. Where from is its group's
+// heading.
+const recipeByline = (r: Recipe): string =>
+  r.source === 'agent'
+    ? `Saved by ${r.agent ?? 'an agent'}, ${formatDate(r.updatedAt)}`
+    : `Saved ${formatDate(r.updatedAt)}`;
 
 // A connection's colour, as the dot in the sidebar's connection list shows
 // it (ActiveConnection.tsx): filled once connected, a ring before.
@@ -495,7 +496,7 @@ const LibraryPanel = observer(() => {
                     >
                       {used?.id === r.id
                         ? `Added to ${used.tab}`
-                        : recipeByline(r, savedFromLabel(r.savedFrom, global.connections))}
+                        : recipeByline(r)}
                     </Typography>
                   </Box>
                 </Box>
