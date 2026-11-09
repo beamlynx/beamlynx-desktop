@@ -20,3 +20,33 @@ test('at the end it stays at the end, and at the start at the start', () => {
 test('text that lost characters keeps the cursor inside it', () => {
   assert.equal(cursorAfterReformat('a | b -- note', 'a\n | b', 10), 'a\n | b'.length);
 });
+
+test('a | ends its query when only whitespace follows it before a blank line', () => {
+  const { isAtEndOfBlock } = require('../utils/cursor.ts');
+  const text = 'company |\n\nuser\n | where: id = 1';
+  assert.equal(isAtEndOfBlock(text, 'company |'.length), true, 'a new query above another one');
+  assert.equal(isAtEndOfBlock('user |  ', 'user |'.length), true, 'the end of the editor');
+  assert.equal(isAtEndOfBlock('user | where: id = 1', 'user |'.length), false, 'before another step');
+  assert.equal(isAtEndOfBlock('user |\n | where: id = 1', 'user |'.length), false, 'the next line is the same query');
+});
+
+test('an offset comes from a line and a character', () => {
+  const { offsetOf } = require('../utils/cursor.ts');
+  assert.equal(offsetOf('ab\ncd', 1, 1), 4);
+  assert.equal(offsetOf('ab\ncd', 0, 9), 2, 'past the end of a line, its end');
+  assert.equal(offsetOf('ab\ncd', 5, 0), 5, 'past the last line, the end');
+});
+
+test('a tidy that dropped a comment is not whitespace only', () => {
+  const { sameApartFromWhitespace } = require('../utils/cursor.ts');
+  // What pine-lang's prettifier returns for these.
+  assert.equal(sameApartFromWhitespace('company | employee |', 'company\n | employee\n | '), true);
+  assert.equal(sameApartFromWhitespace('company\n -- note\n | employee |', 'company\n | employee\n | '), false);
+});
+
+test('after a | the cursor goes past the space that follows it', () => {
+  const { pastSpaceAfterPipe } = require('../utils/cursor.ts');
+  const text = 'company\n | \n\nuser';
+  assert.equal(pastSpaceAfterPipe(text, 'company\n |'.length), 'company\n | '.length);
+  assert.equal(pastSpaceAfterPipe(text, 'company'.length), 'company'.length, 'not after a |');
+});

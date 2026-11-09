@@ -255,6 +255,14 @@ export const KEYBINDINGS: KeybindingConfig[] = [
   },
 
   {
+    name: 'tidy-pine',
+    description: 'Tidy Pine',
+    display: createKeybindingDisplay(['ctrl', 'shift'], 'F'),
+    combos: [{ combo: { mod: true, shift: true, alt: false, key: 'f' } }],
+    commandId: 'tidy-pine',
+  },
+
+  {
     // Unlike new-tab/close-tab, Ctrl/Cmd+S's default ("Save Page As") is a
     // page-level browser action, not host-window chrome, so preventDefault()
     // on keydown reliably suppresses it in both the browser build and

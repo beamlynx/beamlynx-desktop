@@ -17,7 +17,7 @@ import { createPineAutocompletion, refreshCompletions } from './pine-autocomplet
 import { pineLanguage } from './pine-language';
 import { setTableColors, tableColors } from './table-colors';
 import { useVimExtension } from './vim-mode';
-import { cursorAfterReformat } from '../utils/cursor';
+import { cursorAfterReformat, isAtEndOfBlock, pastSpaceAfterPipe, sameApartFromWhitespace } from '../utils/cursor';
 
 interface PineInputProps {
   session: Session;
@@ -202,9 +202,20 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
           return;
         }
 
-        const prettifiedContent = await session.prettifyExpression(currentContent, false);
+        let prettifiedContent: string;
+        try {
+          prettifiedContent = await session.prettifyExpression(currentContent, false);
+        } catch {
+          return; // The server is away: the text stays as typed.
+        }
 
-        if (prettifiedContent === currentContent) {
+        // Left alone: no change; text typed while the server answered, which
+        // replacing would undo; and a tidy that dropped a comment.
+        if (
+          prettifiedContent === currentContent ||
+          view.state.doc.toString() !== currentContent ||
+          !sameApartFromWhitespace(currentContent, prettifiedContent)
+        ) {
           return;
         }
 
@@ -217,7 +228,10 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
         // Update the editor directly to avoid the useEffect cycle. The
         // cursor stays where it was: a `|` typed near the top of a long
         // expression used to send it to the end.
-        const cursor = cursorAfterReformat(currentContent, prettifiedContent, view.state.selection.main.head);
+        const cursor = pastSpaceAfterPipe(
+          prettifiedContent,
+          cursorAfterReformat(currentContent, prettifiedContent, view.state.selection.main.head),
+        );
         const newTransaction = view.state.update({
           changes: {
             from: 0,
@@ -243,10 +257,12 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
 
   const onPipe = useCallback(
     (view: EditorView) => {
+      // Picking a suggestion adds a `|`, and tidies like typing one.
+      if (!global.autoTidy) return;
       const expectedContent = view.state.doc.toString();
       debouncedPrettifyOnPipe(view, expectedContent);
     },
-    [debouncedPrettifyOnPipe],
+    [debouncedPrettifyOnPipe, global],
   );
 
   // Made once per tab: it reads the hints when the list is queried. A new
@@ -399,12 +415,12 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
           {
             key: '|',
             run: view => {
-              // Get current cursor position and document
+              // A `|` that ends its query tidies it, wherever the query is in
+              // the editor. One in the middle of a query, say before another
+              // step or in a string, is just typed: tidying would move text
+              // that's still being written.
               const pos = view.state.selection.main.head;
-              const doc = view.state.doc;
-
-              // If not at end, let the default behavior handle it
-              if (pos !== doc.length) {
+              if (!global.autoTidy || !isAtEndOfBlock(view.state.doc.toString(), pos)) {
                 return false;
               }
 

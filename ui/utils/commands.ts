@@ -170,6 +170,13 @@ const COMMANDS: Command[] = [
     isEnabled: (_global, session) => !!(session.expression || session.query) && !session.loading,
   },
   {
+    id: 'tidy-pine',
+    label: 'Tidy Pine',
+    category: 'Query',
+    handler: (_global, session) => session.tidy(),
+    isEnabled: (_global, session) => session.inputMode === 'pine' && session.expression.trim() !== '',
+  },
+  {
     id: 'stop-query',
     label: 'Stop Query',
     category: 'Query',
@@ -278,6 +285,13 @@ const COMMANDS: Command[] = [
     label: 'Toggle Table Colors',
     category: 'Preferences',
     handler: global => global.togglePineTableColors(),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'toggle-auto-tidy',
+    label: 'Toggle Auto-Tidy Pine',
+    category: 'Preferences',
+    handler: global => global.toggleAutoTidy(),
     isEnabled: ALWAYS_ENABLED,
   },
   {

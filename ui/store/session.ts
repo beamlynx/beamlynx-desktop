@@ -39,6 +39,7 @@ import {
 } from './client';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
 import { debounce } from './util';
+import { cursorAfterReformat, offsetOf, pastSpaceAfterPipe, sameApartFromWhitespace } from '../utils/cursor';
 import { captureUsage } from '../utils/usage-stats';
 import type { HiddenColumn, QuerySnapshot } from './investigations';
 
@@ -920,6 +921,42 @@ export class Session {
     const before = blocks.slice(0, activeIdx).map(b => b.text);
     const after = blocks.slice(activeIdx + 1).map(b => b.text);
     return [...before, result, ...after].join('\n\n');
+  }
+
+  /**
+   * Tidies every query in the tab: the Tidy command and button, for when
+   * typing `|` doesn't tidy on its own (GlobalStore.autoTidy). Only spacing
+   * and line breaks change, so the cursor keeps its place. A query that
+   * doesn't parse, and a values block, are left as they are.
+   */
+  public async tidy() {
+    const before = this.expression;
+    const blocks = splitExpressions(before);
+    // A query whose tidy changed more than whitespace keeps its own text:
+    // Pine's prettifier drops a comment between steps.
+    const tidyBlock = async (text: string) => {
+      if (isValuesBlock(text)) return text;
+      const tidied = await client.prettify(text, this.connectionId);
+      return sameApartFromWhitespace(text, tidied) ? tidied : text;
+    };
+    let tidied: string[];
+    try {
+      tidied = await Promise.all(blocks.map(b => tidyBlock(b.text)));
+    } catch {
+      return; // The server is away: nothing changes.
+    }
+    const after = tidied.join('\n\n');
+    // Typed into while the server answered: tidying now would undo it.
+    if (this.expression !== before || after === before.trim()) return;
+    const at = this.cursorPosition;
+    const cursor = pastSpaceAfterPipe(
+      after,
+      cursorAfterReformat(before, after, at ? offsetOf(before, at.line, at.character) : before.length),
+    );
+    runInAction(() => {
+      this.expression = after;
+      this.pendingSelection = { anchor: cursor, head: cursor };
+    });
   }
 
   public async prettify(appendPipe = false) {

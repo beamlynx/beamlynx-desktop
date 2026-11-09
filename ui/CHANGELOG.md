@@ -4,7 +4,11 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- **Tidy Pine on demand.** **Tidy Pine as you type** in Settings → Preferences turns off tidying when you type `|` or pick a suggestion. Then Ctrl+Shift+F, or a button at the top right of the Pine panel, tidies every query in the tab. A query with a comment between its steps is left as it is, since tidying would drop the comment.
+
 ### Changed
+- **Typing `|` tidies any query, not only the last.** A `|` at the end of a query tidies it, so writing a new query above others now tidies too. A `|` in the middle of a query, before another step, is just typed.
 - **Ctrl+, brings back the Library too.** The Library is one of the panels beside the sidebar, like Settings. Ctrl+, closes whichever is open, and opens the one you had open last. Before, it only knew Settings: with the Library open, it swapped in Settings, and it never reopened the Library.
 - **A recipe from another database goes in the current tab by default.** When you use a recipe saved from another of your connections, Beamlynx asks whether to use it in this tab, on this tab's database, which Enter picks, or to open it on the database it was saved from in a new tab. It no longer offers to switch the current tab to that database, and the Library's separate **Use in this tab** button is gone.
 - **The Library lists recipes by connection, then by name.** Each connection's recipes start under a heading tinted with the connection's colour, with its dot from the connection list, so you can see where a recipe was saved before you use it. Recipes from databases you have no connection to come last, under **Other databases**. Before, the newest came first. An open recipe no longer repeats the connection: its line says only who saved it, and when. The Library's line of keyboard hints is gone. The sidebar's Library tooltip now shows Ctrl+O instead.
