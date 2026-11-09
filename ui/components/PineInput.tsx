@@ -17,6 +17,7 @@ import { createPineAutocompletion, refreshCompletions } from './pine-autocomplet
 import { pineLanguage } from './pine-language';
 import { setTableColors, tableColors } from './table-colors';
 import { useVimExtension } from './vim-mode';
+import { cursorAfterReformat } from '../utils/cursor';
 
 interface PineInputProps {
   session: Session;
@@ -213,14 +214,18 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
         });
         lastValueRef.current = prettifiedContent;
 
-        // Update the editor directly to avoid the useEffect cycle
+        // Update the editor directly to avoid the useEffect cycle. The
+        // cursor stays where it was: a `|` typed near the top of a long
+        // expression used to send it to the end.
+        const cursor = cursorAfterReformat(currentContent, prettifiedContent, view.state.selection.main.head);
         const newTransaction = view.state.update({
           changes: {
             from: 0,
             to: view.state.doc.length,
             insert: prettifiedContent,
           },
-          selection: { anchor: prettifiedContent.length },
+          selection: { anchor: cursor },
+          scrollIntoView: true,
         });
         view.dispatch(newTransaction);
       }, 150); // 150ms debounce delay
