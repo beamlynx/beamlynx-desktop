@@ -356,6 +356,28 @@ export function matchRecipes<T extends { title: string; explanation: string; exp
 }
 
 /**
+ * Recipes in the Library's order: by the name of the connection each was
+ * saved from, then by title, both ignoring case. Recipes from a database
+ * you have no connection to come last. `from` names a recipe's connection
+ * (savedFromLabel), or null.
+ */
+export function sortRecipes<T extends { title: string }>(recipes: T[], from: (r: T) => string | null): T[] {
+  const byName = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true });
+  return recipes
+    .map(r => ({ r, from: from(r) }))
+    .sort((a, b) => {
+      if (a.from !== b.from) {
+        if (a.from === null) return 1;
+        if (b.from === null) return -1;
+        const c = byName(a.from, b.from);
+        if (c) return c;
+      }
+      return byName(a.r.title, b.r.title);
+    })
+    .map(x => x.r);
+}
+
+/**
  * The name of the saved connection a recipe was saved from, or null when it
  * isn't one of yours. A recipe stores the database's hash, so its address is
  * never shown. One an older app saved stores the address itself, so both are

@@ -238,3 +238,24 @@ test('a recipe says which of your connections it was saved from, never the addre
   assert.equal(savedFromLabel('postgres://elsewhere:5432/x', connections), null);
   assert.equal(savedFromLabel(null, connections), null);
 });
+
+test('the Library lists recipes by connection, then title; unknown connections last', () => {
+  const { sortRecipes } = require('../utils/recipes.ts');
+  const rs = [
+    { title: 'zeta', from: 'Staging' },
+    { title: 'Alpha', from: null },
+    { title: 'beta', from: 'production' },
+    { title: 'alpha', from: 'Staging' },
+    { title: 'Gamma', from: 'Production' },
+  ];
+  const before = rs.slice();
+  const sorted = sortRecipes(rs, r => r.from);
+  assert.deepEqual(sorted.map(r => `${r.from}/${r.title}`), [
+    'production/beta',
+    'Production/Gamma',
+    'Staging/alpha',
+    'Staging/zeta',
+    'null/Alpha',
+  ]);
+  assert.deepEqual(rs, before, 'its input is left alone');
+});
