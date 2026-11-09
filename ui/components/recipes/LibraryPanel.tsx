@@ -7,7 +7,14 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStores } from '../../store/store-container';
 import { createSettingsTheme } from '../../styles/theme';
 import { TEXT_SIZE_SCALE } from '../../styles/text-size';
-import { matchRecipes, recipeSummary, savedFromLabel, sortRecipes, type Recipe } from '../../utils/recipes';
+import {
+  matchRecipes,
+  recipeSummary,
+  savedFromConnection,
+  savedFromLabel,
+  sortRecipes,
+  type Recipe,
+} from '../../utils/recipes';
 import { openRecipe, recipeHome } from './insertRecipe';
 import RecipeDatabaseDialog from './RecipeDatabaseDialog';
 
@@ -33,6 +40,30 @@ const recipeByline = (r: Recipe, from: string | null): string => {
   const who = r.source === 'agent' ? `Saved by ${r.agent ?? 'an agent'}` : 'Saved';
   return `${who}${from ? ` from ${from}` : ''}, ${formatDate(r.updatedAt)}`;
 };
+
+// A connection's colour, as the dot in the sidebar's connection list shows
+// it (ActiveConnection.tsx): filled once connected, a ring before.
+const ConnectionDot = observer(({ id }: { id: string }) => {
+  const { global } = useStores();
+  const color = global.getConnectionColor(id) || 'var(--border-color)';
+  const live = global.isConnectionLive(id);
+  return (
+    <Box
+      component="span"
+      sx={{
+        display: 'inline-block',
+        width: 8,
+        height: 8,
+        mr: 1,
+        borderRadius: '50%',
+        boxSizing: 'border-box',
+        verticalAlign: 'middle',
+        backgroundColor: live ? color : 'transparent',
+        border: live ? 'none' : `1.5px solid ${color}`,
+      }}
+    />
+  );
+});
 
 const LibraryPanel = observer(() => {
   const { global } = useStores();
@@ -291,6 +322,7 @@ const LibraryPanel = observer(() => {
           const home = isSelected ? recipeHome(global, r) : undefined;
           const armed = confirmingId === r.id;
           const from = fromLabel(r);
+          const fromId = savedFromConnection(r.savedFrom, global.connections)?.id;
           const heading = showHeadings && (i === 0 || fromLabel(matches[i - 1]) !== from);
           return (
             <React.Fragment key={r.id}>
@@ -301,15 +333,21 @@ const LibraryPanel = observer(() => {
                 sx={{
                   display: 'block',
                   px: 3,
-                  pt: i === 0 ? 1 : 2,
-                  pb: 0.5,
-                  color: dim,
+                  py: 0.75,
+                  color: 'var(--text-color)',
+                  fontWeight: 500,
+                  // A band tinted with the connection's colour, so each group
+                  // stands apart and matches its dot. Neutral without one.
+                  backgroundColor: `color-mix(in srgb, ${
+                    (fromId && global.getConnectionColor(fromId)) || 'var(--text-color)'
+                  } ${fromId && global.getConnectionColor(fromId) ? 14 : 6}%, var(--background-color))`,
                   borderBottom: '1px solid var(--border-color)',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
                 }}
               >
+                {fromId && <ConnectionDot id={fromId} />}
                 {from ?? 'Other databases'}
               </Typography>
             )}
@@ -595,12 +633,6 @@ const LibraryPanel = observer(() => {
           )}
 
           {body}
-        </Box>
-
-        <Box sx={{ borderTop: '1px solid var(--border-color)', px: 3, py: 1 }}>
-          <Typography variant="caption" sx={{ color: dim }}>
-            Up and Down to move, Enter to use. Ctrl+O opens the Library from anywhere.
-          </Typography>
         </Box>
       </Box>
       <RecipeDatabaseDialog
