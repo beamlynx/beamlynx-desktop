@@ -7,7 +7,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStores } from '../../store/store-container';
 import { createSettingsTheme } from '../../styles/theme';
 import { TEXT_SIZE_SCALE } from '../../styles/text-size';
-import { matchRecipes, recipeSummary, savedFromLabel, type Recipe } from '../../utils/recipes';
+import { matchRecipes, recipeSummary, savedFromLabel, sortRecipes, type Recipe } from '../../utils/recipes';
 import { openRecipe, recipeHome } from './insertRecipe';
 import RecipeDatabaseDialog from './RecipeDatabaseDialog';
 
@@ -117,7 +117,13 @@ const LibraryPanel = observer(() => {
     return () => window.clearTimeout(timer);
   }, [findCount]);
 
-  const matches = useMemo(() => matchRecipes(recipes ?? [], query), [recipes, query]);
+  // By the connection each was saved from, then by title (sortRecipes).
+  // Not memoised: a renamed connection changes the order, and MobX changes
+  // global.connections in place, which a dependency list would miss.
+  const fromLabel = (r: Recipe) => savedFromLabel(r.savedFrom, global.connections);
+  const matches = sortRecipes(matchRecipes(recipes ?? [], query), fromLabel);
+  // A heading starts each connection's recipes, unless none is one of yours.
+  const showHeadings = matches.some(r => fromLabel(r) !== null);
   // The selected recipe if the search still shows it, else the first match.
   const selected = matches.find(r => r.id === selectedId) ?? matches[0];
   const selectedIndex = selected ? matches.indexOf(selected) : -1;
@@ -279,14 +285,35 @@ const LibraryPanel = observer(() => {
           borderTop: '1px solid var(--border-color)',
         }}
       >
-        {matches.map(r => {
+        {matches.map((r, i) => {
           const isSelected = selected?.id === r.id;
           // Another of your connections, when it was saved there: Use opens it there.
           const home = isSelected ? recipeHome(global, r) : undefined;
           const armed = confirmingId === r.id;
+          const from = fromLabel(r);
+          const heading = showHeadings && (i === 0 || fromLabel(matches[i - 1]) !== from);
           return (
+            <React.Fragment key={r.id}>
+            {heading && (
+              <Typography
+                role="presentation"
+                variant="caption"
+                sx={{
+                  display: 'block',
+                  px: 3,
+                  pt: i === 0 ? 1 : 2,
+                  pb: 0.5,
+                  color: dim,
+                  borderBottom: '1px solid var(--border-color)',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {from ?? 'Other databases'}
+              </Typography>
+            )}
             <Box
-              key={r.id}
               role="listitem"
               data-recipe-id={r.id}
               sx={{
@@ -436,6 +463,7 @@ const LibraryPanel = observer(() => {
                 </Box>
               )}
             </Box>
+            </React.Fragment>
           );
         })}
       </Box>
