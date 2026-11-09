@@ -4,23 +4,37 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.29.0] - 2026-11-09
 ### Added
-- **Agents learn a table with `describe:` and `references:`.** Their instructions teach `user | describe:` to see a table's columns, and `user | references:` to see how it joins to other tables, each in one call. The Pine reference has a topic for each. They also show one worked query for each kind of question agents ask most: the latest row per group, a count per group, and rows that have, or lack, a related row. (Needs the matching pine-lang.)
-- **An agent's result says when it may have been cut off.** Without a `limit:` of its own, a query returns at most 250 rows. A result that reaches that says there may be more, and how to count them or narrow them down. (Needs the matching pine-lang and beamlynx-ui.)
-- **An agent sends its question and findings with its queries.** `run_query` and `run_sql_as_pine` take an optional `question` and `finding`, shown in the agent's timeline as before. `set_question` and `note_finding` still work, and will be removed in a later release. (Needs the matching beamlynx-ui.)
-- **An agent's parse error says where to read about it.** The error names the Pine docs topic for the operation that failed, and tells the agent to read it with `get_pine_doc`. (Needs the matching pine-lang.)
+- **Run runs every query in the tab.** Each query runs in turn from the top, and its result gets its own section, where cells can be edited as usual. Select lines first to run only those queries. The SQL panel shows the SQL of every query too. (bundled beamlynx-ui 0.74.0)
+- **See a table's columns and its relations.** End a query with `| describe:` to list its columns, or `| references:` to list every relation that touches it, both ways, with how Pine knows it. A table's **+** menu on the canvas offers both. (bundled pine-lang 0.54.0, beamlynx-ui 0.74.0)
+- **Parse errors say what fits.** Where a query stops parsing, the error says in words what could come next, the columns or joins that fit there, and which docs topic covers it. (bundled pine-lang 0.54.0)
+- **`update!` and `delete!` work on a named result.** They change the rows of the table behind it that the named result holds. (bundled pine-lang 0.54.0)
+- **The Library: your recipes in the sidebar.** Search them, read one, and click **Use** to put it in the tab, at the cursor. Ctrl+O opens the Library. Saving a recipe keeps the whole tab, and using one asks whether to switch the tab to the database it was saved from. (bundled beamlynx-ui 0.74.0)
+- **Switch a tab's database from the command palette.** Press Ctrl+K and pick **Switch Connection**. (bundled beamlynx-ui 0.74.0)
+- **The canvas draws any tab, one query at a time,** with a chip for each query at the top, and shows what an update or delete changes. (bundled beamlynx-ui 0.74.0)
+- **Agents learn a table with `describe:` and `references:`.** Their instructions teach `user | describe:` to see a table's columns, and `user | references:` to see how it joins to other tables, each in one call. The Pine reference has a topic for each. They also show one worked query for each kind of question agents ask most: the latest row per group, a count per group, and rows that have, or lack, a related row.
+- **An agent's result says when it may have been cut off.** Without a `limit:` of its own, a query returns at most 250 rows. A result that reaches that says there may be more, and how to count them or narrow them down.
+- **An agent sends its question and findings with its queries.** `run_query` and `run_sql_as_pine` take an optional `question` and `finding`, shown in the agent's timeline as before. `set_question` and `note_finding` still work, and will be removed in a later release.
+- **An agent's parse error says where to read about it.** The error names the Pine docs topic for the operation that failed, and tells the agent to read it with `get_pine_doc`.
 - **Beamlynx keeps a log of what agents do.** Every tool call an AI agent makes is saved in `beamlynx.db`: the tool, the query it sent, any error, and how many rows came back. The rows themselves are never saved, and a database is recorded only by a hash of its address. The newest 20,000 calls are kept. `scripts/agent-retro.mjs` reads the log and reports how agents did and why their calls failed, to find what to improve.
-- **Open Beamlynx's own data file as a database.** The command palette has **Open Beamlynx's data file**, which connects to `beamlynx.db`: your preferences, recipes and column widths. (Needs the matching beamlynx-ui.)
+- **Open Beamlynx's own data file as a database.** The command palette has **Open Beamlynx's data file**, which connects to `beamlynx.db`: your preferences, recipes and column widths. (bundled beamlynx-ui 0.74.0)
 
 ### Changed
+- **An agent's timeline is quieter.** Each run of queries is one grey line you can open, findings stand out, and a follow-up question gets its own section. (bundled beamlynx-ui 0.74.0)
+- **Typing and starting up do less work.** Pine reads each query of a tab once until it changes, the canvas lays out only when a build comes back, and the app loads a fifth less before it starts. (bundled pine-lang 0.54.0, beamlynx-ui 0.74.0)
 - **An agent starts a new section of its timeline for each new question.** Its instructions now say to set a new question when you ask something new, and not while it is still on the same one. They no longer say you can write to it from Beamlynx; you talk to it in the tool that runs it.
 - **Beamlynx's settings file no longer shows your databases' addresses.** Recipes and column widths now record a database by a hash of its address. Each saved connection in `connections.json` keeps its address and that hash side by side, to make problems easier to trace.
 - **Beamlynx opens faster.** Its server now starts while the window opens, not after. On a Linux test machine the app was ready about a quarter of a second sooner.
 
 ### Fixed
+- **An agent's query no longer fails with "An object could not be cloned."** In October, every agent query that touched a masked column failed this way. (bundled beamlynx-ui 0.74.0)
+- **The SQL panel scrolls.** Long SQL was cut off at the bottom. (bundled beamlynx-ui 0.74.0)
 - **Clicking a `beamlynx://` link while Beamlynx is closed opens it.** On Linux and Windows the app showed a JavaScript error instead of opening.
 
 ### Removed
+- **The "Tell the agent…" box under an agent's timeline.** Talk to the agent in the tool you run it from. (bundled beamlynx-ui 0.74.0)
 - **Reveal requests.** To see a masked column, an agent now proposes a change to the masking rules, which you apply or decline in its timeline. The separate reveal request, and the tab it opened, are gone.
 
 ## [0.28.0] - 2026-11-04

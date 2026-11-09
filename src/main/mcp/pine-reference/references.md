@@ -17,7 +17,7 @@ table_name | references:
 ### One table
 
 ```
-user | references: -- pine-lang #177
+user | references:
 ```
 
 One row per join that touches `user`, both ways: the side that holds the key, the side it points
@@ -30,7 +30,7 @@ on it.
 ### After a join
 
 ```
-user | activity .user_id | references: -- pine-lang #177
+user | activity .user_id | references:
 ```
 
 Lists the joins of the table the pipe ends on: here `activity`.
