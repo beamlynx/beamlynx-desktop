@@ -2,7 +2,7 @@ import { Box, ButtonBase, Typography } from '@mui/material';
 import { AddBoxOutlined, SwapHoriz } from '@mui/icons-material';
 import ModalSurface from './ModalSurface';
 import { observer } from 'mobx-react-lite';
-import React, { ReactNode, useState } from 'react';
+import React, { ReactNode, useEffect, useRef, useState } from 'react';
 import { useRetainedValue } from '../hooks/useRetainedValue';
 import { useStores } from '../store/store-container';
 
@@ -35,6 +35,32 @@ const ChangeConnectionModal = observer(() => {
     if (!busy) global.cancelPendingConnectionSwitch();
   };
 
+  // The modal focuses its own surface when it opens, which beats autoFocus,
+  // so the default row is focused once it has settled. Then Enter picks it.
+  const choicesRef = useRef<HTMLDivElement>(null);
+  const open = Boolean(pending);
+  useEffect(() => {
+    if (!open) return;
+    const timer = window.setTimeout(() => choicesRef.current?.querySelector<HTMLElement>('[data-choice]')?.focus(), 0);
+    return () => window.clearTimeout(timer);
+  }, [open]);
+
+  // Up and Down move between the rows. Enter on a row clicks it, as on any
+  // button; anywhere else in the dialog it picks the default, a new tab.
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (busy) return;
+    const rows = Array.from(choicesRef.current?.querySelectorAll<HTMLElement>('[data-choice]') ?? []);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const at = rows.indexOf(document.activeElement as HTMLElement);
+      const next = e.key === 'ArrowDown' ? Math.min(rows.length - 1, at + 1) : Math.max(0, at - 1);
+      rows[next]?.focus();
+    } else if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'BUTTON') {
+      e.preventDefault();
+      rows[0]?.click();
+    }
+  };
+
   const run = async (action: () => Promise<void>) => {
     setBusy(true);
     try {
@@ -48,8 +74,9 @@ const ChangeConnectionModal = observer(() => {
 
   return (
     <ModalSurface
-      open={Boolean(pending)}
+      open={open}
       onClose={handleCancel}
+      onKeyDown={onKeyDown}
       surfaceSx={{ width: 440, maxWidth: 'calc(100vw - 32px)', p: 2.5 }}
       aria-labelledby="change-connection-title"
     >
@@ -64,10 +91,9 @@ const ChangeConnectionModal = observer(() => {
         This tab already has a query.
       </Typography>
 
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+      <Box ref={choicesRef} sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
         <Choice
           primary
-          autoFocus
           disabled={busy}
           icon={<AddBoxOutlined />}
           title="Open in a new tab"
@@ -109,7 +135,6 @@ const Choice = ({
   title,
   detail,
   primary = false,
-  autoFocus = false,
   disabled,
   onClick,
 }: {
@@ -117,14 +142,13 @@ const Choice = ({
   title: string;
   detail: string;
   primary?: boolean;
-  autoFocus?: boolean;
   disabled: boolean;
   onClick: () => void;
 }) => (
   <ButtonBase
+    data-choice
     onClick={onClick}
     disabled={disabled}
-    autoFocus={autoFocus}
     disableRipple
     sx={{
       display: 'flex',
