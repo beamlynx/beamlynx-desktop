@@ -17,6 +17,7 @@ import type { SettingsSection } from '../store/global.store';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../store/store-container';
 import { isDesktop } from '../store/util';
+import { getKeybindingDisplayForCommand } from '../utils/keybindings';
 import type { Investigation } from '../store/investigations';
 import { DESKTOP_ONLY_SECTIONS, RAIL_ITEMS } from './settings/settings-sections';
 import ActiveConnection from './ActiveConnection';
@@ -242,7 +243,10 @@ const SideRail = observer(({ hasUnreadUpdates, onOpenChangelog }: { hasUnreadUpd
                 icon={<LibraryBooksOutlined sx={{ fontSize: 20 }} />}
                 label="Library"
                 ariaLabel={global.showLibrary ? 'Close Library' : 'Library'}
-                tooltip="Library: your saved recipes"
+                // Ctrl+O, shown where the Library is opened rather than inside it.
+                tooltip={`Library: your saved recipes${
+                  getKeybindingDisplayForCommand('use-recipe') ? ` (${getKeybindingDisplayForCommand('use-recipe')})` : ''
+                }`}
                 expanded={expanded}
                 active={global.showLibrary}
                 onClick={() => global.setShowLibrary(!global.showLibrary)}

@@ -6,7 +6,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ## [Unreleased]
 ### Changed
 - **A recipe from another database goes in the current tab by default.** When you use a recipe saved from another of your connections, Beamlynx asks whether to use it in this tab, on this tab's database, which Enter picks, or to open it on the database it was saved from in a new tab. It no longer offers to switch the current tab to that database, and the Library's separate **Use in this tab** button is gone.
-- **The Library lists recipes by connection, then by name.** A small heading names each connection, so you can see where a recipe was saved before you use it. Recipes from databases you have no connection to come last, under **Other databases**. Before, the newest came first.
+- **The Library lists recipes by connection, then by name.** Each connection's recipes start under a heading tinted with the connection's colour, with its dot from the connection list, so you can see where a recipe was saved before you use it. Recipes from databases you have no connection to come last, under **Other databases**. Before, the newest came first. The Library's line of keyboard hints is gone. The sidebar's Library tooltip now shows Ctrl+O instead.
 
 ### Fixed
 - **The keyboard works when switching a tab that has a query.** Opening another connection from such a tab, from the sidebar or with **Switch Connection** in Ctrl+K, asks whether to open it in a new tab or switch this tab. Enter now picks the new tab, the default, and Up and Down move between the two choices. Before, neither key did anything.
