@@ -7,6 +7,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Changed
 - **Agents are told that masked values never reach them.** The descriptions of `run_query` and `run_sql_as_pine` say that a masked column is replaced in the SQL itself, so its values never leave the database. A tool that checks an agent's calls before they run, such as Claude Code's auto mode, refused queries on tables with a secret column, because nothing said the secret stays hidden.
 
+### Fixed
+- **An agent's first query after Beamlynx restarts no longer fails.** It used to come back with "Beamlynx is still starting", and the agent had to try again. Now the query runs as soon as the window has loaded, usually within a second or two.
+
 ## [0.29.0] - 2026-11-09
 ### Added
 - **Run runs every query in the tab.** Each query runs in turn from the top, and its result gets its own section, where cells can be edited as usual. Select lines first to run only those queries. The SQL panel shows the SQL of every query too. (bundled beamlynx-ui 0.74.0)

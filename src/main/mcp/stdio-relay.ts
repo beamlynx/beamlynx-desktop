@@ -49,6 +49,11 @@ import type { BuildResponse } from './format';
 // the pine server's JVM boot plus loading the UI.
 const GUI_LAUNCH_TIMEOUT_MS = 60000;
 
+// How long a call waits for an app that is running but whose window is still
+// loading or reloading, for example just after a restart. After that the call
+// goes ahead, and the app answers that it isn't ready.
+const WINDOW_READY_TIMEOUT_MS = 15000;
+
 // Client-side timeouts for control-plane calls. The routes that wait on the
 // page get render-bridge.ts's 60 s plus room to answer; the long-polls hold
 // for 25 s (LONG_POLL_TIMEOUT_MS in control-plane-server.ts). Notes and
@@ -201,19 +206,30 @@ async function isAppReady(): Promise<boolean> {
   }
 }
 
-// An app that is already running is used as it is: if its window is
-// reloading, the call itself says to try again. An app this relay started
-// is waited for until its window can take work, not just until its port
-// opens. The port opens seconds before the UI has loaded, and the first
-// call used to land in the loading screen and hang.
-async function ensureGuiRunning(): Promise<void> {
-  if (await isControlPlaneUp()) return;
-  launchGuiDetached();
-  const deadline = Date.now() + GUI_LAUNCH_TIMEOUT_MS;
+// Polls until the app's window can take work, or the time runs out.
+async function waitUntilReady(timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if ((await isControlPlaneUp()) && (await isAppReady())) return;
+    if ((await isControlPlaneUp()) && (await isAppReady())) return true;
     await new Promise(resolve => setTimeout(resolve, GUI_POLL_INTERVAL_MS));
   }
+  return false;
+}
+
+// Every call waits until the app's window can take work, not just until its
+// port opens. The port opens seconds before the UI has loaded, and a call
+// sent then used to fail with "still starting", leaving the agent to retry.
+//
+// An app that is already running gets WINDOW_READY_TIMEOUT_MS, after which
+// the call goes ahead and the app says it isn't ready. An app this relay
+// started gets GUI_LAUNCH_TIMEOUT_MS, for the JVM boot.
+async function ensureGuiRunning(): Promise<void> {
+  if (await isControlPlaneUp()) {
+    await waitUntilReady(WINDOW_READY_TIMEOUT_MS);
+    return;
+  }
+  launchGuiDetached();
+  if (await waitUntilReady(GUI_LAUNCH_TIMEOUT_MS)) return;
   throw new Error(
     `Beamlynx was started, but wasn't ready after ${GUI_LAUNCH_TIMEOUT_MS / 1000} s. Check its window, then try again.`,
   );
