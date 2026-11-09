@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Changed
+- **Agents are told that masked values never reach them.** The descriptions of `run_query` and `run_sql_as_pine` say that a masked column is replaced in the SQL itself, so its values never leave the database. A tool that checks an agent's calls before they run, such as Claude Code's auto mode, refused queries on tables with a secret column, because nothing said the secret stays hidden.
 
 ## [0.29.0] - 2026-11-09
 ### Added
