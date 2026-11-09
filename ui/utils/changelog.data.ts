@@ -23,6 +23,120 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.74.0',
+    date: '2026-11-09',
+    breaking: [
+      {
+        title: "Needs pine-lang 0.54.0 or later (was 0.53.0)",
+        description: "Connecting to an older server shows the upgrade-required screen.",
+      },
+    ],
+    added: [
+      {
+        title: "An agent's question and findings can come with its query",
+        description: "When an agent sends what it is investigating, or what it found so far, along with a query, the agent's timeline shows them as it did when they came separately: the question opens a section, and the finding sits above the query.",
+      },
+      {
+        title: "See a table's columns and its relations",
+        description: "End a query with `| describe:` to list each column with its type, and whether it is the key, may be empty or is masked. End it with `| references:` to list every relation that touches the table, both ways, with how Pine knows it and the Pine to follow it. A table's **+** menu on the canvas offers both, and opens them in a new tab. Their rows can't be edited: they describe the table, not its data.",
+      },
+      {
+        title: "Run runs every query in the tab",
+        description: "Each query, separated by a blank line, runs in turn from the top, and its result gets its own section, where cells can be edited as usual. A query that fails stops the ones below it. To run only some queries, select lines in them first. Before, Run ran only the last query. The SQL panel shows the SQL of every query too, read-only while there is more than one.",
+      },
+      {
+        title: "Ctrl+O opens the Library",
+        description: "There is now one place to find a recipe. Ctrl+O opens the Library in the sidebar with its search box ready, and Up, Down and Enter work as they did in the old quick picker, which is gone.",
+      },
+      {
+        title: "Switch a tab's database from the command palette",
+        description: "Press Ctrl+K and pick **Switch Connection**. It lists your connections, marks the one the tab is on, and switches the tab to the one you choose. A tab with a query in it asks first, as the sidebar does.",
+      },
+      {
+        title: "A recipe goes in at the cursor",
+        description: "Using a recipe, from the Library or with Ctrl+O, puts its queries where your cursor is: on a blank line between queries, right there, or just after the query the cursor is in. Before, it always went at the end of the tab.",
+      },
+      {
+        title: "Saving a recipe saves the whole tab",
+        description: "Ctrl+S keeps every query in the tab, with its values and comments, in the order you wrote them, so queries that belong together, such as an update and the delete after it, stay together. Before, it saved only the query under the cursor and the blocks it used. The title is still offered from the query under the cursor.",
+      },
+      {
+        title: "A recipe opens on the database it was saved from",
+        description: "When you use a recipe saved from another of your connections, from the Library or with Ctrl+O, Beamlynx asks whether to switch the current tab to that database, which Enter picks, or to open it in a new tab. To run it on the current tab's database instead, such as staging, click **Use in this tab** in the Library. A recipe from a database you have no connection to still goes in the current tab.",
+      },
+      {
+        title: "A follow-up question gets its own section in an agent's timeline",
+        description: "When the agent moves on to a new question, the earlier one folds to a single line with how many steps and findings it took. Click it to see that work again. While the agent keeps working on the same question, its steps carry on where they are.",
+      },
+      {
+        title: "Open Beamlynx's own data file from the command palette",
+        description: "**Open Beamlynx's data file** connects to `beamlynx.db`, where your preferences, recipes and column widths are kept, in a new tab. The first time, it saves the connection as \"Beamlynx data (beamlynx.db)\". Desktop app only.",
+      },
+      {
+        title: "Library: browse your saved recipes from the sidebar",
+        description: "The new **Library** item, under Database Connections, opens your recipes beside the sidebar, where Settings opens. Each shows its title and one line of what it is for. Search them, click one to read the whole description and its query, and click **Use** to add it to the current tab. Nothing runs. Point at a recipe to delete it. Ctrl+S still saves the tab as a recipe. Desktop app only. (by @ahmadnazir)",
+      },
+      {
+        title: "The canvas draws any tab, one query at a time",
+        description: "A tab can hold several queries, separated by blank lines. A row of chips at the top of the canvas has one per query: its `|= name`, or its number. A red dot marks a query that changes data. Click a chip to draw that query. Clicking in the Pine panel switches the same way. Before, the canvas drew nothing and said each query above the last had to end in `|= name`.",
+      },
+      {
+        title: "The canvas shows what an update or delete changes",
+        description: "When a query ends in `update!`, the table it changes lists what it writes, such as `status = 'sent'`, in red under **update**. When it ends in `delete!`, the table says its rows are deleted, and by which columns.",
+      },
+    ],
+    changed: [
+      {
+        title: "A recipe says which of your connections it was saved from",
+        description: "It shows the connection's name instead of the database's address. A recipe saved from a database you have no connection to shows no source.",
+      },
+      {
+        title: "The results do less work while you scroll, hover and resize",
+        description: "JSON cells are drawn without re-reading their JSON each time. Hovering a table on the canvas no longer rebuilds the result's columns. Dragging a divider saves its size once, when you let go.",
+      },
+      {
+        title: "The app has a fifth less to load before it starts",
+        description: "Vim mode, the SQL formatter, Settings, the list of updates, charts and the JSON viewer now load the first time you use them. With Vim mode on, its keys work a moment after the editor appears.",
+      },
+      {
+        title: "The Pine panel's suggestion list stays put when a build finishes",
+        description: "The list keeps the option you had highlighted, instead of jumping back to the first one. A slow answer about older text never replaces a newer one, and the SQL is formatted only when the SQL panel shows it.",
+      },
+      {
+        title: "Typing in the Pine panel does less work per keystroke",
+        description: "The canvas lays out its graph again only when a build comes back, not on every key, and the editor no longer rebuilds its setup each time it redraws.",
+      },
+      {
+        title: "An agent's timeline is quieter",
+        description: "Each run of queries and lookups is one grey line saying what the agent is doing, or last did, and how many steps it took. Click the line to see the steps, one short line each, and click a query there to see it and its result in the tab. Hover a step to read its query or its error. Inside an opened line, each step has a dot on a line down the left, so the steps read top to bottom at a glance: blue while it runs, coloured when it failed. The query shown in the tab has a larger blue dot and a soft background, and the other steps stay grey until you point at them. Findings stand out in larger text, and requests waiting for your answer look the same as before.",
+      },
+    ],
+    removed: [
+      {
+        title: "The \"Tell the agent…\" box under an agent's timeline",
+        description: "Talk to the agent in the tool you run it from instead. The agent is still told when you run a query yourself in the tab that shows its work.",
+      },
+      {
+        title: "Folding an agent's timeline to a thin bar",
+        description: "The bar showed nothing but an arrow. The timeline now always shows; Zen mode gives the canvas the whole window instead.",
+      },
+      {
+        title: "Reveal requests",
+        description: "To see a masked column, an agent now proposes a change to the masking rules, which you apply or decline in its timeline. The separate reveal request, and its card, are gone.",
+      },
+    ],
+    fixed: [
+      {
+        title: "An agent's query no longer fails with \"An object could not be cloned.\"",
+        description: "Beamlynx now always hands an agent's result back as plain data. In October, every agent query that touched a masked column failed this way.",
+      },
+      {
+        title: "The SQL panel scrolls",
+        description: "SQL longer than the panel was cut off at the bottom, with no scroll bar to reach the rest.",
+      },
+    ],
+  },
+  {
     version: '0.73.0',
     date: '2026-11-04',
     added: [
@@ -2778,4 +2892,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.73.0';
+export const LATEST_VERSION = '0.74.0';
