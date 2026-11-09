@@ -2398,7 +2398,10 @@ export class GlobalStore {
    */
   ensureSessionConnected = async (sessionId: string): Promise<void> => {
     const session = this.sessions[sessionId];
-    if (!session || !session.connectionId || !this.pineConnected) {
+    // On desktop a restored tab has only its saved connection's id: pine's
+    // id is the database's address, so it is never saved (snapshotSessions).
+    const hasConnection = !!session?.connectionId || (isDesktop() && !!session?.profileId);
+    if (!session || !hasConnection || !this.pineConnected) {
       console.log(
         `[credentials] ensureSessionConnected(${sessionId}): skip -- session=${!!session} connectionId=${session?.connectionId} pineConnected=${this.pineConnected}`,
       );
