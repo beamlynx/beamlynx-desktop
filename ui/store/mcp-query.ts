@@ -44,7 +44,7 @@
 import { lt } from 'semver';
 import { normalizeServerVersion } from '../utils/version';
 import { McpWriteRefusalMinVersion } from '../constants';
-import { AccessPolicyRule, HttpClient, VariableValue } from './client';
+import { AccessPolicyRule, HttpClient, TableAlias, VariableValue } from './client';
 import type { Session } from './session';
 import type { DbType } from '../utils/dbType';
 import { restoreValues } from './values-blocks';
@@ -193,6 +193,8 @@ export async function runMcpQuery(
   pine?: string;
   warnings?: string[];
   rowCap?: number | null;
+  aliases?: TableAlias[];
+  masked?: string[];
 }> {
   assertServerSupportsWriteRefusal(deps.getServerVersion());
   const connectionId = await ensureConnection(deps, profileId);
@@ -249,13 +251,23 @@ export async function runMcpQuery(
   // The most rows Pine returned without a limit: of the agent's, so its
   // result can say it may have been cut off (beamlynx-desktop's format.ts).
   const rowCap = session.rowCap;
+  // Which table each alias stands for, so the agent can qualify columns
+  // without guessing (beamlynx-desktop's format.ts).
+  const aliases = toPlainJson(session.tableAliases);
+  // The result's columns the masking policy replaced with xxxxx, by their
+  // header names. Listed with the rows, so the agent and whatever vets its
+  // calls can see the values never came back.
+  const policyByIndex = session.columnMetadata?.colIndexToPolicyLookup ?? {};
+  const masked = session.columns
+    .filter(c => policyByIndex[c.field]?.hidden)
+    .map(c => String(c.headerName ?? ''));
   // Write the values this run used back into the tab, above the query, so
   // the person can see them and run it again.
   const shown = restoreValues(session.expression, expression, variables ?? {});
   if (shown !== session.expression) session.expression = shown;
   // The Pine that ran, for an agent that sent SQL: it is how it learns Pine.
   const converted = sql !== undefined ? { pine: expression, warnings } : {};
-  return { tabId, columns, rows: plainRows, error, rowCap, ...converted };
+  return { tabId, columns, rows: plainRows, error, rowCap, aliases, masked, ...converted };
 }
 
 export async function explainMcpQuery(
