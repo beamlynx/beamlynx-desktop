@@ -35,6 +35,7 @@ import {
   SqlJoinHint,
   SqlSchemaResponse,
   SqlToPineResponse,
+  TableAlias,
   VariablesReport,
 } from './client';
 import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preferences';
@@ -262,6 +263,12 @@ export class Session {
    * more. An agent's result says so (store/mcp-query.ts).
    */
   rowCap: number | null = null;
+  /**
+   * Which table each alias of the last run stands for, in order. Empty
+   * against an older server. An agent's result lists them
+   * (store/mcp-query.ts).
+   */
+  tableAliases: TableAlias[] = [];
 
   /** Mode - controls the main view */
   mode: Mode = 'documentation';

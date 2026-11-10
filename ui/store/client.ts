@@ -380,6 +380,9 @@ export type VariablesReport = {
   values?: Record<string, VariableValue>;
 };
 
+/** One table a query reads, by the alias the query gives it. */
+export type TableAlias = { alias: string; schema: string | null; table: string };
+
 export type Response = {
   'connection-id': string;
   version: string;
@@ -419,6 +422,10 @@ export type Response = {
   // decides. As many rows as this may mean the result was cut off. Absent
   // against an older server.
   'row-cap'?: number | null;
+  // eval: which table each alias stands for, one per table the query reads,
+  // in order. An agent's result lists them (store/mcp-query.ts). Absent
+  // against an older server.
+  aliases?: TableAlias[];
   // Nicely formatted rendering of the expression that ran - pine-lang
   // computes it on every build or eval alike (see client.prettify()'s own
   // use of ast.prettified for build), so it comes back here for free

@@ -22,6 +22,7 @@ export class DefaultPlugin implements PluginInterface {
       session.evalErrorType = '';
       session.evalHiddenColumn = null;
       session.rowCap = null;
+      session.tableAliases = [];
       session.loading = true;
       // Running a query means the results pane is showing that query now, not
       // whatever traversal was last in it. Non-null `traversal` is what makes
@@ -183,6 +184,7 @@ export class DefaultPlugin implements PluginInterface {
         session.expressionAtLastEval = runsSql ? sqlQuery : session.expression;
         session.runMs = Math.round(performance.now() - startedAt);
         session.rowCap = runsSql ? null : (response['row-cap'] ?? null);
+        session.tableAliases = runsSql ? [] : (response.aliases ?? []);
 
         // session.message = pickSuccessMessage();
         // Canvas is always mounted now (the classic node-graph widget,
