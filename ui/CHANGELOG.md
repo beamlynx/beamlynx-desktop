@@ -15,6 +15,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **describe and references stay in the tab.** In a table's **+** menu on the canvas, they add `describe:` or `references:` to the end of the query, and the table shows a **describe** or **references** row, as it shows an update or delete. Its × takes it off, and so does any other change on the canvas. Before, each opened a new tab.
 
 ### Fixed
+- **You can connect to the same database as two different users.** Opening a second saved connection to a database that was already open as another user failed with "already registered under a different user". Both now stay open, each in its own tabs. Needs the pine-lang release that adds the user to a connection's id.
 - **The cursor stays put when the Pine editor tidies a query.** Adding a `|` higher up in a query, such as by picking a suggestion, puts each step on its own line. That used to move the cursor to the end of the query. It now stays where you were typing.
 - **The keyboard works when switching a tab that has a query.** Opening another connection from such a tab, from the sidebar or with **Switch Connection** in Ctrl+K, asks whether to open it in a new tab or switch this tab. Enter now picks the new tab, the default, and Up and Down move between the two choices. Before, neither key did anything.
 
