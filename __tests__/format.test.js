@@ -540,3 +540,21 @@ test('a result that reached Pine\'s row cap says it may have been cut off', () =
   assert.doesNotMatch(formatRows({ rows: rows(3), rowCap: null }), /stopped at/);
   assert.doesNotMatch(formatRows({ rows: rows(3) }), /stopped at/);
 });
+
+test('a result lists its aliases, once a query reads two tables or more', () => {
+  const rows = [['id'], [1]];
+  const aliases = [
+    { alias: 'c_0', schema: null, table: 'counterparty' },
+    { alias: 'r_1', schema: 'requests', table: 'request' },
+  ];
+  assert.match(formatRows({ rows, aliases }), /^1 row\nAliases: c_0 = counterparty, r_1 = requests\.request\n\n/);
+  assert.doesNotMatch(formatRows({ rows, aliases: aliases.slice(0, 1) }), /Aliases/);
+  assert.doesNotMatch(formatRows({ rows }), /Aliases/);
+});
+
+test('a result lists the columns the policy masked, and keeps them in the rows', () => {
+  const text = formatRows({ rows: [['id', 'token'], [1, 'xxxxx']], masked: ['token'] });
+  assert.match(text, /^1 row\nMasked: token\. Their values are "xxxxx" in the SQL itself/);
+  assert.match(text, /\["id","token"\]\n\[1,"xxxxx"\]/);
+  assert.doesNotMatch(formatRows({ rows: [['id'], [1]], masked: [] }), /Masked/);
+});

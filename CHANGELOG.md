@@ -6,6 +6,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ## [Unreleased]
 ### Changed
 - **Agents are told that masked values never reach them.** The descriptions of `run_query` and `run_sql_as_pine` say that a masked column is replaced in the SQL itself, so its values never leave the database. A tool that checks an agent's calls before they run, such as Claude Code's auto mode, refused queries on tables with a secret column, because nothing said the secret stays hidden.
+- **An agent's result lists its aliases and masked columns.** Under the row count, a query on two tables or more shows which table each alias stands for, such as `Aliases: c_0 = counterparty, r_1 = request`. A result with masked columns names them, and says their values never left the database. The instructions tell agents to name their tables with `as` once a query reads three or more. The aliases need the next bundled pine-lang and beamlynx-ui.
 
 ### Fixed
 - **An agent's first query after Beamlynx restarts no longer fails.** It used to come back with "Beamlynx is still starting", and the agent had to try again. Now the query runs as soon as the window has loaded, usually within a second or two.
