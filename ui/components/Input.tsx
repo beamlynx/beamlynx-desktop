@@ -1,7 +1,7 @@
 import { observer } from 'mobx-react-lite';
 import React, { useMemo } from 'react';
-import { Box, ToggleButton, ToggleButtonGroup, Button } from '@mui/material';
-import { PlayArrow, Loop, Stop } from '@mui/icons-material';
+import { Box, ToggleButton, ToggleButtonGroup, Button, IconButton } from '@mui/material';
+import { PlayArrow, Loop, Stop, AutoFixHigh } from '@mui/icons-material';
 import PineInput from './PineInput';
 import SqlInput from './SqlInput';
 import { Session } from '../store/session';
@@ -68,7 +68,34 @@ export const RunButton: React.FC<{ session: Session; onRun?: () => void | Promis
   },
 );
 
+// Tidies the Pine in this tab. Shown only when typing `|` doesn't tidy it.
+const TidyButton: React.FC<{ session: Session }> = observer(({ session }) => {
+  const keybinding = getKeybindingDisplayForCommand('tidy-pine');
+  return (
+    <IconButton
+      size="small"
+      tabIndex={-1}
+      onClick={() => void session.tidy()}
+      disabled={!session.expression.trim()}
+      title={keybinding ? `Tidy (${keybinding})` : 'Tidy'}
+      aria-label="Tidy"
+      sx={{
+        backgroundColor: 'var(--background-color)',
+        border: '1px solid var(--border-color)',
+        borderRadius: '4px',
+        color: 'var(--text-color)',
+        height: '28px',
+        width: '28px',
+        '&:hover': { backgroundColor: 'var(--canvas-chip-bg)', color: 'var(--primary-color)' },
+      }}
+    >
+      <AutoFixHigh sx={{ fontSize: '1rem' }} />
+    </IconButton>
+  );
+});
+
 const Input: React.FC<InputProps> = observer(({ session, onRun, autoFocus = true }) => {
+  const { global } = useStores();
   const handleInputModeChange = (
     event: React.MouseEvent<HTMLElement>,
     newMode: 'pine' | 'sql' | null,
@@ -129,6 +156,7 @@ const Input: React.FC<InputProps> = observer(({ session, onRun, autoFocus = true
               toggle-pine-panel/toggle-sql-panel commands (Ctrl/Cmd+./+Shift+.,
               or the command palette) -- this only removes them from the Tab
               sequence, not from the keyboard entirely. */}
+          {session.inputMode === 'pine' && !global.autoTidy && <TidyButton session={session} />}
           <ToggleButtonGroup
             value={session.inputMode}
             exclusive

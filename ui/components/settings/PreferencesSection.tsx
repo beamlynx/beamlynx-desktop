@@ -2,6 +2,7 @@ import { Box, Typography } from '@mui/material';
 import { observer } from 'mobx-react-lite';
 import { useStores } from '../../store/store-container';
 import ToggleRow from './ToggleRow';
+import { getKeybindingDisplayForCommand } from '../../utils/keybindings';
 
 /**
  * Previously these toggles only existed as command-palette entries
@@ -60,6 +61,12 @@ const PreferencesSection = () => {
           description="Show the columns beamlynx adds to the SQL so results can be edited: each table's key, and the type of each JSON value. They are fetched either way."
           checked={global.showHiddenSqlColumns}
           onChange={() => global.toggleShowHiddenSqlColumns()}
+        />
+        <ToggleRow
+          label="Tidy Pine as you type"
+          description={`Typing | at the end of a query, or picking a suggestion, puts each step on its own line. When off, tidy with the button in the Pine panel or ${getKeybindingDisplayForCommand('tidy-pine')}.`}
+          checked={global.autoTidy}
+          onChange={() => global.toggleAutoTidy()}
         />
         <ToggleRow
           label="Vim keybindings"
