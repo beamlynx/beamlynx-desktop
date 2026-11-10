@@ -493,10 +493,11 @@ export type ConnectionInfo = {
   // Only present in desktop mode, where entries come from locally saved
   // profiles rather than pine-server's live session list -- carried here so
   // GlobalStore.deleteConnection can derive pine's own connection id
-  // (`${dbHost}:${dbPort}:${dbName}`) without an extra round trip.
+  // (`${dbUser}@${dbHost}:${dbPort}:${dbName}`) without an extra round trip.
   dbHost?: string;
   dbPort?: string;
   dbName?: string;
+  dbUser?: string;
   // Desktop-only: which database this is, and its hash (desktop.d.ts).
   databaseKey?: string;
   databaseKeyHash?: string;
@@ -1079,7 +1080,7 @@ export class HttpClient {
   }
 
   public async useConnection(connectionId: string): Promise<{ id: string; version: string }> {
-    // Encoded because the id now folds dbname in (host:port:dbname, see
+    // Encoded because the id folds the user and dbname in (user@host:port:dbname, see
     // pine.db.connections/make-connection-id) -- a dbname with a character
     // that's not path-safe would otherwise land as extra/malformed segments.
     const response = await this.post(`connections/${encodeURIComponent(connectionId)}/connect`, {});

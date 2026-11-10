@@ -68,11 +68,20 @@ import {
 type PersistedSession = {
   expression: string;
   inputMode: InputMode;
-  // Pine's id, `host:port:dbname`. Saved by the web build, and on desktop by
+  // Pine's id, `user@host:port:dbname`. Saved by the web build, and on desktop by
   // older versions only (snapshotSessions).
   connectionId?: string;
   profileId: string;
 };
+
+/**
+ * The id pine gives a saved server connection: `user@host:port:dbname`, or
+ * `host:port:dbname` without a user (pine.db.connections/make-connection-id).
+ * Undefined when it can't be worked out from the saved connection, such as
+ * a SQLite file, whose id pine makes from a hash of its resolved path.
+ */
+export const pineIdOf = (c: Pick<ConnectionInfo, 'dbHost' | 'dbPort' | 'dbName' | 'dbUser'>): string | undefined =>
+  c.dbHost && c.dbPort && c.dbName ? `${c.dbUser ? `${c.dbUser}@` : ''}${c.dbHost}:${c.dbPort}:${c.dbName}` : undefined;
 
 // A database's hash, as the desktop app makes it (databaseKeyHash): SHA-256
 // as 64 lowercase hex characters.
@@ -248,8 +257,8 @@ export class GlobalStore {
   // store/mcp-query.ts's ensureConnection.
   private mcpConnectionsByProfile: Record<string, string> = {};
   // Pine's id for each saved profile that has been connected this session.
-  // For a Postgres or MySQL profile pine's id is `host:port:dbname`, which
-  // can be worked out from the profile alone (see resolveConnectionEntry). A
+  // For a Postgres or MySQL profile pine's id is `user@host:port:dbname`,
+  // which can be worked out from the profile alone (pineIdOf). A
   // SQLite profile's can't: pine names it from a hash of the file's resolved
   // path, so the id pine returned when connecting is kept here instead.
   pineIdByProfile: Record<string, string> = {};
@@ -298,7 +307,7 @@ export class GlobalStore {
   // opposed to merely being a tab's *assigned* connection (see
   // Session.connectionId), which persists across restarts/reconnects even
   // while nothing is live. `liveConnectionIds` is always keyed by pine's own
-  // id (host:port:dbname), but callers here (the saved-connections list/picker)
+  // id (user@host:port:dbname), but callers here (the saved-connections list/picker)
   // pass a saved-profile id in desktop mode -- a different id space for the
   // same logical connection (see resolveConnectionEntry). Resolve both sides
   // to the same identity before comparing, so this works regardless of
@@ -839,7 +848,7 @@ export class GlobalStore {
         }
         // Desktop: a tab reconnects through its saved connection's id
         // (ensureSessionConnected), which is random and local. Pine's own id
-        // is `host:port:dbname`, a database's address, so it is never saved.
+        // is `user@host:port:dbname`, a database's address, so it is never saved.
         // A tab an older version saved with only pine's id keeps it until the
         // saved connections load, rather than losing its connection. Then it
         // resolves to one, or never can, so it is dropped either way.
@@ -935,27 +944,30 @@ export class GlobalStore {
 
   // In desktop mode, `connections` is keyed by saved-profile id, while
   // `activeSession.connectionId`/`this.connection` are pine's own id
-  // (`host:port:dbname`) -- two different id spaces for the same logical
-  // connection. Resolve pine's id back to its profile by comparing
-  // host:port:dbname, so color/label lookups work regardless of which id
-  // space they were called with. A no-op in browser mode, where
-  // `connections` is already keyed by pine's own id (first condition
-  // matches directly).
+  // (`user@host:port:dbname`) -- two different id spaces for the same
+  // logical connection. Resolve pine's id back to its profile by comparing
+  // it with the id pine would give each profile, so color/label lookups
+  // work regardless of which id space they were called with. A no-op in
+  // browser mode, where `connections` is already keyed by pine's own id
+  // (first condition matches directly).
   //
-  // Also matches the older bare `host:port` shape (no dbname), which a
-  // PersistedSession from before pine folded dbname into the id may still
-  // hold in localStorage -- that form is ambiguous whenever two saved
-  // profiles now share a host:port with different databases, and this picks
-  // the first match, same as it always has for any other ambiguity here.
+  // Also matches the shapes older versions of pine used, which a tab or a
+  // colour saved by an older version may still hold in localStorage:
+  // `host:port:dbname` (before the user was part of the id) and bare
+  // `host:port` (before dbname was). Both are ambiguous when two saved
+  // connections differ only in the parts they leave out, and pick the first
+  // match. They are tried only after every exact match, so they never take
+  // an id away from the connection it really belongs to.
   private resolveConnectionEntry = (connectionId: string): ConnectionInfo | undefined => {
     if (!connectionId) return undefined;
     return (
+      this.connections.find(c => c.id === connectionId || pineIdOf(c) === connectionId) ??
+      this.connections.find(c => c.id === this.profileIdForPineId(connectionId)) ??
       this.connections.find(
         c =>
-          c.id === connectionId ||
           (c.dbHost && c.dbPort && c.dbName && `${c.dbHost}:${c.dbPort}:${c.dbName}` === connectionId) ||
           (c.dbHost && c.dbPort && `${c.dbHost}:${c.dbPort}` === connectionId),
-      ) ?? this.connections.find(c => c.id === this.profileIdForPineId(connectionId))
+      )
     );
   };
 
@@ -979,11 +991,7 @@ export class GlobalStore {
     const known = this.pineIdByProfile[id];
     if (known) return known;
     const conn = this.connections.find(c => c.id === id);
-    // Derived the same way pine derives it for a server database
-    // (pine.db.connections/make-connection-id).
-    return useDesktop && conn?.dbHost && conn?.dbPort && conn?.dbName
-      ? `${conn.dbHost}:${conn.dbPort}:${conn.dbName}`
-      : id;
+    return (useDesktop && conn && pineIdOf(conn)) || id;
   };
 
   /**
@@ -1094,6 +1102,7 @@ export class GlobalStore {
           dbHost: p.dbHost,
           dbPort: p.dbPort,
           dbName: p.dbName,
+          dbUser: p.dbUser,
           databaseKey: p.databaseKey,
           databaseKeyHash: p.databaseKeyHash,
           mcpEnabled: p.mcpEnabled,
