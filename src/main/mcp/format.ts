@@ -70,6 +70,11 @@ export type EvalResponse = {
   // own (250, or 10,000 for a group:), or null. A result this long may have
   // been cut off.
   rowCap?: number | null;
+  // Which table each alias stands for, in order (pine-lang's eval
+  // response, through beamlynx-ui). Absent with an older pine-lang.
+  aliases?: { alias: string; schema?: string | null; table: string }[];
+  // The result's columns the masking policy replaced with xxxxx.
+  masked?: string[];
 };
 
 /** A saved-connection record as the control plane's /connections route returns it. */
@@ -459,6 +464,27 @@ export function formatRows(response: EvalResponse): string {
   return ranAs + formatRowsOnly(response);
 }
 
+// Lines under the row count. The aliases, once a query reads two tables or
+// more: auto-aliases are hard to guess when tables start with the same
+// letter. And the masked columns, so the agent, and any reviewer vetting
+// its calls, can see in each result that their values never came back.
+function resultNotes(response: EvalResponse): string[] {
+  const notes: string[] = [];
+  const aliases = response.aliases ?? [];
+  if (aliases.length > 1) {
+    const label = (a: (typeof aliases)[number]) => (a.schema ? `${a.schema}.${a.table}` : a.table);
+    notes.push(`Aliases: ${aliases.map(a => `${a.alias} = ${label(a)}`).join(', ')}`);
+  }
+  const masked = [...new Set(response.masked ?? [])];
+  if (masked.length) {
+    notes.push(
+      `Masked: ${masked.join(', ')}. Their values are "xxxxx" in the SQL itself, so the real values never left ` +
+        'the database.',
+    );
+  }
+  return notes;
+}
+
 function formatRowsOnly(response: EvalResponse): string {
   const rows = response.rows ?? [];
   if (!rows.length) {
@@ -496,6 +522,7 @@ function formatRowsOnly(response: EvalResponse): string {
   }
 
   const count = `${data.length} row${data.length === 1 ? '' : 's'}`;
+  const notes = resultNotes(response);
   // Pine stopped at its own cap: there may be more rows than came back.
   const capped =
     response.rowCap && data.length >= response.rowCap
@@ -505,10 +532,11 @@ function formatRowsOnly(response: EvalResponse): string {
             'more. Count them with `| count:`, or narrow the rows with where:.',
         ]
       : [];
-  if (lines.length === data.length) return [count, '', headerLine, ...lines, ...capped].join('\n');
+  if (lines.length === data.length) return [count, ...notes, '', headerLine, ...lines, ...capped].join('\n');
   const omitted = data.length - lines.length;
   return [
     `${count}, showing the first ${lines.length}`,
+    ...notes,
     '',
     headerLine,
     ...lines,

@@ -53,6 +53,9 @@ Traps that cost the most round trips, because SQL habits reach for them first:
   no regex operators  no \`~\` or \`~*\`. Use \`where: first_name ilike '%jo%'\`.
   no table qualifiers A column is qualified by an alias, never a table name. Every table has
                       one: \`u_0\` unless you name it yourself with \`public.user as u\`.
+                      With three tables or more, name each one: auto-aliases are hard to
+                      guess when names share a first letter. A result lists its aliases.
+                        tenant as t | activity as a .tenant_id | select: t.name, a.type
   no conditions as    group: keys are columns or computed names. Compute the condition with
   group: keys         select: first, then group on its name (below).
 
