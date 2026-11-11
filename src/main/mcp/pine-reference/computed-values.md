@@ -26,14 +26,17 @@ A value is any of these, and they nest:
 - `coalesce(a, b, ...)` gives the first argument that isn't null.
 - `concat(a, b, ...)` joins the arguments as text. It is null when any argument is null.
 - `now()` is the current date and time.
+- `today()`, `yesterday()`, `tomorrow()`, `this_week()` and `this_month()` are periods of days.
+  Compared with a column in `where:`, each stands for the whole period, whatever the time: see
+  "Periods of days" below. Anywhere else, a period is its first day.
 - `jsonb_typeof(x)` gives the type of a JSON value: `object`, `array`, `string`, `number`, `boolean`
   or `null`. `jsonb_array_length(x)` gives the number of items in a JSON array. Both work on every
   database (see the `json` topic).
 - `if <condition> then <value> else <value>`. The `else` is optional; without it the value is
   null when the condition isn't true. Chain branches with `else if`.
 
-These are the only functions, with the date buckets (`month`, `year`, ...). There is no arithmetic
-(`+`, `-`) and no date intervals.
+These are the only functions, with the date buckets (`month`, `year`, ...) and the periods
+(`today()`, ...). There is no arithmetic (`+`, `-`) and no date intervals.
 
 ## The arrow
 
@@ -101,6 +104,29 @@ condition's name is compared with `true` or `false`: `where: live = true`.
 ```
 session | where: expires_at < now()
 ```
+
+### Periods of days
+
+```
+order | where: created_at = today()
+order | where: created_at >= this_week()
+```
+
+The first finds every order made today, from midnight to midnight. `created_at = now()` would find
+only orders made at this very instant.
+
+| Pine | Means |
+|---|---|
+| `x = today()` | During today |
+| `x != today()` | On any other day |
+| `x > today()` | After today ends |
+| `x >= today()` | Today or later |
+| `x < today()` | Before today starts |
+| `x <= today()` | Today or earlier |
+
+A week starts on Monday. Other operators, such as `like`, are refused. The day is the database's
+own: its session's time zone on Postgres and MySQL, UTC on SQLite. An index on the column still
+serves the query.
 
 ### A cast in a join
 
