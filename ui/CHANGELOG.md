@@ -4,8 +4,13 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.76.0] - 2026-11-12
+### Breaking
+- **Needs pine-lang 0.56.0 or later (was 0.55.0).** Connecting to an older server shows the upgrade-required screen.
+
 ### Changed
-- **Tidy is now called Format.** The button in the Pine panel, the command (still Ctrl+Shift+F) and the setting **Format Pine as you type** use the new name. The setting starts on again, as it does for everyone.
+- **Tidy is now called Format.** The button in the Pine panel, the command (still Ctrl+Shift+F) and the setting **Format Pine as you type** use the new name.
 
 ### Fixed
 - **A tab always runs on the database it names.** Closing your last tab, editing a cell in the results, or switching tabs while connecting could run on the database you connected to last instead. A tab with no database now runs nothing.
