@@ -68,17 +68,17 @@ export const RunButton: React.FC<{ session: Session; onRun?: () => void | Promis
   },
 );
 
-// Tidies the Pine in this tab. Shown only when typing `|` doesn't tidy it.
-const TidyButton: React.FC<{ session: Session }> = observer(({ session }) => {
-  const keybinding = getKeybindingDisplayForCommand('tidy-pine');
+// Formats the Pine in this tab. Shown only when typing `|` doesn't format it.
+const FormatButton: React.FC<{ session: Session }> = observer(({ session }) => {
+  const keybinding = getKeybindingDisplayForCommand('format-pine');
   return (
     <IconButton
       size="small"
       tabIndex={-1}
-      onClick={() => void session.tidy()}
+      onClick={() => void session.format()}
       disabled={!session.expression.trim()}
-      title={keybinding ? `Tidy (${keybinding})` : 'Tidy'}
-      aria-label="Tidy"
+      title={keybinding ? `Format (${keybinding})` : 'Format'}
+      aria-label="Format"
       sx={{
         backgroundColor: 'var(--background-color)',
         border: '1px solid var(--border-color)',
@@ -156,7 +156,7 @@ const Input: React.FC<InputProps> = observer(({ session, onRun, autoFocus = true
               toggle-pine-panel/toggle-sql-panel commands (Ctrl/Cmd+./+Shift+.,
               or the command palette) -- this only removes them from the Tab
               sequence, not from the keyboard entirely. */}
-          {session.inputMode === 'pine' && !global.autoTidy && <TidyButton session={session} />}
+          {session.inputMode === 'pine' && !global.autoFormat && <FormatButton session={session} />}
           <ToggleButtonGroup
             value={session.inputMode}
             exclusive

@@ -37,7 +37,7 @@ test('an offset comes from a line and a character', () => {
   assert.equal(offsetOf('ab\ncd', 5, 0), 5, 'past the last line, the end');
 });
 
-test('a tidy that dropped a comment is not whitespace only', () => {
+test('a format that dropped a comment is not whitespace only', () => {
   const { sameApartFromWhitespace } = require('../utils/cursor.ts');
   // What pine-lang's prettifier returns for these.
   assert.equal(sameApartFromWhitespace('company | employee |', 'company\n | employee\n | '), true);

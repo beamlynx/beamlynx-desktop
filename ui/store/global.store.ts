@@ -415,22 +415,22 @@ export class GlobalStore {
     this.vimMode = !this.vimMode;
   };
 
-  // Whether typing `|` at the end of a query, or picking a suggestion, tidies
-  // the query: each step on its own line. On by default. Off, the Tidy
+  // Whether typing `|` at the end of a query, or picking a suggestion, formats
+  // the query: each step on its own line. On by default. Off, the Format
   // command and the button in the Pine panel do it on demand.
-  _autoTidy: boolean;
+  _autoFormat: boolean;
 
-  get autoTidy(): boolean {
-    return this._autoTidy;
+  get autoFormat(): boolean {
+    return this._autoFormat;
   }
 
-  set autoTidy(value: boolean) {
-    this._autoTidy = value;
-    setUserPreference(STORAGE_KEYS.AUTO_TIDY, value);
+  set autoFormat(value: boolean) {
+    this._autoFormat = value;
+    setUserPreference(STORAGE_KEYS.AUTO_FORMAT, value);
   }
 
-  toggleAutoTidy = () => {
-    this.autoTidy = !this.autoTidy;
+  toggleAutoFormat = () => {
+    this.autoFormat = !this.autoFormat;
   };
 
   // Pine / result table coloring (segment and column tints)
@@ -742,7 +742,7 @@ export class GlobalStore {
     );
     this._textSize = getUserPreference<TextSize>(STORAGE_KEYS.TEXT_SIZE, 'medium', oneOf(Object.keys(TEXT_SIZE_SCALE)));
     this._vimModeEnabled = getUserPreference(STORAGE_KEYS.VIM_MODE, false, isBoolean);
-    this._autoTidy = getUserPreference(STORAGE_KEYS.AUTO_TIDY, true, isBoolean);
+    this._autoFormat = getUserPreference(STORAGE_KEYS.AUTO_FORMAT, true, isBoolean);
     this._pineTableColorsEnabled = getUserPreference(STORAGE_KEYS.PINE_TABLE_COLORS, false, isBoolean);
     this._autoRunEnabled = getUserPreference(STORAGE_KEYS.AUTO_RUN_ENABLED, true, isBoolean);
     this._showHiddenSqlColumns = getUserPreference(STORAGE_KEYS.SHOW_HIDDEN_SQL_COLUMNS, false, isBoolean);

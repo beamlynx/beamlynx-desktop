@@ -12,8 +12,8 @@ export const STORAGE_KEYS = {
   CODE_FONT_FAMILY: 'pine-code-font-family',
   TEXT_SIZE: 'pine-text-size',
   VIM_MODE: 'pine-vim-mode',
-  // Whether typing `|` at the end of a query tidies it (PineInput.tsx).
-  AUTO_TIDY: 'pine-auto-tidy',
+  // Whether typing `|` at the end of a query formats it (PineInput.tsx).
+  AUTO_FORMAT: 'pine-auto-format',
   PINE_TABLE_COLORS: 'pine-table-colors',
   LAST_READ_VERSION: 'pine-last-read-version',
   COMMAND_HISTORY: 'pine-command-history',

@@ -169,10 +169,10 @@ const COMMANDS: Command[] = [
     isEnabled: (_global, session) => !!(session.expression || session.query) && !session.loading,
   },
   {
-    id: 'tidy-pine',
-    label: 'Tidy Pine',
+    id: 'format-pine',
+    label: 'Format Pine',
     category: 'Query',
-    handler: (_global, session) => session.tidy(),
+    handler: (_global, session) => session.format(),
     isEnabled: (_global, session) => session.inputMode === 'pine' && session.expression.trim() !== '',
   },
   {
@@ -286,10 +286,10 @@ const COMMANDS: Command[] = [
     isEnabled: ALWAYS_ENABLED,
   },
   {
-    id: 'toggle-auto-tidy',
-    label: 'Toggle Auto-Tidy Pine',
+    id: 'toggle-auto-format',
+    label: 'Toggle Format Pine as You Type',
     category: 'Preferences',
-    handler: global => global.toggleAutoTidy(),
+    handler: global => global.toggleAutoFormat(),
     isEnabled: ALWAYS_ENABLED,
   },
   {
