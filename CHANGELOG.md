@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Fixed
+- **Other accounts on your computer can't reach the app's query server.** Its launch token was part of the app's command line, which every user on the machine can read. The app now also talks to the server at `127.0.0.1` rather than `localhost`, which could resolve to an address another account could listen on.
+- **Only the app's own pages open in its window.** A local web page dropped on the window could load there, with access to your saved connections.
 
 ## [0.30.0] - 2026-11-11
 ### Added
