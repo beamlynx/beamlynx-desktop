@@ -29,7 +29,7 @@ jobs:
         id: changed
         run: |
           base=$(git merge-base origin/main HEAD)
-          if git diff --quiet "$base" HEAD -- supabase scripts/check-supabase-migrations.js scripts/test-supabase-compat.sh .github/workflows/ci.yml; then
+          if git diff --quiet "$base" HEAD -- supabase scripts/check-supabase-migrations.js scripts/test-supabase-compat.sh scripts/test-supabase-token-claims.sh .github/workflows/ci.yml; then
             echo "::notice::No database changes since main, so the database checks were skipped."
             echo "run=false" >> "$GITHUB_OUTPUT"
           else
@@ -52,6 +52,10 @@ jobs:
       - name: Released apps' calls still work
         if: steps.changed.outputs.run == 'true'
         run: ./scripts/test-supabase-compat.sh
+
+      - name: Tokens carry the person's real GitHub ID
+        if: steps.changed.outputs.run == 'true'
+        run: ./scripts/test-supabase-token-claims.sh
 
   validate:
     runs-on: ubuntu-latest
