@@ -22,6 +22,16 @@ import { DecryptionFailedError } from '../store/global.store';
  * sidebar expanded, its name and whether it's connected. The connection is
  * the active tab's: picking another switches this tab, as it always has.
  */
+// Fainter and slower than the agent's pulse (SideRail.tsx): connecting is
+// usually over in a moment, and shouldn't pull the eye while it lasts.
+const connectingPulse = {
+  animation: 'pine-connecting-pulse 1.8s ease-in-out infinite',
+  '@keyframes pine-connecting-pulse': {
+    '0%, 100%': { opacity: 1 },
+    '50%': { opacity: 0.5 },
+  },
+};
+
 const ActiveConnection = ({ expanded }: { expanded: boolean }) => {
   const { global } = useStores();
   const [connectionMenuAnchor, setConnectionMenuAnchor] = useState<null | HTMLElement>(null);
@@ -44,7 +54,7 @@ const ActiveConnection = ({ expanded }: { expanded: boolean }) => {
     connectionLabel.length > 24 ? connectionLabel.substring(0, 24) + '...' : connectionLabel;
   const displayName = !connectionId
     ? 'Not connected to database'
-    : activeSession?.connecting
+    : activeSession?.connectionPending
       ? `${truncatedLabel} (connecting…)`
       : isConnectionLive
         ? truncatedLabel
@@ -67,7 +77,7 @@ const ActiveConnection = ({ expanded }: { expanded: boolean }) => {
   // actually assigned, so gating the button on the same two conditions
   // just avoids showing a control that would silently do nothing.
   const showReconnect =
-    global.pineConnected && !!connectionId && !isConnectionLive && !activeSession?.connecting;
+    global.pineConnected && !!connectionId && !isConnectionLive && !activeSession?.connectionPending;
 
   const handleReconnect = (e: MouseEvent<HTMLElement>) => {
     e.stopPropagation();
@@ -121,11 +131,15 @@ const ActiveConnection = ({ expanded }: { expanded: boolean }) => {
   };
 
   const initial = connectionLabel.trim().charAt(0).toUpperCase();
+  // Getting the tab's connection: a restored tab at startup, a reconnect, or
+  // a switch picked from the menu below.
+  const connecting =
+    !!activeSession?.connectionPending || global.connecting || switchingConnection;
   const state = !global.pineConnected
     ? displayText
     : !connectionId
       ? 'Pick a database'
-      : activeSession?.connecting
+      : connecting
         ? 'Connecting…'
         : isConnectionLive
           ? 'Connected'
@@ -147,9 +161,11 @@ const ActiveConnection = ({ expanded }: { expanded: boolean }) => {
       }}
     >
       {/* The connection's tile: its colour, filled when connected and only
-          outlined when not, with its initial. Empty with no connection. */}
+          outlined when not, with its initial. Empty with no connection.
+          It breathes, slowly and faintly, while connecting. */}
       <Box
         sx={{
+          ...(connecting && connectionId ? connectingPulse : {}),
           width: 30,
           height: 30,
           flexShrink: 0,

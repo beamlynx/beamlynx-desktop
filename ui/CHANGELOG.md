@@ -17,6 +17,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ### Fixed
 - **You can connect to the same database as two different users.** Opening a second saved connection to a database that was already open as another user failed with "already registered under a different user". Both now stay open, each in its own tabs. Needs the pine-lang release that adds the user to a connection's id.
+- **No errors while a restored tab reconnects.** When the app starts, a tab you had open says "Connecting…" until it is connected to its database again, and the connection's tile at the top of the sidebar pulses faintly. Before, it showed an error for that moment, as if the query were wrong. A tab with several queries kept showing "Not parsing - showing last valid graph" until you edited it. It now draws its graph once it is connected.
 - **The cursor stays put when the Pine editor tidies a query.** Adding a `|` higher up in a query, such as by picking a suggestion, puts each step on its own line. That used to move the cursor to the end of the query. It now stays where you were typing.
 - **The keyboard works when switching a tab that has a query.** Opening another connection from such a tab, from the sidebar or with **Switch Connection** in Ctrl+K, asks whether to open it in a new tab or switch this tab. Enter now picks the new tab, the default, and Up and Down move between the two choices. Before, neither key did anything.
 

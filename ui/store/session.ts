@@ -217,6 +217,18 @@ export class Session {
   connecting: boolean = false;
 
   /**
+   * True for a restored tab until it has reconnected and its first build
+   * has come back, or connecting has failed. Its builds before that fail
+   * for want of a connection, and those errors say nothing about the query.
+   */
+  awaitingConnection: boolean = false;
+
+  /** Whether the tab is still getting its connection, so its errors aren't shown yet. */
+  get connectionPending(): boolean {
+    return this.connecting || this.awaitingConnection;
+  }
+
+  /**
    * Set when a beamlynx://run link opened this tab (DeepLinkHandler.tsx).
    * The link's expression is put in the editor but not run: anyone can write
    * such a link, so the person checks the expression and the connection and
@@ -868,6 +880,11 @@ export class Session {
           const { error, errorType } = handleError(response);
           this.error = error;
           this.errorType = errorType;
+
+          // The first build on the tab's own connection ends the wait.
+          if (this.awaitingConnection && !this.connecting && this.connectionId && errorType !== 'no-connection') {
+            this.awaitingConnection = false;
+          }
 
           // The database: unreachable, or back.
           if (errorType === 'database-unreachable' && !response.ast) {

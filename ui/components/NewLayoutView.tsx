@@ -46,6 +46,8 @@ interface NewLayoutViewProps {
 const RightPane = observer(({ sessionId }: { sessionId: string }) => {
   const { global } = useStores();
   const session = global.getSession(sessionId);
+  // Not while the tab is still getting its connection (see ErrorMessage).
+  const showError = Boolean(session.error) && !session.connectionPending;
 
   if (session.mode === 'monitor') {
     return <Monitor sessionId={sessionId} height="100%" />;
@@ -80,10 +82,10 @@ const RightPane = observer(({ sessionId }: { sessionId: string }) => {
           the safety net it always was; presence is owned here, by the one
           element that can animate. */}
       <CollapsibleHeight
-        expanded={Boolean(session.error)}
+        expanded={showError}
         transition="height var(--motion-fast) var(--motion-ease-enter)"
         contentSx={{
-          opacity: session.error ? 1 : 0,
+          opacity: showError ? 1 : 0,
           transition: 'opacity var(--motion-fast) var(--motion-ease-enter)',
         }}
       >

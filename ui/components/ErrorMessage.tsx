@@ -30,10 +30,18 @@ interface ErrorMessageProps {
  * it, whether connecting or building failed: the canvas shows no banner.
  * It isn't an error in the expression, so it's not in the error colour,
  * and it says the tab is trying again (GlobalStore's UNREACHABLE_RETRY_MS).
+ *
+ * Nothing is shown while the tab is still getting its connection
+ * (Session.connectionPending): its builds fail for want of one, which says
+ * nothing about the query. The canvas says "Connecting…" meanwhile.
  */
 const ErrorMessage = observer(({ sessionId, session: blockSession }: ErrorMessageProps) => {
   const { global } = useStores();
   const session = blockSession ?? global.getSession(sessionId);
+
+  if (session.connectionPending) {
+    return null;
+  }
 
   if (session.unreachable !== null) {
     return (

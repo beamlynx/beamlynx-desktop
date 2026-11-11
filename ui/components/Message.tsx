@@ -18,7 +18,7 @@ const Message: React.FC<MessageProps> = observer(({}) => {
     setSession(session);
   }, [global, global.activeSessionId]);
 
-  if (session.error && session.errorType !== 'parse') {
+  if (session.error && session.errorType !== 'parse' && !session.connectionPending) {
     const truncatedError = session.error.substring(0, isSmallScreen ? 40 : 120);
     return (
       <Tooltip title={session.error} placement="bottom-start">
