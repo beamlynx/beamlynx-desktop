@@ -26,7 +26,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { runMcpQuery, explainMcpQuery } = require('../store/mcp-query.ts');
-const { effectiveAccessPolicy, effectiveAccessPolicyRules, HttpClient } = require('../store/client.ts');
+const { effectiveAccessPolicy, effectiveAccessPolicyRules, HttpClient, SHOW_NOTHING } = require('../store/client.ts');
 const { Session } = require('../store/session.ts');
 const { GlobalStore } = require('../store/global.store.ts');
 const { McpWriteRefusalMinVersion } = require('../constants.ts');
@@ -239,14 +239,18 @@ test('effectiveAccessPolicyRules: no policyId means no rules, for either caller'
     [],
   );
   assert.deepEqual(effectiveAccessPolicyRules({ policyId: null }, policies, false), []);
-  assert.deepEqual(effectiveAccessPolicyRules(undefined, policies, true), []);
+  // An unknown connection is one agents may not use: nothing is shown.
+  assert.deepEqual(effectiveAccessPolicyRules(undefined, policies, true), SHOW_NOTHING);
 });
 
 test('effectiveAccessPolicyRules: MCP path is gated on mcpEnabled, never on applyPolicyToOwnQueries', () => {
   const policies = [{ id: 'p1', name: 'X', rules: [{ type: 'foreign-key', enabled: true }] }];
   const conn = { policyId: 'p1', mcpEnabled: true, applyPolicyToOwnQueries: false };
   assert.deepEqual(effectiveAccessPolicyRules(conn, policies, true), [{ type: 'foreign-key' }]);
-  assert.deepEqual(effectiveAccessPolicyRules({ ...conn, mcpEnabled: false }, policies, true), []);
+  // Agent access turned off: an agent's query still waiting its turn shows
+  // nothing. It used to get no rules, which showed every column.
+  assert.deepEqual(effectiveAccessPolicyRules({ ...conn, mcpEnabled: false }, policies, true), SHOW_NOTHING);
+  assert.deepEqual(effectiveAccessPolicyRules({ policyId: null, mcpEnabled: false }, policies, true), SHOW_NOTHING);
 });
 
 test('effectiveAccessPolicyRules: human path is gated on applyPolicyToOwnQueries, never on mcpEnabled', () => {
@@ -319,7 +323,7 @@ test("session.ts's accessPolicyRules getter derives from the connected profile's
   // same as production, where Session.globalStore always IS the live
   // GlobalStore instance, never a detached snapshot of it.
   session.globalStore.connections[0].mcpEnabled = false;
-  assert.deepEqual(session.accessPolicyRules, []);
+  assert.deepEqual(session.accessPolicyRules, SHOW_NOTHING);
 });
 
 test('session.ts passes forMcp based on whether this session IS globalStore.mcpSessionId, not a hardcoded value', () => {
@@ -502,6 +506,22 @@ test('runMcpQuery runs nothing when the SQL does not convert', async () => {
   } finally {
     restore();
   }
+});
+
+test("an agent's run that another run in its tab replaced answers with an error, not the other run's rows", async () => {
+  const session = {
+    evalSeq: 0,
+    // The agent's run, and the person pressing Run while it was out.
+    evaluate: async () => {
+      session.evalSeq += 2;
+      return [{ id: 'the person’s' }];
+    },
+  };
+  const { deps } = makeFakeDeps({ session });
+  deps.getOrCreateMcpSession = () => Object.assign(session, { id: 's', inputMode: 'pine', columns: [], tableAliases: [], error: '' });
+  const result = await runMcpQuery(deps, { profileId: 'p1', expression: 'company' });
+  assert.deepEqual(result.rows, []);
+  assert.match(result.error, /Another query ran in this tab/);
 });
 
 test('an expression run carries no pine/warnings fields', async () => {

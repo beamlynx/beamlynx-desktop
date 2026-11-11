@@ -162,9 +162,14 @@ type ConnectionParams = {
 // ConnectionsSection.tsx's switch action). Adding a brand-new connection via
 // the "Add Connection" form isn't gated this way: `connect()` always assigns
 // it to the active tab in place, same as before minus the silent-tab-fork.
-export type PendingConnectionSwitch =
+export type PendingConnectionSwitch = (
   | { kind: 'select'; connectionId: string }
-  | { kind: 'connectToSavedProfile'; id: string };
+  | { kind: 'connectToSavedProfile'; id: string }
+) & {
+  // The tab the switch was asked for. Confirming applies it there, even
+  // if another tab opened meanwhile (a deep link opens one).
+  sessionId?: string;
+};
 
 export type SettingsSection = 'connections' | 'theme' | 'preferences' | 'mcp' | 'account' | 'about';
 
@@ -204,6 +209,8 @@ export const stripRemovedDeleteOperation = (expression: string): string =>
 export const UNREACHABLE_RETRY_MS = 10_000;
 // The open tab's retry timer. Outside the store, so MobX doesn't observe it.
 let unreachableRetry: ReturnType<typeof setInterval> | null = null;
+// Numbers each grid edit's own session (createEditSession).
+let editSessionSeq = 0;
 
 export class GlobalStore {
   connecting = false;
@@ -316,7 +323,6 @@ export class GlobalStore {
 
   activeSessionId = 'session-0';
   sessions: Record<string, Session> = {};
-  virtualSession: Session | null = null;
 
   // Which of the three complete themes is active - see
   // styles/palette/themes.ts. Not a light/dark toggle crossed with a
@@ -1501,7 +1507,7 @@ export class GlobalStore {
     }
     if (activeSession.expression.trim() && !confirmed) {
       runInAction(() => {
-        this.pendingConnectionSwitch = { kind: 'select', connectionId };
+        this.pendingConnectionSwitch = { kind: 'select', connectionId, sessionId: activeSession.id };
       });
       return;
     }
@@ -1681,8 +1687,15 @@ export class GlobalStore {
     // about to evaluate against.
     resolveAccessPolicyRules: async (profileId: string) => {
       const [connections, policies] = await Promise.all([this.refreshConnections(), this.refreshAccessPolicies()]);
+      const connection = connections.find(c => c.id === profileId);
+      // Checked here, when the query is about to run, not only when the
+      // desktop app took the request: it may have waited its turn while
+      // the person turned agent access off.
+      if (!connection?.mcpEnabled) {
+        throw new Error("Refusing to run an agent's query: agent access to this database is off.");
+      }
       // forMcp: true -- this is only ever called from runMcpQuery/explainMcpQuery.
-      return effectiveAccessPolicyRules(connections.find(c => c.id === profileId), policies, true);
+      return effectiveAccessPolicyRules(connection, policies, true);
     },
   });
 
@@ -2177,9 +2190,6 @@ export class GlobalStore {
           session.connectionId = '';
         }
       });
-      if (this.virtualSession?.connectionId === id) {
-        this.virtualSession.connectionId = '';
-      }
     });
     await this.refreshConnections();
   };
@@ -2341,8 +2351,15 @@ export class GlobalStore {
     if (!pending) {
       return;
     }
+    // Applies to the tab it was asked for. If that tab is gone, nothing
+    // switches: the question was about it.
+    if (pending.sessionId && !this.sessions[pending.sessionId]) {
+      runInAction(() => (this.pendingConnectionSwitch = null));
+      return;
+    }
     runInAction(() => {
       this.pendingConnectionSwitch = null;
+      if (pending.sessionId) this.activeSessionId = pending.sessionId;
     });
     if (pending.kind === 'select') {
       await this.selectConnection(pending.connectionId, true);
@@ -2384,7 +2401,7 @@ export class GlobalStore {
    * connectToSavedProfile directly.
    */
   requestConnectionSwitch = (pending: PendingConnectionSwitch) => {
-    this.pendingConnectionSwitch = pending;
+    this.pendingConnectionSwitch = { ...pending, sessionId: pending.sessionId ?? this.activeSessionId };
   };
 
   /**
@@ -2824,21 +2841,20 @@ export class GlobalStore {
   };
 
   /**
-   * The off-screen session that builds and runs a grid edit's `update!`,
-   * on the open tab's database. It takes that tab's connection every time
-   * it is handed out. It used to keep whichever connection was made last,
-   * so an edit in one tab could write to another tab's database.
+   * A new off-screen session for one grid edit: it builds and runs that
+   * edit's `update!`, and the review dialog shows it. Its connection is the
+   * one the edited rows came from (Session.resultSource), given by the
+   * caller and never changed after. Nothing else holds it, so two edits
+   * can't touch each other. One shared session used to serve every edit and
+   * took whichever connection was made last.
    */
-  getVirtualSession = (): Session => {
-    if (!this.virtualSession) {
-      this.virtualSession = new Session('virtual', this);
-    }
-    const virtual = this.virtualSession;
-    const connectionId = this.activeConnectionId;
-    if (virtual.connectionId !== connectionId) {
-      runInAction(() => (virtual.connectionId = connectionId));
-    }
-    return virtual;
+  createEditSession = (connectionId: string): Session => {
+    const session = new Session(`edit-${++editSessionSeq}`, this);
+    runInAction(() => {
+      session.connectionId = connectionId;
+      session.inputMode = 'pine';
+    });
+    return session;
   };
 
   loadConnectionMetadata = async () => {

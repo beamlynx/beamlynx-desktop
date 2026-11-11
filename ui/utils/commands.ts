@@ -243,9 +243,8 @@ const COMMANDS: Command[] = [
     label: 'Select Table',
     category: 'Query',
     handler: async (global, session) => {
-      // Use virtual session to build from current session expression
-      const vs = global.getVirtualSession();
-      const ast = await vs.build(session.expression);
+      // A build only, on this tab's own connection: nothing runs.
+      const ast = await session.build(session.expression);
       const tableHints = ast.hints.table;
 
       // Get theme for schema colors

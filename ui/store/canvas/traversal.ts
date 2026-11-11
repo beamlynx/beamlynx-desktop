@@ -80,6 +80,12 @@ export const traversalClient = new HttpClient();
 /** A traversal in flight or finished - see Session.startTraversal. */
 export type TraversalState = {
   verb: TraversalVerb;
+  /**
+   * The connection the walk ran on, taken once when it started. The plan's
+   * counts come from it, the confirmation names it, and the deletes run on
+   * it. If the tab moves to another database, nothing runs.
+   */
+  connectionId: string;
   rootExpression: string;
   status: TraversalStatus;
   nodes: TraversalNode[];

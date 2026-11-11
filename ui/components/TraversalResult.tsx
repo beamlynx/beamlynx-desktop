@@ -143,7 +143,7 @@ const TraversalResult: React.FC<{ session: Session }> = observer(({ session }) =
         )}
       </Box>
 
-      {status === 'failed' && (
+      {(status === 'failed' || error) && (
         <Box sx={{ px: 1.5, py: 1, color: 'var(--error-color, #c66)' }}>{error}</Box>
       )}
 

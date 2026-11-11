@@ -223,7 +223,19 @@ export async function runMcpQuery(
   // bound by pine-lang as SQL parameters like any literal. Never the MCP
   // tab's own Variables strip: the agent's run is fully described by what it
   // sent.
+  const seqBefore = session.evalSeq;
   const rows = await session.evaluate({ applyServerPrettified: true, allowWrites: false, variables: variables ?? {} });
+  // Another run in this tab started while the agent's ran, such as the person
+  // pressing Run. The tab then shows that run, not the agent's, so what it
+  // holds now isn't the agent's answer.
+  if (typeof seqBefore === 'number' && session.evalSeq > seqBefore + 1) {
+    return {
+      tabId: session.id,
+      columns: [],
+      rows: [],
+      error: 'Another query ran in this tab before yours finished, so its result is not yours. Ask again.',
+    };
+  }
   // Counted here, not in evaluate(), which skips agent tabs: only this call
   // knows whether the agent sent SQL.
   captureUsage('query_run', { source: 'agent', language: sql !== undefined ? 'sql' : 'pine' });

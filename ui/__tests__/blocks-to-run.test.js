@@ -42,3 +42,15 @@ test('describesTable: the last block ends in describe:', () => {
   assert.equal(describesTable('user | references:'), true);
   assert.equal(describesTable('references'), false);
 });
+
+// A cell edit appends its from:/where:/update! to the last block. Built from
+// the tab's whole text, an edit of the first of two queries landed on the
+// second, on another table when its alias was the same.
+test('an edit starts from the blocks that produced the rows, with their query last', () => {
+  const { editBase, blocksForBuild } = require('../store/blocks.ts');
+  const blocks = splitExpressions("customer\n\n$status = 'active'\n\ncompany");
+  // Run with the cursor in the first block sends it and the values block.
+  const sent = blocksForBuild(blocks, 0);
+  assert.deepEqual(sent, ['customer', "$status = 'active'"]);
+  assert.equal(editBase(sent), "$status = 'active'\n\ncustomer");
+});

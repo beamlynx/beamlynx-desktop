@@ -386,6 +386,13 @@ const ResultsGrid: React.FC<ResultsGridProps> = observer(props => {
   // selection itself, which silently disables editing).
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
+  // The edit in progress: the rows, columns and cell as they were when its
+  // editor opened. Glide reports a finished edit only by position, and the
+  // rows can be replaced while the editor is open (a run, auto-run). Looked
+  // up in the rows of the moment, that position was another row, or another
+  // column. The edit is committed against what it was opened on, and the
+  // caller refuses it when those rows are gone (Result.tsx editSource).
+  const editStart = useRef<{ rows: Row[]; columns: ResultsGridColumn[]; at: Item | undefined } | null>(null);
   const provideEditor = useCallback<ProvideEditorCallback<GridCell>>(cell => {
     if (cell.kind !== GridCellKind.Text) return undefined;
     const Editor = (editorProps: {
@@ -393,11 +400,19 @@ const ResultsGrid: React.FC<ResultsGridProps> = observer(props => {
       onChange: (value: GridCell) => void;
       onFinishedEditing: (value?: GridCell) => void;
     }) => {
+      // Only the first render of an edit records it: Glide may render the
+      // editor again while it is open.
+      if (!editStart.current) {
+        const { rows, columns } = latest.current;
+        editStart.current = { rows, columns, at: selectionRef.current.current?.cell };
+      }
       const value = editorProps.value as TextCell;
       const inspect = () => {
-        const at = selectionRef.current.current?.cell;
-        const { rows: currentRows, columns: currentColumns, onInspectEdit } = latest.current;
-        if (at) onInspectEdit(currentRows[at[1]], currentColumns[at[0]].field, value.data);
+        const start = editStart.current;
+        const at = start?.at;
+        const target = at && start.rows[at[1]];
+        const field = at && start.columns[at[0]]?.field;
+        if (target && field) latest.current.onInspectEdit(target, field, value.data);
         editorProps.onFinishedEditing(undefined);
       };
       return (
@@ -450,13 +465,27 @@ const ResultsGrid: React.FC<ResultsGridProps> = observer(props => {
   }, []);
 
   const onCellEdited = useCallback(([col, row]: Item, value: EditableGridCell) => {
-    if (value.kind !== GridCellKind.Text) return;
-    const { rows: currentRows, columns: currentColumns, onCommitEdit } = latest.current;
-    const field = currentColumns[col].field;
-    if (value.data === displayText(currentRows[row]?.[field])) return;
-    pendingEdits.current.set(`${row}:${field}`, value.data);
-    gridRef.current?.updateCells([{ cell: [col, row] }]);
-    onCommitEdit(currentRows[row], field, value.data);
+    const start = editStart.current;
+    editStart.current = null;
+    if (value.kind !== GridCellKind.Text || !start) return;
+    const { rows: currentRows, onCommitEdit } = latest.current;
+    const target = start.rows[row];
+    const field = start.columns[col]?.field;
+    if (!target || !field) return;
+    if (value.data === displayText(target[field])) return;
+    // Shown in the cell until the save lands, only while that cell is still
+    // the edited one.
+    if (start.rows === currentRows) {
+      pendingEdits.current.set(`${row}:${field}`, value.data);
+      gridRef.current?.updateCells([{ cell: [col, row] }]);
+    }
+    onCommitEdit(target, field, value.data);
+  }, []);
+
+  // An edit that ended without a value (Escape, Inspect, clicking away
+  // unchanged) forgets what it was opened on, so the next one starts fresh.
+  const onFinishedEditing = useCallback(() => {
+    editStart.current = null;
   }, []);
 
   // An edit attempt on a column that can't be changed says why, straight
@@ -570,6 +599,7 @@ const ResultsGrid: React.FC<ResultsGridProps> = observer(props => {
         onPaste={false}
         onCellsEdited={onlySingleCellEdits}
         onCellEdited={onCellEdited}
+        onFinishedEditing={onFinishedEditing}
         onCellClicked={onCellClicked}
         onCellActivated={onCellActivated}
         onKeyDown={onKeyDown}

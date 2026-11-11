@@ -74,10 +74,13 @@ export const offsetFromPosition = (
  * delete!, d!, update! or u!. Errs towards yes, since a `|` inside a string
  * can look like a step; the only cost of a false yes is that auto-run waits
  * for Run. pine-lang's own check (effects/any-writes?) is the authority when
- * the expression is evaluated.
+ * the expression is evaluated, and auto-run asks it to refuse writes.
+ *
+ * Comments are taken out first: Pine reads them as spaces, so
+ * `user | /* x *\/ delete! .id` is a delete.
  */
 export const mayChangeData = (expression: string): boolean =>
-  /(^|\|)\s*(delete!|d!|update!|u!)/i.test(expression);
+  /(^|\|)\s*(delete!|d!|update!|u!)/i.test(expression.replace(/\/\*[\s\S]*?\*\/|--[^\n]*/g, ' '));
 
 /**
  * The expression's text split at its commas, leaving out commas inside a

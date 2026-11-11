@@ -56,7 +56,12 @@ export async function openRecipe(global: GlobalStore, r: Recipe, target: RecipeT
   const home = target === 'home' ? recipeHome(global, r) : undefined;
   if (!home) return insertRecipe(global, r);
   runInAction(() => global.addTab());
+  // The new tab, taken now: switching tabs while it connects mustn't put
+  // the recipe into another tab, on another database.
+  const tabId = global.activeSessionId;
   // Connected first, so the query builds against its own database.
   await global.connectToSavedProfile(home.id);
+  if (global.sessions[tabId]?.connectionId !== home.id) return null;
+  runInAction(() => (global.activeSessionId = tabId));
   return insertRecipe(global, r);
 }

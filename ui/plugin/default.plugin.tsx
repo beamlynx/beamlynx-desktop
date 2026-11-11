@@ -1,6 +1,6 @@
 import { runInAction } from 'mobx';
 import { Column, HttpClient } from '../store/client';
-import { ColumnMetadata, ResultColumn, Row, Session } from '../store/session';
+import { ColumnMetadata, ResultColumn, ResultSource, Row, Session } from '../store/session';
 import { EvaluateOptions, PluginInterface } from './plugin.interface';
 
 // A fresh id for each run. pine-lang keeps a stop for an id it hasn't seen
@@ -54,10 +54,43 @@ export class DefaultPlugin implements PluginInterface {
     // In SQL mode, running with text selected runs only the selection.
     const sqlQuery = session.querySelection.trim() || session.query;
     const runsSql = session.inputMode === 'sql' && !opts?.forcePine;
+    // Raw SQL goes to the database as it is: pine-lang can't refuse its
+    // writes or mask its columns. So it doesn't run where either applies.
+    const sqlRefused = !runsSql
+      ? ''
+      : session.isAgentSession
+        ? 'An agent’s tab runs only Pine, which can’t change data here. Run it from your own tab.'
+        : session.openedFromLink
+          ? 'A query opened from a link runs only as Pine until you dismiss its banner.'
+          : opts?.allowWrites === false
+            ? 'This run can’t change data, and raw SQL can’t be kept from doing so. Run it as Pine.'
+            : session.accessPolicyRules.length > 0
+          ? 'Data masking applies to your own queries on this connection, and raw SQL can’t be masked. Run it as Pine.'
+          : '';
+    if (sqlRefused) {
+      runInAction(() => {
+        session.error = sqlRefused;
+        session.evalErrorType = 'policy';
+        session.loading = false;
+      });
+      return [];
+    }
+    // Exactly what this run sends, taken now. The rows it returns are
+    // stamped with it (session.resultSource), so nothing typed while it
+    // runs is mistaken for the query that produced them.
+    const expressions = opts?.expressions ?? session.expressions;
+    const ranText = runsSql ? sqlQuery : session.expression;
+    const source: ResultSource = {
+      connectionId,
+      expressions: runsSql ? [sqlQuery] : expressions,
+      language: runsSql ? 'sql' : 'pine',
+    };
     // Names this run so Stop can cancel it on the server.
     const runId = newRunId();
+    let seq = 0;
     runInAction(() => {
       session.runId = runId;
+      seq = ++session.evalSeq;
     });
     const startedAt = performance.now();
 
@@ -71,7 +104,7 @@ export class DefaultPlugin implements PluginInterface {
       const response = runsSql
         ? await this.client.sql(sqlQuery, connectionId, runId)
         : await this.client.eval(
-            opts?.expressions ?? session.expressions,
+            expressions,
             connectionId,
             session.accessPolicy,
             opts?.allowWrites,
@@ -80,6 +113,10 @@ export class DefaultPlugin implements PluginInterface {
             opts?.variables,
             runId,
           );
+
+      // A newer run in this tab started while this one ran: its answer is
+      // the one to show.
+      if (session.evalSeq !== seq) return [];
 
       if (!response) {
         runInAction(() => {
@@ -217,7 +254,8 @@ export class DefaultPlugin implements PluginInterface {
         session.rows = rows.slice(1).map((row, index) => {
           return { ...row, _id: index };
         });
-        session.expressionAtLastEval = runsSql ? sqlQuery : session.expression;
+        session.expressionAtLastEval = ranText;
+        session.resultSource = source;
         session.runMs = Math.round(performance.now() - startedAt);
         session.rowCap = runsSql ? null : (response['row-cap'] ?? null);
         session.tableAliases = runsSql ? [] : (response.aliases ?? []);
