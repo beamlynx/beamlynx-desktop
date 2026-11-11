@@ -4,11 +4,16 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.75.0] - 2026-11-11
+### Breaking
+- **Needs pine-lang 0.55.0 or later (was 0.54.0).** Connecting to an older server shows the upgrade-required screen.
+
 ### Added
 - **Tidy Pine on demand.** **Tidy Pine as you type** in Settings → Preferences turns off tidying when you type `|` or pick a suggestion. Then Ctrl+Shift+F, or a button at the top right of the Pine panel, tidies every query in the tab. A query with a comment between its steps is left as it is, since tidying would drop the comment.
 
 ### Changed
-- **An agent's result says which tables its aliases stand for, and which columns were masked.** Beamlynx passes both to the desktop app with the rows, which lists them for the agent. This needs a pine-lang that reports aliases; with an older one, the list of aliases is left out.
+- **An agent's result says which tables its aliases stand for, and which columns were masked.** Beamlynx passes both to the desktop app with the rows, which lists them for the agent.
 - **Typing `|` tidies any query, not only the last.** A `|` at the end of a query tidies it, so writing a new query above others now tidies too. A `|` in the middle of a query, before another step, is just typed.
 - **Ctrl+, brings back the Library too.** The Library is one of the panels beside the sidebar, like Settings. Ctrl+, closes whichever is open, and opens the one you had open last. Before, it only knew Settings: with the Library open, it swapped in Settings, and it never reopened the Library.
 - **A recipe from another database goes in the current tab by default.** When you use a recipe saved from another of your connections, Beamlynx asks whether to use it in this tab, on this tab's database, which Enter picks, or to open it on the database it was saved from in a new tab. It no longer offers to switch the current tab to that database, and the Library's separate **Use in this tab** button is gone.
@@ -16,7 +21,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **describe and references stay in the tab.** In a table's **+** menu on the canvas, they add `describe:` or `references:` to the end of the query, and the table shows a **describe** or **references** row, as it shows an update or delete. Its × takes it off, and so does any other change on the canvas. Before, each opened a new tab.
 
 ### Fixed
-- **You can connect to the same database as two different users.** Opening a second saved connection to a database that was already open as another user failed with "already registered under a different user". Both now stay open, each in its own tabs. Needs the pine-lang release that adds the user to a connection's id.
+- **You can connect to the same database as two different users.** Opening a second saved connection to a database that was already open as another user failed with "already registered under a different user". Both now stay open, each in its own tabs.
 - **No errors while a restored tab reconnects.** When the app starts, a tab you had open says "Connecting…" until it is connected to its database again, and the connection's tile at the top of the sidebar pulses faintly. Before, it showed an error for that moment, as if the query were wrong. A tab with several queries kept showing "Not parsing - showing last valid graph" until you edited it. It now draws its graph once it is connected.
 - **The cursor stays put when the Pine editor tidies a query.** Adding a `|` higher up in a query, such as by picking a suggestion, puts each step on its own line. That used to move the cursor to the end of the query. It now stays where you were typing.
 - **The keyboard works when switching a tab that has a query.** Opening another connection from such a tab, from the sidebar or with **Switch Connection** in Ctrl+K, asks whether to open it in a new tab or switch this tab. Enter now picks the new tab, the default, and Up and Down move between the two choices. Before, neither key did anything.
