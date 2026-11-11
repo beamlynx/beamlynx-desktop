@@ -103,6 +103,8 @@ export class CanvasStore {
    * from. With one query block, the session's own build is used instead.
    */
   blockAsts: { text: string; ast: Ast | undefined }[] = [];
+  /** Counts refreshBlockAsts calls, so only the latest one's builds are kept. */
+  private blockAstsSeq = 0;
   /** Aliases of the currently box/shift-selected table nodes - see Canvas.tsx's onSelectionChange. */
   selectedAliases: string[] = [];
   // Keyboard "cursor" for the modal (vim-style) navigation/shortcut layer -
@@ -182,7 +184,7 @@ export class CanvasStore {
    * alarming "Not parsing" banner a real syntax error would.
    */
   get isConnecting(): boolean {
-    return this.session.ast === null;
+    return this.session.ast === null || this.session.connectionPending;
   }
 
   /**
@@ -523,12 +525,13 @@ export class CanvasStore {
 
   constructor(session: Session) {
     this.session = session;
-    makeAutoObservable<CanvasStore, 'session'>(this, {
+    makeAutoObservable<CanvasStore, 'session' | 'blockAstsSeq'>(this, {
       session: false,
       // Built whole and replaced whole, never edited in place. As deep
       // observables, every build wrapped each node and AST in Proxies.
       canvasGraph: observable.ref,
       blockAsts: observable.ref,
+      blockAstsSeq: false,
     });
     this.recompute();
   }
@@ -574,10 +577,20 @@ export class CanvasStore {
     );
     // A tab with several query blocks: the canvas builds each block itself,
     // since the session builds only the block under the editor's cursor.
+    //
+    // Also built again when the tab's connection changes, and after each of
+    // the session's builds while a block has no build. A restored tab
+    // builds its blocks before it has reconnected, so those builds fail.
+    // Keyed on the text alone, they were never tried again, and the canvas
+    // said "Not parsing" until the next edit.
     const disposeBlocks = reaction(
-      () => this.session.expression,
+      () => [
+        this.session.expression,
+        this.session.connectionId,
+        this.blockAsts.some(b => !b.ast) ? this.session.response : null,
+      ],
       () => void this.refreshBlockAsts(),
-      { fireImmediately: true, delay: 150 },
+      { fireImmediately: true, delay: 150, equals: comparer.shallow },
     );
     const disposeCursorReset = reaction(
       () => this.session.expression,
@@ -743,16 +756,17 @@ export class CanvasStore {
 
   /**
    * Builds every query block of a tab with more than one, each with the
-   * blocks before it, and keeps the results in `blockAsts`. A build that
-   * finishes after the text has moved on is dropped.
+   * blocks before it, and keeps the results in `blockAsts`. Only the latest
+   * call's builds are kept: an earlier call's can finish later, say one
+   * sent before the tab reconnected.
    */
   private async refreshBlockAsts(): Promise<void> {
+    const seq = ++this.blockAstsSeq;
     const tab = this.tab;
     if (tab.queries.length < 2) {
       if (this.blockAsts.length) runInAction(() => (this.blockAsts = []));
       return;
     }
-    const expression = this.session.expression;
     const built = await Promise.all(
       tab.queries.map(async (_, k) => {
         const text = queryText(tab, k);
@@ -760,7 +774,7 @@ export class CanvasStore {
         return { text, ast };
       }),
     );
-    if (this.session.expression !== expression) return;
+    if (seq !== this.blockAstsSeq) return;
     runInAction(() => {
       this.blockAsts = built;
     });

@@ -916,6 +916,7 @@ export class GlobalStore {
         session.inputMode = persistedSession.inputMode === 'sql' ? 'sql' : 'pine';
         session.connectionId = typeof persistedSession.connectionId === 'string' ? persistedSession.connectionId : '';
         session.profileId = typeof persistedSession.profileId === 'string' ? persistedSession.profileId : '';
+        session.awaitingConnection = !!(session.connectionId || session.profileId);
       });
       // `new Session()` (inside createSessionUsingId, just above) wires up its
       // own expression -> build reaction *while this whole forEach is still
@@ -2433,14 +2434,21 @@ export class GlobalStore {
       console.log(
         `[credentials] ensureSessionConnected(${sessionId}): skip -- session=${!!session} connectionId=${session?.connectionId} pineConnected=${this.pineConnected}`,
       );
+      // Still waiting while pine itself isn't up: this runs again once it is.
+      if (session && this.pineConnected) runInAction(() => (session.awaitingConnection = false));
       return;
     }
     if (this.isConnectionLive(session.connectionId)) {
       console.log(
         `[credentials] ensureSessionConnected(${sessionId}): already live (${session.connectionId}), no-op`,
       );
+      runInAction(() => (session.awaitingConnection = false));
       return;
     }
+    // Ends the wait unless the tab connected: then its next build does
+    // (Session's response reaction), so the old errors stay hidden until
+    // the build on the new connection replaces them.
+    let reconnected = false;
 
     console.log(
       `[credentials] ensureSessionConnected(${sessionId}): reconnecting connectionId=${session.connectionId} profileId=${session.profileId}`,
@@ -2505,7 +2513,11 @@ export class GlobalStore {
       // requestHints's own guard (skip if the cursor hasn't moved since the
       // last successful build) doesn't block this -- that build never
       // succeeded, so lastHintsCursorPosition was never set.
-      session.requestHints();
+      // rebuild, not requestHints: a build before connecting can have
+      // succeeded on pine's default connection, and the guard would then
+      // skip this one, which is the build that ends awaitingConnection.
+      reconnected = true;
+      session.rebuild();
     } catch (e) {
       if (e instanceof SavedConnectionNotFoundError) {
         // The tab points at a saved connection that was deleted. Forget it
@@ -2546,6 +2558,7 @@ export class GlobalStore {
     } finally {
       runInAction(() => {
         session.connecting = false;
+        if (!reconnected) session.awaitingConnection = false;
       });
     }
   };
