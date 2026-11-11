@@ -100,6 +100,8 @@ function makeFakeDeps(overrides = {}) {
     id: 'mcp-session',
     inputMode: 'pine',
     columns: [{ name: 'id' }],
+    // A real Session starts with no aliases, never undefined.
+    tableAliases: [],
     error: '',
     evaluate: async opts => {
       calls.push('session.evaluate');
