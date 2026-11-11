@@ -63,8 +63,8 @@ export type McpQueryDeps = {
   client: HttpClient;
   getSavedProfileCredentials: (profileId: string) => Promise<ConnectionParams>;
   getOrCreateMcpSession: () => Session;
-  getMcpConnectionId: (profileId: string) => string | undefined;
-  setMcpConnectionId: (profileId: string, connectionId: string) => void;
+  isMcpConnectionOpen: (connectionId: string) => boolean;
+  markMcpConnectionOpen: (connectionId: string) => void;
   resolveAccessPolicyRules: (profileId: string) => Promise<AccessPolicyRule[]>;
   // The connected pine-lang's version, for assertServerSupportsWriteRefusal.
   // Read through a function rather than captured as a value: the deps object
@@ -107,22 +107,19 @@ function assertServerSupportsWriteRefusal(serverVersion: string | undefined): vo
   }
 }
 
-// Resolves a saved profile to a live connection id without pine-lang's
-// shared active-connection singleton, and without touching activeSessionId,
-// so an agent's query never steals focus the way connectToSavedProfile does.
+// Opens the saved connection's pool, under the saved connection's own id,
+// without touching activeSessionId, so an agent's query never steals focus
+// the way connectToSavedProfile does. The id is the one every tab on that
+// saved connection uses too, so the agent's queries run where its tab says.
 async function ensureConnection(deps: McpQueryDeps, profileId: string): Promise<string> {
-  const cached = deps.getMcpConnectionId(profileId);
-  if (cached) return cached;
+  if (deps.isMcpConnectionOpen(profileId)) return profileId;
   const params = await deps.getSavedProfileCredentials(profileId);
-  // create-only -- deliberately never client.useConnection() (pine-lang's
-  // POST /connections/:id/connect). That endpoint mutates a server-global
-  // "active connection" singleton shared with the human's own open UI
-  // session; calling it from here would risk silently redirecting the
-  // human's own queries to whatever connection was last used via MCP.
-  // Creating a pool alone has no such shared side effect.
-  const connectionId = await deps.client.createConnection(params);
-  deps.setMcpConnectionId(profileId, connectionId);
-  return connectionId;
+  const connectionId = await deps.client.createConnection({ ...params, id: profileId });
+  if (connectionId !== profileId) {
+    throw new Error(`The server opened ${connectionId} instead of ${profileId}`);
+  }
+  deps.markMcpConnectionOpen(profileId);
+  return profileId;
 }
 
 // Hard invariant, checked right before the call that would matter: an MCP
@@ -148,9 +145,7 @@ function toPlainJson<T>(value: T): T {
 }
 
 // An agent's SQL as Pine, or why it doesn't convert. Always with the MCP
-// connection's id: without one pine-lang falls back to the person's
-// selected connection, and would spell names from a database the agent may
-// not be allowed to use. Nothing runs here.
+// connection's id, so names take that database's spelling. Nothing runs here.
 async function sqlAsPine(
   client: HttpClient,
   sql: string,
@@ -215,7 +210,6 @@ export async function runMcpQuery(
   }
   const session = deps.getOrCreateMcpSession();
   session.connectionId = connectionId;
-  session.profileId = profileId;
   session.expression = expression;
   assertPineInputMode(session);
   // applyServerPrettified: true -- shows the agent's expression nicely

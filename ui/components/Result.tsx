@@ -534,8 +534,8 @@ const Result: React.FC<ResultProps> = observer(({ sessionId, session: blockSessi
   // The saved connection this tab runs on, and its own access policy: where
   // a change made from the grid is written. It changes no other
   // connection. Desktop only.
-  const policyConnection = global.connections.find(c => c.id === session.profileId);
-  const connectionPolicy = global.connectionPolicy(session.profileId);
+  const policyConnection = global.connections.find(c => c.id === session.connectionId);
+  const connectionPolicy = global.connectionPolicy(session.connectionId);
 
   const policyActionFor = (field: string): ColumnPolicyAction => {
     const info = session.columnMetadata.colIndexToPolicyLookup?.[field];

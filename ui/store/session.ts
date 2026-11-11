@@ -201,17 +201,23 @@ export class Session {
   /** Input mode - pine or sql */
   inputMode: InputMode = 'pine';
 
-  /** Per-session database connection id (pine's own id, e.g. `user@host:port:dbname`) */
+  /**
+   * The one id of this tab's connection, or '' for none. On desktop it is
+   * the saved connection's id, and pine-lang opens the pool under that same
+   * id. In the browser it is pine's own id. Every request, the sidebar's
+   * label, the switcher's checkmark, the masking and the delete
+   * confirmation read this one field, so they can't name different
+   * databases. A tab with none sends no connection, and pine-lang refuses
+   * the request.
+   */
   connectionId: string = '';
 
   /**
-   * Desktop-only: which saved profile `connectionId` came from. A tab
-   * reconnects through it after a restart, and the access policy is looked
-   * up by it. Two saved connections can still share one pine id, when they
-   * differ only in the password or the label. Blank in browser mode, where
-   * there's no separate profile concept.
+   * Counts connection changes started for this tab. A connect or reconnect
+   * that finishes after a newer one started is dropped, so a slow connect
+   * can't undo the database picked after it.
    */
-  profileId: string = '';
+  connectSeq = 0;
 
   /** True while lazily (re)connecting this tab's assigned connection in the background. */
   connecting: boolean = false;
@@ -482,13 +488,13 @@ export class Session {
    * the policy exists to gate the agent, not the owner), independent of mcpEnabled.
    * eval/build forward this verbatim to pine-lang, which redacts any column
    * no rule in it allows (see pine.access-policy). Always empty in browser
-   * mode (no profileId, no policy concept there).
+   * mode (no saved connections, no policy concept there).
    */
   get accessPolicyRules(): AccessPolicyRule[] {
     const connections = this.globalStore?.connections as ConnectionInfo[] | undefined;
     const policies = this.globalStore?.accessPolicies ?? [];
     return effectiveAccessPolicyRules(
-      connections?.find(c => c.id === this.profileId),
+      connections?.find(c => c.id === this.connectionId),
       policies,
       this.runsAsAgent,
     );
@@ -522,7 +528,7 @@ export class Session {
   get accessPolicy(): AppliedAccessPolicy {
     const connections = this.globalStore?.connections as ConnectionInfo[] | undefined;
     return effectiveAccessPolicy(
-      connections?.find(c => c.id === this.profileId),
+      connections?.find(c => c.id === this.connectionId),
       this.globalStore?.accessPolicies ?? [],
       this.runsAsAgent,
     );
@@ -782,14 +788,18 @@ export class Session {
           const activeIdx = findActiveQueryBlock(blocks, cursor?.line);
           const activeExpressions = blocksForBuild(blocks, activeIdx);
           const adjustedCursor = cursorForBuild(blocks, activeIdx, cursor);
+          const connectionId = this.connectionId;
           const response = await client.build(
             activeExpressions,
             adjustedCursor,
-            this.connectionId,
+            connectionId,
             this.accessPolicy,
             controller.signal,
           );
           if (seq !== buildSeq) return;
+          // Built against a connection this tab no longer has: switching
+          // asks for another build, and that one is the tab's.
+          if (this.connectionId !== connectionId) return;
           runInAction(() => {
             this.response = response;
             // Only a build that produced an AST has fresh hints for this
@@ -1196,7 +1206,9 @@ export class Session {
       dbHost?: string;
       dbName?: string;
     }[];
-    const match = connections.find(c => c.id === this.profileId);
+    // The same id the delete runs on (runDeleteScript below), so the name
+    // here is always the database the rows leave.
+    const match = connections.find(c => c.id === this.connectionId);
     if (!match) return this.connectionId || 'this connection';
     const where = [match.dbHost, match.dbName].filter(Boolean).join('/');
     return where ? `${match.label ?? match.id} (${where})` : (match.label ?? match.id);
@@ -1386,7 +1398,6 @@ export class Session {
     const runs: BlockRun[] = chosen.map(index => {
       const session = new Session(`${this.id}-block-${index}`, this.globalStore);
       session.connectionId = this.connectionId;
-      session.profileId = this.profileId;
       session.expression = blocksForBuild(blocks, index).join('\n\n');
       return { index, text: blocks[index].text, session, state: 'waiting' };
     });
@@ -1820,7 +1831,7 @@ export class Session {
   }
 
   async updateConnectionLogs() {
-    const stats = await client.getConnectionStats();
+    const stats = await client.getConnectionStats(this.connectionId);
     if (!stats) return;
 
     const newLog = {

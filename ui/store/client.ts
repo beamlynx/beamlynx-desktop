@@ -628,7 +628,6 @@ function policyParams(policy?: AppliedAccessPolicy): {
 
 export type ConnectionsListResult = {
   version: string;
-  'selected-connection-id': string | null;
   connections: ConnectionInfo[];
 };
 
@@ -744,11 +743,12 @@ export class HttpClient {
     return this.baseGet<Response>(path);
   }
 
-  public async getConnectionStats(): Promise<ConnectionStatsResponse | undefined> {
+  public async getConnectionStats(connectionId: string): Promise<ConnectionStatsResponse | undefined> {
+    if (!connectionId) return;
     const res = await this.baseGet<{ 'connection-count': number; time: string }>(
-      'connection/stats',
+      `connections/${encodeURIComponent(connectionId)}/stats`,
     );
-    // No numbers when nothing is selected (pine-lang answers with an error).
+    // No numbers when the connection isn't open (pine-lang answers with an error).
     if (!res || typeof res['connection-count'] !== 'number') {
       return;
     }
@@ -1052,8 +1052,13 @@ export class HttpClient {
     dbUser: string;
     dbPassword: string;
     dbType?: DbType;
+    // The id pine-lang opens the pool under: the desktop app's saved
+    // connection id, so a tab, its requests and the server all name the
+    // connection the same way. Without it pine makes one from the address.
+    id?: string;
   }): Promise<string> {
     type ServerConnectionParams = {
+      id?: string;
       host: string;
       port: string;
       dbtype: string;
@@ -1064,6 +1069,7 @@ export class HttpClient {
     };
 
     const connectionParams: ServerConnectionParams = {
+      ...(connection.id ? { id: connection.id } : {}),
       host: connection.dbHost,
       port: connection.dbPort,
       // Defaults to postgres for every existing caller that doesn't pass
@@ -1086,7 +1092,11 @@ export class HttpClient {
     return response['connection-id'] as string;
   }
 
-  public async useConnection(connectionId: string): Promise<{ id: string; version: string }> {
+  /**
+   * Checks an open connection works and has pine read its schema. It
+   * selects nothing on the server: every request names its own connection.
+   */
+  public async checkConnection(connectionId: string): Promise<{ id: string; version: string }> {
     // Encoded because the id folds the user and dbname in (user@host:port:dbname, see
     // pine.db.connections/make-connection-id) -- a dbname with a character
     // that's not path-safe would otherwise land as extra/malformed segments.

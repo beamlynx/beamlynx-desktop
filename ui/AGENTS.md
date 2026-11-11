@@ -37,10 +37,16 @@ A hash hides the address from someone reading the file. It is not a secret: anyo
 Why a hash: two people with the same database get the same hash, so a recipe or anything else can be shared for that database without showing where it is. A saved connection's id is random and local to one client. It shows nothing, but it also can't be matched across clients.
 
 On desktop, preferences are saved in beamlynx.db as well as local storage (`store/preferences.ts`). So the same rule applies to every preference:
-- Saved tabs (`pine-sessions`) keep the saved connection's id (`profileId`), never pine's id.
+- Saved tabs (`pine-sessions`) keep the tab's connection id (`connectionId`). On desktop that is the saved connection's id, never pine's address-based one.
 - Connection colours (`pine-connection-colors`) are keyed by `databaseKeyHash`.
 
-Older versions saved pine's id in both. `GlobalStore` still reads those values, and rewrites them once the saved connections load (`migrateConnectionColors`, `snapshotSessions`). Keep reading both forms whenever you change a stored key, so existing users lose nothing.
+Older versions saved pine's id in both, and saved tabs' saved-connection id as `profileId`. `GlobalStore` still reads those values (`restoredConnectionId`, `migrateConnectionColors`), and rewrites them once the saved connections load (`snapshotSessions`). Keep reading both forms whenever you change a stored key, so existing users lose nothing.
+
+## A tab has one connection id
+
+`Session.connectionId` is the only thing that says which database a tab is on. Its requests, its label, the connection menu's tick, its masking and the delete confirmation all read it. On desktop it is the saved connection's id, and pine-lang opens the pool under that same id. In the browser it is pine's own id.
+
+Never add a second per-tab id, an app-wide "current connection", or a default a tab falls back to. Each of those once let a tab show one database and run on another. Code that runs a query reads the tab's `connectionId` when the person acts. A tab with none runs nothing, and pine-lang refuses a request that names no connection.
 
 Known exception: the web build has no saved connections, so its tabs and colours still use pine's id.
 

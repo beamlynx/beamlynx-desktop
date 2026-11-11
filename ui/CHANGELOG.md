@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Fixed
+- **A tab always runs on the database it names.** Closing your last tab, editing a cell in the results, or switching tabs while connecting could run on the database you connected to last instead. A tab with no database now runs nothing.
 
 ## [0.75.0] - 2026-11-11
 ### Breaking

@@ -85,11 +85,13 @@ const ActiveConnection = ({ expanded }: { expanded: boolean }) => {
   };
 
   const handleSwitchTo = async (id: string) => {
+    // Already this tab's, and open. Picking it while it isn't open
+    // reconnects it.
+    if (id === connectionId && isConnectionLive) {
+      setConnectionMenuAnchor(null);
+      return;
+    }
     if (isDesktop()) {
-      if (id === global.activeProfileId) {
-        setConnectionMenuAnchor(null);
-        return;
-      }
       if (activeSession?.expression.trim()) {
         global.requestConnectionSwitch({ kind: 'connectToSavedProfile', id });
         setConnectionMenuAnchor(null);
@@ -111,10 +113,6 @@ const ActiveConnection = ({ expanded }: { expanded: boolean }) => {
         setSwitchingConnection(false);
         setConnectionMenuAnchor(null);
       }
-      return;
-    }
-    if (activeSession && id === activeSession.connectionId && id === global.connection) {
-      setConnectionMenuAnchor(null);
       return;
     }
     setSwitchingConnection(true);
@@ -250,9 +248,7 @@ const ActiveConnection = ({ expanded }: { expanded: boolean }) => {
         {global.connections.map(({ id, label }) => (
           <MenuItem
             key={id}
-            selected={
-              isDesktop() ? id === global.activeProfileId : id === activeSession?.connectionId
-            }
+            selected={id === connectionId}
             disabled={switchingConnection}
             onClick={() => handleSwitchTo(id)}
             sx={{
@@ -292,7 +288,7 @@ const ActiveConnection = ({ expanded }: { expanded: boolean }) => {
             >
               {label}
             </Typography>
-            {(isDesktop() ? id === global.activeProfileId : id === activeSession?.connectionId) && (
+            {id === connectionId && (
               <CheckIcon sx={{ fontSize: 16, opacity: 0.7 }} />
             )}
           </MenuItem>

@@ -55,7 +55,10 @@ const SaveRecipeBar = observer(({ session }: { session: Session }) => {
     setSaving(true);
     setError('');
     try {
-      const saved = await api.save({ title: title.trim(), expression: draft.expression }, session.profileId || undefined);
+      // Only a saved connection's id: one that couldn't be saved has pine's
+      // address-based id, which the desktop app doesn't know.
+      const savedConnection = global.connections.find(c => c.id === session.connectionId)?.id;
+      const saved = await api.save({ title: title.trim(), expression: draft.expression }, savedConnection);
       runInAction(() => {
         session.message = `Saved recipe "${saved.title}". Press Ctrl+O to use it.`;
       });

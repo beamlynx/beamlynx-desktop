@@ -10,6 +10,7 @@
 // guard bailed, and the panel sat on "walking" forever with no error. Now a
 // numeric generation counter, like the pickerSeq next to it.
 const { test } = require('node:test');
+const { runInAction } = require('mobx');
 const assert = require('node:assert/strict');
 const { Session } = require('../store/session.ts');
 
@@ -233,7 +234,6 @@ function deleteSession(id) {
     allowsDestructiveActions: () => true,
   });
   session.connectionId = CONN;
-  session.profileId = 'p1';
   session.expression = 'company';
   return session;
 }
@@ -348,7 +348,10 @@ test('opening an expression in a new tab prettifies, builds, and runs it', async
   try {
     const store = new GlobalStore();
     const from = store.activeSessionId;
+    // The new tab takes this tab's database. With none, Run refuses.
+    runInAction(() => (store.sessions[from].connectionId = 'db'));
     const opened = await store.openExpressionInNewTab('company | where: id = 1');
+    assert.equal(opened.connectionId, 'db');
 
     // Back to where the detour started, not to tab one.
     assert.equal(opened.openedFrom, from);

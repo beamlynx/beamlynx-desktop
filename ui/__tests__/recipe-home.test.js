@@ -18,11 +18,11 @@ function store(on) {
   const connected = [];
   runInAction(() => {
     s.connections = [PROD, STAGING];
-    s.sessions[s.activeSessionId].profileId = on;
+    s.sessions[s.activeSessionId].connectionId = on;
   });
   s.connectToSavedProfile = async id => {
     connected.push({ id, tab: s.activeSessionId });
-    runInAction(() => (s.sessions[s.activeSessionId].profileId = id));
+    runInAction(() => (s.sessions[s.activeSessionId].connectionId = id));
     return 'c';
   };
   return { s, connected };
@@ -33,7 +33,7 @@ test('Use, saved from another of your connections: the current tab, on its own d
   const first = s.activeSessionId;
   assert.equal(await openRecipe(s, recipe(PROD.databaseKeyHash)), first);
   assert.deepEqual(connected, []);
-  assert.equal(s.sessions[first].profileId, 'staging');
+  assert.equal(s.sessions[first].connectionId, 'staging');
   assert.match(s.sessions[first].expression, /company \| limit: 1/);
 });
 
@@ -45,7 +45,7 @@ test('"Open on Production": a new tab connected there', async () => {
   assert.deepEqual(connected, [{ id: 'prod', tab }]);
   assert.match(s.sessions[tab].expression, /company \| limit: 1/);
   assert.equal(s.sessions[first].expression, '', 'the first tab is untouched');
-  assert.equal(s.sessions[first].profileId, 'staging', 'the first tab stays on its database');
+  assert.equal(s.sessions[first].connectionId, 'staging', 'the first tab stays on its database');
 });
 
 test('already on its database, or saved from one you have no connection to: the current tab, whatever was asked', async () => {
