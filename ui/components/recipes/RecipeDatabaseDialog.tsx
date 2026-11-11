@@ -29,7 +29,7 @@ const RecipeDatabaseDialog = observer(
     const [error, setError] = useState('');
     const home = recipe ? recipeHome(global, recipe) : undefined;
     const session = global.sessions[global.activeSessionId];
-    const current = global.connections.find(c => c.id === session?.profileId);
+    const current = global.connections.find(c => c.id === session?.connectionId);
     const open = !!recipe && !!home;
 
     // The modal moves focus to its own surface when it opens, which beats

@@ -60,8 +60,8 @@ function storeWithFakeDatabase(results) {
       };
       return session;
     },
-    getMcpConnectionId: () => 'conn-1',
-    setMcpConnectionId: () => {},
+    isMcpConnectionOpen: () => true,
+    markMcpConnectionOpen: () => {},
     resolveAccessPolicyRules: async () => [{ type: 'foreign-key' }],
     getServerVersion: () => McpWriteRefusalMinVersion,
   });

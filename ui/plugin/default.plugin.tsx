@@ -16,6 +16,24 @@ export class DefaultPlugin implements PluginInterface {
 
   public async evaluate(opts?: EvaluateOptions): Promise<Row[]> {
     const session = this.session;
+    // Nothing runs without the tab's own connection, or while it is being
+    // changed. pine-lang refuses a request that names none, and this says
+    // why in words. A tab whose connection isn't open yet still sends its
+    // own id, which pine-lang refuses too, so only a change in progress
+    // (`connecting`) waits here, not the restored tab's first build.
+    const connectionId = session.connectionId;
+    const notReady = !connectionId
+      ? 'This tab has no database. Pick one from the connection menu first.'
+      : session.connecting
+        ? 'Still connecting to this tab’s database. Run again once it is connected.'
+        : '';
+    if (notReady) {
+      runInAction(() => {
+        session.error = notReady;
+        session.evalErrorType = 'no-connection';
+      });
+      return [];
+    }
     runInAction(() => {
       // session.message = '⏳ Fetching rows ...';
       session.error = '';
@@ -51,10 +69,10 @@ export class DefaultPlugin implements PluginInterface {
       // below, since none of them run on a thrown exception -- leaving the
       // loading spinner stuck on indefinitely with no error shown.
       const response = runsSql
-        ? await this.client.sql(sqlQuery, session.connectionId, runId)
+        ? await this.client.sql(sqlQuery, connectionId, runId)
         : await this.client.eval(
             opts?.expressions ?? session.expressions,
-            session.connectionId,
+            connectionId,
             session.accessPolicy,
             opts?.allowWrites,
             // Only the MCP path passes values here; a tab's own values are
@@ -66,6 +84,24 @@ export class DefaultPlugin implements PluginInterface {
       if (!response) {
         runInAction(() => {
           session.message = '🤷 No response';
+        });
+        return [];
+      }
+
+      // pine-lang names the connection it ran on, and it is always the one
+      // asked for. If the answer names another, or the tab moved to another
+      // database while this ran, the rows aren't this tab's to show.
+      const ranOn = response['connection-id'];
+      if ((ranOn && ranOn !== connectionId) || session.connectionId !== connectionId) {
+        runInAction(() => {
+          session.message = '';
+          // Never "run it again": a write has already happened, on the
+          // database the tab had when Run was pressed.
+          session.error =
+            session.connectionId !== connectionId
+              ? 'The tab’s database changed while this ran. It ran on the database the tab had when you pressed Run, and its result isn’t shown.'
+              : 'This result came from a different database than this tab’s, so it isn’t shown.';
+          session.evalErrorType = 'no-connection';
         });
         return [];
       }

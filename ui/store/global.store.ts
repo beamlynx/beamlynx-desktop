@@ -68,17 +68,19 @@ import {
 type PersistedSession = {
   expression: string;
   inputMode: InputMode;
-  // Pine's id, `user@host:port:dbname`. Saved by the web build, and on desktop by
-  // older versions only (snapshotSessions).
+  // The tab's one connection id (Session.connectionId). On desktop the saved
+  // connection's id, which is random and local, so no address is saved.
+  // Older desktop versions saved pine's address-based id here.
   connectionId?: string;
-  profileId: string;
+  // Where older desktop versions saved the saved connection's id.
+  profileId?: string;
 };
 
 /**
- * The id pine gives a saved server connection: `user@host:port:dbname`, or
- * `host:port:dbname` without a user (pine.db.connections/make-connection-id).
- * Undefined when it can't be worked out from the saved connection, such as
- * a SQLite file, whose id pine makes from a hash of its resolved path.
+ * The id older versions of pine gave a saved server connection, from its
+ * address: `user@host:port:dbname`, or `host:port:dbname` without a user.
+ * Now only read to move colours older versions stored under it
+ * (migrateConnectionColors). Undefined for a SQLite file.
  */
 export const pineIdOf = (c: Pick<ConnectionInfo, 'dbHost' | 'dbPort' | 'dbName' | 'dbUser'>): string | undefined =>
   c.dbHost && c.dbPort && c.dbName ? `${c.dbUser ? `${c.dbUser}@` : ''}${c.dbHost}:${c.dbPort}:${c.dbName}` : undefined;
@@ -86,6 +88,20 @@ export const pineIdOf = (c: Pick<ConnectionInfo, 'dbHost' | 'dbPort' | 'dbName' 
 // A database's hash, as the desktop app makes it (databaseKeyHash): SHA-256
 // as 64 lowercase hex characters.
 const isHashedKey = (value: string): boolean => /^[0-9a-f]{64}$/.test(value);
+
+/**
+ * The connection id a saved tab comes back with. Older desktop versions
+ * saved the saved connection's id as `profileId`, and pine's address-based
+ * id as `connectionId`: only the first names a saved connection, so only it
+ * is used there. A desktop tab with neither comes back with no connection,
+ * never a guess.
+ */
+const restoredConnectionId = (persisted: PersistedSession): string => {
+  const text = (value: unknown) => (typeof value === 'string' ? value : '');
+  if (!isDesktop()) return text(persisted.connectionId);
+  if ('profileId' in persisted) return text(persisted.profileId);
+  return text(persisted.connectionId);
+};
 
 type PersistedSessionsState = {
   sessions: PersistedSession[];
@@ -191,7 +207,10 @@ let unreachableRetry: ReturnType<typeof setInterval> | null = null;
 
 export class GlobalStore {
   connecting = false;
-  connection = '';
+  // There is no app-wide "current connection": each tab has its own
+  // (Session.connectionId). One used to be kept here, as the connection
+  // made last, and a new or reset tab took it. That tab then showed one
+  // database and ran on another.
   version: string | undefined = undefined;
   /**
    * Whether the connected pine-lang is older than this UI needs. Derived from
@@ -252,16 +271,10 @@ export class GlobalStore {
   // (runQueuedMcpQuery): a little over the desktop app's own 60 s limit,
   // after which it should have been stopped already.
   mcpQueryDeadlineMs = 75_000;
-  // profileId -> live pine-lang connection-id, cached per app session so
-  // every MCP query doesn't spin up a fresh Hikari pool. See
+  // The saved connections an agent's query has opened a pool for this app
+  // session, so every MCP query doesn't open the pool again. See
   // store/mcp-query.ts's ensureConnection.
-  private mcpConnectionsByProfile: Record<string, string> = {};
-  // Pine's id for each saved profile that has been connected this session.
-  // For a Postgres or MySQL profile pine's id is `user@host:port:dbname`,
-  // which can be worked out from the profile alone (pineIdOf). A
-  // SQLite profile's can't: pine names it from a hash of the file's resolved
-  // path, so the id pine returned when connecting is kept here instead.
-  pineIdByProfile: Record<string, string> = {};
+  private mcpOpenConnections: Record<string, true> = {};
   // Set by connectToSavedProfile on a decryption failure, so the settings
   // form can pre-fill the (still-plaintext) host/port/db/user and prompt the
   // user to just re-enter the password, instead of retyping everything.
@@ -273,12 +286,10 @@ export class GlobalStore {
     dbType: DbType;
   } | null = null;
 
-  // Pine's own ids that are actually live (a pool exists) *right now* --
-  // refreshed via listConnections() (loadConnectionMetadata,
-  // ensureSessionConnected) or appended to directly the instant a
-  // connect/reconnect call confirms one. Distinct from `connections`, which
-  // in desktop mode lists saved *profiles* regardless of whether they're
-  // currently live -- see refreshConnections.
+  // The connection ids that have an open pool on the server right now:
+  // read from listConnections() at startup, and added to the moment a
+  // connect or reconnect confirms one. Distinct from `connections`, which
+  // on desktop lists every saved connection, open or not.
   liveConnectionIds: string[] = [];
 
   /**
@@ -292,34 +303,16 @@ export class GlobalStore {
     return DevState.pineConnected ?? !!this.version;
   }
 
-  // Desktop only: which saved profile is behind the *active tab's own*
-  // connection. Derived from the active session directly (not a separately
-  // tracked field) so it can never go stale -- it used to be a standalone
-  // field only written by connect()/connectToSavedProfile, which meant the
-  // picker kept showing whichever profile was last *manually* selected even
-  // after switching to a different tab silently reconnected a different one
-  // (ensureSessionConnected never had a reason to touch a separate field).
-  get activeProfileId(): string {
-    return this.sessions[this.activeSessionId]?.profileId ?? '';
+  /** The open tab's connection id, or '' for none. */
+  get activeConnectionId(): string {
+    return this.sessions[this.activeSessionId]?.connectionId ?? '';
   }
 
-  // Whether `connectionId` currently has a live pool on the server -- as
-  // opposed to merely being a tab's *assigned* connection (see
-  // Session.connectionId), which persists across restarts/reconnects even
-  // while nothing is live. `liveConnectionIds` is always keyed by pine's own
-  // id (user@host:port:dbname), but callers here (the saved-connections list/picker)
-  // pass a saved-profile id in desktop mode -- a different id space for the
-  // same logical connection (see resolveConnectionEntry). Resolve both sides
-  // to the same identity before comparing, so this works regardless of
-  // which id space the caller happens to have on hand.
-  isConnectionLive = (connectionId: string): boolean => {
-    if (!connectionId) return false;
-    if (this.liveConnectionIds.includes(connectionId)) return true;
-    const resolvedSelf = this.resolveConnectionEntry(connectionId)?.id ?? connectionId;
-    return this.liveConnectionIds.some(
-      liveId => (this.resolveConnectionEntry(liveId)?.id ?? liveId) === resolvedSelf,
-    );
-  };
+  // Whether `connectionId` has an open pool on the server now, as opposed to
+  // only being a tab's connection (Session.connectionId), which a tab keeps
+  // across restarts while nothing is open.
+  isConnectionLive = (connectionId: string): boolean =>
+    !!connectionId && this.liveConnectionIds.includes(connectionId);
 
   activeSessionId = 'session-0';
   sessions: Record<string, Session> = {};
@@ -838,7 +831,7 @@ export class GlobalStore {
       connected => {
         // The pine server restarted, or went away: the agent's connections
         // were in its pools, which are gone.
-        this.mcpConnectionsByProfile = {};
+        this.mcpOpenConnections = {};
         if (connected) {
           this.ensureSessionConnected(this.activeSessionId);
         }
@@ -857,27 +850,16 @@ export class GlobalStore {
     return {
       sessions: ids.map(id => {
         const session = this.sessions[id];
-        if (!isDesktop()) {
-          return {
-            expression: session.expression,
-            inputMode: session.inputMode,
-            connectionId: session.connectionId,
-            profileId: session.profileId,
-          };
-        }
-        // Desktop: a tab reconnects through its saved connection's id
-        // (ensureSessionConnected), which is random and local. Pine's own id
-        // is `user@host:port:dbname`, a database's address, so it is never saved.
-        // A tab an older version saved with only pine's id keeps it until the
-        // saved connections load, rather than losing its connection. Then it
-        // resolves to one, or never can, so it is dropped either way.
-        const profileId = session.profileId || this.resolveConnectionEntry(session.connectionId)?.id || '';
-        const keepOldId = !profileId && !this.connectionsLoaded && session.connectionId;
+        // Desktop: only a saved connection's id, which is random and local.
+        // A connection that couldn't be saved (no OS credential store) has
+        // pine's id, made from the database's address, so it isn't kept.
+        // Until the saved connections load, a restored tab keeps its id.
+        const keep =
+          !isDesktop() || !this.connectionsLoaded || this.connections.some(c => c.id === session.connectionId);
         return {
           expression: session.expression,
           inputMode: session.inputMode,
-          ...(keepOldId ? { connectionId: session.connectionId } : {}),
-          profileId,
+          connectionId: keep ? session.connectionId : '',
         };
       }),
       activeIndex: Math.max(ids.indexOf(this.activeSessionId), 0),
@@ -914,9 +896,8 @@ export class GlobalStore {
       runInAction(() => {
         session.expression = expression;
         session.inputMode = persistedSession.inputMode === 'sql' ? 'sql' : 'pine';
-        session.connectionId = typeof persistedSession.connectionId === 'string' ? persistedSession.connectionId : '';
-        session.profileId = typeof persistedSession.profileId === 'string' ? persistedSession.profileId : '';
-        session.awaitingConnection = !!(session.connectionId || session.profileId);
+        session.connectionId = restoredConnectionId(persistedSession);
+        session.awaitingConnection = !!session.connectionId;
       });
       // `new Session()` (inside createSessionUsingId, just above) wires up its
       // own expression -> build reaction *while this whole forEach is still
@@ -962,57 +943,24 @@ export class GlobalStore {
     return true;
   };
 
-  // In desktop mode, `connections` is keyed by saved-profile id, while
-  // `activeSession.connectionId`/`this.connection` are pine's own id
-  // (`user@host:port:dbname`) -- two different id spaces for the same
-  // logical connection. Resolve pine's id back to its profile by comparing
-  // it with the id pine would give each profile, so color/label lookups
-  // work regardless of which id space they were called with. A no-op in
-  // browser mode, where `connections` is already keyed by pine's own id
-  // (first condition matches directly).
-  //
-  // Also matches the shapes older versions of pine used, which a tab or a
-  // colour saved by an older version may still hold in localStorage:
-  // `host:port:dbname` (before the user was part of the id) and bare
-  // `host:port` (before dbname was). Both are ambiguous when two saved
-  // connections differ only in the parts they leave out, and pick the first
-  // match. They are tried only after every exact match, so they never take
-  // an id away from the connection it really belongs to.
-  private resolveConnectionEntry = (connectionId: string): ConnectionInfo | undefined => {
-    if (!connectionId) return undefined;
-    return (
-      this.connections.find(c => c.id === connectionId || pineIdOf(c) === connectionId) ??
-      this.connections.find(c => c.id === this.profileIdForPineId(connectionId)) ??
-      this.connections.find(
-        c =>
-          (c.dbHost && c.dbPort && c.dbName && `${c.dbHost}:${c.dbPort}:${c.dbName}` === connectionId) ||
-          (c.dbHost && c.dbPort && `${c.dbHost}:${c.dbPort}` === connectionId),
-      )
+  // The listed connection with this id, and only that one: on desktop the
+  // saved connection, in the browser pine's. Never a near match, because a
+  // near match is how a tab came to be labelled with another database.
+  private connectionEntry = (connectionId: string): ConnectionInfo | undefined =>
+    connectionId ? this.connections.find(c => c.id === connectionId) : undefined;
+
+  // Only for moving colours older versions stored under pine's
+  // address-based ids, in the shapes it has had: `user@host:port:dbname`,
+  // `host:port:dbname` and `host:port`. Ambiguous when two saved connections
+  // share an address, which is why nothing else uses it.
+  private legacyConnectionEntry = (key: string): ConnectionInfo | undefined =>
+    this.connectionEntry(key) ??
+    this.connections.find(
+      c =>
+        pineIdOf(c) === key ||
+        (c.dbHost && c.dbPort && c.dbName && `${c.dbHost}:${c.dbPort}:${c.dbName}` === key) ||
+        (c.dbHost && c.dbPort && `${c.dbHost}:${c.dbPort}` === key),
     );
-  };
-
-  // The saved profile behind a pine connection id that can't be derived from
-  // the profile (a SQLite file, see pineIdByProfile): the profile connected
-  // this session, or else the one a tab restored from a previous session
-  // remembers (a tab keeps its profileId).
-  private profileIdForPineId = (pineId: string): string | undefined =>
-    Object.entries(this.pineIdByProfile).find(([, id]) => id === pineId)?.[0] ??
-    Object.values(this.sessions).find(s => s.connectionId === pineId && s.profileId)?.profileId;
-
-  private rememberPineId = (profileId: string, pineId: string) => {
-    if (profileId && pineId && this.pineIdByProfile[profileId] !== pineId) {
-      this.pineIdByProfile = { ...this.pineIdByProfile, [profileId]: pineId };
-    }
-  };
-
-  // Pine's own id for a saved profile, to close or reindex its pool. In
-  // desktop mode `id` is the saved profile's id, not pine's.
-  private pineIdForProfile = (id: string, useDesktop: boolean): string => {
-    const known = this.pineIdByProfile[id];
-    if (known) return known;
-    const conn = this.connections.find(c => c.id === id);
-    return (useDesktop && conn && pineIdOf(conn)) || id;
-  };
 
   /**
    * Where a connection's colour is kept: its database's hash, so the stored
@@ -1021,12 +969,12 @@ export class GlobalStore {
    * (persistConnectionColors).
    */
   private colorKeyFor = (connectionId: string): string => {
-    const entry = this.resolveConnectionEntry(connectionId);
+    const entry = this.connectionEntry(connectionId);
     return entry?.databaseKeyHash || entry?.id || connectionId;
   };
 
   getConnectionColor = (connectionId: string): string => {
-    const entry = this.resolveConnectionEntry(connectionId);
+    const entry = this.connectionEntry(connectionId);
     // The hash first. Then the keys older versions stored, until
     // migrateConnectionColors moves them: the saved connection's id, or
     // pine's own id for it.
@@ -1053,7 +1001,7 @@ export class GlobalStore {
       ...keys.filter(k => !this.connections.some(c => c.id === k)),
     ];
     for (const key of byConnectionIdFirst) {
-      const hash = this.resolveConnectionEntry(key)?.databaseKeyHash;
+      const hash = this.legacyConnectionEntry(key)?.databaseKeyHash;
       if (!hash) continue;
       if (!this.connectionColors[hash]) this.connectionColors[hash] = this.connectionColors[key];
       delete this.connectionColors[key];
@@ -1077,14 +1025,13 @@ export class GlobalStore {
 
   getConnectionLabel = (connectionId: string): string => {
     if (!connectionId) return '';
-    const resolved = this.resolveConnectionEntry(connectionId)?.label;
+    const resolved = this.connectionEntry(connectionId)?.label;
     if (resolved) return resolved;
-    // No matching saved profile -- either genuinely none (browser mode, or
-    // a profile that was since deleted/renamed) or `connections` just
-    // hasn't loaded yet. Only fall back to the raw id (pine's host:port,
-    // not a real name) once we know it's the former; otherwise showing it
-    // reads as "the connection's name changed" the moment the real label
-    // loads a beat later.
+    // Nothing listed with this id, or the list hasn't loaded yet. Until it
+    // has, '…' rather than the raw id, which would read as a name change a
+    // moment later. After: the id itself, which in the browser is pine's
+    // `user@host:port:dbname`, and on desktop names a connection that
+    // couldn't be saved.
     return this.connectionsLoaded ? connectionId : '…';
   };
 
@@ -1104,9 +1051,7 @@ export class GlobalStore {
     // Desktop mode: pine-server is a fresh JVM every launch, so its own live
     // connection list is empty until something reconnects this session --
     // not useful as "what connections does the user have". Source the list
-    // from locally saved profiles instead. `this.connection` is left alone
-    // here; it's driven by actual connect operations (connect /
-    // connectToSavedProfile), not by loading the list.
+    // from locally saved profiles instead.
     console.log(
       `[credentials] refreshConnections: isDesktop()=${isDesktop()} window.beamlynxDesktop=${
         typeof window !== 'undefined' && !!window.beamlynxDesktop
@@ -1135,11 +1080,14 @@ export class GlobalStore {
         this.migrateConnectionColors();
         this.connections.forEach(c => this.assignConnectionColor(c.id));
         this.connectionsLoaded = true;
-        // Keep the active pine connection's own colour alive even when no
-        // saved connection matches it (see connect() below): otherwise this
-        // prune would delete it the instant it's assigned.
+        // Keep the colour of a tab's connection that couldn't be saved (see
+        // connect() below): otherwise this prune would delete it the
+        // instant it's assigned.
         this.pruneConnectionColors(
-          [...this.connections.map(c => this.colorKeyFor(c.id)), this.connection && this.colorKeyFor(this.connection)].filter(Boolean),
+          [
+            ...this.connections.map(c => this.colorKeyFor(c.id)),
+            ...Object.values(this.sessions).map(s => s.connectionId && this.colorKeyFor(s.connectionId)),
+          ].filter(Boolean),
         );
         // Rewrites what older versions saved with addresses in it: colours
         // and tabs are saved under hashes and saved connections' ids now.
@@ -1160,7 +1108,9 @@ export class GlobalStore {
       if (result.version) {
         this.version = result.version;
       }
-      this.connection = result['selected-connection-id'] ?? '';
+      // In the browser the list is pine's open pools, so it is exactly
+      // what is live.
+      this.liveConnectionIds = this.connections.map(c => c.id);
       this.connectionsLoaded = true;
     });
     return this.connections;
@@ -1198,8 +1148,8 @@ export class GlobalStore {
    * connection's yet, and it is still the policy the connection uses, so
    * it is never shown as "None".
    */
-  connectionPolicy = (profileId: string | undefined): AccessPolicy | undefined => {
-    const connection = this.connections.find(c => c.id === profileId);
+  connectionPolicy = (connectionId: string | undefined): AccessPolicy | undefined => {
+    const connection = this.connections.find(c => c.id === connectionId);
     return connection?.policyId ? this.accessPolicies.find(p => p.id === connection.policyId) : undefined;
   };
 
@@ -1521,7 +1471,7 @@ export class GlobalStore {
    */
   switchActiveTabConnection = async (id: string): Promise<void> => {
     if (!isDesktop()) return this.selectConnection(id);
-    if (id === this.activeProfileId) return;
+    if (id === this.activeConnectionId && this.isConnectionLive(id)) return;
     if (this.sessions[this.activeSessionId]?.expression.trim()) {
       this.requestConnectionSwitch({ kind: 'connectToSavedProfile', id });
       return;
@@ -1546,7 +1496,7 @@ export class GlobalStore {
     if (!activeSession) {
       return;
     }
-    if (activeSession.connectionId === connectionId && this.connection === connectionId) {
+    if (activeSession.connectionId === connectionId && this.isConnectionLive(connectionId)) {
       return;
     }
     if (activeSession.expression.trim() && !confirmed) {
@@ -1555,10 +1505,12 @@ export class GlobalStore {
       });
       return;
     }
+    const seq = this.beginConnect(activeSession);
     try {
-      const { id, version } = await client.useConnection(connectionId);
+      const { id, version } = await client.checkConnection(connectionId);
+      // Another switch for this tab started since: that one decides.
+      if (activeSession.connectSeq !== seq) return;
       runInAction(() => {
-        this.connection = id;
         this.version = version ?? '0.0.0';
         this.liveConnectionIds = Array.from(new Set([...this.liveConnectionIds, id]));
         activeSession.connectionId = id;
@@ -1568,11 +1520,14 @@ export class GlobalStore {
         // now-invalid table/column names surface via session.error.
         activeSession.hintsRequestedCounter++;
         this.pendingConnectionSwitch = null;
+        this.endConnect(activeSession, seq, true);
       });
       await this.refreshConnections();
     } catch (e) {
       const message = (e as Error)?.message ?? 'Unknown error';
       runInAction(() => {
+        this.endConnect(activeSession, seq, false);
+        if (activeSession.connectSeq !== seq) return;
         activeSession.message = `⚠ Failed to switch connection: ${message}`;
         this.connectionError = `Failed to switch connection: ${message}`;
       });
@@ -1628,6 +1583,9 @@ export class GlobalStore {
    */
   connectToSavedProfile = async (id: string): Promise<string> => {
     console.log(`[credentials] connectToSavedProfile called for id=${id}`);
+    // The tab is the one open now, before reading the password: see connect.
+    const target = this.sessions[this.activeSessionId];
+    const seq = target ? this.beginConnect(target) : 0;
     let params: ConnectionParams;
     try {
       params = await this.getSavedProfileCredentials(id);
@@ -1635,10 +1593,11 @@ export class GlobalStore {
       const message = (e as Error)?.message ?? 'Unknown error';
       runInAction(() => {
         this.connectionError = `Failed to connect: ${message}`;
+        if (target) this.endConnect(target, seq, false);
       });
       throw e;
     }
-    return this.connect(params, id);
+    return this.connect(params, id, target ? { target, seq } : undefined);
   };
 
   /**
@@ -1708,13 +1667,10 @@ export class GlobalStore {
     getSavedProfileCredentials: this.getSavedProfileCredentials,
     getOrCreateMcpSession: () => this.getOrCreateMcpSession(investigationId),
     getServerVersion: () => this.version,
-    getMcpConnectionId: (profileId: string) => this.mcpConnectionsByProfile[profileId],
-    setMcpConnectionId: (profileId: string, connectionId: string) => {
+    isMcpConnectionOpen: (connectionId: string) => !!this.mcpOpenConnections[connectionId],
+    markMcpConnectionOpen: (connectionId: string) => {
       runInAction(() => {
-        this.mcpConnectionsByProfile = {
-          ...this.mcpConnectionsByProfile,
-          [profileId]: connectionId,
-        };
+        this.mcpOpenConnections = { ...this.mcpOpenConnections, [connectionId]: true };
       });
     },
     // Always re-reads both the connection list and every access policy
@@ -1845,9 +1801,9 @@ export class GlobalStore {
     if (run.started) void this.sessions[run.sessionId]?.stop();
   };
 
-  private forgetMcpConnection = (profileId: string) => {
-    const { [profileId]: _gone, ...others } = this.mcpConnectionsByProfile;
-    this.mcpConnectionsByProfile = others;
+  private forgetMcpConnection = (connectionId: string) => {
+    const { [connectionId]: _gone, ...others } = this.mcpOpenConnections;
+    this.mcpOpenConnections = others;
   };
 
   /** An agent's proposed policy change, from beamlynx-desktop (McpBridge.tsx): a card in its investigation. */
@@ -1970,7 +1926,7 @@ export class GlobalStore {
   investigationConnection = (investigationId: string) => {
     const investigation = this.investigations.find(i => i.id === investigationId);
     const session = investigation && this.sessions[investigation.sessionId];
-    return this.connections.find(c => c.id === session?.profileId);
+    return this.connections.find(c => c.id === session?.connectionId);
   };
 
   /** A tool call's start or end, from beamlynx-desktop (McpBridge.tsx). */
@@ -2193,13 +2149,10 @@ export class GlobalStore {
     }
     const desktopApi = typeof window !== 'undefined' ? window.beamlynxDesktop : undefined;
     const useDesktop = isDesktop() && !!desktopApi;
-    const pineId = this.pineIdForProfile(id, useDesktop);
-    console.log(
-      `[credentials] deleteConnection: id=${id} useDesktop=${useDesktop} pineId=${pineId}`,
-    );
+    console.log(`[credentials] deleteConnection: id=${id} useDesktop=${useDesktop}`);
 
     try {
-      await client.deleteConnection(pineId);
+      await client.deleteConnection(id);
     } catch {
       // No live session under this id -- nothing to close, not an error.
     }
@@ -2215,25 +2168,16 @@ export class GlobalStore {
     }
 
     runInAction(() => {
-      if (this.connection === id || this.connection === pineId) {
-        this.connection = '';
-      }
-      // activeProfileId is derived from the active session's own profileId
-      // (see its getter) -- clearing it below, in the same sweep as every
-      // other session, is enough; no separate field to reset here.
-      this.liveConnectionIds = this.liveConnectionIds.filter(c => c !== id && c !== pineId);
-      const { [id]: _forgotten, ...stillConnected } = this.pineIdByProfile;
-      this.pineIdByProfile = stillConnected;
+      this.liveConnectionIds = this.liveConnectionIds.filter(c => c !== id);
+      this.forgetMcpConnection(id);
       Object.values(this.sessions).forEach(session => {
-        if (session.connectionId === id || session.connectionId === pineId) {
+        if (session.connectionId === id) {
+          // Whatever was connecting it no longer applies.
+          this.endConnect(session, this.beginConnect(session), false);
           session.connectionId = '';
-          session.profileId = '';
         }
       });
-      if (
-        this.virtualSession &&
-        (this.virtualSession.connectionId === id || this.virtualSession.connectionId === pineId)
-      ) {
+      if (this.virtualSession?.connectionId === id) {
         this.virtualSession.connectionId = '';
       }
     });
@@ -2253,9 +2197,8 @@ export class GlobalStore {
    * until this is called (or the server restarts).
    */
   reindexConnection = async (id: string): Promise<void> => {
-    const pineId = this.pineIdForProfile(id, isDesktop());
     try {
-      await client.reindexConnection(pineId);
+      await client.reindexConnection(id);
       runInAction(() => {
         this.schemaVersion++;
       });
@@ -2269,23 +2212,48 @@ export class GlobalStore {
   };
 
   /**
-   * Bare createConnection + useConnection round trip -- no session/tab or
-   * credential side effects. Shared by `connect` (the full user-facing flow)
-   * and ensureSessionConnected's silent background reconnect, which must
-   * not fork tabs or touch activeSessionId the way `connect` does.
+   * Opens a pool and checks it works: no tab or saved-connection side
+   * effects. With `id`, pine-lang opens it under that id (a saved
+   * connection's); without, under its own address-based id. Shared by
+   * `connect` and ensureSessionConnected's background reconnect.
    */
   private establishConnection = async (
-    params: ConnectionParams,
+    params: ConnectionParams & { id?: string },
   ): Promise<{ id: string; version: string }> => {
     const connectionId = await client.createConnection(params);
     if (!connectionId) {
       throw new Error("Connection wasn't created");
     }
-    const { id, version } = await client.useConnection(connectionId);
+    if (params.id && connectionId !== params.id) {
+      // pine-lang opens the pool under the id it is given. Anything else
+      // would put the tab on a connection it didn't ask for.
+      throw new Error(`The server opened ${connectionId} instead of ${params.id}`);
+    }
+    const { id, version } = await client.checkConnection(connectionId);
     if (!id) {
       throw new Error('Failed to connect');
     }
     return { id, version };
+  };
+
+  /**
+   * Desktop: saves a connection that was just checked, and gives its saved
+   * id, or '' when it couldn't be saved (no OS credential store).
+   */
+  private saveNewConnection = async (params: ConnectionParams): Promise<string> => {
+    if (!isDesktop() || typeof window === 'undefined' || !window.beamlynxDesktop) return '';
+    try {
+      const saveResult = await window.beamlynxDesktop.credentials.save(params);
+      if (isDevelopment()) console.log('[credentials] connect: save result ->', saveResult);
+      if (!saveResult.persisted) return '';
+      // A new connection gets its own copy of the first template, which
+      // this list doesn't have yet.
+      await this.refreshAccessPolicies();
+      return saveResult.profile.id;
+    } catch (e) {
+      console.error('[credentials] connect: credentials.save threw ->', e);
+      return '';
+    }
   };
 
   /**
@@ -2298,63 +2266,65 @@ export class GlobalStore {
    * "Add Connection" form (a brand-new connection, not a switch) and the
    * deep-link handler (which always targets a fresh tab it just created).
    *
-   * @param knownProfileId Pass the saved profile id when it's already known
-   * (connectToSavedProfile) so the session can be tagged with it directly,
-   * skipping the credentials.save round trip used for a brand-new connection
-   * (Settings' "add connection" form, which has no profile yet to know).
+   * The connection goes to the tab that was open when this was called, not
+   * whichever is open when connecting finishes: switching tabs while a
+   * slow database connects used to put the other tab on it, without the
+   * warning its query should have had. A later switch of the same tab wins.
+   *
+   * @param savedId The saved connection's id, when it has one
+   * (connectToSavedProfile). Without it, this is a new connection: it is
+   * checked first and saved after, so a mistyped password is never saved,
+   * and then opened under its saved id.
    */
-  connect = async (params: ConnectionParams, knownProfileId?: string): Promise<string> => {
+  connect = async (
+    params: ConnectionParams,
+    savedId?: string,
+    // Given by connectToSavedProfile, which picks the tab before its own wait.
+    started?: { target: Session; seq: number },
+  ): Promise<string> => {
+    const target = started?.target ?? this.sessions[this.activeSessionId];
+    const seq = started?.seq ?? (target ? this.beginConnect(target) : 0);
+    let connected = false;
     let id: string;
     let version: string;
     try {
-      ({ id, version } = await this.establishConnection(params));
+      if (savedId) {
+        ({ id, version } = await this.establishConnection({ ...params, id: savedId }));
+      } else {
+        ({ id, version } = await this.establishConnection(params));
+        const newId = await this.saveNewConnection(params);
+        if (newId) {
+          const checked = id;
+          ({ id, version } = await this.establishConnection({ ...params, id: newId }));
+          // The pool opened only to check the connection, unless a tab is
+          // on it: one on a connection that couldn't be saved earlier.
+          if (!Object.values(this.sessions).some(s => s.connectionId === checked)) {
+            await client.deleteConnection(checked).catch(() => undefined);
+          }
+        }
+      }
     } catch (e) {
       const message = (e as Error)?.message ?? 'Unknown error';
       runInAction(() => {
-        this.connection = '';
         this.connectionError = `Failed to connect: ${message}`;
+        if (target) this.endConnect(target, seq, false);
       });
       throw e;
     }
 
-    let profileId = knownProfileId ?? '';
-    console.log(
-      `[credentials] connect: isDesktop()=${isDesktop()} window.beamlynxDesktop=${
-        typeof window !== 'undefined' && !!window.beamlynxDesktop
-      }`,
-    );
-    if (!knownProfileId && isDesktop() && typeof window !== 'undefined' && window.beamlynxDesktop) {
-      try {
-        const saveResult = await window.beamlynxDesktop.credentials.save(params);
-        if (isDevelopment()) console.log('[credentials] connect: save result ->', saveResult);
-        profileId = saveResult.persisted ? saveResult.profile.id : '';
-        // A new connection gets its own copy of the first template, which
-        // this list doesn't have yet.
-        if (saveResult.persisted) await this.refreshAccessPolicies();
-      } catch (e) {
-        console.error('[credentials] connect: credentials.save threw ->', e);
-        profileId = '';
-      }
-    }
-
     runInAction(() => {
-      this.connection = id;
       this.version = version ?? '0.0.0';
       this.assignConnectionColor(id);
       this.liveConnectionIds = Array.from(new Set([...this.liveConnectionIds, id]));
-      this.rememberPineId(profileId, id);
 
-      const activeSession = this.sessions[this.activeSessionId];
-      if (activeSession) {
-        activeSession.connectionId = id;
-        activeSession.profileId = profileId;
+      if (target && this.sessions[target.id] === target && target.connectSeq === seq) {
+        target.connectionId = id;
         // See the matching comment in selectConnection -- forces the
         // existing expression to re-resolve against the new connection.
-        activeSession.hintsRequestedCounter++;
+        target.hintsRequestedCounter++;
+        connected = true;
       }
-      if (this.virtualSession) {
-        this.virtualSession.connectionId = id;
-      }
+      if (target) this.endConnect(target, seq, connected);
       this.pendingConnectionSwitch = null;
     });
 
@@ -2418,6 +2388,27 @@ export class GlobalStore {
   };
 
   /**
+   * Starts a connection change for a tab: it counts as connecting, so Run
+   * waits, and whatever started before it no longer applies (connectSeq).
+   */
+  private beginConnect = (session: Session): number => {
+    session.connectSeq++;
+    session.connecting = true;
+    return session.connectSeq;
+  };
+
+  /**
+   * Ends the change `seq` started, unless a newer one has begun: that one
+   * ends it. `connected` leaves the wait to the tab's next build, so old
+   * errors stay hidden until the build on the new connection replaces them.
+   */
+  private endConnect = (session: Session, seq: number, connected: boolean) => {
+    if (session.connectSeq !== seq) return;
+    session.connecting = false;
+    if (!connected) session.awaitingConnection = false;
+  };
+
+  /**
    * Silently (re)connect one specific tab's *own* assigned connection if
    * it isn't already live -- never opens a modal, never forks a new tab,
    * never touches any other tab. This is what makes "connect lazily, only
@@ -2427,10 +2418,7 @@ export class GlobalStore {
    */
   ensureSessionConnected = async (sessionId: string): Promise<void> => {
     const session = this.sessions[sessionId];
-    // On desktop a restored tab has only its saved connection's id: pine's
-    // id is the database's address, so it is never saved (snapshotSessions).
-    const hasConnection = !!session?.connectionId || (isDesktop() && !!session?.profileId);
-    if (!session || !hasConnection || !this.pineConnected) {
+    if (!session || !session.connectionId || !this.pineConnected) {
       console.log(
         `[credentials] ensureSessionConnected(${sessionId}): skip -- session=${!!session} connectionId=${session?.connectionId} pineConnected=${this.pineConnected}`,
       );
@@ -2449,59 +2437,33 @@ export class GlobalStore {
     // (Session's response reaction), so the old errors stay hidden until
     // the build on the new connection replaces them.
     let reconnected = false;
+    // The connection this reconnect is for. If the tab moves to another
+    // while it runs, or is closed, the answer is dropped: it used to
+    // overwrite the tab's newer choice.
+    const connectionId = session.connectionId;
+    const seq = this.beginConnect(session);
+    const stale = () => session.connectSeq !== seq || this.sessions[sessionId] !== session;
 
-    console.log(
-      `[credentials] ensureSessionConnected(${sessionId}): reconnecting connectionId=${session.connectionId} profileId=${session.profileId}`,
-    );
-    runInAction(() => {
-      session.connecting = true;
-    });
+    console.log(`[credentials] ensureSessionConnected(${sessionId}): reconnecting connectionId=${connectionId}`);
     try {
-      let id: string;
       let version: string;
       if (isDesktop()) {
-        let profileId = session.profileId;
-        if (!profileId) {
-          // Sessions persisted before profileId existed only have pine's
-          // own (coarser) host:port id -- best-effort resolve it back to a
-          // saved profile so autoconnect still works for them instead of
-          // silently giving up. `connections` (the saved-profiles list)
-          // may not have loaded yet if this is running right as pine just
-          // became reachable -- refresh once and retry before giving up.
-          let resolved = this.resolveConnectionEntry(session.connectionId);
-          if (!resolved) {
-            await this.refreshConnections();
-            resolved = this.resolveConnectionEntry(session.connectionId);
-          }
-          profileId = resolved?.id ?? '';
-          console.log(
-            `[credentials] ensureSessionConnected(${sessionId}): resolved profileId=${profileId || '(none found)'} for connectionId=${session.connectionId}`,
-          );
-        }
-        if (!profileId) {
-          // Genuinely nothing to reconnect from -- leave it for the user
-          // to reconnect manually via the picker.
-          return;
-        }
-        const params = await this.getSavedProfileCredentials(profileId);
-        ({ id, version } = await this.establishConnection(params));
-        runInAction(() => {
-          session.profileId = profileId;
-          this.rememberPineId(profileId, id);
-        });
+        // The tab's id is its saved connection's, and pine-lang opens the
+        // pool under that same id.
+        const params = await this.getSavedProfileCredentials(connectionId);
+        ({ version } = await this.establishConnection({ ...params, id: connectionId }));
       } else {
-        ({ id, version } = await client.useConnection(session.connectionId));
+        ({ version } = await client.checkConnection(connectionId));
       }
-      console.log(`[credentials] ensureSessionConnected(${sessionId}): reconnected -> id=${id}`);
+      console.log(`[credentials] ensureSessionConnected(${sessionId}): reconnected -> id=${connectionId}`);
       runInAction(() => {
-        session.connectionId = id;
-        this.assignConnectionColor(id);
-        this.liveConnectionIds = Array.from(new Set([...this.liveConnectionIds, id]));
+        this.assignConnectionColor(connectionId);
+        this.liveConnectionIds = Array.from(new Set([...this.liveConnectionIds, connectionId]));
         if (sessionId === this.activeSessionId) {
-          this.connection = id;
           this.version = version ?? this.version;
         }
       });
+      if (stale()) return;
       // The very first build (fired the moment this session was
       // constructed/restored, before this connection actually had a live
       // pool) almost certainly failed -- session.ast stayed null, which
@@ -2513,18 +2475,15 @@ export class GlobalStore {
       // requestHints's own guard (skip if the cursor hasn't moved since the
       // last successful build) doesn't block this -- that build never
       // succeeded, so lastHintsCursorPosition was never set.
-      // rebuild, not requestHints: a build before connecting can have
-      // succeeded on pine's default connection, and the guard would then
-      // skip this one, which is the build that ends awaitingConnection.
       reconnected = true;
       session.rebuild();
     } catch (e) {
+      if (stale()) return;
       if (e instanceof SavedConnectionNotFoundError) {
         // The tab points at a saved connection that was deleted. Forget it
         // once, rather than failing (and showing an alert) on every switch
         // to this tab.
         runInAction(() => {
-          session.profileId = '';
           session.connectionId = '';
           session.message = 'This tab’s saved connection no longer exists. Pick a connection.';
         });
@@ -2556,10 +2515,7 @@ export class GlobalStore {
         }
       });
     } finally {
-      runInAction(() => {
-        session.connecting = false;
-        if (!reconnected) session.awaitingConnection = false;
-      });
+      this.endConnect(session, seq, reconnected);
     }
   };
 
@@ -2590,17 +2546,20 @@ export class GlobalStore {
     }
   };
 
-  createSessionUsingId = (id: string) => {
+  /**
+   * A new tab on `connectionId`, or on none. Each caller says which: a tab
+   * never takes a connection from anywhere else.
+   */
+  createSessionUsingId = (id: string, connectionId = '') => {
     const session = new Session(id, this);
-    session.connectionId = this.connection;
-    session.profileId = this.activeProfileId;
+    session.connectionId = connectionId;
     this.sessions[session.id] = session;
     return session;
   };
 
-  createSession = () => {
+  createSession = (connectionId = '') => {
     const id = Math.random().toString(36).substring(7);
-    return this.createSessionUsingId(id);
+    return this.createSessionUsingId(id, connectionId);
   };
 
   deleteSession = (sessionId: string) => {
@@ -2696,10 +2655,8 @@ export class GlobalStore {
   };
 
   addTab = () => {
-    const activeSession = this.sessions[this.activeSessionId];
-    const session = this.createSession();
-    session.connectionId = activeSession?.connectionId || this.connection;
-    session.profileId = activeSession?.profileId || this.activeProfileId;
+    // On the open tab's connection, or on none when it has none.
+    const session = this.createSession(this.activeConnectionId);
     this.activeSessionId = session.id;
   };
 
@@ -2754,9 +2711,16 @@ export class GlobalStore {
 
     const sessionIds = this.visibleSessionIds;
 
-    // If it's the last visible tab, reset it instead of closing
+    // If it's the last visible tab, reset it instead of closing. The fresh
+    // tab stays on the closed one's connection. It used to take the
+    // connection made last instead, and then named one database and ran on
+    // another.
     if (sessionIds.length === 1) {
-      this.createSessionUsingId(sessionId.replace('session-', ''));
+      const connectionId = this.sessions[sessionId]?.connectionId ?? '';
+      this.createSessionUsingId(sessionId.replace('session-', ''), connectionId);
+      // Same id, so the activeSessionId reaction won't fire: connect it here
+      // in case its connection isn't open.
+      void this.ensureSessionConnected(sessionId);
       return;
     }
 
@@ -2859,11 +2823,22 @@ export class GlobalStore {
     return session;
   };
 
+  /**
+   * The off-screen session that builds and runs a grid edit's `update!`,
+   * on the open tab's database. It takes that tab's connection every time
+   * it is handed out. It used to keep whichever connection was made last,
+   * so an edit in one tab could write to another tab's database.
+   */
   getVirtualSession = (): Session => {
     if (!this.virtualSession) {
       this.virtualSession = new Session('virtual', this);
     }
-    return this.virtualSession;
+    const virtual = this.virtualSession;
+    const connectionId = this.activeConnectionId;
+    if (virtual.connectionId !== connectionId) {
+      runInAction(() => (virtual.connectionId = connectionId));
+    }
+    return virtual;
   };
 
   loadConnectionMetadata = async () => {
@@ -2874,54 +2849,27 @@ export class GlobalStore {
       });
       if (!response?.result) {
         runInAction(() => {
-          this.connection = '';
           this.version = undefined;
         });
         return;
       }
-      const result = response.result as unknown as {
-        version: string;
-        'connection-id': string;
-      };
+      const result = response.result as unknown as { version: string };
 
-      // A session's connectionId can be restored from localStorage
-      // (restoreSessions) from a previous visit -- but pine-server's actual
-      // pools don't survive a process restart (desktop is a fresh JVM every
-      // launch; a shared/browser server can restart too), so a non-empty
-      // persisted connectionId doesn't mean it's actually connected right
-      // now. Fetch the backend's real live pools to reflect that (see
-      // isConnectionLive/liveConnectionIds) -- but a persisted connectionId
-      // itself is left alone: it's the tab's *assigned* connection, which
-      // ensureSessionConnected lazily reconnects on demand rather than this
-      // silently clearing it every time it isn't live yet.
+      // A tab's connectionId can be restored from a previous visit, but the
+      // server's pools don't survive a restart, so read which are open now
+      // (isConnectionLive). The tab's own id is left alone, for
+      // ensureSessionConnected to reconnect when the tab is opened. A tab
+      // with no connection stays without one: this used to give it the
+      // server's "selected" connection, another tab's database.
       const liveConnections = await client.listConnections();
 
       runInAction(() => {
         this.version = result.version ?? '0.0.0';
-        this.connection = result['connection-id'] || '';
-        this.assignConnectionColor(this.connection);
-
         // Fail open on a transient fetch failure -- leave the previous
         // liveConnectionIds alone rather than wiping the indicator out.
         if (liveConnections) {
-          this.liveConnectionIds = Array.from(
-            new Set(
-              [...liveConnections.connections.map(c => c.id), this.connection].filter(Boolean),
-            ),
-          );
+          this.liveConnectionIds = liveConnections.connections.map(c => c.id);
         }
-
-        if (this.connection) {
-          Object.values(this.sessions).forEach(session => {
-            if (!session.connectionId) {
-              session.connectionId = this.connection;
-            }
-          });
-          if (this.virtualSession && !this.virtualSession.connectionId) {
-            this.virtualSession.connectionId = this.connection;
-          }
-        }
-
       });
 
       await this.refreshConnections();
@@ -2929,12 +2877,11 @@ export class GlobalStore {
     } catch (e) {
       console.error('Failed to load connection metadata', e);
       runInAction(() => {
-        this.connection = '';
         this.version = undefined;
         this.serverRejected = e instanceof ServerRejectedError;
       });
     }
-    return this.connection;
+    return this.version;
   };
 
   getRequiresUpgrade = () => {

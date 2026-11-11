@@ -112,9 +112,11 @@ function makeFakeDeps(overrides = {}) {
   };
   const deps = {
     client: {
-      createConnection: async () => {
+      // pine-lang opens the pool under the id it is given: the saved
+      // connection's.
+      createConnection: async params => {
         calls.push('client.createConnection');
-        return 'conn-1';
+        return params.id;
       },
       build: async (...args) => {
         calls.push('client.build');
@@ -129,8 +131,8 @@ function makeFakeDeps(overrides = {}) {
       dbPassword: 'p',
     }),
     getOrCreateMcpSession: () => session,
-    getMcpConnectionId: () => undefined,
-    setMcpConnectionId: () => {},
+    isMcpConnectionOpen: () => false,
+    markMcpConnectionOpen: () => {},
     resolveAccessPolicyRules: async () => {
       calls.push('resolveAccessPolicyRules');
       return [{ type: 'foreign-key' }];
@@ -218,7 +220,7 @@ test("explainMcpQuery passes the connection's freshly-resolved accessPolicyRules
   assert.deepEqual(result.args, [
     ['user'],
     undefined,
-    'conn-1',
+    'p1',
     { rules: [{ type: 'column-name', suffix: '_id' }], mode: 'enforce' },
   ]);
 });
@@ -304,7 +306,7 @@ test("session.ts's accessPolicyRules getter derives from the connected profile's
     accessPolicies: [{ id: 'p1', name: 'X', rules: [{ type: 'foreign-key', enabled: true }] }],
     mcpSessionId: 'session-mcp',
   });
-  session.profileId = 'c1';
+  session.connectionId = 'c1';
   // An agent's query is running in it: that's when its tab is the agent's (Session.runsAsAgent).
   session.agentRunsInFlight = 1;
   assert.deepEqual(session.accessPolicyRules, [{ type: 'foreign-key' }]);
@@ -327,14 +329,14 @@ test('session.ts passes forMcp based on whether this session IS globalStore.mcpS
     mcpSessionId: 'session-mcp',
   };
   const mcpSession = new Session('mcp', fakeGlobalStore);
-  mcpSession.profileId = 'c1';
+  mcpSession.connectionId = 'c1';
   // An agent's query is running in it: that's when its tab is the agent's (Session.runsAsAgent).
   mcpSession.agentRunsInFlight = 1;
   // forMcp: true -- ignores applyPolicyToOwnQueries, sees the real rules.
   assert.deepEqual(mcpSession.accessPolicyRules, [{ type: 'foreign-key' }]);
 
   const humanSession = new Session('human-tab', fakeGlobalStore);
-  humanSession.profileId = 'c1';
+  humanSession.connectionId = 'c1';
   // forMcp: false -- this connection's owner never opted in to applying the
   // policy to their own queries, so this must come back empty even though
   // mcpEnabled is true and the policy itself is active.
@@ -351,7 +353,7 @@ test("global.store.ts's getOrCreateMcpSession always creates the dedicated MCP s
   // this session must resolve as the MCP caller because it IS mcpSessionId.
   g.connections = [{ id: 'c1', mcpEnabled: true, policyId: 'p1' }];
   g.accessPolicies = [{ id: 'p1', name: 'X', rules: [{ type: 'foreign-key', enabled: true }] }];
-  mcpSession.profileId = 'c1';
+  mcpSession.connectionId = 'c1';
   // An agent's query is running in it: that's when its tab is the agent's (Session.runsAsAgent).
   mcpSession.agentRunsInFlight = 1;
   assert.deepEqual(mcpSession.accessPolicyRules, [{ type: 'foreign-key' }]);
@@ -452,7 +454,7 @@ test('runMcpQuery runs SQL as Pine: converted with the connection id, evaluated 
         path: 'sql-to-pine',
         body: {
           query: '/* Why */ select * from company where id = $id',
-          'connection-id': 'conn-1',
+          'connection-id': 'p1',
         },
       },
     ]);
@@ -554,12 +556,12 @@ test('the MCP session enforces and a human tab on the same connection annotates'
     mcpSessionId: 'session-mcp',
   };
   const mcpSession = new Session('mcp', fakeGlobalStore);
-  mcpSession.profileId = 'c1';
+  mcpSession.connectionId = 'c1';
   // An agent's query is running in it: that's when its tab is the agent's (Session.runsAsAgent).
   mcpSession.agentRunsInFlight = 1;
   assert.equal(mcpSession.accessPolicy.mode, 'enforce');
   const humanSession = new Session('human-tab', fakeGlobalStore);
-  humanSession.profileId = 'c1';
+  humanSession.connectionId = 'c1';
   assert.equal(humanSession.accessPolicy.mode, 'annotate');
 });
 
@@ -589,7 +591,7 @@ test("the user's own run in an investigation's tab follows their own setting, no
     agentSessionIds: ['session-mcp'],
   };
   const tab = new Session('mcp', fakeGlobalStore);
-  tab.profileId = 'c1';
+  tab.connectionId = 'c1';
   // No agent query running: the user's own run. Their setting is off, so
   // nothing is masked, only annotated.
   assert.equal(tab.agentRunsInFlight, 0);

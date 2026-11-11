@@ -52,7 +52,7 @@ test('colours an older version kept under ids move to the hash, and keep their c
   assert.deepEqual(read(STORAGE_KEYS.CONNECTION_COLORS), { [HASH_A]: '#111111', [HASH_B]: '#222222' });
   assert.doesNotMatch(raw(STORAGE_KEYS.CONNECTION_COLORS), ADDRESS);
   assert.equal(store.getConnectionColor('profile-a'), '#111111');
-  assert.equal(store.getConnectionColor('prod.example.com:5432:shop'), '#222222', "pine's id finds it too");
+  assert.equal(store.getConnectionColor('profile-b'), '#222222', "the one kept under pine's id moved to its connection");
 });
 
 test("a colour under the saved connection's id wins over one under pine's id", async () => {
@@ -68,27 +68,28 @@ test('a new connection gets its colour under the hash', async () => {
   assert.deepEqual(Object.keys(colors).sort(), [HASH_A, HASH_B]);
 });
 
-test("tabs keep the saved connection's id and drop pine's id, which is an address", async () => {
+test("tabs older versions saved come back on their saved connection, never on a guess from pine's id", async () => {
   const { store, read, raw } = await desktopStore({
     [STORAGE_KEYS.SESSIONS]: {
       sessions: [
         { expression: 'a', inputMode: 'pine', connectionId: 'prod.example.com:5432:shop', profileId: 'profile-b' },
         { expression: 'b', inputMode: 'pine', connectionId: 'staging.example.com:5432:shop', profileId: '' },
-        { expression: 'c', inputMode: 'pine', connectionId: 'gone.example.com:5432:old', profileId: '' },
+        { expression: 'c', inputMode: 'pine', connectionId: 'profile-a' },
       ],
       activeIndex: 0,
     },
   });
+  const byExpression = e => Object.values(store.sessions).find(s => s.expression === e);
+  assert.equal(byExpression('a').connectionId, 'profile-b', 'the saved connection, not the address');
+  assert.equal(byExpression('b').connectionId, '', 'an address alone could be either of two saved connections');
+  assert.equal(byExpression('c').connectionId, 'profile-a', 'as this version saves it');
   const sessions = read(STORAGE_KEYS.SESSIONS).sessions;
   assert.deepEqual(
-    sessions.map(s => s.profileId),
-    ['profile-b', 'profile-a', ''],
-    "an old tab with only pine's id resolves to its saved connection",
+    sessions.map(s => s.connectionId),
+    ['profile-b', '', 'profile-a'],
   );
-  assert.ok(sessions.every(s => !('connectionId' in s)));
+  assert.ok(sessions.every(s => !('profileId' in s)));
   assert.doesNotMatch(raw(STORAGE_KEYS.SESSIONS), ADDRESS);
-  const first = Object.values(store.sessions).find(s => s.expression === 'a');
-  assert.equal(first.connectionId, 'prod.example.com:5432:shop', 'the open tab still knows it in memory');
 });
 
 test("a tab saved with only its saved connection's id reconnects at startup", async () => {
@@ -100,11 +101,15 @@ test("a tab saved with only its saved connection's id reconnects at startup", as
     asked.push(profileId);
     return {};
   };
-  store.establishConnection = async () => ({ id: 'prod.example.com:5432:shop', version: '0.54.0' });
+  const opened = [];
+  store.establishConnection = async params => {
+    opened.push(params.id);
+    return { id: params.id, version: '0.54.0' };
+  };
   // Pine comes up, which reconnects the open tab, as at startup.
   store.version = '0.54.0';
-  for (let i = 0; i < 20 && !store.connection; i++) await new Promise(r => setImmediate(r));
+  for (let i = 0; i < 20 && !store.isConnectionLive('profile-b'); i++) await new Promise(r => setImmediate(r));
   assert.deepEqual(asked, ['profile-b']);
-  assert.equal(store.sessions[store.activeSessionId].connectionId, 'prod.example.com:5432:shop');
-  assert.equal(store.connection, 'prod.example.com:5432:shop');
+  assert.deepEqual(opened, ['profile-b'], "the pool is opened under the saved connection's id");
+  assert.equal(store.sessions[store.activeSessionId].connectionId, 'profile-b');
 });

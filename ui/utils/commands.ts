@@ -2,7 +2,6 @@ import { runInAction } from 'mobx';
 import { GlobalStore } from '../store/global.store';
 import { Session } from '../store/session';
 import { getSchemaColor } from '../store/graph.util';
-import { isDesktop } from '../store/util';
 
 export type CommandCategory = 'View' | 'Query' | 'Preferences' | 'Experimental' | 'Help';
 
@@ -122,7 +121,7 @@ const COMMANDS: Command[] = [
     // the sidebar's connection menu does (switchActiveTabConnection).
     handler: async global => {
       if (!global.connectionsLoaded) await global.refreshConnections();
-      const current = isDesktop() ? global.activeProfileId : global.sessions[global.activeSessionId]?.connectionId;
+      const current = global.activeConnectionId;
       return global.connections.map(c => ({
         id: c.id,
         label: c.id === current ? `${c.label} (this tab)` : c.label,

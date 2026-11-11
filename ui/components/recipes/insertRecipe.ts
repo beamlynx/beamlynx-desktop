@@ -34,7 +34,7 @@ export function insertRecipe(global: GlobalStore, r: Recipe): string | null {
  */
 export function recipeHome(global: GlobalStore, r: Recipe): ConnectionInfo | undefined {
   const home = savedFromConnection(r.savedFrom, global.connections);
-  return home && home.id !== global.sessions[global.activeSessionId]?.profileId ? home : undefined;
+  return home && home.id !== global.activeConnectionId ? home : undefined;
 }
 
 /**

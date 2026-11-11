@@ -1,7 +1,6 @@
-// Pine names a server connection `user@host:port:dbname`, so the same
-// database can be open as two users at once. The UI finds the saved
-// connection behind each of those ids, and still finds one for the shorter
-// ids older versions saved.
+// On desktop a tab's connection id is its saved connection's id, and pine
+// opens the pool under it. Pine's own `user@host:port:dbname` id is only
+// read to move colours older versions stored under it.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { DevState } = require('../store/dev-state.ts');
@@ -39,13 +38,17 @@ test("pine's id holds the user, and leaves it out when there is none", () => {
   assert.equal(pineIdOf({ dbHost: '', dbPort: '', dbName: '/data/app.db' }), undefined, 'a SQLite file has no address');
 });
 
-test('the same database as two users: each id finds its own saved connection', async () => {
+test('a tab names its saved connection by that connection\'s own id', async () => {
   const store = await desktopStore();
-  assert.equal(store.getConnectionLabel('reader@db.example.com:5432:shop'), 'Reader');
-  assert.equal(store.getConnectionLabel('writer@db.example.com:5432:shop'), 'Writer');
+  assert.equal(store.getConnectionLabel('profile-reader'), 'Reader');
+  assert.equal(store.getConnectionLabel('profile-writer'), 'Writer');
 });
 
-test('an id an older version saved, without the user, still finds a saved connection', async () => {
+test('an address is never matched to a saved connection: two can share one', async () => {
+  // A local database and a tunnel to another server can both be
+  // localhost:5432. Matching by address picked the first, and labelled a
+  // tab with the other database.
   const store = await desktopStore();
-  assert.equal(store.getConnectionLabel('db.example.com:5432:shop'), 'Reader');
+  assert.equal(store.getConnectionLabel('reader@db.example.com:5432:shop'), 'reader@db.example.com:5432:shop');
+  assert.equal(store.getConnectionLabel('db.example.com:5432:shop'), 'db.example.com:5432:shop');
 });

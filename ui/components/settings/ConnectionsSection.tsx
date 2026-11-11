@@ -1103,8 +1103,10 @@ const ConnectionsSection = () => {
   const activeSession = global.sessions[global.activeSessionId];
 
   const handleSwitchTo = async (id: string) => {
+    // Already this tab's, and open. Picking it while it isn't open
+    // reconnects it.
+    if (id === global.activeConnectionId && global.isConnectionLive(id)) return;
     if (isDesktop()) {
-      if (id === global.activeProfileId) return;
       if (activeSession?.expression.trim()) {
         global.requestConnectionSwitch({ kind: 'connectToSavedProfile', id });
         return;
@@ -1121,7 +1123,6 @@ const ConnectionsSection = () => {
       }
       return;
     }
-    if (activeSession && id === activeSession.connectionId && id === global.connection) return;
     setSwitchingConnection(true);
     try {
       await global.selectConnection(id);
@@ -1208,9 +1209,7 @@ const ConnectionsSection = () => {
         )}
         {global.connections.map(
           ({ id, label, mcpEnabled, policyId, applyPolicyToOwnQueries }) => {
-            const isActive = isDesktop()
-              ? id === global.activeProfileId
-              : id === activeSession?.connectionId;
+            const isActive = id === activeSession?.connectionId;
             const isLive = global.isConnectionLive(id);
             return (
               <ConnectionRow
