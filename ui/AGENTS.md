@@ -50,6 +50,17 @@ Never add a second per-tab id, an app-wide "current connection", or a default a 
 
 Known exception: the web build has no saved connections, so its tabs and colours still use pine's id.
 
+## What runs is taken when the person acts
+
+Anything that runs a query or a write takes its target once, at the moment the person (or an agent) acts, and passes it along as values. That target is the connection, the expressions and the keys. Never read the tab again after an `await`: the tab, its connection, its text and its rows can all change while a request is out.
+
+- **Rows carry their stamp.** `Session.resultSource` records the connection and expressions of the run that produced the rows on screen. Grid edits, the JSON panel and result refreshes start from it, never from the editor's text.
+- **Each edit gets its own session** (`GlobalStore.createEditSession`). No session is shared between edits.
+- **A traversal keeps the connection it walked on.** It runs and names that connection only.
+- **Moving a tab to another database clears its results** (`Session.clearResults`).
+- **Anything that runs without a press of Run sends `allowWrites: false`,** and pine-lang refuses the write. A text check for `delete!` is for a friendlier message only.
+- **Fail closed.** An agent's query on a connection agents may not use gets `SHOW_NOTHING`, not `[]`.
+
 ## Reaching pine-lang from a hosted dev copy
 
 The UI calls pine-lang at the browser's `http://localhost:33333` (or the desktop bridge's URL). A dev copy served from somewhere else (a cloud preview) sets `PINE_SERVER_PROXY_URL` (e.g. `http://localhost:33333`) for `next dev`: next.config.js then forwards `/api/v1/*` to it, and `getBaseUrl` in `store/client.ts` returns `''` so the UI calls pine on its own origin. Unset, nothing changes. Not for the desktop static export.

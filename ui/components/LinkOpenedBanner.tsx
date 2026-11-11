@@ -10,7 +10,8 @@ import { useStores } from '../store/store-container';
  * DeepLinkHandler.tsx and Session.openedFromLink). The link's expression is
  * in the editor but has not run: anyone can write such a link. This names
  * the connection it would run on, so the person can check both before
- * pressing Run. Goes away on Dismiss or after the first run that succeeds.
+ * pressing Run. While it shows, a run can't change data (Session.evaluate).
+ * Goes away on Dismiss or after the first run that succeeds.
  */
 const LinkOpenedBanner = observer(({ session }: { session: SessionType }) => {
   const { global } = useStores();
@@ -38,7 +39,7 @@ const LinkOpenedBanner = observer(({ session }: { session: SessionType }) => {
         <Box component="span" sx={{ fontWeight: 600 }}>
           {connectionLabel}
         </Box>
-        ), then press Run.
+        ), then press Run. It can&apos;t change data until you dismiss this.
       </Typography>
       <Button
         size="small"

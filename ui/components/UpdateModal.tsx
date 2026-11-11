@@ -13,6 +13,10 @@ interface UpdateData {
   value: string;
   alias: string;
   updateExpression: string;
+  // The edit's own session (GlobalStore.createEditSession), on the
+  // connection the edited rows came from. What the dialog shows is what it
+  // runs, there.
+  session: Session;
 }
 
 interface UpdateModalProps {
@@ -31,10 +35,11 @@ interface UpdateModalProps {
 const UpdateModal: React.FC<UpdateModalProps> = observer(
   ({ updateExpression, updateData, open, onClose }) => {
     const { global } = useStores();
-    const vs = global.getVirtualSession();
+    const vs = updateData?.session;
     const [title, setTitle] = useState('Review Update Query');
 
     const onRun = async () => {
+      if (!vs) return;
       try {
         // Execute the update query
         const rows = await vs.evaluate();
@@ -57,7 +62,7 @@ const UpdateModal: React.FC<UpdateModalProps> = observer(
     useEffect(() => {
       // Null while the dialog is closed or on its way out -- there is
       // nothing to set up for a dialog nobody is opening.
-      if (!updateData) return;
+      if (!updateData || !vs) return;
       const { column, alias } = updateData;
 
       // Reset virtual session state
@@ -75,9 +80,9 @@ const UpdateModal: React.FC<UpdateModalProps> = observer(
         vs.expression = updateExpression;
       });
 
-      // Update title to be more specific
-      setTitle(`Update ${alias}.${column}`);
-    }, [updateData, vs, updateExpression]);
+      // Update title to be more specific, naming the database it runs on.
+      setTitle(`Update ${alias}.${column} on ${global.getConnectionLabel(vs.connectionId)}`);
+    }, [updateData, vs, updateExpression, global]);
 
     return (
       <ModalSurface
@@ -129,7 +134,7 @@ const UpdateModal: React.FC<UpdateModalProps> = observer(
         </Box>
 
         {/* The Input component */}
-        <Input session={vs} onRun={onRun} />
+        {vs && <Input session={vs} onRun={onRun} />}
       </ModalSurface>
     );
   },

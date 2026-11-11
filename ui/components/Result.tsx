@@ -2,8 +2,8 @@ import { runInAction } from 'mobx';
 import { observer } from 'mobx-react-lite';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useStores } from '../store/store-container';
-import type { Row, Session } from '../store/session';
-import { describesTable } from '../store/blocks';
+import type { ResultSource, Row, Session } from '../store/session';
+import { describesTable, editBase } from '../store/blocks';
 import {
   Box,
   IconButton,
@@ -116,12 +116,19 @@ interface UpdateData {
   value: string;
   alias: string;
   updateExpression: string;
+  // This edit's own session (GlobalStore.createEditSession), on the
+  // connection the edited rows came from. The dialog shows and runs it.
+  session: Session;
 }
 
 interface JsonPanelState {
   id: string | number;
   field: string;
   editing: boolean;
+  // The result the panel was opened on (Session.resultSource, compared by
+  // identity). `id` is a row's position in that result only: once another
+  // result replaces it, the same position is another row.
+  source: ResultSource | null;
 }
 
 const Result: React.FC<ResultProps> = observer(({ sessionId, session: blockSession }) => {
@@ -436,8 +443,8 @@ const Result: React.FC<ResultProps> = observer(({ sessionId, session: blockSessi
   };
 
   // The panel's own Save button - runs the same direct-execute update every
-  // other cell's Enter-to-commit already does (createUpdateExpression below
-  // + a virtual-session evaluate), just reached from the panel instead of
+  // other cell's Enter-to-commit already does (runUpdate below, in its own
+  // edit session), just reached from the panel instead of
   // the grid's cell editor (JSON cells are never edited inline - see the
   // columns memo above). Returns whether the commit succeeded so the panel
   // knows whether to show its own inline "Invalid JSON" state or flip back
@@ -446,6 +453,17 @@ const Result: React.FC<ResultProps> = observer(({ sessionId, session: blockSessi
     if (!jsonPanel) return false;
     const minified = minifyJsonText(text);
     if (!minified.ok) return false;
+    // The rows changed since the panel opened: its row's position now
+    // names another row, maybe in another table or database.
+    if (jsonPanel.source !== session.resultSource) {
+      setNotice({ kind: 'error', text: "Couldn't save: the results changed since you opened this value. Open it again." });
+      return false;
+    }
+    const source = editSource();
+    if ('error' in source) {
+      setNotice({ kind: 'error', text: `Couldn't save: ${source.error}.` });
+      return false;
+    }
     const alias = session.columnMetadata.colIndexToAliasLookup[jsonPanel.field];
     const rowData = rows.find(row => row._id === jsonPanel.id);
     if (!rowData) {
@@ -467,7 +485,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId, session: blockSessi
       setNotice({ kind: 'error', text: `Couldn't save ${target.name}: ${key}` });
       return false;
     }
-    if (!(await runUpdate(target, key))) return false;
+    if (!(await runUpdate(source, target, key))) return false;
     // Close rather than flip back to view mode: session.evaluate() just
     // rebuilt `rows`, and `_id` is a positional index re-assigned on every
     // evaluation (see default.plugin.tsx), not a stable row identity - if
@@ -625,7 +643,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId, session: blockSessi
                 label: 'Run again',
                 onClick: () => {
                   setNotice(null);
-                  void session.evaluate();
+                  void session.refreshResult();
                 },
               },
             ]
@@ -828,15 +846,43 @@ const Result: React.FC<ResultProps> = observer(({ sessionId, session: blockSessi
     return { alias, name: column, column, assignment: `${column} = ${pineString(value)}` };
   };
 
+  // Where the rows being edited came from (Session.resultSource), read once
+  // when the person edits, before anything waits. Every later step of the
+  // edit uses this, never the tab's connection or text as they are by then.
+  const editSource = (row?: Row): ResultSource | { error: string } => {
+    // A cell editor keeps the row it was opened on. If a run replaced the
+    // rows since, that row isn't in them, and the key would be read through
+    // the new result's columns.
+    if (row && !session.rows.includes(row)) {
+      return { error: 'the results changed while you were editing. Edit the value again' };
+    }
+    const source = session.resultSource;
+    if (!source || source.language !== 'pine') {
+      return { error: 'only the rows of a Pine query can be edited' };
+    }
+    // The tab clears its rows when it moves to another database, so this
+    // shouldn't happen. If it does, nothing runs: the tab names one
+    // database and the rows are from another.
+    if (source.connectionId !== session.connectionId) {
+      return { error: 'these rows came from another database than this tab’s. Run the query again' };
+    }
+    return source;
+  };
+
   // Enter in a cell's editor: run the update straight away, without the
   // dialog. The dialog is for the editor's Inspect button (inspectEdit).
   const commitEdit = async (row: Row, field: string, value: string) => {
+    const source = editSource(row);
+    if ('error' in source) {
+      setNotice({ kind: 'error', text: `Couldn't save: ${source.error}.` });
+      return;
+    }
     const target = editTarget(row, field, value);
     if (!target) return;
     if ('error' in target) {
       setNotice({ kind: 'error', text: `Couldn't save ${target.name}: ${target.error}` });
       // The grid shows the typed text until the next result arrives.
-      await session.evaluate();
+      await session.refreshResult();
       return;
     }
     const key = rowKey(row, target.alias);
@@ -844,30 +890,21 @@ const Result: React.FC<ResultProps> = observer(({ sessionId, session: blockSessi
       setNotice({ kind: 'error', text: `Couldn't save ${target.name}: ${key}` });
       return;
     }
-    await runUpdate(target, key);
+    await runUpdate(source, target, key);
   };
 
-  // Runs one update through the virtual session, then re-runs this tab's
-  // query so the grid shows what the database now holds (after a failure,
-  // the value that is still there). A save that worked glows in its cell and
-  // says so briefly; a failure says why.
-  const runUpdate = async (target: EditTarget, key: KeyValue[]): Promise<boolean> => {
+  // Runs one update in its own edit session, on the connection the rows
+  // came from, then re-runs this tab's query so the grid shows what the
+  // database now holds (after a failure, the value that is still there). A
+  // save that worked glows in its cell and says so briefly; a failure says
+  // why.
+  const runUpdate = async (source: ResultSource, target: EditTarget, key: KeyValue[]): Promise<boolean> => {
     const { alias, name, column, path } = target;
     let error = '';
     try {
-      const updateExpression = await createUpdateExpression(
-        session.expression,
-        alias,
-        key,
-        target.assignment,
-        { requireRow: true },
-      );
-      const vs = global.getVirtualSession();
-      runInAction(() => {
-        vs.expression = updateExpression;
-      });
-      await vs.evaluate();
-      error = vs.error;
+      const edit = await createUpdateSession(source, alias, key, target.assignment, { requireRow: true });
+      await edit.evaluate();
+      error = edit.error;
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     }
@@ -876,7 +913,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId, session: blockSessi
         ? { kind: 'error', text: `Couldn't save ${name}: ${error}` }
         : { kind: 'success', text: `Saved ${name}` },
     );
-    await session.evaluate();
+    await session.refreshResult();
     if (!error) {
       // Where the row and the column are now: the re-run can reorder rows,
       // and field indices belong to one result, not the next.
@@ -907,38 +944,30 @@ const Result: React.FC<ResultProps> = observer(({ sessionId, session: blockSessi
   };
 
   const handleModalClose = () => {
-    session.evaluate();
+    void session.refreshResult();
     setUpdateData(undefined);
   };
 
-  // Helper function to create update expression
-  const createUpdateExpression = async (
-    baseExpression: string,
+  // Builds one edit's `update!` in a new session of its own, on the
+  // connection the rows came from, starting from the blocks that produced
+  // them (editBase). Returns that session, ready to run or to show.
+  const createUpdateSession = async (
+    source: ResultSource,
     alias: string,
     key: KeyValue[],
     assignment: string,
     { requireRow = false }: { requireRow?: boolean } = {},
-  ) => {
-    const vs = global.getVirtualSession();
-
-    // Reset virtual session state
-    vs.setMessage('');
+  ): Promise<Session> => {
+    const edit = global.createEditSession(source.connectionId);
     runInAction(() => {
-      vs.error = '';
-      vs.loading = false;
+      edit.expression = editBase(source.expressions);
     });
-    vs.setInputMode('pine');
-
-    // Set up the update query
-    runInAction(() => {
-      vs.expression = baseExpression;
-    });
-    await vs.prettify();
-    await vs.pipeAndUpdateExpression(`from: ${alias}`);
+    await edit.prettify();
+    await edit.pipeAndUpdateExpression(`from: ${alias}`);
     // One where: step per key column. Separate steps combine with AND;
     // inside one where:, conditions can only be joined with `or`.
     for (const { column: keyColumn, value: keyValue } of key) {
-      await vs.pipeAndUpdateExpression(
+      await edit.pipeAndUpdateExpression(
         `where: ${keyColumn} = ${Number.isInteger(keyValue) ? String(keyValue) : pineString(String(keyValue))}`,
       );
     }
@@ -947,14 +976,13 @@ const Result: React.FC<ResultProps> = observer(({ sessionId, session: blockSessi
     // update can't change more than that one. The count can still be above
     // one: in `employee | document`, an employee appears once per document.
     if (requireRow) {
-      const matching = await vs.countRows();
+      const matching = await edit.countRows();
       if (matching === 0) {
         throw new Error('the row is no longer there');
       }
     }
-    await vs.pipeAndUpdateExpression(`update! ${assignment}`);
-
-    return vs.expression;
+    await edit.pipeAndUpdateExpression(`update! ${assignment}`);
+    return edit;
   };
 
   // Inspect action for JsonInspectorPanel's own "Inspect" button (edit mode
@@ -975,6 +1003,11 @@ const Result: React.FC<ResultProps> = observer(({ sessionId, session: blockSessi
   // The cell editor's Inspect button: build the update and show it in
   // UpdateModal instead of running it.
   const inspectEdit = async (row: Row, field: string, value: string) => {
+    const source = editSource(row);
+    if ('error' in source) {
+      setNotice({ kind: 'error', text: `Can't edit: ${source.error}.` });
+      return;
+    }
     const target = editTarget(row, field, value);
     if (!target) return;
     if ('error' in target) {
@@ -986,13 +1019,14 @@ const Result: React.FC<ResultProps> = observer(({ sessionId, session: blockSessi
       setNotice({ kind: 'error', text: `Can't edit ${target.name}: ${key}` });
       return;
     }
-    const updateExpression = await createUpdateExpression(
-      session.expression,
-      target.alias,
-      key,
-      target.assignment,
-    );
-    setUpdateData({ column: target.name, value, alias: target.alias, updateExpression });
+    const edit = await createUpdateSession(source, target.alias, key, target.assignment);
+    setUpdateData({
+      column: target.name,
+      value,
+      alias: target.alias,
+      updateExpression: edit.expression,
+      session: edit,
+    });
   };
 
   const exportToCSV = () => {
@@ -1174,6 +1208,7 @@ const Result: React.FC<ResultProps> = observer(({ sessionId, session: blockSessi
                 setJsonPanel({
                   id: row._id,
                   field,
+                  source: session.resultSource,
                   editing: !readOnlyReasonOfCell(field, row),
                 })
               }

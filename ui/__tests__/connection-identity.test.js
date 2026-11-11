@@ -20,7 +20,7 @@ const SAVED = {
 
 // A fake pine-lang. `delays` holds a connection id's connect time, in ms.
 function fakeServer({ delays = {} } = {}) {
-  const server = { pools: new Set(), requests: [], deleted: [] };
+  const server = { pools: new Set(), requests: [], bodies: [], deleted: [] };
   global.fetch = async (url, init = {}) => {
     const body = init.body ? JSON.parse(init.body) : {};
     const path = String(url).replace(/^.*\/api\/v1\//, '');
@@ -42,6 +42,7 @@ function fakeServer({ delays = {} } = {}) {
     } else {
       const id = body['connection-id'];
       server.requests.push({ path, connectionId: id });
+      server.bodies.push({ path, ...body });
       json = id
         ? { 'connection-id': id, ast: { hints: { table: [] } }, result: [], columns: [] }
         : { 'error-type': 'no-connection', error: 'No connection given.' };
@@ -214,19 +215,71 @@ test('a new connection is checked, saved, and then opened under its saved id', a
   assert.deepEqual(server.deleted, ['dev@localhost:5432:app'], 'the pool opened only to check it is closed');
 });
 
-test("a cell edit writes to the open tab's database, not the one connected last", async () => {
+test('a result is stamped with what its run sent, not with what the editor says by the time it lands', async () => {
+  const { store } = await started();
+  await store.connectToSavedProfile('local');
+  const tab = store.sessions[store.activeSessionId];
+  runInAction(() => (tab.expression = 'customer'));
+  const fetch = global.fetch;
+  global.fetch = async (url, init) => {
+    if (String(url).endsWith('/eval')) {
+      await wait(50);
+      return { ok: true, status: 200, json: async () => ({ 'connection-id': 'local', result: [['id'], [1]], columns: [{ column: 'id', alias: 'c_0' }] }) };
+    }
+    return fetch(url, init);
+  };
+  const running = tab.evaluate();
+  runInAction(() => (tab.expression = 'company')); // typed while it runs
+  await running;
+  assert.deepEqual(tab.resultSource, { connectionId: 'local', expressions: ['customer'], language: 'pine' });
+  assert.equal(tab.expressionAtLastEval, 'customer');
+});
+
+test('a tab moved to another database shows nothing from the last one', async () => {
+  const { store } = await started();
+  await store.connectToSavedProfile('local');
+  const tab = store.sessions[store.activeSessionId];
+  runInAction(() => {
+    tab.rows = [{ 0: 1, _id: 0 }];
+    tab.resultSource = { connectionId: 'local', expressions: ['customer'], language: 'pine' };
+  });
+  await store.connectToSavedProfile('prod');
+  assert.deepEqual(tab.rows, []);
+  assert.equal(tab.resultSource, null, 'so nothing on screen can be edited on Prod');
+});
+
+test("a cell edit's session stays on the connection it was made for, whatever the tabs do", async () => {
   const { server, store } = await started();
   const tab1 = store.activeSessionId;
   await store.connectToSavedProfile('local');
+  // What Result.tsx does: a session of the edit's own, on the rows' connection.
+  const edit = store.createEditSession('local');
   store.addTab();
   await store.connectToSavedProfile('prod');
-  runInAction(() => (store.activeSessionId = tab1));
-
-  // What Result.tsx does to save an edited cell.
-  const vs = store.getVirtualSession();
-  runInAction(() => (vs.expression = "user | where: id = 1 | update! name = 'x'"));
-  await vs.evaluate();
+  assert.equal(store.activeSessionId !== tab1, true);
+  runInAction(() => (edit.expression = "customer | where: id = 1 | update! name = 'x'"));
+  await edit.evaluate();
   assert.deepEqual(server.requests.at(-1), { path: 'eval', connectionId: 'local' });
+  assert.ok(!Object.values(store.sessions).includes(edit), 'shared with nothing');
+});
+
+test('a delete plan runs only on the database it was walked on', async () => {
+  const { server, store } = await started();
+  await store.connectToSavedProfile('prod');
+  const tab = store.sessions[store.activeSessionId];
+  // A plan from Local still showing, with the tab on Prod.
+  runInAction(() => {
+    tab.traversal = {
+      verb: 'delete', connectionId: 'local', rootExpression: 'customer', status: 'done',
+      nodes: [{ expression: 'customer', count: 1 }], depthCapped: false, script: 'DELETE …',
+      queries: ['DELETE FROM customer'], error: null, run: 'confirming', outcomes: [], runFrom: 0,
+    };
+  });
+  const before = server.requests.length;
+  await tab.confirmTraversalRun();
+  assert.equal(server.requests.length, before, 'nothing ran');
+  assert.match(tab.traversal.error, /another database/);
+  assert.match(tab.traversalConnectionLabel, /^Local/, 'the confirmation names the plan’s database');
 });
 
 test("two saved connections to one address are two connections, each named by its own id", async () => {
@@ -238,4 +291,106 @@ test("two saved connections to one address are two connections, each named by it
   await store.connectToSavedProfile('tunnel');
   assert.ok(server.pools.has('local') && server.pools.has('tunnel'));
   assert.equal(store.getConnectionLabel(store.activeConnectionId), 'Prod via tunnel');
+});
+
+test('auto-run asks pine-lang to refuse writes, so a write it misses still never runs', async () => {
+  const { mayChangeData } = require('../store/canvas/pine-text.ts');
+  // Pine reads a comment as a space: these are deletes.
+  assert.equal(mayChangeData('user | /* x */ delete! .id'), true);
+  assert.equal(mayChangeData('user |-- x\n d! .id'), true);
+
+  const { server, store } = await started();
+  await store.connectToSavedProfile('local');
+  const tab = store.sessions[store.activeSessionId];
+  runInAction(() => (tab.expression = 'user'));
+  tab.notifyCanvasCommit();
+  await wait(300);
+  assert.equal(server.bodies.filter(b => b.path === 'eval').at(-1)['allow-writes'], false);
+});
+
+test("refreshing the grid runs what produced its rows, read-only, never the editor's text", async () => {
+  const { server, store } = await started();
+  await store.connectToSavedProfile('local');
+  const tab = store.sessions[store.activeSessionId];
+  runInAction(() => {
+    tab.resultSource = { connectionId: 'local', expressions: ['customer | where: id = 5'], language: 'pine' };
+    tab.expression = 'customer | where: id = 5 | delete! .id'; // typed, never run
+  });
+  await tab.refreshResult();
+  const sent = server.bodies.filter(b => b.path === 'eval').at(-1);
+  assert.deepEqual(sent.expressions, ['customer | where: id = 5']);
+  assert.equal(sent['allow-writes'], false);
+});
+
+test('a run of several blocks stops when the tab moves to another database', async () => {
+  const { server, store } = await started({ delays: {} });
+  await store.connectToSavedProfile('prod');
+  const tab = store.sessions[store.activeSessionId];
+  runInAction(() => (tab.expression = 'customer\n\ncompany\n\norder | delete! .id'));
+  const fetch = global.fetch;
+  let evals = 0;
+  global.fetch = async (url, init) => {
+    if (String(url).endsWith('/eval') && ++evals === 1) await wait(80);
+    return fetch(url, init);
+  };
+  const running = tab.run();
+  await wait(20);
+  await store.connectToSavedProfile('local'); // during the first block
+  await running;
+  const ran = server.bodies.filter(b => b.path === 'eval');
+  assert.equal(ran.length, 1, 'only the block already running ran');
+  assert.equal(ran[0]['connection-id'], 'prod');
+});
+
+test("raw SQL doesn't run in an agent's tab, or where masking applies to your own queries", async () => {
+  const { server, store } = await started();
+  await store.connectToSavedProfile('local');
+  const tab = store.sessions[store.activeSessionId];
+  runInAction(() => {
+    tab.inputMode = 'sql';
+    store.connections = store.connections.map(c =>
+      c.id === 'local' ? { ...c, policyId: 'p', applyPolicyToOwnQueries: true } : c,
+    );
+    store.accessPolicies = [{ id: 'p', name: 'p', rules: [{ id: 'r', type: 'foreign-key', enabled: true }] }];
+  });
+  const before = server.requests.length;
+  await tab.evaluate();
+  assert.equal(server.requests.filter(r => r.path === 'sql').length, 0);
+  assert.equal(server.requests.length, before);
+  assert.match(tab.error, /can’t be masked/);
+});
+
+test("a link's query can't change data until its banner is dismissed", async () => {
+  const { server, store } = await started();
+  await store.connectToSavedProfile('local');
+  const tab = store.sessions[store.activeSessionId];
+  runInAction(() => {
+    tab.expression = 'customer | delete! .id';
+    tab.openedFromLink = true; // what DeepLinkHandler sets
+  });
+  await tab.evaluate();
+  assert.equal(server.bodies.filter(b => b.path === 'eval').at(-1)['allow-writes'], false);
+  runInAction(() => (tab.openedFromLink = false)); // Dismiss
+  await tab.evaluate();
+  assert.equal(server.bodies.filter(b => b.path === 'eval').at(-1)['allow-writes'], undefined);
+});
+
+test("an older run finishing after a newer one doesn't replace its rows", async () => {
+  const { store } = await started();
+  await store.connectToSavedProfile('local');
+  const tab = store.sessions[store.activeSessionId];
+  const fetch = global.fetch;
+  let n = 0;
+  global.fetch = async (url, init) => {
+    if (String(url).endsWith('/eval')) {
+      const which = ++n;
+      await wait(which === 1 ? 80 : 10);
+      return { ok: true, status: 200, json: async () => ({ 'connection-id': 'local', result: [['run'], [which]], columns: [{ column: 'run' }] }) };
+    }
+    return fetch(url, init);
+  };
+  const older = tab.evaluate();
+  const newer = tab.evaluate();
+  await Promise.all([older, newer]);
+  assert.equal(tab.rows[0][0], 2);
 });

@@ -126,6 +126,20 @@ export function blocksForBuild(blocks: ExpressionBlock[], activeIdx: number): st
   ];
 }
 
+/**
+ * The Pine a grid edit starts from: the blocks the run that produced the
+ * rows sent (Session.resultSource), with values blocks first. The query
+ * block whose rows are on screen is then the last block, and the edit's
+ * `from:`, `where:` and `update!` follow it. Built from the tab's whole text,
+ * an edit of the first of several queries landed on the last one, on
+ * another table if its alias was the same.
+ */
+export function editBase(expressions: string[]): string {
+  const values = expressions.filter(isValuesBlock);
+  const queries = expressions.filter(text => !isValuesBlock(text));
+  return [...values, ...queries].join('\n\n');
+}
+
 /** A block's first line, as its title: a leading comment's words, or the
  * start of the query. */
 export function blockTitle(text: string): string {

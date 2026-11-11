@@ -88,6 +88,19 @@ export type SqlConversion = {
 export type Row = { [key: string]: any };
 
 /**
+ * Where the rows on screen came from: exactly what the run that produced
+ * them sent. Taken when the run starts and kept with its rows. Editing a
+ * cell builds its `update!` from this, never from the editor's text or the
+ * tab's connection as they are later.
+ */
+export type ResultSource = {
+  connectionId: string;
+  // The blocks the run sent, in order. The rows are the last query block's.
+  expressions: string[];
+  language: InputMode;
+};
+
+/**
  * One block's part of a Run that ran more than one block. Its result lives in
  * a session of its own, whose expression is the blocks up to this one, so
  * the results grid can show it, and edit its cells, like any tab's.
@@ -249,6 +262,16 @@ export class Session {
 
   /** Expression/query that was last successfully evaluated (for coloring only after eval) */
   expressionAtLastEval: string = '';
+
+  /** See ResultSource. Null while no rows are shown. */
+  resultSource: ResultSource | null = null;
+
+  /**
+   * Counts the runs started in this tab. Only the latest one's answer is
+   * shown: a slower earlier run finishing last used to replace the rows of
+   * the run after it.
+   */
+  evalSeq = 0;
 
   /** Result */
   loading: boolean = false; // observable
@@ -616,7 +639,17 @@ export class Session {
       // Replaced whole on every move (updateCursorPosition).
       cursorPosition: observable.ref,
       candidate: observable.ref,
+      // Replaced whole with each result, never edited.
+      resultSource: observable.ref,
     });
+
+    // A tab moved to another database shows nothing from the last one: its
+    // rows, a delete plan or block results stayed on screen under the new
+    // database's name, and could be edited or run from there.
+    reaction(
+      () => this.connectionId,
+      () => this.clearResults(),
+    );
 
     /** Evaluation plugins */
     this.plugins = {
@@ -654,7 +687,10 @@ export class Session {
       // of session.inputMode, instead of silently no-oping (or, worse,
       // running stale/unrelated SQL text) whenever the SQL panel happens to
       // be the one showing. See EvaluateOptions.forcePine.
-      void this.evaluate({ forcePine: true });
+      // allowWrites: false, so pine-lang itself refuses a write: the text
+      // check above is only for a friendly message, and a text check can
+      // be fooled (a comment before `delete!` once got past it).
+      void this.evaluate({ forcePine: true, allowWrites: false });
     }, 150);
 
     // Longer than auto-run's 150 ms: it is a request on every pause in
@@ -1117,7 +1153,10 @@ export class Session {
     // Nothing can follow describe: or references:, so the walk starts from the
     // query without them (see CanvasStore.openTraversePicker).
     const rootExpression = withoutDescribe(this.expression).trim();
-    if (!rootExpression) return;
+    // Taken once: every later step of this walk uses it, never the tab's
+    // connection read again after a wait.
+    const connectionId = this.connectionId;
+    if (!rootExpression || !connectionId) return;
     this.getCanvasStore().closePicker();
 
     const signal = { cancelled: false };
@@ -1129,6 +1168,7 @@ export class Session {
       this.mode = 'result';
       this.traversal = {
         verb,
+        connectionId,
         rootExpression,
         status: 'walking',
         nodes: [],
@@ -1144,7 +1184,7 @@ export class Session {
 
     try {
       const result = await runTraversal(traversalClient, rootExpression, {
-        connectionId: this.connectionId,
+        connectionId,
         signal,
         onNode: node =>
           runInAction(() => {
@@ -1161,7 +1201,7 @@ export class Session {
       }
       const plan =
         verb === 'delete'
-          ? await buildDeleteScript(traversalClient, result.nodes, this.connectionId)
+          ? await buildDeleteScript(traversalClient, result.nodes, connectionId)
           : null;
       runInAction(() => {
         if (!this.traversal || this.traversalSeq !== seq) return;
@@ -1206,10 +1246,12 @@ export class Session {
       dbHost?: string;
       dbName?: string;
     }[];
-    // The same id the delete runs on (runDeleteScript below), so the name
-    // here is always the database the rows leave.
-    const match = connections.find(c => c.id === this.connectionId);
-    if (!match) return this.connectionId || 'this connection';
+    // The connection the plan was made on and the deletes run on
+    // (confirmTraversalRun), so the name here is always the database the
+    // rows leave.
+    const connectionId = this.traversal?.connectionId ?? this.connectionId;
+    const match = connections.find(c => c.id === connectionId);
+    if (!match) return connectionId || 'this connection';
     const where = [match.dbHost, match.dbName].filter(Boolean).join('/');
     return where ? `${match.label ?? match.id} (${where})` : (match.label ?? match.id);
   }
@@ -1246,6 +1288,16 @@ export class Session {
     // changed, only how far through them we are.
     const resuming = traversal.run === 'paused' || traversal.run === 'failed';
     if (traversal.run !== 'confirming' && !resuming) return;
+    // The plan and its counts are from the walk's database. If the tab is on
+    // another one now, nothing runs: the counts on screen would describe
+    // the wrong rows.
+    if (traversal.connectionId !== this.connectionId) {
+      runInAction(() => {
+        traversal.run = 'idle';
+        traversal.error = 'This tab is on another database than the one this plan was made on. Walk again before deleting.';
+      });
+      return;
+    }
 
     const signal = { cancelled: false };
     this.runSignal = signal;
@@ -1264,7 +1316,7 @@ export class Session {
       traversalClient,
       traversal.nodes,
       traversal.queries,
-      this.connectionId,
+      traversal.connectionId,
       outcome =>
         runInAction(() => {
           if (this.traversal !== traversal) return;
@@ -1315,6 +1367,42 @@ export class Session {
     this.cancelTraversal();
     runInAction(() => {
       this.traversal = null;
+    });
+  }
+
+  /**
+   * Runs again the query whose rows are on screen (resultSource), to show
+   * what the database holds now: after a cell is saved, or a masking change.
+   * Never the editor's text, which may have changed since, or may be an
+   * unrun `delete!`. Never writes, and only on the connection the rows came
+   * from, while it is still the tab's.
+   */
+  public async refreshResult() {
+    const source = this.resultSource;
+    if (!source || source.language !== 'pine' || source.connectionId !== this.connectionId) return [];
+    return this.evaluate({ forcePine: true, expressions: source.expressions, allowWrites: false });
+  }
+
+  /**
+   * Takes every result off the tab: rows, a traversal and its delete plan,
+   * and block results. A walk in progress is stopped, and so is a delete
+   * run, after the statement in flight: it would otherwise go on deleting
+   * with nothing left on screen to show it. A query in flight is left to
+   * finish: its answer is dropped, since the tab's connection changed
+   * (plugin/default.plugin.tsx).
+   */
+  clearResults() {
+    if (this.traversalSignal) this.traversalSignal.cancelled = true;
+    if (this.runSignal) this.runSignal.cancelled = true;
+    runInAction(() => {
+      this.rows = [];
+      this.columns = [];
+      this.resultSource = null;
+      this.expressionAtLastEval = '';
+      this.traversal = null;
+      this.blockRuns = [];
+      this.rowCap = null;
+      this.tableAliases = [];
     });
   }
 
@@ -1385,7 +1473,8 @@ export class Session {
     // Pine, as from the Pine panel.
     const sqlRun = this.inputMode === 'sql' && !this.blockSql;
     if (sqlRun || this.isAgentSession) return this.evaluate();
-    const blocks = splitExpressions(this.expression);
+    const ranText = this.expression;
+    const blocks = splitExpressions(ranText);
     const chosen = blocksToRun(blocks, this.inputMode === 'sql' ? null : this.pineSelection);
     if (chosen.length <= 1) {
       const only = chosen[0];
@@ -1395,9 +1484,17 @@ export class Session {
       });
     }
 
+    // Every block runs on the connection the tab had when Run was pressed,
+    // and none runs once the tab has moved to another (the loop below).
+    // Each block's own session can't see that: it copied the id once.
+    const connectionId = this.connectionId;
+    if (!connectionId || this.connecting) return this.evaluate({ forcePine: true });
     const runs: BlockRun[] = chosen.map(index => {
       const session = new Session(`${this.id}-block-${index}`, this.globalStore);
-      session.connectionId = this.connectionId;
+      session.connectionId = connectionId;
+      // A link's blocks can't change data either, until its banner is
+      // dismissed (evaluate).
+      session.openedFromLink = this.openedFromLink;
       session.expression = blocksForBuild(blocks, index).join('\n\n');
       return { index, text: blocks[index].text, session, state: 'waiting' };
     });
@@ -1420,7 +1517,7 @@ export class Session {
     try {
       let failed = false;
       for (const run of runs) {
-        if (failed || this.blockRunStopped) {
+        if (failed || this.blockRunStopped || this.connectionId !== connectionId) {
           setState(run, 'skipped');
           continue;
         }
@@ -1433,7 +1530,7 @@ export class Session {
       runInAction(() => {
         this.loading = false;
         if (this.runId === BLOCK_RUN_ID) this.runId = null;
-        this.expressionAtLastEval = this.expression;
+        this.expressionAtLastEval = ranText;
       });
     }
     return [];
@@ -1455,9 +1552,11 @@ export class Session {
     // (allow-writes defaults to allowed server-side, for the person's own
     // editor). It also covers the person pressing Run on an agent's tab,
     // where the expression on screen is the agent's, not theirs.
-    const effectiveOpts: EvaluateOptions | undefined = this.isAgentSession
-      ? { ...opts, allowWrites: false }
-      : opts;
+    // The same while a beamlynx://run link's expression is still as it came:
+    // any web page, or an agent (open_in_desktop), can write such a link.
+    // It reads, but changes nothing until the person dismisses the banner.
+    const effectiveOpts: EvaluateOptions | undefined =
+      this.isAgentSession || this.openedFromLink ? { ...opts, allowWrites: false } : opts;
     // An agent's runs are counted in runMcpQuery, which knows whether the
     // agent sent SQL.
     if (!this.isAgentSession) {
@@ -1489,6 +1588,8 @@ export class Session {
     runInAction(() => {
       this.expression = snapshot.expression;
       this.expressionAtLastEval = snapshot.expression;
+      // Kept rows from an earlier step, not this run's: nothing to edit from.
+      this.resultSource = null;
       this.columns = snapshot.columns;
       this.rows = snapshot.rows;
       this.runMs = null;

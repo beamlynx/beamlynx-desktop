@@ -39,5 +39,22 @@ test('switching a tab that has a query in it asks first', async () => {
     s.sessions[s.activeSessionId].expression = 'company';
   });
   await s.switchActiveTabConnection('b');
-  assert.deepEqual(s.pendingConnectionSwitch, { kind: 'select', connectionId: 'b' });
+  // With the tab it was asked for: confirming applies it there.
+  assert.deepEqual(s.pendingConnectionSwitch, { kind: 'select', connectionId: 'b', sessionId: s.activeSessionId });
+});
+
+test('confirming a switch applies it to the tab it was asked for, not the one open by then', async () => {
+  const s = new GlobalStore();
+  const asked = s.activeSessionId;
+  runInAction(() => {
+    s.connections = [{ id: 'b', label: 'billing' }];
+    s.sessions[asked].connectionId = 'a';
+    s.sessions[asked].expression = 'company';
+  });
+  await s.switchActiveTabConnection('b');
+  s.addTab(); // a deep link opened a tab while the question was up
+  let switchedIn;
+  s.selectConnection = async () => void (switchedIn = s.activeSessionId);
+  await s.confirmPendingConnectionSwitch();
+  assert.equal(switchedIn, asked);
 });

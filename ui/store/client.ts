@@ -565,16 +565,27 @@ export function agentAccessOf(connection: ConnectionInfo | undefined): AgentAcce
 //   owner's own queries see real data by default regardless of mcpEnabled.
 //   Independent of mcpEnabled either way, so turning MCP on doesn't also
 //   redact the human's own browsing on that connection.
+// A rule that shows nothing. pine-lang hides every column no rule shows,
+// and a rule type it doesn't know matches nothing, so with this alone every
+// column comes back masked.
+export const SHOW_NOTHING: AccessPolicyRule[] = [{ type: 'agent-access-off' } as unknown as AccessPolicyRule];
+
 export function effectiveAccessPolicyRules(
   connection: ConnectionInfo | undefined,
   policies: AccessPolicy[],
   forMcp: boolean,
 ): AccessPolicyRule[] {
+  // An agent's query on a connection agents may not use. It shows nothing
+  // rather than everything: turning agent access off used to unmask the
+  // agent's queries still waiting their turn. The MCP path also refuses
+  // them outright (GlobalStore.mcpQueryDeps); this covers the moment
+  // between that check and the run.
+  if (forMcp && !connection?.mcpEnabled) return SHOW_NOTHING;
   if (!connection?.policyId) return [];
   // Every column: the policy is kept but applies to no one. Masking your
   // own queries shows what agents see, which is then everything.
   if (connection.agentsSeeEveryColumn) return [];
-  if (forMcp ? !connection.mcpEnabled : connection.applyPolicyToOwnQueries !== true) return [];
+  if (!forMcp && connection.applyPolicyToOwnQueries !== true) return [];
   const policy = policies.find(p => p.id === connection.policyId);
   if (!policy) {
     // An agent's query on a connection whose policy can't be found would
