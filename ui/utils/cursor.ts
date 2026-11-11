@@ -19,14 +19,14 @@ export const cursorAfterReformat = (before: string, after: string, cursor: numbe
 
 /**
  * Whether two texts differ in whitespace only. Pine's prettifier drops a
- * comment between steps, so a tidy that changed more than whitespace is not
+ * comment between steps, so a format that changed more than whitespace is not
  * applied: it would delete the comment.
  */
 export const sameApartFromWhitespace = (a: string, b: string): boolean =>
   a.replace(/\s/g, '') === b.replace(/\s/g, '');
 
 /**
- * After a tidy, a cursor right after a `|` moves past the space the
+ * After a format, a cursor right after a `|` moves past the space the
  * prettifier puts after it (`\n | `), so the next step is typed after it.
  */
 export const pastSpaceAfterPipe = (text: string, cursor: number): number => {

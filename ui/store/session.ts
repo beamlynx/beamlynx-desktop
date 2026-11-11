@@ -992,29 +992,29 @@ export class Session {
   }
 
   /**
-   * Tidies every query in the tab: the Tidy command and button, for when
-   * typing `|` doesn't tidy on its own (GlobalStore.autoTidy). Only spacing
-   * and line breaks change, so the cursor keeps its place. A query that
-   * doesn't parse, and a values block, are left as they are.
+   * Formats every query in the tab: the Format command and button, for when
+   * typing `|` doesn't format on its own (GlobalStore.autoFormat). Only
+   * spacing and line breaks change, so the cursor keeps its place. A query
+   * that doesn't parse, and a values block, are left as they are.
    */
-  public async tidy() {
+  public async format() {
     const before = this.expression;
     const blocks = splitExpressions(before);
-    // A query whose tidy changed more than whitespace keeps its own text:
+    // A query whose format changed more than whitespace keeps its own text:
     // Pine's prettifier drops a comment between steps.
-    const tidyBlock = async (text: string) => {
+    const formatBlock = async (text: string) => {
       if (isValuesBlock(text)) return text;
-      const tidied = await client.prettify(text, this.connectionId);
-      return sameApartFromWhitespace(text, tidied) ? tidied : text;
+      const formatted = await client.prettify(text, this.connectionId);
+      return sameApartFromWhitespace(text, formatted) ? formatted : text;
     };
-    let tidied: string[];
+    let formatted: string[];
     try {
-      tidied = await Promise.all(blocks.map(b => tidyBlock(b.text)));
+      formatted = await Promise.all(blocks.map(b => formatBlock(b.text)));
     } catch {
       return; // The server is away: nothing changes.
     }
-    const after = tidied.join('\n\n');
-    // Typed into while the server answered: tidying now would undo it.
+    const after = formatted.join('\n\n');
+    // Typed into while the server answered: formatting now would undo it.
     if (this.expression !== before || after === before.trim()) return;
     const at = this.cursorPosition;
     const cursor = pastSpaceAfterPipe(

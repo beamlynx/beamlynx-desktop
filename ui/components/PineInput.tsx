@@ -210,7 +210,7 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
         }
 
         // Left alone: no change; text typed while the server answered, which
-        // replacing would undo; and a tidy that dropped a comment.
+        // replacing would undo; and a format that dropped a comment.
         if (
           prettifiedContent === currentContent ||
           view.state.doc.toString() !== currentContent ||
@@ -257,8 +257,8 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
 
   const onPipe = useCallback(
     (view: EditorView) => {
-      // Picking a suggestion adds a `|`, and tidies like typing one.
-      if (!global.autoTidy) return;
+      // Picking a suggestion adds a `|`, and formats like typing one.
+      if (!global.autoFormat) return;
       const expectedContent = view.state.doc.toString();
       debouncedPrettifyOnPipe(view, expectedContent);
     },
@@ -415,12 +415,12 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
           {
             key: '|',
             run: view => {
-              // A `|` that ends its query tidies it, wherever the query is in
+              // A `|` that ends its query formats it, wherever the query is in
               // the editor. One in the middle of a query, say before another
-              // step or in a string, is just typed: tidying would move text
+              // step or in a string, is just typed: formatting would move text
               // that's still being written.
               const pos = view.state.selection.main.head;
-              if (!global.autoTidy || !isAtEndOfBlock(view.state.doc.toString(), pos)) {
+              if (!global.autoFormat || !isAtEndOfBlock(view.state.doc.toString(), pos)) {
                 return false;
               }
 

@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Changed
+- **Tidy is now called Format.** The button in the Pine panel, the command (still Ctrl+Shift+F) and the setting **Format Pine as you type** use the new name. The setting starts on again, as it does for everyone.
+
 ### Fixed
 - **A tab always runs on the database it names.** Closing your last tab, editing a cell in the results, or switching tabs while connecting could run on the database you connected to last instead. A tab with no database now runs nothing.
 - **A cell edit changes the row you edited, on its database.** After running one of several queries, changing the query without running it, switching the tab's database, or new results arriving while you typed, it could change another row, table or database. A tab now clears its results when you switch its database.

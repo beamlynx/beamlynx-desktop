@@ -255,11 +255,11 @@ export const KEYBINDINGS: KeybindingConfig[] = [
   },
 
   {
-    name: 'tidy-pine',
-    description: 'Tidy Pine',
+    name: 'format-pine',
+    description: 'Format Pine',
     display: createKeybindingDisplay(['ctrl', 'shift'], 'F'),
     combos: [{ combo: { mod: true, shift: true, alt: false, key: 'f' } }],
-    commandId: 'tidy-pine',
+    commandId: 'format-pine',
   },
 
   {

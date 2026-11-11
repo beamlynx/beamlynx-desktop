@@ -63,10 +63,10 @@ const PreferencesSection = () => {
           onChange={() => global.toggleShowHiddenSqlColumns()}
         />
         <ToggleRow
-          label="Tidy Pine as you type"
-          description={`Typing | at the end of a query, or picking a suggestion, puts each step on its own line. When off, tidy with the button in the Pine panel or ${getKeybindingDisplayForCommand('tidy-pine')}.`}
-          checked={global.autoTidy}
-          onChange={() => global.toggleAutoTidy()}
+          label="Format Pine as you type"
+          description={`Typing | at the end of a query, or picking a suggestion, puts each step on its own line. When off, format with the button in the Pine panel or ${getKeybindingDisplayForCommand('format-pine')}.`}
+          checked={global.autoFormat}
+          onChange={() => global.toggleAutoFormat()}
         />
         <ToggleRow
           label="Vim keybindings"
