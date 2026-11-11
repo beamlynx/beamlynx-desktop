@@ -4,12 +4,31 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.30.0] - 2026-11-11
+### Added
+- **`today()`, `yesterday()`, `tomorrow()`, `this_week()` and `this_month()` in `where:`.** Each is a period of days, so `where: created_at = today()` finds everything from today, whatever the time. A week starts on Monday. Agents learn them from the Pine reference too. (bundled pine-lang 0.55.0)
+- **Tidy Pine on demand.** **Tidy Pine as you type** in Settings → Preferences turns off tidying when you type `|`. Then Ctrl+Shift+F, or a button at the top right of the Pine panel, tidies every query in the tab. (bundled beamlynx-ui 0.75.0)
+
 ### Changed
+- **Errors help you fix the query.** An alias that doesn't exist lists the aliases there are. A join that finds no relation lists the joins that exist. A misspelt column suggests the real one. (bundled pine-lang 0.55.0)
+- **Typing `|` tidies any query, not only the last,** and the cursor stays where you were typing. (bundled beamlynx-ui 0.75.0)
+- **The Library lists recipes by connection, then by name,** under headings in each connection's colour. A recipe from another database goes in the current tab by default, and Ctrl+, brings the Library back like Settings. (bundled beamlynx-ui 0.75.0)
+- **describe and references stay in the tab.** From a table's **+** menu on the canvas, they add `describe:` or `references:` to the end of the query instead of opening a new tab. (bundled beamlynx-ui 0.75.0)
+- **`? table` lists up to 20 routes instead of 10.** (bundled pine-lang 0.55.0)
 - **Agents are told that masked values never reach them.** The descriptions of `run_query` and `run_sql_as_pine` say that a masked column is replaced in the SQL itself, so its values never leave the database. A tool that checks an agent's calls before they run, such as Claude Code's auto mode, refused queries on tables with a secret column, because nothing said the secret stays hidden.
-- **An agent's result lists its aliases and masked columns.** Under the row count, a query on two tables or more shows which table each alias stands for, such as `Aliases: c_0 = counterparty, r_1 = request`. A result with masked columns names them, and says their values never left the database. The instructions tell agents to name their tables with `as` once a query reads three or more. The aliases need the next bundled pine-lang and beamlynx-ui.
+- **An agent's result lists its aliases and masked columns.** Under the row count, a query on two tables or more shows which table each alias stands for, such as `Aliases: c_0 = counterparty, r_1 = request`. A result with masked columns names them, and says their values never left the database. The instructions tell agents to name their tables with `as` once a query reads three or more. (bundled pine-lang 0.55.0, beamlynx-ui 0.75.0)
 
 ### Fixed
+- **No errors while your tabs reconnect.** When Beamlynx starts, a tab you had open says "Connecting…" until it is connected to its database again, and the connection's tile at the top of the sidebar pulses faintly. Before, the tab showed an error for that moment, and a tab with several queries said "Not parsing" until you edited it. (bundled beamlynx-ui 0.75.0)
+- **You can connect to the same database as two different users.** The second connection used to fail with "already registered under a different user". Both now stay open, each in its own tabs. (bundled pine-lang 0.55.0, beamlynx-ui 0.75.0)
+- **`count` is no longer masked.** Under a masking policy, a count from `group: … with count` came back as `xxxxx`. (bundled pine-lang 0.55.0)
+- **`describe:` marks masked columns in your own tabs too.** (bundled pine-lang 0.55.0)
+- **The keyboard works in the "new tab or switch this tab" question** when you open another connection from a tab with a query. (bundled beamlynx-ui 0.75.0)
 - **An agent's first query after Beamlynx restarts no longer fails.** It used to come back with "Beamlynx is still starting", and the agent had to try again. Now the query runs as soon as the window has loaded, usually within a second or two.
+
+### Security
+- **Saved tabs and connection colours no longer show where your databases are.** Tabs remember the saved connection, and colours are kept under a hash of the database, not its address. What older versions saved is rewritten the first time the app starts. (bundled beamlynx-ui 0.75.0)
 
 ## [0.29.0] - 2026-11-09
 ### Added
