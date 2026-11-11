@@ -55,9 +55,10 @@ const pineServerUrl = process.argv
   ?.slice('--pine-server-url='.length);
 // The bundled server's launch token, sent by beamlynx-ui as
 // `Authorization: Bearer` on every request (main's launch-secrets.ts).
-const pineServerToken = process.argv
-  .find(arg => arg.startsWith('--pine-server-token='))
-  ?.slice('--pine-server-token='.length);
+// Asked of main once, at load: it used to be a command-line argument, which
+// every user on the machine can read. Empty for any page that isn't the
+// app's own UI.
+const pineServerToken = (ipcRenderer.sendSync('pine-server:token') as string) || undefined;
 
 contextBridge.exposeInMainWorld('beamlynxDesktop', {
   pineServerUrl,

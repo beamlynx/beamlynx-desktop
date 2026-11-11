@@ -3,6 +3,7 @@ import { logStartupMarks, mark } from './startup-marks';
 import { app, BrowserWindow, dialog, ipcMain, Menu, session, shell } from 'electron';
 import * as http from 'http';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
 import { getUsageStats, onAppStarted, registerAccountIpc, shutdownAccount } from './account';
 import { getAutoUpdater, initAutoUpdater } from './auto-update';
 import { closeAppDb, registerAppDbIpc } from './app-db-ipc';
@@ -178,6 +179,22 @@ function openExternalIfSafe(url: string): void {
 //
 // A URL that doesn't parse stays out: the check runs before anything can
 // throw, so a throw can't let the navigation through.
+// The app's own files: the loading page and the packaged UI. Nothing else on
+// disk may load in the window. Every page that does gets the preload's
+// bridge, saved passwords included, so a local .html dropped on the window
+// would otherwise have them too.
+function isAppFile(target: URL): boolean {
+  let file: string;
+  try {
+    file = path.resolve(fileURLToPath(target));
+  } catch {
+    return false;
+  }
+  const loading = path.resolve(__dirname, '..', '..', 'assets', 'loading.html');
+  const uiDir = path.resolve(getResourcesRoot(), 'ui');
+  return file === loading || file.startsWith(uiDir + path.sep);
+}
+
 function staysInWindow(url: string): boolean {
   let target: URL;
   try {
@@ -185,7 +202,7 @@ function staysInWindow(url: string): boolean {
   } catch {
     return false;
   }
-  if (target.protocol === 'file:') return true;
+  if (target.protocol === 'file:') return isAppFile(target);
   let currentOrigin: string | undefined;
   try {
     currentOrigin = new URL(mainWindow?.webContents.getURL() ?? '').origin;
@@ -221,12 +238,15 @@ function createWindow(): void {
       // app's (see ports.ts).
       // --dev-build shows beamlynx-ui's DEV chip, so this copy can't be
       // mistaken for the installed app when both are open.
-      // --pine-server-token is the launch token the bundled server requires
-      // on every request (launch-secrets.ts); the preload hands it to
-      // beamlynx-ui, which sends it as `Authorization: Bearer`.
+      // The server's address is 127.0.0.1, never `localhost`: that name can
+      // resolve to ::1 first, where the server doesn't listen, and where
+      // another account on this machine could, and receive the token and
+      // every saved password the app sends.
+      // The launch token is not an argument: a process's arguments are
+      // readable by every user on the machine. The preload asks for it
+      // (pine-server:token below).
       additionalArguments: [
-        `--pine-server-url=http://localhost:${PINE_PORT}`,
-        `--pine-server-token=${pineToken}`,
+        `--pine-server-url=http://127.0.0.1:${PINE_PORT}`,
         ...(app.isPackaged ? [] : ['--dev-build']),
       ],
     },
@@ -536,6 +556,14 @@ function runDesktopApp(): void {
   }
 
   configureLinuxPasswordStore();
+
+  // The bundled server's launch token, for the preload to hand to
+  // beamlynx-ui. Asked for, not passed as an argument (see createWindow),
+  // and given only to the main window while it shows the app's own UI.
+  ipcMain.on('pine-server:token', event => {
+    const isAppPage = event.sender === mainWindow?.webContents && staysInWindow(event.senderFrame?.url ?? '');
+    event.returnValue = isAppPage ? pineToken : '';
+  });
 
   // Signals that the renderer has mounted DeepLinkHandler and is ready to
   // receive 'deep-link:open-query' -- flushes anything that arrived before
