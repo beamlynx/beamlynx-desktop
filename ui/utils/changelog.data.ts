@@ -23,6 +23,52 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.76.0',
+    date: '2026-11-12',
+    breaking: [
+      {
+        title: "Needs pine-lang 0.56.0 or later (was 0.55.0)",
+        description: "Connecting to an older server shows the upgrade-required screen.",
+      },
+    ],
+    changed: [
+      {
+        title: "Tidy is now called Format",
+        description: "The button in the Pine panel, the command (still Ctrl+Shift+F) and the setting **Format Pine as you type** use the new name.",
+      },
+    ],
+    fixed: [
+      {
+        title: "A tab always runs on the database it names",
+        description: "Closing your last tab, editing a cell in the results, or switching tabs while connecting could run on the database you connected to last instead. A tab with no database now runs nothing.",
+      },
+      {
+        title: "A cell edit changes the row you edited, on its database",
+        description: "After running one of several queries, changing the query without running it, switching the tab's database, or new results arriving while you typed, it could change another row, table or database. A tab now clears its results when you switch its database.",
+      },
+      {
+        title: "A delete plan runs only on the database it was made on",
+        description: "Switching the tab's database clears the plan and stops a delete run after the table in progress. The confirmation names the plan's database.",
+      },
+      {
+        title: "Nothing changes data without you pressing Run",
+        description: "Auto-run can't run a `delete!` or `update!`, even one with a comment in front of it. Refreshing the results after an edit runs the query that made them, not unrun text in the editor. A query opened from a link can't change data until you dismiss its banner.",
+      },
+      {
+        title: "Running several queries stops when you switch the tab's database",
+        description: "The queries still to run used to run on the old one.",
+      },
+      {
+        title: "Turning off agent access stops an agent's waiting queries",
+        description: "They used to run with no data masking.",
+      },
+      {
+        title: "Raw SQL doesn't run where it can't be masked or kept read-only",
+        description: "In an agent's tab, or when data masking applies to your own queries.",
+      },
+    ],
+  },
+  {
     version: '0.75.0',
     date: '2026-11-11',
     breaking: [
@@ -2958,4 +3004,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.75.0';
+export const LATEST_VERSION = '0.76.0';
