@@ -23,6 +23,72 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.75.0',
+    date: '2026-11-11',
+    breaking: [
+      {
+        title: "Needs pine-lang 0.55.0 or later (was 0.54.0)",
+        description: "Connecting to an older server shows the upgrade-required screen.",
+      },
+    ],
+    added: [
+      {
+        title: "Tidy Pine on demand",
+        description: "**Tidy Pine as you type** in Settings → Preferences turns off tidying when you type `|` or pick a suggestion. Then Ctrl+Shift+F, or a button at the top right of the Pine panel, tidies every query in the tab. A query with a comment between its steps is left as it is, since tidying would drop the comment.",
+      },
+    ],
+    changed: [
+      {
+        title: "An agent's result says which tables its aliases stand for, and which columns were masked",
+        description: "Beamlynx passes both to the desktop app with the rows, which lists them for the agent.",
+      },
+      {
+        title: "Typing `|` tidies any query, not only the last",
+        description: "A `|` at the end of a query tidies it, so writing a new query above others now tidies too. A `|` in the middle of a query, before another step, is just typed.",
+      },
+      {
+        title: "Ctrl+, brings back the Library too",
+        description: "The Library is one of the panels beside the sidebar, like Settings. Ctrl+, closes whichever is open, and opens the one you had open last. Before, it only knew Settings: with the Library open, it swapped in Settings, and it never reopened the Library.",
+      },
+      {
+        title: "A recipe from another database goes in the current tab by default",
+        description: "When you use a recipe saved from another of your connections, Beamlynx asks whether to use it in this tab, on this tab's database, which Enter picks, or to open it on the database it was saved from in a new tab. It no longer offers to switch the current tab to that database, and the Library's separate **Use in this tab** button is gone.",
+      },
+      {
+        title: "The Library lists recipes by connection, then by name",
+        description: "Each connection's recipes start under a heading tinted with the connection's colour, with its dot from the connection list, so you can see where a recipe was saved before you use it. Recipes from databases you have no connection to come last, under **Other databases**. Before, the newest came first. An open recipe no longer repeats the connection: its line says only who saved it, and when. The Library's line of keyboard hints is gone. The sidebar's Library tooltip now shows Ctrl+O instead.",
+      },
+      {
+        title: "describe and references stay in the tab",
+        description: "In a table's **+** menu on the canvas, they add `describe:` or `references:` to the end of the query, and the table shows a **describe** or **references** row, as it shows an update or delete. Its × takes it off, and so does any other change on the canvas. Before, each opened a new tab.",
+      },
+    ],
+    fixed: [
+      {
+        title: "You can connect to the same database as two different users",
+        description: "Opening a second saved connection to a database that was already open as another user failed with \"already registered under a different user\". Both now stay open, each in its own tabs.",
+      },
+      {
+        title: "No errors while a restored tab reconnects",
+        description: "When the app starts, a tab you had open says \"Connecting…\" until it is connected to its database again, and the connection's tile at the top of the sidebar pulses faintly. Before, it showed an error for that moment, as if the query were wrong. A tab with several queries kept showing \"Not parsing - showing last valid graph\" until you edited it. It now draws its graph once it is connected.",
+      },
+      {
+        title: "The cursor stays put when the Pine editor tidies a query",
+        description: "Adding a `|` higher up in a query, such as by picking a suggestion, puts each step on its own line. That used to move the cursor to the end of the query. It now stays where you were typing.",
+      },
+      {
+        title: "The keyboard works when switching a tab that has a query",
+        description: "Opening another connection from such a tab, from the sidebar or with **Switch Connection** in Ctrl+K, asks whether to open it in a new tab or switch this tab. Enter now picks the new tab, the default, and Up and Down move between the two choices. Before, neither key did anything.",
+      },
+    ],
+    security: [
+      {
+        title: "Saved tabs and connection colours no longer show where your databases are",
+        description: "The desktop app used to save each tab's database, and the colours of your connections, under the database's address (host, port and name). Tabs now remember the saved connection, and colours are kept under a hash of the database. What older versions saved is rewritten the first time the app starts, and your tabs and colours stay as they were. Two saved connections to the same database now share one colour.",
+      },
+    ],
+  },
+  {
     version: '0.74.0',
     date: '2026-11-09',
     breaking: [
@@ -2892,4 +2958,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.74.0';
+export const LATEST_VERSION = '0.75.0';
