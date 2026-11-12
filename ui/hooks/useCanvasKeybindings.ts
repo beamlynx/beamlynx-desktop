@@ -138,8 +138,11 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
 
       // At the operation bar's button for `kind`, where a click on it opens
       // its picker: upward, since the bar is at the bottom of the canvas.
+      // Order, group, limit and path are behind its "+": at that.
       const operationAnchorFor = (kind: string): { x: number; y: number; above: boolean } => {
-        const el = document.querySelector(`[data-testid="operation-${kind}"]`);
+        const el =
+          document.querySelector(`[data-testid="operation-${kind}"]`) ??
+          document.querySelector('[data-testid="operation-more"]');
         if (!el) return { ...anchorFor(alias), above: false };
         const rect = el.getBoundingClientRect();
         return { x: rect.left + rect.width / 2, y: rect.top, above: true };
@@ -260,10 +263,12 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
         // The focused node's own "+": traverse, describe and references.
         // Mirrors TableNode.tsx's own "+" button onClick exactly, including
         // which actions each offers.
+        // The operation bar's "+": order, group, limit, path, traverse,
+        // describe, references and unnest.
         case '+':
-          if (isStart || canvasStore.moreActionsFor(alias, isCheckpoint).length === 0) return;
+          if (!canvasStore.operationAnchor) return;
           e.preventDefault();
-          canvasStore.openMorePicker(alias, isCheckpoint, anchorFor(alias));
+          canvasStore.openOperationMore(operationAnchorFor('more'));
           return;
         // 'x' and Delete/Backspace are the same gesture - "remove the thing
         // that's the target of a key right now" - so a person who reaches

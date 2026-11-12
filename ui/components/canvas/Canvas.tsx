@@ -31,7 +31,7 @@ import NestedContainerNode from './nodes/NestedContainerNode';
 import TraceEdge from './edges/TraceEdge';
 import Picker from './Picker';
 import MultiSelectToolbar from './MultiSelectToolbar';
-import OperationBar from './OperationBar';
+import OperationBar, { operationBarSpace } from './OperationBar';
 import CanvasToolbar, { CanvasToolbarExtraAction } from './CanvasToolbar';
 import PineDoc from '../PineDoc';
 import CanvasVariables from './CanvasVariables';
@@ -269,7 +269,8 @@ const Flow: React.FC<{
       <div
         style={{
           width: '100%',
-          height: '100%',
+          // The graph ends above the operation bar, so the bar never covers a node.
+          height: canvasStore.operationAnchor ? `calc(100% - ${operationBarSpace}px)` : '100%',
           opacity: canvasGraph.parsing ? 1 : 0.4,
           pointerEvents: canvasGraph.parsing ? 'auto' : 'none',
         }}

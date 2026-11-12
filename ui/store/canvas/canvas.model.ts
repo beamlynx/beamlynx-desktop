@@ -475,16 +475,11 @@ export const MORE_ACTIONS_FOR_CHECKPOINT: MoreAction[] = [];
  */
 export type NodeAction = 'join' | 'traverse' | 'describe' | 'references';
 
-/** The operations of the canvas's operation bar: they work on the whole query, not one node. */
+/**
+ * The operations that work on the whole query, not one node: select and
+ * where in the operation bar, the rest behind its "+" (OperationBar.tsx).
+ */
 export type GlobalOperation = 'select' | 'where' | 'order' | 'group' | 'limit' | 'path' | 'unnest';
-export const GLOBAL_OPERATIONS: { kind: GlobalOperation; label: string; key: string }[] = [
-  { kind: 'select', label: 'select', key: 's' },
-  { kind: 'where', label: 'where', key: 'w' },
-  { kind: 'order', label: 'order', key: 'o' },
-  { kind: 'group', label: 'group', key: 'g' },
-  { kind: 'limit', label: 'limit', key: 'l' },
-  { kind: 'path', label: 'path', key: 'p' },
-];
 
 /** What a traversal does at each table it reaches - see store/canvas/traversal.ts. */
 export const TRAVERSE_VERBS: { verb: 'count' | 'delete'; label: string; key: string }[] = [

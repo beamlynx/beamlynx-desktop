@@ -56,6 +56,8 @@ const actionBarHeight = 28;
 // A checkpoint drawn as a line (see layoutPipeline's `asLines`): the line
 // and its label, without the card.
 export const lineHeight = 30;
+// Under a line with joins: its pins, each with the column it joins on.
+export const linePinRowHeight = 16;
 // How far a checkpoint's line reaches past the graph on each side.
 const lineOverhang = 16;
 
@@ -71,7 +73,9 @@ const effectiveHandleCount = (handles: CanvasHandle[]): number =>
 export const getNodeHeight = (node: CanvasNode): number => {
   if (node.type !== 'table-node') return startNodeHeight;
   const data = node.data as CanvasTableNodeData;
-  if (data.checkpoint?.line) return lineHeight;
+  if (data.checkpoint?.line) {
+    return lineHeight + (data.leftHandles.length || data.rightHandles.length ? linePinRowHeight : 0);
+  }
   const rows = Math.max(effectiveHandleCount(data.leftHandles), effectiveHandleCount(data.rightHandles));
   return rows === 0 ? minNodeHeight : headerHeight + rows * handleRowHeight + 10;
 };
