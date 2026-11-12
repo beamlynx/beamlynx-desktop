@@ -734,6 +734,11 @@ export type SqlToPineResponse = {
   error?: string;
   /** sql-unsupported, sql-parse-error or internal. */
   'error-type'?: string;
+  /**
+   * Which `$1`, `$2` of the SQL became which Pine variable, `$tenant_id`
+   * (pine-lang's docs/sql-to-pine.md, "Parameters"). Absent without any.
+   */
+  parameters?: { number: string; name: string }[];
 };
 
 export class HttpClient {
