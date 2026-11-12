@@ -116,6 +116,32 @@ A cast goes after the column it applies to, when the two types differ:
 document as d | activity .resource_id = .id ::text
 ```
 
+### Name the table on each side
+
+```
+attribute_values as av | company as c c.id = av.company_id | field_definition as fd fd.id = av.attributeId, fd.tenant_id = c.tenantId -- pine-lang #192
+```
+
+Either side of a pair can be `alias.column`. Then one join can compare with any table before it,
+not only the one just before: here `fd` joins to both `av` and `c`. A side without an alias keeps
+its place's meaning: written first, the table being joined; written second, the table just before
+it. So `.tenant_id = c.tenantId` is `fd`'s `tenant_id`. Each pair must have the table being joined
+on one side. A comparison between two earlier tables goes in `where:`.
+
+When you spell out the columns, naming every side is the clearest way to write it.
+
+### Conditions on the join
+
+```
+customers as c | orders as o :left o.customer_id = c.id, o.status = 'paid' -- pine-lang #192
+customers as c | orders as o :left o.customer_id = c.id, o.deleted_at is null -- pine-lang #193
+```
+
+A pair can compare a column with a string, a number, `true` or `false`, or test `is null` /
+`is not null`. The condition stays on the join. On a `:left` join that matters: every customer is
+kept, and only paid orders are attached. The same test in `where:` would drop the customers without
+a paid order. On an inner join the two mean the same.
+
 ### Join on ids inside a JSON array: `[*]`
 
 ```
