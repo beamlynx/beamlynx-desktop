@@ -13,6 +13,7 @@ import {
   OrderDirection,
   PickerAnchor,
   GlobalOperation,
+  NodeAction,
   PickerGroup,
   PickerItem,
   PickerRequest,
@@ -1502,7 +1503,7 @@ export class CanvasStore {
    */
   get operationAnchor(): string | null {
     const ast = this.mainAst;
-    const current = ast?.current;
+    const current = this.nextStepAlias;
     // No table yet: nothing to select from.
     if (!ast || !current || !this.canvasGraph.nodes.some(n => n.type === 'table-node' && n.id === current)) return null;
     const focused = this.focusedAlias;
@@ -1510,6 +1511,68 @@ export class CanvasStore {
     if (!focused || focused === current || !isTable || actions.BLOCK_PREFIX.test(focused)) return current;
     const segments = withoutDescribeSegments(segmentsFromAst(this.textOf(this.mainBlock), ast) ?? []);
     return stageEnd(segments, focused) === stageEnd(segments, current) ? focused : current;
+  }
+
+  /**
+   * The node the operation bar's node actions apply to: the focused node,
+   * or else where the query goes on from (nextStepAlias). With what it
+   * offers: join from any table or result, traverse from the most recent
+   * table only, describe and references on a table, not on a result. Null
+   * while the canvas has no table.
+   */
+  get selectedNodeActions(): { alias: string; label: string; actions: NodeAction[] } | null {
+    const tables = this.canvasGraph.nodes.filter((n): n is CanvasTableNode => n.type === 'table-node');
+    const node = tables.find(n => n.id === this.focusedAlias) ?? tables.find(n => n.id === this.nextStepAlias);
+    if (!node) return null;
+    const checkpoint = !!node.data.checkpoint;
+    const actions: NodeAction[] = checkpoint
+      ? ['join']
+      : ['join', ...(node.id === this.nextStepAlias ? (['traverse'] as const) : []), 'describe', 'references'];
+    const label = node.data.table === node.data.alias ? node.data.alias : `${node.data.table} (${node.data.alias})`;
+    return { alias: node.id, label, actions };
+  }
+
+  /** One of the selected node's actions in the operation bar (see selectedNodeActions). */
+  openNodeAction(action: NodeAction, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
+    const selected = this.selectedNodeActions;
+    if (!selected || !selected.actions.includes(action)) return;
+    const { alias } = selected;
+    switch (action) {
+      case 'join':
+        if (this.isCheckpointNode(alias)) void this.openCheckpointPicker(alias, 'join', anchor);
+        else this.openJoinPicker(alias, anchor);
+        return;
+      case 'traverse':
+        void this.openTraversePicker(alias, anchor);
+        return;
+      default:
+        void this.describeNode(alias, action);
+    }
+  }
+
+  /**
+   * What the query's next step works on: Pine's current table, or the
+   * result of the group: or `limit: … per` it ends in. pine-lang still
+   * reports the table before such a checkpoint as current until something
+   * follows it, but the query goes on from the result: the checkpoint's own
+   * node, whose picks pin its name first (see openCheckpointPicker).
+   */
+  get nextStepAlias(): string | undefined {
+    const ast = this.mainAst;
+    const last = ast?.checkpoints?.[ast.checkpoints.length - 1];
+    return last && !last.sealed ? last.name : ast?.current;
+  }
+
+  /**
+   * The operation bar's operations for where the query is now. On a sealed
+   * result, group and unnest aren't offered (see openOperation), so the bar
+   * leaves them out rather than show buttons that do nothing.
+   */
+  get offeredOperations(): { operations: GlobalOperation[]; more: boolean } {
+    const anchor = this.operationAnchor;
+    const sealed = !!anchor && this.isCheckpointNode(anchor);
+    const all: GlobalOperation[] = ['select', 'where', 'order', 'group', 'limit', 'path'];
+    return { operations: sealed ? all.filter(k => k !== 'group') : all, more: !sealed };
   }
 
   private isCheckpointNode(alias: string): boolean {
@@ -1533,8 +1596,8 @@ export class CanvasStore {
         this.openLimitEditor(alias, anchor);
         return;
       case 'path': {
-        // A path starts at the most recent table.
-        const current = this.mainAst?.current ?? alias;
+        // A path starts where the query goes on from.
+        const current = this.nextStepAlias ?? alias;
         if (this.isCheckpointNode(current)) void this.openCheckpointPicker(current, 'path', anchor);
         else this.openPathPicker(current, anchor);
         return;

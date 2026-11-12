@@ -32,7 +32,7 @@ import TraceEdge from './edges/TraceEdge';
 import Picker from './Picker';
 import MultiSelectToolbar from './MultiSelectToolbar';
 import OperationBar from './OperationBar';
-import CanvasToolbar, { CanvasModeIndicator, CanvasToolbarExtraAction } from './CanvasToolbar';
+import CanvasToolbar, { CanvasToolbarExtraAction } from './CanvasToolbar';
 import PineDoc from '../PineDoc';
 import CanvasVariables from './CanvasVariables';
 import LineageNode from './nodes/LineageNode';
@@ -363,7 +363,6 @@ const Flow: React.FC<{
       </Portal>
       <CanvasToolbar canvasStore={canvasStore} extraAction={toolbarExtraAction} />
       <OperationBar canvasStore={canvasStore} />
-      <CanvasModeIndicator canvasStore={canvasStore} />
       <MultiSelectToolbar canvasStore={canvasStore} />
     </div>
   );

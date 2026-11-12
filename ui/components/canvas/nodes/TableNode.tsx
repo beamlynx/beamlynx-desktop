@@ -1,7 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { Handle, NodeProps, Position, useUpdateNodeInternals } from 'reactflow';
-import { CanvasHandle, CanvasTableNodeData, GlobalOperation, PickerState } from '../../../store/canvas/canvas.model';
+import {
+  CanvasHandle,
+  CanvasTableNodeData,
+  GlobalOperation,
+  NodeAction,
+  PickerState,
+} from '../../../store/canvas/canvas.model';
 import { getNodeHeight, nodeWidth } from '../../../store/canvas/layout';
 import { occurrenceAt, unnestChipName } from '../../../store/canvas/pine-actions';
 import { useCanvasStore } from '../canvas-context';
@@ -31,79 +37,23 @@ export const pickerAliasFor = (picker: PickerState): string | null => {
 };
 
 /**
- * 'more' is the "+" overflow trigger itself (order/group/path/limit/traverse
- * tucked behind it - see TableNode's own action bar below), not a picker
- * request kind on its own; 'path' is pine-lang's `? table` search
- * (docs/paths.md); 'limit' is the pipeline-wide `limit:` value
- * (CanvasStore.openLimitEditor).
+ * Which of the operation bar's actions is open, if any: OperationBar.tsx
+ * dims the others while a picker is open.
  */
-export type OperationKind = 'select' | 'join' | 'where' | 'order' | 'group' | 'path' | 'limit' | 'more';
-
-/**
- * Which single operation this node's own action bar is mid-flight on, if
- * any - null whenever nothing is open for this alias, or the open picker is
- * the table picker (StartNode's, which never targets a real alias). While
- * this is non-null, the action bar shows only that one operation instead of
- * all four: once you're inside e.g. "select", seeing "where"/"join"/"+"
- * alongside it is just noise you can't act on right now (a picker being open
- * already means we're in insert mode - see CanvasStore.mode - where none of
- * those other letters do anything). A checkpoint's node works the same way:
- * `openCheckpointPicker` (canvas.store.ts) ultimately calls
- * `openColumnPicker`/`openJoinPicker`/`openPathPicker` with the checkpoint's
- * name, which is the node's own alias.
- */
-export const activeOperationFor = (picker: PickerState, alias: string): OperationKind | null => {
-  if (!picker.open) return null;
-  if (picker.mode === 'where-value') return picker.alias === alias ? 'where' : null;
-  // A join-TYPE popover (TraceEdge's own click, or the keyboard config
-  // cursor) is still editing that node's join, same as the join-picker
-  // itself - dims everything else for it exactly the same way.
-  if (picker.mode === 'join-type') return picker.alias === alias ? 'join' : null;
-  // The "+" overflow menu itself, before any of its own items has been
-  // picked - dims join the same as any other open picker would. The
-  // operation bar's "+" isn't this node's.
-  if (picker.mode === 'more') return !picker.global && picker.alias === alias ? 'more' : null;
-  // The verb menu behind "+" -> traverse. Still the "+" menu as far as the
-  // action bar is concerned - it dims the same way, since traverse has no
-  // button of its own to light up.
-  if (picker.mode === 'traverse') return picker.alias === alias ? 'more' : null;
-  // A per-chip direction popover (a click on an existing order chip, or the
-  // keyboard config cursor) is still editing that node's order operation.
-  if (picker.mode === 'order-direction') return picker.alias === alias ? 'order' : null;
-  // A select chip's name field is still editing that node's select.
-  if (picker.mode === 'select-name') return picker.alias === alias ? 'select' : null;
-  // An unnest chip's name field: unnest is in the "+" menu.
-  if (picker.mode === 'unnest-name') return picker.alias === alias ? 'more' : null;
-  // The limit number-entry popover - same dimming as any other open picker,
-  // even though `limit:` itself isn't owned by `alias` (see
-  // CanvasStore.openLimitEditor).
-  if (picker.mode === 'limit-value') return picker.alias === alias ? 'limit' : null;
-  // Every `PickerRequest` variant except `{ kind: 'table' }` carries `alias`
-  // (see canvas.model.ts) - the `'alias' in` check below already narrows
-  // `picker.request.kind` to exclude `'table'`, so no separate check for it
-  // is needed (TS itself flags one as unreachable).
-  if (!('alias' in picker.request) || picker.request.alias !== alias) return null;
-  // Only a join is this node's own. Select, where, order, group, path and
-  // unnest are the operation bar's (OperationBar.tsx): their pickers start
-  // from a node, but aren't its action.
-  return picker.request.kind === 'join' ? 'join' : null;
-};
-
-/**
- * Which of the operation bar's operations is open, if any - OperationBar.tsx
- * shows only it while a picker is open, as a node's action bar does.
- */
-export const activeGlobalOperation = (picker: PickerState): GlobalOperation | 'more' | null => {
+export const activeGlobalOperation = (picker: PickerState): GlobalOperation | NodeAction | 'more' | null => {
   if (!picker.open) return null;
   if (picker.mode === 'where-value') return 'where';
   if (picker.mode === 'order-direction') return 'order';
   if (picker.mode === 'limit-value') return 'limit';
+  if (picker.mode === 'traverse') return 'traverse';
   if (picker.mode === 'more') return picker.global ? 'more' : null;
   if (picker.mode !== 'list') return null;
   const kind = picker.request.kind;
   if (kind === 'path-route') return 'path';
   if (kind === 'unnest') return 'more';
-  return kind === 'select' || kind === 'where' || kind === 'order' || kind === 'group' || kind === 'path' ? kind : null;
+  return kind === 'select' || kind === 'where' || kind === 'order' || kind === 'group' || kind === 'path' || kind === 'join'
+    ? kind
+    : null;
 };
 
 // A small, self-contained equivalent of RelationHandles.tsx - not imported
@@ -174,123 +124,6 @@ const RelationDots = ({
     </>
   );
 };
-
-// Actions (join/select/where/order) get the accent (trace) color, text only -
-// no border or fill - so they read as a toolbar over the node rather than a
-// row of bordered boxes in the node's own background color, which in dark
-// mode looked like a stack of tiny nodes sitting on top of the real one.
-// Uppercase + letter-spacing gives them the small printed-label feel of a
-// schematic's own annotations, rather than looking like body text.
-// `picker-trigger` marks every element that opens or manages a picker
-// itself - Picker.tsx's click-outside-to-close listener skips these so a
-// click that's actually "open this node's own picker" (or "switch to a
-// different node's picker") isn't preempted by the outside-click handler
-// closing things first. Defined on the component so every call site gets
-// it - a per-call-site className is one more place to forget it.
-export const ActionButton = ({
-  label,
-  onClick,
-  testId,
-  emphasizeKey,
-  emphasizeIndex = 0,
-  suppressed,
-}: {
-  label: string;
-  onClick: (anchor: { x: number; y: number }) => void;
-  testId?: string;
-  /**
-   * True only while this node is the keyboard-focus cursor AND normal mode
-   * is active - i.e. this exact letter is armed right now. Renders the
-   * letter at `emphasizeIndex` (its keyboard shortcut - see
-   * useCanvasKeybindings.ts) bold and full-size, the rest dimmed and
-   * smaller - weight/size carries the emphasis, not a new color, so this
-   * stays in the same blue trace/current family the rest of the focus
-   * treatment uses rather than introducing a second accent hue. The
-   * schematic's own printed-annotation style, extended to double as a live
-   * "these keys are armed" indicator, rather than a separate keycap chip
-   * that would visually collide with the pin glyphs below. Omitted/false
-   * renders exactly as before - no letter split, no visual change.
-   */
-  emphasizeKey?: boolean;
-  /**
-   * Which character of `label` is the actual shortcut key - defaults to 0
-   * (the leading letter), true for select/where/order/group. `join`'s
-   * shortcut is `i` (see useCanvasKeybindings.ts - it opens the same picker
-   * as a table's first-insert), which isn't join's first letter but is its
-   * third ("j-o-I-n"), so that operation passes `emphasizeIndex={2}` instead
-   * of relying on this default.
-   */
-  emphasizeIndex?: number;
-  /**
-   * True for every operation except the one whose picker is currently open
-   * (see TableNode's `activeOperation`/`operations`). Dims via opacity only - the button stays in the DOM at
-   * its normal place in the row rather than being removed, which is the
-   * whole point: removing the other four and letting the row re-center
-   * around the one survivor was the first version of this, and it moved
-   * that label to a different on-screen position the instant a picker
-   * opened (confirmed live, reported as "why does the position change").
-   * Opacity-only keeps every button's position fixed regardless of which
-   * one (if any) is active, matching this file's existing opacity-only
-   * convention for the whole action bar (see the comment on `engaged`).
-   */
-  suppressed?: boolean;
-}) => (
-  <div
-    data-testid={testId}
-    className="picker-trigger"
-    onClick={e => {
-      e.stopPropagation();
-      onClick({ x: e.clientX, y: e.clientY });
-    }}
-    style={{
-      fontSize: 'calc(10px * var(--text-scale, 1))',
-      // Fixed regardless of emphasizeKey - the emphasized letter below only
-      // ever changes weight/color, never size, specifically so this row's
-      // rendered height can't change when a node gains/loses keyboard focus.
-      // A size bump here once did exactly that (a taller glyph stretched the
-      // whole flex row a couple px taller, shifting the card frame beneath
-      // it down by the same amount) - confirmed live as the cause of "the
-      // node moves when the focus border appears". Scaling with the Text
-      // Size setting is unaffected by that bug - the setting is constant
-      // across focus states, so it can't itself cause the row to resize on
-      // focus change; lineHeight is kept identical to fontSize (not a fixed
-      // px) so it still tracks the scale instead of clipping a larger glyph.
-      lineHeight: 'calc(10px * var(--text-scale, 1))',
-      fontFamily: 'var(--canvas-font)',
-      fontWeight: 600,
-      textTransform: 'uppercase',
-      letterSpacing: '0.4px',
-      padding: '2px 4px',
-      cursor: 'pointer',
-      color: 'var(--canvas-trace)',
-      whiteSpace: 'nowrap',
-      opacity: suppressed ? 0.25 : 1,
-      transition: 'opacity 0.1s ease-in-out',
-    }}
-  >
-    {emphasizeKey ? (
-      <>
-        <span style={{ color: 'var(--canvas-text-dim)' }}>{label.slice(0, emphasizeIndex)}</span>
-        <span style={{ fontWeight: 800 }}>{label[emphasizeIndex]}</span>
-        <span style={{ color: 'var(--canvas-text-dim)' }}>{label.slice(emphasizeIndex + 1)}</span>
-      </>
-    ) : (
-      label
-    )}
-  </div>
-);
-
-// A visible separator between actions - color alone (no border/background)
-// read as one continuous run of words ("join select where order"), not as
-// four separate controls.
-export const ActionDivider = () => (
-  <span
-    aria-hidden
-    style={{ color: 'var(--canvas-node-border)', fontSize: 'calc(11px * var(--text-scale, 1))' }}
-  >
-    |
-  </span>
-);
 
 // Node removal reads as a destructive, one-off action rather than another
 // "add a clause" action (and "delete" is easy to mistake for Pine/SQL
@@ -546,7 +379,6 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
   // itself is no longer read anywhere in this file (or elsewhere - see the
   // canvas.model.ts comment on the field).
   const isFocusTarget = canvasStore.focusedAlias === data.alias;
-  const showKeyHints = isFocusTarget && canvasStore.mode === 'normal';
 
   // Only meaningful while this node itself is the keyboard focus - a config
   // cursor is always relative to canvasStore.focusedAlias, so a different
@@ -598,43 +430,11 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
   // openCheckpointPicker, which first writes the checkpoint's name into the
   // text if it isn't there yet (see CanvasStore.ensureCheckpointPinned).
   const checkpoint = data.checkpoint;
-  // Select, where, order, group, limit, path and unnest work on the whole
-  // query, from the operation bar (OperationBar.tsx, beamlynx-plans #28).
-  // A node keeps what is about its own table: join here, and traverse,
-  // describe and references behind its "+".
-  const moreActions = canvasStore.moreActionsFor(data.alias, !!checkpoint);
-  const operations: {
-    kind: OperationKind;
-    label: string;
-    onClick: (anchor: { x: number; y: number }) => void;
-    emphasize?: boolean;
-    emphasizeIndex?: number;
-  }[] = [
-    {
-      kind: 'join',
-      label: 'join',
-      // `i` (insert) opens this same picker (see useCanvasKeybindings.ts)
-      // since a join is "insert a new node from here", the same action as
-      // inserting the very first table - but `i` isn't join's first letter,
-      // it's its third ("j-o-I-n"), so this needs an explicit index rather
-      // than ActionButton's default.
-      onClick: anchor =>
-        checkpoint
-          ? void canvasStore.openCheckpointPicker(data.alias, 'join', anchor)
-          : canvasStore.openJoinPicker(data.alias, anchor),
-      emphasize: showKeyHints,
-      emphasizeIndex: 2,
-    },
-  ];
-  // While this node's own picker is open (insert mode, on this alias) -
-  // exactly one operation is "current" right now, so the others aren't doing
-  // anything - dim them rather than removing them (see ActionButton's
-  // `suppressed` doc comment for why removal was the first version of this
-  // and had to be reverted). Nothing to do with the config cursor: the bar
-  // itself is already hidden entirely whenever that's active with no picker
-  // open (see `engaged` above), so there's no "dim the rest" state to
-  // compute for that case - it's just not shown at all.
-  const activeOperation = activeOperationFor(canvasStore.picker, data.alias);
+  // A node has no actions of its own: every action, join included, is in
+  // the operation bar (OperationBar.tsx), which offers the selected node's
+  // join, traverse, describe and references next to the query's own
+  // operations. The row above the card stays, for a checkpoint's
+  // "loading..." while its name is written into the text.
   // True while this checkpoint's first action waits for its name to be
   // written into the text - see CanvasStore.checkpointPinning.
   const pinning = !!checkpoint && canvasStore.checkpointPinning === data.alias;
@@ -713,30 +513,6 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
           <div data-testid={`checkpoint-pinning-${data.alias}`} style={{ opacity: 0.7, fontSize: 'calc(10px * var(--text-scale, 1))' }}>
             loading...
           </div>
-        )}
-        {!pinning && operations.map((op, i) => (
-          <React.Fragment key={op.kind}>
-            {i > 0 && <ActionDivider />}
-            <ActionButton
-              label={op.label}
-              testId={`action-${op.kind}-${data.alias}`}
-              onClick={op.onClick}
-              emphasizeKey={op.emphasize}
-              emphasizeIndex={op.emphasizeIndex}
-              suppressed={activeOperation !== null && op.kind !== activeOperation}
-            />
-          </React.Fragment>
-        ))}
-        {!pinning && moreActions.length > 0 && <ActionDivider />}
-        {/* traverse/describe/references, behind one trigger. A checkpoint's
-            node offers none, so it has no "+". */}
-        {!pinning && moreActions.length > 0 && (
-          <ActionButton
-            label="+"
-            testId={`action-more-${data.alias}`}
-            onClick={anchor => canvasStore.openMorePicker(data.alias, !!checkpoint, anchor)}
-            suppressed={activeOperation !== null && activeOperation !== 'more'}
-          />
         )}
       </div>
 
