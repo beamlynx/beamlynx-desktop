@@ -31,3 +31,17 @@ test('refuses more than 50 variables', () => {
   const many = Object.fromEntries(Array.from({ length: 51 }, (_, i) => [`v${i}`, i]));
   assert.ok(!ok(many));
 });
+
+// run_sql_as_pine's `variables`: SQL's `$1` by number too (beamlynx-plans #32).
+const { sqlVariablesSchema } = require('../dist/main/mcp/variables-schema.js');
+const sqlOk = v => sqlVariablesSchema.safeParse(v).success;
+
+test("run_sql_as_pine takes a $1-style parameter's number, and names", () => {
+  assert.ok(sqlOk({ 1: [17, 23], 12: 'x', company_name: 'Acme' }));
+  for (const name of ['1x', 'a-b', '', '-1', '1.5']) assert.ok(!sqlOk({ [name]: 'v' }), name);
+  assert.ok(!sqlOk({ 1: 9007199254740993 }));
+});
+
+test("run_query still refuses a number as a name", () => {
+  assert.ok(!ok({ 1: 'v' }));
+});

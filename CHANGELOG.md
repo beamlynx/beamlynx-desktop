@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- **An AI agent can send values for its SQL's `$1`, `$2` by number.** `run_sql_as_pine` takes `{"1": [17, 23]}`, and the query runs with that value. The agent's Pine reference also shows how to name the table on each side of a join, and how to keep a condition on a join.
 
 ## [0.31.0] - 2026-11-12
 ### Changed

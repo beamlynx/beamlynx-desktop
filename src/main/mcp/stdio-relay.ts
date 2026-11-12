@@ -35,7 +35,14 @@ import { callContext, describeCall, outcomeOf, type AgentActivity } from './acti
 import { INVESTIGATION_HEADER } from './investigations';
 import { proposeAndWait, type ControlPlaneRequest } from './policy-proposals';
 import { readUtf8Body } from './read-body';
-import { MAX_LIST_ITEMS, MAX_STRING_LENGTH, MAX_VARIABLES, variablesSchema, type VariableValue } from './variables-schema';
+import {
+  MAX_LIST_ITEMS,
+  MAX_STRING_LENGTH,
+  MAX_VARIABLES,
+  sqlVariablesSchema,
+  variablesSchema,
+  type VariableValue,
+} from './variables-schema';
 import {
   formatCompletion,
   formatConnections,
@@ -436,6 +443,16 @@ async function registerTools(server: McpServer): Promise<void> {
         `At most ${MAX_VARIABLES} variables, ${MAX_LIST_ITEMS} values in a list and ` +
         `${MAX_STRING_LENGTH} characters in a string.`,
     );
+  // run_sql_as_pine's: the same, and SQL's `$1`, `$2` by number.
+  const sqlVariablesInput = sqlVariablesSchema
+    .optional()
+    .describe(
+      'Values for the SQL\'s placeholders. `$1`, `$2` by number: {"1": [17, 23]}. `$name` by name ' +
+        'without the $: {"company_name": "Acme"}. A list is for a placeholder used with `= ANY(...)` or ' +
+        '`IN`. Pass an id larger than 9007199254740991 (2^53 - 1) as a string, since a larger JSON number ' +
+        `arrives rounded. At most ${MAX_VARIABLES} values, ${MAX_LIST_ITEMS} values in a list and ` +
+        `${MAX_STRING_LENGTH} characters in a string.`,
+    );
   const sayWhy =
     'Lead it with a `/* ... */` comment saying what you are looking for and why -- the tab this opens ' +
     'renders it as a note above the query, which is how the user sees your reasoning rather than just rows. ';
@@ -534,13 +551,14 @@ async function registerTools(server: McpServer): Promise<void> {
         rowCapNote +
         maskNote +
         sayWhy +
-        'SQL `$name` placeholders are Pine variables: pass their values in `variables`.',
+        'SQL `$name` placeholders are Pine variables: pass their values in `variables`. ' +
+        'Pass a value for `$1`, `$2` by its number: {"1": [17, 23]} for `tenant_id = ANY($1)`.',
       inputSchema: {
         connection_id: z.string().describe('A connection id from list_connections'),
         sql: z
           .string()
           .describe('SQL: a SELECT, or one UPDATE or DELETE, with WITH queries. It is converted to Pine, never run as SQL.'),
-        variables: variablesInput,
+        variables: sqlVariablesInput,
         question: questionInput,
         finding: findingInput,
       },

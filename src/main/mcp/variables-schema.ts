@@ -26,10 +26,28 @@ export const variableScalar = z.union([z.string().max(MAX_STRING_LENGTH), variab
 // expression, or would be bound under a different name.
 export const VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
+const variableValue = z.union([variableScalar, z.array(variableScalar).max(MAX_LIST_ITEMS)]);
+
 export const variablesSchema = z
   .record(
     z.string().regex(VARIABLE_NAME, 'A variable name is letters, digits and underscores, not starting with a digit.'),
-    z.union([variableScalar, z.array(variableScalar).max(MAX_LIST_ITEMS)]),
+    variableValue,
+  )
+  .refine(v => Object.keys(v).length <= MAX_VARIABLES, { message: `At most ${MAX_VARIABLES} variables can be passed.` });
+
+// run_sql_as_pine also takes SQL's `$1`, `$2` by number: {"1": [17, 23]}.
+// The SQL's `$1` becomes a named Pine variable, `$tenant_id`, and beamlynx-ui
+// passes the value under that name (store/mcp-query.ts, numberedToNamed).
+export const SQL_PARAMETER_NUMBER = /^[0-9]+$/;
+
+export const sqlVariablesSchema = z
+  .record(
+    z
+      .string()
+      .refine(k => VARIABLE_NAME.test(k) || SQL_PARAMETER_NUMBER.test(k), {
+        message: 'A key is a variable name (letters, digits and underscores, not starting with a digit), or the number of a $1-style parameter.',
+      }),
+    variableValue,
   )
   .refine(v => Object.keys(v).length <= MAX_VARIABLES, { message: `At most ${MAX_VARIABLES} variables can be passed.` });
 
