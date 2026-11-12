@@ -143,32 +143,17 @@ export interface CanvasToolbarExtraAction {
  * NewLayoutView.tsx's LeftPane) only shows up when the Pine/SQL panel is
  * closed, so it isn't a reliable place to show this.
  */
-const CanvasToolbar: React.FC<{
-  canvasStore: CanvasStore;
-  extraAction?: CanvasToolbarExtraAction;
-  /** Drawn in its own box right of the toolbar's: the operation bar (OperationBar.tsx). */
-  children?: React.ReactNode;
-}> = observer(({ canvasStore, extraAction, children }) => {
+const CanvasToolbar: React.FC<{ canvasStore: CanvasStore; extraAction?: CanvasToolbarExtraAction }> =
+  observer(({ canvasStore, extraAction }) => {
     const { global } = useStores();
     return (
       <div
+        className="nodrag"
         style={{
           position: 'absolute',
           top: 8,
           left: 8,
           zIndex: 15,
-          display: 'flex',
-          alignItems: 'stretch',
-          gap: 8,
-          // A narrow canvas puts the operation bar on a line of its own,
-          // instead of cutting it off at the pane's edge.
-          flexWrap: 'wrap',
-          maxWidth: 'calc(100% - 16px)',
-        }}
-      >
-      <div
-        className="nodrag"
-        style={{
           display: 'flex',
           alignItems: 'center',
           gap: 6,
@@ -275,8 +260,6 @@ const CanvasToolbar: React.FC<{
             </span>
           </>
         )}
-      </div>
-      {children}
       </div>
     );
   });

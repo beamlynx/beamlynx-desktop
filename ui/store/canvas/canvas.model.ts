@@ -304,7 +304,12 @@ export type ConfigItem =
   | { kind: 'group'; column: string };
 
 /** Viewport coordinates (clientX/clientY) of the action button that opened the picker - see Picker.tsx. */
-export type PickerAnchor = { x: number; y: number };
+/**
+ * Where a picker opens: below and right of (x, y). With `above`, it opens
+ * upward from y instead - the operation bar's pickers, since the bar is at
+ * the bottom of the canvas (OperationBar.tsx).
+ */
+export type PickerAnchor = { x: number; y: number; above?: boolean };
 
 export type PickerState =
   | { open: false }
