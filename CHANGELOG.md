@@ -14,6 +14,8 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **A cell edit changes the row you edited, on its database.** After running one of several queries, changing the query without running it, switching the tab's database, or new results arriving while you typed, it could change another row, table or database. A tab now clears its results when you switch its database. (bundled beamlynx-ui 0.76.0)
 - **A delete plan runs only on the database it was made on,** and running several queries stops when you switch the tab's database. (bundled beamlynx-ui 0.76.0)
 - **Nothing changes data without you pressing Run.** Auto-run can't run a `delete!` or `update!`. Refreshing the results after an edit runs the query that made them, not unrun text in the editor. A query opened from a link can't change data until you dismiss its banner. (bundled beamlynx-ui 0.76.0)
+
+### Security
 - **Agents can't get around data masking.** Turning off agent access stops an agent's waiting queries, which used to run unmasked. Raw SQL doesn't run in an agent's tab. On Postgres, a masked column passed to a JSON function is refused, since the database's error printed its value. (bundled pine-lang 0.56.0, beamlynx-ui 0.76.0)
 - **Other accounts on your computer can't reach the app's query server.** Its launch token was part of the app's command line, which every user on the machine can read. The app now also talks to the server at `127.0.0.1` rather than `localhost`, which could resolve to an address another account could listen on.
 - **Only the app's own pages open in its window.** A local web page dropped on the window could load there, with access to your saved connections.
