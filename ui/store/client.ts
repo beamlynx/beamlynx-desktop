@@ -194,6 +194,12 @@ export type JoinColumns = {
    * pine-lang's docs/joins.md, "Joining on a name you give".
    */
   'from-value-path'?: JsonPathStep[];
+  /**
+   * The earlier table this pair's `from` column belongs to, when it isn't
+   * the join's own `from`: `fd .id = av.attributeId, .tenant_id =
+   * c.tenantId`. See pine-lang's docs/joins.md, "Naming each side's table".
+   */
+  'from-alias'?: string;
 };
 
 /**

@@ -8,6 +8,7 @@ import {
   columnName,
   GroupColumn,
   Join,
+  JoinColumns,
   JsonPathStep,
   OrderColumn,
   NamedResultAst,
@@ -169,37 +170,50 @@ const addJoins = (
       continue;
     }
     const parentIsFrom = join.parent === 'from';
-    const fromNode = parentIsFrom ? fromAlias : toAlias;
-    const toNode = parentIsFrom ? toAlias : fromAlias;
-    // A foreign key made of several columns is one join with several pairs.
-    // The edge is drawn from the first - the pair the join is named by - and
-    // every pair gets a handle, so each column the join actually uses shows
-    // on its own table.
-    const oriented = columns.map(({ from, to }) =>
-      parentIsFrom ? { parent: from, child: to } : { parent: to, child: from },
-    );
-    for (const { parent, child } of oriented) {
-      addHandle(handles.right, fromNode, parent, 'r', toNode);
-      addHandle(handles.left, toNode, child, 'l', fromNode);
+    // A pair may compare with another earlier table than the join's own
+    // `from`: `fd .id = av.attributeId, .tenant_id = c.tenantId`. Its
+    // `from-alias` names that table. Each earlier table gets an edge of its
+    // own, so every handle sits on the table whose column it is. The join's
+    // own `from` comes first: that edge is the one the join is named by.
+    const byEarlier = new Map<string, JoinColumns[]>([[fromAlias, []]]);
+    for (const pair of columns) {
+      const earlier = pair['from-alias'] ?? fromAlias;
+      byEarlier.set(earlier, [...(byEarlier.get(earlier) ?? []), pair]);
     }
-    const [{ parent: parentCol, child: childCol }] = oriented;
     const uncertain = isUncertainResolution(resolution);
-    edges.push({
-      id: `${fromNode}->${toNode}:${parentCol}=${childCol}`,
-      source: fromNode,
-      target: toNode,
-      sourceHandle: `r:${parentCol}`,
-      targetHandle: `l:${childCol}`,
-      ...(uncertain ? { uncertain: true } : {}),
-      // Always toAlias (via joinTargetAlias above), not toNode - see
-      // CanvasEdge.joinTargetAlias's own comment for why these two can
-      // differ (a "belongs to" relation swaps fromNode/toNode for layout,
-      // but the `:left`/`:right` modifier stays on whichever table
-      // the join's own `to` names, regardless of which side of the screen it
-      // renders on).
-      joinType,
-      joinTargetAlias,
-    });
+    for (const [earlier, pairs] of Array.from(byEarlier.entries())) {
+      if (pairs.length === 0) continue;
+      const fromNode = parentIsFrom ? earlier : toAlias;
+      const toNode = parentIsFrom ? toAlias : earlier;
+      // A foreign key made of several columns is one join with several pairs.
+      // The edge is drawn from the first - the pair the join is named by - and
+      // every pair gets a handle, so each column the join actually uses shows
+      // on its own table.
+      const oriented = pairs.map(({ from, to }) =>
+        parentIsFrom ? { parent: from, child: to } : { parent: to, child: from },
+      );
+      for (const { parent, child } of oriented) {
+        addHandle(handles.right, fromNode, parent, 'r', toNode);
+        addHandle(handles.left, toNode, child, 'l', fromNode);
+      }
+      const [{ parent: parentCol, child: childCol }] = oriented;
+      edges.push({
+        id: `${fromNode}->${toNode}:${parentCol}=${childCol}`,
+        source: fromNode,
+        target: toNode,
+        sourceHandle: `r:${parentCol}`,
+        targetHandle: `l:${childCol}`,
+        ...(uncertain ? { uncertain: true } : {}),
+        // Always toAlias (via joinTargetAlias above), not toNode - see
+        // CanvasEdge.joinTargetAlias's own comment for why these two can
+        // differ (a "belongs to" relation swaps fromNode/toNode for layout,
+        // but the `:left`/`:right` modifier stays on whichever table
+        // the join's own `to` names, regardless of which side of the screen it
+        // renders on).
+        joinType,
+        joinTargetAlias,
+      });
+    }
   }
 };
 
@@ -395,7 +409,17 @@ const deriveStage = (
   // `unnest:`, which have no node: it is drawn from their table's node. Its
   // handle is named as typed, `company_id` or `e.companyId`, as is one on a
   // key inside a JSON column, `data.ownerId`.
-  const joinsOnNodes = source.joins.map(join => {
+  const joinsOnNodes = source.joins.map(raw => {
+    // A pair that names another earlier table (`fromAlias`) is drawn from
+    // that table's node, so an element's table here too.
+    const join = raw.columns.some(c => c['from-alias'] && unnestTable.has(c['from-alias']))
+      ? {
+          ...raw,
+          columns: raw.columns.map(c =>
+            c['from-alias'] ? { ...c, 'from-alias': unnestTable.get(c['from-alias']) ?? c['from-alias'] } : c,
+          ),
+        }
+      : raw;
     const element = isElement(join.from);
     if (!element && !join.columns.some(c => c['from-value-path'])) return join;
     return {
