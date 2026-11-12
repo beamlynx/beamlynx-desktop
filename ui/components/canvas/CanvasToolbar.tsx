@@ -1,7 +1,6 @@
 import React from 'react';
 import { observer } from 'mobx-react-lite';
 import { CanvasStore } from '../../store/canvas/canvas.store';
-import { CanvasTableNodeData, START_NODE_ID } from '../../store/canvas/canvas.model';
 import { useStores } from '../../store/store-container';
 
 /**
@@ -263,119 +262,5 @@ const CanvasToolbar: React.FC<{ canvasStore: CanvasStore; extraAction?: CanvasTo
       </div>
     );
   });
-
-// The armed-key legend per focused-node kind. Not derived from TableNode's
-// own action bar (which would mean this file reaching into a
-// rendered node's DOM/props) - a plain lookup kept in sync by hand, same as
-// those files' own action lists; all three are short and change together.
-// Returns individual keys (not a joined string) so the indicator below can
-// render each one bold/accented with only the separators dimmed, rather than
-// the whole legend at one flat, easy-to-miss opacity.
-const legendKeysFor = (
-  isStart: boolean,
-  isCheckpoint: boolean,
-  removable: boolean,
-  named?: CanvasTableNodeData['nested'],
-): string[] => {
-  // 'c' (write the canvas comment) leads every legend, including the empty
-  // start node's - it needs no focused node, and is the one canvas-wide key
-  // included here. 'u'/Shift+'u' (undo/redo) are just as canvas-wide but
-  // stay out: they're a near-universal convention already carrying their
-  // own always-visible icons in the toolbar above, so they don't need this
-  // legend's help. 'c' is new vocabulary unique to this app - the whole
-  // reason this legend exists is to make a shortcut discoverable without
-  // memorizing it up front, and that need is real for 'c' in a way it
-  // isn't for undo/redo.
-  if (isStart) return ['c', 'i'];
-  // s/w/o/g/l/p are the operation bar's: they work on the whole query.
-  // No 'g' - group isn't offered for a checkpoint's own sealed output, and
-  // no '+': a checkpoint's node has nothing behind one. 'x' removes the
-  // checkpoint itself (CanvasStore.deleteCheckpoint), as the × on its
-  // divider does. 'e' expands or collapses what the checkpoint seals.
-  if (isCheckpoint) return ['c', 's', 'w', 'o', 'l', 'p', 'i', 'e', 'x'];
-  // 'e' on a table that uses a named block expands or collapses that block.
-  return ['c', 's', 'w', 'o', 'g', 'l', 'p', '+', 'i', ...(named ? ['e'] : []), ...(removable ? ['x'] : [])];
-};
-
-/**
- * Vim's own status-line convention: bottom-left of the buffer (here, the
- * canvas pane), not folded into the top-left icon toolbar above - it
- * describes the canvas itself, not an app-wide setting. Text and a small
- * square pin-glyph only, no background pill - this system never puts a
- * chip-with-background behind a status readout, only marks and printed
- * text directly on the blueprint (see TableNode.tsx's ChipRow/RelationDots
- * for the same pin shape elsewhere).
- */
-export const CanvasModeIndicator: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasStore }) => {
-  const insert = canvasStore.mode === 'insert';
-  const alias = canvasStore.focusedAlias;
-  const isStart = alias === START_NODE_ID;
-  const focusedNode = canvasStore.canvasGraph.nodes.find(n => n.id === alias);
-  const isCheckpoint =
-    focusedNode?.type === 'table-node' && !!(focusedNode.data as CanvasTableNodeData).checkpoint;
-  // `node.type` isn't a literal-discriminated field on reactflow's `Node<T>`
-  // (see layout.ts's getNodeHeight comment) - TS can't narrow the union from
-  // the `type === 'table-node'` check alone, hence the explicit cast, same
-  // trade-off that function always makes.
-  const removable =
-    focusedNode?.type === 'table-node' ? (focusedNode.data as CanvasTableNodeData).removable : false;
-
-  return (
-    <div
-      className="nodrag"
-      style={{
-        position: 'absolute',
-        bottom: 8,
-        left: 8,
-        zIndex: 15,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        fontSize: 'calc(12px * var(--text-scale, 1))',
-        fontFamily: 'var(--canvas-font)',
-        fontWeight: 700,
-        textTransform: 'uppercase',
-        letterSpacing: '0.4px',
-        color: insert ? 'var(--canvas-trace)' : 'var(--canvas-text-dim)',
-      }}
-    >
-      <span
-        aria-hidden
-        style={{
-          width: 7,
-          height: 7,
-          background: insert ? 'var(--canvas-trace)' : 'var(--canvas-text-dim)',
-        }}
-      />
-      <span>{insert ? 'insert' : 'normal'}</span>
-      {!insert && (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <span aria-hidden style={{ opacity: 0.5 }}>
-            ·
-          </span>
-          {legendKeysFor(
-            isStart,
-            isCheckpoint,
-            removable,
-            focusedNode?.type === 'table-node' ? (focusedNode.data as CanvasTableNodeData).nested : undefined,
-          ).map((key, i) => (
-            <React.Fragment key={key}>
-              {i > 0 && (
-                <span aria-hidden style={{ opacity: 0.35 }}>
-                  ·
-                </span>
-              )}
-              {/* Full opacity + the trace accent, not the dimmed status text
-                  around it - these are live keyboard shortcuts, not part of
-                  the mode readout, so they're the one thing here that should
-                  actually catch the eye at rest. */}
-              <span style={{ color: 'var(--canvas-trace)' }}>{key}</span>
-            </React.Fragment>
-          ))}
-        </span>
-      )}
-    </div>
-  );
-});
 
 export default CanvasToolbar;

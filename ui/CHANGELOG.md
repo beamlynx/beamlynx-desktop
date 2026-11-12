@@ -9,7 +9,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **An AI agent's SQL with `$1` runs with the value the agent sends for it.** The agent sends `{"1": [...]}`, and Beamlynx passes it to the variable the SQL became, such as `$tenant_id`. A number the SQL doesn't have runs nothing and says which numbers it has.
 
 ### Changed
-- **Select, where, order, group, limit, path and unnest are in one bar at the bottom of the canvas.** They list every table's columns under a heading for each table: the table you clicked first, then the newest, then the rest. A table's node keeps join, and traverse, describe and references behind its +.
+- **Every canvas action is in one bar at the bottom of the canvas.** It shows the selected table's join, traverse, describe and references, then select, where, order, group, limit, path and unnest for the whole query. The column lists show every table's columns under a heading for each table: the selected table first, then the newest, then the rest. Tables no longer have buttons of their own, and the mode line at the bottom left is gone.
 - **Completions in the Pine panel offer every table's columns**, under a heading for each table. The current table's come first. A column of another table is inserted with its alias, such as `c.email`.
 - **Ordering by columns of several tables sorts in the order you picked them.** The canvas writes one `order:` at the end of the query.
 

@@ -461,6 +461,16 @@ export const MORE_ACTIONS: { action: MoreAction; label: string; key: string }[] 
 export const MORE_ACTIONS_FOR_TABLE: MoreAction[] = ['traverse', 'describe', 'references'];
 export const MORE_ACTIONS_FOR_CHECKPOINT: MoreAction[] = [];
 
+/** What the operation bar offers for the selected node (CanvasStore.selectedNodeActions). */
+export type NodeAction = 'join' | 'traverse' | 'describe' | 'references';
+export const NODE_ACTIONS: { action: NodeAction; label: string; key?: string }[] = [
+  // `i` (insert) or `|` joins: see useCanvasKeybindings.ts.
+  { action: 'join', label: 'join', key: 'i' },
+  { action: 'traverse', label: 'traverse' },
+  { action: 'describe', label: 'describe' },
+  { action: 'references', label: 'references' },
+];
+
 /** The operations of the canvas's operation bar: they work on the whole query, not one node. */
 export type GlobalOperation = 'select' | 'where' | 'order' | 'group' | 'limit' | 'path' | 'unnest';
 export const GLOBAL_OPERATIONS: { kind: GlobalOperation; label: string; key: string }[] = [
