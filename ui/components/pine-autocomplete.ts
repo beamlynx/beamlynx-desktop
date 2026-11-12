@@ -13,7 +13,8 @@ import {
 import { Extension } from '@codemirror/state';
 import { EditorView, ViewPlugin, ViewUpdate } from '@codemirror/view';
 import { panelPeekTarget } from '../store/canvas/json-peek';
-import { Hints, PathHint, TableHint } from '../store/client';
+import { Ast, ColumnHint, Hints, PathHint, TableHint } from '../store/client';
+import { columnGroupName, groupRanks, qualifiedColumn } from '../store/column-groups';
 
 // Configuration constants
 const MAX_AUTOCOMPLETE_OPTIONS = 15;
@@ -28,6 +29,9 @@ interface PineCompletionContext {
   // once per editor and never rebuilt when a build brings new hints. A new
   // extension would replace the completion source, and the open list with it.
   hints: () => Hints | null;
+  // The build the hints came from: its current table and table names, to
+  // qualify and group column hints.
+  ast?: () => Ast | null;
   // A live getter rather than a snapshot value: reading it fresh on every
   // completion query reflects the current build status without needing the
   // (memoized, teardown-on-change) autocompletion extension to be rebuilt
@@ -175,62 +179,34 @@ function getPineCompletions(
       }
     });
 
-    hints.select.forEach((hint, index) => {
-      if (hint.column.toLowerCase().includes(word.toLowerCase()) || word === '') {
+    // Column hints come from every table in the query, grouped by table:
+    // the current one first, then the others, nearest first. A column of
+    // another table needs its alias (`u.email`), unless one was typed
+    // already (`u.em`): the word then starts after the dot.
+    const ast = pineContext.ast?.();
+    const tables = ast?.['selected-tables'] ?? [];
+    const aliasTyped = beforeCursor.charAt(beforeCursor.length - word.length - 1) === '.';
+    const addColumns = (columnHints: ColumnHint[] | undefined, suffix: string) => {
+      if (!columnHints) return;
+      const ranks = groupRanks(columnHints);
+      columnHints.forEach(hint => {
+        if (!hint.column.toLowerCase().includes(word.toLowerCase()) && word !== '') return;
+        const text = aliasTyped ? hint.column : qualifiedColumn(hint, ast?.current);
         completions.push({
-          expression: hint.column,
-          section: 'Columns',
-          label: hint.column,
-          apply: `${hint.column}, `,
+          expression: text,
+          section: { name: columnGroupName(hint.alias, tables), rank: ranks.get(hint.alias) },
+          label: text,
+          apply: `${text}${suffix}`,
         });
-      }
-    });
+      });
+    };
 
-    hints.order.forEach((hint, index) => {
-      if (hint.column.toLowerCase().includes(word.toLowerCase()) || word === '') {
-        completions.push({
-          expression: hint.column,
-          section: 'Columns',
-          label: hint.column,
-          apply: `${hint.column} desc, `,
-        });
-      }
-    });
-
-    hints.where.forEach((hint, index) => {
-      if (hint.column.toLowerCase().includes(word.toLowerCase()) || word === '') {
-        completions.push({
-          expression: hint.column,
-          section: 'Columns',
-          label: hint.column,
-          apply: `${hint.column} = `,
-        });
-      }
-    });
-
+    addColumns(hints.select, ', ');
+    addColumns(hints.order, ' desc, ');
+    addColumns(hints.where, ' = ');
     // The column alone after `unnest:`: the array is often a path inside it.
-    hints.unnest?.forEach(hint => {
-      if (hint.column.toLowerCase().includes(word.toLowerCase()) || word === '') {
-        completions.push({
-          expression: hint.column,
-          section: 'Columns',
-          label: hint.column,
-          apply: hint.column,
-        });
-      }
-    });
-
-    hints.update?.forEach((hint, index) => {
-      if (hint.column.toLowerCase().includes(word.toLowerCase()) || word === '') {
-        completions.push({
-          expression: hint.column,
-          section: 'Columns',
-          label: hint.column,
-          apply: `${hint.column} = `,
-        });
-      }
-    });
-
+    addColumns(hints.unnest, '');
+    addColumns(hints.update, ' = ');
   }
 
   if (completions.length === 0) {

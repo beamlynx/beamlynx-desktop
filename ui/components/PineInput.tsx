@@ -271,6 +271,7 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
     return createPineAutocompletion(
       {
         hints: () => session.ast?.hints || null,
+        ast: () => session.ast ?? null,
         isLoading: () => session.hintsLoading,
       },
       {

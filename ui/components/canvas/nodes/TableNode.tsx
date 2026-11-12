@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { Handle, NodeProps, Position, useUpdateNodeInternals } from 'reactflow';
-import { CanvasHandle, CanvasTableNodeData, PickerState } from '../../../store/canvas/canvas.model';
+import { CanvasHandle, CanvasTableNodeData, GlobalOperation, PickerState } from '../../../store/canvas/canvas.model';
 import { getNodeHeight, nodeWidth } from '../../../store/canvas/layout';
 import { occurrenceAt, unnestChipName } from '../../../store/canvas/pine-actions';
 import { useCanvasStore } from '../canvas-context';
@@ -59,10 +59,10 @@ export const activeOperationFor = (picker: PickerState, alias: string): Operatio
   // cursor) is still editing that node's join, same as the join-picker
   // itself - dims everything else for it exactly the same way.
   if (picker.mode === 'join-type') return picker.alias === alias ? 'join' : null;
-  // The "+" overflow menu itself, before any of its own items (order/group/
-  // path) has been picked - dims select/where/join the same as any other
-  // open picker would.
-  if (picker.mode === 'more') return picker.alias === alias ? 'more' : null;
+  // The "+" overflow menu itself, before any of its own items has been
+  // picked - dims join the same as any other open picker would. The
+  // operation bar's "+" isn't this node's.
+  if (picker.mode === 'more') return !picker.global && picker.alias === alias ? 'more' : null;
   // The verb menu behind "+" -> traverse. Still the "+" menu as far as the
   // action bar is concerned - it dims the same way, since traverse has no
   // button of its own to light up.
@@ -83,12 +83,27 @@ export const activeOperationFor = (picker: PickerState, alias: string): Operatio
   // `picker.request.kind` to exclude `'table'`, so no separate check for it
   // is needed (TS itself flags one as unreachable).
   if (!('alias' in picker.request) || picker.request.alias !== alias) return null;
-  // path-route (step 2: picking a discovered route) is still the same
-  // logical operation as path (step 1: picking a destination) - both dim
-  // the bar down to the same single 'path' button.
-  // `unnest` has no button of its own: it is picked from the "+" menu.
-  if (picker.request.kind === 'unnest') return 'more';
-  return picker.request.kind === 'path-route' ? 'path' : picker.request.kind;
+  // Only a join is this node's own. Select, where, order, group, path and
+  // unnest are the operation bar's (OperationBar.tsx): their pickers start
+  // from a node, but aren't its action.
+  return picker.request.kind === 'join' ? 'join' : null;
+};
+
+/**
+ * Which of the operation bar's operations is open, if any - OperationBar.tsx
+ * shows only it while a picker is open, as a node's action bar does.
+ */
+export const activeGlobalOperation = (picker: PickerState): GlobalOperation | 'more' | null => {
+  if (!picker.open) return null;
+  if (picker.mode === 'where-value') return 'where';
+  if (picker.mode === 'order-direction') return 'order';
+  if (picker.mode === 'limit-value') return 'limit';
+  if (picker.mode === 'more') return picker.global ? 'more' : null;
+  if (picker.mode !== 'list') return null;
+  const kind = picker.request.kind;
+  if (kind === 'path-route') return 'path';
+  if (kind === 'unnest') return 'more';
+  return kind === 'select' || kind === 'where' || kind === 'order' || kind === 'group' || kind === 'path' ? kind : null;
 };
 
 // A small, self-contained equivalent of RelationHandles.tsx - not imported
@@ -583,10 +598,11 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
   // openCheckpointPicker, which first writes the checkpoint's name into the
   // text if it isn't there yet (see CanvasStore.ensureCheckpointPinned).
   const checkpoint = data.checkpoint;
-  const openAction = (kind: 'select' | 'where') => (anchor: { x: number; y: number }) =>
-    checkpoint
-      ? void canvasStore.openCheckpointPicker(data.alias, kind, anchor)
-      : canvasStore.openColumnPicker(kind, data.alias, anchor);
+  // Select, where, order, group, limit, path and unnest work on the whole
+  // query, from the operation bar (OperationBar.tsx, beamlynx-plans #28).
+  // A node keeps what is about its own table: join here, and traverse,
+  // describe and references behind its "+".
+  const moreActions = canvasStore.moreActionsFor(data.alias, !!checkpoint);
   const operations: {
     kind: OperationKind;
     label: string;
@@ -594,18 +610,6 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
     emphasize?: boolean;
     emphasizeIndex?: number;
   }[] = [
-    {
-      kind: 'select',
-      label: 'select',
-      onClick: openAction('select'),
-      emphasize: showKeyHints,
-    },
-    {
-      kind: 'where',
-      label: 'where',
-      onClick: openAction('where'),
-      emphasize: showKeyHints,
-    },
     {
       kind: 'join',
       label: 'join',
@@ -723,13 +727,10 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
             />
           </React.Fragment>
         ))}
-        {!pinning && <ActionDivider />}
-        {/* order/group/path/limit, tucked behind one trigger - see the
-            `operations` comment above for why. No own keyboard letter of its
-            own (o/g/p/l still work directly on this node regardless of
-            whether this menu is ever opened - see useCanvasKeybindings.ts),
-            so unlike the three above this never renders emphasized. */}
-        {!pinning && (
+        {!pinning && moreActions.length > 0 && <ActionDivider />}
+        {/* traverse/describe/references, behind one trigger. A checkpoint's
+            node offers none, so it has no "+". */}
+        {!pinning && moreActions.length > 0 && (
           <ActionButton
             label="+"
             testId={`action-more-${data.alias}`}

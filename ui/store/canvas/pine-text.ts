@@ -444,6 +444,34 @@ export const stageEnd = (segments: Segment[], alias: string): number => {
   return segments.length;
 };
 
+/**
+ * Where a table's stage starts: the index after the group:/limit: before
+ * its first segment, or 0. For a checkpoint's name, the index after its own
+ * group:/limit:, since its stage is what comes after it.
+ */
+export const stageStart = (segments: Segment[], alias: string): number => {
+  const first = segments.findIndex(s => s.owner === alias);
+  if (first < 0) return 0;
+  if (isCheckpointOp(segments[first])) return first + 1;
+  for (let i = first - 1; i >= 0; i--) {
+    if (isCheckpointOp(segments[i])) return i + 1;
+  }
+  return 0;
+};
+
+/** Inserts a new segment of `kind` at `index`, owned by `owner`. */
+export const insertSegmentAt = (
+  segments: Segment[],
+  index: number,
+  kind: SegmentKind,
+  owner: string,
+  text: string,
+): Segment[] => {
+  const body = [...segments];
+  body.splice(index, 0, synthetic(text, kind, owner));
+  return body;
+};
+
 /** The group:/limit: segment of the checkpoint named `name`, or -1. */
 export const checkpointOpIndex = (segments: Segment[], name: string): number =>
   segments.findIndex(s => isCheckpointOp(s) && s.owner === name);

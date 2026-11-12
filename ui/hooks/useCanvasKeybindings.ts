@@ -136,6 +136,14 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
         return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
       };
 
+      // Under the operation bar's button for `kind`, where a click on it opens its picker.
+      const operationAnchorFor = (kind: string): { x: number; y: number } => {
+        const el = document.querySelector(`[data-testid="operation-${kind}"]`);
+        if (!el) return anchorFor(alias);
+        const rect = el.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.bottom };
+      };
+
       // Arrow-key navigation always works, vim mode or not - it's plain
       // directional navigation, not a vim convention, so there's no reason
       // to gate it on global.vimMode the way j/k below are.
@@ -225,42 +233,21 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
             canvasStore.openJoinPicker(alias, anchorFor(alias));
           }
           return;
+        // The operation bar's operations (OperationBar.tsx): they work on
+        // the whole query, so they need no focused node. A focused node's
+        // columns are listed first. The picker opens under the bar's button.
         case 's':
-          if (isStart) return;
-          e.preventDefault();
-          if (isCheckpoint) void canvasStore.openCheckpointPicker(alias, 'select', anchorFor(alias));
-          else canvasStore.openColumnPicker('select', alias, anchorFor(alias));
-          return;
         case 'w':
-          if (isStart) return;
-          e.preventDefault();
-          if (isCheckpoint) void canvasStore.openCheckpointPicker(alias, 'where', anchorFor(alias));
-          else canvasStore.openColumnPicker('where', alias, anchorFor(alias));
-          return;
         case 'o':
-          if (isStart) return;
-          e.preventDefault();
-          if (isCheckpoint) void canvasStore.openCheckpointPicker(alias, 'order', anchorFor(alias));
-          else canvasStore.openColumnPicker('order', alias, anchorFor(alias));
-          return;
         case 'g':
-          // Not offered for a checkpoint's own sealed output - grouping an
-          // already-grouped result is a different semantic question,
-          // deliberately left unimplemented.
-          if (isStart || isCheckpoint) return;
-          e.preventDefault();
-          canvasStore.openColumnPicker('group', alias, anchorFor(alias));
-          return;
         case 'p':
-          // Unlike 'g', offered on a checkpoint too - a sealed group:/limit:
-          // output is just as valid a place to search paths from as any real
-          // table (pine-lang's `? table` resolves through it the same way a
-          // real join does - see ast/table.clj's resolve-table).
-          if (isStart) return;
+        case 'l': {
+          if (!canvasStore.operationAnchor) return;
           e.preventDefault();
-          if (isCheckpoint) void canvasStore.openCheckpointPicker(alias, 'path', anchorFor(alias));
-          else canvasStore.openPathPicker(alias, anchorFor(alias));
+          const kind = ({ s: 'select', w: 'where', o: 'order', g: 'group', p: 'path', l: 'limit' } as const)[e.key];
+          canvasStore.openOperation(kind, operationAnchorFor(kind));
           return;
+        }
         // Expand or collapse the focused checkpoint's contents - the stage it
         // seals (CanvasStore.toggleNested). The same as the toggle on its
         // node. Checkpoints' nodes only.
@@ -269,21 +256,11 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
           e.preventDefault();
           canvasStore.toggleNested(nested.name);
           return;
-        case 'l':
-          // Offered on a checkpoint's node too, like 'p': it limits the
-          // sealed result (see CanvasStore.openLimitEditor). The checkpoint's
-          // own limit is changed from its divider's label.
-          if (isStart) return;
-          e.preventDefault();
-          canvasStore.openLimitEditor(alias, anchorFor(alias));
-          return;
-        // The "+" overflow itself - o/g/l/p above already jump straight to
-        // their target, so this exists for someone who wants to see what's
-        // behind the button rather than recall the individual letter.
+        // The focused node's own "+": traverse, describe and references.
         // Mirrors TableNode.tsx's own "+" button onClick exactly, including
-        // which actions each offers (no 'group' on a checkpoint's node).
+        // which actions each offers.
         case '+':
-          if (isStart) return;
+          if (isStart || canvasStore.moreActionsFor(alias, isCheckpoint).length === 0) return;
           e.preventDefault();
           canvasStore.openMorePicker(alias, isCheckpoint, anchorFor(alias));
           return;

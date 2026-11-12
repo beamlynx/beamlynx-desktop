@@ -143,17 +143,32 @@ export interface CanvasToolbarExtraAction {
  * NewLayoutView.tsx's LeftPane) only shows up when the Pine/SQL panel is
  * closed, so it isn't a reliable place to show this.
  */
-const CanvasToolbar: React.FC<{ canvasStore: CanvasStore; extraAction?: CanvasToolbarExtraAction }> =
-  observer(({ canvasStore, extraAction }) => {
+const CanvasToolbar: React.FC<{
+  canvasStore: CanvasStore;
+  extraAction?: CanvasToolbarExtraAction;
+  /** Drawn in its own box right of the toolbar's: the operation bar (OperationBar.tsx). */
+  children?: React.ReactNode;
+}> = observer(({ canvasStore, extraAction, children }) => {
     const { global } = useStores();
     return (
       <div
-        className="nodrag"
         style={{
           position: 'absolute',
           top: 8,
           left: 8,
           zIndex: 15,
+          display: 'flex',
+          alignItems: 'stretch',
+          gap: 8,
+          // A narrow canvas puts the operation bar on a line of its own,
+          // instead of cutting it off at the pane's edge.
+          flexWrap: 'wrap',
+          maxWidth: 'calc(100% - 16px)',
+        }}
+      >
+      <div
+        className="nodrag"
+        style={{
           display: 'flex',
           alignItems: 'center',
           gap: 6,
@@ -261,6 +276,8 @@ const CanvasToolbar: React.FC<{ canvasStore: CanvasStore; extraAction?: CanvasTo
           </>
         )}
       </div>
+      {children}
+      </div>
     );
   });
 
@@ -287,11 +304,12 @@ const legendKeysFor = (
   // memorizing it up front, and that need is real for 'c' in a way it
   // isn't for undo/redo.
   if (isStart) return ['c', 'i'];
-  // No 'g' - group isn't offered for a checkpoint's own sealed output. 'x'
-  // removes the checkpoint itself (CanvasStore.deleteCheckpoint), as the ×
-  // on its divider does.
-  // 'e' expands or collapses what the checkpoint seals.
-  if (isCheckpoint) return ['c', 's', 'w', 'o', 'l', 'p', '+', 'i', 'e', 'x'];
+  // s/w/o/g/l/p are the operation bar's: they work on the whole query.
+  // No 'g' - group isn't offered for a checkpoint's own sealed output, and
+  // no '+': a checkpoint's node has nothing behind one. 'x' removes the
+  // checkpoint itself (CanvasStore.deleteCheckpoint), as the × on its
+  // divider does. 'e' expands or collapses what the checkpoint seals.
+  if (isCheckpoint) return ['c', 's', 'w', 'o', 'l', 'p', 'i', 'e', 'x'];
   // 'e' on a table that uses a named block expands or collapses that block.
   return ['c', 's', 'w', 'o', 'g', 'l', 'p', '+', 'i', ...(named ? ['e'] : []), ...(removable ? ['x'] : [])];
 };

@@ -13,8 +13,10 @@ import {
   removeNode,
   Segment,
   segmentsFromAst,
+  insertSegmentAt,
   stageEnd,
   stageLimitIndex,
+  stageStart,
   toText,
   upsertOwnedSegment,
 } from './pine-text';
@@ -511,17 +513,71 @@ export const addRelativeDateWhereCondition = (
   );
 };
 
+const ORDER_PREFIX = /^(order:|o:)\s*/i;
+
+/** The items of an `order:` step: `c.name desc`, `created_at`. */
+const orderParts = (segment: Segment): string[] => splitTopLevel(segment.text.replace(ORDER_PREFIX, ''));
+
+/**
+ * The table an order item is on: the alias it starts with, when that names
+ * a table, or else the table that owns the step (`name` after `user`).
+ */
+const orderItemAlias = (base: PinnedBase, column: string, owner: string | null): string | null => {
+  const dot = column.indexOf('.');
+  if (dot > 0) {
+    const prefix = column.slice(0, dot);
+    if ((base.ast['selected-tables'] ?? []).some(t => t.alias === prefix)) return prefix;
+  }
+  return owner;
+};
+
+/**
+ * Every `order:` item on `alias`'s table, in pipe order, the order its order
+ * chips are listed in. A query orders once, at the end of a stage, with one
+ * `order:` holding every table's items. A query written by hand may still
+ * have one `order:` after each table: those are read too. Items on elements
+ * (see isElementPart) are listed apart.
+ */
+const orderItemsOf = (base: PinnedBase, alias: string): { segment: number; part: number; text: string }[] => {
+  const start = stageStart(base.segments, alias);
+  const end = stageEnd(base.segments, alias);
+  const items: { segment: number; part: number; text: string }[] = [];
+  base.segments.forEach((s, segment) => {
+    if (segment < start || segment >= end || s.kind !== 'order') return;
+    orderParts(s).forEach((text, part) => {
+      if (isElementPart(base, text)) return;
+      if (orderItemAlias(base, splitOrderItem(text).column, s.owner) === alias) items.push({ segment, part, text });
+    });
+  });
+  return items;
+};
+
+/** `base`'s text with the `order:` step at `index` holding `parts`, or removed when there are none. */
+const withOrderParts = (base: PinnedBase, index: number, parts: string[]): string =>
+  toText(
+    parts.length
+      ? base.segments.map((s, i) => (i === index ? { ...s, text: `order: ${parts.join(', ')}` } : s))
+      : base.segments.filter((_, i) => i !== index),
+  );
+
+/**
+ * Orders by `alias.column`, after everything already ordered in the stage:
+ * what was picked first sorts first. The item goes into the stage's last
+ * `order:`, or into a new one at the end of the stage.
+ */
 export const addOrderColumn = (
   base: PinnedBase,
   alias: string,
   column: string,
   direction: 'asc' | 'desc',
 ): string => {
-  const existing = base.segments.find(s => s.owner === alias && s.kind === 'order');
-  const priorColumns = existing ? splitTopLevel(existing.text.replace(/^(order:|o:)\s*/i, '')) : [];
-  const newColumn = `${alias}.${column} ${direction}`;
-  const text = [...priorColumns, newColumn].join(', ');
-  return toText(upsertOwnedSegment(base.segments, alias, 'order', `order: ${text}`));
+  const item = `${alias}.${column} ${direction}`;
+  const start = stageStart(base.segments, alias);
+  const end = stageEnd(base.segments, alias);
+  let last = -1;
+  for (let i = start; i < end; i++) if (base.segments[i].kind === 'order') last = i;
+  if (last >= 0) return withOrderParts(base, last, [...orderParts(base.segments[last]), item]);
+  return toText(insertSegmentAt(base.segments, end, 'order', alias, `order: ${item}`));
 };
 
 /**
@@ -541,26 +597,8 @@ export const splitOrderItem = (
 };
 
 /** Reads the columns `alias` is currently ordered by (direction stripped) - see getSelectColumns for why this reads from `base.segments`, not the rendered canvasGraph. */
-export const getOrderColumns = (base: PinnedBase, alias: string): string[] => {
-  const existing = base.segments.find(s => s.owner === alias && s.kind === 'order');
-  if (!existing) return [];
-  const body = existing.text.replace(/^(order:|o:)\s*/i, '');
-  return splitTopLevel(body)
-    .filter(part => !isElementPart(base, part))
-    .map(part => {
-      return columnAfterAlias(base, splitOrderItem(part).column, alias);
-    });
-};
-
-/**
- * The position in `columns` (every item of the order: step) of the table's
- * own `index`th item: its order chips leave out items on elements (see
- * isElementPart).
- */
-const ownOrderIndex = (base: PinnedBase, columns: string[], index: number): number => {
-  const own = columns.flatMap((part, i) => (isElementPart(base, part) ? [] : [i]));
-  return own[index] ?? -1;
-};
+export const getOrderColumns = (base: PinnedBase, alias: string): string[] =>
+  orderItemsOf(base, alias).map(({ text }) => columnAfterAlias(base, splitOrderItem(text).column, alias));
 
 /** Flips an existing order column's direction in place - the index stays stable, unlike remove+re-add. */
 export const setOrderDirectionAt = (
@@ -569,28 +607,21 @@ export const setOrderDirectionAt = (
   index: number,
   direction: 'asc' | 'desc',
 ): string => {
-  const existing = base.segments.find(s => s.owner === alias && s.kind === 'order');
-  if (!existing) return toText(base.segments);
-  const columns = splitTopLevel(existing.text.replace(/^(order:|o:)\s*/i, ''));
-  const at = ownOrderIndex(base, columns, index);
-  const target = columns[at];
-  if (target === undefined) return toText(base.segments);
+  const target = orderItemsOf(base, alias)[index];
+  if (!target) return toText(base.segments);
+  const parts = orderParts(base.segments[target.segment]);
   // `nulls first` stays: only the direction flips.
-  const { column, nulls } = splitOrderItem(target);
-  columns[at] = `${column} ${direction}${nulls ? ` nulls ${nulls}` : ''}`;
-  return toText(upsertOwnedSegment(base.segments, alias, 'order', `order: ${columns.join(', ')}`));
+  const { column, nulls } = splitOrderItem(target.text);
+  parts[target.part] = `${column} ${direction}${nulls ? ` nulls ${nulls}` : ''}`;
+  return withOrderParts(base, target.segment, parts);
 };
 
 export const removeOrderColumnAt = (base: PinnedBase, alias: string, index: number): string => {
-  const existing = base.segments.find(s => s.owner === alias && s.kind === 'order');
-  if (!existing) return toText(base.segments);
-  const columns = splitTopLevel(existing.text.replace(/^(order:|o:)\s*/i, ''));
-  const at = ownOrderIndex(base, columns, index);
-  if (at < 0) return toText(base.segments);
-  columns.splice(at, 1);
-  return toText(
-    upsertOwnedSegment(base.segments, alias, 'order', columns.length ? `order: ${columns.join(', ')}` : null),
-  );
+  const target = orderItemsOf(base, alias)[index];
+  if (!target) return toText(base.segments);
+  const parts = orderParts(base.segments[target.segment]);
+  parts.splice(target.part, 1);
+  return withOrderParts(base, target.segment, parts);
 };
 
 /**
