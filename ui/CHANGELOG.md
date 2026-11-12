@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- **The canvas draws a join that compares with more than one table.** In `fd fd.id = av.attributeId, fd.tenant_id = c.tenantId`, each table gets its own line to `fd`, and each column shows on its own table.
 
 ## [0.76.0] - 2026-11-12
 ### Breaking

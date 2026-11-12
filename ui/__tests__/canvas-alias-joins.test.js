@@ -75,3 +75,50 @@ test('an alias join is drawn as uncertain wherever joins are styled', () => {
   assert.equal(isUncertainResolution('alias'), true);
   assert.equal(isUncertainResolution('fk'), false);
 });
+
+// pine-lang's /build for
+// `attribute_values as av | company as c c.id = av.company_id
+//  | field_definition as fd fd.id = av.attributeId, fd.tenant_id = c.tenantId`.
+// The second pair of fd's join names `c`, not the join's own `from`.
+const threeTables = {
+  ...ast,
+  'selected-tables': [
+    { schema: null, table: 'attribute_values', alias: 'av' },
+    { schema: null, table: 'company', alias: 'c' },
+    { schema: null, table: 'field_definition', alias: 'fd' },
+  ],
+  joins: [
+    { from: 'av', to: 'c', parent: 'from', columns: [{ from: 'company_id', to: 'id' }], resolution: 'manual', cast: null, type: null },
+    {
+      from: 'av',
+      to: 'fd',
+      parent: 'from',
+      columns: [
+        { from: 'attributeId', to: 'id' },
+        { from: 'tenantId', to: 'tenant_id', 'from-alias': 'c' },
+      ],
+      conditions: [],
+      resolution: 'manual',
+      cast: null,
+      type: 'LEFT',
+    },
+  ],
+  unnests: [],
+  columns: [],
+  current: 'fd',
+  context: 'c',
+};
+
+test('a pair that names another earlier table is drawn from that table', () => {
+  const graph = buildCanvasGraph(threeTables, {}, false);
+  const edges = graph.edges
+    .filter(e => e.target === 'fd')
+    .map(e => [e.source, e.sourceHandle, e.targetHandle, e.joinType, e.joinTargetAlias]);
+  assert.deepEqual(edges, [
+    ['av', 'r:attributeId', 'l:id', 'LEFT', 'fd'],
+    ['c', 'r:tenantId', 'l:tenant_id', 'LEFT', 'fd'],
+  ]);
+  const right = id => graph.nodes.find(n => n.id === id).data.rightHandles.map(h => h.column);
+  assert.ok(right('c').includes('tenantId'), 'The handle sits on the table whose column it is');
+  assert.ok(!right('av').includes('tenantId'));
+});
