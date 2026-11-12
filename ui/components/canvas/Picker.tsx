@@ -118,6 +118,11 @@ const anchoredStyle = (anchor: PickerAnchor): React.CSSProperties => {
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1200;
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
   const left = Math.min(Math.max(anchor.x + margin, margin), vw - pickerWidth - margin);
+  if (anchor.above) {
+    // Grows upward from just above the anchor, as tall as fits.
+    const bottom = Math.max(vh - anchor.y + margin, margin);
+    return { ...basePickerStyle, left, bottom, maxHeight: Math.min(pickerHeight, vh - bottom - margin) };
+  }
   const top = Math.min(Math.max(anchor.y + margin, margin), vh - pickerHeight - margin);
   return { ...basePickerStyle, left, top };
 };
@@ -180,7 +185,8 @@ const Picker: React.FC = observer(() => {
     const margin = 8;
     const rect = el.getBoundingClientRect();
     const dx = Math.max(rect.right - (window.innerWidth - margin), 0);
-    const dy = Math.max(rect.bottom - (window.innerHeight - margin), 0);
+    // A picker that opens upward (anchor.above) is placed by its bottom, and only its left needs fixing.
+    const dy = el.style.bottom ? 0 : Math.max(rect.bottom - (window.innerHeight - margin), 0);
     if (dx) el.style.left = `${Math.max(rect.left - dx, margin)}px`;
     if (dy) el.style.top = `${Math.max(rect.top - dy, margin)}px`;
   });
@@ -1193,16 +1199,19 @@ const Picker: React.FC = observer(() => {
                       // through the sliver of the header its own background
                       // should have covered.
                       zIndex: 1,
-                      background: 'var(--canvas-picker-bg)',
-                      borderLeft: `3px solid ${groupAccent(group.label)}`,
+                      // A table's heading, `user (u)`, sits on the chip
+                      // tint in the accent colour: dim text read as one
+                      // more column. Its columns are indented below.
+                      background: group.alias ? 'var(--canvas-chip-bg)' : 'var(--canvas-picker-bg)',
+                      borderLeft: `3px solid ${group.alias ? 'var(--canvas-trace)' : groupAccent(group.label)}`,
                       paddingLeft: 6,
                       paddingTop: 2,
                       fontSize: 'calc(11px * var(--text-scale, 1))',
                       fontWeight: 700,
-                      // A table's heading, `user (u)`, is a name: an alias is case-sensitive.
+                      // A table's heading is a name: an alias is case-sensitive.
                       textTransform: group.alias ? 'none' : 'uppercase',
                       letterSpacing: '0.5px',
-                      color: 'var(--canvas-text-dim)',
+                      color: group.alias ? 'var(--canvas-trace)' : 'var(--canvas-text-dim)',
                       marginBottom: 3,
                       paddingBottom: 2,
                       borderBottom: '1px solid var(--canvas-node-border)',
@@ -1230,7 +1239,8 @@ const Picker: React.FC = observer(() => {
                       data-testid={`picker-item-${item.label}`}
                       onClick={() => onSelect(item)}
                       style={{
-                        padding: '3px 4px',
+                        // Under a table's heading, indented: a column of that table.
+                        padding: group.alias && group.label ? '3px 4px 3px 14px' : '3px 4px',
                         cursor: 'pointer',
                         borderRadius: 3,
                         background: isHighlighted ? 'var(--canvas-chip-bg)' : 'transparent',

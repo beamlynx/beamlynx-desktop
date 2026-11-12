@@ -361,9 +361,8 @@ const Flow: React.FC<{
       <Portal>
         <Picker />
       </Portal>
-      <CanvasToolbar canvasStore={canvasStore} extraAction={toolbarExtraAction}>
-        <OperationBar canvasStore={canvasStore} />
-      </CanvasToolbar>
+      <CanvasToolbar canvasStore={canvasStore} extraAction={toolbarExtraAction} />
+      <OperationBar canvasStore={canvasStore} />
       <CanvasModeIndicator canvasStore={canvasStore} />
       <MultiSelectToolbar canvasStore={canvasStore} />
     </div>

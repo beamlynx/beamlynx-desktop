@@ -11,11 +11,19 @@ import { ActionButton, ActionDivider, activeGlobalOperation } from './nodes/Tabl
  * each node. Their pickers list every table's columns: the focused node's
  * first, then the most recent table's, then the rest, nearest first.
  *
- * Drawn like a node's action bar (the same buttons and dividers), in its
- * own box right of the canvas toolbar (CanvasToolbar.tsx). It gives way
- * while the multi-select toolbar shows, which has its own limit. While one
- * of its pickers is open, the others dim, as on a node.
+ * Drawn like a node's action bar (the same buttons and dividers), docked
+ * at the bottom of the canvas, above the mode line (CanvasModeIndicator):
+ * tables are added below the ones before, so the next step is read at the
+ * bottom. It gives way while the multi-select toolbar shows, which has its
+ * own limit. While one of its pickers is open, the others dim, as on a
+ * node.
  */
+// The bar is at the bottom of the canvas, so its pickers open upward, from the bar's top edge.
+const upward = (anchor: { x: number; y: number }) => {
+  const bar = document.querySelector('[data-testid="canvas-operation-bar"]')?.getBoundingClientRect();
+  return { x: anchor.x, y: bar ? bar.top : anchor.y, above: true };
+};
+
 const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasStore }) => {
   if (!canvasStore.operationAnchor || canvasStore.selectedAliases.length >= 2) return null;
   const active = activeGlobalOperation(canvasStore.picker);
@@ -25,6 +33,13 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
       className="nodrag"
       data-testid="canvas-operation-bar"
       style={{
+        position: 'absolute',
+        // Above the mode line, which sits at the bottom left.
+        bottom: 32,
+        left: 8,
+        zIndex: 15,
+        maxWidth: 'calc(100% - 16px)',
+        flexWrap: 'wrap',
         display: 'flex',
         alignItems: 'center',
         gap: 3,
@@ -41,7 +56,7 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
           <ActionButton
             label={op.label}
             testId={`operation-${op.kind}`}
-            onClick={anchor => canvasStore.openOperation(op.kind, anchor)}
+            onClick={anchor => canvasStore.openOperation(op.kind, upward(anchor))}
             emphasizeKey={showKeys}
             suppressed={active !== null && active !== op.kind}
           />
@@ -51,7 +66,7 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
       <ActionButton
         label="+"
         testId="operation-more"
-        onClick={anchor => canvasStore.openOperationMore(anchor)}
+        onClick={anchor => canvasStore.openOperationMore(upward(anchor))}
         suppressed={active !== null && active !== 'more'}
       />
     </div>

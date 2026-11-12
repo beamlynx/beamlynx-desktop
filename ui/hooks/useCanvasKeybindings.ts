@@ -136,12 +136,13 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
         return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
       };
 
-      // Under the operation bar's button for `kind`, where a click on it opens its picker.
-      const operationAnchorFor = (kind: string): { x: number; y: number } => {
+      // At the operation bar's button for `kind`, where a click on it opens
+      // its picker: upward, since the bar is at the bottom of the canvas.
+      const operationAnchorFor = (kind: string): { x: number; y: number; above: boolean } => {
         const el = document.querySelector(`[data-testid="operation-${kind}"]`);
-        if (!el) return anchorFor(alias);
+        if (!el) return { ...anchorFor(alias), above: false };
         const rect = el.getBoundingClientRect();
-        return { x: rect.left + rect.width / 2, y: rect.bottom };
+        return { x: rect.left + rect.width / 2, y: rect.top, above: true };
       };
 
       // Arrow-key navigation always works, vim mode or not - it's plain

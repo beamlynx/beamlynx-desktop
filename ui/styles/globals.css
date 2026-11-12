@@ -184,6 +184,28 @@ a {
   color: var(--node-suggested-border) !important;
 }
 
+/* A section heading in the Pine panel's completions: a table, `user (u)`,
+ * whose columns follow, or Tables/Paths. CodeMirror draws it like an
+ * option at 70% opacity, so it read as one more column. It gets its own
+ * colour and band instead, and the options under it are indented. */
+/* !important: CodeMirror's theme styles these with generated classes that
+ * win on specificity. */
+.cm-editor .cm-tooltip-autocomplete ul completion-section {
+  display: block !important;
+  opacity: 1 !important;
+  margin-top: 2px;
+  padding: 3px 8px !important;
+  font-weight: 700;
+  color: var(--primary-color);
+  background: var(--node-column-bg);
+  border-left: 3px solid var(--primary-color);
+  border-bottom: 1px solid var(--border-color) !important;
+}
+
+.cm-editor .cm-tooltip-autocomplete ul completion-section ~ li {
+  padding-left: 18px !important;
+}
+
 /* ---------------------------------------------------------------------------
  * Motion
  * ------------------------------------------------------------------------- */
