@@ -150,7 +150,9 @@ async function sqlAsPine(
   client: HttpClient,
   sql: string,
   connectionId: string,
-): Promise<{ expression: string; warnings: string[] } | { error: string }> {
+): Promise<
+  { expression: string; warnings: string[]; parameters: { number: string; name: string }[] } | { error: string }
+> {
   let result;
   try {
     result = await client.sqlToPine(sql, connectionId);
@@ -169,7 +171,38 @@ async function sqlAsPine(
   return {
     expression: note ? `${note}\n${result.expression}` : result.expression,
     warnings: result.warnings ?? [],
+    parameters: result.parameters ?? [],
   };
+}
+
+/**
+ * An agent's values for SQL's `$1`, `$2`, sent by number (`{"1": [...]}`),
+ * under the names the conversion gave them (`$tenant_id`). Values sent by
+ * name pass as they are. A number the SQL doesn't have, or a value sent
+ * both by number and by its name, is an error that says what the SQL has.
+ */
+export function numberedToNamed(
+  variables: Record<string, VariableValue>,
+  parameters: { number: string; name: string }[],
+): { variables: Record<string, VariableValue> } | { error: string } {
+  const nameOf = new Map(parameters.map(p => [p.number, p.name]));
+  const has = parameters.length
+    ? `The SQL has ${parameters.map(p => `$${p.number}`).join(', ')}.`
+    : 'The SQL has no $1-style parameters.';
+  const renamed: Record<string, VariableValue> = {};
+  for (const [key, value] of Object.entries(variables)) {
+    if (!/^[0-9]+$/.test(key)) {
+      renamed[key] = value;
+      continue;
+    }
+    const name = nameOf.get(key);
+    if (!name) return { error: `\`variables\` has a value for $${key}, which the SQL doesn't use. ${has}` };
+    if (name in variables) {
+      return { error: `$${key} is $${name} in Pine, and \`variables\` has a value for both. Send it once.` };
+    }
+    renamed[name] = value;
+  }
+  return { variables: renamed };
 }
 
 export async function runMcpQuery(
@@ -207,6 +240,10 @@ export async function runMcpQuery(
     if ('error' in converted) return { tabId: '', columns: [], rows: [], error: converted.error };
     expression = converted.expression;
     warnings = converted.warnings;
+    // `$1` became `$tenant_id`: the agent's {"1": ...} goes by that name.
+    const named = numberedToNamed(variables ?? {}, converted.parameters);
+    if ('error' in named) return { tabId: '', columns: [], rows: [], error: named.error };
+    variables = named.variables;
   }
   const session = deps.getOrCreateMcpSession();
   session.connectionId = connectionId;
