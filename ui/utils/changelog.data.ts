@@ -58,6 +58,8 @@ export const CHANGELOG: ChangelogVersion[] = [
         title: "Running several queries stops when you switch the tab's database",
         description: "The queries still to run used to run on the old one.",
       },
+    ],
+    security: [
       {
         title: "Turning off agent access stops an agent's waiting queries",
         description: "They used to run with no data masking.",
