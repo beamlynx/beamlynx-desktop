@@ -56,12 +56,13 @@ test('typing in a one-query tab lays nothing out until the build comes back', ()
   assert.equal(graphs(), 0);
   assert.equal(store.canvasGraph, before);
 
-  // The build of what was typed: one layout.
+  // The build of what was typed: one layout of each stage, the tables
+  // the limit seals and the limit's line (beamlynx-plans #33).
   session.ast = asts['company as c | limit: 5'];
-  assert.equal(layouts, 1);
+  assert.equal(layouts, 2);
   assert.deepEqual(
     store.canvasGraph.nodes.map(n => n.id),
-    ['result_1'],
+    ['c', 'result_1'],
   );
   stop();
 });

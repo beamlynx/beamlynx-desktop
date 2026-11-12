@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { CanvasStore } from '../../store/canvas/canvas.store';
-import { GLOBAL_OPERATIONS, NODE_ACTIONS } from '../../store/canvas/canvas.model';
+import { GLOBAL_OPERATIONS } from '../../store/canvas/canvas.model';
 import { activeGlobalOperation } from './nodes/TableNode';
 
 // The bar is at the bottom of the canvas, so its pickers open upward, from the bar's top edge.
@@ -77,20 +77,17 @@ const BarButton = ({
  * canvas: tables are added below the ones before them, so the next step
  * is read there.
  *
- * - On the left, the selected node's actions, under its name: join, and
- *   traverse, describe and references for a table (see
- *   CanvasStore.selectedNodeActions). With no node selected, they are for
- *   the table the query goes on from.
- * - On the right, the query's own operations: select, where, order,
- *   group, limit and path, with unnest behind "+" (beamlynx-plans #28).
- *   Their pickers list every table's columns, the selected node's first.
+ * One row: join, select, where, order, group, limit and path, and "+" for
+ * traverse, describe, references and unnest. Join, traverse, describe and
+ * references are for the selected table, or the one the query goes on
+ * from (see CanvasStore.selectedNodeActions). The column pickers list
+ * every table's columns, the selected table's first (beamlynx-plans #28).
  *
  * It gives way while the multi-select toolbar shows, which has its own
  * limit. While one of its pickers is open, the other buttons dim.
  */
 const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasStore }) => {
-  const node = canvasStore.selectedNodeActions;
-  if (!node || !canvasStore.operationAnchor || canvasStore.selectedAliases.length >= 2) return null;
+  if (!canvasStore.selectedNodeActions || !canvasStore.operationAnchor || canvasStore.selectedAliases.length >= 2) return null;
   const active = activeGlobalOperation(canvasStore.picker);
   const offered = canvasStore.offeredOperations;
   const keys = canvasStore.mode === 'normal';
@@ -118,28 +115,12 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
         boxShadow: '0 2px 12px rgba(0,0,0,0.3)',
       }}
     >
-      <span
-        data-testid="operation-node"
-        title="The selected table. Click a table to choose another."
-        style={{
-          fontFamily: 'var(--canvas-font)',
-          fontSize: 'calc(12px * var(--text-scale, 1))',
-          color: 'var(--canvas-text-dim)',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {node.label}
-      </span>
-      {NODE_ACTIONS.filter(a => node.actions.includes(a.action)).map(a => (
-        <BarButton
-          key={a.action}
-          label={a.label}
-          testId={`operation-${a.action}`}
-          onClick={e => canvasStore.openNodeAction(a.action, upward(e))}
-          dimmed={dim(a.action)}
-        />
-      ))}
-      <span aria-hidden style={{ width: 1, alignSelf: 'stretch', background: 'var(--canvas-node-border)', margin: '0 4px' }} />
+      <BarButton
+        label="join"
+        testId="operation-join"
+        onClick={e => canvasStore.openNodeAction('join', upward(e))}
+        dimmed={dim('join')}
+      />
       {GLOBAL_OPERATIONS.filter(op => offered.operations.includes(op.kind)).map(op => (
         <BarButton
           key={op.kind}

@@ -8,7 +8,7 @@ import {
   NodeAction,
   PickerState,
 } from '../../../store/canvas/canvas.model';
-import { getNodeHeight, nodeWidth } from '../../../store/canvas/layout';
+import { getNodeHeight, lineHeight, nodeWidth } from '../../../store/canvas/layout';
 import { occurrenceAt, unnestChipName } from '../../../store/canvas/pine-actions';
 import { useCanvasStore } from '../canvas-context';
 import { useStores } from '../../../store/store-container';
@@ -45,7 +45,8 @@ export const activeGlobalOperation = (picker: PickerState): GlobalOperation | No
   if (picker.mode === 'where-value') return 'where';
   if (picker.mode === 'order-direction') return 'order';
   if (picker.mode === 'limit-value') return 'limit';
-  if (picker.mode === 'traverse') return 'traverse';
+  // Traverse is behind the bar's "+".
+  if (picker.mode === 'traverse') return 'more';
   if (picker.mode === 'more') return picker.global ? 'more' : null;
   if (picker.mode !== 'list') return null;
   const kind = picker.request.kind;
@@ -124,6 +125,112 @@ const RelationDots = ({
     </>
   );
 };
+
+/**
+ * A checkpoint's line (beamlynx-plans #33): a dotted line across the graph,
+ * below the stage it seals, in place of a result node. Its label says what
+ * sealed the stage; a limit's opens the limit editor, and × removes the
+ * checkpoint. The joins onto the sealed result drop out of its bottom edge,
+ * each from a pin under the label, with the column it joins on.
+ */
+const CheckpointLine = observer(({ data, focused }: { data: CanvasTableNodeData; focused: boolean }) => {
+  const canvasStore = useCanvasStore();
+  const nested = data.nested;
+  const width = data.checkpoint?.line?.width ?? nodeWidth;
+  const pins = [
+    ...data.rightHandles.map(h => ({ h, type: 'source' as const })),
+    ...data.leftHandles.map(h => ({ h, type: 'target' as const })),
+  ];
+  return (
+    <div
+      data-testid={`checkpoint-line-${data.alias}`}
+      style={{ position: 'relative', width, height: lineHeight, fontFamily: 'var(--canvas-font)' }}
+    >
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          top: lineHeight / 2,
+          borderTop: `${focused ? 2.5 : 1.5}px dashed ${focused ? 'var(--canvas-node-border-current)' : 'var(--canvas-container-border)'}`,
+        }}
+      />
+      {nested && (
+        <div
+          className="nodrag"
+          data-testid={`nested-badge-${data.alias}`}
+          style={{
+            position: 'absolute',
+            // Right of the join pins, which sit at the line's left end.
+            left: 16 + pins.length * 14,
+            top: 0,
+            height: lineHeight,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '0 6px',
+            background: 'var(--canvas-bg)',
+            fontSize: 'calc(11px * var(--text-scale, 1))',
+            color: focused ? 'var(--canvas-text)' : 'var(--canvas-text-dim)',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <span
+            data-testid={`nested-label-${nested.name}`}
+            className={nested.limit !== undefined ? 'picker-trigger' : undefined}
+            title={nested.limit !== undefined ? 'Change the limit' : `The query goes on from this result: ${nested.name}`}
+            onClick={
+              nested.limit !== undefined
+                ? e => {
+                    e.stopPropagation();
+                    canvasStore.openLimitEditor(data.alias, { x: e.clientX, y: e.clientY }, nested.name);
+                  }
+                : undefined
+            }
+            style={{
+              cursor: nested.limit !== undefined ? 'pointer' : 'default',
+              color: nested.limit !== undefined ? 'var(--canvas-trace)' : undefined,
+            }}
+          >
+            {nested.label}
+          </span>
+          <span
+            data-testid={`nested-delete-${nested.name}`}
+            title="Remove this checkpoint: the tables join up again"
+            onClick={e => {
+              e.stopPropagation();
+              void canvasStore.deleteCheckpoint(nested.name);
+            }}
+            style={{ cursor: 'pointer', opacity: 0.7 }}
+          >
+            &times;
+          </span>
+        </div>
+      )}
+      {pins.map(({ h, type }, i) => (
+        <Handle
+          key={`${type}:${h.id}`}
+          type={type}
+          position={Position.Bottom}
+          id={h.id}
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: 1,
+            background: 'var(--canvas-pin)',
+            left: 14 + i * 14,
+            bottom: lineHeight / 2 - 3,
+            top: 'auto',
+          }}
+        />
+      ))}
+      {/* Fallback anchors for an edge with no column to name a handle by (see the table card's). */}
+      <Handle type="target" position={Position.Bottom} style={{ opacity: 0, pointerEvents: 'none', left: 14 }} />
+      <Handle type="source" position={Position.Bottom} style={{ opacity: 0, pointerEvents: 'none', left: 14 }} />
+    </div>
+  );
+});
 
 // Node removal reads as a destructive, one-off action rather than another
 // "add a clause" action (and "delete" is easy to mistake for Pine/SQL
@@ -438,10 +545,12 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
   // True while this checkpoint's first action waits for its name to be
   // written into the text - see CanvasStore.checkpointPinning.
   const pinning = !!checkpoint && canvasStore.checkpointPinning === data.alias;
+  // A checkpoint of the last query block is drawn as a line (beamlynx-plans #33).
+  const line = checkpoint?.line;
 
   return (
     <div
-      style={{ width: nodeWidth }}
+      style={line ? { width: line.width, paddingLeft: 0 } : { width: nodeWidth }}
       onMouseEnter={() => {
         setHovered(true);
         // Hover only reveals this node's action bar and spotlights its
@@ -524,6 +633,9 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
           purpose, see below) would get silently clipped away too if it sat
           on the same element as the notch. Confirmed live: both were
           invisible until split out this way. */}
+      {line ? (
+        <CheckpointLine data={data} focused={isFocusTarget && !hasConfigCursor} />
+      ) : (
       <div style={{ position: 'relative' }}>
         <div
           style={{
@@ -686,8 +798,10 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
           </div>
         )}
       </div>
+      )}
 
-      {/* Configuration */}
+      {/* Configuration. Under a line, the chips sit under its label. */}
+      <div style={line ? { paddingLeft: 24, maxWidth: nodeWidth * 2 } : undefined}>
       <ChipRow
         label="unnest"
         chips={data.unnestChips ?? []}
@@ -793,6 +907,7 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
           onRemoveReadOnly={() => void canvasStore.removeDescribe(data.alias)}
         />
       )}
+      </div>
     </div>
   );
 });

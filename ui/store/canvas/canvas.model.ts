@@ -61,7 +61,15 @@ export type CanvasTableNodeData = {
    * buildCanvasGraph - one checkpoint is expanded at a time). Its divider,
    * with the label, × and expand toggle, is a separate node above it.
    */
-  checkpoint?: { expanded: boolean };
+  checkpoint?: {
+    expanded: boolean;
+    /**
+     * The last query block draws a checkpoint as a dotted line across the
+     * graph, between the stage it seals and the one after it, not as a node
+     * (beamlynx-plans #33). `width` is the line's, spanning the graph.
+     */
+    line?: { width: number };
+  };
   /**
    * Set when this node stands for a nested query: a checkpoint's node, or a
    * table that uses a named result from an earlier query block (a block
@@ -461,15 +469,11 @@ export const MORE_ACTIONS: { action: MoreAction; label: string; key: string }[] 
 export const MORE_ACTIONS_FOR_TABLE: MoreAction[] = ['traverse', 'describe', 'references'];
 export const MORE_ACTIONS_FOR_CHECKPOINT: MoreAction[] = [];
 
-/** What the operation bar offers for the selected node (CanvasStore.selectedNodeActions). */
+/**
+ * What the operation bar offers for the selected node
+ * (CanvasStore.selectedNodeActions): join in the bar, the rest behind "+".
+ */
 export type NodeAction = 'join' | 'traverse' | 'describe' | 'references';
-export const NODE_ACTIONS: { action: NodeAction; label: string; key?: string }[] = [
-  // `i` (insert) or `|` joins: see useCanvasKeybindings.ts.
-  { action: 'join', label: 'join', key: 'i' },
-  { action: 'traverse', label: 'traverse' },
-  { action: 'describe', label: 'describe' },
-  { action: 'references', label: 'references' },
-];
 
 /** The operations of the canvas's operation bar: they work on the whole query, not one node. */
 export type GlobalOperation = 'select' | 'where' | 'order' | 'group' | 'limit' | 'path' | 'unnest';
