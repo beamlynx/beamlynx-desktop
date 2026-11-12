@@ -1563,20 +1563,6 @@ export class CanvasStore {
     return last && !last.sealed ? last.name : ast?.current;
   }
 
-  /**
-   * The operation bar's operations for where the query is now. On a sealed
-   * result, group and unnest aren't offered (see openOperation), so the bar
-   * leaves them out rather than show buttons that do nothing.
-   */
-  get offeredOperations(): { operations: GlobalOperation[]; more: boolean } {
-    const anchor = this.operationAnchor;
-    const sealed = !!anchor && this.isCheckpointNode(anchor);
-    const all: GlobalOperation[] = ['select', 'where', 'order', 'group', 'limit', 'path'];
-    // "+" holds the selected table's traverse, describe and references, and unnest.
-    const own = (this.selectedNodeActions?.actions ?? []).some(a => a !== 'join');
-    return { operations: sealed ? all.filter(k => k !== 'group') : all, more: own || !sealed };
-  }
-
   private isCheckpointNode(alias: string): boolean {
     const node = this.canvasGraph.nodes.find((n): n is CanvasTableNode => n.type === 'table-node' && n.id === alias);
     return !!node?.data.checkpoint;
@@ -1629,13 +1615,15 @@ export class CanvasStore {
       this.closePicker();
       return;
     }
-    // The selected table's traverse, describe and references, then unnest
-    // for the query once a table in it has a JSON column (see
-    // activateMoreAction, which unnests from operationAnchor).
+    // The query's order, group, limit and path; the selected table's
+    // traverse, describe and references; and unnest once a table in the
+    // query has a JSON column (see activateMoreAction, which unnests from
+    // operationAnchor). A sealed result offers no group or unnest.
     const own: MoreAction[] = selected.actions.flatMap(a => (a === 'join' ? [] : [a]));
     const sealed = this.isCheckpointNode(anchorAlias);
     const known = sealed ? [] : this.unnestColumns.get(this.unnestKey(anchorAlias));
-    const offer: MoreAction[] = [...own, ...(known?.length ? (['unnest'] as const) : [])];
+    const query: MoreAction[] = sealed ? ['order', 'limit', 'path'] : ['order', 'group', 'limit', 'path'];
+    const offer: MoreAction[] = [...query, ...own, ...(known?.length ? (['unnest'] as const) : [])];
     this.picker = {
       open: true,
       mode: 'more',
@@ -1809,6 +1797,13 @@ export class CanvasStore {
    * pick goes through openCheckpointPicker, which pins that name first.
    */
   activateMoreAction(alias: string, action: MoreAction, isCheckpoint: boolean, anchor: PickerAnchor) {
+    // The operation bar's "+": order, group, limit and path are for the
+    // whole query, as their keys are (see openOperation).
+    const p = this.picker;
+    if (p.open && p.mode === 'more' && p.global && (action === 'order' || action === 'group' || action === 'limit' || action === 'path')) {
+      this.openOperation(action, anchor);
+      return;
+    }
     // Checked before the isCheckpoint branch below: a limit goes through
     // the normal commit, whose pinned base names every checkpoint anyway,
     // so it needs no picker-time pin.

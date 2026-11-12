@@ -8,7 +8,7 @@ import {
   NodeAction,
   PickerState,
 } from '../../../store/canvas/canvas.model';
-import { getNodeHeight, lineHeight, nodeWidth } from '../../../store/canvas/layout';
+import { getNodeHeight, lineHeight, linePinRowHeight, nodeWidth } from '../../../store/canvas/layout';
 import { occurrenceAt, unnestChipName } from '../../../store/canvas/pine-actions';
 import { useCanvasStore } from '../canvas-context';
 import { useStores } from '../../../store/store-container';
@@ -144,7 +144,12 @@ const CheckpointLine = observer(({ data, focused }: { data: CanvasTableNodeData;
   return (
     <div
       data-testid={`checkpoint-line-${data.alias}`}
-      style={{ position: 'relative', width, height: lineHeight, fontFamily: 'var(--canvas-font)' }}
+      style={{
+        position: 'relative',
+        width,
+        height: lineHeight + (pins.length ? linePinRowHeight : 0),
+        fontFamily: 'var(--canvas-font)',
+      }}
     >
       <div
         aria-hidden
@@ -162,8 +167,7 @@ const CheckpointLine = observer(({ data, focused }: { data: CanvasTableNodeData;
           data-testid={`nested-badge-${data.alias}`}
           style={{
             position: 'absolute',
-            // Right of the join pins, which sit at the line's left end.
-            left: 16 + pins.length * 14,
+            left: 24,
             top: 0,
             height: lineHeight,
             display: 'flex',
@@ -208,26 +212,56 @@ const CheckpointLine = observer(({ data, focused }: { data: CanvasTableNodeData;
           </span>
         </div>
       )}
-      {pins.map(({ h, type }, i) => (
-        <Handle
-          key={`${type}:${h.id}`}
-          type={type}
-          position={Position.Bottom}
-          id={h.id}
+      {/* The result's columns its joins are on, each by its pin, under the
+          line, as a table names the columns its pins are for. */}
+      {pins.length > 0 && (
+        <div
           style={{
-            width: 6,
-            height: 6,
-            borderRadius: 1,
-            background: 'var(--canvas-pin)',
-            left: 14 + i * 14,
-            bottom: lineHeight / 2 - 3,
-            top: 'auto',
+            position: 'absolute',
+            left: 24,
+            top: lineHeight,
+            height: linePinRowHeight,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
           }}
-        />
-      ))}
+        >
+          {pins.map(({ h, type }) => (
+            <span
+              key={`${type}:${h.id}`}
+              data-testid={`checkpoint-pin-${data.alias}-${h.column}`}
+              title={`Joined on ${data.alias}.${h.column}`}
+              style={{
+                position: 'relative',
+                paddingLeft: 10,
+                fontSize: 'calc(10px * var(--text-scale, 1))',
+                color: 'var(--canvas-text-dim)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <Handle
+                type={type}
+                position={Position.Bottom}
+                id={h.id}
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: 1,
+                  background: 'var(--canvas-pin)',
+                  left: 3,
+                  top: '50%',
+                  bottom: 'auto',
+                  transform: 'translate(-50%, -50%)',
+                }}
+              />
+              {h.column}
+            </span>
+          ))}
+        </div>
+      )}
       {/* Fallback anchors for an edge with no column to name a handle by (see the table card's). */}
-      <Handle type="target" position={Position.Bottom} style={{ opacity: 0, pointerEvents: 'none', left: 14 }} />
-      <Handle type="source" position={Position.Bottom} style={{ opacity: 0, pointerEvents: 'none', left: 14 }} />
+      <Handle type="target" position={Position.Bottom} style={{ opacity: 0, pointerEvents: 'none', left: 24 }} />
+      <Handle type="source" position={Position.Bottom} style={{ opacity: 0, pointerEvents: 'none', left: 24 }} />
     </div>
   );
 });

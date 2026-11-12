@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { CanvasStore } from '../../store/canvas/canvas.store';
-import { GLOBAL_OPERATIONS } from '../../store/canvas/canvas.model';
 import { activeGlobalOperation } from './nodes/TableNode';
+
+/** How much of the canvas's bottom the bar takes: Canvas.tsx keeps the graph above it. */
+export const operationBarSpace = 60;
 
 // The bar is at the bottom of the canvas, so its pickers open upward, from the bar's top edge.
 const upward = (e: React.MouseEvent) => {
@@ -12,25 +14,26 @@ const upward = (e: React.MouseEvent) => {
 
 /**
  * One action of the bar, drawn as a button: a bordered box that lights up
- * under the pointer, so it reads as something to click. While another of
- * the bar's pickers is open, it dims. `shortcut` is the key that does the
- * same, underlined in its label while the canvas has the keyboard.
+ * under the pointer, so it reads as something to click. Its label is in
+ * capitals. While the canvas has the keyboard, the letter at `keyIndex` -
+ * the key that does the same - is bold and the rest dimmed, as the node's
+ * action bar used to show it. While another of the bar's pickers is open,
+ * the button dims.
  */
 const BarButton = ({
   label,
   testId,
   onClick,
   dimmed,
-  shortcut,
+  keyIndex,
 }: {
   label: string;
   testId: string;
   onClick: (e: React.MouseEvent) => void;
   dimmed: boolean;
-  shortcut?: string;
+  keyIndex?: number;
 }) => {
   const [hover, setHover] = useState(false);
-  const at = shortcut ? label.indexOf(shortcut) : -1;
   return (
     <button
       type="button"
@@ -48,7 +51,9 @@ const BarButton = ({
         fontFamily: 'var(--canvas-font)',
         fontSize: 'calc(12px * var(--text-scale, 1))',
         fontWeight: 600,
-        padding: '4px 10px',
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px',
+        padding: '5px 12px',
         borderRadius: 4,
         cursor: 'pointer',
         color: 'var(--canvas-trace)',
@@ -59,11 +64,11 @@ const BarButton = ({
         whiteSpace: 'nowrap',
       }}
     >
-      {at >= 0 ? (
+      {keyIndex !== undefined ? (
         <>
-          {label.slice(0, at)}
-          <span style={{ textDecoration: 'underline' }}>{label[at]}</span>
-          {label.slice(at + 1)}
+          <span style={{ color: 'var(--canvas-text-dim)' }}>{label.slice(0, keyIndex)}</span>
+          <span style={{ fontWeight: 800 }}>{label[keyIndex]}</span>
+          <span style={{ color: 'var(--canvas-text-dim)' }}>{label.slice(keyIndex + 1)}</span>
         </>
       ) : (
         label
@@ -75,37 +80,38 @@ const BarButton = ({
 /**
  * The next thing you can do to the query, at the bottom centre of the
  * canvas: tables are added below the ones before them, so the next step
- * is read there.
+ * is read there. Canvas.tsx keeps the graph above it (operationBarSpace).
  *
- * One row: join, select, where, order, group, limit and path, and "+" for
- * traverse, describe, references and unnest. Join, traverse, describe and
- * references are for the selected table, or the one the query goes on
- * from (see CanvasStore.selectedNodeActions). The column pickers list
+ * Join, select and where, and "+" for the rest: order, group, limit and
+ * path for the query, traverse, describe and references for the selected
+ * table, and unnest (CanvasStore.openOperationMore). Join, traverse,
+ * describe and references are for the selected table, or the one the query
+ * goes on from (CanvasStore.selectedNodeActions). The column pickers list
  * every table's columns, the selected table's first (beamlynx-plans #28).
  *
  * It gives way while the multi-select toolbar shows, which has its own
  * limit. While one of its pickers is open, the other buttons dim.
  */
 const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasStore }) => {
-  if (!canvasStore.selectedNodeActions || !canvasStore.operationAnchor || canvasStore.selectedAliases.length >= 2) return null;
+  if (!canvasStore.selectedNodeActions || !canvasStore.operationAnchor || canvasStore.selectedAliases.length >= 2) {
+    return null;
+  }
   const active = activeGlobalOperation(canvasStore.picker);
-  const offered = canvasStore.offeredOperations;
+  // Order, group, limit and path are behind "+".
+  const shown = active === 'order' || active === 'group' || active === 'limit' || active === 'path' ? 'more' : active;
   const keys = canvasStore.mode === 'normal';
-  const dim = (kind: string) => active !== null && active !== kind;
+  const dim = (kind: string) => shown !== null && shown !== kind;
   return (
     <div
       className="nodrag"
       data-testid="canvas-operation-bar"
       style={{
         position: 'absolute',
-        bottom: 16,
+        bottom: 12,
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: 15,
-        maxWidth: 'calc(100% - 16px)',
         display: 'flex',
-        flexWrap: 'wrap',
-        justifyContent: 'center',
         alignItems: 'center',
         gap: 6,
         padding: '6px 10px',
@@ -115,30 +121,34 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
         boxShadow: '0 2px 12px rgba(0,0,0,0.3)',
       }}
     >
+      {/* `i` (insert) or `|` joins: it's join's third letter. */}
       <BarButton
         label="join"
         testId="operation-join"
         onClick={e => canvasStore.openNodeAction('join', upward(e))}
         dimmed={dim('join')}
+        keyIndex={keys ? 2 : undefined}
       />
-      {GLOBAL_OPERATIONS.filter(op => offered.operations.includes(op.kind)).map(op => (
-        <BarButton
-          key={op.kind}
-          label={op.label}
-          testId={`operation-${op.kind}`}
-          onClick={e => canvasStore.openOperation(op.kind, upward(e))}
-          dimmed={dim(op.kind)}
-          shortcut={keys ? op.key : undefined}
-        />
-      ))}
-      {offered.more && (
-        <BarButton
-          label="+"
-          testId="operation-more"
-          onClick={e => canvasStore.openOperationMore(upward(e))}
-          dimmed={dim('more')}
-        />
-      )}
+      <BarButton
+        label="select"
+        testId="operation-select"
+        onClick={e => canvasStore.openOperation('select', upward(e))}
+        dimmed={dim('select')}
+        keyIndex={keys ? 0 : undefined}
+      />
+      <BarButton
+        label="where"
+        testId="operation-where"
+        onClick={e => canvasStore.openOperation('where', upward(e))}
+        dimmed={dim('where')}
+        keyIndex={keys ? 0 : undefined}
+      />
+      <BarButton
+        label="+"
+        testId="operation-more"
+        onClick={e => canvasStore.openOperationMore(upward(e))}
+        dimmed={dim('more')}
+      />
     </div>
   );
 });
