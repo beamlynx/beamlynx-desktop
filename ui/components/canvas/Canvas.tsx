@@ -31,6 +31,7 @@ import NestedContainerNode from './nodes/NestedContainerNode';
 import TraceEdge from './edges/TraceEdge';
 import Picker from './Picker';
 import MultiSelectToolbar from './MultiSelectToolbar';
+import OperationBar from './OperationBar';
 import CanvasToolbar, { CanvasModeIndicator, CanvasToolbarExtraAction } from './CanvasToolbar';
 import PineDoc from '../PineDoc';
 import CanvasVariables from './CanvasVariables';
@@ -360,7 +361,9 @@ const Flow: React.FC<{
       <Portal>
         <Picker />
       </Portal>
-      <CanvasToolbar canvasStore={canvasStore} extraAction={toolbarExtraAction} />
+      <CanvasToolbar canvasStore={canvasStore} extraAction={toolbarExtraAction}>
+        <OperationBar canvasStore={canvasStore} />
+      </CanvasToolbar>
       <CanvasModeIndicator canvasStore={canvasStore} />
       <MultiSelectToolbar canvasStore={canvasStore} />
     </div>

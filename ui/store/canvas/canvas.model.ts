@@ -201,7 +201,16 @@ export type PickerItem = {
    * renders as plain text rather than a dot-prefixed one.
    */
   subLabel?: string;
+  /**
+   * A column's table, for a column picker: it lists every table's columns
+   * (beamlynx-plans #28), and a pick is written for this table. Unset for
+   * table, join and path items.
+   */
+  alias?: string;
 };
+
+/** One section of a list picker. `alias` is set on a table's section of a column picker: its label is a name, `user (u)`, shown as typed. */
+export type PickerGroup = { label: string; items: PickerItem[]; alias?: string };
 
 /**
  * One condition in the where panel. `alias` is per condition, not per panel:
@@ -305,7 +314,7 @@ export type PickerState =
       request: PickerRequest;
       anchor: PickerAnchor;
       loading: boolean;
-      groups: { label: string; items: PickerItem[] }[];
+      groups: PickerGroup[];
       filter: string;
       error?: string;
       /**
@@ -375,6 +384,8 @@ export type PickerState =
       offer: MoreAction[];
       /** Whether `alias` names a checkpoint's node rather than a plain table - decides routing (openCheckpointPicker vs the direct open*Picker methods). */
       isCheckpoint: boolean;
+      /** The operation bar's "+" (unnest), not a node's: no node's own "+" shows as open. */
+      global?: boolean;
       anchor: PickerAnchor;
     }
   | {
@@ -429,21 +440,32 @@ export const MORE_ACTIONS: { action: MoreAction; label: string; key: string }[] 
 ];
 
 /**
- * What the "+" menu offers, by node kind. Defined once because it is read from
- * several places - TableNode's button for a table and for a checkpoint, and
- * the keyboard shortcut in useCanvasKeybindings - and hand-maintained copies drift:
- * `traverse` was added to the button's list and the keyboard opened a menu
- * without it.
+ * What a node's "+" menu offers, by node kind. Defined once because it is
+ * read from several places - TableNode's button for a table and for a
+ * checkpoint, and the keyboard shortcut in useCanvasKeybindings - and
+ * hand-maintained copies drift: `traverse` was added to the button's list
+ * and the keyboard opened a menu without it.
  *
- * A checkpoint's node gets less: `group` would re-group an already-grouped
- * result, and `traverse` would have to follow a foreign key out of a CTE's
- * sealed output, which is not a thing.
+ * Only what is about one table is on a node. Select, where, order, group,
+ * limit, path and unnest work on the whole query, from the operation bar
+ * (OperationBar.tsx, beamlynx-plans #28). `traverse` is only offered on the
+ * most recent table: see CanvasStore.openMorePicker. A checkpoint's node
+ * offers nothing: following a foreign key out of a CTE's sealed output is
+ * not a thing.
  */
-// `unnest` is only offered on a table with a JSON column: see
-// CanvasStore.openMorePicker.
-export const MORE_ACTIONS_FOR_TABLE: MoreAction[] = ['order', 'group', 'limit', 'path', 'traverse', 'unnest', 'describe', 'references'];
-// `limit` on a checkpoint's node limits its sealed result.
-export const MORE_ACTIONS_FOR_CHECKPOINT: MoreAction[] = ['order', 'limit', 'path'];
+export const MORE_ACTIONS_FOR_TABLE: MoreAction[] = ['traverse', 'describe', 'references'];
+export const MORE_ACTIONS_FOR_CHECKPOINT: MoreAction[] = [];
+
+/** The operations of the canvas's operation bar: they work on the whole query, not one node. */
+export type GlobalOperation = 'select' | 'where' | 'order' | 'group' | 'limit' | 'path' | 'unnest';
+export const GLOBAL_OPERATIONS: { kind: GlobalOperation; label: string; key: string }[] = [
+  { kind: 'select', label: 'select', key: 's' },
+  { kind: 'where', label: 'where', key: 'w' },
+  { kind: 'order', label: 'order', key: 'o' },
+  { kind: 'group', label: 'group', key: 'g' },
+  { kind: 'limit', label: 'limit', key: 'l' },
+  { kind: 'path', label: 'path', key: 'p' },
+];
 
 /** What a traversal does at each table it reaches - see store/canvas/traversal.ts. */
 export const TRAVERSE_VERBS: { verb: 'count' | 'delete'; label: string; key: string }[] = [

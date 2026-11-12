@@ -1,5 +1,6 @@
 import { comparer, makeAutoObservable, observable, reaction, runInAction } from 'mobx';
-import { Ast, columnName, PathHint, TableHint, whereConditions, whereLiteral } from '../client';
+import { Ast, ColumnHint, columnName, PathHint, TableHint, whereConditions, whereLiteral } from '../client';
+import { columnGroupName } from '../column-groups';
 import { Session } from '../session';
 import {
   CanvasGraph,
@@ -11,6 +12,8 @@ import {
   MoreAction,
   OrderDirection,
   PickerAnchor,
+  GlobalOperation,
+  PickerGroup,
   PickerItem,
   PickerRequest,
   PickerState,
@@ -39,6 +42,7 @@ import {
   withoutDescribeSegments,
   replaceDoc,
   stageEnd,
+  stageStart,
   toText,
   withDoc,
 } from './pine-text';
@@ -1154,11 +1158,16 @@ export class CanvasStore {
         .filter(g => g.items.length > 0 || g.label === '');
       // Keys inside JSON aren't in the schema, so a path is typed and becomes
       // an item of its own: inside a column, `data.address.city`, or inside
-      // the elements of an `unnest:` on this node, `e.field`. For unnest:, a
-      // path to an array, `options.officers` or `o.items`.
+      // the elements of an `unnest:`, `e.field`. For unnest:, a path to an
+      // array, `options.officers` or `o.items`. A column picker lists every
+      // table's columns: the path is on the first table listed with it.
+      const listed = groups.flatMap(g => g.items);
+      const elementItems = listed.filter(i => i.id.startsWith('element:'));
       const elements =
-        request.kind === 'table' ? [] : this.elementsOf(request.alias);
-      const columns = groups.filter(g => g.label === '').flatMap(g => g.items.map(i => i.value));
+        request.kind === 'table'
+          ? []
+          : [...this.elementsOf(request.alias), ...elementItems.map(i => i.value)];
+      const columns = listed.filter(i => !i.id.startsWith('element:')).map(i => i.value);
       const typed =
         request.kind === 'unnest' ||
         request.kind === 'select' ||
@@ -1168,9 +1177,16 @@ export class CanvasStore {
           ? actions.typedPath(filter, [...elements, ...columns])
           : null;
       const label = typed && elements.includes(typed.start) && request.kind !== 'unnest' ? 'unnested' : 'nested';
+      const owner = typed ? listed.find(i => i.value === typed.start)?.alias : undefined;
       const withTyped =
         typed && typed.text !== typed.start
-          ? [{ label, items: [{ id: `${CanvasStore.typedId}${typed.text}`, label: filter.trim(), value: typed.text }] }, ...groups]
+          ? [
+              {
+                label,
+                items: [{ id: `${CanvasStore.typedId}${typed.text}`, label: filter.trim(), value: typed.text, alias: owner }],
+              },
+              ...groups,
+            ]
           : groups;
       this.picker = { ...this.picker, filter, groups: withTyped };
     }
@@ -1216,8 +1232,11 @@ export class CanvasStore {
     // list, since the probe then looks exactly like nothing was selected.
     // Select strips it too: a column already selected can be picked again,
     // to give the copy its own name with `as`, and stays in its place.
+    // The picker lists every table of the stage (beamlynx-plans #28), so
+    // every select: in the stage goes, not only `alias`'s own.
     if (request.kind === 'group' || (request.kind === 'select' && !keepSelect)) {
-      relevant = relevant.filter(s => !(s.owner === alias && s.kind === 'select'));
+      const start = stageStart(segments, alias);
+      relevant = relevant.filter((s, i) => !(i >= start && s.kind === 'select'));
     }
     const base = (relevant.length ? toText(relevant) : text).replace(/\|\s*$/, '').trimEnd();
     const current = this.astOf(block)?.current;
@@ -1456,20 +1475,99 @@ export class CanvasStore {
     isCheckpoint: boolean,
     anchor: PickerAnchor = CanvasStore.defaultAnchor,
   ) {
-    if (this.picker.open && this.picker.mode === 'more' && this.picker.alias === alias) {
+    if (this.picker.open && this.picker.mode === 'more' && !this.picker.global && this.picker.alias === alias) {
       this.closePicker();
       return;
     }
     this.focusNode(alias);
     const all = isCheckpoint ? MORE_ACTIONS_FOR_CHECKPOINT : MORE_ACTIONS_FOR_TABLE;
-    // `unnest` is only offered on a table with a JSON column: on any other,
-    // it would only add noise. The columns are probed once per expression
-    // and table, and the entry appears when the answer comes back.
-    const key = this.unnestKey(alias);
-    const known = this.unnestColumns.get(key);
-    const offer = known?.length ? all : all.filter(a => a !== 'unnest');
+    // `traverse` starts at the most recent table, like path.
+    const offer = this.mainAst?.current === alias ? all : all.filter(a => a !== 'traverse');
     this.picker = { open: true, mode: 'more', alias, offer, isCheckpoint, anchor };
-    if (all.includes('unnest') && known === undefined) void this.probeUnnestColumns(alias, key);
+  }
+
+  /** The actions a node's "+" menu offers: see openMorePicker. TableNode hides an empty one. */
+  moreActionsFor(alias: string, isCheckpoint: boolean): MoreAction[] {
+    const all = isCheckpoint ? MORE_ACTIONS_FOR_CHECKPOINT : MORE_ACTIONS_FOR_TABLE;
+    return this.mainAst?.current === alias ? all : all.filter(a => a !== 'traverse');
+  }
+
+  /**
+   * The table the operation bar's pickers start from: the focused node,
+   * when it is in the query's last stage, or else Pine's current table.
+   * Its columns are listed first, then the current table's, then the
+   * rest, nearest first (beamlynx-plans #28). A node of an earlier block,
+   * or one a checkpoint sealed, can't take a new step at the end of the
+   * query, so focus on it doesn't count.
+   */
+  get operationAnchor(): string | null {
+    const ast = this.mainAst;
+    const current = ast?.current;
+    // No table yet: nothing to select from.
+    if (!ast || !current || !this.canvasGraph.nodes.some(n => n.type === 'table-node' && n.id === current)) return null;
+    const focused = this.focusedAlias;
+    const isTable = this.canvasGraph.nodes.some(n => n.type === 'table-node' && n.id === focused);
+    if (!focused || focused === current || !isTable || actions.BLOCK_PREFIX.test(focused)) return current;
+    const segments = withoutDescribeSegments(segmentsFromAst(this.textOf(this.mainBlock), ast) ?? []);
+    return stageEnd(segments, focused) === stageEnd(segments, current) ? focused : current;
+  }
+
+  private isCheckpointNode(alias: string): boolean {
+    const node = this.canvasGraph.nodes.find((n): n is CanvasTableNode => n.type === 'table-node' && n.id === alias);
+    return !!node?.data.checkpoint;
+  }
+
+  /**
+   * Opens one of the operation bar's pickers (OperationBar.tsx): select,
+   * where, order, group, limit, path or unnest, for the whole query. After
+   * a group: or `limit: … per`, that is the checkpoint's sealed result: its
+   * node is the current one, and its picks go through openCheckpointPicker.
+   * Group and unnest aren't offered on a sealed result, as before.
+   */
+  openOperation(kind: GlobalOperation, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
+    const alias = this.operationAnchor;
+    if (!alias) return;
+    const checkpoint = this.isCheckpointNode(alias);
+    switch (kind) {
+      case 'limit':
+        this.openLimitEditor(alias, anchor);
+        return;
+      case 'path': {
+        // A path starts at the most recent table.
+        const current = this.mainAst?.current ?? alias;
+        if (this.isCheckpointNode(current)) void this.openCheckpointPicker(current, 'path', anchor);
+        else this.openPathPicker(current, anchor);
+        return;
+      }
+      case 'unnest':
+        if (!checkpoint) this.openUnnestPicker(alias, anchor);
+        return;
+      case 'group':
+        if (!checkpoint) this.openColumnPicker('group', alias, anchor);
+        return;
+      default:
+        if (checkpoint) void this.openCheckpointPicker(alias, kind, anchor);
+        else this.openColumnPicker(kind, alias, anchor);
+    }
+  }
+
+  /**
+   * The operation bar's "+": unnest, offered once some table in the query
+   * has a JSON column to unnest. The columns are probed once per
+   * expression, and the entry appears when the answer comes back.
+   */
+  openOperationMore(anchor: PickerAnchor = CanvasStore.defaultAnchor) {
+    const alias = this.operationAnchor;
+    if (!alias) return;
+    if (this.picker.open && this.picker.mode === 'more' && this.picker.global) {
+      this.closePicker();
+      return;
+    }
+    const checkpoint = this.isCheckpointNode(alias);
+    const known = checkpoint ? [] : this.unnestColumns.get(this.unnestKey(alias));
+    const offer: MoreAction[] = known?.length ? ['unnest'] : [];
+    this.picker = { open: true, mode: 'more', alias, offer, isCheckpoint: checkpoint, global: true, anchor };
+    if (known === undefined) void this.probeUnnestColumns(alias, this.unnestKey(alias));
   }
 
   /**
@@ -1492,9 +1590,11 @@ export class CanvasStore {
     if (!p.open || p.mode !== 'list' || p.loading) return null;
     const { request } = p;
     if (!['select', 'where', 'order', 'group', 'unnest'].includes(request.kind) || !('alias' in request)) return null;
+    // The first table listed with that column: the anchor's, when it has one.
     const item = p.groups.flatMap(g => g.items).find(i => i.json && p.filter.startsWith(`${i.value}.`));
     if (!item) return null;
-    return { alias: request.alias, column: item.value, element: this.elementsOf(request.alias).includes(item.value) };
+    const alias = item.alias ?? request.alias;
+    return { alias, column: item.value, element: this.elementsOf(alias).includes(item.value) };
   }
 
   private async refreshPeek(target: { alias: string; column: string; element: boolean } | null) {
@@ -1542,27 +1642,31 @@ export class CanvasStore {
     }
   }
 
-  /** The JSON columns an `unnest:` can read, by unnestKey. See openMorePicker. */
-  private unnestColumns = new Map<string, string[]>();
+  /** The JSON columns an `unnest:` can read, by unnestKey. See openOperationMore. */
+  private unnestColumns = new Map<string, ColumnHint[]>();
 
   private unnestKey(alias: string): string {
     const { block } = this.scopeOf(alias);
     return `${this.textOf(block)}\u0000${alias}`;
   }
 
-  /** The JSON columns of `alias`, probed once per expression and table (see unnestKey). */
-  private async jsonColumnsOf(alias: string): Promise<string[]> {
+  /**
+   * The JSON columns of every table in `alias`'s stage, each with its alias
+   * (without a block's prefix), probed once per expression and table (see
+   * unnestKey).
+   */
+  private async jsonColumnsOf(alias: string): Promise<ColumnHint[]> {
     const key = this.unnestKey(alias);
     return this.unnestColumns.get(key) ?? this.probeUnnestColumns(alias, key);
   }
 
-  private async probeUnnestColumns(alias: string, key: string): Promise<string[]> {
+  private async probeUnnestColumns(alias: string, key: string): Promise<ColumnHint[]> {
     const ast = await this.probeFor({ kind: 'unnest', alias });
-    const columns = (ast?.hints.unnest ?? []).map(h => h.column);
+    const columns = ast?.hints.unnest ?? [];
     runInAction(() => {
       this.unnestColumns.set(key, columns);
       const p = this.picker;
-      if (columns.length && p.open && p.mode === 'more' && p.alias === alias && !p.offer.includes('unnest')) {
+      if (columns.length && p.open && p.mode === 'more' && p.global && p.alias === alias && !p.offer.includes('unnest')) {
         this.picker = { ...p, offer: [...p.offer, 'unnest'] };
       }
     });
@@ -1570,9 +1674,10 @@ export class CanvasStore {
   }
 
   /**
-   * The JSON columns of `alias` to unnest. Picking one adds `unnest:
-   * alias.column as <name>`. A path inside one, or inside elements unnested
-   * here, is typed: `options.officers`, `o.items`.
+   * The JSON columns to unnest, of every table in the query, `alias`'s
+   * first. Picking one adds `unnest: <its table>.column as <name>`. A path
+   * inside one, or inside elements unnested here, is typed:
+   * `options.officers`, `o.items`.
    */
   openUnnestPicker(alias: string, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
     this.focusNode(alias);
@@ -1580,13 +1685,7 @@ export class CanvasStore {
     void this.openListPicker(request, anchor, async () => {
       const ast = await this.probeFor(request);
       if (!ast) throw new Error('Failed to build column suggestions');
-      const items: PickerItem[] = (ast.hints.unnest ?? []).map(h => ({
-        id: h.column,
-        label: h.column,
-        value: h.column,
-        json: true,
-      }));
-      return { groups: [{ label: '', items }] };
+      return { groups: this.columnGroups(alias, ast, ast.hints.unnest ?? [], true) };
     });
   }
 
@@ -1712,7 +1811,9 @@ export class CanvasStore {
    * Every column of the tables in the stage a limit ends, as `alias.column`,
    * for the limit editor's `per` field. A new limit goes at the end of the
    * query, so its stage is the last one. Each table's columns come from a
-   * probe ending in `from: alias | s:`, like the select picker's.
+   * probe ending in `from: alias | s:`, like the select picker's. That probe
+   * lists every table's columns (beamlynx-plans #28): only `alias`'s own
+   * are kept from it.
    */
   private async loadPerOptions(block: number, segments: Segment[], target: number, seq: number) {
     const ast = this.astOf(block);
@@ -1728,7 +1829,7 @@ export class CanvasStore {
         const probe = await probeBuild(`${text} | from: ${a} | s: `, this.session.connectionId, this.contextOf(block)).catch(
           () => undefined,
         );
-        return (probe?.hints.select ?? []).map(h => `${a}.${h.column}`);
+        return (probe?.hints.select ?? []).filter(h => h.alias === a).map(h => `${a}.${h.column}`);
       }),
     );
     runInAction(() => {
@@ -1849,7 +1950,7 @@ export class CanvasStore {
           this.probeFor(request).catch(() => undefined),
           this.jsonColumnsOf(alias),
         ]);
-        // Without its select step the stage may not build: a join after it
+        // Without its select steps the stage may not build: a join after one
         // can be on a name given there with `as`. The full stage is probed
         // then, and the selected columns are added back below.
         const ast = probed ?? (kind === 'select' ? await this.probeFor(request, true) : undefined);
@@ -1857,15 +1958,29 @@ export class CanvasStore {
         // No dedicated hint category for group - see buildProbeExpression's
         // matching comment; reuses select's.
         const hints = kind === 'where' ? ast.hints.where : kind === 'order' ? ast.hints.order : ast.hints.select;
+        // The hints are every table's columns, grouped by table, `alias`'s
+        // first (the probe moves the pipe to it with `from:`), then the most
+        // recent table's, then the rest, nearest first (beamlynx-plans #28).
+        // pine-lang knows the aliases without a block's prefix; a node of an
+        // earlier block has one.
+        const prefix = alias.match(actions.BLOCK_PREFIX)?.[0] ?? '';
+        const sections = new Map<string, PickerItem[]>();
+        const add = (a: string, item: PickerItem) => {
+          if (!sections.has(a)) sections.set(a, []);
+          sections.get(a)!.push(item);
+        };
         // A JSON column's row has a › that starts a path inside it (see
         // Picker.tsx): keys inside JSON aren't in the schema, so they're typed.
-        const json = new Set(jsonColumns);
-        const items: PickerItem[] = hints.map(h => ({
-          id: h.column,
-          label: h.column,
-          value: h.column,
-          json: json.has(h.column) || undefined,
-        }));
+        const isJson = (a: string, column: string) => jsonColumns.some(h => h.alias === a && h.column === column);
+        const columnItem = (a: string, column: string, json?: boolean): PickerItem => ({
+          id: `${a}.${column}`,
+          label: column,
+          value: column,
+          alias: a,
+          json: json || undefined,
+        });
+        sections.set(alias, []);
+        hints.forEach(h => add(prefix + h.alias, columnItem(prefix + h.alias, h.column, isJson(h.alias, h.column))));
         // hints.select (and order/group, which reuse it) only ever lists
         // what could still be ADDED - buildProbeExpression's own comment
         // calls this deliberate for select's "what else could I add"
@@ -1874,42 +1989,45 @@ export class CanvasStore {
         // `focusValue`) doesn't actually exist in this list at all - not
         // findable, not highlightable, and pressing Enter on whatever IS
         // first among the genuinely-new candidates adds a different column
-        // instead of removing the one just clicked. Merging the node's own
+        // instead of removing the one just clicked. Merging each table's
         // current selection back in (Picker.tsx's sinkSelected already sorts
         // it to the bottom and checks it - insertion position here doesn't
         // matter) fixes the picker for the one case its hints were never
         // meant to answer alone.
-        if (kind === 'select' || kind === 'order' || kind === 'group') {
-          const node = this.canvasGraph.nodes.find(
-            (n): n is CanvasTableNode => n.type === 'table-node' && n.id === alias,
-          );
-          const existing =
-            kind === 'select'
-              ? node?.data.selectColumns ?? []
-              : kind === 'group'
-                ? node?.data.groupChips ?? []
-                : (node?.data.orderChips ?? []).map(c => actions.splitOrderItem(c).column);
-          const present = new Set(items.map(i => i.value));
-          for (const column of existing) {
-            if (!present.has(column)) items.push({ id: column, label: column, value: column });
+        for (const [a, items] of Array.from(sections.entries())) {
+          if (kind === 'select' || kind === 'order' || kind === 'group') {
+            const present = new Set(items.map(i => i.value));
+            for (const column of this.chipColumns(kind, a)) {
+              if (!present.has(column)) items.push(columnItem(a, column));
+            }
+          }
+          // The elements of an `unnest:` on this table, `e` itself. A key of
+          // one is typed: `e.field` (see setPickerFilter). JSON values, like
+          // a JSON column: a › starts a path, and a key being typed peeks.
+          for (const e of this.elementsOf(a)) {
+            items.push({ id: `element:${a}:${e}`, label: e, value: e, alias: a, json: true });
           }
         }
-        // The elements of an `unnest:` on this node, `e` itself. A key of
-        // one is typed: `e.field` (see setPickerFilter).
-        const elements = this.elementsOf(alias);
-        const elementGroup = elements.length
-          ? [
-              {
-                label: 'unnested',
-                // JSON values, like a JSON column: a › starts a path, and a key being typed peeks.
-                items: elements.map(e => ({ id: `element:${e}`, label: e, value: e, json: true })),
-              },
-            ]
-          : [];
-        return { groups: [{ label: '', items }, ...elementGroup] };
+        const tables = (ast['selected-tables'] ?? []).map(t => ({ ...t, alias: prefix + t.alias }));
+        const groups: PickerGroup[] = Array.from(sections.entries())
+          .filter(([, items]) => items.length > 0)
+          .map(([a, items]) => ({ label: columnGroupName(a, tables), items, alias: a }));
+        // One table needs no heading.
+        if (groups.length === 1) groups[0] = { ...groups[0], label: '' };
+        return { groups };
       },
       focusValue,
     );
+  }
+
+  /** The columns of `alias`'s select, group or order chips: what a column picker shows as picked. */
+  chipColumns(kind: 'select' | 'order' | 'group', alias: string): string[] {
+    const node = this.canvasGraph.nodes.find((n): n is CanvasTableNode => n.type === 'table-node' && n.id === alias);
+    return kind === 'select'
+      ? node?.data.selectColumns ?? []
+      : kind === 'group'
+        ? node?.data.groupChips ?? []
+        : (node?.data.orderChips ?? []).map(c => actions.splitOrderItem(c).column);
   }
 
   // --- commits ---------------------------------------------------------
@@ -2245,8 +2363,33 @@ export class CanvasStore {
     void this.openListPicker(request, anchor, async () => {
       const ast = await this.probeFor(request);
       if (!ast) throw new Error('Failed to build column suggestions');
-      return { groups: [{ label: '', items: ast.hints.where.map(h => ({ id: h.column, label: h.column, value: h.column })) }] };
+      return { groups: this.columnGroups(alias, ast, ast.hints.where) };
     });
+  }
+
+  /**
+   * Column hints as a picker's sections, one per table, in the hints' order
+   * (beamlynx-plans #28). Each item carries its table's alias, so a pick
+   * is written for that table. pine-lang knows aliases without a block's
+   * prefix; `alias`, the node the picker started from, may have one.
+   */
+  private columnGroups(alias: string, ast: Ast, hints: ColumnHint[], json = false): PickerGroup[] {
+    const prefix = alias.match(actions.BLOCK_PREFIX)?.[0] ?? '';
+    const tables = (ast['selected-tables'] ?? []).map(t => ({ ...t, alias: prefix + t.alias }));
+    const sections = new Map<string, PickerItem[]>();
+    for (const h of hints) {
+      const a = prefix + h.alias;
+      if (!sections.has(a)) sections.set(a, []);
+      sections.get(a)!.push({ id: `${a}.${h.column}`, label: h.column, value: h.column, alias: a, json: json || undefined });
+    }
+    const groups: PickerGroup[] = Array.from(sections.entries()).map(([a, items]) => ({
+      label: columnGroupName(a, tables),
+      items,
+      alias: a,
+    }));
+    // One table needs no heading.
+    if (groups.length === 1) groups[0] = { ...groups[0], label: '' };
+    return groups.length ? groups : [{ label: '', items: [] }];
   }
 
   /** Drops one row of an `or`. The last row can't be dropped - that is what the panel's own remove/cancel are for. */

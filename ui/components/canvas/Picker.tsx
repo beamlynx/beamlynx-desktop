@@ -127,10 +127,14 @@ const filterItems = (items: PickerItem[], filter: string): PickerItem[] => {
 };
 
 /** Already-selected columns sink to the bottom - they're done, so the columns still worth picking stay up top. */
-const sinkSelected = (items: PickerItem[], selectedColumns: string[]): PickerItem[] => {
+const sinkSelected = (
+  items: PickerItem[],
+  selectedColumns: string[],
+  key: (item: PickerItem) => string,
+): PickerItem[] => {
   if (selectedColumns.length === 0) return items;
-  const unselected = items.filter(i => !selectedColumns.includes(i.value));
-  const selected = items.filter(i => selectedColumns.includes(i.value));
+  const unselected = items.filter(i => !selectedColumns.includes(key(i)));
+  const selected = items.filter(i => selectedColumns.includes(key(i)));
   return [...unselected, ...selected];
 };
 
@@ -187,24 +191,21 @@ const Picker: React.FC = observer(() => {
   // Covers 'select', 'order' and 'group' - the picker kinds that stay open
   // for repeat picks and therefore need "already picked" reflected in the
   // list.
+  // The list holds every table's columns (beamlynx-plans #28), so a picked
+  // column is its table and its name: selectedKey.
   let selectedColumns: string[] = [];
   if (
     picker.open &&
     picker.mode === 'list' &&
     (picker.request.kind === 'select' || picker.request.kind === 'order' || picker.request.kind === 'group')
   ) {
-    const alias = picker.request.alias;
     const kind = picker.request.kind;
-    const node = store.canvasGraph.nodes.find(
-      (n): n is CanvasTableNode => n.type === 'table-node' && n.id === alias,
-    );
-    selectedColumns =
-      kind === 'select'
-        ? node?.data.selectColumns ?? []
-        : kind === 'group'
-          ? node?.data.groupChips ?? []
-          : (node?.data.orderChips ?? []).map(chip => chip.replace(/\s+(asc|desc)$/i, ''));
+    const fallback = picker.request.alias;
+    const aliases = Array.from(new Set([fallback, ...picker.groups.flatMap(g => g.items.map(i => i.alias ?? fallback))]));
+    selectedColumns = aliases.flatMap(alias => store.chipColumns(kind, alias).map(column => `${alias}.${column}`));
   }
+  const selectedKey = (item: PickerItem) =>
+    `${item.alias ?? (picker.open && picker.mode === 'list' && 'alias' in picker.request ? picker.request.alias : '')}.${item.value}`;
   // A select column can be picked again, for a copy with its own name, so it
   // stays in its place in the list with a count rather than sinking.
   const sunkColumns = picker.open && picker.mode === 'list' && picker.request.kind === 'select' ? [] : selectedColumns;
@@ -212,7 +213,7 @@ const Picker: React.FC = observer(() => {
   const flatItems: PickerItem[] =
     picker.open && picker.mode === 'list' && !picker.loading && !picker.error
       ? picker.groups.flatMap(g =>
-          sinkSelected(filterItems(g.items, picker.filter), sunkColumns),
+          sinkSelected(filterItems(g.items, picker.filter), sunkColumns, selectedKey),
         )
       : [];
   const flatKey = flatItems.map(i => i.id).join('|');
@@ -225,7 +226,10 @@ const Picker: React.FC = observer(() => {
   // otherwise.
   useEffect(() => {
     if (focusValue) {
-      const idx = flatItems.findIndex(i => i.value === focusValue);
+      // A chip reopened from its node: that table's column, when several tables have one by that name.
+      const own = picker.open && picker.mode === 'list' && 'alias' in picker.request ? picker.request.alias : undefined;
+      const exact = flatItems.findIndex(i => i.value === focusValue && (i.alias === undefined || i.alias === own));
+      const idx = exact >= 0 ? exact : flatItems.findIndex(i => i.value === focusValue);
       if (idx >= 0) {
         setHighlighted(idx);
         return;
@@ -368,6 +372,10 @@ const Picker: React.FC = observer(() => {
         data-testid="canvas-picker"
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {offered.length === 0 && (
+            // The operation bar's "+" offers unnest once a table has a JSON column.
+            <div style={{ padding: '4px 6px', opacity: 0.6 }}>No table here has a JSON column to unnest.</div>
+          )}
           {offered.map(option => (
             <div
               key={option.action}
@@ -1027,18 +1035,20 @@ const Picker: React.FC = observer(() => {
         // Unlike join/where, these three stay open for repeat picks - leaving
         // the just-typed filter in place would hide every other column
         // behind it, so clear it to hand the input back ready for the next.
+        // A column picker lists every table's columns: the pick is written
+        // for the item's own table, so its chip lands on that node.
         void (request.kind === 'select'
-          ? store.addSelectColumn(request.alias, item.value)
+          ? store.addSelectColumn(item.alias ?? request.alias, item.value)
           : request.kind === 'order'
-            ? store.toggleOrderColumn(request.alias, item.value)
-            : store.toggleGroupColumn(request.alias, item.value));
+            ? store.toggleOrderColumn(item.alias ?? request.alias, item.value)
+            : store.toggleGroupColumn(item.alias ?? request.alias, item.value));
         store.setPickerFilter('');
         return;
       case 'where':
-        store.beginWhereValue(request.alias, item.value, request.draft);
+        store.beginWhereValue(item.alias ?? request.alias, item.value, request.draft);
         return;
       case 'unnest':
-        void store.commitUnnest(request.alias, item.value);
+        void store.commitUnnest(item.alias ?? request.alias, item.value);
         return;
       // Step 1: `item.value` here is a bare table name (not h.pine - see
       // openPathPicker), naming the destination for step 2 to search
@@ -1124,8 +1134,12 @@ const Picker: React.FC = observer(() => {
           onChange={e => {
             const value = e.target.value;
             if (picker.request.kind === 'select' && value === '*') {
-              const allColumns = picker.groups.flatMap(g => g.items.map(i => i.value));
-              void store.commitSelectColumns(picker.request.alias, allColumns);
+              // Every column of the table the picker started from.
+              const own = picker.request.alias;
+              const allColumns = picker.groups.flatMap(g =>
+                g.items.filter(i => (i.alias ?? own) === own).map(i => i.value),
+              );
+              void store.commitSelectColumns(own, allColumns);
               store.setPickerFilter('');
               return;
             }
@@ -1153,10 +1167,10 @@ const Picker: React.FC = observer(() => {
         {!picker.loading &&
           !picker.error &&
           picker.groups.map(group => {
-            const items = sinkSelected(filterItems(group.items, picker.filter), sunkColumns);
+            const items = sinkSelected(filterItems(group.items, picker.filter), sunkColumns, selectedKey);
             if (items.length === 0) return null;
             return (
-              <div key={group.label || 'default'} style={{ marginBottom: 6 }}>
+              <div key={group.alias ?? (group.label || 'default')} style={{ marginBottom: 6 }}>
                 {group.label && (
                   // Sticky within the scrolling body (not the whole panel,
                   // which no longer scrolls as one piece - see bodyStyle) -
@@ -1185,7 +1199,8 @@ const Picker: React.FC = observer(() => {
                       paddingTop: 2,
                       fontSize: 'calc(11px * var(--text-scale, 1))',
                       fontWeight: 700,
-                      textTransform: 'uppercase',
+                      // A table's heading, `user (u)`, is a name: an alias is case-sensitive.
+                      textTransform: group.alias ? 'none' : 'uppercase',
                       letterSpacing: '0.5px',
                       color: 'var(--canvas-text-dim)',
                       marginBottom: 3,
@@ -1225,17 +1240,17 @@ const Picker: React.FC = observer(() => {
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span>
                           {(picker.request.kind === 'order' || picker.request.kind === 'group') &&
-                          selectedColumns.includes(item.value)
+                          selectedColumns.includes(selectedKey(item))
                             ? '☑ '
                             : ''}
                           {item.label}
-                          {picker.request.kind === 'select' && selectedColumns.includes(item.value) && (
+                          {picker.request.kind === 'select' && selectedColumns.includes(selectedKey(item)) && (
                             <span
                               data-testid={`picker-count-${item.label}`}
                               title="Already selected. Pick it again to add a copy with its own name."
                               style={{ opacity: 0.5, marginLeft: 6 }}
                             >
-                              ×{selectedColumns.filter(c => c === item.value).length}
+                              ×{selectedColumns.filter(c => c === selectedKey(item)).length}
                             </span>
                           )}
                         </span>
