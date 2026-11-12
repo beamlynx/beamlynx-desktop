@@ -53,6 +53,11 @@ const startNodeHeight = 64;
 // overlap the node above. A fixed estimate, not a measurement - same
 // trade-off as the chip rows below the box (see the file header).
 const actionBarHeight = 28;
+// A checkpoint drawn as a line (see layoutPipeline's `asLines`): the line
+// and its label, without the card.
+export const lineHeight = 30;
+// How far a checkpoint's line reaches past the graph on each side.
+const lineOverhang = 16;
 
 const effectiveHandleCount = (handles: CanvasHandle[]): number =>
   handles.length > 1 || (handles.length === 1 && handles[0].column !== '') ? handles.length : 0;
@@ -66,6 +71,7 @@ const effectiveHandleCount = (handles: CanvasHandle[]): number =>
 export const getNodeHeight = (node: CanvasNode): number => {
   if (node.type !== 'table-node') return startNodeHeight;
   const data = node.data as CanvasTableNodeData;
+  if (data.checkpoint?.line) return lineHeight;
   const rows = Math.max(effectiveHandleCount(data.leftHandles), effectiveHandleCount(data.rightHandles));
   return rows === 0 ? minNodeHeight : headerHeight + rows * handleRowHeight + 10;
 };
@@ -716,6 +722,10 @@ const layoutPipeline = (
   dropLastStage = false,
   write: CanvasWrite | null = null,
   describe: CanvasDescribe | null = null,
+  // The last query block's way (beamlynx-plans #33): every stage drawn, no
+  // box around a sealed one, and each checkpoint a dotted line between the
+  // stage it seals and the next. buildCanvasGraph sets the lines' width.
+  asLines = false,
 ) => {
   const checkpoints = ast.checkpoints ?? [];
   const checkpointNames = new Set(checkpoints.map(c => c.name));
@@ -751,13 +761,15 @@ const layoutPipeline = (
       const position = { x: n.position.x, y: n.position.y + top };
       if (!n.data.checkpoint) return { ...n, position };
       const checkpoint = checkpoints.find(c => c.name === n.id)!;
-      const expanded = isExpanded(n.id);
+      const expanded = asLines || isExpanded(n.id);
       return {
         ...n,
         position,
+        // A line isn't moved by hand: it spans the graph.
+        ...(asLines ? { draggable: false } : {}),
         data: {
           ...n.data,
-          checkpoint: { expanded },
+          checkpoint: asLines ? { expanded, line: { width: nodeWidth } } : { expanded },
           nested: {
             kind: 'checkpoint' as const,
             name: prefix + n.id,
@@ -773,6 +785,11 @@ const layoutPipeline = (
     nodes.push(...ns);
     edges.push(...es);
     const members = ns.map(n => n.id);
+    if (asLines) {
+      // The next stage starts with its checkpoint's line, right below.
+      top = bottom + verticalGap;
+      return;
+    }
     if (k < checkpoints.length && k < lastStage) {
       // An expanded checkpoint's stage: a container around it, above the
       // checkpoint's node in the next stage.
@@ -911,9 +928,7 @@ export const buildCanvasGraph = (
   write: CanvasWrite | null = null,
   describe: CanvasDescribe | null = null,
 ): CanvasGraph => {
-  const stages = stagesOf(ast);
   const expansion = expansionOf(ast, blocks, expanded);
-  const firstStage = expansion.mainOpen < 0 ? stages.length - 1 : expansion.mainOpen;
 
   const nodes: CanvasTableNode[] = [];
   const edges: CanvasEdge[] = [];
@@ -955,7 +970,18 @@ export const buildCanvasGraph = (
     top = blockLaid.bottom + containerPad + connectorGap;
   }
 
-  const main = layoutPipeline(ast, '', firstStage, expansion.mainOpen, top, order, false, write, describe);
+  // Every stage of the last block, top to bottom, with a line for each
+  // checkpoint (beamlynx-plans #33).
+  const main = layoutPipeline(ast, '', 0, -1, top, order, false, write, describe, true);
+  // Each line spans the graph: from the leftmost table to past the rightmost.
+  const tablesOnly = main.nodes.filter(n => !n.data.checkpoint);
+  const left = tablesOnly.length ? Math.min(...tablesOnly.map(n => n.position.x)) : 0;
+  const right = tablesOnly.length ? Math.max(...tablesOnly.map(n => n.position.x + nodeWidth)) : nodeWidth;
+  for (const n of main.nodes) {
+    if (!n.data.checkpoint?.line) continue;
+    n.position = { x: left - lineOverhang, y: n.position.y };
+    n.data = { ...n.data, checkpoint: { ...n.data.checkpoint, line: { width: right - left + 2 * lineOverhang } } };
+  }
   nodes.push(...main.nodes);
   edges.push(...main.edges);
   containers.push(...main.containers);

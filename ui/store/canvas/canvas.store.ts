@@ -1572,7 +1572,9 @@ export class CanvasStore {
     const anchor = this.operationAnchor;
     const sealed = !!anchor && this.isCheckpointNode(anchor);
     const all: GlobalOperation[] = ['select', 'where', 'order', 'group', 'limit', 'path'];
-    return { operations: sealed ? all.filter(k => k !== 'group') : all, more: !sealed };
+    // "+" holds the selected table's traverse, describe and references, and unnest.
+    const own = (this.selectedNodeActions?.actions ?? []).some(a => a !== 'join');
+    return { operations: sealed ? all.filter(k => k !== 'group') : all, more: own || !sealed };
   }
 
   private isCheckpointNode(alias: string): boolean {
@@ -1620,17 +1622,30 @@ export class CanvasStore {
    * expression, and the entry appears when the answer comes back.
    */
   openOperationMore(anchor: PickerAnchor = CanvasStore.defaultAnchor) {
-    const alias = this.operationAnchor;
-    if (!alias) return;
+    const anchorAlias = this.operationAnchor;
+    const selected = this.selectedNodeActions;
+    if (!anchorAlias || !selected) return;
     if (this.picker.open && this.picker.mode === 'more' && this.picker.global) {
       this.closePicker();
       return;
     }
-    const checkpoint = this.isCheckpointNode(alias);
-    const known = checkpoint ? [] : this.unnestColumns.get(this.unnestKey(alias));
-    const offer: MoreAction[] = known?.length ? ['unnest'] : [];
-    this.picker = { open: true, mode: 'more', alias, offer, isCheckpoint: checkpoint, global: true, anchor };
-    if (known === undefined) void this.probeUnnestColumns(alias, this.unnestKey(alias));
+    // The selected table's traverse, describe and references, then unnest
+    // for the query once a table in it has a JSON column (see
+    // activateMoreAction, which unnests from operationAnchor).
+    const own: MoreAction[] = selected.actions.flatMap(a => (a === 'join' ? [] : [a]));
+    const sealed = this.isCheckpointNode(anchorAlias);
+    const known = sealed ? [] : this.unnestColumns.get(this.unnestKey(anchorAlias));
+    const offer: MoreAction[] = [...own, ...(known?.length ? (['unnest'] as const) : [])];
+    this.picker = {
+      open: true,
+      mode: 'more',
+      alias: selected.alias,
+      offer,
+      isCheckpoint: this.isCheckpointNode(selected.alias),
+      global: true,
+      anchor,
+    };
+    if (known === undefined) void this.probeUnnestColumns(anchorAlias, this.unnestKey(anchorAlias));
   }
 
   /**
@@ -1729,7 +1744,7 @@ export class CanvasStore {
     runInAction(() => {
       this.unnestColumns.set(key, columns);
       const p = this.picker;
-      if (columns.length && p.open && p.mode === 'more' && p.global && p.alias === alias && !p.offer.includes('unnest')) {
+      if (columns.length && p.open && p.mode === 'more' && p.global && !p.offer.includes('unnest')) {
         this.picker = { ...p, offer: [...p.offer, 'unnest'] };
       }
     });
@@ -1802,9 +1817,10 @@ export class CanvasStore {
       return;
     }
     if (action === 'unnest') {
-      // Only offered for a plain node: a checkpoint's node has no JSON
-      // column of its own to read.
-      if (!isCheckpoint) this.openUnnestPicker(alias, anchor);
+      // For the whole query: from where it goes on, which lists every
+      // table's JSON columns. A sealed result has none of its own.
+      const from = this.operationAnchor;
+      if (from && !this.isCheckpointNode(from)) this.openUnnestPicker(from, anchor);
       return;
     }
     if (action === 'describe' || action === 'references') {
