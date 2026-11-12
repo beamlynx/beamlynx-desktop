@@ -18,6 +18,8 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **A delete plan runs only on the database it was made on.** Switching the tab's database clears the plan and stops a delete run after the table in progress. The confirmation names the plan's database.
 - **Nothing changes data without you pressing Run.** Auto-run can't run a `delete!` or `update!`, even one with a comment in front of it. Refreshing the results after an edit runs the query that made them, not unrun text in the editor. A query opened from a link can't change data until you dismiss its banner.
 - **Running several queries stops when you switch the tab's database.** The queries still to run used to run on the old one.
+
+### Security
 - **Turning off agent access stops an agent's waiting queries.** They used to run with no data masking.
 - **Raw SQL doesn't run where it can't be masked or kept read-only:** in an agent's tab, or when data masking applies to your own queries.
 
