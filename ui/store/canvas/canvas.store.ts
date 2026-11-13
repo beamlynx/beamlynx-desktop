@@ -39,8 +39,9 @@ import {
   segmentsFromAst,
   writeOf,
   describeOf,
-  withoutDescribe,
-  withoutDescribeSegments,
+  endsInCount,
+  withoutEnding,
+  withoutEndingSegments,
   replaceDoc,
   stageEnd,
   stageStart,
@@ -591,6 +592,13 @@ export class CanvasStore {
       blockAstsSeq: false,
     });
     this.recompute();
+    // The expanded bar closes with the picker one of its actions opened.
+    reaction(
+      () => this.picker.open,
+      open => {
+        if (!open && this.barPickerOpen) this.collapseBar();
+      },
+    );
   }
 
   /**
@@ -710,6 +718,7 @@ export class CanvasStore {
       this.lineage,
       writeOf(segments),
       describeOf(segments),
+      endsInCount(expression),
     );
     if (!this.hasSeededHoverAlias && this.orderedFocusTargets.length > 0) {
       this.hasSeededHoverAlias = true;
@@ -1074,7 +1083,7 @@ export class CanvasStore {
     // Nothing can follow describe: or references:, so a gesture works on the
     // query without them: picking a column or joining a table ends the
     // describing. describeNode adds the step back at the end.
-    const expression = withoutDescribe(this.textOf(block));
+    const expression = withoutEnding(this.textOf(block));
     const context = this.contextOf(block);
     // Not `this.session.ast` - it's kept up to date by the session's own,
     // separately-debounced build and can still describe the *previous*
@@ -1116,7 +1125,17 @@ export class CanvasStore {
     const base = await this.pinnedBase(block);
     const prefix = block === this.mainBlock ? '' : `b${block}/`;
     if (!base) return;
-    const next = fn(base);
+    const counted = endsInCount(this.textOf(block));
+    const made = fn(base);
+    const dropCount = this.dropCountOnce;
+    this.dropCountOnce = false;
+    // pinnedBase took the query's `count:` off, since nothing can follow
+    // one. It goes back at the end, unless the gesture removes it or ends
+    // the query some other way (describe:).
+    const next =
+      made !== null && counted && !dropCount && !/\|\s*(describe|references|count):\s*$/i.test(made)
+        ? `${made} | count:`
+        : made;
     if (next !== null) {
       // Every /build response carries a `prettified` (multi-line) rendering
       // of the expression for free - the old text editor only applies it
@@ -1265,7 +1284,7 @@ export class CanvasStore {
     const { block, alias } = this.scopeOf(request.alias);
     const text = this.textOf(block);
     // Nothing can follow describe: or references:, and a pick ends them (see pinnedBase).
-    const segments = withoutDescribeSegments(segmentsFromAst(text, this.astOf(block)) ?? []);
+    const segments = withoutEndingSegments(segmentsFromAst(text, this.astOf(block)) ?? []);
     // The probe stops at the end of the target's own stage (see stageEnd):
     // a hint probe built after a checkpoint reflects the sealed output's
     // shape (just the grouped columns, plus aggregate function names), not
@@ -1563,7 +1582,7 @@ export class CanvasStore {
     const focused = this.focusedAlias;
     const isTable = this.canvasGraph.nodes.some(n => n.type === 'table-node' && n.id === focused);
     if (!focused || focused === current || !isTable || actions.BLOCK_PREFIX.test(focused)) return current;
-    const segments = withoutDescribeSegments(segmentsFromAst(this.textOf(this.mainBlock), ast) ?? []);
+    const segments = withoutEndingSegments(segmentsFromAst(this.textOf(this.mainBlock), ast) ?? []);
     return stageEnd(segments, focused) === stageEnd(segments, current) ? focused : current;
   }
 
@@ -1659,38 +1678,84 @@ export class CanvasStore {
   }
 
   /**
-   * The operation bar's "+": unnest, offered once some table in the query
-   * has a JSON column to unnest. The columns are probed once per
-   * expression, and the entry appears when the answer comes back.
+   * The operation bar's "+" is open: the bar grows to show the rest of its
+   * actions in itself (barMoreActions), instead of a menu. It closes on
+   * "+" again, on Escape, or when the picker one of them opened closes.
    */
-  openOperationMore(anchor: PickerAnchor = CanvasStore.defaultAnchor) {
-    const anchorAlias = this.operationAnchor;
-    const selected = this.selectedNodeActions;
-    if (!anchorAlias || !selected) return;
-    this.nodePickerAlias = null;
-    if (this.picker.open && this.picker.mode === 'more' && this.picker.global) {
-      this.closePicker();
+  barExpanded = false;
+
+  /** A picker opened from the expanded bar is open: closing it closes the bar too. */
+  private barPickerOpen = false;
+
+  /** The bar's "+". Unnest shows once the probe for JSON columns answers. */
+  toggleBarMore() {
+    if (this.barExpanded) {
+      this.collapseBar();
       return;
     }
-    // The query's order, group, limit and path; the selected table's
-    // traverse, describe and references; and unnest once a table in the
-    // query has a JSON column (see activateMoreAction, which unnests from
-    // operationAnchor). A sealed result offers no group or unnest.
+    const anchorAlias = this.operationAnchor;
+    if (!anchorAlias || !this.selectedNodeActions) return;
+    this.closePicker();
+    this.barExpanded = true;
+    const key = this.unnestKey(anchorAlias);
+    if (!this.isCheckpointNode(anchorAlias) && this.unnestColumns.get(key) === undefined) {
+      void this.probeUnnestColumns(anchorAlias, key);
+    }
+  }
+
+  collapseBar() {
+    this.barExpanded = false;
+    this.barPickerOpen = false;
+  }
+
+  /**
+   * What the expanded bar offers: the query's order, group, limit, path and
+   * count; the selected table's traverse, describe and references; and
+   * unnest once a table in the query has a JSON column. A sealed result
+   * offers no group or unnest, and a counted query no second count.
+   */
+  get barMoreActions(): MoreAction[] {
+    const anchorAlias = this.operationAnchor;
+    const selected = this.selectedNodeActions;
+    if (!anchorAlias || !selected) return [];
     const own: MoreAction[] = selected.actions.flatMap(a => (a === 'join' ? [] : [a]));
     const sealed = this.isCheckpointNode(anchorAlias);
     const known = sealed ? [] : this.unnestColumns.get(this.unnestKey(anchorAlias));
     const query: MoreAction[] = sealed ? ['order', 'limit', 'path'] : ['order', 'group', 'limit', 'path'];
-    const offer: MoreAction[] = [...query, ...own, ...(known?.length ? (['unnest'] as const) : [])];
-    this.picker = {
-      open: true,
-      mode: 'more',
-      alias: selected.alias,
-      offer,
-      isCheckpoint: this.isCheckpointNode(selected.alias),
-      global: true,
-      anchor,
-    };
-    if (known === undefined) void this.probeUnnestColumns(anchorAlias, this.unnestKey(anchorAlias));
+    return [
+      ...query,
+      ...(this.counted ? [] : (['count'] as const)),
+      ...own,
+      ...(known?.length ? (['unnest'] as const) : []),
+    ];
+  }
+
+  /** One of the expanded bar's actions, by click or by its key. */
+  runBarAction(action: MoreAction, anchor: PickerAnchor) {
+    if (!this.barMoreActions.includes(action)) return;
+    this.nodePickerAlias = null;
+    switch (action) {
+      case 'order':
+      case 'group':
+      case 'limit':
+      case 'path':
+        this.openOperation(action, anchor);
+        break;
+      case 'count':
+        void this.addCount();
+        break;
+      case 'unnest': {
+        // For the whole query: from where it goes on, which lists every table's JSON columns.
+        const from = this.operationAnchor;
+        if (from && !this.isCheckpointNode(from)) this.openUnnestPicker(from, anchor);
+        break;
+      }
+      default:
+        this.openNodeAction(action, anchor);
+    }
+    // The bar stays open while the picker is, showing which action it is for.
+    if (this.picker.open) this.barPickerOpen = true;
+    else this.collapseBar();
   }
 
   /**
@@ -1765,7 +1830,7 @@ export class CanvasStore {
     }
   }
 
-  /** The JSON columns an `unnest:` can read, by unnestKey. See openOperationMore. */
+  /** The JSON columns an `unnest:` can read, by unnestKey. See barMoreActions. */
   private unnestColumns = new Map<string, ColumnHint[]>();
 
   private unnestKey(alias: string): string {
@@ -1786,13 +1851,8 @@ export class CanvasStore {
   private async probeUnnestColumns(alias: string, key: string): Promise<ColumnHint[]> {
     const ast = await this.probeFor({ kind: 'unnest', alias });
     const columns = ast?.hints.unnest ?? [];
-    runInAction(() => {
-      this.unnestColumns.set(key, columns);
-      const p = this.picker;
-      if (columns.length && p.open && p.mode === 'more' && p.global && !p.offer.includes('unnest')) {
-        this.picker = { ...p, offer: [...p.offer, 'unnest'] };
-      }
-    });
+    // The expanded bar shows unnest once this answers (barMoreActions).
+    runInAction(() => this.unnestColumns.set(key, columns));
     return columns;
   }
 
@@ -1861,6 +1921,10 @@ export class CanvasStore {
       this.openOperation(action, anchor);
       return;
     }
+    if (action === 'count') {
+      void this.addCount();
+      return;
+    }
     // Checked before the isCheckpoint branch below: a limit goes through
     // the normal commit, whose pinned base names every checkpoint anyway,
     // so it needs no picker-time pin.
@@ -1911,7 +1975,7 @@ export class CanvasStore {
   openLimitEditor(alias: string, anchor: PickerAnchor = CanvasStore.defaultAnchor, checkpoint?: string) {
     this.focusNode(alias);
     const { block, alias: plain } = this.scopeOf(alias);
-    const segments = withoutDescribeSegments(segmentsFromAst(this.textOf(block), this.astOf(block)) ?? []);
+    const segments = withoutEndingSegments(segmentsFromAst(this.textOf(block), this.astOf(block)) ?? []);
     const plainCheckpoint = checkpoint === undefined ? undefined : this.scopeOf(checkpoint).alias;
     const opIndex = plainCheckpoint ? checkpointOpIndex(segments, plainCheckpoint) : -1;
     const current = plainCheckpoint
@@ -2016,6 +2080,33 @@ export class CanvasStore {
     await this.commit(base => actions.describeTable(base, op, actions.resolveAlias(base, alias)), id);
   }
 
+  /** Set by removeCount for its one commit: runCommit then leaves the `count:` off. */
+  private dropCountOnce = false;
+
+  /** True when the last query block ends in `count:`, drawn as a line under the graph. */
+  get counted(): boolean {
+    return endsInCount(this.textOf(this.mainBlock));
+  }
+
+  /**
+   * The bar's count: the query ends in `count:`, which counts its rows.
+   * Nothing can follow it, so later steps go in before it (runCommit).
+   */
+  async addCount() {
+    this.closePicker();
+    if (this.counted) return;
+    await this.commit(base => `${toText(base.segments)} | count:`);
+  }
+
+  /** The × on the count line: the query goes back to its rows. */
+  async removeCount() {
+    this.closePicker();
+    await this.commit(base => {
+      this.dropCountOnce = true;
+      return toText(base.segments);
+    });
+  }
+
   /** The × on a node's describe/references chip: the query goes back to its rows. */
   async removeDescribe(id: string) {
     await this.commit(base => toText(base.segments), id);
@@ -2041,7 +2132,7 @@ export class CanvasStore {
     // step's own `from:` doesn't move where it starts.
     const { block } = this.scopeOf(alias);
     const text = this.textOf(block);
-    const plain = withoutDescribe(text);
+    const plain = withoutEnding(text);
     const ast =
       plain === text
         ? this.astOf(block)

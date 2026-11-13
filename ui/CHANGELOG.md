@@ -8,14 +8,19 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **The canvas draws a join that compares with more than one table.** In `fd fd.id = av.attributeId, fd.tenant_id = c.tenantId`, each table gets its own line to `fd`, and each column shows on its own table.
 - **An AI agent's SQL with `$1` runs with the value the agent sends for it.** The agent sends `{"1": [...]}`, and Beamlynx passes it to the variable the SQL became, such as `$tenant_id`. A number the SQL doesn't have runs nothing and says which numbers it has.
 
+- **The canvas can count a query's rows:** count in the bar ends the query with `count:`, drawn as a dotted line under the graph. Steps you add afterwards go in before the count, and the line's × takes it off.
+
 ### Changed
-- **Every canvas action is in one bar at the bottom of the canvas:** join, select and where, with order, group, limit, path, traverse, unnest, describe and references behind +. Each button shows its key in bold, and the graph stays above the bar. Join, traverse, describe and references are for the table you selected. The column lists show every table's columns under a heading for each table: the selected table first, then the newest, then the rest. The mode line at the bottom left is gone.
-- **A table shows its own buttons when you point at it:** join, select, where, and + for order, traverse, describe and references. Its select, where and order list that table's columns only. While you point at a table, the keys s, w, o, i and + work on it too.
-- **In a column list, `t.id` shows the id of the table aliased `t`, and `tenant id` shows the id of every tenant table in the query.** The selected row is now the same colour as in the Pine panel's completions, and a table's heading stays put as the list scrolls.
+- **Every canvas action is in one bar at the bottom of the canvas:** join, select and where, and + to show the rest in the bar itself: order, group, limit, path, count, traverse, unnest, describe and references. Each button shows its key in bold, and every list it opens appears in the same place, just above the bar. The graph stays above the bar. Join, traverse, describe and references are for the table you selected. The column lists show every table's columns under a heading for each table: the selected table first, then the newest, then the rest. The mode line at the bottom left is gone.
+- **A table shows its own buttons when you point at it:** join, select, where, and + for order, traverse, describe and references. Its select, where and order list that table's columns only. While you point at a table, the keys s, w, o, i and + work on it too, and the bar at the bottom dims.
+- **In a column list, `t.id` shows the id of the table aliased `t`, and `tenant id` or `id tenant` shows the id of every tenant table in the query.** The selected row is now the same colour as in the Pine panel's completions. A table's heading stays put as the list scrolls, in the canvas lists and in the Pine panel's completions alike.
 - **Escape in the Pine panel goes to the canvas** once there is nothing else for it to do: with Vim on, the second Escape, after the one that leaves insert mode. `:` on the canvas goes back to the Pine panel, and opens it if it is closed.
 - **A group or a `limit … per` is a dotted line under the tables it seals.** Those tables stay on the canvas instead of turning into a result node. The line says what sealed them, and what you do next goes on below it: its chips are under the line, and a table joined onto the result hangs from it, by the result's column it joins on. Sealed tables no longer fold away.
 - **Completions in the Pine panel offer every table's columns**, under a heading for each table. The current table's come first. A column of another table is inserted with its alias, such as `c.email`.
 - **Ordering by columns of several tables sorts in the order you picked them.** The canvas writes one `order:` at the end of the query.
+
+### Fixed
+- **Tab in the Pine panel highlights the first completion.** Pressed right after typing, it could land on the second one once the completions caught up with what you typed.
 
 ## [0.76.0] - 2026-11-12
 ### Breaking

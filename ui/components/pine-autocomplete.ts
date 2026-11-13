@@ -255,8 +255,13 @@ const optionKey = (c: PineCompletion) => `${c.label}\u0000${c.expression ?? ''}`
  */
 export function refreshCompletions(view: EditorView) {
   if (!completionStatus(view.state)) return;
+  // Only a highlight the person moved. The first option is the list's own
+  // pick: Tab opens the list at once with the hints from before the last
+  // keystroke, and carrying that pick over put the highlight on whatever
+  // place the same option has in the new list, often the second.
   const selected = selectedCompletion(view.state) as PineCompletion | null;
-  if (selected) highlightToRestore.set(view, optionKey(selected));
+  if (selected && (selectedCompletionIndex(view.state) ?? 0) > 0) highlightToRestore.set(view, optionKey(selected));
+  else highlightToRestore.delete(view);
   startCompletion(view);
 }
 

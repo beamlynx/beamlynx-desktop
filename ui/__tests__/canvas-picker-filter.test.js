@@ -34,6 +34,13 @@ test('a table name and a column list every table by that name', () => {
   assert.deepEqual(shown('u id'), ['u.id', 'u.tenant_id']);
 });
 
+test('the table can come last', () => {
+  assert.deepEqual(shown('id tenant'), ['t.id', 't2.id']);
+  assert.deepEqual(shown('na t2'), ['t2.name']);
+  // A first word that names a table wins: `u`'s columns matching `t`.
+  assert.deepEqual(shown('u t'), ['u.tenant_id', 'u.data']);
+});
+
 test('without a table named, the filter is as before', () => {
   assert.deepEqual(shown('email'), ['u.email']);
   // A key inside a JSON column: `data` is no table here.

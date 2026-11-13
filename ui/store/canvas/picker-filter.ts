@@ -7,8 +7,9 @@ import { fuzzyFilter } from './fuzzy';
  * can name tables first:
  *
  * - `t.id` is the id of the table aliased `t` (or named `t`).
- * - `tenant id` is the id of every tenant table in the query. The first
- *   word is a table's name or alias, or else the start of a table's name.
+ * - `tenant id` is the id of every tenant table in the query, and so is
+ *   `id tenant`. The first word, or else the last, is a table's name or
+ *   alias, or the start of a table's name.
  *
  * When the filter names no table, or the tables it names have no match,
  * it filters as typed: a dot then starts a key inside a JSON column,
@@ -27,11 +28,16 @@ const namedTables = (groups: PickerGroup[], filter: string): Scope | null => {
     named.length ? { aliases: new Set(named.map(g => g.alias!)), rest } : null;
   const dot = q.match(/^([^\s.]+)\.(\S*)$/);
   if (dot) return scope(tables.filter(g => is(g, dot[1])), dot[2]);
-  const space = q.match(/^(\S+)\s+(.*)$/);
-  if (!space) return null;
-  const [, word, rest] = space;
-  const exact = tables.filter(g => is(g, word));
-  return scope(exact.length ? exact : tables.filter(g => g.table?.toLowerCase().startsWith(word)), rest);
+  // The table's word comes first, `tenant id`, or last, `id tenant`.
+  const words = q.split(/\s+/);
+  if (words.length < 2) return null;
+  const named = (word: string) => {
+    const exact = tables.filter(g => is(g, word));
+    return exact.length ? exact : tables.filter(g => g.table?.toLowerCase().startsWith(word));
+  };
+  const first = named(words[0]);
+  if (first.length) return scope(first, words.slice(1).join(' '));
+  return scope(named(words[words.length - 1]), words.slice(0, -1).join(' '));
 };
 
 const scoped = (group: PickerGroup, filter: string, scope: Scope | null): PickerItem[] => {

@@ -152,6 +152,27 @@ export const withoutDescribeSegments = (segments: Segment[]): Segment[] => {
   return segments.slice(0, end);
 };
 
+// A last `count:` step. pine-lang counts the rows of everything before it,
+// and drops a `count:` that anything follows.
+const COUNT_TAIL = /\s*\|\s*count:\s*$/i;
+
+/** True when the query ends in `count:`: the canvas draws it as a line under the graph. */
+export const endsInCount = (expression: string): boolean => COUNT_TAIL.test(expression);
+
+/**
+ * The query without the step that ends it: `count:`, `describe:` or
+ * `references:`. Every canvas gesture works on this, since nothing can
+ * follow those steps. A count is put back after the gesture (see
+ * CanvasStore.runCommit); a describe is not.
+ */
+export const withoutEnding = (expression: string): string => withoutDescribe(expression.replace(COUNT_TAIL, ''));
+
+/** withoutEnding on segments: what a picker's probe builds on. */
+export const withoutEndingSegments = (segments: Segment[]): Segment[] => {
+  const last = segments[segments.length - 1];
+  return withoutDescribeSegments(last?.kind === 'count' ? segments.slice(0, -1) : segments);
+};
+
 const classifyKind = (text: string): SegmentKind => {
   if (/^(select:|s:)/i.test(text)) return 'select';
   if (/^(where:|w:)/i.test(text)) return 'where';

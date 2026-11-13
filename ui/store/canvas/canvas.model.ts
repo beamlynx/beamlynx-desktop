@@ -138,7 +138,11 @@ export type CanvasTableNode = Node<CanvasTableNodeData>;
 export type CanvasStartNode = Node<CanvasStartNodeData>;
 export type CanvasContainerNode = Node<CanvasContainerNodeData>;
 export type CanvasLineageNode = Node<CanvasLineageNodeData>;
-export type CanvasNode = CanvasTableNode | CanvasStartNode | CanvasContainerNode | CanvasLineageNode;
+/** The query ends in `count:`: a dotted line under the graph, as wide as it (CountLineNode.tsx). */
+export type CanvasCountNodeData = { width: number };
+export type CanvasCountNode = Node<CanvasCountNodeData>;
+export const COUNT_NODE_ID = '__count__';
+export type CanvasNode = CanvasTableNode | CanvasStartNode | CanvasContainerNode | CanvasLineageNode | CanvasCountNode;
 export type CanvasEdge = Edge & {
   unresolved?: boolean;
   uncertain?: boolean;
@@ -322,7 +326,13 @@ export type ConfigItem =
  * upward from y instead - the operation bar's pickers, since the bar is at
  * the bottom of the canvas (OperationBar.tsx).
  */
-export type PickerAnchor = { x: number; y: number; above?: boolean };
+export type PickerAnchor = {
+  x: number;
+  y: number;
+  above?: boolean;
+  /** The operation bar's: a fixed width, centred on x, above y (Picker.tsx). */
+  centered?: boolean;
+};
 
 export type PickerState =
   | { open: false }
@@ -443,12 +453,23 @@ export type PickerState =
     };
 
 /** The actions tucked behind a node's "+" overflow trigger - see TableNode.tsx. */
-export type MoreAction = 'order' | 'group' | 'path' | 'limit' | 'traverse' | 'unnest' | 'describe' | 'references';
+export type MoreAction =
+  | 'order'
+  | 'group'
+  | 'path'
+  | 'limit'
+  | 'count'
+  | 'traverse'
+  | 'unnest'
+  | 'describe'
+  | 'references';
 export const MORE_ACTIONS: { action: MoreAction; label: string; key: string }[] = [
   { action: 'order', label: 'order', key: 'o' },
   { action: 'group', label: 'group', key: 'g' },
   { action: 'limit', label: 'limit', key: 'l' },
   { action: 'path', label: 'path', key: 'p' },
+  // Ends the query with `count:`: its rows, counted. `c` is the comment's.
+  { action: 'count', label: 'count', key: 'n' },
   { action: 'traverse', label: 'traverse', key: 't' },
   { action: 'unnest', label: 'unnest', key: 'u' },
   // End the query with `describe:` (the table's columns) or `references:`
