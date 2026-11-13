@@ -183,13 +183,10 @@ registry every other consumer has nothing to do with.
   below. `canvasStore.mode` is derived straight from `picker.open`, so there's
   no separate flag to fall out of sync.
 
-The current mode is always visible bottom-left of the canvas
-(`CanvasModeIndicator`, in `CanvasToolbar.tsx`) — "normal" or "insert", plus,
-in normal mode, `c` (write the canvas comment, canvas-wide, always first)
-followed by the exact letters armed for whichever node is currently focused
-(e.g. `c s w o g i x` for a table with something to delete, `c s w o l p + i e x`
-for a checkpoint's node, `c i` for the empty-canvas start node). This legend is
-what makes the shortcuts discoverable without memorizing them up front.
+The operation bar at the bottom centre of the canvas (`OperationBar.tsx`)
+shows the keys: in normal mode, each button's key letter is bold. Its `+`
+grows the bar to show the rest, each with its key. A table's own buttons,
+shown while the pointer is on it, do the same for that table.
 
 **Moving focus** (normal mode only):
 
@@ -214,25 +211,21 @@ pipeline is a single strict sequence, not a 2D graph to roam.
 | `o` | Open the order-by picker |
 | `g` | Open the group-by picker (not offered on a checkpoint node — grouping an already-grouped result is a different question, not implemented) |
 | `e` | On a nested query's node (a checkpoint, or a table using a named block): expand or collapse its container |
-| `x` | Delete the focused node — a table if `removable`, or, on a checkpoint's node, the checkpoint (as the × on its node does; the tables it sealed stay) |
+| `x` | Delete the focused node — a table if `removable`, or, on a checkpoint's node, the checkpoint (as the × on its node does; the tables it sealed stay). On the count line, the last stop, it removes the count |
+| `c` | Count the query's rows: ends it with `count:`, drawn as a line under the graph |
 | `u` | Undo the last canvas gesture |
-| `c` | Write (or edit) the comment at the top of the expression — see "The comment" below |
+| `n` | Write (or edit) the note: the comment at the top of the expression — see "The comment" below |
 | `Shift`+`U` | Redo |
 | `Ctrl`/`Cmd`+`Z` | Undo (same action as `u` — the combo most people already reach for) |
 | `Ctrl`/`Cmd`+`Shift`+`Z`, `Ctrl`+`Y` | Redo (same action as `Shift`+`U`) |
 
-`c`, `u` and `Shift`+`U` are the canvas-scoped ones: they need no focused
-node and work on the empty-canvas start node too. `c` leads the bottom-left
-legend for exactly that reason — it is new vocabulary unique to this app, so
-it earns the discoverability that legend exists to give. `u`/`Shift`+`U` stay
-out of it: undo/redo are a near-universal convention, already carrying their
-own always-visible icons in the toolbar above, so they don't need it
-(`CanvasToolbar.tsx`'s `legendKeysFor`).
+`n`, `u` and `Shift`+`U` are the canvas-scoped ones: they need no focused
+node and work on the empty-canvas start node too. Each has a button in the
+toolbar at the top of the canvas, whose tooltip names its key.
 
 A checkpoint's node routes `s`/`w`/`o`/`p`/`i` through
 `openCheckpointPicker` instead of the per-table picker methods, but the same
-letters apply — the legend at the bottom of the screen always reflects which
-set is active for whatever's focused. `x` is unavailable on a table with
+letters apply. `x` is unavailable on a table with
 `removable: false` (the tables inside a sealed checkpoint — see Constraints)
 and simply does nothing if pressed.
 
@@ -353,7 +346,7 @@ it (single newline → space, blank line → paragraph). And the block is bounde
 by the pane, not the viewport, or a long comment in a short canvas pane runs
 off the bottom into the mode indicator in the opposite corner.
 
-**Writing one.** `c` from the canvas, the toolbar's comment button, or a click
+**Writing one.** `n` (note) from the canvas, the toolbar's comment button, or a click
 on an existing comment. When there is none, a dim "Add a comment" stands in
 its place — the toolbar button alone was not findable, and an empty canvas
 gives no hint that a comment is even possible. `Cmd`/`Ctrl`+`Enter` or

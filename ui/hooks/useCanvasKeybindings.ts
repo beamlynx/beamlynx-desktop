@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { CanvasStore } from '../store/canvas/canvas.store';
 import { Session } from '../store/session';
 import { GlobalStore } from '../store/global.store';
-import { CanvasTableNodeData, MORE_ACTIONS, START_NODE_ID } from '../store/canvas/canvas.model';
+import { COUNT_NODE_ID, CanvasTableNodeData, MORE_ACTIONS, START_NODE_ID } from '../store/canvas/canvas.model';
 import { barAnchor } from '../components/canvas/OperationBar';
 
 interface CanvasKeybindingsProps {
@@ -114,7 +114,10 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
       // this line, precisely so this can be a blanket bail-out.
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 
-      const alias = canvasStore.focusedAlias;
+      // The count line under the graph is the last stop. `x` on it removes
+      // the count; anything else works as from where the query goes on.
+      const onCount = canvasStore.focusedAlias === COUNT_NODE_ID;
+      const alias = onCount ? (canvasStore.nextStepAlias ?? canvasStore.focusedAlias) : canvasStore.focusedAlias;
       const isStart = alias === START_NODE_ID;
       // A checkpoint's node is focused like a table, but its operations go
       // through openCheckpointPicker, not openColumnPicker/openJoinPicker
@@ -306,6 +309,11 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
         case 'x':
         case 'Delete':
         case 'Backspace': {
+          if (onCount) {
+            e.preventDefault();
+            void canvasStore.removeCount();
+            return;
+          }
           if (isStart) return;
           if (canvasStore.focusedConfigItem) {
             e.preventDefault();
@@ -337,17 +345,22 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
         // browser build) and picks browser-safe alternates instead of
         // fighting the host chrome. Shift+U pairs visibly with plain `u`
         // without touching a combo a real browser tab would intercept.
-        // Canvas-scoped, like u/U below: a comment describes the whole
-        // query, so it needs no focused node and works on the start node
-        // too. Safe as a bare letter - the guards at the top bail out on
-        // any real text input, which includes the comment field this opens,
-        // so typing a `c` into a comment can never re-fire this. Unlike
-        // u/U, it does appear in CanvasModeIndicator's legend
-        // (CanvasToolbar.tsx's legendKeysFor) - see that function's own
-        // comment for why the two are treated differently.
-        case 'c':
+        // `n` (note) writes the query's comment. Canvas-scoped, like u/U
+        // below: a comment describes the whole query, so it needs no
+        // focused node and works on the start node too. Safe as a bare
+        // letter - the guards at the top bail out on any real text input,
+        // which includes the comment field this opens, so typing an `n`
+        // into a comment can never re-fire this.
+        case 'n':
           e.preventDefault();
           canvasStore.startDocEdit();
+          return;
+        // `c` counts the query's rows: the bar's count, for the whole
+        // query like its other keys.
+        case 'c':
+          if (!canvasStore.operationAnchor || canvasStore.counted) return;
+          e.preventDefault();
+          void canvasStore.addCount();
           return;
         case 'u':
           if (canvasStore.canUndo) {

@@ -1,7 +1,7 @@
 import React from 'react';
 import { observer } from 'mobx-react-lite';
 import { NodeProps } from 'reactflow';
-import { CanvasCountNodeData } from '../../../store/canvas/canvas.model';
+import { COUNT_NODE_ID, CanvasCountNodeData } from '../../../store/canvas/canvas.model';
 import { lineHeight } from '../../../store/canvas/layout';
 import { useCanvasStore } from '../canvas-context';
 
@@ -13,6 +13,8 @@ import { useCanvasStore } from '../canvas-context';
  */
 const CountLineNode: React.FC<NodeProps<CanvasCountNodeData>> = observer(({ data }) => {
   const canvasStore = useCanvasStore();
+  // The last keyboard stop: `x` or Delete on it removes the count.
+  const focused = canvasStore.focusedAlias === COUNT_NODE_ID;
   return (
     <div
       data-testid="count-line"
@@ -25,7 +27,7 @@ const CountLineNode: React.FC<NodeProps<CanvasCountNodeData>> = observer(({ data
           left: 0,
           right: 0,
           top: lineHeight / 2,
-          borderTop: '1.5px dashed var(--canvas-container-border)',
+          borderTop: `${focused ? 2.5 : 1.5}px dashed ${focused ? 'var(--canvas-node-border-current)' : 'var(--canvas-container-border)'}`,
         }}
       />
       <div
@@ -48,7 +50,21 @@ const CountLineNode: React.FC<NodeProps<CanvasCountNodeData>> = observer(({ data
           whiteSpace: 'nowrap',
         }}
       >
-        <span style={{ color: 'var(--canvas-container-label)', fontWeight: 600 }}>count</span>
+        <span
+          data-testid="count-label"
+          title="The query's rows, counted. Click to select it; x removes it"
+          onClick={e => {
+            e.stopPropagation();
+            canvasStore.focusNode(COUNT_NODE_ID);
+          }}
+          style={{
+            cursor: 'pointer',
+            color: focused ? 'var(--canvas-text)' : 'var(--canvas-container-label)',
+            fontWeight: 600,
+          }}
+        >
+          count
+        </span>
         <span
           data-testid="count-delete"
           className="picker-trigger"

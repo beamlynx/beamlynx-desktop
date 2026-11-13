@@ -4,6 +4,7 @@ import { columnGroupName, tableNameOf } from '../column-groups';
 import { Session } from '../session';
 import {
   CanvasGraph,
+  COUNT_NODE_ID,
   CanvasTableNode,
   ConfigItem,
   JoinType,
@@ -222,7 +223,10 @@ export class CanvasStore {
       (n): n is CanvasTableNode => n.type === 'table-node',
     );
     if (tableNodes.length === 0) return [START_NODE_ID];
-    return [...tableNodes].sort((a, b) => a.data.order - b.data.order).map(n => n.id);
+    const ordered = [...tableNodes].sort((a, b) => a.data.order - b.data.order).map(n => n.id);
+    // The count line, last: `x` on it removes the count.
+    const counted = this.canvasGraph.nodes.some(n => n.id === COUNT_NODE_ID);
+    return counted ? [...ordered, COUNT_NODE_ID] : ordered;
   }
 
   /**

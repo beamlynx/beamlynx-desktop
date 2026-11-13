@@ -485,8 +485,8 @@ export const MORE_ACTIONS: { action: MoreAction; label: string; key: string }[] 
   { action: 'group', label: 'group', key: 'g' },
   { action: 'limit', label: 'limit', key: 'l' },
   { action: 'path', label: 'path', key: 'p' },
-  // Ends the query with `count:`: its rows, counted. `c` is the comment's.
-  { action: 'count', label: 'count', key: 'n' },
+  // Ends the query with `count:`: its rows, counted. The comment's key is `n`, for note.
+  { action: 'count', label: 'count', key: 'c' },
   { action: 'traverse', label: 'traverse', key: 't' },
   { action: 'unnest', label: 'unnest', key: 'u' },
   // End the query with `describe:` (the table's columns) or `references:`

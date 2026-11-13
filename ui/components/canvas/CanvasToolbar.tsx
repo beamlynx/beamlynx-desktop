@@ -164,7 +164,7 @@ const CanvasToolbar: React.FC<{ canvasStore: CanvasStore; extraAction?: CanvasTo
         }}
       >
         <span
-          title="Undo last graph action"
+          title="Undo last graph action (u)"
           style={canvasStore.canUndo ? iconButtonStyle : disabledIconButtonStyle}
           onClick={() => canvasStore.canUndo && canvasStore.undo()}
         >
@@ -172,7 +172,7 @@ const CanvasToolbar: React.FC<{ canvasStore: CanvasStore; extraAction?: CanvasTo
         </span>
         <Divider />
         <span
-          title="Redo"
+          title="Redo (Shift+U)"
           style={canvasStore.canRedo ? iconButtonStyle : disabledIconButtonStyle}
           onClick={() => canvasStore.canRedo && canvasStore.redo()}
         >
@@ -197,8 +197,8 @@ const CanvasToolbar: React.FC<{ canvasStore: CanvasStore; extraAction?: CanvasTo
         <span
           title={
             canvasStore.session.doc
-              ? 'Edit this comment (c)'
-              : 'Add a comment saying what this query is for (c)'
+              ? 'Edit this comment (n)'
+              : 'Add a comment saying what this query is for (n)'
           }
           style={{
             ...iconButtonStyle,
