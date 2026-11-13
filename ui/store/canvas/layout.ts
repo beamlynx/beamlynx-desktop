@@ -30,6 +30,8 @@ import {
   CanvasTableNodeData,
   CanvasDescribe,
   CanvasWrite,
+  CheckpointResult,
+  resultChipColumns,
 } from './canvas.model';
 import { Lineage } from './lineage';
 import { inProgressTable } from './pine-text';
@@ -76,7 +78,11 @@ export const getNodeHeight = (node: CanvasNode): number => {
   if (node.type !== 'table-node') return startNodeHeight;
   const data = node.data as CanvasTableNodeData;
   if (data.checkpoint?.line) {
-    return lineHeight + (data.leftHandles.length || data.rightHandles.length ? linePinRowHeight : 0);
+    // A join on one of the line's chips hangs from that chip; any other
+    // gets a pin in a row under the line.
+    const chips = resultChipColumns(data.nested?.result);
+    const pinned = [...data.leftHandles, ...data.rightHandles].some(h => !chips.includes(h.column));
+    return lineHeight + (pinned ? linePinRowHeight : 0);
   }
   const rows = Math.max(effectiveHandleCount(data.leftHandles), effectiveHandleCount(data.rightHandles));
   return rows === 0 ? minNodeHeight : headerHeight + rows * handleRowHeight + 10;
@@ -359,6 +365,20 @@ export const checkpointLabel = (checkpoint: Checkpoint): string => {
   const aggregates = checkpoint.aggregates?.length ? `with ${checkpoint.aggregates.join(', ')}` : '';
   // No keys: one group, the whole table, `group with count as n`.
   return ['group', keys, aggregates].filter(Boolean).join(' ');
+};
+
+/**
+ * What a checkpoint's line shows (CheckpointResult). A group's result has
+ * its keys first, then its aggregates, under the names pine-lang gives
+ * them: `c.id` is the result's `id`.
+ */
+export const checkpointResult = (checkpoint: Checkpoint): CheckpointResult => {
+  if (checkpoint.kind === 'limit') {
+    return { kind: 'limit', limit: checkpoint.limit, per: (checkpoint.per ?? []).map(columnLabel) };
+  }
+  const group = checkpoint.group ?? [];
+  const keys = group.map((c, i) => ({ column: checkpoint.columns[i] ?? columnName(c.column, c.path), from: columnLabel(c) }));
+  return { kind: 'group', keys, aggregates: checkpoint.aggregates ?? checkpoint.columns.slice(group.length) };
 };
 
 /**
@@ -782,6 +802,7 @@ const layoutPipeline = (
             label: checkpointLabel(checkpoint),
             limit: checkpoint.kind === 'limit' ? checkpoint.limit : undefined,
             expanded,
+            result: checkpointResult(checkpoint),
           },
         },
       };

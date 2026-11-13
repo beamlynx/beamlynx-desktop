@@ -7,7 +7,10 @@ import {
   GlobalOperation,
   NodeAction,
   PickerState,
+  resultChipColumns,
 } from '../../../store/canvas/canvas.model';
+import MergeTypeIcon from '@mui/icons-material/MergeType';
+import VerticalAlignTopIcon from '@mui/icons-material/VerticalAlignTop';
 import { getNodeHeight, lineHeight, linePinRowHeight, nodeWidth } from '../../../store/canvas/layout';
 import { occurrenceAt, unnestChipName } from '../../../store/canvas/pine-actions';
 import { useCanvasStore } from '../canvas-context';
@@ -194,21 +197,110 @@ const RelationDots = ({
   );
 };
 
+/** A pin's handle: the point a join's line leaves from or arrives at. */
+const pinHandleStyle: React.CSSProperties = {
+  width: 6,
+  height: 6,
+  borderRadius: 1,
+  background: 'var(--canvas-pin)',
+};
+
+/**
+ * One column of a checkpoint's result, as a chip on its line. A click
+ * starts a join on it: the list shows only the tables that join on that
+ * column. A join already on it hangs from the chip's bottom edge.
+ */
+const ResultChip = ({
+  name,
+  column,
+  testId,
+  title,
+  aggregate,
+  children,
+  pins,
+}: {
+  name: string;
+  column: string;
+  testId: string;
+  title: string;
+  aggregate?: boolean;
+  children: React.ReactNode;
+  pins: { h: CanvasHandle; type: 'source' | 'target' }[];
+}) => {
+  const canvasStore = useCanvasStore();
+  const [hover, setHover] = useState(false);
+  return (
+    <span
+      data-testid={testId}
+      className="picker-trigger"
+      title={title}
+      onClick={e => {
+        e.stopPropagation();
+        void canvasStore.openCheckpointPicker(name, 'join', { x: e.clientX, y: e.clientY }, column);
+      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        position: 'relative',
+        display: 'inline-flex',
+        alignItems: 'baseline',
+        gap: 4,
+        padding: '1px 6px',
+        borderRadius: 3,
+        cursor: 'pointer',
+        fontSize: 'calc(10px * var(--text-scale, 1))',
+        lineHeight: 'calc(14px * var(--text-scale, 1))',
+        color: 'var(--canvas-text)',
+        background: 'var(--canvas-chip-bg)',
+        // An aggregate is computed, not a column of a table: a dashed edge.
+        border: `1px ${aggregate ? 'dashed' : 'solid'} ${hover ? 'var(--canvas-trace)' : 'var(--canvas-chip-border)'}`,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {children}
+      {pins.map(({ h, type }) => (
+        <Handle
+          key={`${type}:${h.id}`}
+          type={type}
+          position={Position.Bottom}
+          id={h.id}
+          style={{ ...pinHandleStyle, left: '50%', bottom: -4, top: 'auto', transform: 'translate(-50%, 0)' }}
+        />
+      ))}
+    </span>
+  );
+};
+
+/** A group's aggregate as its chip shows it: `total = sum(o.total)`, or `count` when it has no name of its own. */
+const aggregateParts = (name: string, text: string | undefined): { name: string; fn?: string } => {
+  const named = text?.match(/^(.*\S)\s+as\s+(\S+)$/i);
+  if (named) return { name: named[2], fn: named[1] };
+  return text && text !== name ? { name: text } : { name };
+};
+
 /**
  * A checkpoint's line (beamlynx-plans #33): a dotted line across the graph,
- * below the stage it seals, in place of a result node. Its label says what
- * sealed the stage; a limit's opens the limit editor, and × removes the
- * checkpoint. The joins onto the sealed result drop out of its bottom edge,
- * each from a pin under the label, with the column it joins on.
+ * below the stage it seals, in place of a result node. On it: an icon for
+ * what sealed the stage, then that step's parts. A group shows a chip for
+ * each key and each aggregate, which are the result's columns: a click on
+ * one joins a table on it, and the join hangs from that chip. A limit shows
+ * its value, which opens the limit editor. × removes the checkpoint. Any
+ * other join onto the result gets a pin in a row under the line.
  */
 const CheckpointLine = observer(({ data, focused }: { data: CanvasTableNodeData; focused: boolean }) => {
   const canvasStore = useCanvasStore();
   const nested = data.nested;
+  const result = nested?.result;
   const width = data.checkpoint?.line?.width ?? nodeWidth;
-  const pins = [
+  const allPins = [
     ...data.rightHandles.map(h => ({ h, type: 'source' as const })),
     ...data.leftHandles.map(h => ({ h, type: 'target' as const })),
   ];
+  const chipColumns = resultChipColumns(result);
+  const pinsOf = (column: string) => allPins.filter(p => p.h.column === column);
+  const pins = allPins.filter(p => !chipColumns.includes(p.h.column));
+  const aggregateTexts = result?.kind === 'group' && nested ? canvasStore.aggregateTextsOf(nested.name) : [];
+  const iconStyle = { fontSize: 'calc(15px * var(--text-scale, 1))', color: 'var(--canvas-container-label)' };
   return (
     <div
       data-testid={`checkpoint-line-${data.alias}`}
@@ -248,25 +340,73 @@ const CheckpointLine = observer(({ data, focused }: { data: CanvasTableNodeData;
             whiteSpace: 'nowrap',
           }}
         >
-          <span
-            data-testid={`nested-label-${nested.name}`}
-            className={nested.limit !== undefined ? 'picker-trigger' : undefined}
-            title={nested.limit !== undefined ? 'Change the limit' : `The query goes on from this result: ${nested.name}`}
-            onClick={
-              nested.limit !== undefined
-                ? e => {
-                    e.stopPropagation();
-                    canvasStore.openLimitEditor(data.alias, { x: e.clientX, y: e.clientY }, nested.name);
-                  }
-                : undefined
-            }
-            style={{
-              cursor: nested.limit !== undefined ? 'pointer' : 'default',
-              color: nested.limit !== undefined ? 'var(--canvas-trace)' : undefined,
-            }}
-          >
-            {nested.label}
-          </span>
+          {result?.kind === 'group' ? (
+            <>
+              <span title={`Grouped: one row for each ${result.keys.map(k => k.from).join(', ') || 'query'}`} style={{ display: 'flex' }}>
+                <MergeTypeIcon data-testid={`checkpoint-icon-group-${nested.name}`} sx={iconStyle} />
+              </span>
+              {result.keys.map(k => (
+                <ResultChip
+                  key={`key:${k.column}`}
+                  name={nested.name}
+                  column={k.column}
+                  testId={`result-chip-${nested.name}-${k.column}`}
+                  title={`Grouped by ${k.from}. Click to join a table on ${k.column}`}
+                  pins={pinsOf(k.column)}
+                >
+                  {/* `c.id`, its table's alias dimmed: the result's column is `id`. */}
+                  <span>
+                    {k.from.endsWith(`.${k.column}`) && (
+                      <span style={{ color: 'var(--canvas-text-dim)' }}>{k.from.slice(0, -k.column.length)}</span>
+                    )}
+                    {k.column}
+                  </span>
+                </ResultChip>
+              ))}
+              {result.aggregates.map((a, i) => {
+                const parts = aggregateParts(a, aggregateTexts[i]);
+                return (
+                  <ResultChip
+                    key={`aggregate:${a}`}
+                    name={nested.name}
+                    column={a}
+                    aggregate
+                    testId={`result-chip-${nested.name}-${a}`}
+                    title={`${parts.fn ? `${parts.name} = ${parts.fn}` : parts.name}, worked out for each group. Click to join a table on ${a}`}
+                    pins={pinsOf(a)}
+                  >
+                    <span style={{ fontStyle: 'italic' }}>{parts.name}</span>
+                    {parts.fn && <span style={{ color: 'var(--canvas-text-dim)' }}>{parts.fn}</span>}
+                  </ResultChip>
+                );
+              })}
+            </>
+          ) : (
+            <>
+              <span title="Limited: the first rows of each group" style={{ display: 'flex' }}>
+                <VerticalAlignTopIcon data-testid={`checkpoint-icon-limit-${nested.name}`} sx={iconStyle} />
+              </span>
+              <span
+                data-testid={`nested-label-${nested.name}`}
+                className={nested.limit !== undefined ? 'picker-trigger' : undefined}
+                title={nested.limit !== undefined ? 'Change the limit' : `The query goes on from this result: ${nested.name}`}
+                onClick={
+                  nested.limit !== undefined
+                    ? e => {
+                        e.stopPropagation();
+                        canvasStore.openLimitEditor(data.alias, { x: e.clientX, y: e.clientY }, nested.name);
+                      }
+                    : undefined
+                }
+                style={{
+                  cursor: nested.limit !== undefined ? 'pointer' : 'default',
+                  color: nested.limit !== undefined ? 'var(--canvas-trace)' : undefined,
+                }}
+              >
+                {result?.kind === 'limit' ? `${result.limit ?? ''}${result.per.length ? ` per ${result.per.join(', ')}` : ''}` : nested.label}
+              </span>
+            </>
+          )}
           <span
             data-testid={`nested-delete-${nested.name}`}
             title="Remove this checkpoint: the tables join up again"
@@ -280,7 +420,7 @@ const CheckpointLine = observer(({ data, focused }: { data: CanvasTableNodeData;
           </span>
         </div>
       )}
-      {/* The result's columns its joins are on, each by its pin, under the
+      {/* Joins on a column without a chip, each by its pin, under the
           line, as a table names the columns its pins are for. */}
       {pins.length > 0 && (
         <div
@@ -312,10 +452,7 @@ const CheckpointLine = observer(({ data, focused }: { data: CanvasTableNodeData;
                 position={Position.Bottom}
                 id={h.id}
                 style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: 1,
-                  background: 'var(--canvas-pin)',
+                  ...pinHandleStyle,
                   left: 3,
                   top: '50%',
                   bottom: 'auto',

@@ -84,8 +84,24 @@ export type CanvasTableNodeData = {
     label: string;
     limit?: number;
     expanded: boolean;
+    /** A checkpoint's: what sealed it, as its line shows it (TableNode.tsx's CheckpointLine). */
+    result?: CheckpointResult;
   };
 };
+
+/**
+ * What a checkpoint's line shows. A group: its keys, each a column of the
+ * result (`id`, from `c.id`), then its aggregates (`count`, `total`). Each
+ * is a chip a join can start from. A `limit … per`: the limit and the
+ * columns after `per`.
+ */
+export type CheckpointResult =
+  | { kind: 'group'; keys: { column: string; from: string }[]; aggregates: string[] }
+  | { kind: 'limit'; limit?: number; per: string[] };
+
+/** The result columns a checkpoint's line has a chip for: a join on one hangs from it. */
+export const resultChipColumns = (result: CheckpointResult | undefined): string[] =>
+  result?.kind === 'group' ? [...result.keys.map(k => k.column), ...result.aggregates] : [];
 
 // eslint-disable-next-line @typescript-eslint/ban-types
 export type CanvasStartNodeData = {};
@@ -258,7 +274,8 @@ export type WhereDraft = {
 
 export type PickerRequest =
   | { kind: 'table' }
-  | { kind: 'join'; alias: string }
+  /** `column`: from a chip on a checkpoint's line, only the joins on that column of its result. */
+  | { kind: 'join'; alias: string; column?: string }
   /** `only`: opened from the node itself, so it lists that table's columns alone. */
   | { kind: 'select'; alias: string; only?: boolean }
   /**
