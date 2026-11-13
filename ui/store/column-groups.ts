@@ -13,6 +13,10 @@ export const columnGroupName = (alias: string, tables: Table[]): string => {
   return table && table.table !== alias ? `${table.table} (${alias})` : alias;
 };
 
+/** The table behind `alias`, or the alias itself for a named result or checkpoint. */
+export const tableNameOf = (alias: string, tables: Table[]): string =>
+  tables.find(t => t.alias === alias)?.table ?? alias;
+
 /** The column as Pine needs it: bare for the current table, `u.email` for any other. */
 export const qualifiedColumn = (hint: ColumnHint, current: string | undefined): string =>
   hint.alias === current ? hint.column : `${hint.alias}.${hint.column}`;

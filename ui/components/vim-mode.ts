@@ -15,6 +15,20 @@ function loadVim(): Promise<VimModule> {
 }
 
 /**
+ * True when Vim is in normal mode with nothing pending: not inserting, no
+ * visual selection, no half-typed command like `d`. An Escape then has
+ * nothing left to do in the editor. False when Vim isn't loaded.
+ */
+export function vimIsIdle(view: import('@codemirror/view').EditorView): boolean {
+  const vim = loaded?.getCM(view)?.state.vim as
+    | { insertMode: boolean; visualMode: boolean; inputState?: { keyBuffer?: unknown[]; operator?: unknown } }
+    | null
+    | undefined;
+  if (!vim) return false;
+  return !vim.insertMode && !vim.visualMode && !vim.inputState?.keyBuffer?.length && !vim.inputState?.operator;
+}
+
+/**
  * Vim's editor extension while `enabled`, or null. The first time, it is
  * null until the library has loaded, and the editor gets it a moment later.
  */

@@ -1433,6 +1433,26 @@ export class GlobalStore {
     }
   }
 
+  /**
+   * `:` on the canvas: the Pine panel gets the keyboard, opened if it was
+   * closed. Unlike togglePinePanel, it never closes it. Escape in the
+   * panel goes back to the canvas (focusCanvas).
+   */
+  public focusPinePanel(session: Session) {
+    this.newLayoutPanelVisible = true;
+    session.setInputMode('pine');
+    session.focusTextInput();
+  }
+
+  /** Escape in the Pine panel, with nothing else left for it to do: the canvas gets the keyboard. */
+  public focusCanvas(): boolean {
+    if (!this.canvasActive) return false;
+    const canvas = document.querySelector<HTMLElement>('[data-keyboard-panel="graph"]');
+    if (!canvas) return false;
+    canvas.focus();
+    return true;
+  }
+
   public toggleSqlPanel(session: Session) {
     if (this.newLayoutPanelVisible && session.inputMode === 'sql') {
       this.hideNewLayoutPanel();
