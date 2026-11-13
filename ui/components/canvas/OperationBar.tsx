@@ -96,10 +96,12 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
   if (!canvasStore.selectedNodeActions || !canvasStore.operationAnchor || canvasStore.selectedAliases.length >= 2) {
     return null;
   }
-  const active = activeGlobalOperation(canvasStore.picker);
+  // A picker opened from a node's own buttons isn't the bar's.
+  const active = canvasStore.nodePicker ? null : activeGlobalOperation(canvasStore.picker);
   // Order, group, limit and path are behind "+".
   const shown = active === 'order' || active === 'group' || active === 'limit' || active === 'path' ? 'more' : active;
-  const keys = canvasStore.mode === 'normal';
+  // While the pointer is on a node, the keys are that node's (TableNode.tsx).
+  const keys = canvasStore.mode === 'normal' && !canvasStore.pointerAlias;
   const dim = (kind: string) => shown !== null && shown !== kind;
   return (
     <div

@@ -148,6 +148,30 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
         return { x: rect.left + rect.width / 2, y: rect.top, above: true };
       };
 
+      // `:` goes to the Pine panel, opening it if it is closed. Escape in
+      // the panel comes back here (PineInput.tsx).
+      if (e.key === ':') {
+        e.preventDefault();
+        global.focusPinePanel(session);
+        return;
+      }
+
+      // The pointer is on a table node: its own buttons show, and these keys
+      // are that node's (TableNode.tsx). Select, where and order list its
+      // columns alone. The picker opens under the node's button.
+      const pointed = canvasStore.pointerAlias;
+      const nodeKind = ({ i: 'join', '|': 'join', s: 'select', w: 'where', o: 'order', '+': 'more' } as const)[
+        e.key as 'i' | '|' | 's' | 'w' | 'o' | '+'
+      ];
+      if (pointed && nodeKind) {
+        e.preventDefault();
+        const button = nodeKind === 'order' ? 'more' : nodeKind;
+        const el = document.querySelector(`[data-testid="node-${button}-${pointed}"]`);
+        const rect = el?.getBoundingClientRect();
+        canvasStore.openNodeOperation(pointed, nodeKind, rect ? { x: rect.left, y: rect.bottom } : anchorFor(pointed));
+        return;
+      }
+
       // Arrow-key navigation always works, vim mode or not - it's plain
       // directional navigation, not a vim convention, so there's no reason
       // to gate it on global.vimMode the way j/k below are.
@@ -260,9 +284,6 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
           e.preventDefault();
           canvasStore.toggleNested(nested.name);
           return;
-        // The focused node's own "+": traverse, describe and references.
-        // Mirrors TableNode.tsx's own "+" button onClick exactly, including
-        // which actions each offers.
         // The operation bar's "+": order, group, limit, path, traverse,
         // describe, references and unnest.
         case '+':
@@ -335,8 +356,6 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
             canvasStore.redo();
           }
           return;
-        // ':' reserved - future canvas<->text-mode toggle hook point, not
-        // wired in this pass (see the plan doc's "Explicitly out of scope").
         default:
           return;
       }

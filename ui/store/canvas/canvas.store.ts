@@ -1,6 +1,6 @@
 import { comparer, makeAutoObservable, observable, reaction, runInAction } from 'mobx';
 import { Ast, ColumnHint, columnName, PathHint, TableHint, whereConditions, whereLiteral } from '../client';
-import { columnGroupName } from '../column-groups';
+import { columnGroupName, tableNameOf } from '../column-groups';
 import { Session } from '../session';
 import {
   CanvasGraph,
@@ -57,7 +57,11 @@ import { computeDateBounds } from './relative-date';
 
 /** Identifies a picker request for the "already open for this" check below - table has no alias to key on. */
 const requestKey = (r: PickerRequest): string =>
-  r.kind === 'table' ? 'table' : r.kind === 'path-route' ? `path-route:${r.alias}:${r.target}` : `${r.kind}:${r.alias}`;
+  r.kind === 'table'
+    ? 'table'
+    : r.kind === 'path-route'
+      ? `path-route:${r.alias}:${r.target}`
+      : `${r.kind}:${r.alias}${'only' in r && r.only ? ':only' : ''}`;
 
 const emptyGraph: CanvasGraph = { nodes: [], edges: [], parsing: true };
 
@@ -258,6 +262,54 @@ export class CanvasStore {
 
   setHoveredAlias(alias: string | null) {
     this.hoveredAlias = alias;
+  }
+
+  /**
+   * The table node under a pointer that moved: it shows its own buttons,
+   * and the keys s, w, o, i and + work on it alone (useCanvasKeybindings).
+   * Set on mousemove, not mouseenter, and cleared whenever the graph is
+   * drawn again: a re-layout can slide a node under a still pointer, and
+   * that must not quietly take over the keys.
+   */
+  pointerAlias: string | null = null;
+
+  setPointerAlias(alias: string | null) {
+    if (this.pointerAlias !== alias) this.pointerAlias = alias;
+  }
+
+  /**
+   * The node whose own buttons opened the picker that is open now. Its
+   * buttons stay shown while it is open. Null for the operation bar's.
+   */
+  private nodePickerAlias: string | null = null;
+
+  /** See nodePickerAlias. */
+  get nodePicker(): string | null {
+    const p = this.picker;
+    if (!p.open) return null;
+    const alias = 'alias' in p ? p.alias : p.mode === 'list' && 'alias' in p.request ? p.request.alias : null;
+    return alias === this.nodePickerAlias ? alias : null;
+  }
+
+  /**
+   * One of a table node's own buttons, or a key while the pointer is on it
+   * (pointerAlias): join, select, where, order, or its "+". Select, where
+   * and order list that table's columns alone. The operation bar's are for
+   * the whole query (openOperation).
+   */
+  openNodeOperation(alias: string, kind: 'join' | 'select' | 'where' | 'order' | 'more', anchor: PickerAnchor) {
+    if (this.isCheckpointNode(alias)) return;
+    this.nodePickerAlias = alias;
+    switch (kind) {
+      case 'join':
+        this.openJoinPicker(alias, anchor);
+        return;
+      case 'more':
+        this.openMorePicker(alias, false, anchor);
+        return;
+      default:
+        this.openColumnPicker(kind, alias, anchor, undefined, true);
+    }
   }
 
   /**
@@ -648,6 +700,8 @@ export class CanvasStore {
     // (buildCanvasGraph). It isn't cleared here: right after a commit the ast
     // can still be the one from before, without the checkpoint just added.
     const segments = segmentsFromAst(expression, ast);
+    // The nodes may have moved: the pointer has to move again to pick one.
+    this.pointerAlias = null;
     this.canvasGraph = buildCanvasGraph(
       ast,
       { ...this.stripPositions, ...this.positions[this.mainBlock] },
@@ -1536,6 +1590,7 @@ export class CanvasStore {
   openNodeAction(action: NodeAction, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
     const selected = this.selectedNodeActions;
     if (!selected || !selected.actions.includes(action)) return;
+    this.nodePickerAlias = null;
     const { alias } = selected;
     switch (action) {
       case 'join':
@@ -1578,6 +1633,7 @@ export class CanvasStore {
   openOperation(kind: GlobalOperation, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
     const alias = this.operationAnchor;
     if (!alias) return;
+    this.nodePickerAlias = null;
     const checkpoint = this.isCheckpointNode(alias);
     switch (kind) {
       case 'limit':
@@ -1611,6 +1667,7 @@ export class CanvasStore {
     const anchorAlias = this.operationAnchor;
     const selected = this.selectedNodeActions;
     if (!anchorAlias || !selected) return;
+    this.nodePickerAlias = null;
     if (this.picker.open && this.picker.mode === 'more' && this.picker.global) {
       this.closePicker();
       return;
@@ -1839,7 +1896,8 @@ export class CanvasStore {
       this.openPathPicker(alias, anchor);
       return;
     }
-    this.openColumnPicker(action, alias, anchor);
+    // From a node's own "+": that table's columns alone.
+    this.openColumnPicker(action, alias, anchor, undefined, this.nodePicker === alias);
   }
 
   /**
@@ -2005,6 +2063,8 @@ export class CanvasStore {
     anchor: PickerAnchor = CanvasStore.defaultAnchor,
     /** Pre-highlight this column once the list loads - see PickerState's own `focusValue` doc. */
     focusValue?: string,
+    /** Opened from the node itself: only this table's columns. */
+    only = false,
   ) {
     // A specific existing chip being reopened gets its own config-item
     // cursor (matching what Left/Right would land on); adding a new one
@@ -2015,7 +2075,7 @@ export class CanvasStore {
     } else {
       this.focusNode(alias);
     }
-    const request: PickerRequest = { kind, alias };
+    const request: PickerRequest = only ? { kind, alias, only } : { kind, alias };
     void this.openListPicker(
       request,
       anchor,
@@ -2084,8 +2144,8 @@ export class CanvasStore {
         }
         const tables = (ast['selected-tables'] ?? []).map(t => ({ ...t, alias: prefix + t.alias }));
         const groups: PickerGroup[] = Array.from(sections.entries())
-          .filter(([, items]) => items.length > 0)
-          .map(([a, items]) => ({ label: columnGroupName(a, tables), items, alias: a }));
+          .filter(([a, items]) => items.length > 0 && (!only || a === alias))
+          .map(([a, items]) => ({ label: columnGroupName(a, tables), items, alias: a, table: tableNameOf(a, tables) }));
         // One table needs no heading.
         if (groups.length === 1) groups[0] = { ...groups[0], label: '' };
         return { groups };
@@ -2460,6 +2520,7 @@ export class CanvasStore {
       label: columnGroupName(a, tables),
       items,
       alias: a,
+      table: tableNameOf(a, tables),
     }));
     // One table needs no heading.
     if (groups.length === 1) groups[0] = { ...groups[0], label: '' };

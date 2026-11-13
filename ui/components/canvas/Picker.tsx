@@ -7,6 +7,7 @@ import {
   TRAVERSE_VERBS,
   ORDER_DIRECTIONS,
   PickerAnchor,
+  PickerGroup,
   PickerItem,
   RELATIVE_DATE_UNITS,
   RelativeDateUnit,
@@ -17,6 +18,7 @@ import {
 import { looksLikeDateColumn } from '../../store/canvas/relative-date';
 import { selectName } from '../../store/canvas/pine-actions';
 import { fuzzyFilter } from '../../store/canvas/fuzzy';
+import { filterGroups } from '../../store/canvas/picker-filter';
 import { useCanvasStore } from './canvas-context';
 
 const pluralize = (count: number, unit: string): string => (count === 1 ? unit : `${unit}s`);
@@ -58,11 +60,12 @@ const headerStyle: React.CSSProperties = {
 };
 
 // The actual scrolling region - everything below the filter.
+const bodyPaddingTop = 6;
 const bodyStyle: React.CSSProperties = {
   flex: 1,
   minHeight: 0,
   overflow: 'auto',
-  padding: '6px 8px 8px 8px',
+  padding: `${bodyPaddingTop}px 8px 8px 8px`,
 };
 
 // Shared by every text input/select in the picker (the filter box, and the
@@ -127,9 +130,6 @@ const anchoredStyle = (anchor: PickerAnchor): React.CSSProperties => {
   return { ...basePickerStyle, left, top };
 };
 
-const filterItems = (items: PickerItem[], filter: string): PickerItem[] => {
-  return fuzzyFilter(items, filter, i => i.label);
-};
 
 /** Already-selected columns sink to the bottom - they're done, so the columns still worth picking stay up top. */
 const sinkSelected = (
@@ -216,12 +216,14 @@ const Picker: React.FC = observer(() => {
   // stays in its place in the list with a count rather than sinking.
   const sunkColumns = picker.open && picker.mode === 'list' && picker.request.kind === 'select' ? [] : selectedColumns;
 
-  const flatItems: PickerItem[] =
-    picker.open && picker.mode === 'list' && !picker.loading && !picker.error
-      ? picker.groups.flatMap(g =>
-          sinkSelected(filterItems(g.items, picker.filter), sunkColumns, selectedKey),
-        )
+  // `t.id` or `tenant id` narrows to those tables' columns (picker-filter.ts).
+  const filtered = picker.open && picker.mode === 'list' ? filterGroups(picker.groups, picker.filter) : [];
+  const shownItems = (g: PickerGroup) =>
+    picker.open && picker.mode === 'list'
+      ? sinkSelected(filtered[picker.groups.indexOf(g)] ?? [], sunkColumns, selectedKey)
       : [];
+  const flatItems: PickerItem[] =
+    picker.open && picker.mode === 'list' && !picker.loading && !picker.error ? picker.groups.flatMap(shownItems) : [];
   const flatKey = flatItems.map(i => i.id).join('|');
   const focusValue = picker.open && picker.mode === 'list' ? picker.focusValue : undefined;
 
@@ -1173,7 +1175,7 @@ const Picker: React.FC = observer(() => {
         {!picker.loading &&
           !picker.error &&
           picker.groups.map(group => {
-            const items = sinkSelected(filterItems(group.items, picker.filter), sunkColumns, selectedKey);
+            const items = shownItems(group);
             if (items.length === 0) return null;
             return (
               <div key={group.alias ?? (group.label || 'default')} style={{ marginBottom: 6 }}>
@@ -1188,7 +1190,10 @@ const Picker: React.FC = observer(() => {
                   <div
                     style={{
                       position: 'sticky',
-                      top: 0,
+                      // The body's top padding (bodyStyle): at 0 it stuck
+                      // below that padding, and rows scrolled past showed
+                      // through the gap above it.
+                      top: -bodyPaddingTop,
                       // Without an explicit stacking order, this sticky
                       // header (earlier in the DOM than the items below it)
                       // can still paint BEHIND those items once scrolling
@@ -1243,7 +1248,11 @@ const Picker: React.FC = observer(() => {
                         padding: group.alias && group.label ? '3px 4px 3px 14px' : '3px 4px',
                         cursor: 'pointer',
                         borderRadius: 3,
-                        background: isHighlighted ? 'var(--canvas-chip-bg)' : 'transparent',
+                        // The Pine panel's selected completion has the same
+                        // colours (globals.css): the chip tint is the
+                        // headings', so a row in it didn't read as selected.
+                        background: isHighlighted ? 'var(--primary-color)' : 'transparent',
+                        color: isHighlighted ? 'var(--primary-text-color)' : undefined,
                       }}
                       onMouseEnter={() => setHighlighted(flatIdx)}
                     >

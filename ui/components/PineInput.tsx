@@ -16,7 +16,7 @@ import { panelPeekTarget } from '../store/canvas/json-peek';
 import { createPineAutocompletion, refreshCompletions } from './pine-autocomplete';
 import { pineLanguage } from './pine-language';
 import { setTableColors, tableColors } from './table-colors';
-import { useVimExtension } from './vim-mode';
+import { useVimExtension, vimIsIdle } from './vim-mode';
 import { cursorAfterReformat, isAtEndOfBlock, pastSpaceAfterPipe, sameApartFromWhitespace } from '../utils/cursor';
 
 interface PineInputProps {
@@ -446,21 +446,32 @@ const PineInput: React.FC<PineInputProps> = observer(({ session, autoFocus = tru
       exts.push(Prec.high(vimExtension));
     }
 
-    // Escape ends a peek and stops a running query. Lowest precedence, so
-    // closing the completion list or leaving Vim's insert mode comes first.
+    // Escape ends a peek, then stops a running query, then goes to the
+    // canvas, one step per press. Lowest precedence, so closing the
+    // completion list or leaving Vim's insert mode comes first.
+    const escape = () => {
+      if (stopPeek()) return true;
+      if (session.loading && session.runId) {
+        session.stop();
+        return true;
+      }
+      return global.focusCanvas();
+    };
+    exts.push(Prec.lowest(keymap.of([{ key: 'Escape', run: escape }])));
+    // Vim keeps an Escape in normal mode for itself, so the step to the
+    // canvas is taken before Vim sees it: only when Vim has nothing left
+    // to do with it, and no completion list is open.
     exts.push(
-      Prec.lowest(
-        keymap.of([
-          {
-            key: 'Escape',
-            run: () => {
-              const peeked = stopPeek();
-              if (!session.loading || !session.runId) return peeked;
-              session.stop();
-              return true;
-            },
+      Prec.highest(
+        EditorView.domEventHandlers({
+          keydown: (e, view) => {
+            if (e.key !== 'Escape' || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return false;
+            if (!global.vimMode || !vimIsIdle(view) || completionStatus(view.state) !== null) return false;
+            if (!escape()) return false;
+            e.preventDefault();
+            return true;
           },
-        ]),
+        }),
       ),
     );
 

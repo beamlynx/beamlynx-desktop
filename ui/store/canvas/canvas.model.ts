@@ -217,8 +217,12 @@ export type PickerItem = {
   alias?: string;
 };
 
-/** One section of a list picker. `alias` is set on a table's section of a column picker: its label is a name, `user (u)`, shown as typed. */
-export type PickerGroup = { label: string; items: PickerItem[]; alias?: string };
+/**
+ * One section of a list picker. `alias` is set on a table's section of a
+ * column picker: its label is a name, `user (u)`, shown as typed. `table`
+ * is that table's name, so a filter can name it: `tenant id` (Picker.tsx).
+ */
+export type PickerGroup = { label: string; items: PickerItem[]; alias?: string; table?: string };
 
 /**
  * One condition in the where panel. `alias` is per condition, not per panel:
@@ -251,16 +255,17 @@ export type WhereDraft = {
 export type PickerRequest =
   | { kind: 'table' }
   | { kind: 'join'; alias: string }
-  | { kind: 'select'; alias: string }
+  /** `only`: opened from the node itself, so it lists that table's columns alone. */
+  | { kind: 'select'; alias: string; only?: boolean }
   /**
    * `draft` is set when the list was opened from the where panel's own `or`
    * button: the conditions entered so far, kept so that picking a column
    * returns to the panel with that column appended as a new row, instead of
    * starting over. See CanvasStore.addWhereOrCondition.
    */
-  | { kind: 'where'; alias: string; draft?: WhereDraft }
-  | { kind: 'order'; alias: string }
-  | { kind: 'group'; alias: string }
+  | { kind: 'where'; alias: string; draft?: WhereDraft; only?: boolean }
+  | { kind: 'order'; alias: string; only?: boolean }
+  | { kind: 'group'; alias: string; only?: boolean }
   // The JSON columns of `alias` an `unnest:` can read.
   | { kind: 'unnest'; alias: string }
   /** Step 1 of `? table` (docs/paths.md in pine-lang): pick a destination table - see CanvasStore.openPathPicker. */
@@ -459,14 +464,15 @@ export const MORE_ACTIONS: { action: MoreAction; label: string; key: string }[] 
  * hand-maintained copies drift: `traverse` was added to the button's list
  * and the keyboard opened a menu without it.
  *
- * Only what is about one table is on a node. Select, where, order, group,
+ * A node's own buttons show while the pointer is on it. Its "+" offers
+ * order on that table's columns, and what is about that one table. Group,
  * limit, path and unnest work on the whole query, from the operation bar
  * (OperationBar.tsx, beamlynx-plans #28). `traverse` is only offered on the
  * most recent table: see CanvasStore.openMorePicker. A checkpoint's node
  * offers nothing: following a foreign key out of a CTE's sealed output is
  * not a thing.
  */
-export const MORE_ACTIONS_FOR_TABLE: MoreAction[] = ['traverse', 'describe', 'references'];
+export const MORE_ACTIONS_FOR_TABLE: MoreAction[] = ['order', 'traverse', 'describe', 'references'];
 export const MORE_ACTIONS_FOR_CHECKPOINT: MoreAction[] = [];
 
 /**

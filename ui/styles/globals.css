@@ -162,11 +162,12 @@ a {
   scrollbar-color: var(--node-handle-bg) transparent;
 }
 
-/* Pine autocomplete: selected item highlight (override CodeMirror theme) */
+/* Pine autocomplete: selected item highlight (override CodeMirror theme).
+ * The canvas pickers' selected row has the same colours (Picker.tsx). */
 .cm-editor .cm-tooltip-autocomplete ul li[aria-selected],
 .cm-editor.cm-dark .cm-tooltip-autocomplete ul li[aria-selected] {
-  background: #90caf9 !important;
-  color: #0d47a1 !important;
+  background: var(--primary-color) !important;
+  color: var(--primary-text-color) !important;
 }
 
 /* The loading/no-results row is auto-selected (it's the only option), but
