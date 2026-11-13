@@ -120,6 +120,23 @@ const anchoredStyle = (anchor: PickerAnchor): React.CSSProperties => {
   const margin = 8;
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1200;
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
+  if (anchor.centered) {
+    // The operation bar's: always the same width, centred over the bar and
+    // just above it, whichever of its buttons opened it. It reads as the
+    // bar opening upward.
+    const left = Math.min(Math.max(anchor.x - pickerWidth / 2, margin), vw - pickerWidth - margin);
+    const bottom = Math.max(vh - anchor.y + 6, margin);
+    return {
+      ...basePickerStyle,
+      left,
+      bottom,
+      width: pickerWidth,
+      maxHeight: Math.min(pickerHeight, vh - bottom - margin),
+      border: '1px solid var(--canvas-node-border)',
+      borderRadius: 6,
+      background: 'var(--canvas-node-bg)',
+    };
+  }
   const left = Math.min(Math.max(anchor.x + margin, margin), vw - pickerWidth - margin);
   if (anchor.above) {
     // Grows upward from just above the anchor, as tall as fits.

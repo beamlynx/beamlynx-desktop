@@ -18,7 +18,9 @@ import {
   whereLiteral,
 } from '../client';
 import {
+  COUNT_NODE_ID,
   CanvasContainerNode,
+  CanvasCountNode,
   CanvasEdge,
   CanvasGraph,
   CanvasHandle,
@@ -931,6 +933,8 @@ export const buildCanvasGraph = (
   lineage: Lineage = { blocks: [], edges: [], active: 0 },
   write: CanvasWrite | null = null,
   describe: CanvasDescribe | null = null,
+  /** The query ends in `count:`: a line under the graph. */
+  counted = false,
 ): CanvasGraph => {
   const expansion = expansionOf(ast, blocks, expanded);
 
@@ -1063,8 +1067,27 @@ export const buildCanvasGraph = (
     ];
   });
 
+  // A query that ends in `count:` counts the rows of everything above it: a
+  // line under the whole graph, as wide as it, like a group's.
+  const countNodes: CanvasCountNode[] = [];
+  if (counted && finalNodes.length) {
+    const lowest = Math.max(...finalNodes.map(n => n.position.y + getNodeFootprintHeight(n)));
+    const xs = finalNodes.filter(n => !n.data.checkpoint?.line);
+    const left = xs.length ? Math.min(...xs.map(n => n.position.x)) : 0;
+    const right = xs.length ? Math.max(...xs.map(n => n.position.x + nodeWidth)) : nodeWidth;
+    countNodes.push({
+      id: COUNT_NODE_ID,
+      type: 'count-line',
+      position: { x: left - lineOverhang, y: lowest + verticalGap },
+      draggable: false,
+      selectable: false,
+      focusable: false,
+      data: { width: right - left + 2 * lineOverhang },
+    });
+  }
+
   return {
-    nodes: [...strip.nodes, ...containerNodes, ...finalNodes],
+    nodes: [...strip.nodes, ...containerNodes, ...finalNodes, ...countNodes],
     edges: [...strip.edges, ...edges],
     parsing: true,
   };

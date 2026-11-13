@@ -36,6 +36,7 @@ import CanvasToolbar, { CanvasToolbarExtraAction } from './CanvasToolbar';
 import PineDoc from '../PineDoc';
 import CanvasVariables from './CanvasVariables';
 import LineageNode from './nodes/LineageNode';
+import CountLineNode from './nodes/CountLineNode';
 import LineageEdge from './edges/LineageEdge';
 
 const nodeTypes: NodeTypes = {
@@ -43,6 +44,7 @@ const nodeTypes: NodeTypes = {
   'start-node': StartNode,
   'nested-container': NestedContainerNode,
   'lineage-node': LineageNode,
+  'count-line': CountLineNode,
 };
 
 const edgeTypes = { trace: TraceEdge, lineage: LineageEdge };

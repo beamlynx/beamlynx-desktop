@@ -193,6 +193,11 @@ a {
  * win on specificity. */
 .cm-editor .cm-tooltip-autocomplete ul completion-section {
   display: block !important;
+  /* Pinned at the top of the list while its table's columns scroll under
+   * it, as the canvas pickers' headings are (Picker.tsx). */
+  position: sticky;
+  top: 0;
+  z-index: 1;
   opacity: 1 !important;
   margin-top: 2px;
   padding: 3px 8px !important;
@@ -205,6 +210,34 @@ a {
 
 .cm-editor .cm-tooltip-autocomplete ul completion-section ~ li {
   padding-left: 18px !important;
+}
+
+/* The canvas operation bar's "+": the rest of its actions slide out of the
+ * bar, and the + turns into a × (components/canvas/OperationBar.tsx). */
+@keyframes operation-bar-action-in {
+  from {
+    opacity: 0;
+    transform: translateX(-6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.operation-bar-action-in {
+  display: inline-flex;
+  animation: operation-bar-action-in 180ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+.operation-bar-plus {
+  transition: transform 220ms cubic-bezier(0.2, 0, 0, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .operation-bar-action-in {
+    animation: none;
+  }
+  .operation-bar-plus {
+    transition: none;
+  }
 }
 
 /* ---------------------------------------------------------------------------

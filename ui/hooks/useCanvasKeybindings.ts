@@ -2,7 +2,8 @@ import { useEffect } from 'react';
 import { CanvasStore } from '../store/canvas/canvas.store';
 import { Session } from '../store/session';
 import { GlobalStore } from '../store/global.store';
-import { CanvasTableNodeData, START_NODE_ID } from '../store/canvas/canvas.model';
+import { CanvasTableNodeData, MORE_ACTIONS, START_NODE_ID } from '../store/canvas/canvas.model';
+import { barAnchor } from '../components/canvas/OperationBar';
 
 interface CanvasKeybindingsProps {
   canvasStore: CanvasStore;
@@ -136,24 +137,28 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
         return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
       };
 
-      // At the operation bar's button for `kind`, where a click on it opens
-      // its picker: upward, since the bar is at the bottom of the canvas.
-      // Order, group, limit and path are behind its "+": at that.
-      const operationAnchorFor = (kind: string): { x: number; y: number; above: boolean } => {
-        const el =
-          document.querySelector(`[data-testid="operation-${kind}"]`) ??
-          document.querySelector('[data-testid="operation-more"]');
-        if (!el) return { ...anchorFor(alias), above: false };
-        const rect = el.getBoundingClientRect();
-        return { x: rect.left + rect.width / 2, y: rect.top, above: true };
-      };
-
       // `:` goes to the Pine panel, opening it if it is closed. Escape in
       // the panel comes back here (PineInput.tsx).
       if (e.key === ':') {
         e.preventDefault();
         global.focusPinePanel(session);
         return;
+      }
+
+      // The bar's "+" is open: the letters of what it shows run those
+      // actions, `u` included (unnest, not undo), and Escape closes it.
+      if (canvasStore.barExpanded) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          canvasStore.collapseBar();
+          return;
+        }
+        const action = MORE_ACTIONS.find(a => a.key === e.key && canvasStore.barMoreActions.includes(a.action));
+        if (action) {
+          e.preventDefault();
+          canvasStore.runBarAction(action.action, barAnchor());
+          return;
+        }
       }
 
       // The pointer is on a table node: its own buttons show, and these keys
@@ -263,7 +268,7 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
           return;
         // The operation bar's operations (OperationBar.tsx): they work on
         // the whole query, so they need no focused node. A focused node's
-        // columns are listed first. The picker opens under the bar's button.
+        // columns are listed first. The picker opens above the bar.
         case 's':
         case 'w':
         case 'o':
@@ -273,7 +278,7 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
           if (!canvasStore.operationAnchor) return;
           e.preventDefault();
           const kind = ({ s: 'select', w: 'where', o: 'order', g: 'group', p: 'path', l: 'limit' } as const)[e.key];
-          canvasStore.openOperation(kind, operationAnchorFor(kind));
+          canvasStore.openOperation(kind, barAnchor());
           return;
         }
         // Expand or collapse the focused checkpoint's contents - the stage it
@@ -284,12 +289,12 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
           e.preventDefault();
           canvasStore.toggleNested(nested.name);
           return;
-        // The operation bar's "+": order, group, limit, path, traverse,
-        // describe, references and unnest.
+        // The operation bar's "+": the bar grows to show order, group,
+        // limit, path, count, traverse, unnest, describe and references.
         case '+':
           if (!canvasStore.operationAnchor) return;
           e.preventDefault();
-          canvasStore.openOperationMore(operationAnchorFor('more'));
+          canvasStore.toggleBarMore();
           return;
         // 'x' and Delete/Backspace are the same gesture - "remove the thing
         // that's the target of a key right now" - so a person who reaches
