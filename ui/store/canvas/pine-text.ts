@@ -107,6 +107,16 @@ const splitTopLevel = (text: string): string[] => {
 };
 
 /**
+ * A `group:` step's aggregates as written, after its `with`:
+ * `group: c.id with count, sum(o.total) as total` gives `count` and
+ * `sum(o.total) as total`. Empty when it has none.
+ */
+export const groupAggregates = (text: string): string[] => {
+  const at = text.search(/\swith\s/i);
+  return at < 0 ? [] : splitTopLevel(text.slice(at).replace(/^\s*with\s/i, ''));
+};
+
+/**
  * The change an expression makes, when it ends in update! or delete!: the
  * table it changes, and what it writes or which columns find the rows. Only
  * the last step counts: pine-lang runs a write only when it ends the

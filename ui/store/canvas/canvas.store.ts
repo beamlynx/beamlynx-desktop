@@ -33,6 +33,7 @@ import {
   stageLimitIndex,
   checkpointOpIndex,
   currentLimit,
+  groupAggregates,
   isCheckpointPinned,
   limitValue,
   makeAlias,
@@ -62,7 +63,7 @@ const requestKey = (r: PickerRequest): string =>
     ? 'table'
     : r.kind === 'path-route'
       ? `path-route:${r.alias}:${r.target}`
-      : `${r.kind}:${r.alias}${'only' in r && r.only ? ':only' : ''}`;
+      : `${r.kind}:${r.alias}${'only' in r && r.only ? ':only' : ''}${'column' in r && r.column ? `:${r.column}` : ''}`;
 
 const emptyGraph: CanvasGraph = { nodes: [], edges: [], parsing: true };
 
@@ -1417,14 +1418,17 @@ export class CanvasStore {
     });
   }
 
-  openJoinPicker(alias: string, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
+  /** With `column`, only the tables that join on that column of `alias` (a chip on a checkpoint's line). */
+  openJoinPicker(alias: string, anchor: PickerAnchor = CanvasStore.defaultAnchor, column?: string) {
     this.focusNode(alias);
-    const request: PickerRequest = { kind: 'join', alias };
+    const request: PickerRequest = column ? { kind: 'join', alias, column } : { kind: 'join', alias };
     void this.openListPicker(request, anchor, async () => {
       const ast = await this.probeFor(request);
       if (!ast) throw new Error('Failed to build join suggestions');
-      const has = ast.hints.table.filter(h => !h.parent);
-      const belongsTo = ast.hints.table.filter(h => h.parent);
+      // `related-column` is this side's column of the join.
+      const hints = column ? ast.hints.table.filter(h => h['related-column'] === column) : ast.hints.table;
+      const has = hints.filter(h => !h.parent);
+      const belongsTo = hints.filter(h => h.parent);
       // Two hints in the same group can legitimately name the same table
       // reached via two different FK columns (e.g. `cases` has separate
       // `created_by`/`approved_by` columns both pointing at `users`) -- with
@@ -2993,17 +2997,36 @@ export class CanvasStore {
    * regardless (see addSelectColumn etc.) - this only covers opening the
    * picker.
    */
+  /**
+   * A group's aggregates as written, `count`, `sum(o.total) as total`, in
+   * the order the checkpoint lists them: its line shows each one's function.
+   */
+  aggregateTextsOf(name: string): string[] {
+    const { block, alias: plain } = this.scopeOf(name);
+    const ast = this.astOf(block);
+    const checkpoint = ast?.checkpoints?.find(c => c.name === plain);
+    if (!ast || !checkpoint) return [];
+    const segment = (segmentsFromAst(this.textOf(block), ast) ?? []).find(s => s.index === checkpoint.index);
+    return segment ? groupAggregates(segment.text) : [];
+  }
+
+  /**
+   * `column`, given, is a column of the checkpoint's result, from one of
+   * the chips on its line: the join picker lists only the tables that join
+   * on it.
+   */
   async openCheckpointPicker(
     name: string,
     kind: 'select' | 'where' | 'order' | 'join' | 'path',
     anchor: PickerAnchor,
+    column?: string,
   ) {
     const { block, alias: plain } = this.scopeOf(name);
     const segments = segmentsFromAst(this.textOf(block), this.astOf(block)) ?? [];
     const pinned = isCheckpointPinned(segments, plain) ? name : await this.ensureCheckpointPinnedShared(name);
     if (!pinned) return;
     if (kind === 'join') {
-      this.openJoinPicker(pinned, anchor);
+      this.openJoinPicker(pinned, anchor, column);
       return;
     }
     if (kind === 'path') {
