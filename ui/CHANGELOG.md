@@ -8,9 +8,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **The canvas draws a join that compares with more than one table.** In `fd fd.id = av.attributeId, fd.tenant_id = c.tenantId`, each table gets its own line to `fd`, and each column shows on its own table.
 - **An AI agent's SQL with `$1` runs with the value the agent sends for it.** The agent sends `{"1": [...]}`, and Beamlynx passes it to the variable the SQL became, such as `$tenant_id`. A number the SQL doesn't have runs nothing and says which numbers it has.
 
-- **The canvas can count a query's rows:** count in the bar ends the query with `count:`, drawn as a dotted line under the graph. Steps you add afterwards go in before the count, and the line's × takes it off.
+- **The canvas can count a query's rows:** count in the bar, or `c`, ends the query with `count:`, drawn as a dotted line under the graph. Steps you add afterwards go in before the count. The line's × takes it off, and so does `x` once you move down to the line.
 
 ### Changed
+- **`n` (note) writes the canvas comment; it was `c`.** `c` now counts the query's rows.
 - **Every canvas action is in one bar at the bottom of the canvas:** join, select and where, and + to show the rest in the bar itself: order, group, limit, path, count, traverse, unnest, describe and references. Each button shows its key in bold, and every list it opens appears in the same place, just above the bar. The graph stays above the bar. Join, traverse, describe and references are for the table you selected. The column lists show every table's columns under a heading for each table: the selected table first, then the newest, then the rest. The mode line at the bottom left is gone.
 - **A table shows its own buttons when you point at it:** join, select, where, and + for order, traverse, describe and references. Its select, where and order list that table's columns only. While you point at a table, the keys s, w, o, i and + work on it too, and the bar at the bottom dims.
 - **In a column list, `t.id` shows the id of the table aliased `t`, and `tenant id` or `id tenant` shows the id of every tenant table in the query.** The selected row is now the same colour as in the Pine panel's completions. A table's heading stays put as the list scrolls, in the canvas lists and in the Pine panel's completions alike.
