@@ -184,8 +184,11 @@ registry every other consumer has nothing to do with.
   no separate flag to fall out of sync.
 
 The operation bar at the bottom centre of the canvas (`OperationBar.tsx`)
-shows the keys: in normal mode, each button's key letter is bold. Its `+`
-grows the bar to show the rest, each with its key. A table's own buttons,
+shows the keys: while the canvas has the keyboard, each button's key
+letter is bold. Its `›` (key `>`, or `+`) grows the bar to show the rest,
+each with its key: the query's actions past a divider, then the selected
+table's under its name. Where they don't fit on one row, they open
+upward, in rows above the bar. `‹`, `<` or Escape closes them. A table's own buttons,
 shown while the pointer is on it, do the same for that table.
 
 **Moving focus** (normal mode only):

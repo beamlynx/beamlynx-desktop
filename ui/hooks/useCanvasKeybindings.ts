@@ -148,10 +148,10 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
         return;
       }
 
-      // The bar's "+" is open: the letters of what it shows run those
-      // actions, `u` included (unnest, not undo), and Escape closes it.
+      // The bar is open: the letters of what it shows run those actions, `u`
+      // included (unnest, not undo), and Escape or `<` closes it.
       if (canvasStore.barExpanded) {
-        if (e.key === 'Escape') {
+        if (e.key === 'Escape' || e.key === '<') {
           e.preventDefault();
           canvasStore.collapseBar();
           return;
@@ -292,10 +292,13 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
           e.preventDefault();
           canvasStore.toggleNested(nested.name);
           return;
-        // The operation bar's "+": the bar grows to show order, group,
+        // The operation bar's `›`: the bar grows to show order, group,
         // limit, path, count, traverse, unnest, describe and references.
+        // `>` opens it, as its sign says; `+` still toggles it.
+        case '>':
         case '+':
           if (!canvasStore.operationAnchor) return;
+          if (e.key === '>' && canvasStore.barExpanded) return;
           e.preventDefault();
           canvasStore.toggleBarMore();
           return;
