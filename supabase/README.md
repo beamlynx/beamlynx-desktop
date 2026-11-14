@@ -36,6 +36,23 @@ To remove something for real, first check PostHog's `app_version` to make sure n
 
 When an app starts sending something new, add a new payload file. Never edit or delete one: a released app still sends it.
 
+## The token hook
+
+Supabase calls `public.custom_access_token_hook` before it signs any token. The hook adds the person's GitHub identity to the token as two claims:
+
+- `github_id`: GitHub's numeric user ID, as text. It never changes, even when someone renames their GitHub account.
+- `github_login`: their GitHub username, for showing. It can change.
+
+A Beamlynx server will check a token's signature and then use `github_id` to know who is asking (`beamlynx-plans/plans/008-server-mode-and-identity.md`). The hook reads both values from `auth.identities`, which only Supabase writes. It never reads `user_metadata`, because a signed-in person can edit that themselves. A person with no GitHub sign-in gets neither claim.
+
+Three rules keep it safe:
+
+- **It never raises.** It runs for every sign-in and token refresh of every released app. On any error it returns the token unchanged.
+- **It keeps its name and parameter for good.** The live project points at it by name.
+- **Only `supabase_auth_admin` may run it.** `scripts/test-supabase-token-claims.sh` checks all of this in CI.
+
+`config.toml` switches the hook on for local databases. The live project's switch is in the dashboard, under **Authentication → Hooks → Customize Access Token (JWT) Claims**, pointing at `public.custom_access_token_hook`. Turn it on only after the migration that creates the function has deployed. A hook pointing at a missing function stops every sign-in.
+
 ## Deploying
 
 `.github/workflows/supabase-migrate.yml` applies new migrations to the live database:
@@ -55,5 +72,6 @@ It needs three repository secrets: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_RE
 npx supabase@2 db start     # Postgres with Supabase's auth schema, in Docker
 npx supabase@2 db reset     # applies every migration from scratch
 ./scripts/test-supabase-compat.sh
+./scripts/test-supabase-token-claims.sh
 npx supabase@2 stop
 ```
