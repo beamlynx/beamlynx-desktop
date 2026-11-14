@@ -251,9 +251,9 @@ export const removeElementPart = (
     if (index < 0) return toText(base.segments);
     const { keys, aggregates } = groupBody(base.segments[index]);
     const rest = splitTopLevel(keys).filter(part => column(part) !== target);
-    if (rest.length === 0) return toText(withoutCheckpointOp(base.segments, index));
+    if (rest.length === 0 && !aggregates) return toText(withoutCheckpointOp(base.segments, index));
     const next = [...base.segments];
-    next[index] = { ...next[index], text: `group: ${rest.join(', ')}${aggregates ? ` with ${aggregates}` : ''}` };
+    next[index] = { ...next[index], text: `group: ${rest.join(', ')}${aggregates ? `${rest.length ? ' ' : ''}with ${aggregates}` : ''}` };
     return toText(next);
   }
   if (elementStepIndex(base.segments, alias, kind) < 0) return toText(base.segments);
@@ -785,6 +785,145 @@ export const splitGroupBody = (body: string): { keys: string; aggregates: string
 
 const groupBody = (segment: Segment) => splitGroupBody(segment.text.replace(/^(group:|g:)\s*/i, ''));
 
+/**
+ * One aggregate of a group, in parts: `sum(o.total) where o.paid as total`
+ * is { fn: 'sum', arg: 'o.total', filter: 'o.paid', name: 'total' }. `count`
+ * has no argument. `o.total => sum` is read as `sum(o.total)`.
+ */
+export type Aggregate = { fn: string; arg?: string; filter?: string; name?: string };
+
+/** Where `word` stands on its own in `text`, outside quotes and brackets, or -1. */
+const topLevelWord = (text: string, word: string): number => {
+  let depth = 0;
+  let quote = false;
+  const re = new RegExp(`^\\s${word}\\s`, 'i');
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "'") quote = !quote;
+    if (quote) continue;
+    if (ch === '(') depth++;
+    if (ch === ')') depth--;
+    if (depth === 0 && re.test(text.slice(i))) return i;
+  }
+  return -1;
+};
+
+/** Whether every bracket in `text` closes inside it, outside quotes: `a) or any(b` doesn't. */
+const balanced = (text: string): boolean => {
+  let depth = 0;
+  let quote = false;
+  for (const ch of text) {
+    if (ch === "'") quote = !quote;
+    if (quote) continue;
+    if (ch === '(') depth++;
+    if (ch === ')' && --depth < 0) return false;
+  }
+  return depth === 0;
+};
+
+/** An aggregate's parts, or null when it isn't one function of one value (`any(x) or any(y)`). */
+export const parseAggregate = (text: string): Aggregate | null => {
+  let rest = text.trim();
+  const named = /\s+as\s+([A-Za-z_]\w*)$/i.exec(rest);
+  const name = named ? named[1] : undefined;
+  if (named) rest = rest.slice(0, named.index).trim();
+  const at = topLevelWord(rest, 'where');
+  const filter = at < 0 ? undefined : rest.slice(at).replace(/^\s*where\s+/i, '').trim();
+  if (at >= 0) rest = rest.slice(0, at).trim();
+  const parts = (fn: string, arg?: string): Aggregate => ({
+    fn: fn.toLowerCase(),
+    ...(arg ? { arg } : {}),
+    ...(filter ? { filter } : {}),
+    ...(name ? { name } : {}),
+  });
+  if (/^count$/i.test(rest)) return parts('count');
+  const call = /^([A-Za-z_]\w*)\(([\s\S]*)\)$/.exec(rest);
+  if (call && balanced(call[2])) return parts(call[1], call[2].trim());
+  const arrow = /^([\s\S]+?)\s*=>\s*([A-Za-z_]\w*)$/.exec(rest);
+  if (arrow) return parts(arrow[2], arrow[1].trim());
+  return null;
+};
+
+export const formatAggregate = (a: Aggregate): string =>
+  `${a.arg ? `${a.fn}(${a.arg})` : a.fn}${a.filter ? ` where ${a.filter}` : ''}${a.name ? ` as ${a.name}` : ''}`;
+
+/**
+ * The column an aggregate becomes: its `as` name, or pine-lang's default -
+ * the function, then the first column its argument reads (`sum_total` for
+ * `sum(o.total)`), or `count`. See pine-lang's value/default-name.
+ */
+export const aggregateName = (a: Aggregate): string => {
+  if (a.name) return a.name;
+  const column = a.arg?.match(/[A-Za-z_][\w.]*/)?.[0]?.split('.').pop();
+  return column ? `${a.fn}_${column}` : a.fn;
+};
+
+/** The index of the group: segment that the checkpoint `name` seals, or -1. */
+const checkpointGroupIndex = (segments: Segment[], name: string): number =>
+  segments.findIndex(s => s.owner === name && s.kind === 'group');
+
+/** The keys and aggregates of checkpoint `name`'s group:, as written. */
+export const checkpointGroup = (base: PinnedBase, name: string): { keys: string[]; aggregates: string[] } | null => {
+  const index = checkpointGroupIndex(base.segments, name);
+  if (index < 0) return null;
+  const { keys, aggregates } = groupBody(base.segments[index]);
+  return { keys: splitTopLevel(keys), aggregates: aggregates ? splitTopLevel(aggregates) : [] };
+};
+
+/**
+ * Rewrites checkpoint `name`'s group: with `edit`'s keys and aggregates.
+ * With neither left, the checkpoint goes, as its × does. Keys alone, or
+ * aggregates alone (`group: with count`), are a group.
+ */
+export const editCheckpointGroup = (
+  base: PinnedBase,
+  name: string,
+  edit: (group: { keys: string[]; aggregates: string[] }, after: string) => { keys: string[]; aggregates: string[] },
+): string => {
+  const index = checkpointGroupIndex(base.segments, name);
+  const group = checkpointGroup(base, name);
+  if (index < 0 || !group) return toText(base.segments);
+  const after = toText(base.segments.slice(index + 1));
+  const { keys, aggregates } = edit(group, after);
+  if (keys.length === 0 && aggregates.length === 0) return toText(withoutCheckpoint(base.segments, name));
+  const next = [...base.segments];
+  const body = `${keys.join(', ')}${aggregates.length ? `${keys.length ? ' ' : ''}with ${aggregates.join(', ')}` : ''}`;
+  next[index] = { ...next[index], text: `group: ${body}` };
+  return toText(next);
+};
+
+/**
+ * `aggregates` with the one at `index` replaced by `next` (or added, with
+ * an index past the end). Its column keeps its old name when a later step
+ * of the query (`after`) uses it, so changing `count` to `sum(o.total)`
+ * doesn't break a join or a where on `count`. A name another aggregate
+ * already has gets a number, `count_2`: pine-lang refuses two of one name.
+ */
+export const withAggregate = (aggregates: string[], index: number, next: Aggregate, after: string): string[] => {
+  const old = aggregates[index] !== undefined ? parseAggregate(aggregates[index]) : null;
+  const oldName = old ? aggregateName(old) : null;
+  let agg = next;
+  if (oldName && !agg.name && aggregateName(agg) !== oldName && new RegExp(`\\b${oldName}\\b`).test(after)) {
+    agg = { ...agg, name: oldName };
+  }
+  const taken = new Set(
+    aggregates.filter((_, i) => i !== index).map(a => {
+      const p = parseAggregate(a);
+      return p ? aggregateName(p) : a;
+    }),
+  );
+  if (taken.has(aggregateName(agg))) {
+    const stem = aggregateName(agg);
+    let n = 2;
+    while (taken.has(`${stem}_${n}`)) n++;
+    agg = { ...agg, name: `${stem}_${n}` };
+  }
+  const out = [...aggregates];
+  if (index < out.length) out[index] = formatAggregate(agg);
+  else out.push(formatAggregate(agg));
+  return out;
+};
+
 export const getGroupColumns = (base: PinnedBase, alias: string): string[] => {
   const index = stageGroupIndex(base.segments, alias);
   if (index < 0) return [];
@@ -805,6 +944,12 @@ export const setGroupColumns = (base: PinnedBase, alias: string, columns: string
   const others = priorAll.filter(part => !part.startsWith(`${alias}.`));
   const mine = columns.map(c => `${alias}.${c}`);
   const nextAll = [...others, ...mine];
+  // The last key leaves its aggregates, over the whole stage: `group: with count`.
+  if (nextAll.length === 0 && index >= 0 && prior.aggregates) {
+    const next = [...base.segments];
+    next[index] = { ...next[index], text: `group: with ${prior.aggregates}` };
+    return toText(next);
+  }
   if (nextAll.length === 0) return index < 0 ? toText(base.segments) : toText(withoutCheckpointOp(base.segments, index));
   if (index >= 0) {
     const next = [...base.segments];

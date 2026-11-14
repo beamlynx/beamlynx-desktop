@@ -3,6 +3,7 @@ import { Ast, ColumnHint, columnName, PathHint, TableHint, whereConditions, wher
 import { columnGroupName, tableNameOf } from '../column-groups';
 import { Session } from '../session';
 import {
+  AGGREGATE_FUNCTIONS,
   CanvasGraph,
   COUNT_NODE_ID,
   CanvasTableNode,
@@ -64,7 +65,9 @@ const requestKey = (r: PickerRequest): string =>
     ? 'table'
     : r.kind === 'path-route'
       ? `path-route:${r.alias}:${r.target}`
-      : `${r.kind}:${r.alias}${'only' in r && r.only ? ':only' : ''}${'column' in r && r.column ? `:${r.column}` : ''}`;
+      : `${r.kind}:${r.alias}${'only' in r && r.only ? ':only' : ''}${'column' in r && r.column ? `:${r.column}` : ''}${
+          'index' in r ? `:${r.index}` : ''
+        }${'fn' in r ? `:${r.fn}` : ''}`;
 
 const emptyGraph: CanvasGraph = { nodes: [], edges: [], parsing: true };
 
@@ -1313,7 +1316,7 @@ export class CanvasStore {
     // to give the copy its own name with `as`, and stays in its place.
     // The picker lists every table of the stage (beamlynx-plans #28), so
     // every select: in the stage goes, not only `alias`'s own.
-    if (request.kind === 'group' || (request.kind === 'select' && !keepSelect)) {
+    if (request.kind === 'group' || request.kind === 'aggregate' || (request.kind === 'select' && !keepSelect)) {
       const start = stageStart(segments, alias);
       relevant = relevant.filter((s, i) => !(i >= start && s.kind === 'select'));
     }
@@ -2175,10 +2178,28 @@ export class CanvasStore {
       this.focusNode(alias);
     }
     const request: PickerRequest = only ? { kind, alias, only } : { kind, alias };
-    void this.openListPicker(
-      request,
-      anchor,
-      async () => {
+    void this.openListPicker(request, anchor, () => this.loadColumns(request, kind, alias, only), focusValue);
+  }
+
+  /**
+   * Step 2 of an aggregate on checkpoint `name`'s line: the column `fn`
+   * reads. The list is the stage before the group, as the group's own
+   * column list is.
+   */
+  openAggregateColumnPicker(name: string, index: number, fn: string, anchor: PickerAnchor) {
+    const alias = this.stageAliasOfCheckpoint(name);
+    if (!alias) return;
+    const request: PickerRequest = { kind: 'aggregate', alias, name, index, fn };
+    void this.openListPicker(request, anchor, () => this.loadColumns(request, 'aggregate', alias, false));
+  }
+
+  /** The column lists of openColumnPicker and openAggregateColumnPicker. */
+  private async loadColumns(
+    request: PickerRequest,
+    kind: 'select' | 'where' | 'order' | 'group' | 'aggregate',
+    alias: string,
+    only: boolean,
+  ): Promise<{ groups: PickerGroup[] }> {
         const [probed, jsonColumns] = await Promise.all([
           this.probeFor(request).catch(() => undefined),
           this.jsonColumnsOf(alias),
@@ -2248,9 +2269,6 @@ export class CanvasStore {
         // One table needs no heading.
         if (groups.length === 1) groups[0] = { ...groups[0], label: '' };
         return { groups };
-      },
-      focusValue,
-    );
   }
 
   /** The columns of `alias`'s select, group or order chips: what a column picker shows as picked. */
@@ -3012,6 +3030,132 @@ export class CanvasStore {
     if (!ast || !checkpoint) return [];
     const segment = (segmentsFromAst(this.textOf(block), ast) ?? []).find(s => s.index === checkpoint.index);
     return segment ? groupAggregates(segment.text) : [];
+  }
+
+  /**
+   * The table the stage before checkpoint `name` ends at. A group's keys
+   * and aggregates read that stage's columns, so its column lists are
+   * opened for it: a list opened for the checkpoint itself would hold only
+   * the group's result.
+   */
+  stageAliasOfCheckpoint(name: string): string | null {
+    const { block, alias: plain } = this.scopeOf(name);
+    const prefix = name.slice(0, name.length - plain.length);
+    const ast = this.astOf(block);
+    const checkpoint = ast?.checkpoints?.find(c => c.name === plain);
+    if (!ast || !checkpoint) return null;
+    const segments = segmentsFromAst(this.textOf(block), ast) ?? [];
+    const at = segments.findIndex(s => s.index === checkpoint.index);
+    for (let i = at - 1; i >= 0; i--) {
+      const owner = segments[i].owner;
+      if (owner && owner !== plain) return prefix + owner;
+    }
+    return null;
+  }
+
+  /** The group's own column list, for a key chip or the line's +: picks add or remove keys. */
+  openGroupKeyPicker(name: string, anchor: PickerAnchor, column?: string) {
+    const alias = this.stageAliasOfCheckpoint(name);
+    if (alias) this.openColumnPicker('group', alias, anchor, column);
+  }
+
+  /** The functions an aggregate can be. `index` past the last aggregate adds one. */
+  openAggregatePicker(name: string, index: number, anchor: PickerAnchor) {
+    const request: PickerRequest = { kind: 'aggregate-fn', alias: name, index };
+    const current = actions.parseAggregate(this.aggregateTextsOf(name)[index] ?? '')?.fn;
+    void this.openListPicker(
+      request,
+      anchor,
+      async () => ({
+        groups: [
+          {
+            label: '',
+            items: AGGREGATE_FUNCTIONS.map(f => ({
+              id: `fn:${f.fn}`,
+              label: `${f.sign}  ${f.fn}`,
+              detail: f.fn === current ? 'now' : f.label,
+              value: f.fn,
+            })),
+          },
+        ],
+      }),
+      current,
+    );
+  }
+
+  /**
+   * A function picked for an aggregate. One that reads a column keeps the
+   * column the aggregate had; without one, the column list opens next.
+   */
+  async pickAggregateFunction(name: string, index: number, fn: string, anchor: PickerAnchor) {
+    const old = actions.parseAggregate(this.aggregateTextsOf(name)[index] ?? '');
+    const needsColumn = AGGREGATE_FUNCTIONS.find(f => f.fn === fn)?.column ?? false;
+    if (needsColumn && !old?.arg) {
+      this.openAggregateColumnPicker(name, index, fn, anchor);
+      return;
+    }
+    this.closePicker();
+    const next: actions.Aggregate = {
+      fn,
+      ...(needsColumn && old?.arg ? { arg: old.arg } : {}),
+      ...(old?.filter ? { filter: old.filter } : {}),
+      ...(old?.name ? { name: old.name } : {}),
+    };
+    await this.setAggregate(name, index, next);
+  }
+
+  /** Step 2: the column `fn` reads, `alias.column`. */
+  async setAggregateColumn(name: string, index: number, fn: string, column: string) {
+    this.closePicker();
+    const old = actions.parseAggregate(this.aggregateTextsOf(name)[index] ?? '');
+    const keep = old && old.fn !== 'count' ? old : null;
+    await this.setAggregate(name, index, {
+      fn,
+      arg: column,
+      ...(keep?.filter ? { filter: keep.filter } : {}),
+      ...(keep?.name ? { name: keep.name } : {}),
+    });
+  }
+
+  private async setAggregate(name: string, index: number, next: actions.Aggregate) {
+    const plain = this.scopeOf(name).alias;
+    await this.commit(
+      base =>
+        actions.editCheckpointGroup(base, plain, ({ keys, aggregates }, after) => ({
+          keys,
+          aggregates: actions.withAggregate(aggregates, index, next, after),
+        })),
+      name,
+    );
+  }
+
+  /** The × on an aggregate's chip. */
+  async removeAggregate(name: string, index: number) {
+    const plain = this.scopeOf(name).alias;
+    await this.commit(
+      base =>
+        actions.editCheckpointGroup(base, plain, ({ keys, aggregates }) => ({
+          keys,
+          aggregates: aggregates.filter((_, i) => i !== index),
+        })),
+      name,
+    );
+  }
+
+  /**
+   * The × on a key's chip. The last key leaves the aggregates over the
+   * whole stage (`group: with count`); with none either, the group goes.
+   */
+  async removeGroupKey(name: string, index: number) {
+    const plain = this.scopeOf(name).alias;
+    await this.commit(
+      base =>
+        actions.editCheckpointGroup(base, plain, ({ keys, aggregates }) => ({
+          keys: keys.filter((_, i) => i !== index),
+          aggregates,
+        })),
+      name,
+    );
   }
 
   /**
