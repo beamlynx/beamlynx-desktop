@@ -24,7 +24,7 @@ const barPadding = 10;
 /** A divider's width with its margins. */
 const dividerSpace = 5;
 
-/** The extra actions for the whole query. The others are for the selected table, under its name. */
+/** The extra actions for the whole query. The others are for the selected table, past a divider. */
 const QUERY_ACTIONS: MoreAction[] = ['order', 'group', 'limit', 'count', 'path'];
 
 /** Which of the bar's actions has its picker open, if any: the others dim. */
@@ -120,7 +120,7 @@ const BarButton = ({
  *
  * Join, select and where, and `›`, which grows the bar to show the rest in
  * it, past a divider: order, group, limit, count and path for the query,
- * then, under the selected table's name, traverse, describe, references
+ * then, past another, the selected table's: traverse, describe, references
  * and unnest (CanvasStore.barMoreActions). The column pickers list every table's
  * columns, the selected table's first (beamlynx-plans #28). Every picker
  * opens in the same place, above the bar (barAnchor).
@@ -195,7 +195,7 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
   const expanded = canvasStore.barExpanded;
   const { stacked, width: rowsWidth, main: mainWidth } = layout;
   const more = MORE_ACTIONS.filter(a => canvasStore.barMoreActions.includes(a.action));
-  // For the whole query, then for the selected table, under its name.
+  // For the whole query, then for the selected table.
   const queryActions = more.filter(a => QUERY_ACTIONS.includes(a.action));
   const tableActions = more.filter(a => !QUERY_ACTIONS.includes(a.action));
   const close = () => {
@@ -239,7 +239,7 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
     />
   );
   // Each group stays together on a row: the query's actions, and the
-  // table's under its name.
+  // table's.
   const group = (key: string, children: React.ReactNode) => (
     <span
       key={key}
@@ -258,26 +258,8 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
   );
   const queryGroup = queryActions.length ? group('query', queryActions.map(item)) : null;
   const tableGroup = tableActions.length
-    ? group(
-        'table',
-        <>
-          <span
-            data-testid="operation-table-label"
-            title="These act on the selected table"
-            style={{
-              fontFamily: 'var(--canvas-font)',
-              fontSize: 'calc(11px * var(--text-scale, 1))',
-              color: 'var(--canvas-text-dim)',
-              whiteSpace: 'nowrap',
-              opacity: expanded ? 1 : 0,
-              transition: `opacity 180ms ease ${expanded ? 90 + queryActions.length * 30 : 0}ms`,
-            }}
-          >
-            {canvasStore.selectedNodeActions.label}
-          </span>
-          {tableActions.map(item)}
-        </>,
-      )
+    ? // No name in front: the selected table's ring already says which one.
+      group('table', tableActions.map(item))
     : null;
   // In a row of the bar, a divider before each group; rows of their own need none.
   const extrasContent = stacked
