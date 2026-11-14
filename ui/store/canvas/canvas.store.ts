@@ -4,6 +4,7 @@ import { columnGroupName, tableNameOf } from '../column-groups';
 import { Session } from '../session';
 import {
   AGGREGATE_FUNCTIONS,
+  aggregateReads,
   CanvasGraph,
   COUNT_NODE_ID,
   CanvasTableNode,
@@ -2252,15 +2253,16 @@ export class CanvasStore {
         // A JSON column's row has a › that starts a path inside it (see
         // Picker.tsx): keys inside JSON aren't in the schema, so they're typed.
         const isJson = (a: string, column: string) => jsonColumns.some(h => h.alias === a && h.column === column);
-        const columnItem = (a: string, column: string, json?: boolean): PickerItem => ({
+        const columnItem = (a: string, column: string, json?: boolean, type?: string): PickerItem => ({
           id: `${a}.${column}`,
           label: column,
           value: column,
           alias: a,
           json: json || undefined,
+          type,
         });
         sections.set(alias, []);
-        hints.forEach(h => add(prefix + h.alias, columnItem(prefix + h.alias, h.column, isJson(h.alias, h.column))));
+        hints.forEach(h => add(prefix + h.alias, columnItem(prefix + h.alias, h.column, isJson(h.alias, h.column), h.type)));
         // hints.select (and order/group, which reuse it) only ever lists
         // what could still be ADDED - buildProbeExpression's own comment
         // calls this deliberate for select's "what else could I add"
@@ -2289,6 +2291,12 @@ export class CanvasStore {
           }
         }
         const tables = (ast['selected-tables'] ?? []).map(t => ({ ...t, alias: prefix + t.alias }));
+        // An aggregate's column: only the ones its function can read, a
+        // number for sum and avg (see aggregateReads).
+        if (request.kind === 'aggregate') {
+          const fn = request.fn;
+          sections.forEach((items, a) => sections.set(a, items.filter(i => aggregateReads(fn, i))));
+        }
         const groups: PickerGroup[] = Array.from(sections.entries())
           .filter(([a, items]) => items.length > 0 && (!only || a === alias))
           .map(([a, items]) => ({ label: columnGroupName(a, tables), items, alias: a, table: tableNameOf(a, tables) }));
@@ -2831,6 +2839,62 @@ export class CanvasStore {
    * setGroupColumns for how that stays merged with every other table's
    * contribution rather than producing a second `group:` segment.
    */
+  /** A select chip dragged onto another of the same table: the result's columns follow. */
+  async moveSelectColumn(alias: string, from: actions.SelectChip, to: actions.SelectChip) {
+    await this.commit(base => actions.moveSelectColumn(base, actions.resolveAlias(base, alias), from, to), alias);
+  }
+
+  /** A group chip dragged onto another of the same table. */
+  async moveGroupColumn(alias: string, from: string, to: string) {
+    await this.commit(base => actions.moveGroupColumn(base, actions.resolveAlias(base, alias), from, to), alias);
+  }
+
+  /** A key or aggregate chip on a group's line dragged onto another of its kind: any table's keys, in one group:. */
+  async moveCheckpointPart(name: string, kind: 'key' | 'aggregate', from: number, to: number) {
+    const plain = this.scopeOf(name).alias;
+    await this.commit(
+      base =>
+        actions.editCheckpointGroup(base, plain, ({ keys, aggregates }) =>
+          kind === 'key'
+            ? { keys: actions.moveItem(keys, from, to), aggregates }
+            : { keys, aggregates: actions.moveItem(aggregates, from, to) },
+        ),
+      name,
+    );
+  }
+
+  /**
+   * Shift+Left/Right on a select or group chip the keyboard is on: it
+   * swaps with its neighbour, and the cursor stays on it.
+   */
+  async moveFocusedChip(delta: -1 | 1) {
+    const item = this.focusedConfigItem;
+    const alias = this.focusedAlias;
+    const node = this.canvasGraph.nodes.find((n): n is CanvasTableNode => n.type === 'table-node' && n.id === alias);
+    if (!item || !node) return;
+    if (item.kind === 'select') {
+      const columns = node.data.selectColumns;
+      const at = columns.findIndex((c, i) => c === item.column && actions.occurrenceAt(columns, i) === item.occurrence);
+      const to = at + delta;
+      if (at < 0 || to < 0 || to >= columns.length) return;
+      await this.moveSelectColumn(
+        alias,
+        { column: item.column, occurrence: item.occurrence },
+        { column: columns[to], occurrence: actions.occurrenceAt(columns, to) },
+      );
+      // Its copy number among the same column's copies doesn't change:
+      // swapping two copies of one column changes nothing.
+      this.focusConfigItem(alias, item);
+    } else if (item.kind === 'group') {
+      const columns = node.data.groupChips;
+      const at = columns.indexOf(item.column);
+      const to = at + delta;
+      if (at < 0 || to < 0 || to >= columns.length) return;
+      await this.moveGroupColumn(alias, item.column, columns[to]);
+      this.focusConfigItem(alias, item);
+    }
+  }
+
   async toggleGroupColumn(alias: string, column: string) {
     const element = this.elementKey(alias, column);
     if (element) return this.toggleElementPart(alias, 'group', element.text);

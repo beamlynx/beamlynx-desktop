@@ -221,6 +221,8 @@ export type PickerItem = {
   columnHint?: string;
   /** A JSON column: its row has a › that starts typing a path inside it, `data.`. */
   json?: boolean;
+  /** A column's database type, when pine-lang says: an aggregate's list keeps the columns it can read (aggregateReads). */
+  type?: string;
   /**
    * Set only for a path-route item (openPathRoutePicker) whose destination
    * table is reachable more than one way - e.g. "via employee" - so two
@@ -530,6 +532,27 @@ export const AGGREGATE_FUNCTIONS: { fn: string; sign: string; label: string; col
   { fn: 'min', sign: '↓', label: 'smallest value', column: true },
   { fn: 'max', sign: '↑', label: 'largest value', column: true },
 ];
+
+// Database type names, lower-cased, by what an aggregate can do with them.
+// Postgres, MySQL and SQLite names; a size or `unsigned` after them is fine.
+const NUMBER_TYPE =
+  /^(smallint|integer|int|int2|int4|int8|bigint|tinyint|mediumint|serial|bigserial|smallserial|decimal|numeric|real|double|double precision|float|float4|float8|money|number)\b/;
+const UNSORTABLE_TYPE = /^(bool|boolean|json|jsonb|uuid|bytea|blob|binary|varbinary|xml|tsvector|point|line|polygon|bit)\b|\[\]$|^array/;
+
+/**
+ * Whether aggregate `fn` can read a column of this type: a number for sum
+ * and avg (and an interval, which adds up), anything that sorts for min and
+ * max. A column whose type isn't known is offered: better a list with one
+ * that fails than one missing what you wanted.
+ */
+export const aggregateReads = (fn: string, item: { type?: string; json?: boolean }): boolean => {
+  if (item.json) return false;
+  const type = item.type?.trim().toLowerCase();
+  if (!type) return true;
+  if (fn === 'sum' || fn === 'avg') return NUMBER_TYPE.test(type) || type.startsWith('interval');
+  if (fn === 'min' || fn === 'max') return !UNSORTABLE_TYPE.test(type);
+  return true;
+};
 
 /** The sign an aggregate's chip shows: `Σ` for sum, `ƒ` for one without its own. */
 export const aggregateSign = (fn: string | undefined): string =>

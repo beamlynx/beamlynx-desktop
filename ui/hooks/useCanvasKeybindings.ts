@@ -239,6 +239,17 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
           e.preventDefault();
           canvasStore.configNext();
           return;
+        // Moves the select or group chip the cursor is on (Shift+J/K) one
+        // place left or right in its row: the result's columns follow. On
+        // screen, the row runs left to right, so the arrows mean what they show.
+        case 'ArrowLeft':
+        case 'ArrowRight': {
+          const item = canvasStore.focusedConfigItem;
+          if (!e.shiftKey || (item?.kind !== 'select' && item?.kind !== 'group')) return;
+          e.preventDefault();
+          void canvasStore.moveFocusedChip(e.key === 'ArrowLeft' ? -1 : 1);
+          return;
+        }
         case 'K':
           e.preventDefault();
           canvasStore.configPrev();

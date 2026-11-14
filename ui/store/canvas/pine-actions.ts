@@ -159,6 +159,37 @@ export const setSelectColumns = (base: PinnedBase, alias: string, columns: strin
   return toText(upsertOwnedSegment(base.segments, alias, 'select', parts.length ? `select: ${parts.join(', ')}` : null));
 };
 
+/** `items` with the one at `from` moved to `to`. Out of range: unchanged. */
+export const moveItem = <T>(items: T[], from: number, to: number): T[] => {
+  if (from === to || from < 0 || to < 0 || from >= items.length || to >= items.length) return items;
+  const next = [...items];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
+};
+
+/** One select chip: its column, and which copy of it (a column can be selected twice). */
+export type SelectChip = { column: string; occurrence: number };
+
+/**
+ * Moves one of `alias`'s selected columns to where another is, so the
+ * result's columns come in that order. Chips are found by column, not by
+ * place: the chips leave out what is grouped, so their places aren't the
+ * text's.
+ */
+export const moveSelectColumn = (base: PinnedBase, alias: string, from: SelectChip, to: SelectChip): string => {
+  const parts = selectParts(base, alias);
+  const columnOf = (part: string) => columnAfterAlias(base, part.replace(SELECT_NAME_RE, '').trim(), alias);
+  const find = ({ column, occurrence }: SelectChip) => {
+    let seen = -1;
+    return parts.findIndex(part => columnOf(part) === column && ++seen === occurrence);
+  };
+  const a = find(from);
+  const b = find(to);
+  if (a < 0 || b < 0 || a === b) return toText(base.segments);
+  return toText(upsertOwnedSegment(base.segments, alias, 'select', `select: ${moveItem(parts, a, b).join(', ')}`));
+};
+
 const selectParts = (base: PinnedBase, alias: string): string[] => {
   const existing = base.segments.find(s => s.owner === alias && s.kind === 'select');
   return existing ? splitTopLevel(existing.text.replace(/^(select:|s:)\s*/i, '')) : [];
@@ -930,6 +961,25 @@ export const getGroupColumns = (base: PinnedBase, alias: string): string[] => {
   return splitTopLevel(groupBody(base.segments[index]).keys)
     .filter(part => part.startsWith(`${alias}.`))
     .map(part => part.slice(alias.length + 1));
+};
+
+/**
+ * Moves the group key `alias.from` to where `alias.to` is, in the one
+ * group: of `alias`'s stage, so the result's columns come in that order.
+ */
+export const moveGroupColumn = (base: PinnedBase, alias: string, from: string, to: string): string => {
+  const index = stageGroupIndex(base.segments, alias);
+  if (index < 0) return toText(base.segments);
+  const { keys, aggregates } = groupBody(base.segments[index]);
+  const parts = splitTopLevel(keys);
+  const a = parts.indexOf(`${alias}.${from}`);
+  const b = parts.indexOf(`${alias}.${to}`);
+  if (a < 0 || b < 0 || a === b) return toText(base.segments);
+  const moved = moveItem(parts, a, b);
+  parts.splice(0, parts.length, ...moved);
+  const next = [...base.segments];
+  next[index] = { ...next[index], text: `group: ${parts.join(', ')}${aggregates ? ` with ${aggregates}` : ''}` };
+  return toText(next);
 };
 
 // Replaces an existing group: segment IN PLACE rather than re-appending it,
