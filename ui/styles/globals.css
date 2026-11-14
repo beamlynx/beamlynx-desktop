@@ -6,6 +6,9 @@
     sans-serif;
   --code-font: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono',
     monospace;
+  /* The border of the pane that has the keyboard (canvas or Pine panel): a
+   * tint of the accent, enough to find it without shouting. */
+  --pane-focus-border: color-mix(in srgb, var(--primary-color) 45%, var(--border-color));
 }
 
 html,

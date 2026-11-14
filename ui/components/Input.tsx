@@ -128,7 +128,7 @@ const Input: React.FC<InputProps> = observer(({ session, onRun, autoFocus = true
           minHeight: 0,
           // The accent border while typing goes here, as the canvas's does
           // while it has the keys (GlobalStore.keyboardPane).
-          border: `1px solid ${global.keyboardPane === 'input' ? 'var(--primary-color)' : 'var(--border-color)'}`,
+          border: `1px solid ${global.keyboardPane === 'input' ? 'var(--pane-focus-border)' : 'var(--border-color)'}`,
           transition: 'border-color 120ms',
           borderRadius: 1,
           overflow: 'hidden',
