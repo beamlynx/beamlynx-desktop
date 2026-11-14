@@ -25,9 +25,6 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **Tab in the Pine panel highlights the first completion.** Pressed right after typing, it could land on the second one once the completions caught up with what you typed.
 
 ## [0.76.0] - 2026-11-12
-### Breaking
-- **Needs pine-lang 0.56.0 or later (was 0.55.0).** Connecting to an older server shows the upgrade-required screen.
-
 ### Changed
 - **Tidy is now called Format.** The button in the Pine panel, the command (still Ctrl+Shift+F) and the setting **Format Pine as you type** use the new name.
 
@@ -43,9 +40,6 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **Raw SQL doesn't run where it can't be masked or kept read-only:** in an agent's tab, or when data masking applies to your own queries.
 
 ## [0.75.0] - 2026-11-11
-### Breaking
-- **Needs pine-lang 0.55.0 or later (was 0.54.0).** Connecting to an older server shows the upgrade-required screen.
-
 ### Added
 - **Tidy Pine on demand.** **Tidy Pine as you type** in Settings → Preferences turns off tidying when you type `|` or pick a suggestion. Then Ctrl+Shift+F, or a button at the top right of the Pine panel, tidies every query in the tab. A query with a comment between its steps is left as it is, since tidying would drop the comment.
 
@@ -67,9 +61,6 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **Saved tabs and connection colours no longer show where your databases are.** The desktop app used to save each tab's database, and the colours of your connections, under the database's address (host, port and name). Tabs now remember the saved connection, and colours are kept under a hash of the database. What older versions saved is rewritten the first time the app starts, and your tabs and colours stay as they were. Two saved connections to the same database now share one colour.
 
 ## [0.74.0] - 2026-11-09
-### Breaking
-- **Needs pine-lang 0.54.0 or later (was 0.53.0).** Connecting to an older server shows the upgrade-required screen.
-
 ### Added
 - **An agent's question and findings can come with its query.** When an agent sends what it is investigating, or what it found so far, along with a query, the agent's timeline shows them as it did when they came separately: the question opens a section, and the finding sits above the query.
 - **See a table's columns and its relations.** End a query with `| describe:` to list each column with its type, and whether it is the key, may be empty or is masked. End it with `| references:` to list every relation that touches the table, both ways, with how Pine knows it and the Pine to follow it. A table's **+** menu on the canvas offers both, and opens them in a new tab. Their rows can't be edited: they describe the table, not its data.
@@ -117,9 +108,6 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **Typing a key of an unnested element shows its first value.** After `unnest: companies as c`, typing `c.` in the Pine panel or in a canvas picker shows the first element, so you can see its keys. Before, the value showed only for a JSON column.
 
 ## [0.72.1] - 2026-11-02
-### Breaking
-- **Needs pine-lang 0.53.0 or later (was 0.51.0).** Connecting to an older server shows the upgrade-required screen.
-
 ### Added
 - **One row for each element of a JSON array.** `unnest: data.changes as e` gives each element its own row, and `e.field` reads a key of it. On the canvas, **unnest** is in a table's **+** menu, and a value inside an element can be edited in the results.
 - **Pick a key inside a JSON column on the canvas.** A JSON column has **{ } ›** in the pickers. While you type a key, the results show the column's first value.
@@ -168,9 +156,6 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **The sign-in screen comes back at every launch until you sign in.** Only **Skip for now** closes it, until the next launch. Clicking outside it or pressing Escape does nothing.
 
 ## [0.69.0] - 2026-10-26
-### Breaking
-- **Needs pine-lang 0.51.0 or later (was 0.50.0).** Use it with the matching beamlynx-desktop release.
-
 ### Added
 - **Sign in to Beamlynx with GitHub, or skip.** On desktop, a first-run screen asks you to sign in, so we know who uses Beamlynx. Skipping is final, and you can sign in or out later in **Settings → Account**.
 - **Anonymous usage stats, with a switch to turn them off.** The first-run screen says so before anything is sent, and the switch is in **Settings → Account**. Each query run is counted as yours or an agent's, in Pine or SQL, and nothing else about it is sent.
@@ -203,9 +188,6 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **"Also restrict my own queries" applies in an agent's investigation tab too.** Before, every query you ran in that tab was masked, whatever the setting said. Only the agent's own queries are always masked.
 
 ## [0.67.0] - 2026-10-18
-### Breaking
-- **Needs pine-lang 0.50.0 or later (was 0.49.0).** With 0.49.0, your own tabs would hide the values that are hidden from agents. Connecting to an older server shows the upgrade-required screen.
-
 ### Added
 - **A sidebar on the left.** It holds the database connection at the top, the agent, What's new and each section of Settings. It shows icons, and expands to show labels and the agent's investigations.
 - **Agent investigations.** In the desktop app, each Claude session gets its own investigation, named for the question the agent is investigating. Its timeline keeps every step: the tables the agent looked for, each query with its reason and result, and what it found. Click a query to see its rows again, exactly as the agent saw them, without running anything.
@@ -218,7 +200,6 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [0.66.0] - 2026-10-17
 ### Breaking
-- **Needs pine-lang 0.49.0 or later (was 0.48.0).** Most of the new features below need it. Connecting to an older server shows the upgrade-required screen.
 - **Editing a cell finds its row by the table's primary key, not by a column called `id`.** Tables keyed on another column, or on several, can now be edited. Tables and views without a primary key can't be edited, and the grid says why. Primary key columns themselves can't be edited.
 
 ### Added
@@ -279,7 +260,6 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [0.65.0] - 2026-10-06
 ### Breaking
-- **Needs pine-lang 0.48.0 or later (was 0.47.0).** Values blocks and named results after `in` need it. Connecting to an older server shows the upgrade-required screen.
 - **Ctrl+S saves a recipe instead of downloading the tab as a `.pine` file.** Nothing in Beamlynx opened those files. In the browser, which has no recipes, Ctrl+S does nothing.
 
 ### Added
@@ -300,9 +280,6 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **The Access Policy and MCP sections describe agent access correctly.** Access is set per connection, under **MCP access** in Database Connections.
 
 ## [0.64.0] - 2026-09-27
-### Breaking
-- **Needs pine-lang 0.47.0 or later (was 0.46.0).** Canvas filters that match any of several conditions use `or`, which pine-lang 0.47.0 added. Connecting to an older server shows the upgrade-required screen.
-
 ### Added
 - **An edited value's cell glows briefly, and a message says it was saved.** If it wasn't saved, the message says why.
 - **A value that can't be edited says why as soon as you try.** That covers a row's `id`, a table whose `id` isn't in the result, and values the query works out.
@@ -326,7 +303,6 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ## [0.63.0] - 2026-09-25
 ### Breaking
 - **`delete:` is gone from Pine.** Use traverse instead (see below). A saved tab that ends in `delete:` has it removed when the tab opens.
-- **Needs pine-lang 0.46.0 or later (was 0.45.0).** The canvas needs the new way the server describes joins. Connecting to an older server shows the upgrade-required screen.
 
 ### Added
 - **Traverse from a table on the canvas.** Press `+` on a table and pick **traverse**. It finds every table that points at it by foreign key, up to 25 levels deep. **Count rows** lists their row counts. **Delete rows…** builds a script that deletes them, deepest table first, which you can copy or run.
@@ -339,7 +315,6 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ### Security
 - **AI agents can no longer change your data.** The old check only refused `delete!`, and let `update!` through. The Pine server now refuses every write from the agent's tab, even if you press Run there yourself.
-- **Agent queries need pine-lang 0.46.0 or later.** An older server can't refuse the writes, so agent queries won't run against it.
 
 ### Removed
 - **The `BEAMLYNX_MCP_ALLOW_DELETE` environment variable.** It turned off the check on agents' deletes for the whole machine.
@@ -378,18 +353,12 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **The rename and expand icons line up across rows in Database Connections.** They used to shift sideways.
 - **Icon-only buttons have labels for screen readers.** This covers close, download, save, notifications, tab controls and the JSON inspector.
 
-### Breaking
-- **Needs pine-lang 0.45.0 or later (was 0.44.0).** Canvas comments need it, because an older server deletes them when you change the query on the canvas. So do several connections to one host and port. Connecting to an older server shows the upgrade-required screen.
-
 ## [0.61.0] - 2026-09-12
 ### Added
 - **You can add MySQL databases, not only Postgres.** Pick the database type when you add a connection, and the port fills in to match. Pasting a `mysql://` connection string sets the type for you.
 
 ### Fixed
 - **A query that can't reach the server no longer leaves the spinner running forever.** Before, no error appeared. Now the spinner stops and the error shows.
-
-### Breaking
-- **Requires pine-lang 0.44.0 or later (was 0.43.0).** MySQL support needs it. With an older server, Beamlynx shows a screen asking you to upgrade it.
 
 ## [0.60.0] - 2026-09-10
 ### Added
@@ -417,9 +386,6 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **"Filter" in the results grid's right-click menu filters the table the cell belongs to.** Before, it filtered whichever table the query ended on.
 
 ## [0.58.0] - 2026-09-06
-### Breaking
-- **Requires pine-lang 0.43.0 or later (was 0.42.0).** The canvas's new "path" action and path search in the Pine editor need it.
-
 ### Added
 - **The Pine editor's autocomplete (Ctrl+Space) completes `? table` path searches.** A `? table` search finds the joins that lead to a table. Autocomplete lists the routes, and picking one replaces the whole search.
 - **The canvas's new "path" action adds the whole chain of joins to reach a table that isn't directly joinable.** It sits behind the new `+` button, together with order and group. Their shortcuts still work: `o`, `g`, `p`, and `+` to open the menu.
@@ -447,9 +413,6 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **The "Only apply to MCP server" switch no longer turns itself off.** In the desktop app, it switched back off after most connection actions until you restarted.
 
 ## [0.56.0] - 2026-09-02
-### Breaking
-- **Requires pine-lang 0.42.0 or later (was 0.41.0).** It formats the queries AI agents run (see Fixed).
-
 ### Added
 - **The "Toggle Layout Orientation" command switches the new layout between side by side and top and bottom.** It's in the command palette, so you don't need the canvas toolbar icon.
 
@@ -462,9 +425,6 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **The canvas's `where` picker is easier to read and use.** A long column name ends in "…", with the full name on hover. The operator field gets focus first, and the fields have space between them.
 
 ## [0.55.0] - 2026-08-31
-### Breaking
-- **Requires pine-lang 0.41.0 or later (was 0.39.0).** Access policies need it.
-
 ### Added
 - **Access policies decide which columns show real values and which show `xxxxx`.** Create, rename and delete them in Settings → Access Policy. Each policy has rules you switch on, for example for a Postgres type, foreign keys, or columns ending in `_id`.
 - **Pick the access policy for each database connection.** AI agent access can only be turned on once the connection has an active policy. While it's on, you can't remove the policy or switch to an inactive one.
@@ -565,9 +525,6 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **The canvas/graph switch moved from the header into the graph panel.** The header only switches the overall layout.
 
 ## [0.50.0] - 2026-08-22
-### Breaking
-- **Requires pine-lang 0.39.0 or later.** The connection refresh icon needs it.
-
 ### Added
 - **A refresh icon on each live connection picks up new tables and columns.** It's in Settings → Database Connections. Before, you had to restart the server.
 - **Give a connection a name in the desktop app.** Set it when you add the connection, or later with the pencil icon in Settings → Database Connections.
@@ -594,9 +551,6 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **The Docker "Welcome" page and the "Pine server is not running" page are gone.** The app opens straight to its normal view.
 
 ## [0.48.0] - 2026-08-13
-### Breaking
-- **Requires pine-lang 0.38.1 or later.**
-
 ### Added
 - **Build Pine queries by clicking through tables in a graph (experimental).** Turn it on from the header, next to the version number.
 
@@ -618,9 +572,6 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **In the desktop app, a tab no longer shows its connection's `host:port` at start-up before its name.** It shows a neutral placeholder until the name loads.
 
 ## [0.46.2] - 2026-08-04
-### Breaking
-- **Requires pine-lang 0.37.2 or later.**
-
 ### Fixed
 - **A failed connection attempt shows an error.** Before, the "connecting" spinner just stopped, for example with a wrong password or an unreachable database.
 - **A connection restored from a past session shows as connected only if it really is.** The server's connections don't survive a restart, so Beamlynx checks first.
@@ -671,9 +622,6 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Fixed
 - **Typing in the Pine input no longer slows down as you add expressions.**
 - **Autocomplete shows "Loading..." instead of "Nothing found" while it loads.**
-
-### Breaking
-- **Requires pine-lang 0.37.0 or later.**
 
 ## [0.43.0] - 2026-05-21
 ### Added

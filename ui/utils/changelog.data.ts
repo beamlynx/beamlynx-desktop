@@ -25,12 +25,6 @@ export const CHANGELOG: ChangelogVersion[] = [
   {
     version: '0.76.0',
     date: '2026-11-12',
-    breaking: [
-      {
-        title: "Needs pine-lang 0.56.0 or later (was 0.55.0)",
-        description: "Connecting to an older server shows the upgrade-required screen.",
-      },
-    ],
     changed: [
       {
         title: "Tidy is now called Format",
@@ -73,12 +67,6 @@ export const CHANGELOG: ChangelogVersion[] = [
   {
     version: '0.75.0',
     date: '2026-11-11',
-    breaking: [
-      {
-        title: "Needs pine-lang 0.55.0 or later (was 0.54.0)",
-        description: "Connecting to an older server shows the upgrade-required screen.",
-      },
-    ],
     added: [
       {
         title: "Tidy Pine on demand",
@@ -139,12 +127,6 @@ export const CHANGELOG: ChangelogVersion[] = [
   {
     version: '0.74.0',
     date: '2026-11-09',
-    breaking: [
-      {
-        title: "Needs pine-lang 0.54.0 or later (was 0.53.0)",
-        description: "Connecting to an older server shows the upgrade-required screen.",
-      },
-    ],
     added: [
       {
         title: "An agent's question and findings can come with its query",
@@ -291,13 +273,6 @@ export const CHANGELOG: ChangelogVersion[] = [
   {
     version: '0.72.1',
     date: '2026-11-02',
-    breaking: [
-      {
-        title: "Needs pine-lang 0.53.0 or later (was 0.51.0)",
-        description:
-          "Connecting to an older server shows the upgrade-required screen.",
-      },
-    ],
     added: [
       {
         title: "One row for each element of a JSON array",
@@ -459,13 +434,6 @@ export const CHANGELOG: ChangelogVersion[] = [
   {
     version: '0.69.0',
     date: '2026-10-26',
-    breaking: [
-      {
-        title: "Needs pine-lang 0.51.0 or later (was 0.50.0)",
-        description:
-          "Use it with the matching beamlynx-desktop release.",
-      },
-    ],
     added: [
       {
         title: "Sign in to Beamlynx with GitHub, or skip",
@@ -576,13 +544,6 @@ export const CHANGELOG: ChangelogVersion[] = [
   {
     version: '0.67.0',
     date: '2026-10-18',
-    breaking: [
-      {
-        title: "Needs pine-lang 0.50.0 or later (was 0.49.0)",
-        description:
-          "With 0.49.0, your own tabs would hide the values that are hidden from agents. Connecting to an older server shows the upgrade-required screen.",
-      },
-    ],
     added: [
       {
         title: "A sidebar on the left",
@@ -630,11 +591,6 @@ export const CHANGELOG: ChangelogVersion[] = [
     version: '0.66.0',
     date: '2026-10-17',
     breaking: [
-      {
-        title: "Needs pine-lang 0.49.0 or later (was 0.48.0)",
-        description:
-          "Most of the new features below need it. Connecting to an older server shows the upgrade-required screen.",
-      },
       {
         title: "Editing a cell finds its row by the table's primary key, not by a column called id",
         description:
@@ -881,11 +837,6 @@ export const CHANGELOG: ChangelogVersion[] = [
     date: '2026-10-06',
     breaking: [
       {
-        title: "Needs pine-lang 0.48.0 or later (was 0.47.0)",
-        description:
-          "Values blocks and named results after in need it. Connecting to an older server shows the upgrade-required screen.",
-      },
-      {
         title: "Ctrl+S saves a recipe instead of downloading the tab as a .pine file",
         description:
           "Nothing in Beamlynx opened those files. In the browser, which has no recipes, Ctrl+S does nothing.",
@@ -954,13 +905,6 @@ export const CHANGELOG: ChangelogVersion[] = [
   {
     version: '0.64.0',
     date: '2026-09-27',
-    breaking: [
-      {
-        title: "Needs pine-lang 0.47.0 or later (was 0.46.0)",
-        description:
-          "Canvas filters that match any of several conditions use or, which pine-lang 0.47.0 added. Connecting to an older server shows the upgrade-required screen.",
-      },
-    ],
     added: [
       {
         title: "An edited value's cell glows briefly, and a message says it was saved",
@@ -1039,11 +983,6 @@ export const CHANGELOG: ChangelogVersion[] = [
         description:
           "Use traverse instead (see below). A saved tab that ends in delete: has it removed when the tab opens.",
       },
-      {
-        title: "Needs pine-lang 0.46.0 or later (was 0.45.0)",
-        description:
-          "The canvas needs the new way the server describes joins. Connecting to an older server shows the upgrade-required screen.",
-      },
     ],
     added: [
       {
@@ -1079,11 +1018,6 @@ export const CHANGELOG: ChangelogVersion[] = [
         title: "AI agents can no longer change your data",
         description:
           "The old check only refused delete!, and let update! through. The Pine server now refuses every write from the agent's tab, even if you press Run there yourself.",
-      },
-      {
-        title: "Agent queries need pine-lang 0.46.0 or later",
-        description:
-          "An older server can't refuse the writes, so agent queries won't run against it.",
       },
     ],
     removed: [
@@ -1224,13 +1158,6 @@ export const CHANGELOG: ChangelogVersion[] = [
           "This covers close, download, save, notifications, tab controls and the JSON inspector.",
       },
     ],
-    breaking: [
-      {
-        title: "Needs pine-lang 0.45.0 or later (was 0.44.0)",
-        description:
-          "Canvas comments need it, because an older server deletes them when you change the query on the canvas. So do several connections to one host and port. Connecting to an older server shows the upgrade-required screen.",
-      },
-    ],
   },
   {
     version: '0.61.0',
@@ -1246,13 +1173,6 @@ export const CHANGELOG: ChangelogVersion[] = [
       {
         title: "A query that can't reach the server no longer leaves the spinner running forever",
         description: 'Before, no error appeared. Now the spinner stops and the error shows.',
-      },
-    ],
-    breaking: [
-      {
-        title: 'Requires pine-lang 0.44.0 or later (was 0.43.0)',
-        description:
-          'MySQL support needs it. With an older server, Beamlynx shows a screen asking you to upgrade it.',
       },
     ],
   },
@@ -1341,12 +1261,6 @@ export const CHANGELOG: ChangelogVersion[] = [
   {
     version: '0.58.0',
     date: '2026-09-06',
-    breaking: [
-      {
-        title: 'Requires pine-lang 0.43.0 or later (was 0.42.0)',
-        description: 'The canvas\'s new "path" action and path search in the Pine editor need it.',
-      },
-    ],
     added: [
       {
         title: "The Pine editor's autocomplete (Ctrl+Space) completes ? table path searches",
@@ -1430,12 +1344,6 @@ export const CHANGELOG: ChangelogVersion[] = [
   {
     version: '0.56.0',
     date: '2026-09-02',
-    breaking: [
-      {
-        title: 'Requires pine-lang 0.42.0 or later (was 0.41.0)',
-        description: 'It formats the queries AI agents run (see Fixed).',
-      },
-    ],
     added: [
       {
         title:
@@ -1471,12 +1379,6 @@ export const CHANGELOG: ChangelogVersion[] = [
   {
     version: '0.55.0',
     date: '2026-08-31',
-    breaking: [
-      {
-        title: 'Requires pine-lang 0.41.0 or later (was 0.39.0)',
-        description: 'Access policies need it.',
-      },
-    ],
     added: [
       {
         title: 'Access policies decide which columns show real values and which show xxxxx',
@@ -1783,12 +1685,6 @@ export const CHANGELOG: ChangelogVersion[] = [
   {
     version: '0.50.0',
     date: '2026-08-22',
-    breaking: [
-      {
-        title: 'Requires pine-lang 0.39.0 or later',
-        description: 'The connection refresh icon needs it.',
-      },
-    ],
     added: [
       {
         title: 'A refresh icon on each live connection picks up new tables and columns',
@@ -1869,11 +1765,6 @@ export const CHANGELOG: ChangelogVersion[] = [
   {
     version: '0.48.0',
     date: '2026-08-13',
-    breaking: [
-      {
-        title: 'Requires pine-lang 0.38.1 or later',
-      },
-    ],
     added: [
       {
         title: 'Build Pine queries by clicking through tables in a graph (experimental)',
@@ -1938,11 +1829,6 @@ export const CHANGELOG: ChangelogVersion[] = [
   {
     version: '0.46.2',
     date: '2026-08-04',
-    breaking: [
-      {
-        title: 'Requires pine-lang 0.37.2 or later',
-      },
-    ],
     fixed: [
       {
         title: 'A failed connection attempt shows an error',
@@ -2080,11 +1966,6 @@ export const CHANGELOG: ChangelogVersion[] = [
       },
       {
         title: 'Autocomplete shows "Loading..." instead of "Nothing found" while it loads',
-      },
-    ],
-    breaking: [
-      {
-        title: 'Requires pine-lang 0.37.0 or later',
       },
     ],
   },

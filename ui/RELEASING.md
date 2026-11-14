@@ -5,7 +5,7 @@
 1. Create branch `release/X.Y.Z` from `main`.
 2. Bump `package.json` → `"version": "X.Y.Z"`.
 3. **Ask**: do the unreleased changes depend on a specific minimum pine-lang server version? If yes, bump `RequiredVersion` in `constants.ts`.
-4. Move the `## [Unreleased]` section in `CHANGELOG.md` into a new `## [X.Y.Z] - YYYY-MM-DD` section (today's date), leaving `## [Unreleased]` empty. If `RequiredVersion` changed, add a `### Breaking` entry noting the new minimum server version.
+4. Move the `## [Unreleased]` section in `CHANGELOG.md` into a new `## [X.Y.Z] - YYYY-MM-DD` section (today's date), leaving `## [Unreleased]` empty. Don't add an entry for a raised `RequiredVersion`. The desktop app bundles a matching pine-lang, so its users never meet the requirement. Say it in the release PR's description instead.
 5. In `utils/changelog.data.ts`:
    - Prepend a new entry to the `CHANGELOG` array matching the `CHANGELOG.md` content for this version.
    - Update `LATEST_VERSION` at the bottom to `"X.Y.Z"`.
