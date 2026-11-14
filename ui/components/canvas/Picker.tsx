@@ -1073,6 +1073,12 @@ const Picker: React.FC = observer(() => {
       case 'select':
       case 'order':
       case 'group':
+        // From the count line: its first key makes `count:` a group, whose
+        // own line takes over from here.
+        if (request.kind === 'group' && request.count) {
+          void store.countToGroup([`${item.alias ?? request.alias}.${item.value}`], ['count']);
+          return;
+        }
         // Unlike join/where, these three stay open for repeat picks - leaving
         // the just-typed filter in place would hide every other column
         // behind it, so clear it to hand the input back ready for the next.

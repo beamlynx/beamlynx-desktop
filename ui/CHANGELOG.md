@@ -8,7 +8,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **The canvas draws a join that compares with more than one table.** In `fd fd.id = av.attributeId, fd.tenant_id = c.tenantId`, each table gets its own line to `fd`, and each column shows on its own table.
 - **An AI agent's SQL with `$1` runs with the value the agent sends for it.** The agent sends `{"1": [...]}`, and Beamlynx passes it to the variable the SQL became, such as `$tenant_id`. A number the SQL doesn't have runs nothing and says which numbers it has.
 
-- **The canvas can count a query's rows:** count in the bar, or `c`, ends the query with `count:`, drawn as a dotted line under the graph. Steps you add afterwards go in before the count. The line's × takes it off, and so does `x` once you move down to the line.
+- **The canvas can count a query's rows:** count in the bar, or `c`, ends the query with `count:`, drawn as a dotted line under the graph. A count is a group of all rows, so its line looks and works like a group's: `all rows + with # count +`. Add a column with the first +, another aggregate with the second, or click `count` to pick another function, and it becomes that group. Steps you add afterwards go in before the count. The line's × takes it off, and so does `x` once you move down to the line.
 
 ### Changed
 - **`n` (note) writes the canvas comment; it was `c`.** `c` now counts the query's rows.

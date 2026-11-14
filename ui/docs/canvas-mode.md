@@ -212,7 +212,7 @@ pipeline is a single strict sequence, not a 2D graph to roam.
 | `g` | Open the group-by picker (not offered on a checkpoint node — grouping an already-grouped result is a different question, not implemented) |
 | `e` | On a nested query's node (a checkpoint, or a table using a named block): expand or collapse its container |
 | `x` | Delete the focused node — a table if `removable`, or, on a checkpoint's node, the checkpoint (as the × on its node does; the tables it sealed stay). On the count line, the last stop, it removes the count |
-| `c` | Count the query's rows: ends it with `count:`, drawn as a line under the graph |
+| `c` | Count the query's rows: ends it with `count:`, drawn as a group's line with no keys, `all rows with # count` (`CountLineNode`). Adding a key or an aggregate there, or picking another function, writes it out as that group (`CanvasStore.countToGroup`) |
 | `u` | Undo the last canvas gesture |
 | `n` | Write (or edit) the note: the comment at the top of the expression — see "The comment" below |
 | `Shift`+`U` | Redo |

@@ -67,7 +67,7 @@ const requestKey = (r: PickerRequest): string =>
       ? `path-route:${r.alias}:${r.target}`
       : `${r.kind}:${r.alias}${'only' in r && r.only ? ':only' : ''}${'column' in r && r.column ? `:${r.column}` : ''}${
           'index' in r ? `:${r.index}` : ''
-        }${'fn' in r ? `:${r.fn}` : ''}`;
+        }${'fn' in r ? `:${r.fn}` : ''}${'count' in r && r.count ? ':count' : ''}`;
 
 const emptyGraph: CanvasGraph = { nodes: [], edges: [], parsing: true };
 
@@ -2118,6 +2118,29 @@ export class CanvasStore {
     });
   }
 
+  /**
+   * `count:` is pine-lang's short form of `group: with count`. Its line
+   * edits it as a group's line does, and the first edit writes it out as
+   * that group: `group: keys with aggregates`, at the end of the query.
+   */
+  async countToGroup(keys: string[], aggregates: string[]) {
+    this.closePicker();
+    if (!keys.length && !aggregates.length) return;
+    await this.commit(base => {
+      this.dropCountOnce = true;
+      // `c_0.id` read before this base pinned c_0 as c: follow the rename.
+      const resolved = keys.map(k => {
+        const dot = k.indexOf('.');
+        return dot < 0 ? k : `${actions.resolveAlias(base, k.slice(0, dot))}${k.slice(dot)}`;
+      });
+      const renamed = aggregates.map(a =>
+        Array.from(base.aliasMap.entries()).reduce((text, [from, to]) => text.replace(new RegExp(`\\b${from}\\.`, 'g'), `${to}.`), a),
+      );
+      const body = `${resolved.join(', ')}${renamed.length ? `${resolved.length ? ' ' : ''}with ${renamed.join(', ')}` : ''}`;
+      return `${toText(base.segments)} | group: ${body}`;
+    });
+  }
+
   /** The × on a node's describe/references chip: the query goes back to its rows. */
   async removeDescribe(id: string) {
     await this.commit(base => toText(base.segments), id);
@@ -2167,6 +2190,8 @@ export class CanvasStore {
     focusValue?: string,
     /** Opened from the node itself: only this table's columns. */
     only = false,
+    /** Group only: opened from the count line, whose first key turns `count:` into a group (countToGroup). */
+    count = false,
   ) {
     // A specific existing chip being reopened gets its own config-item
     // cursor (matching what Left/Right would land on); adding a new one
@@ -2177,7 +2202,8 @@ export class CanvasStore {
     } else {
       this.focusNode(alias);
     }
-    const request: PickerRequest = only ? { kind, alias, only } : { kind, alias };
+    const request: PickerRequest =
+      kind === 'group' && count ? { kind, alias, count } : only ? { kind, alias, only } : { kind, alias };
     void this.openListPicker(request, anchor, () => this.loadColumns(request, kind, alias, only), focusValue);
   }
 
@@ -3024,6 +3050,7 @@ export class CanvasStore {
    * the order the checkpoint lists them: its line shows each one's function.
    */
   aggregateTextsOf(name: string): string[] {
+    if (name === COUNT_NODE_ID) return ['count'];
     const { block, alias: plain } = this.scopeOf(name);
     const ast = this.astOf(block);
     const checkpoint = ast?.checkpoints?.find(c => c.name === plain);
@@ -3039,6 +3066,8 @@ export class CanvasStore {
    * the group's result.
    */
   stageAliasOfCheckpoint(name: string): string | null {
+    // The count line counts the whole query: the table it ends at.
+    if (name === COUNT_NODE_ID) return this.nextStepAlias ?? null;
     const { block, alias: plain } = this.scopeOf(name);
     const prefix = name.slice(0, name.length - plain.length);
     const ast = this.astOf(block);
@@ -3056,7 +3085,7 @@ export class CanvasStore {
   /** The group's own column list, for a key chip or the line's +: picks add or remove keys. */
   openGroupKeyPicker(name: string, anchor: PickerAnchor, column?: string) {
     const alias = this.stageAliasOfCheckpoint(name);
-    if (alias) this.openColumnPicker('group', alias, anchor, column);
+    if (alias) this.openColumnPicker('group', alias, anchor, column, false, name === COUNT_NODE_ID);
   }
 
   /** The functions an aggregate can be. `index` past the last aggregate adds one. */
@@ -3118,6 +3147,13 @@ export class CanvasStore {
   }
 
   private async setAggregate(name: string, index: number, next: actions.Aggregate) {
+    if (name === COUNT_NODE_ID) {
+      const aggregates = actions.withAggregate(['count'], index, next, '');
+      // count picked for the count: nothing to change.
+      if (aggregates.length === 1 && aggregates[0] === 'count') return;
+      await this.countToGroup([], aggregates);
+      return;
+    }
     const plain = this.scopeOf(name).alias;
     await this.commit(
       base =>
