@@ -119,7 +119,7 @@ document as d | activity .resource_id = .id ::text
 ### Name the table on each side
 
 ```
-attribute_values as av | company as c c.id = av.company_id | field_definition as fd fd.id = av.attributeId, fd.tenant_id = c.tenantId -- pine-lang #192
+attribute_values as av | company as c c.id = av.company_id | field_definition as fd fd.id = av.attributeId, fd.tenant_id = c.tenantId
 ```
 
 Either side of a pair can be `alias.column`. Then one join can compare with any table before it,
@@ -133,8 +133,8 @@ When you spell out the columns, naming every side is the clearest way to write i
 ### Conditions on the join
 
 ```
-customers as c | orders as o :left o.customer_id = c.id, o.status = 'paid' -- pine-lang #192
-customers as c | orders as o :left o.customer_id = c.id, o.deleted_at is null -- pine-lang #193
+customers as c | orders as o :left o.customer_id = c.id, o.status = 'paid'
+customers as c | orders as o :left o.customer_id = c.id, o.deleted_at is null
 ```
 
 A pair can compare a column with a string, a number, `true` or `false`, or test `is null` /
