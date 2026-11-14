@@ -792,6 +792,7 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
   const canvasStore = useCanvasStore();
   const { global } = useStores();
   const hasNotch = NOTCHED_NODE_THEMES.includes(global.themeId);
+  const keyboardHere = global.keyboardPane === 'graph';
   const updateNodeInternals = useUpdateNodeInternals();
   const handleKey = [...data.leftHandles, ...data.rightHandles].map(h => h.id).join(',');
   const [hovered, setHovered] = useState(false);
@@ -1020,8 +1021,12 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
             // node at the same time"). Only one thing shows as current at
             // once: the specific config item while there is one, the whole
             // node otherwise.
+            // Full strength while the canvas has the keyboard, muted while
+            // typing goes to the Pine panel: the ring is where the keys act.
             border: isFocusTarget && !hasConfigCursor
-              ? '3px solid var(--canvas-node-border-current)'
+              ? keyboardHere
+                ? '3px solid var(--canvas-node-border-current)'
+                : '3px solid color-mix(in srgb, var(--canvas-node-border-current) 35%, var(--canvas-node-border))'
               : '1.5px solid var(--canvas-node-border)',
             background: isFocusTarget && !hasConfigCursor ? 'var(--canvas-node-bg-current)' : 'var(--canvas-node-bg)',
             borderRadius: hasNotch ? '3px' : '8px',

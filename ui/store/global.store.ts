@@ -659,6 +659,22 @@ export class GlobalStore {
     return 'graph';
   }
 
+  /**
+   * The pane typing goes to now, so it can say so: the canvas ('graph'),
+   * the Pine/SQL panel ('input'), or neither. The same rule as the canvas's
+   * keys (useCanvasKeybindings): the canvas has them when it is the
+   * activeKeyboardPanel and no editor has focus. DOM focus alone isn't it:
+   * with nothing focused, after a list closes say, the keys still go to
+   * the canvas.
+   */
+  get keyboardPane(): 'graph' | 'input' | null {
+    const session = this.sessions[this.activeSessionId];
+    if (session?.textInputFocused && this.newLayoutPanelVisible) return 'input';
+    const panel = this.activeKeyboardPanel;
+    if (panel === 'input') return 'input';
+    return panel === 'graph' && this.canvasActive ? 'graph' : null;
+  }
+
   // Settings
   showSettings = false;
   // Which section the settings panel opens to -- defaults to Connections

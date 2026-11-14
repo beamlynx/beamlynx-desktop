@@ -190,15 +190,14 @@ const LeftPane = observer(
             flex: 1,
             minHeight: 0,
             minWidth: 0,
-            border: '1px solid var(--border-color)',
+            // The pane that has the keyboard has the accent border: this
+            // one, or the Pine panel's (Input.tsx). See keyboardPane.
+            border: `1px solid ${global.keyboardPane === 'graph' ? 'var(--primary-color)' : 'var(--border-color)'}`,
             borderRadius: 1,
             overflow: 'hidden',
             backgroundColor: 'var(--graph-background)',
             outline: 'none',
-            // The canvas's keys work only while it has the keyboard (Escape
-            // from the Pine panel, or a click): its border says so.
             transition: 'border-color 120ms',
-            '&:focus-within': { borderColor: 'var(--primary-color)' },
           }}
         >
           <Canvas
