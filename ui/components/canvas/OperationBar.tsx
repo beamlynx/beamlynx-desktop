@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { CanvasStore } from '../../store/canvas/canvas.store';
+import { useStores } from '../../store/store-container';
 import { MORE_ACTIONS, MoreAction, PickerAnchor, PickerState } from '../../store/canvas/canvas.model';
 
 /** How much of the canvas's bottom the bar takes: Canvas.tsx keeps the graph above it. */
@@ -114,6 +115,7 @@ const BarButton = ({
  * multi-select toolbar shows, which has its own limit.
  */
 const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasStore }) => {
+  const { global } = useStores();
   if (!canvasStore.selectedNodeActions || !canvasStore.operationAnchor || canvasStore.selectedAliases.length >= 2) {
     return null;
   }
@@ -121,7 +123,8 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
   const active = canvasStore.nodePicker ? null : activeBarAction(canvasStore.picker);
   const pointed = !!canvasStore.pointerAlias;
   // While the pointer is on a node, the keys are that node's (TableNode.tsx).
-  const keys = canvasStore.mode === 'normal' && !pointed;
+  // A bold letter says its key works now: not while typing goes elsewhere.
+  const keys = canvasStore.mode === 'normal' && !pointed && global.keyboardPane === 'graph';
   const dim = (kind: string) => active !== null && active !== kind;
   const expanded = canvasStore.barExpanded;
   const more = MORE_ACTIONS.filter(a => canvasStore.barMoreActions.includes(a.action));
