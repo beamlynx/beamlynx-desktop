@@ -60,6 +60,8 @@ export type TableHint = {
 export type ColumnHint = {
   column: string;
   alias: string;
+  /** The column's database type, `integer` or `timestamp`. Absent for a selected column of a named result, and from pine-lang before #196. */
+  type?: string;
 };
 
 export type CursorPosition = {

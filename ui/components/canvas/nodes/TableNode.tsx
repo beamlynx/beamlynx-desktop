@@ -248,6 +248,8 @@ export const ResultChip = ({
   onClick,
   onRemove,
   join,
+  dragProps,
+  dragStyle,
 }: {
   name: string;
   column: string;
@@ -259,6 +261,9 @@ export const ResultChip = ({
   onClick: (anchor: PickerAnchor) => void;
   onRemove: () => void;
   join?: boolean;
+  /** useChipDrag's, to reorder the line's keys or aggregates. */
+  dragProps?: React.HTMLAttributes<HTMLElement>;
+  dragStyle?: React.CSSProperties;
 }) => {
   const canvasStore = useCanvasStore();
   const [hover, setHover] = useState(false);
@@ -273,6 +278,7 @@ export const ResultChip = ({
       }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
+      {...dragProps}
       style={{
         position: 'relative',
         display: 'inline-flex',
@@ -288,6 +294,7 @@ export const ResultChip = ({
         // An aggregate is computed, not a column of a table: a dashed edge.
         border: `1px ${aggregate ? 'dashed' : 'solid'} ${hover ? 'var(--canvas-trace)' : 'var(--canvas-chip-border)'}`,
         whiteSpace: 'nowrap',
+        ...dragStyle,
       }}
     >
       {children}
@@ -376,6 +383,11 @@ const CheckpointLine = observer(({ data, focused }: { data: CanvasTableNodeData;
   const pinsOf = (column: string) => allPins.filter(p => p.h.column === column);
   const pins = allPins.filter(p => !chipColumns.includes(p.h.column));
   const aggregateTexts = result?.kind === 'group' && nested ? canvasStore.aggregateTextsOf(nested.name) : [];
+  // Keys reorder among keys, aggregates among aggregates: the result's columns follow.
+  const keyDrag = useChipDrag(nested ? (from, to) => void canvasStore.moveCheckpointPart(nested.name, 'key', from, to) : undefined);
+  const aggregateDrag = useChipDrag(
+    nested ? (from, to) => void canvasStore.moveCheckpointPart(nested.name, 'aggregate', from, to) : undefined,
+  );
   const iconStyle = { fontSize: 'calc(15px * var(--text-scale, 1))', color: 'var(--canvas-container-label)' };
   return (
     <div
@@ -430,6 +442,8 @@ const CheckpointLine = observer(({ data, focused }: { data: CanvasTableNodeData;
                   testId={`result-chip-${nested.name}-${k.column}`}
                   title={`One row for each ${k.from}. Click to change the columns grouped on`}
                   pins={pinsOf(k.column)}
+                  dragProps={keyDrag.props(i)}
+                  dragStyle={keyDrag.style(i)}
                   onClick={anchor => canvasStore.openGroupKeyPicker(nested.name, anchor, k.column)}
                   onRemove={() => void canvasStore.removeGroupKey(nested.name, i)}
                   join
@@ -458,6 +472,8 @@ const CheckpointLine = observer(({ data, focused }: { data: CanvasTableNodeData;
                     testId={`result-chip-${nested.name}-${a}`}
                     title={`${aggregateTexts[i] ?? a}, worked out for each group${titled}. Click the function to change it`}
                     pins={pinsOf(a)}
+                    dragProps={aggregateDrag.props(i)}
+                    dragStyle={aggregateDrag.style(i)}
                     onClick={anchor => canvasStore.openAggregatePicker(nested.name, i, anchor)}
                     onRemove={() => void canvasStore.removeAggregate(nested.name, i)}
                   >
@@ -618,6 +634,63 @@ const DeleteButton = ({ onClick, testId }: { onClick: () => void; testId?: strin
   </div>
 );
 
+/**
+ * Dragging a chip onto another in its row, to reorder them (`onMove`).
+ * Without `onMove`, nothing is draggable. The chip being dragged fades;
+ * the one under it shows a bar on the side the dragged one will land.
+ * The row is `nodrag`, so ReactFlow doesn't move the node instead.
+ */
+const useChipDrag = (onMove?: (from: number, to: number) => void) => {
+  const [from, setFrom] = useState<number | null>(null);
+  const [over, setOver] = useState<number | null>(null);
+  const reset = () => {
+    setFrom(null);
+    setOver(null);
+  };
+  return {
+    props: (i: number): React.HTMLAttributes<HTMLElement> & { draggable?: boolean } =>
+      onMove
+        ? {
+            draggable: true,
+            onDragStart: e => {
+              e.stopPropagation();
+              e.dataTransfer.effectAllowed = 'move';
+              e.dataTransfer.setData('text/plain', String(i));
+              setFrom(i);
+            },
+            onDragOver: e => {
+              if (from === null || from === i) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'move';
+              if (over !== i) setOver(i);
+            },
+            onDragLeave: () => {
+              if (over === i) setOver(null);
+            },
+            onDrop: e => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (from !== null && from !== i) onMove(from, i);
+              reset();
+            },
+            onDragEnd: reset,
+          }
+        : {},
+    style: (i: number): React.CSSProperties =>
+      onMove
+        ? {
+            cursor: 'grab',
+            opacity: from === i ? 0.4 : undefined,
+            // The side it lands on: before this chip when coming from the right.
+            boxShadow:
+              over === i && from !== null
+                ? `${from > i ? 'inset 3px 0 0' : 'inset -3px 0 0'} var(--canvas-trace)`
+                : undefined,
+          }
+        : {},
+  };
+};
+
 // `label` names the row (select/where/order) - without it the three rows
 // were just stacked text with no way to tell, at a glance, which kind of
 // clause each chip belonged to. Each chip gets a small square "pin" mark
@@ -635,9 +708,12 @@ const ChipRow = ({
   onSelectReadOnly,
   highlightIndex,
   warn = false,
+  onMove,
 }: {
   label: string;
   chips: string[];
+  /** A chip dragged onto another: `from` goes to where `to` is. Select and group rows only. */
+  onMove?: (from: number, to: number) => void;
   /** Shown after `chips`, without a panel: what the query reads from the elements of an `unnest:`. */
   readOnlyChips?: string[];
   onRemove?: (index: number) => void;
@@ -657,6 +733,7 @@ const ChipRow = ({
   // managers hide it on key press) resting where the graph re-lays out would otherwise pull
   // focus onto an older node, and the next `|` would join from there.
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const drag = useChipDrag(onMove);
   if (chips.length === 0 && readOnlyChips.length === 0) return null;
   return (
     <div
@@ -694,6 +771,7 @@ const ChipRow = ({
           }
           onMouseEnter={() => setHoveredIndex(i)}
           onMouseLeave={() => setHoveredIndex(null)}
+          {...drag.props(i)}
           style={{
             fontSize: 'calc(10px * var(--text-scale, 1))',
             fontFamily: 'var(--canvas-font)',
@@ -706,6 +784,7 @@ const ChipRow = ({
             alignItems: 'center',
             gap: '4px',
             cursor: onSelect ? 'pointer' : undefined,
+            ...drag.style(i),
           }}
         >
           <span style={{ width: 4, height: 4, flexShrink: 0, background: 'var(--canvas-pin)' }} />
@@ -1225,6 +1304,13 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
               )
             : undefined
         }
+        onMove={(from, to) =>
+          void canvasStore.moveSelectColumn(
+            data.alias,
+            { column: data.selectColumns[from], occurrence: occurrenceAt(data.selectColumns, from) },
+            { column: data.selectColumns[to], occurrence: occurrenceAt(data.selectColumns, to) },
+          )
+        }
       />
       <ChipRow
         label="where"
@@ -1260,6 +1346,7 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
         onRemove={i => void canvasStore.toggleGroupColumn(data.alias, data.groupChips[i])}
         onSelect={(i, anchor) => canvasStore.openColumnPicker('group', data.alias, anchor, data.groupChips[i])}
         highlightIndex={cursorItem?.kind === 'group' ? data.groupChips.indexOf(cursorItem.column) : undefined}
+        onMove={(from, to) => void canvasStore.moveGroupColumn(data.alias, data.groupChips[from], data.groupChips[to])}
       />
       {/* What the query's update! or delete! does to this table's rows. */}
       {data.write && (

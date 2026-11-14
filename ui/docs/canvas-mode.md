@@ -197,6 +197,8 @@ shown while the pointer is on it, do the same for that table.
 | --- | --- |
 | `j` / `↓` | Focus the next node in pipeline order |
 | `k` / `↑` | Focus the previous node |
+| `Shift`+`J` / `Shift`+`K` | Walk every stop one at a time: a node, then its join, select, where, order and group chips |
+| `Shift`+`←` / `Shift`+`→` | On a select or group chip: move it one place in its row, and the result's columns with it (`CanvasStore.moveFocusedChip`). Dragging a chip onto another does the same, and on a group's line it reorders the keys or the aggregates |
 
 Focus order is the pipeline's own sequence, top to bottom
 (`CanvasStore.orderedFocusTargets`): each stage's tables, then the node of the
