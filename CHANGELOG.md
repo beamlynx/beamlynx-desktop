@@ -4,8 +4,26 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.32.0] - 2026-11-14
 ### Added
+- **Every canvas action is in one bar at the bottom of the canvas:** join, select and where, and › (or `>`) to show the rest in the bar itself: order, group, limit, count and path for the query, then traverse, unnest, describe and references for the selected table. ‹ (or `<`, or Escape) closes them. Each button shows its key in bold, and every list it opens rises out of the bar. A table also shows its own join, select and where buttons while you point at it. (bundled beamlynx-ui 0.77.0)
+- **A group's line on the canvas reads like the query, and you change the group there:** `by c.id with # count, Σ sum o.total_amount`. Click a column to choose the columns, or an aggregate to pick its function: count, sum, average, smallest or largest value. A group or `limit … per` is a dotted line under the tables it seals, and those tables stay on the canvas. (bundled beamlynx-ui 0.77.0)
+- **The canvas can count a query's rows:** count in the bar, or `c`. A count is a group of all rows, so its line works like a group's. `n` now writes the canvas note; it was `c`. (bundled beamlynx-ui 0.77.0)
+- **You can reorder columns on the canvas.** Drag a select or group chip onto another, or select it with Shift+J and press Shift+← or Shift+→. The result's columns follow. (bundled beamlynx-ui 0.77.0)
+- **The column list for an aggregate offers only the columns it can read:** numbers for sum and average, and anything that sorts for the smallest or largest value. (bundled beamlynx-ui 0.77.0, pine-lang 0.57.0)
+- **A join can name the table on each side, and hold a condition.** `fd fd.id = av.attributeId, fd.tenant_id = c.tenantId` joins `fd` to two earlier tables at once, and the canvas draws a line to each. `purchase :left .customer_id = .id, .status = 'paid'` keeps every customer and attaches only paid purchases. (bundled pine-lang 0.57.0, beamlynx-ui 0.77.0)
+- **Column lists offer every table's columns,** in the canvas and in the Pine panel's completions, under a heading for each table. In a canvas list, `t.id` shows the id of the table aliased `t`, and `tenant id` the id of every tenant table. (bundled beamlynx-ui 0.77.0, pine-lang 0.57.0)
 - **An AI agent can send values for its SQL's `$1`, `$2` by number.** `run_sql_as_pine` takes `{"1": [17, 23]}`, and the query runs with that value. The agent's Pine reference also shows how to name the table on each side of a join, and how to keep a condition on a join.
+
+### Changed
+- **You can see whether your keys go to the canvas or to the Pine panel.** That pane has a faint blue border. Escape in the Pine panel goes to the canvas once there is nothing else for it to do, and `:` on the canvas goes back. (bundled beamlynx-ui 0.77.0)
+- **After you end a query with describe, references or count on the canvas, the keyboard is on that ending.** `x` takes it off again, and a second `x` removes the table. Before, the first `x` removed the table. (bundled beamlynx-ui 0.77.0)
+- **Ordering by columns of several tables sorts in the order you picked them.** (bundled beamlynx-ui 0.77.0)
+
+### Fixed
+- **`describe:` after a group describes the group's result,** its keys and aggregates, not the table before the group. (bundled pine-lang 0.57.0)
+- **Tab in the Pine panel highlights the first completion.** Pressed right after typing, it could land on the second one. (bundled beamlynx-ui 0.77.0)
 
 ## [0.31.0] - 2026-11-12
 ### Changed

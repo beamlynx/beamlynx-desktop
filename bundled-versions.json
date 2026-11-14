@@ -1,5 +1,5 @@
 {
-  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang bumped to its tagged 0.56.0 (no selected connection, pools under the client's id, JSON-function masking leak, origin check); beamlynx-ui bumped to its tagged 0.76.0 (one connection id per tab, edits and runs keep their database, Tidy renamed Format). beamlynx-ui 0.76.0 needs pine-lang 0.56 (its RequiredVersion).",
-  "pineLangRef": "0.56.0",
-  "beamlynxUiRef": "0.76.0"
+  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang bumped to its tagged 0.57.0 (joins name each side and hold conditions, column hints from every table with their types, describe: after a group); beamlynx-ui bumped to its tagged 0.77.0 (one canvas bar, editable group and count lines, column reordering, focus border). beamlynx-ui 0.77.0 needs pine-lang 0.57 (its RequiredVersion).",
+  "pineLangRef": "0.57.0",
+  "beamlynxUiRef": "0.77.0"
 }

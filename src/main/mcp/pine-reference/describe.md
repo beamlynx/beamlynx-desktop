@@ -30,6 +30,14 @@ user | activity .user_id | describe:
 
 Describes the table the pipe ends on: here `activity`.
 
+### After a group
+
+```
+user | activity .user_id | group: u_0.id with count | describe:
+```
+
+Describes the group's result: its keys and aggregates, here `id` and `count`.
+
 ### A named result
 
 ```
