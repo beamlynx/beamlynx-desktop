@@ -23,6 +23,84 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.77.0',
+    date: '2026-11-14',
+    added: [
+      {
+        title: "You can reorder columns on the canvas",
+        description: "Drag a select or group chip onto another, or select it with Shift+J and press Shift+← or Shift+→. The result's columns follow. On a group's line, the columns it groups on and the aggregates reorder the same way.",
+      },
+      {
+        title: "The column list for an aggregate offers only the columns it can read",
+        description: "Numbers for sum and average, and anything that sorts for the smallest or largest value.",
+      },
+      {
+        title: "The canvas draws a join that compares with more than one table",
+        description: "In `fd fd.id = av.attributeId, fd.tenant_id = c.tenantId`, each table gets its own line to `fd`, and each column shows on its own table.",
+      },
+      {
+        title: "An AI agent's SQL with `$1` runs with the value the agent sends for it",
+        description: "The agent sends `{\"1\": [...]}`, and Beamlynx passes it to the variable the SQL became, such as `$tenant_id`. A number the SQL doesn't have runs nothing and says which numbers it has.",
+      },
+      {
+        title: "The canvas can count a query's rows",
+        description: "count in the bar, or `c`, ends the query with `count:`, drawn as a dotted line under the graph. A count is a group of all rows, so its line looks and works like a group's: `all rows + with # count +`. Add a column with the first +, another aggregate with the second, or click `count` to pick another function, and it becomes that group. Steps you add afterwards go in before the count. The line's × takes it off, and so does `x` once you move down to the line.",
+      },
+    ],
+    changed: [
+      {
+        title: "After you end a query with describe, references or count on the canvas, the keyboard is on that ending",
+        description: "`x` takes it off again, and a second `x` removes the table. Before, the first `x` removed the table. With the keys, `Shift+J` reaches a describe or references like any other chip.",
+      },
+      {
+        title: "`n` (note) writes the canvas comment; it was `c`",
+        description: "`c` now counts the query's rows.",
+      },
+      {
+        title: "Every canvas action is in one bar at the bottom of the canvas",
+        description: "Join, select and where, and › (or `>`) to show the rest in the bar itself. The bar visibly grows: past a divider come order, group, limit, count and path for the query, then, past another divider, traverse, unnest, describe and references for the selected table. On a narrow canvas they open upward, in rows above the bar. ‹ (or `<`, or Escape) closes them. Each button shows its key in bold, and every list it opens rises out of the bar, at the same place and size each time. The graph stays above the bar. Join, traverse, describe and references are for the table you selected. The column lists show every table's columns under a heading for each table: the selected table first, then the newest, then the rest. The mode line at the bottom left is gone.",
+      },
+      {
+        title: "A table shows its own buttons when you point at it",
+        description: "Join, select, where, and + for order, traverse, describe and references. Its select, where and order list that table's columns only. While you point at a table, the keys s, w, o, i and + work on it too, and the bar at the bottom dims.",
+      },
+      {
+        title: "In a column list, `t.id` shows the id of the table aliased `t`, and `tenant id` or `id tenant` shows the id of every tenant table in the query",
+        description: "The selected row is now the same colour as in the Pine panel's completions. A table's heading stays put as the list scrolls, in the canvas lists and in the Pine panel's completions alike.",
+      },
+      {
+        title: "Escape in the Pine panel goes to the canvas",
+        description: "Once there is nothing else for it to do: with Vim on, the second Escape, after the one that leaves insert mode. `:` on the canvas goes back to the Pine panel, and opens it if it is closed.",
+      },
+      {
+        title: "A group or a `limit … per` is a dotted line under the tables it seals",
+        description: "Those tables stay on the canvas instead of turning into a result node, and no longer fold away. What you do next goes on below the line.",
+      },
+      {
+        title: "A group's line reads like the query: `by c.id with # count, Σ sum o.total_amount`, and you change the group there",
+        description: "Click a column it groups on to choose the columns, or + to add one. Click an aggregate to pick its function: count, sum, average, smallest or largest value. One that needs a column asks for it next, and clicking the column changes it. The + after the aggregates adds one. Point at a chip for its ×. A join on a column, from the bar's join, hangs from its chip.",
+      },
+      {
+        title: "You can see whether your keys go to the canvas or to the Pine panel",
+        description: "That pane has a faint blue border. While the canvas has them, the selected table's ring is at full strength and the bar's key letters are bold; while you type in the Pine panel, both are muted. While the command search is open, neither pane has the border.",
+      },
+      {
+        title: "Completions in the Pine panel offer every table's columns",
+        description: "They come under a heading for each table. The current table's come first. A column of another table is inserted with its alias, such as `c.email`.",
+      },
+      {
+        title: "Ordering by columns of several tables sorts in the order you picked them",
+        description: "The canvas writes one `order:` at the end of the query.",
+      },
+    ],
+    fixed: [
+      {
+        title: "Tab in the Pine panel highlights the first completion",
+        description: "Pressed right after typing, it could land on the second one once the completions caught up with what you typed.",
+      },
+    ],
+  },
+  {
     version: '0.76.0',
     date: '2026-11-12',
     changed: [
@@ -2887,4 +2965,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.76.0';
+export const LATEST_VERSION = '0.77.0';

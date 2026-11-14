@@ -4,12 +4,13 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.77.0] - 2026-11-14
 ### Added
 - **You can reorder columns on the canvas.** Drag a select or group chip onto another, or select it with Shift+J and press Shift+← or Shift+→. The result's columns follow. On a group's line, the columns it groups on and the aggregates reorder the same way.
 - **The column list for an aggregate offers only the columns it can read:** numbers for sum and average, and anything that sorts for the smallest or largest value.
 - **The canvas draws a join that compares with more than one table.** In `fd fd.id = av.attributeId, fd.tenant_id = c.tenantId`, each table gets its own line to `fd`, and each column shows on its own table.
 - **An AI agent's SQL with `$1` runs with the value the agent sends for it.** The agent sends `{"1": [...]}`, and Beamlynx passes it to the variable the SQL became, such as `$tenant_id`. A number the SQL doesn't have runs nothing and says which numbers it has.
-
 - **The canvas can count a query's rows:** count in the bar, or `c`, ends the query with `count:`, drawn as a dotted line under the graph. A count is a group of all rows, so its line looks and works like a group's: `all rows + with # count +`. Add a column with the first +, another aggregate with the second, or click `count` to pick another function, and it becomes that group. Steps you add afterwards go in before the count. The line's × takes it off, and so does `x` once you move down to the line.
 
 ### Changed
