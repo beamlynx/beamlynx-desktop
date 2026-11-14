@@ -106,7 +106,8 @@ const BarButton = ({
             <span style={{ color: 'var(--canvas-text-dim)' }}>{label.slice(keyIndex + 1)}</span>
           </>
         ) : (
-          label
+          // No key works now: all of it dim, so nothing reads as active.
+          <span style={{ color: 'var(--canvas-text-dim)' }}>{label}</span>
         ))}
     </button>
   );

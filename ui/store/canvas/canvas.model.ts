@@ -345,7 +345,9 @@ export type ConfigItem =
   | { kind: 'join-type' }
   | { kind: 'where'; index: number }
   | { kind: 'order'; column: string }
-  | { kind: 'group'; column: string };
+  | { kind: 'group'; column: string }
+  // The query's describe: or references:, on the table it describes. Nothing follows it.
+  | { kind: 'describe' };
 
 /** Viewport coordinates (clientX/clientY) of the action button that opened the picker - see Picker.tsx. */
 /**

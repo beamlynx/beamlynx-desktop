@@ -373,6 +373,7 @@ export class CanvasStore {
     (node?.data.whereChips ?? []).forEach((_, index) => items.push({ kind: 'where', index }));
     (node?.data.orderChips ?? []).forEach(chip => items.push({ kind: 'order', column: actions.splitOrderItem(chip).column }));
     (node?.data.groupChips ?? []).forEach(column => items.push({ kind: 'group', column }));
+    if (node?.data.describe) items.push({ kind: 'describe' });
     return items;
   }
 
@@ -411,7 +412,7 @@ export class CanvasStore {
 
   /** Identifies a ConfigItem for equality checks below - not just its array position, which select/order/group deliberately don't carry (see canvas.model.ts's own comment on ConfigItem). */
   private static configItemKey(item: ConfigItem): string {
-    if (item.kind === 'join-type') return 'join-type';
+    if (item.kind === 'join-type' || item.kind === 'describe') return item.kind;
     if (item.kind === 'unnest') return `unnest:${item.name}`;
     if (item.kind === 'where') return `where:${item.index}`;
     if (item.kind === 'select') return `select:${item.column}#${item.occurrence}`;
@@ -553,6 +554,10 @@ export class CanvasStore {
         return;
       case 'unnest':
         await this.removeUnnest(alias, item.name);
+        return;
+      case 'describe':
+        await this.removeDescribe(alias);
+        this.focusNode(alias);
         return;
       case 'group':
         await this.toggleGroupColumn(alias, item.column);
@@ -2089,7 +2094,16 @@ export class CanvasStore {
   async describeNode(id: string, op: 'describe' | 'references' = 'describe') {
     this.closePicker();
     const { alias } = this.scopeOf(id);
-    await this.commit(base => actions.describeTable(base, op, actions.resolveAlias(base, alias)), id);
+    // The commit can pin the alias (o_1 becomes o): focus follows the new one.
+    let described = alias;
+    await this.commit(base => {
+      described = actions.resolveAlias(base, alias);
+      return actions.describeTable(base, op, described);
+    }, id);
+    // The ending just added is the keyboard's stop, so `x` takes it off
+    // again before it would remove the table.
+    const prefix = id.endsWith(alias) ? id.slice(0, id.length - alias.length) : '';
+    this.focusConfigItem(prefix + described, { kind: 'describe' });
   }
 
   /** Set by removeCount for its one commit: runCommit then leaves the `count:` off. */
@@ -2108,6 +2122,9 @@ export class CanvasStore {
     this.closePicker();
     if (this.counted) return;
     await this.commit(base => `${toText(base.segments)} | count:`);
+    // The count line is the keyboard's stop, so `x` takes it off again
+    // before it would remove the table.
+    this.focusNode(COUNT_NODE_ID);
   }
 
   /** The × on the count line: the query goes back to its rows. */

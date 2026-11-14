@@ -1363,9 +1363,9 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
       {data.describe && (
         <ChipRow
           label={data.describe}
-          chips={[]}
-          readOnlyChips={[data.describe === 'describe' ? 'its columns' : 'how it joins']}
-          onRemoveReadOnly={() => void canvasStore.removeDescribe(data.alias)}
+          chips={[data.describe === 'describe' ? 'its columns' : 'how it joins']}
+          onRemove={() => void canvasStore.removeDescribe(data.alias)}
+          highlightIndex={cursorItem?.kind === 'describe' ? 0 : undefined}
         />
       )}
       </div>
