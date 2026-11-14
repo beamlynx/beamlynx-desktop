@@ -116,22 +116,31 @@ const cycleTabOrder = (e: React.KeyboardEvent<HTMLElement>) => {
 // clientX/clientY - captured at the action button's click - can be used
 // directly with no coordinate conversion. Clamped so a picker opened near an
 // edge (e.g. the rightmost node's "select" button) still renders on-screen.
-const anchoredStyle = (anchor: PickerAnchor): React.CSSProperties => {
+/**
+ * `fill`: a list, which opens at its full height. Placed by its bottom
+ * edge, a list sized to what it holds opened as a small "loading..." box
+ * and jumped up when its items came.
+ */
+const anchoredStyle = (anchor: PickerAnchor, fill = false): React.CSSProperties => {
   const margin = 8;
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1200;
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
   if (anchor.centered) {
     // The operation bar's: always the same width, centred over the bar and
     // just above it, whichever of its buttons opened it. It reads as the
-    // bar opening upward.
+    // bar opening upward, and rises out of it as it opens.
     const left = Math.min(Math.max(anchor.x - pickerWidth / 2, margin), vw - pickerWidth - margin);
     const bottom = Math.max(vh - anchor.y + 6, margin);
+    const height = Math.min(pickerHeight, vh - bottom - margin);
     return {
       ...basePickerStyle,
       left,
       bottom,
       width: pickerWidth,
-      maxHeight: Math.min(pickerHeight, vh - bottom - margin),
+      maxHeight: height,
+      ...(fill ? { height } : {}),
+      transformOrigin: 'bottom center',
+      animation: 'canvas-picker-rise 160ms cubic-bezier(0.2, 0, 0, 1) both',
       border: '1px solid var(--canvas-node-border)',
       borderRadius: 6,
       background: 'var(--canvas-node-bg)',
@@ -1156,7 +1165,7 @@ const Picker: React.FC = observer(() => {
   };
 
   return (
-    <div ref={rootRef} style={anchoredStyle(picker.anchor)} data-testid="canvas-picker">
+    <div ref={rootRef} style={anchoredStyle(picker.anchor, true)} data-testid="canvas-picker">
       <div style={headerStyle}>
         <input
           ref={filterRef}
