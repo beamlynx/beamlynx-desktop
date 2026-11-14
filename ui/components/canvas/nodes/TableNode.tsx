@@ -237,7 +237,7 @@ const ChipButton = ({
  * a key also shows a join button: the list shows only the tables that join
  * on that column. A join already on it hangs from the chip's bottom edge.
  */
-const ResultChip = ({
+export const ResultChip = ({
   name,
   column,
   testId,
@@ -320,7 +320,7 @@ const ResultChip = ({
 };
 
 /** The + at the end of a group's keys or of its aggregates. */
-const LineAdd = ({ testId, title, onClick }: { testId: string; title: string; onClick: (anchor: PickerAnchor) => void }) => (
+export const LineAdd = ({ testId, title, onClick }: { testId: string; title: string; onClick: (anchor: PickerAnchor) => void }) => (
   <span
     data-testid={testId}
     className="picker-trigger"

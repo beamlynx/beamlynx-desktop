@@ -286,7 +286,8 @@ export type PickerRequest =
    */
   | { kind: 'where'; alias: string; draft?: WhereDraft; only?: boolean }
   | { kind: 'order'; alias: string; only?: boolean }
-  | { kind: 'group'; alias: string; only?: boolean }
+  /** `count`: opened from the count line, whose first key turns `count:` into a group. */
+  | { kind: 'group'; alias: string; only?: boolean; count?: boolean }
   /**
    * The functions an aggregate of checkpoint `alias`'s group can be. `index`
    * is the aggregate's place after `with`; one past the end adds one.
