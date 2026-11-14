@@ -668,6 +668,8 @@ export class GlobalStore {
    * the canvas.
    */
   get keyboardPane(): 'graph' | 'input' | null {
+    // The command palette takes every key while it is open: neither pane has them.
+    if (this.showCommandPalette) return null;
     const session = this.sessions[this.activeSessionId];
     if (session?.textInputFocused && this.newLayoutPanelVisible) return 'input';
     const panel = this.activeKeyboardPanel;

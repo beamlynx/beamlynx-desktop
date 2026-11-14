@@ -233,9 +233,9 @@ const ChipButton = ({
 
 /**
  * One column of a group's result, as a chip on its line: a key, or an
- * aggregate. A click changes it. On hover it shows a × that removes it, and
- * a key also shows a join button: the list shows only the tables that join
- * on that column. A join already on it hangs from the chip's bottom edge.
+ * aggregate. A click changes it. On hover it shows a × that removes it. A
+ * join on the column (the bar's join, after the group) hangs from the
+ * chip's bottom edge.
  */
 export const ResultChip = ({
   name,
@@ -247,7 +247,6 @@ export const ResultChip = ({
   pins,
   onClick,
   onRemove,
-  join,
   dragProps,
   dragStyle,
 }: {
@@ -260,12 +259,10 @@ export const ResultChip = ({
   pins: { h: CanvasHandle; type: 'source' | 'target' }[];
   onClick: (anchor: PickerAnchor) => void;
   onRemove: () => void;
-  join?: boolean;
   /** useChipDrag's, to reorder the line's keys or aggregates. */
   dragProps?: React.HTMLAttributes<HTMLElement>;
   dragStyle?: React.CSSProperties;
 }) => {
-  const canvasStore = useCanvasStore();
   const [hover, setHover] = useState(false);
   return (
     <span
@@ -300,15 +297,6 @@ export const ResultChip = ({
       {children}
       {/* Always laid out, shown on hover: the chip doesn't change width under the pointer. */}
       <span style={{ display: 'inline-flex', gap: 3, marginLeft: 2, visibility: hover ? 'visible' : 'hidden' }}>
-        {join && (
-          <ChipButton
-            testId={`${testId}-join`}
-            title={`Join a table on ${column}`}
-            onClick={anchor => void canvasStore.openCheckpointPicker(name, 'join', anchor, column)}
-          >
-            &#8904;
-          </ChipButton>
-        )}
         <ChipButton testId={`${testId}-remove`} title={`Remove ${column}`} onClick={() => onRemove()}>
           &times;
         </ChipButton>
@@ -365,8 +353,8 @@ const DimmedAlias = ({ text }: { text: string }) => {
  * A checkpoint's line (beamlynx-plans #33): a dotted line across the graph,
  * below the stage it seals, in place of a result node. On it: an icon for
  * what sealed the stage, then that step's parts. A group shows a chip for
- * each key and each aggregate, which are the result's columns: a click on
- * one joins a table on it, and the join hangs from that chip. A limit shows
+ * each key and each aggregate, which are the result's columns: a join on
+ * one hangs from that chip. A limit shows
  * its value, which opens the limit editor. × removes the checkpoint. Any
  * other join onto the result gets a pin in a row under the line.
  */
@@ -446,7 +434,6 @@ const CheckpointLine = observer(({ data, focused }: { data: CanvasTableNodeData;
                   dragStyle={keyDrag.style(i)}
                   onClick={anchor => canvasStore.openGroupKeyPicker(nested.name, anchor, k.column)}
                   onRemove={() => void canvasStore.removeGroupKey(nested.name, i)}
-                  join
                 >
                   <span>
                     <DimmedAlias text={k.from} />

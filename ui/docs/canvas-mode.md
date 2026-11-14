@@ -390,8 +390,9 @@ The canvas draws the pipeline as stages stacked top to bottom
   aggregate chip opens its functions (`openAggregatePicker`, request kind
   `aggregate-fn`); one that reads a column opens the column list next
   (`aggregate`). An aggregate keeps its column's name when a later step
-  uses it (`pine-actions.ts`'s `withAggregate`). Each chip's × removes it;
-  a key's ⋈ joins a table on it.
+  uses it (`pine-actions.ts`'s `withAggregate`). Each chip's × removes it.
+  To join a table on a key, use the bar's join: after a group, it lists
+  the joins from the group's result.
 - **Collapsed** (the default), that node is all there is. **Expanded**, a
   container is drawn directly above it (`nodes/NestedContainerNode.tsx`):
   a dashed box with no fill around the stage the checkpoint seals, with the
