@@ -1104,8 +1104,8 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
             // typing goes to the Pine panel: the ring is where the keys act.
             border: isFocusTarget && !hasConfigCursor
               ? keyboardHere
-                ? '3px solid var(--canvas-node-border-current)'
-                : '3px solid color-mix(in srgb, var(--canvas-node-border-current) 35%, var(--canvas-node-border))'
+                ? '2px solid var(--canvas-node-border-current)'
+                : '2px solid color-mix(in srgb, var(--canvas-node-border-current) 35%, var(--canvas-node-border))'
               : '1.5px solid var(--canvas-node-border)',
             background: isFocusTarget && !hasConfigCursor ? 'var(--canvas-node-bg-current)' : 'var(--canvas-node-bg)',
             borderRadius: hasNotch ? '3px' : '8px',

@@ -191,8 +191,9 @@ const LeftPane = observer(
             minHeight: 0,
             minWidth: 0,
             // The pane that has the keyboard has the accent border: this
-            // one, or the Pine panel's (Input.tsx). See keyboardPane.
-            border: `1px solid ${global.keyboardPane === 'graph' ? 'var(--primary-color)' : 'var(--border-color)'}`,
+            // one, or the Pine panel's (Input.tsx). See keyboardPane. A
+            // tint of the accent, not the full colour: it's a hint, not an alarm.
+            border: `1px solid ${global.keyboardPane === 'graph' ? 'var(--pane-focus-border)' : 'var(--border-color)'}`,
             borderRadius: 1,
             overflow: 'hidden',
             backgroundColor: 'var(--graph-background)',
