@@ -195,6 +195,10 @@ const LeftPane = observer(
             overflow: 'hidden',
             backgroundColor: 'var(--graph-background)',
             outline: 'none',
+            // The canvas's keys work only while it has the keyboard (Escape
+            // from the Pine panel, or a click): its border says so.
+            transition: 'border-color 120ms',
+            '&:focus-within': { borderColor: 'var(--primary-color)' },
           }}
         >
           <Canvas
