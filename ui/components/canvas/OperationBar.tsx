@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { CanvasStore } from '../../store/canvas/canvas.store';
 import { useStores } from '../../store/store-container';
@@ -17,6 +17,15 @@ export const barAnchor = (): PickerAnchor => {
   if (!bar) return { x: 24, y: 24 };
   return { x: bar.left + bar.width / 2, y: bar.top, above: true, centered: true };
 };
+
+/** The space between the bar's buttons, and the bar's side padding. */
+const barGap = 6;
+const barPadding = 10;
+/** A divider's width with its margins. */
+const dividerSpace = 5;
+
+/** The extra actions for the whole query. The others are for the selected table, under its name. */
+const QUERY_ACTIONS: MoreAction[] = ['order', 'group', 'limit', 'count', 'path'];
 
 /** Which of the bar's actions has its picker open, if any: the others dim. */
 const activeBarAction = (picker: PickerState): string | null => {
@@ -43,6 +52,7 @@ const BarButton = ({
   onClick,
   dimmed,
   keyIndex,
+  hidden,
   children,
 }: {
   label: string;
@@ -50,6 +60,8 @@ const BarButton = ({
   onClick: (e: React.MouseEvent) => void;
   dimmed: boolean;
   keyIndex?: number;
+  /** In the closed part of the bar: drawn at no size, so out of Tab's way too. */
+  hidden?: boolean;
   children?: React.ReactNode;
 }) => {
   const [hover, setHover] = useState(false);
@@ -57,6 +69,8 @@ const BarButton = ({
     <button
       type="button"
       data-testid={testId}
+      tabIndex={hidden ? -1 : undefined}
+      aria-hidden={hidden || undefined}
       // Picker.tsx's click-outside handler leaves these alone, so a click
       // here switches pickers instead of only closing the open one.
       className="picker-trigger"
@@ -103,10 +117,10 @@ const BarButton = ({
  * canvas: tables are added below the ones before them, so the next step
  * is read there. Canvas.tsx keeps the graph above it (operationBarSpace).
  *
- * Join, select and where, and "+", which grows the bar to show the rest in
- * it: order, group, limit, path and count for the query, traverse,
- * describe and references for the selected table, and unnest
- * (CanvasStore.barMoreActions). The column pickers list every table's
+ * Join, select and where, and `›`, which grows the bar to show the rest in
+ * it, past a divider: order, group, limit, count and path for the query,
+ * then, under the selected table's name, traverse, describe, references
+ * and unnest (CanvasStore.barMoreActions). The column pickers list every table's
  * columns, the selected table's first (beamlynx-plans #28). Every picker
  * opens in the same place, above the bar (barAnchor).
  *
@@ -116,6 +130,57 @@ const BarButton = ({
  */
 const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasStore }) => {
   const { global } = useStores();
+  const barRef = useRef<HTMLDivElement>(null);
+  const mainRef = useRef<HTMLDivElement>(null);
+  const extrasRef = useRef<HTMLDivElement>(null);
+  // Too narrow for every action on one row: the rest open upward, in rows
+  // of their own above the bar, instead of reflowing it. `width` is how
+  // wide those rows are, and `main` the bar's own row: the rows are laid
+  // out at their full width and revealed from the centre, so nothing
+  // reflows as they open.
+  const [layout, setLayout] = useState<{ stacked: boolean; width: number; main: number }>({
+    stacked: false,
+    width: 0,
+    main: 0,
+  });
+  useLayoutEffect(() => {
+    const parent = barRef.current?.parentElement;
+    if (!parent) return;
+    const check = () => {
+      const main = mainRef.current;
+      const extras = extrasRef.current;
+      if (!main || !extras) return;
+      // The groups' own widths on one row, whichever layout they're in now:
+      // wrapping doesn't change them. Plus the two dividers a row has.
+      const groups = Array.from(extras.querySelectorAll<HTMLElement>('[data-bar-group]'));
+      // A group's width on one line: its parts, which wrapping doesn't change.
+      const lineWidth = (g: HTMLElement) => {
+        const parts = Array.from(g.children) as HTMLElement[];
+        // offsetWidth rounds: a pixel each keeps a group that fits from wrapping by a fraction.
+        return parts.reduce((w, c) => w + c.offsetWidth + 1, 0) + barGap * Math.max(parts.length - 1, 0);
+      };
+      const natural = groups.reduce((w, g) => w + lineWidth(g), 0) + groups.length * (barGap + dividerSpace);
+      const room = parent.clientWidth - 32 - 2 * barPadding;
+      // The bar's own row: join, select, where and `›` only. On one row it
+      // also holds the extras, and counting them here flipped the layout
+      // back and forth without end.
+      const own = Array.from(main.querySelectorAll<HTMLElement>(':scope > button'));
+      const mainOwn = own.reduce((w, b) => w + b.offsetWidth, 0) + barGap * Math.max(own.length - 1, 0);
+      const stacked = mainOwn + natural > room;
+      // Both groups on one row above the bar if they fit, else one each.
+      const widths = groups.map(lineWidth);
+      const together = widths.reduce((a, b) => a + b, 0) + barGap * Math.max(widths.length - 1, 0);
+      const width = Math.min(Math.max(together <= room ? together : Math.max(...widths), mainOwn), room);
+      const next = { stacked, width: stacked ? width : 0, main: Math.round(mainOwn) };
+      setLayout(prev =>
+        prev.stacked === next.stacked && prev.width === next.width && prev.main === next.main ? prev : next,
+      );
+    };
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(parent);
+    return () => observer.disconnect();
+  });
   if (!canvasStore.selectedNodeActions || !canvasStore.operationAnchor || canvasStore.selectedAliases.length >= 2) {
     return null;
   }
@@ -127,14 +192,154 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
   const keys = canvasStore.mode === 'normal' && !pointed && global.keyboardPane === 'graph';
   const dim = (kind: string) => active !== null && active !== kind;
   const expanded = canvasStore.barExpanded;
+  const { stacked, width: rowsWidth, main: mainWidth } = layout;
   const more = MORE_ACTIONS.filter(a => canvasStore.barMoreActions.includes(a.action));
+  // For the whole query, then for the selected table, under its name.
+  const queryActions = more.filter(a => QUERY_ACTIONS.includes(a.action));
+  const tableActions = more.filter(a => !QUERY_ACTIONS.includes(a.action));
   const close = () => {
     // Clicking one of the main three closes the expanded part.
     if (expanded) canvasStore.collapseBar();
   };
   const run = (action: MoreAction) => canvasStore.runBarAction(action, barAnchor());
+
+  // The rest of the actions. Collapsed, they are still there, at no size,
+  // so opening the bar can be watched: the strip slides open (row) or up
+  // (stacked), and each button fades in behind its edge, one after another.
+  let shown = 0;
+  const item = (a: (typeof MORE_ACTIONS)[number]) => {
+    const delay = expanded ? 90 + shown++ * 30 : 0;
+    return (
+      <span
+        key={a.action}
+        style={{
+          display: 'inline-flex',
+          opacity: expanded ? 1 : 0,
+          transform: expanded ? 'none' : 'translateY(2px)',
+          transition: `opacity 180ms ease ${delay}ms, transform 180ms ease ${delay}ms`,
+        }}
+      >
+        <BarButton
+          label={a.label}
+          testId={`operation-${a.action}`}
+          onClick={() => run(a.action)}
+          dimmed={dim(a.action)}
+          keyIndex={keys ? a.label.indexOf(a.key) : undefined}
+          hidden={!expanded}
+        />
+      </span>
+    );
+  };
+  const divider = (key: string) => (
+    <span
+      key={key}
+      aria-hidden
+      style={{ width: 1, alignSelf: 'stretch', margin: '3px 2px', background: 'var(--canvas-chip-border)', flexShrink: 0 }}
+    />
+  );
+  // Each group stays together on a row: the query's actions, and the
+  // table's under its name.
+  const group = (key: string, children: React.ReactNode) => (
+    <span
+      key={key}
+      data-bar-group
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: barGap,
+        flexShrink: 0,
+        // A group wider than the canvas wraps within itself, in rows above the bar only.
+        ...(stacked ? { flexWrap: 'wrap', justifyContent: 'center', maxWidth: '100%' } : {}),
+      }}
+    >
+      {children}
+    </span>
+  );
+  const queryGroup = queryActions.length ? group('query', queryActions.map(item)) : null;
+  const tableGroup = tableActions.length
+    ? group(
+        'table',
+        <>
+          <span
+            data-testid="operation-table-label"
+            title="These act on the selected table"
+            style={{
+              fontFamily: 'var(--canvas-font)',
+              fontSize: 'calc(11px * var(--text-scale, 1))',
+              color: 'var(--canvas-text-dim)',
+              whiteSpace: 'nowrap',
+              opacity: expanded ? 1 : 0,
+              transition: `opacity 180ms ease ${expanded ? 90 + queryActions.length * 30 : 0}ms`,
+            }}
+          >
+            {canvasStore.selectedNodeActions.label}
+          </span>
+          {tableActions.map(item)}
+        </>,
+      )
+    : null;
+  // In a row of the bar, a divider before each group; rows of their own need none.
+  const extrasContent = stacked
+    ? [queryGroup, tableGroup]
+    : [queryGroup && divider('divider-query'), queryGroup, tableGroup && divider('divider-table'), tableGroup];
+  const slide = 'cubic-bezier(0.2, 0, 0, 1)';
+  const extras = stacked ? (
+    // Opens upward (the rows' height) and outward from the centre (a clip
+    // widening from the bar's own width to the rows'), over rows laid out
+    // at their full width.
+    <div
+      data-testid="operation-bar-extras"
+      style={{ display: 'grid', gridTemplateRows: expanded ? '1fr' : '0fr', transition: `grid-template-rows 240ms ${slide}` }}
+    >
+      <div
+        style={{
+          minHeight: 0,
+          overflow: 'hidden',
+          display: 'flex',
+          justifyContent: 'center',
+          justifySelf: 'center',
+          width: expanded ? rowsWidth : mainWidth,
+          transition: `width 240ms ${slide}`,
+        }}
+      >
+        <div
+          ref={extrasRef}
+          style={{
+            width: rowsWidth,
+            flexShrink: 0,
+            display: 'flex',
+            flexWrap: 'wrap',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: barGap,
+            // The space between these rows and the bar's own.
+            paddingBottom: barGap,
+          }}
+        >
+          {extrasContent}
+        </div>
+      </div>
+    </div>
+  ) : (
+    <div
+      data-testid="operation-bar-extras"
+      style={{
+        display: 'grid',
+        gridTemplateColumns: expanded ? '1fr' : '0fr',
+        // Closed, it takes back the gap before it as well.
+        marginLeft: expanded ? 0 : -barGap,
+        transition: `grid-template-columns 240ms ${slide}, margin-left 240ms ${slide}`,
+      }}
+    >
+      <div ref={extrasRef} style={{ minWidth: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', gap: barGap }}>
+        {extrasContent}
+      </div>
+    </div>
+  );
+
   return (
     <div
+      ref={barRef}
       className="nodrag"
       data-testid="canvas-operation-bar"
       data-expanded={expanded || undefined}
@@ -145,12 +350,10 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
         transform: 'translateX(-50%)',
         zIndex: 15,
         display: 'flex',
-        flexWrap: 'wrap',
-        justifyContent: 'center',
+        flexDirection: 'column',
         alignItems: 'center',
-        gap: 6,
         width: 'max-content',
-        padding: '6px 10px',
+        padding: `6px ${barPadding}px`,
         borderRadius: 6,
         background: 'var(--canvas-node-bg)',
         border: '1px solid var(--canvas-node-border)',
@@ -160,6 +363,8 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
         maxWidth: 'calc(100% - 32px)',
       }}
     >
+      {stacked && extras}
+      <div ref={mainRef} style={{ display: 'flex', alignItems: 'center', gap: barGap }}>
       {/* `i` (insert) or `|` joins: it's join's third letter. */}
       <BarButton
         label="join"
@@ -191,35 +396,24 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
         dimmed={dim('where')}
         keyIndex={keys ? 0 : undefined}
       />
-      {/* The rest, in the bar itself, each fading in a moment after the one
-          before it. On a narrow canvas the bar wraps onto a second row. */}
-      {expanded &&
-        more.map((a, i) => (
-          <span key={a.action} className="operation-bar-action-in" style={{ animationDelay: `${i * 25}ms` }}>
-            <BarButton
-              label={a.label}
-              testId={`operation-${a.action}`}
-              onClick={() => run(a.action)}
-              dimmed={dim(a.action)}
-              keyIndex={keys ? a.label.indexOf(a.key) : undefined}
-            />
-          </span>
-        ))}
+      {!stacked && extras}
+      {/* `›` opens the rest, and turns to `‹` to close them. It rides the
+          end of the bar as it grows. Not a ×: on the canvas, × removes. */}
       <BarButton
         label={expanded ? 'Fewer actions' : 'More actions'}
         testId="operation-more"
         onClick={() => canvasStore.toggleBarMore()}
         dimmed={active !== null && !expanded}
       >
-        {/* The + turns into a × while the bar is open. */}
         <span
           aria-label={expanded ? 'Fewer actions' : 'More actions'}
-          className="operation-bar-plus"
-          style={{ display: 'inline-block', transform: expanded ? 'rotate(45deg)' : 'none' }}
+          className="operation-bar-more"
+          style={{ display: 'inline-block', transform: expanded ? 'rotate(180deg)' : 'none' }}
         >
-          +
+          ›
         </span>
       </BarButton>
+      </div>
     </div>
   );
 });

@@ -212,24 +212,10 @@ a {
   padding-left: 18px !important;
 }
 
-/* The canvas operation bar's "+": the rest of its actions slide out of the
- * bar, and the + turns into a × (components/canvas/OperationBar.tsx). */
-@keyframes operation-bar-action-in {
-  from {
-    opacity: 0;
-    transform: translateX(-6px) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-.operation-bar-action-in {
-  display: inline-flex;
-  animation: operation-bar-action-in 180ms cubic-bezier(0.2, 0, 0, 1) both;
-}
-.operation-bar-plus {
-  transition: transform 220ms cubic-bezier(0.2, 0, 0, 1);
+/* The canvas operation bar's `›`, which turns to `‹` as the bar opens
+ * (components/canvas/OperationBar.tsx). */
+.operation-bar-more {
+  transition: transform 240ms cubic-bezier(0.2, 0, 0, 1);
 }
 /* A list the bar opens rises out of it (components/canvas/Picker.tsx's anchoredStyle). */
 @keyframes canvas-picker-rise {
@@ -240,14 +226,6 @@ a {
   to {
     opacity: 1;
     transform: none;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .operation-bar-action-in {
-    animation: none;
-  }
-  .operation-bar-plus {
-    transition: none;
   }
 }
 
