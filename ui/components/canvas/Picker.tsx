@@ -274,6 +274,13 @@ const Picker: React.FC = observer(() => {
   // the scrollable body never actually followed.
   const itemRefs = useRef(new Map<string, HTMLDivElement>());
   const filterRef = useRef<HTMLInputElement>(null);
+  // A pick that opens a next step (an aggregate's column, a path's route)
+  // keeps this input mounted, so autoFocus doesn't run again. A click on
+  // the row took the focus: give it back, so the next step can be typed.
+  const listStep = picker.open && picker.mode === 'list' ? JSON.stringify(picker.request) : null;
+  useEffect(() => {
+    if (listStep) filterRef.current?.focus();
+  }, [listStep]);
   useEffect(() => {
     const id = flatItems[highlighted]?.id;
     if (id) itemRefs.current.get(id)?.scrollIntoView({ block: 'nearest' });
@@ -1071,6 +1078,12 @@ const Picker: React.FC = observer(() => {
         return;
       case 'where':
         store.beginWhereValue(item.alias ?? request.alias, item.value, request.draft);
+        return;
+      case 'aggregate-fn':
+        void store.pickAggregateFunction(request.alias, request.index, item.value, picker.anchor);
+        return;
+      case 'aggregate':
+        void store.setAggregateColumn(request.name, request.index, request.fn, `${item.alias ?? request.alias}.${item.value}`);
         return;
       case 'unnest':
         void store.commitUnnest(item.alias ?? request.alias, item.value);

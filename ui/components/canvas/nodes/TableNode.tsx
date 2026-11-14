@@ -6,13 +6,14 @@ import {
   CanvasTableNodeData,
   GlobalOperation,
   NodeAction,
+  PickerAnchor,
   PickerState,
+  aggregateSign,
   resultChipColumns,
 } from '../../../store/canvas/canvas.model';
-import MergeTypeIcon from '@mui/icons-material/MergeType';
 import VerticalAlignTopIcon from '@mui/icons-material/VerticalAlignTop';
 import { getNodeHeight, lineHeight, linePinRowHeight, nodeWidth } from '../../../store/canvas/layout';
-import { occurrenceAt, unnestChipName } from '../../../store/canvas/pine-actions';
+import { occurrenceAt, parseAggregate, unnestChipName } from '../../../store/canvas/pine-actions';
 import { useCanvasStore } from '../canvas-context';
 import { useStores } from '../../../store/store-container';
 import { NOTCHED_NODE_THEMES } from '../../../styles/palette/themes';
@@ -205,10 +206,36 @@ const pinHandleStyle: React.CSSProperties = {
   background: 'var(--canvas-pin)',
 };
 
+/** A small button inside a chip on a group's line: its × or its join. */
+const ChipButton = ({
+  testId,
+  title,
+  onClick,
+  children,
+}: {
+  testId: string;
+  title: string;
+  onClick: (anchor: PickerAnchor) => void;
+  children: React.ReactNode;
+}) => (
+  <span
+    data-testid={testId}
+    title={title}
+    onClick={e => {
+      e.stopPropagation();
+      onClick({ x: e.clientX, y: e.clientY });
+    }}
+    style={{ cursor: 'pointer', color: 'var(--canvas-text-dim)', display: 'inline-flex', alignItems: 'center' }}
+  >
+    {children}
+  </span>
+);
+
 /**
- * One column of a checkpoint's result, as a chip on its line. A click
- * starts a join on it: the list shows only the tables that join on that
- * column. A join already on it hangs from the chip's bottom edge.
+ * One column of a group's result, as a chip on its line: a key, or an
+ * aggregate. A click changes it. On hover it shows a × that removes it, and
+ * a key also shows a join button: the list shows only the tables that join
+ * on that column. A join already on it hangs from the chip's bottom edge.
  */
 const ResultChip = ({
   name,
@@ -218,6 +245,9 @@ const ResultChip = ({
   aggregate,
   children,
   pins,
+  onClick,
+  onRemove,
+  join,
 }: {
   name: string;
   column: string;
@@ -226,6 +256,9 @@ const ResultChip = ({
   aggregate?: boolean;
   children: React.ReactNode;
   pins: { h: CanvasHandle; type: 'source' | 'target' }[];
+  onClick: (anchor: PickerAnchor) => void;
+  onRemove: () => void;
+  join?: boolean;
 }) => {
   const canvasStore = useCanvasStore();
   const [hover, setHover] = useState(false);
@@ -236,7 +269,7 @@ const ResultChip = ({
       title={title}
       onClick={e => {
         e.stopPropagation();
-        void canvasStore.openCheckpointPicker(name, 'join', { x: e.clientX, y: e.clientY }, column);
+        onClick({ x: e.clientX, y: e.clientY });
       }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
@@ -258,6 +291,21 @@ const ResultChip = ({
       }}
     >
       {children}
+      {/* Always laid out, shown on hover: the chip doesn't change width under the pointer. */}
+      <span style={{ display: 'inline-flex', gap: 3, marginLeft: 2, visibility: hover ? 'visible' : 'hidden' }}>
+        {join && (
+          <ChipButton
+            testId={`${testId}-join`}
+            title={`Join a table on ${column}`}
+            onClick={anchor => void canvasStore.openCheckpointPicker(name, 'join', anchor, column)}
+          >
+            &#8904;
+          </ChipButton>
+        )}
+        <ChipButton testId={`${testId}-remove`} title={`Remove ${column}`} onClick={() => onRemove()}>
+          &times;
+        </ChipButton>
+      </span>
       {pins.map(({ h, type }) => (
         <Handle
           key={`${type}:${h.id}`}
@@ -271,11 +319,39 @@ const ResultChip = ({
   );
 };
 
-/** A group's aggregate as its chip shows it: `total = sum(o.total)`, or `count` when it has no name of its own. */
-const aggregateParts = (name: string, text: string | undefined): { name: string; fn?: string } => {
-  const named = text?.match(/^(.*\S)\s+as\s+(\S+)$/i);
-  if (named) return { name: named[2], fn: named[1] };
-  return text && text !== name ? { name: text } : { name };
+/** The + at the end of a group's keys or of its aggregates. */
+const LineAdd = ({ testId, title, onClick }: { testId: string; title: string; onClick: (anchor: PickerAnchor) => void }) => (
+  <span
+    data-testid={testId}
+    className="picker-trigger"
+    title={title}
+    onClick={e => {
+      e.stopPropagation();
+      onClick({ x: e.clientX, y: e.clientY });
+    }}
+    style={{
+      cursor: 'pointer',
+      padding: '0 5px',
+      borderRadius: 3,
+      border: '1px dashed var(--canvas-chip-border)',
+      color: 'var(--canvas-text-dim)',
+      lineHeight: 'calc(14px * var(--text-scale, 1))',
+    }}
+  >
+    +
+  </span>
+);
+
+/** `o.` of `o.total_amount`, dimmed: the result's column is what follows. */
+const DimmedAlias = ({ text }: { text: string }) => {
+  const dot = text.lastIndexOf('.');
+  if (dot < 0 || /[\s(]/.test(text)) return <>{text}</>;
+  return (
+    <>
+      <span style={{ color: 'var(--canvas-text-dim)' }}>{text.slice(0, dot + 1)}</span>
+      {text.slice(dot + 1)}
+    </>
+  );
 };
 
 /**
@@ -342,29 +418,37 @@ const CheckpointLine = observer(({ data, focused }: { data: CanvasTableNodeData;
         >
           {result?.kind === 'group' ? (
             <>
-              <span title={`Grouped: one row for each ${result.keys.map(k => k.from).join(', ') || 'query'}`} style={{ display: 'flex' }}>
-                <MergeTypeIcon data-testid={`checkpoint-icon-group-${nested.name}`} sx={iconStyle} />
+              {/* Reads as the Pine does: `by c.id with # count, Σ sum o.total`. */}
+              <span data-testid={`checkpoint-label-group-${nested.name}`} style={{ color: 'var(--canvas-text-dim)' }}>
+                {result.keys.length ? 'by' : 'all rows'}
               </span>
-              {result.keys.map(k => (
+              {result.keys.map((k, i) => (
                 <ResultChip
                   key={`key:${k.column}`}
                   name={nested.name}
                   column={k.column}
                   testId={`result-chip-${nested.name}-${k.column}`}
-                  title={`Grouped by ${k.from}. Click to join a table on ${k.column}`}
+                  title={`One row for each ${k.from}. Click to change the columns grouped on`}
                   pins={pinsOf(k.column)}
+                  onClick={anchor => canvasStore.openGroupKeyPicker(nested.name, anchor, k.column)}
+                  onRemove={() => void canvasStore.removeGroupKey(nested.name, i)}
+                  join
                 >
-                  {/* `c.id`, its table's alias dimmed: the result's column is `id`. */}
                   <span>
-                    {k.from.endsWith(`.${k.column}`) && (
-                      <span style={{ color: 'var(--canvas-text-dim)' }}>{k.from.slice(0, -k.column.length)}</span>
-                    )}
-                    {k.column}
+                    <DimmedAlias text={k.from} />
                   </span>
                 </ResultChip>
               ))}
+              <LineAdd
+                testId={`group-add-key-${nested.name}`}
+                title="Group on another column"
+                onClick={anchor => canvasStore.openGroupKeyPicker(nested.name, anchor)}
+              />
+              <span style={{ color: 'var(--canvas-text-dim)' }}>with</span>
               {result.aggregates.map((a, i) => {
-                const parts = aggregateParts(a, aggregateTexts[i]);
+                const parts = parseAggregate(aggregateTexts[i] ?? a);
+                const sign = aggregateSign(parts?.fn);
+                const titled = parts?.name ? ` (${parts.name})` : '';
                 return (
                   <ResultChip
                     key={`aggregate:${a}`}
@@ -372,14 +456,37 @@ const CheckpointLine = observer(({ data, focused }: { data: CanvasTableNodeData;
                     column={a}
                     aggregate
                     testId={`result-chip-${nested.name}-${a}`}
-                    title={`${parts.fn ? `${parts.name} = ${parts.fn}` : parts.name}, worked out for each group. Click to join a table on ${a}`}
+                    title={`${aggregateTexts[i] ?? a}, worked out for each group${titled}. Click the function to change it`}
                     pins={pinsOf(a)}
+                    onClick={anchor => canvasStore.openAggregatePicker(nested.name, i, anchor)}
+                    onRemove={() => void canvasStore.removeAggregate(nested.name, i)}
                   >
-                    <span style={{ fontStyle: 'italic' }}>{parts.name}</span>
-                    {parts.fn && <span style={{ color: 'var(--canvas-text-dim)' }}>{parts.fn}</span>}
+                    <span data-testid={`aggregate-fn-${nested.name}-${i}`} style={{ fontWeight: 600 }}>
+                      <span style={{ color: 'var(--canvas-trace)', marginRight: 3 }}>{sign}</span>
+                      {parts?.fn ?? a}
+                    </span>
+                    {parts?.arg && (
+                      <span
+                        data-testid={`aggregate-arg-${nested.name}-${i}`}
+                        title={`Change the column ${parts.fn} reads`}
+                        onClick={e => {
+                          e.stopPropagation();
+                          canvasStore.openAggregateColumnPicker(nested.name, i, parts.fn, { x: e.clientX, y: e.clientY });
+                        }}
+                      >
+                        <DimmedAlias text={parts.arg} />
+                      </span>
+                    )}
+                    {parts?.filter && <span style={{ color: 'var(--canvas-text-dim)' }}>where …</span>}
+                    {parts?.name && <span style={{ color: 'var(--canvas-text-dim)', fontStyle: 'italic' }}>as {parts.name}</span>}
                   </ResultChip>
                 );
               })}
+              <LineAdd
+                testId={`group-add-aggregate-${nested.name}`}
+                title="Add a count, sum, average, smallest or largest value"
+                onClick={anchor => canvasStore.openAggregatePicker(nested.name, result.aggregates.length, anchor)}
+              />
             </>
           ) : (
             <>

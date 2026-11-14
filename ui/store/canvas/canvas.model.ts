@@ -287,6 +287,13 @@ export type PickerRequest =
   | { kind: 'where'; alias: string; draft?: WhereDraft; only?: boolean }
   | { kind: 'order'; alias: string; only?: boolean }
   | { kind: 'group'; alias: string; only?: boolean }
+  /**
+   * The functions an aggregate of checkpoint `alias`'s group can be. `index`
+   * is the aggregate's place after `with`; one past the end adds one.
+   */
+  | { kind: 'aggregate-fn'; alias: string; index: number }
+  /** The column `fn` reads, from the stage before the group, which `alias` ends: step 2 of an aggregate. */
+  | { kind: 'aggregate'; alias: string; name: string; index: number; fn: string }
   // The JSON columns of `alias` an `unnest:` can read.
   | { kind: 'unnest'; alias: string }
   /** Step 1 of `? table` (docs/paths.md in pine-lang): pick a destination table - see CanvasStore.openPathPicker. */
@@ -510,7 +517,26 @@ export const MORE_ACTIONS: { action: MoreAction; label: string; key: string }[] 
  * offers nothing: following a foreign key out of a CTE's sealed output is
  * not a thing.
  */
-export const MORE_ACTIONS_FOR_TABLE: MoreAction[] = ['order', 'traverse', 'describe', 'references'];
+/**
+ * The aggregates a group's line offers, each with the sign its chip shows.
+ * `count` takes no column; the others read one. pine-lang also has `any`
+ * and `all`, which take a condition: their chips show, but they are typed.
+ */
+export const AGGREGATE_FUNCTIONS: { fn: string; sign: string; label: string; column: boolean }[] = [
+  { fn: 'count', sign: '#', label: 'count rows', column: false },
+  { fn: 'sum', sign: 'Σ', label: 'sum of a column', column: true },
+  { fn: 'avg', sign: 'x̄', label: 'average of a column', column: true },
+  { fn: 'min', sign: '↓', label: 'smallest value', column: true },
+  { fn: 'max', sign: '↑', label: 'largest value', column: true },
+];
+
+/** The sign an aggregate's chip shows: `Σ` for sum, `ƒ` for one without its own. */
+export const aggregateSign = (fn: string | undefined): string =>
+  ({ any: '∃', all: '∀' } as Record<string, string>)[fn ?? ''] ??
+  AGGREGATE_FUNCTIONS.find(f => f.fn === fn)?.sign ??
+  'ƒ';
+
+export const MORE_ACTIONS_FOR_TABLE: MoreAction[] =['order', 'traverse', 'describe', 'references'];
 export const MORE_ACTIONS_FOR_CHECKPOINT: MoreAction[] = [];
 
 /**

@@ -379,6 +379,14 @@ The canvas draws the pipeline as stages stacked top to bottom
   for that checkpoint's own number and `per`. The × removes the checkpoint.
   Its actions go through `openCheckpointPicker`. Tables joined after the
   checkpoint are in its stage, with an edge from it.
+- A group's line edits the group in place (`CheckpointLine` in
+  `nodes/TableNode.tsx`). A key chip, or the + after the keys, opens the
+  group's column list for the stage before it (`openGroupKeyPicker`). An
+  aggregate chip opens its functions (`openAggregatePicker`, request kind
+  `aggregate-fn`); one that reads a column opens the column list next
+  (`aggregate`). An aggregate keeps its column's name when a later step
+  uses it (`pine-actions.ts`'s `withAggregate`). Each chip's × removes it;
+  a key's ⋈ joins a table on it.
 - **Collapsed** (the default), that node is all there is. **Expanded**, a
   container is drawn directly above it (`nodes/NestedContainerNode.tsx`):
   a dashed box with no fill around the stage the checkpoint seals, with the
