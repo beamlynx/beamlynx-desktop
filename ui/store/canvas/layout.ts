@@ -19,8 +19,10 @@ import {
 } from '../client';
 import {
   COUNT_NODE_ID,
+  NAME_NODE_ID,
   CanvasContainerNode,
   CanvasCountNode,
+  CanvasNameNode,
   CanvasEdge,
   CanvasGraph,
   CanvasHandle,
@@ -848,9 +850,9 @@ export const lineageId = (id: string) => `lineage:${id}`;
 
 /**
  * The lineage strip's chips and arrows, at the top left from y = 0, and the
- * strip's height. Nothing when the tab has a single query block without a
- * name: there is nothing to switch to and no name to show. A chip is as wide
- * as its text. `details` are what
+ * strip's height. Nothing when the tab has a single query block: there is
+ * nothing to switch to (its name, if any, is on the name line under the
+ * graph). A chip is as wide as its text. `details` are what
  * the named blocks above the drawn one end in, by name.
  */
 const layoutLineage = (
@@ -859,7 +861,7 @@ const layoutLineage = (
   expandedBlock: string | null,
   positions: Record<string, { x: number; y: number }>,
 ): { nodes: CanvasLineageNode[]; edges: CanvasEdge[]; height: number } => {
-  if (lineage.blocks.length < 2 && !lineage.blocks[0]?.name) return { nodes: [], edges: [], height: 0 };
+  if (lineage.blocks.length < 2) return { nodes: [], edges: [], height: 0 };
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({ rankdir: 'LR', nodesep: 10, ranksep: 40, marginx: 0, marginy: 0 });
@@ -957,6 +959,8 @@ export const buildCanvasGraph = (
   describe: CanvasDescribe | null = null,
   /** The query ends in `count:`: a line under the graph. */
   counted = false,
+  /** The query ends in `|= name`: a line under the graph (and its count) that names it. */
+  named: string | null = null,
 ): CanvasGraph => {
   const expansion = expansionOf(ast, blocks, expanded);
 
@@ -1091,25 +1095,43 @@ export const buildCanvasGraph = (
 
   // A query that ends in `count:` counts the rows of everything above it: a
   // line under the whole graph, as wide as it, like a group's.
+  const lowest = finalNodes.length
+    ? Math.max(...finalNodes.map(n => n.position.y + getNodeFootprintHeight(n)))
+    : 0;
+  const xs = finalNodes.filter(n => !n.data.checkpoint?.line);
+  const lineLeft = (xs.length ? Math.min(...xs.map(n => n.position.x)) : 0) - lineOverhang;
+  const lineRight = (xs.length ? Math.max(...xs.map(n => n.position.x + nodeWidth)) : nodeWidth) + lineOverhang;
   const countNodes: CanvasCountNode[] = [];
   if (counted && finalNodes.length) {
-    const lowest = Math.max(...finalNodes.map(n => n.position.y + getNodeFootprintHeight(n)));
-    const xs = finalNodes.filter(n => !n.data.checkpoint?.line);
-    const left = xs.length ? Math.min(...xs.map(n => n.position.x)) : 0;
-    const right = xs.length ? Math.max(...xs.map(n => n.position.x + nodeWidth)) : nodeWidth;
     countNodes.push({
       id: COUNT_NODE_ID,
       type: 'count-line',
-      position: { x: left - lineOverhang, y: lowest + verticalGap },
+      position: { x: lineLeft, y: lowest + verticalGap },
       draggable: false,
       selectable: false,
       focusable: false,
-      data: { width: right - left + 2 * lineOverhang },
+      data: { width: lineRight - lineLeft },
+    });
+  }
+
+  // `|= name` names the whole query's result, so it comes last: under the
+  // graph and its count line, as wide as them.
+  const nameNodes: CanvasNameNode[] = [];
+  if (named && finalNodes.length) {
+    const top = countNodes.length ? countNodes[0].position.y + lineHeight : lowest;
+    nameNodes.push({
+      id: NAME_NODE_ID,
+      type: 'name-line',
+      position: { x: lineLeft, y: top + verticalGap },
+      draggable: false,
+      selectable: false,
+      focusable: false,
+      data: { width: lineRight - lineLeft, name: named },
     });
   }
 
   return {
-    nodes: [...strip.nodes, ...containerNodes, ...finalNodes, ...countNodes],
+    nodes: [...strip.nodes, ...containerNodes, ...finalNodes, ...countNodes, ...nameNodes],
     edges: [...strip.edges, ...edges],
     parsing: true,
   };

@@ -193,10 +193,17 @@ test('the lineage strip sits above the join graph, its arrows apart from the joi
   assert.equal(open.nodes.find(n => n.id === 'lineage:0').data.expanded, true);
   // One query block: no strip.
   assert.ok(!buildCanvasGraph(asts.main, {}).nodes.some(n => n.type === 'lineage-node'));
-  // Unless it has a name: the strip shows it.
+  // Even a named one: its name is on the name line under the graph.
   const named = lineageOf([TWO[0]], 0);
-  const one = buildCanvasGraph(asts.main, {}, undefined, [], named).nodes.filter(n => n.type === 'lineage-node');
-  assert.deepEqual(one.map(n => [n.id, n.data.label, n.data.active]), [['lineage:0', '|= top', true]]);
+  const one = buildCanvasGraph(asts.main, {}, undefined, [], named, null, null, false, 'top');
+  assert.ok(!one.nodes.some(n => n.type === 'lineage-node'));
+  const line = one.nodes.find(n => n.type === 'name-line');
+  assert.equal(line.data.name, 'top');
+  // Under every table, and under the count line when there is one.
+  for (const n of one.nodes.filter(n => n.type === 'table-node')) assert.ok(line.position.y > n.position.y);
+  const counted = buildCanvasGraph(asts.main, {}, undefined, [], named, null, null, true, 'top');
+  const count = counted.nodes.find(n => n.type === 'count-line');
+  assert.ok(counted.nodes.find(n => n.type === 'name-line').position.y > count.position.y);
 });
 
 test('a dragged chip keeps its place, and the tables make room for it', () => {

@@ -2,7 +2,7 @@
 // can read its result. A query already named is renamed.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { nameBlock, blockName } = require('../store/canvas/tab-blocks.ts');
+const { nameBlock, blockName, unnameBlock } = require('../store/canvas/tab-blocks.ts');
 
 test('a query without a name gets one at its end', () => {
   assert.equal(nameBlock('customers as c | limit: 2', 'top'), 'customers as c | limit: 2 |= top');
@@ -19,4 +19,11 @@ test('a named query is renamed, however its |= is spaced', () => {
 test('a comment at the end stays after the name', () => {
   assert.equal(nameBlock('customers as c -- the big ones', 'top'), 'customers as c |= top -- the big ones');
   assert.equal(nameBlock('customers as c\n', 'top'), 'customers as c |= top\n');
+});
+
+test('the name line takes the name off, and leaves a comment after it', () => {
+  assert.equal(unnameBlock('customers as c | limit: 2 |= top'), 'customers as c | limit: 2');
+  assert.equal(unnameBlock('customers as c\n | limit: 2\n |= top'), 'customers as c\n | limit: 2');
+  assert.equal(unnameBlock('customers as c |= top -- the big ones'), 'customers as c -- the big ones');
+  assert.equal(unnameBlock('customers as c'), 'customers as c');
 });

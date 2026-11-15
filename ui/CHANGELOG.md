@@ -5,7 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 ### Added
-- **Name a query's result, and start another query, from the canvas.** The bar's `name` (key `m`) ends the query with `|= name`, so a later query can read it like a table, and the name shows at the top of the canvas. `new query` (key `q`) starts a query below the others in the tab on a blank canvas. Its table list includes the names of earlier results.
+- **Name a query's result, and start another query, from the canvas.** The bar's `name` (key `m`) ends the query with `|= name`, so a later query can read it like a table. The name shows on a line under the graph: click it to rename it, or press `x` on it to remove it. `new query` (key `q`) starts a query below the others in the tab on a blank canvas. Its table list includes the names of earlier results.
 - **"Focus on Pine Panel" and "Focus on SQL Panel" in the command palette.** Each opens the panel if it is closed and puts the cursor in it.
 
 ### Changed
@@ -15,7 +15,8 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **Moving between tables with the keys keeps the selected table in view.** When it is off screen, the canvas pans just enough to show it, without changing the zoom.
 - **A pan or zoom of your own on the canvas stays, like a moved table.** Adding a table no longer refits the view: the new table is panned into yours. Reset layout fits the view again.
 - **A key for an action in the bar's folded part shows that action's button in the bar while its list is open.** `o`, `g`, `l` and `p` add their own button to the bar, lit, so you see which action you are in. It goes again when the list closes.
-- **Nothing joins from a table above a group's or limit's line.** Such a join went in before the group or limit, and changed what it grouped or limited without saying so. With such a table selected, the bar's join starts from where the query goes on below the line.
+- **The bar works on what you selected.** With a table selected, select, where and order list that table's columns and go into its part of the query, even when a group or limit comes after it. With a group's or limit's line selected, they go after the line. With nothing chosen, they work on the query's last step.
+- **Nothing joins from a table above a group's or limit's line.** Such a join went in before the group or limit, and changed what it grouped or limited without saying so. With such a table selected, the bar's join starts from where the query goes on below the line. Group, limit and unnest aren't offered there either: the line already ends that part of the query.
 
 ### Fixed
 - **Unnest shows in the open bar after you select another table or change the query.** Before, it could stay missing until you closed the bar and opened it again.

@@ -7,6 +7,7 @@ import {
   aggregateReads,
   CanvasGraph,
   COUNT_NODE_ID,
+  NAME_NODE_ID,
   CanvasTableNode,
   ConfigItem,
   JoinType,
@@ -27,7 +28,17 @@ import {
   WhereDraft,
 } from './canvas.model';
 import { buildCanvasGraph, expansionOf, NamedBlock, newCheckpointName, whereEntriesFor } from './layout';
-import { blockName, contextFor, mainQuery, nameBlock, queryText, replaceQuery, TabBlocks, tabBlocks } from './tab-blocks';
+import {
+  blockName,
+  contextFor,
+  mainQuery,
+  nameBlock,
+  queryText,
+  replaceQuery,
+  TabBlocks,
+  tabBlocks,
+  unnameBlock,
+} from './tab-blocks';
 import { blockUses, Lineage, lineageOf } from './lineage';
 import {
   Segment,
@@ -236,24 +247,28 @@ export class CanvasStore {
     );
     if (tableNodes.length === 0) return [START_NODE_ID];
     const ordered = [...tableNodes].sort((a, b) => a.data.order - b.data.order).map(n => n.id);
-    // The count line, last: `x` on it removes the count.
-    const counted = this.canvasGraph.nodes.some(n => n.id === COUNT_NODE_ID);
-    return counted ? [...ordered, COUNT_NODE_ID] : ordered;
+    // The count line, then the name line, last: `x` on one removes it.
+    const lines = [COUNT_NODE_ID, NAME_NODE_ID].filter(id => this.canvasGraph.nodes.some(n => n.id === id));
+    return [...ordered, ...lines];
   }
 
   /**
    * The effective keyboard focus - always a currently-valid target, never
    * null. Falls back (without writing `_cursor`, so this stays a pure
-   * computed read) to the AST's own current node, then to the first target,
+   * computed read) to the query's last step, then to the first target,
    * whenever the cursor's alias no longer exists (first mount, or a node
    * that disappeared some way other than through focusNext/focusPrev/
-   * deleteNode's own bookkeeping below).
+   * deleteNode's own bookkeeping below). The last step is where the query
+   * goes on (nextStepAlias): the line of a group or limit it ends in, else
+   * Pine's current table. The bar works on the focused node, so with
+   * nothing selected it works on the end of the query.
    */
   get focusedAlias(): string {
     const targets = this.orderedFocusTargets;
     if (this._cursor && targets.includes(this._cursor.alias)) return this._cursor.alias;
-    const current = this.mainAst?.current;
-    if (current && targets.includes(current)) return current;
+    for (const last of [this.nextStepAlias, this.mainAst?.current]) {
+      if (last && targets.includes(last)) return last;
+    }
     return targets[0];
   }
 
@@ -705,6 +720,7 @@ export class CanvasStore {
       writeOf(segments),
       describeOf(segments),
       endsInCount(expression),
+      this.queryName,
     );
     if (!this.hasSeededHoverAlias && this.orderedFocusTargets.length > 0) {
       this.hasSeededHoverAlias = true;
@@ -1538,12 +1554,12 @@ export class CanvasStore {
 
 
   /**
-   * The table the operation bar's pickers start from: the focused node,
-   * when it is in the query's last stage, or else Pine's current table.
-   * Its columns are listed first, then the current table's, then the
-   * rest, nearest first (beamlynx-plans #28). A node of an earlier block,
-   * or one a checkpoint sealed, can't take a new step at the end of the
-   * query, so focus on it doesn't count.
+   * The node the operation bar works on: the selected one. A table: its
+   * select, where and order go into its own stage, even above a line, and
+   * its columns are listed first. A group's or limit's line: what can come
+   * after it. With nothing else selected, focus is on the query's last step
+   * (see focusedAlias). A node of an earlier block, the count line or the
+   * start node leave it at where the query goes on (nextStepAlias).
    */
   get operationAnchor(): string | null {
     const ast = this.mainAst;
@@ -1551,10 +1567,19 @@ export class CanvasStore {
     // No table yet: nothing to select from.
     if (!ast || !current || !this.canvasGraph.nodes.some(n => n.type === 'table-node' && n.id === current)) return null;
     const focused = this.focusedAlias;
-    const isTable = this.canvasGraph.nodes.some(n => n.type === 'table-node' && n.id === focused);
-    if (!focused || focused === current || !isTable || actions.BLOCK_PREFIX.test(focused)) return current;
-    const segments = withoutEndingSegments(segmentsFromAst(this.textOf(this.mainBlock), ast) ?? []);
-    return stageEnd(segments, focused) === stageEnd(segments, current) ? focused : current;
+    const isNode = this.canvasGraph.nodes.some(n => n.type === 'table-node' && n.id === focused);
+    if (!focused || !isNode || actions.BLOCK_PREFIX.test(focused)) return current;
+    return focused;
+  }
+
+  /**
+   * The bar works on a table above a group's or limit's line. Its select,
+   * where and order go in before the line; the steps that end a stage
+   * (group, limit, unnest) are the line's business, so the bar leaves them out.
+   */
+  private get anchorAboveLine(): boolean {
+    const alias = this.operationAnchor;
+    return !!alias && !this.isCheckpointNode(alias) && this.isSealed(alias);
   }
 
   /**
@@ -1640,6 +1665,7 @@ export class CanvasStore {
     const alias = this.operationAnchor;
     if (!alias) return;
     const checkpoint = this.isCheckpointNode(alias);
+    if (this.anchorAboveLine && (kind === 'group' || kind === 'limit' || kind === 'unnest')) return;
     switch (kind) {
       case 'limit':
         this.openLimitEditor(alias, anchor);
@@ -1717,7 +1743,8 @@ export class CanvasStore {
    * What the expanded bar offers: the query's order, group, limit, path and
    * count; the selected table's traverse, describe and references; and
    * unnest once a table in the query has a JSON column. A sealed result
-   * offers no group or unnest, and a counted query no second count.
+   * offers no group or unnest, a table above a line no group, limit or
+   * unnest (see anchorAboveLine), and a counted query no second count.
    */
   get barMoreActions(): MoreAction[] {
     const anchorAlias = this.operationAnchor;
@@ -1725,8 +1752,13 @@ export class CanvasStore {
     if (!anchorAlias || !selected) return [];
     const own: MoreAction[] = selected.actions.flatMap(a => (a === 'join' ? [] : [a]));
     const sealed = this.isCheckpointNode(anchorAlias);
-    const known = sealed ? [] : this.unnestColumns.get(this.unnestKey(anchorAlias));
-    const query: MoreAction[] = sealed ? ['order', 'limit', 'path'] : ['order', 'group', 'limit', 'path'];
+    const above = this.anchorAboveLine;
+    const known = sealed || above ? [] : this.unnestColumns.get(this.unnestKey(anchorAlias));
+    const query: MoreAction[] = above
+      ? ['order', 'path']
+      : sealed
+        ? ['order', 'limit', 'path']
+        : ['order', 'group', 'limit', 'path'];
     return [
       ...query,
       ...(this.counted ? [] : (['count'] as const)),
@@ -2335,6 +2367,46 @@ export class CanvasStore {
     }
     this.closePicker();
     this.applyExpression(nameBlock(this.textOf(p.block), name), { block: p.block });
+  }
+
+  /**
+   * The drawn query's `|= name`, for the name line under the graph. Not
+   * `result_N`: that is the name Pine gives a group or limit by itself,
+   * written into the text when a list opens on its line (see
+   * ensureCheckpointPinned), not one the user gave the query.
+   */
+  get queryName(): string | null {
+    const name = blockName(this.textOf(this.mainBlock));
+    return name && !/^result_\d+$/.test(name) ? name : null;
+  }
+
+  /** The later queries of the tab that read the drawn query's result by `name`. */
+  private readLater(name: string): boolean {
+    const block = this.mainBlock;
+    return this.tab.queries
+      .slice(block + 1)
+      .some((_, i) => blockUses(this.textOf(block + 1 + i), [name]).length > 0);
+  }
+
+  /**
+   * The name line's × (or `x` on it): takes `|= name` off the drawn query.
+   * Refused while a later query reads the name: the name editor opens with
+   * the reason, as for a rename.
+   */
+  removeQueryName(anchor: PickerAnchor = CanvasStore.defaultAnchor) {
+    const block = this.mainBlock;
+    const name = blockName(this.textOf(block));
+    if (!name) return;
+    if (this.readLater(name)) {
+      this.openQueryNameEditor(anchor);
+      if (this.picker.open && this.picker.mode === 'query-name') {
+        this.picker = { ...this.picker, error: `A later query reads ${name}. Remove it there first.` };
+      }
+      return;
+    }
+    this.applyExpression(unnameBlock(this.textOf(block)), { block });
+    const last = this.nextStepAlias;
+    if (last) this.focusNode(last);
   }
 
   async commitJoin(hint: TableHint, focusAlias: string) {

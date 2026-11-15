@@ -39,6 +39,7 @@ import PineDoc from '../PineDoc';
 import CanvasVariables from './CanvasVariables';
 import LineageNode from './nodes/LineageNode';
 import CountLineNode from './nodes/CountLineNode';
+import NameLineNode from './nodes/NameLineNode';
 import LineageEdge from './edges/LineageEdge';
 
 const nodeTypes: NodeTypes = {
@@ -47,6 +48,7 @@ const nodeTypes: NodeTypes = {
   'nested-container': NestedContainerNode,
   'lineage-node': LineageNode,
   'count-line': CountLineNode,
+  'name-line': NameLineNode,
 };
 
 const edgeTypes = { trace: TraceEdge, lineage: LineageEdge };
