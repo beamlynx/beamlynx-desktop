@@ -24,6 +24,17 @@ export const blockName = (text: string): string | null => {
   return m ? m[1] : null;
 };
 
+/**
+ * `text` with its result named `name`: its `|= old` renamed when it ends in
+ * one, else ` |= name` added at its end, before any comment there.
+ */
+export const nameBlock = (text: string, name: string): string => {
+  const body = text.replace(TRAILING_NOISE, '');
+  const tail = text.slice(body.length);
+  const named = /\|\s*=\s*[A-Za-z_][A-Za-z0-9_]*$/.exec(body);
+  return named ? `${body.slice(0, named.index)}|= ${name}${tail}` : `${body} |= ${name}${tail}`;
+};
+
 /** The tab split for the canvas. A tab with no query block has an empty last query. */
 export function tabBlocks(expression: string): TabBlocks {
   const blocks = splitExpressions(expression);

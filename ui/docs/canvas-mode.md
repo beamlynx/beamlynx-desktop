@@ -249,6 +249,8 @@ pipeline is a single strict sequence, not a 2D graph to roam.
 | `s` | Open the select-columns picker |
 | `w` | Open the where-condition picker |
 | `o` | Open the order-by picker |
+| `m` | Name the query's result (`\|= name`), so a later query can read it |
+| `q` | Start a new query below the others: pick its first table, an earlier result's name included |
 | `g` | Open the group-by picker (not offered on a checkpoint node — grouping an already-grouped result is a different question, not implemented) |
 | `e` | On a nested query's node (a checkpoint, or a table using a named block): expand or collapse its container |
 | `x` | Delete the focused node — a table if `removable`, or, on a checkpoint's node, the checkpoint (as the × on its node does; the tables it sealed stay). On the count line, the last stop, it removes the count |
@@ -464,6 +466,18 @@ the end of the target's stage, for the same reason: probing after a
 checkpoint reflects the sealed output's shape, not the real table the
 gesture is about.
 
+**Naming a result and starting another query.** Two of the bar's query
+actions work across blocks:
+
+- `name` (key `m`) names the drawn query's result with `|= name` at its end
+  (`tab-blocks.ts`'s `nameBlock`), or renames it. It refuses a name Pine
+  can't read, one another block has, and a rename while a later block still
+  reads the old name.
+- `new query` (key `q`) lists the tables, with the names of earlier results
+  among them (the list is built after every block). The pick becomes a new
+  block at the end of the tab, and the canvas draws it: the editor's cursor
+  moves into it. Undo takes the block off.
+
 **Earlier query blocks.** A tab can have several query blocks. The canvas
 draws the last one; each earlier one must end in `|= name` (`tab-blocks.ts`),
 or the canvas shows a banner instead. Such a block is a nested query of the
@@ -560,8 +574,6 @@ smaller, independent model from the classic graph's
 
 ## Constraints
 
-- **Single block only.** An expression with more than one blank-line-separated
-  block isn't modeled — the canvas shows a banner and nothing else.
 - **Removing an interior node can leave a dangling join.** Deleting a table
   that a later table's join implicitly depended on (no explicit `from:`, just
   "whatever's current") re-splices the expression and lets whatever's left
@@ -581,8 +593,7 @@ smaller, independent model from the classic graph's
   question.
 - **No `update!`/`delete!` support.** Canvas mode only models read pipelines.
 - **Multi-select `assign` is inert.** Shown in the toolbar but not wired to
-  any mutation — pine-lang's `|=` variable/checkpoint assignment needs
-  multi-block support canvas mode doesn't have.
+  any mutation. To name a query's result, use the bar's `name`.
 - **Column-function forms are lossy on toggle.** Select/order chips are always
   written as plain `alias.column`; toggling a column that was hand-typed with
   a function form (e.g. `created_at => month`) replaces it with the plain

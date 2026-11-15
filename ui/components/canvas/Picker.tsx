@@ -730,6 +730,47 @@ const Picker: React.FC = observer(() => {
     );
   }
 
+  if (picker.mode === 'query-name') {
+    // The bar's "name": the query's result, named for a later query to read.
+    return (
+      <div
+        ref={rootRef}
+        style={{ ...anchoredStyle(picker.anchor), padding: 8, maxHeight: 'none' }}
+        data-testid="canvas-picker"
+      >
+        <div style={{ marginBottom: 6, opacity: 0.7 }}>name this result</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ opacity: 0.7, fontFamily: 'var(--code-font)' }}>|=</span>
+          <input
+            autoFocus
+            data-testid="query-name-input"
+            placeholder="name"
+            value={picker.value}
+            onChange={e => store.setQueryNameValue(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') store.commitQueryName();
+              if (e.key === 'Escape') store.closePicker();
+            }}
+            style={{ ...inputStyle, width: 160 }}
+          />
+        </div>
+        {picker.error && (
+          <div data-testid="query-name-error" style={{ marginTop: 6, maxWidth: 220, color: 'var(--canvas-warn)' }}>
+            {picker.error}
+          </div>
+        )}
+        <div style={{ marginTop: 6, maxWidth: 220, opacity: 0.6 }}>
+          A later query can read it like a table. Start one with new query.
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
+          <span style={{ cursor: 'pointer' }} onClick={() => store.commitQueryName()}>
+            save
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   if (picker.mode === 'limit-value') {
     return (
       <div
