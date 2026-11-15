@@ -112,8 +112,9 @@ things open. Check every change to the canvas against these rules.
   (the newest table below the last line, or the result itself when nothing
   follows it), and the table has no join button of its own.
 - **The bar shows what you are doing.** A key for an action in the bar's
-  folded part (`o`, `g`, `l`, `p`) opens the bar for as long as its list is
-  open, with that action lit. When the list closes, the bar folds again.
+  folded part (`o`, `g`, `l`, `p`) shows only that action's button in the
+  bar for as long as its list is open, not the whole folded part. When the
+  list closes, the bar folds again (`CanvasStore.barOnly`).
 - **A list never covers the graph.** While a list from the bar is open, the
   graph moves up above it, and zooms out if it doesn't fit there
   (`room-for-list.ts`, `useRoomForBarList.ts`). When the list closes, the

@@ -280,16 +280,13 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
             canvasStore.openOperation(e.key === 's' ? 'select' : 'where', barAnchor());
             return;
           }
-          // These are in the bar's folded part: it opens while their list
-          // is open, so you see which action it is (CanvasStore.unfoldFor).
+          // These are in the bar's folded part: their own button shows in
+          // the bar while their list is open, so you see which action it is
+          // (CanvasStore.unfoldFor). One button fits in the bar's row, so the
+          // bar doesn't grow upward and the list opens at once.
           const folded = ({ o: 'order', g: 'group', p: 'path', l: 'limit' } as const)[e.key];
           if (!canvasStore.unfoldFor(folded)) return;
-          // On a narrow canvas the folded part opens upward, in rows, over
-          // 240 ms: the list rises from where the bar's top ends up.
-          const rows = document.querySelector('[data-testid="operation-bar-extras"][data-stacked]');
-          const open = () => canvasStore.runBarAction(folded, barAnchor());
-          if (rows) setTimeout(open, 260);
-          else open();
+          canvasStore.runBarAction(folded, barAnchor());
           return;
         }
         // Expand or collapse the focused checkpoint's contents - the stage it
