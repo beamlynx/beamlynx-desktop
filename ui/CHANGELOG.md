@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Fixed
+- **Removing a table joined after a limit or group leaves the query as it was before the join.** The canvas left a `from: result_1` behind, and the query failed with "missing FROM-clause entry for table result_1".
 
 ## [0.77.0] - 2026-11-14
 ### Added
