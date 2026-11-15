@@ -13,6 +13,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **Nothing joins from a table above a group's or limit's line.** Such a join went in before the group or limit, and changed what it grouped or limited without saying so. With such a table selected, the bar's join starts from where the query goes on below the line.
 
 ### Fixed
+- **Unnest shows in the open bar after you select another table or change the query.** Before, it could stay missing until you closed the bar and opened it again.
 - **Removing a table joined after a limit or group leaves the query as it was before the join.** The canvas left a `from: result_1` behind, and the query failed with "missing FROM-clause entry for table result_1".
 
 ## [0.77.0] - 2026-11-14
