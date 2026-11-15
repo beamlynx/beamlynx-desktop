@@ -640,11 +640,25 @@ export class CanvasStore {
       target => void this.refreshPeek(target),
       { equals: comparer.structural },
     );
+    // The open bar shows unnest once it knows the selected table's stage has
+    // a JSON column. Asked whenever that table or the query changes while the
+    // bar is open, not only when it opens.
+    const disposeUnnest = reaction(
+      () => {
+        const alias = this.barExpanded ? this.operationAnchor : null;
+        return alias && !this.isCheckpointNode(alias) ? [alias, this.unnestKey(alias)] : null;
+      },
+      target => {
+        if (target && !this.unnestColumns.has(target[1])) void this.probeUnnestColumns(target[0], target[1]);
+      },
+      { fireImmediately: true, equals: comparer.shallow },
+    );
     return () => {
       disposeGraph();
       disposeCursorReset();
       disposeBlocks();
       disposePeek();
+      disposeUnnest();
       this.jsonPeek = null;
     };
   }
@@ -1648,21 +1662,16 @@ export class CanvasStore {
   /** A picker opened from the expanded bar is open: closing it closes the bar too. */
   private barPickerOpen = false;
 
-  /** The bar's "+". Unnest shows once the probe for JSON columns answers. */
+  /** The bar's "+". Unnest shows once the probe for JSON columns answers (see start). */
   toggleBarMore() {
     if (this.barExpanded) {
       this.collapseBar();
       return;
     }
-    const anchorAlias = this.operationAnchor;
-    if (!anchorAlias || !this.selectedNodeActions) return;
+    if (!this.operationAnchor || !this.selectedNodeActions) return;
     this.closePicker();
     this.barExpanded = true;
     this.barOnly = null;
-    const key = this.unnestKey(anchorAlias);
-    if (!this.isCheckpointNode(anchorAlias) && this.unnestColumns.get(key) === undefined) {
-      void this.probeUnnestColumns(anchorAlias, key);
-    }
   }
 
   /**
