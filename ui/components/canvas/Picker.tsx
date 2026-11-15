@@ -121,8 +121,27 @@ const cycleTabOrder = (e: React.KeyboardEvent<HTMLElement>) => {
  * edge, a list sized to what it holds opened as a small "loading..." box
  * and jumped up when its items came.
  */
+const margin = 8;
+
+/** A bar list's distance from the window's bottom, and its height (see anchoredStyle). */
+const barListBox = (anchor: PickerAnchor) => {
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
+  const bottom = Math.max(vh - anchor.y + 6, margin);
+  return { bottom, height: Math.min(pickerHeight, vh - bottom - margin) };
+};
+
+/**
+ * Where a list opened from the bar starts at the top, in window
+ * coordinates. The canvas moves the graph up above it (Canvas.tsx). Read
+ * from here, not from the element: it rises with a transform as it opens.
+ */
+export const barListTop = (anchor: PickerAnchor): number => {
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
+  const { bottom, height } = barListBox(anchor);
+  return vh - bottom - height;
+};
+
 const anchoredStyle = (anchor: PickerAnchor, fill = false): React.CSSProperties => {
-  const margin = 8;
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1200;
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
   if (anchor.centered) {
@@ -130,8 +149,7 @@ const anchoredStyle = (anchor: PickerAnchor, fill = false): React.CSSProperties 
     // just above it, whichever of its buttons opened it. It reads as the
     // bar opening upward, and rises out of it as it opens.
     const left = Math.min(Math.max(anchor.x - pickerWidth / 2, margin), vw - pickerWidth - margin);
-    const bottom = Math.max(vh - anchor.y + 6, margin);
-    const height = Math.min(pickerHeight, vh - bottom - margin);
+    const { bottom, height } = barListBox(anchor);
     return {
       ...basePickerStyle,
       left,

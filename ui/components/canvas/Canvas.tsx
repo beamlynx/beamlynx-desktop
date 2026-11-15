@@ -24,6 +24,7 @@ import {
   START_NODE_ID,
 } from '../../store/canvas/canvas.model';
 import { useCanvasKeybindings } from '../../hooks/useCanvasKeybindings';
+import { useRoomForBarList } from './useRoomForBarList';
 import { CanvasStoreContext } from './canvas-context';
 import TableNode from './nodes/TableNode';
 import StartNode from './nodes/StartNode';
@@ -77,6 +78,8 @@ const Banner = ({ children, variant = 'warn' }: { children: React.ReactNode; var
   </div>
 );
 
+const MIN_ZOOM = 0.5;
+
 const Flow: React.FC<{
   canvasStore: CanvasStore;
   toolbarExtraAction?: CanvasToolbarExtraAction;
@@ -84,6 +87,8 @@ const Flow: React.FC<{
 }> = observer(({ canvasStore, toolbarExtraAction, recenterRequestCount }) => {
   const reactFlowInstance = useReactFlow();
   const { canvasGraph } = canvasStore;
+  const graphArea = useRef<HTMLDivElement>(null);
+  const room = useRoomForBarList(canvasStore, reactFlowInstance, graphArea, MIN_ZOOM);
 
   // An empty query shows the start node, whose click picks the first table.
   const derivedNodes: CanvasNode[] = useMemo(
@@ -149,7 +154,8 @@ const Flow: React.FC<{
 
   useEffect(() => {
     if (derivedNodes.length === 0) return;
-    const t = setTimeout(() => reactFlowInstance.fitView({ duration: 200 }), 50);
+    // Under an open bar list, the graph keeps clear of it instead (useRoomForBarList).
+    const t = setTimeout(() => (room.listOpen ? room.makeRoom() : reactFlowInstance.fitView({ duration: 200 })), 50);
     return () => clearTimeout(t);
     // Switching to another query block refits too, whatever its node count.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -269,6 +275,7 @@ const Flow: React.FC<{
       <PineDoc canvasStore={canvasStore} />
       <CanvasVariables canvasStore={canvasStore} />
       <div
+        ref={graphArea}
         style={{
           width: '100%',
           // The graph ends above the operation bar, so the bar never covers a node.
@@ -285,6 +292,7 @@ const Flow: React.FC<{
           edgeTypes={edgeTypes}
           onNodesChange={onNodesChange}
           onNodeDragStop={onNodeDragStop}
+          onMoveStart={room.onMoveStart}
           onSelectionChange={onSelectionChange}
           onPaneContextMenu={suppressContextMenu}
           onNodeContextMenu={suppressContextMenu}
@@ -306,7 +314,7 @@ const Flow: React.FC<{
           // pane-level arrow-key handling for the same reason.
           nodesFocusable={false}
           disableKeyboardA11y
-          minZoom={0.5}
+          minZoom={MIN_ZOOM}
           maxZoom={1.2}
           // Two-finger trackpad scroll pans (Miro/Figma convention) instead
           // of zooming - without `panOnScroll`, ReactFlow's raw wheel handler
