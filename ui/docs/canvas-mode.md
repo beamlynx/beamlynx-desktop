@@ -66,8 +66,10 @@ a time by construction, not by an extra mutual-exclusion check. Toggling the
 mode that's already open closes the panel; toggling the other mode while the
 panel is open just switches modes without closing it. Reachable from the
 canvas toolbar's PINE/SQL buttons (`CanvasToolbar.tsx`, lit when that mode is
-the one currently open) or `Ctrl`/`Cmd`+`Shift`+`E` (Pine) / `Ctrl`/`Cmd`+`Shift`+`S`
-(SQL). The panel and its divider (drag to resize, persisted per
+the one currently open). From the keyboard, `:` on the canvas gives the Pine
+panel the keyboard, and the command palette has "Focus on Pine Panel" and
+"Focus on SQL Panel"; these open the panel but never close it.
+`Ctrl`/`Cmd`+`.` toggles Zen mode (the results pane hides). The panel and its divider (drag to resize, persisted per
 `STORAGE_KEYS.NEW_LAYOUT_PANEL_WIDTH`/`NEW_LAYOUT_PANEL_HEIGHT`) live in
 `components/NewLayoutView.tsx`'s `LeftPane`, not under `components/canvas/` —
 canvas mode itself has no notion of this panel; it only reads/writes
@@ -205,7 +207,7 @@ Canvas mode is built around a vim-style modal keyboard layer
 touching the mouse — click once to focus a node, then everything after that
 is a bare letter. It's a single `keydown` listener, separate from the app's
 shared modifier-combo registry (`utils/keybindings.ts`'s `KEYBINDINGS`, used
-for things like `Ctrl`+`K`/`Ctrl`+`Shift`+`E`): these are single, bare letters
+for things like `Ctrl`+`K`/`Ctrl`+`.`): these are single, bare letters
 (`s`, `w`, `i`, …), which only make sense to interpret while canvas mode is
 the active view and nothing else on the page wants keystrokes — folding that
 into the shared registry would mean threading canvas-only state through a

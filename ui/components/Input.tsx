@@ -155,9 +155,8 @@ const Input: React.FC<InputProps> = observer(({ session, onRun, autoFocus = true
               PINE then SQL before ever reaching the text you actually want
               to type into, which is the one thing you'd want first when the
               panel's already open. Both stay mouse-clickable, and switching
-              mode by keyboard alone is still possible via the
-              toggle-pine-panel/toggle-sql-panel commands (Ctrl/Cmd+./+Shift+.,
-              or the command palette) -- this only removes them from the Tab
+              mode by keyboard alone is still possible via the command
+              palette (Focus on Pine Panel, Focus on SQL Panel) -- this only removes them from the Tab
               sequence, not from the keyboard entirely. */}
           {session.inputMode === 'pine' && !global.autoFormat && <FormatButton session={session} />}
           <ToggleButtonGroup

@@ -341,6 +341,21 @@ const COMMANDS: Command[] = [
     isEnabled: ALWAYS_ENABLED,
   },
   {
+    // The same as `:` on the canvas: opens the panel if it is closed, never closes it.
+    id: 'focus-pine-panel',
+    label: 'Focus on Pine Panel',
+    category: 'View',
+    handler: (global, session) => global.focusPinePanel(session),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'focus-sql-panel',
+    label: 'Focus on SQL Panel',
+    category: 'View',
+    handler: (global, session) => global.focusSqlPanel(session),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
     id: 'toggle-orientation',
     label: 'Toggle Layout Orientation (Side by Side / Top and Bottom)',
     category: 'View',

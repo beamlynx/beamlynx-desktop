@@ -40,8 +40,7 @@ export interface KeyCombo {
   /**
    * e.code, the physical key -- use instead of `key` when Shift changes the
    * character produced (e.g. 'Period', since Shift+period's e.key is '>',
-   * not '.' -- matching `key` here was a real bug once, see toggle-sql-panel
-   * below).
+   * not '.' -- matching `key` here was a real bug once, with Ctrl+Shift+.).
    */
   code?: string;
   /** ctrlKey || metaKey -- the platform "primary" modifier (Cmd on Mac, Ctrl elsewhere). */
@@ -302,40 +301,24 @@ export const KEYBINDINGS: KeybindingConfig[] = [
   },
 
   {
-    // Ctrl/Cmd+. rather than Ctrl/Cmd+Shift+E: not reserved by any browser
-    // chrome or (on macOS) any accelerator in beamlynx-desktop's own Electron
-    // menu (see beamlynx-desktop/src/main/index.ts's buildMenu -- it only
-    // defines About/Hide/Quit and a bare Edit menu, nothing on `.`/`,`), so
-    // this reaches the page the same way on every platform -- no
-    // isDesktop()/fallback split needed, unlike new-tab/close-tab above.
-    name: 'toggle-pine-panel',
-    description: 'Toggle Pine Panel (New Layout)',
+    // Ctrl/Cmd+. is free in every browser and in beamlynx-desktop's own
+    // Electron menu (beamlynx-desktop/src/main/index.ts's buildMenu defines
+    // nothing on `.` or `,`), so it reaches the page on every platform. The
+    // panels have no keys of their own: `:` on the canvas goes to the Pine
+    // panel, and the palette has "Focus on Pine Panel" and "Focus on SQL
+    // Panel".
+    name: 'toggle-zen-mode',
+    description: 'Toggle Zen Mode',
     display: createKeybindingDisplay(['ctrl'], '.'),
     combos: [{ combo: { mod: true, shift: false, key: '.' } }],
-    commandId: 'toggle-pine-panel',
-  },
-
-  {
-    // Shift of the Pine key above, not a separate key of its own -- Ctrl/
-    // Cmd+, was wanted for Settings instead (see open-settings below), so
-    // SQL's toggle moved here rather than contest that. Matches on `code`
-    // (the physical key), not `key`: with Shift held, the period key's
-    // `e.key` is '>', not '.' (it's the character the key produces, not the
-    // key itself), so matching `key: '.'` with `shift: true` could never
-    // actually fire on a real keyboard -- same bug class open-settings below
-    // already hit once with comma/'<'.
-    name: 'toggle-sql-panel',
-    description: 'Toggle SQL Panel (New Layout)',
-    display: createKeybindingDisplay(['ctrl', 'shift'], '.'),
-    combos: [{ combo: { mod: true, shift: true, code: 'Period' } }],
-    commandId: 'toggle-sql-panel',
+    commandId: 'toggle-zen-mode',
   },
 
   {
     // Cmd+, is macOS's own "Preferences" convention (Slack and most native
     // Mac apps use exactly this) -- only ever intercepted when some app menu
     // item actually binds that accelerator (typically `role: 'preferences'`),
-    // and beamlynx-desktop's menu has no such item (see toggle-pine-panel's
+    // and beamlynx-desktop's menu has no such item (see toggle-zen-mode's
     // comment above), so it isn't reserved here; free to mean the same thing
     // in this app as it does everywhere else.
     name: 'open-settings',
@@ -344,10 +327,6 @@ export const KEYBINDINGS: KeybindingConfig[] = [
     combos: [{ combo: { mod: true, shift: false, key: ',' } }],
     commandId: 'open-settings',
   },
-
-  // No dedicated key for toggle-zen-mode -- reachable via the command
-  // palette only. Ctrl/Cmd+. and +, are both spoken for above, and nothing
-  // else was requested for it.
 ];
 
 /**

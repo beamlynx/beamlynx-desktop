@@ -1462,6 +1462,13 @@ export class GlobalStore {
     session.focusTextInput();
   }
 
+  /** "Focus on SQL Panel": the panel in SQL mode gets the keyboard, opened if it was closed. */
+  public focusSqlPanel(session: Session) {
+    this.newLayoutPanelVisible = true;
+    session.setInputMode('sql');
+    session.focusTextInput();
+  }
+
   /** Escape in the Pine panel, with nothing else left for it to do: the canvas gets the keyboard. */
   public focusCanvas(): boolean {
     if (!this.canvasActive) return false;

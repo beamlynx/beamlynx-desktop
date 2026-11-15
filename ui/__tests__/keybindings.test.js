@@ -33,14 +33,13 @@ beforeEach(() => {
   DevState.desktop = undefined;
 });
 
-test('toggle-sql-panel matches the physical Period key (code), not the Shifted character', () => {
-  const config = entry('toggle-sql-panel');
-  assert.ok(keybindingMatches(config, keyEvent({ code: 'Period', ctrlKey: true, shiftKey: true })));
-  // Regression guard: Shift+period's e.key is '>', not '.' -- a version of
-  // this combo that matched `key: '.'` with `shift: true` could never
-  // actually fire on a real keyboard. Confirm matching by `key: '.'` alone
-  // (with no `code`) does NOT fire this binding.
-  assert.ok(!keybindingMatches(config, keyEvent({ key: '>', ctrlKey: true, shiftKey: true })));
+test('Ctrl/Cmd+. toggles Zen mode, and Ctrl/Cmd+Shift+. is not bound', () => {
+  const config = entry('toggle-zen-mode');
+  assert.equal(config.commandId, 'toggle-zen-mode');
+  assert.ok(keybindingMatches(config, keyEvent({ key: '.', code: 'Period', ctrlKey: true })));
+  assert.ok(keybindingMatches(config, keyEvent({ key: '.', code: 'Period', metaKey: true })));
+  const shifted = keyEvent({ key: '>', code: 'Period', ctrlKey: true, shiftKey: true });
+  assert.ok(!KEYBINDINGS.some(k => keybindingMatches(k, shifted)));
 });
 
 test("next-tab/previous-tab match the literal ctrlKey, not ctrlKey || metaKey (mod)", () => {
