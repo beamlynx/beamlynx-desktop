@@ -25,7 +25,7 @@ import { NOTCHED_NODE_THEMES } from '../../../styles/palette/themes';
  * its node's alias, so this works for it unchanged.
  */
 export const pickerAliasFor = (picker: PickerState): string | null => {
-  if (!picker.open) return null;
+  if (!picker.open || picker.mode === 'query-name') return null;
   if (
     picker.mode === 'where-value' ||
     picker.mode === 'join-type' ||

@@ -275,7 +275,8 @@ export type WhereDraft = {
 };
 
 export type PickerRequest =
-  | { kind: 'table' }
+  /** `newQuery`: the bar's "new query", so the table starts a query block of its own after the others. */
+  | { kind: 'table'; newQuery?: boolean }
   /** `column`: from a chip on a checkpoint's line, only the joins on that column of its result. */
   | { kind: 'join'; alias: string; column?: string }
   /** `only`: opened from the node itself, so it lists that table's columns alone. */
@@ -425,6 +426,20 @@ export type PickerState =
     }
   | {
       open: true;
+      /** The bar's "name": the query's result named with `|= name`, for a later query to use. */
+      mode: 'query-name';
+      /** The query block named (an index into the tab's query blocks). */
+      block: number;
+      /** Its name now, or null when it has none. */
+      current: string | null;
+      /** The input's live text, seeded with `current`. */
+      value: string;
+      /** Why the typed name can't be used, once save was tried. */
+      error: string | null;
+      anchor: PickerAnchor;
+    }
+  | {
+      open: true;
       mode: 'unnest-name';
       alias: string;
       /** The elements' current name: `company` in `data.companies as company`. */
@@ -479,7 +494,9 @@ export type MoreAction =
   | 'traverse'
   | 'unnest'
   | 'describe'
-  | 'references';
+  | 'references'
+  | 'name'
+  | 'query';
 export const MORE_ACTIONS: { action: MoreAction; label: string; key: string }[] = [
   { action: 'order', label: 'order', key: 'o' },
   { action: 'group', label: 'group', key: 'g' },
@@ -487,6 +504,10 @@ export const MORE_ACTIONS: { action: MoreAction; label: string; key: string }[] 
   { action: 'path', label: 'path', key: 'p' },
   // Ends the query with `count:`: its rows, counted. The comment's key is `n`, for note.
   { action: 'count', label: 'count', key: 'c' },
+  // Names the query's result (`|= name`), so a later query can read it.
+  { action: 'name', label: 'name', key: 'm' },
+  // Starts another query, below the others in the tab: its first table.
+  { action: 'query', label: 'new query', key: 'q' },
   { action: 'traverse', label: 'traverse', key: 't' },
   { action: 'unnest', label: 'unnest', key: 'u' },
   // End the query with `describe:` (the table's columns) or `references:`

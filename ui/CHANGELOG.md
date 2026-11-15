@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- **Name a query's result, and start another query, from the canvas.** The bar's `name` (key `m`) ends the query with `|= name`, so a later query can read it like a table. `new query` (key `q`) starts a query below the others in the tab: pick its first table, or the name of an earlier result, and the canvas switches to it.
+
 ### Changed
 - **Every canvas action is in the bar at the bottom.** Tables no longer show their own buttons when you point at them, and the keys always open their lists from the bar. Selecting a table changes what the bar offers: with the bar open, it slides to its new size, that table's actions come in again, and one the last table didn't have glows for a moment. The bar fades out while you type in the Pine panel.
 - **A list from the bar no longer covers the graph.** While it is open, the graph moves up above it, and zooms out if it doesn't fit. When the list closes, the view goes back, unless you panned or zoomed in the meantime.

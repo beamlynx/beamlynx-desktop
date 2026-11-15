@@ -273,7 +273,9 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
         case 'o':
         case 'g':
         case 'p':
-        case 'l': {
+        case 'l':
+        case 'm':
+        case 'q': {
           if (!canvasStore.operationAnchor) return;
           e.preventDefault();
           if (e.key === 's' || e.key === 'w') {
@@ -284,7 +286,7 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
           // the bar while their list is open, so you see which action it is
           // (CanvasStore.unfoldFor). One button fits in the bar's row, so the
           // bar doesn't grow upward and the list opens at once.
-          const folded = ({ o: 'order', g: 'group', p: 'path', l: 'limit' } as const)[e.key];
+          const folded = ({ o: 'order', g: 'group', p: 'path', l: 'limit', m: 'name', q: 'query' } as const)[e.key];
           if (!canvasStore.unfoldFor(folded)) return;
           canvasStore.runBarAction(folded, barAnchor());
           return;

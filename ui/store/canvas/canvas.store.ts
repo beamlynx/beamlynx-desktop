@@ -27,8 +27,8 @@ import {
   WhereDraft,
 } from './canvas.model';
 import { buildCanvasGraph, expansionOf, NamedBlock, newCheckpointName, whereEntriesFor } from './layout';
-import { contextFor, mainQuery, queryText, replaceQuery, TabBlocks, tabBlocks } from './tab-blocks';
-import { Lineage, lineageOf } from './lineage';
+import { blockName, contextFor, mainQuery, nameBlock, queryText, replaceQuery, TabBlocks, tabBlocks } from './tab-blocks';
+import { blockUses, Lineage, lineageOf } from './lineage';
 import {
   Segment,
   stageLimitIndex,
@@ -62,7 +62,9 @@ import { computeDateBounds } from './relative-date';
 /** Identifies a picker request for the "already open for this" check below - table has no alias to key on. */
 const requestKey = (r: PickerRequest): string =>
   r.kind === 'table'
-    ? 'table'
+    ? r.newQuery
+      ? 'table:new'
+      : 'table'
     : r.kind === 'path-route'
       ? `path-route:${r.alias}:${r.target}`
       : `${r.kind}:${r.alias}${'only' in r && r.only ? ':only' : ''}${'column' in r && r.column ? `:${r.column}` : ''}${
@@ -1396,10 +1398,16 @@ export class CanvasStore {
     }
   }
 
-  openTablePicker(anchor: PickerAnchor = CanvasStore.defaultAnchor) {
-    const request: PickerRequest = { kind: 'table' };
+  /**
+   * The tables to start a query with. With `newQuery` (the bar's "new
+   * query"), the query goes below every other in the tab, so the list is
+   * built after them: the names of earlier results are tables too.
+   */
+  openTablePicker(anchor: PickerAnchor = CanvasStore.defaultAnchor, newQuery = false) {
+    const request: PickerRequest = newQuery ? { kind: 'table', newQuery } : { kind: 'table' };
+    const context = newQuery ? this.tab.blocks.map(b => b.text) : [];
     void this.openListPicker(request, anchor, async () => {
-      const ast = await probeBuild('', this.session.connectionId);
+      const ast = await probeBuild('', this.session.connectionId, context);
       if (!ast) throw new Error('Failed to build table suggestions');
       const items: PickerItem[] = ast.hints.table.map(h => ({
         id: h.pine,
@@ -1719,6 +1727,8 @@ export class CanvasStore {
     return [
       ...query,
       ...(this.counted ? [] : (['count'] as const)),
+      'name',
+      'query',
       ...own,
       ...(known?.length ? (['unnest'] as const) : []),
     ];
@@ -1736,6 +1746,12 @@ export class CanvasStore {
         break;
       case 'count':
         void this.addCount();
+        break;
+      case 'name':
+        this.openQueryNameEditor(anchor);
+        break;
+      case 'query':
+        this.openTablePicker(anchor, true);
         break;
       case 'unnest': {
         // For the whole query: from where it goes on, which lists every table's JSON columns.
@@ -2254,11 +2270,70 @@ export class CanvasStore {
 
   commitFirstTable(hint: TableHint) {
     const alias = makeAlias(hint.table, new Set());
+    const p = this.picker;
+    if (p.open && p.mode === 'list' && p.request.kind === 'table' && p.request.newQuery) {
+      this.addQueryBlock(actions.pickFirstTable(hint, alias));
+      this.closePicker();
+      this.focusNode(alias);
+      return;
+    }
     this.applyExpression(actions.pickFirstTable(hint, alias));
     this.closePicker();
     // Cursor lands on what was just inserted - the vim convention this
     // keyboard layer follows throughout (see commitJoin below).
     this.focusNode(alias);
+  }
+
+  /**
+   * Adds `text` as a query block of its own, after every other block in the
+   * tab, and draws it: the editor's cursor moves into it (see mainBlock).
+   * Undoable like a gesture.
+   */
+  private addQueryBlock(text: string) {
+    const expression = `${this.session.expression.replace(/\s+$/, '')}\n\n${text}`;
+    this.undoStack.push(this.session.expression);
+    this.redoStack = [];
+    this.canvasWrittenExpression = expression;
+    this.session.expression = expression;
+    const tab = tabBlocks(expression);
+    const last = tab.queries[tab.queries.length - 1];
+    if (last !== undefined) this.session.moveCursorToLine(tab.blocks[last].startLine);
+    this.notifyAutoRun();
+  }
+
+  /** The bar's "name": a field for the name of the query's result (`|= name`). */
+  openQueryNameEditor(anchor: PickerAnchor = CanvasStore.defaultAnchor) {
+    const block = this.mainBlock;
+    const current = blockName(this.textOf(block));
+    this.picker = { open: true, mode: 'query-name', block, current, value: current ?? '', error: null, anchor };
+  }
+
+  setQueryNameValue(value: string) {
+    if (this.picker.open && this.picker.mode === 'query-name') this.picker = { ...this.picker, value, error: null };
+  }
+
+  /**
+   * Names the query's result with the typed name. Refused, with the reason
+   * shown, for a name Pine can't read, one another query in the tab has, or
+   * a rename while a later query still reads the old name.
+   */
+  commitQueryName() {
+    const p = this.picker;
+    if (!p.open || p.mode !== 'query-name') return;
+    const name = p.value.trim();
+    const refuse = (error: string) => (this.picker = { ...p, error });
+    if (name === p.current) return this.closePicker();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      return refuse('A name is letters, digits and _, and starts with a letter.');
+    }
+    const tab = this.tab;
+    if (tab.names.some((n, k) => n === name && k !== p.block)) return refuse(`Another query is already named ${name}.`);
+    const later = tab.queries.slice(p.block + 1).map((_, i) => this.textOf(p.block + 1 + i));
+    if (p.current && later.some(text => blockUses(text, [p.current as string]).length > 0)) {
+      return refuse(`A later query reads ${p.current}. Rename it there first.`);
+    }
+    this.closePicker();
+    this.applyExpression(nameBlock(this.textOf(p.block), name), { block: p.block });
   }
 
   async commitJoin(hint: TableHint, focusAlias: string) {

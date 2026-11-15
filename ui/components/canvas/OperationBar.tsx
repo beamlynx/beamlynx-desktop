@@ -28,7 +28,7 @@ const resizeMs = 240;
 const dividerSpace = 5;
 
 /** The extra actions for the whole query. The others are for the selected table, past a divider. */
-const QUERY_ACTIONS: MoreAction[] = ['order', 'group', 'limit', 'count', 'path'];
+const QUERY_ACTIONS: MoreAction[] = ['order', 'group', 'limit', 'count', 'path', 'name', 'query'];
 
 /** Which of the bar's actions has its picker open, if any: the others dim. */
 const activeBarAction = (picker: PickerState): string | null => {
@@ -37,9 +37,11 @@ const activeBarAction = (picker: PickerState): string | null => {
   if (picker.mode === 'order-direction') return 'order';
   if (picker.mode === 'limit-value') return 'limit';
   if (picker.mode === 'traverse') return 'traverse';
+  if (picker.mode === 'query-name') return 'name';
   if (picker.mode !== 'list') return null;
   const kind = picker.request.kind;
-  return kind === 'path-route' ? 'path' : kind === 'table' ? null : kind;
+  if (kind === 'table') return picker.request.newQuery ? 'query' : null;
+  return kind === 'path-route' ? 'path' : kind;
 };
 
 /**
