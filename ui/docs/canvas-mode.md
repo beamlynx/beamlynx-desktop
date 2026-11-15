@@ -97,12 +97,13 @@ whatever they showed before the edit — and a session restored with
 There are two ways to work on the canvas, and each has its own place where
 things open. Check every change to the canvas against these rules.
 
-- **The keyboard works on the query.** Every key runs the bar's action, and
-  its list opens from the bar at the bottom. Where the mouse happens to rest
-  doesn't matter. A key never opens a table's own buttons.
-- **The mouse works on what it clicks.** Pointing at a table shows its own
-  buttons, and clicking one opens that table's list at the table. Pointing
-  alone changes nothing about what the keys do.
+- **Every action is in the bar.** Tables have no buttons of their own. A
+  key runs the bar's action, and its list opens from the bar at the bottom.
+  Where the mouse happens to rest doesn't matter.
+- **Selecting a table changes what the bar offers.** Select a table with
+  the keys (j/k) or a click, and the bar shows the actions that fit it.
+  When the bar is open, that table's actions come in again, and one the
+  last table didn't have glows for a moment, so the change is seen.
 - **The bar always adds to the end of the query.** Select, where, order,
   group, limit, count and path add the next step there.
 - **The selected table only says where the bar's table actions start.**
@@ -110,7 +111,7 @@ things open. Check every change to the canvas against these rules.
   with the keys (j/k) or a click. A table above a group's or limit's line
   can't take a join: the bar joins from where the query goes on instead
   (the newest table below the last line, or the result itself when nothing
-  follows it), and the table has no join button of its own.
+  follows it).
 - **The bar shows what you are doing.** A key for an action in the bar's
   folded part (`o`, `g`, `l`, `p`) shows only that action's button in the
   bar for as long as its list is open, not the whole folded part. When the
@@ -133,10 +134,6 @@ things open. Check every change to the canvas against these rules.
 - **Pick a first table** — an empty session shows a single dashed "+ pick a
   table" start node (`nodes/StartNode.tsx`); clicking it opens the table
   picker and overwrites the session's expression wholesale.
-- **Per-node action bar** — hovering a table node (or having one of its
-  pickers open) reveals a row of actions: `select`, `join`, `where`, `order`,
-  `group` (`nodes/TableNode.tsx`). Each opens a dropdown picker
-  (`Picker.tsx`) anchored to the click position.
 - **Join** lists candidate tables split into "has" (other tables that
   reference this one) and "belongs to" (this table references another),
   mirroring the classic graph's join-direction convention.
@@ -224,9 +221,7 @@ shows the keys: while the canvas has the keyboard, each button's key
 letter is bold. Its `›` (key `>`, or `+`) grows the bar to show the rest,
 each with its key: the query's actions past a divider, then the selected
 table's under its name. Where they don't fit on one row, they open
-upward, in rows above the bar. `‹`, `<` or Escape closes them. A table's own buttons,
-shown while the pointer is on it, do the same for that table, for the mouse
-only: the keys stay the bar's (see "How the canvas is used").
+upward, in rows above the bar. `‹`, `<` or Escape closes them.
 
 **Moving focus** (normal mode only):
 

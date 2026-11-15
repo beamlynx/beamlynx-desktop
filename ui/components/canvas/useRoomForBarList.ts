@@ -13,8 +13,7 @@ import { focusIntoView } from './focus-into-view';
  * was.
  *
  * The view is the user's: if they pan or zoom while the list is open, theirs
- * stays when it closes. A table's own lists (the mouse case) open at the
- * table and move nothing.
+ * stays when it closes.
  *
  * Returns `makeRoom`, which the canvas calls in place of its usual fit when
  * the graph changes under an open list (a pick in select, which stays open).
@@ -26,7 +25,7 @@ export const useRoomForBarList = (
   minZoom: number,
 ) => {
   const picker = canvasStore.picker;
-  const anchor: PickerAnchor | null = picker.open && picker.anchor.centered && !canvasStore.nodePicker ? picker.anchor : null;
+  const anchor: PickerAnchor | null = picker.open && picker.anchor.centered ? picker.anchor : null;
   const open = anchor !== null;
 
   // The view from before the list opened, and the node count then.

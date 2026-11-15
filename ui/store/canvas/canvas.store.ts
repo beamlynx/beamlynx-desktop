@@ -10,8 +10,6 @@ import {
   CanvasTableNode,
   ConfigItem,
   JoinType,
-  MORE_ACTIONS_FOR_CHECKPOINT,
-  MORE_ACTIONS_FOR_TABLE,
   MoreAction,
   OrderDirection,
   PickerAnchor,
@@ -279,54 +277,6 @@ export class CanvasStore {
 
   setHoveredAlias(alias: string | null) {
     this.hoveredAlias = alias;
-  }
-
-  /**
-   * The table node under a pointer that moved: it shows its own buttons,
-   * and the keys s, w, o, i and + work on it alone (useCanvasKeybindings).
-   * Set on mousemove, not mouseenter, and cleared whenever the graph is
-   * drawn again: a re-layout can slide a node under a still pointer, and
-   * that must not quietly take over the keys.
-   */
-  pointerAlias: string | null = null;
-
-  setPointerAlias(alias: string | null) {
-    if (this.pointerAlias !== alias) this.pointerAlias = alias;
-  }
-
-  /**
-   * The node whose own buttons opened the picker that is open now. Its
-   * buttons stay shown while it is open. Null for the operation bar's.
-   */
-  private nodePickerAlias: string | null = null;
-
-  /** See nodePickerAlias. */
-  get nodePicker(): string | null {
-    const p = this.picker;
-    if (!p.open) return null;
-    const alias = 'alias' in p ? p.alias : p.mode === 'list' && 'alias' in p.request ? p.request.alias : null;
-    return alias === this.nodePickerAlias ? alias : null;
-  }
-
-  /**
-   * One of a table node's own buttons, or a key while the pointer is on it
-   * (pointerAlias): join, select, where, order, or its "+". Select, where
-   * and order list that table's columns alone. The operation bar's are for
-   * the whole query (openOperation).
-   */
-  openNodeOperation(alias: string, kind: 'join' | 'select' | 'where' | 'order' | 'more', anchor: PickerAnchor) {
-    if (this.isCheckpointNode(alias)) return;
-    this.nodePickerAlias = alias;
-    switch (kind) {
-      case 'join':
-        this.openJoinPicker(alias, anchor);
-        return;
-      case 'more':
-        this.openMorePicker(alias, false, anchor);
-        return;
-      default:
-        this.openColumnPicker(kind, alias, anchor, undefined, true);
-    }
   }
 
   /**
@@ -729,8 +679,6 @@ export class CanvasStore {
     // (buildCanvasGraph). It isn't cleared here: right after a commit the ast
     // can still be the one from before, without the checkpoint just added.
     const segments = segmentsFromAst(expression, ast);
-    // The nodes may have moved: the pointer has to move again to pick one.
-    this.pointerAlias = null;
     this.canvasGraph = buildCanvasGraph(
       ast,
       { ...this.stripPositions, ...this.positions[this.mainBlock] },
@@ -1563,44 +1511,6 @@ export class CanvasStore {
     });
   }
 
-  /**
-   * The "+" overflow trigger's own menu (TableNode.tsx) - a
-   * fixed, non-searchable set of 2-3 actions, not a data-backed list, so it
-   * opens directly rather than through openListPicker (no probeBuild, no
-   * loading state - see PickerState's 'more' mode and Picker.tsx's mirrored
-   * 'join-type' rendering, the closest existing precedent for a small static
-   * popover).
-   */
-  /**
-   * The "+" overflow menu. What it offers is decided here, from `isCheckpoint`
-   * alone - callers used to pass the list too, and a caller that can pass a
-   * list is a caller that can pass the wrong one. That is not hypothetical:
-   * `traverse` was added to the button's list and the keyboard shortcut kept
-   * opening a menu without it, because it had its own copy. There is nothing
-   * left to keep in step now; a new action is one edit to MORE_ACTIONS_FOR_*
-   * and every way of opening this menu has it.
-   */
-  openMorePicker(
-    alias: string,
-    isCheckpoint: boolean,
-    anchor: PickerAnchor = CanvasStore.defaultAnchor,
-  ) {
-    if (this.picker.open && this.picker.mode === 'more' && !this.picker.global && this.picker.alias === alias) {
-      this.closePicker();
-      return;
-    }
-    this.focusNode(alias);
-    const all = isCheckpoint ? MORE_ACTIONS_FOR_CHECKPOINT : MORE_ACTIONS_FOR_TABLE;
-    // `traverse` starts at the most recent table, like path.
-    const offer = this.mainAst?.current === alias ? all : all.filter(a => a !== 'traverse');
-    this.picker = { open: true, mode: 'more', alias, offer, isCheckpoint, anchor };
-  }
-
-  /** The actions a node's "+" menu offers: see openMorePicker. TableNode hides an empty one. */
-  moreActionsFor(alias: string, isCheckpoint: boolean): MoreAction[] {
-    const all = isCheckpoint ? MORE_ACTIONS_FOR_CHECKPOINT : MORE_ACTIONS_FOR_TABLE;
-    return this.mainAst?.current === alias ? all : all.filter(a => a !== 'traverse');
-  }
 
   /**
    * The table the operation bar's pickers start from: the focused node,
@@ -1645,7 +1555,6 @@ export class CanvasStore {
   openNodeAction(action: NodeAction, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
     const selected = this.selectedNodeActions;
     if (!selected || !selected.actions.includes(action)) return;
-    this.nodePickerAlias = null;
     const { alias } = selected;
     switch (action) {
       case 'join': {
@@ -1705,7 +1614,6 @@ export class CanvasStore {
   openOperation(kind: GlobalOperation, anchor: PickerAnchor = CanvasStore.defaultAnchor) {
     const alias = this.operationAnchor;
     if (!alias) return;
-    this.nodePickerAlias = null;
     const checkpoint = this.isCheckpointNode(alias);
     switch (kind) {
       case 'limit':
@@ -1810,7 +1718,6 @@ export class CanvasStore {
   /** One of the expanded bar's actions, by click or by its key. */
   runBarAction(action: MoreAction, anchor: PickerAnchor) {
     if (!this.barMoreActions.includes(action)) return;
-    this.nodePickerAlias = null;
     switch (action) {
       case 'order':
       case 'group':
@@ -1981,64 +1888,6 @@ export class CanvasStore {
   /** The UNNEST chip's ×: removes the `unnest:` that names its elements `name`. */
   async removeUnnest(alias: string, name: string) {
     await this.commit(base => actions.removeUnnest(base, name), alias);
-  }
-
-  /**
-   * Dispatches one "+" menu pick to the real picker it stands for - Picker.tsx
-   * calls this for both a mouse click and its own o/g/p mnemonics, so the
-   * routing lives in one place rather than being duplicated at both call
-   * sites. With `isCheckpoint`, `alias` is the checkpoint's name, and the
-   * pick goes through openCheckpointPicker, which pins that name first.
-   */
-  activateMoreAction(alias: string, action: MoreAction, isCheckpoint: boolean, anchor: PickerAnchor) {
-    // The operation bar's "+": order, group, limit and path are for the
-    // whole query, as their keys are (see openOperation).
-    const p = this.picker;
-    if (p.open && p.mode === 'more' && p.global && (action === 'order' || action === 'group' || action === 'limit' || action === 'path')) {
-      this.openOperation(action, anchor);
-      return;
-    }
-    if (action === 'count') {
-      void this.addCount();
-      return;
-    }
-    // Checked before the isCheckpoint branch below: a limit goes through
-    // the normal commit, whose pinned base names every checkpoint anyway,
-    // so it needs no picker-time pin.
-    if (action === 'limit') {
-      this.openLimitEditor(alias, anchor);
-      return;
-    }
-    if (action === 'unnest') {
-      // For the whole query: from where it goes on, which lists every
-      // table's JSON columns. A sealed result has none of its own.
-      const from = this.operationAnchor;
-      if (from && !this.isCheckpointNode(from)) this.openUnnestPicker(from, anchor);
-      return;
-    }
-    if (action === 'describe' || action === 'references') {
-      // Plain nodes only: a checkpoint's node isn't offered them.
-      if (!isCheckpoint) this.describeNode(alias, action);
-      return;
-    }
-    if (action === 'traverse') {
-      // Plain nodes only. Following a foreign key out of a checkpoint's
-      // sealed result isn't a thing - its node doesn't offer it either.
-      if (isCheckpoint) return;
-      void this.openTraversePicker(alias, anchor);
-      return;
-    }
-    if (isCheckpoint) {
-      if (action === 'group') return; // never offered for a checkpoint's node
-      void this.openCheckpointPicker(alias, action, anchor);
-      return;
-    }
-    if (action === 'path') {
-      this.openPathPicker(alias, anchor);
-      return;
-    }
-    // From a node's own "+": that table's columns alone.
-    this.openColumnPicker(action, alias, anchor, undefined, this.nodePicker === alias);
   }
 
   /**
