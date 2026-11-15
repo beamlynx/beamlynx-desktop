@@ -269,6 +269,17 @@ test('removing a checkpoint keeps the tables after it', () => {
   assert.equal(deleteCheckpoint(base(GROUP), 'result_1'), 'company as c');
 });
 
+test("removing a checkpoint keeps the query's own name", () => {
+  const seg = (text, kind, owner) => ({ text, start: -1, end: -1, kind, owner });
+  const named = name => ({
+    aliasMap: new Map(),
+    segments: [seg('company as c', 'table', 'c'), seg('limit: 5', 'limit', name), seg(`= ${name}`, 'assign', name)],
+  });
+  assert.equal(deleteCheckpoint(named('top'), 'top'), 'company as c | = top');
+  // Pine's automatic name goes with its limit.
+  assert.equal(deleteCheckpoint(named('result_1'), 'result_1'), 'company as c');
+});
+
 test('a limit added from a table goes at the end, even when a group ends its stage', () => {
   // Before the group would group only 5 rows, not give the first 5 groups.
   assert.equal(setLimit(base(GROUP), 5, 'c'), 'company as c | group: c.name | limit: 5');
