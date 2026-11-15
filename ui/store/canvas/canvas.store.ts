@@ -48,6 +48,7 @@ import {
   withoutEndingSegments,
   replaceDoc,
   stageEnd,
+  isSealedIn,
   stageStart,
   toText,
   withDoc,
@@ -1433,6 +1434,7 @@ export class CanvasStore {
 
   /** With `column`, only the tables that join on that column of `alias` (a chip on a checkpoint's line). */
   openJoinPicker(alias: string, anchor: PickerAnchor = CanvasStore.defaultAnchor, column?: string) {
+    if (this.isSealed(alias)) return;
     this.focusNode(alias);
     const request: PickerRequest = column ? { kind: 'join', alias, column } : { kind: 'join', alias };
     void this.openListPicker(request, anchor, async () => {
@@ -1615,9 +1617,11 @@ export class CanvasStore {
     const node = tables.find(n => n.id === this.focusedAlias) ?? tables.find(n => n.id === this.nextStepAlias);
     if (!node) return null;
     const checkpoint = !!node.data.checkpoint;
+    // Nothing joins from above a line (see isSealed).
+    const join: NodeAction[] = this.isSealed(node.id) ? [] : ['join'];
     const actions: NodeAction[] = checkpoint
-      ? ['join']
-      : ['join', ...(node.id === this.nextStepAlias ? (['traverse'] as const) : []), 'describe', 'references'];
+      ? join
+      : [...join, ...(node.id === this.nextStepAlias ? (['traverse'] as const) : []), 'describe', 'references'];
     const label = node.data.table === node.data.alias ? node.data.alias : `${node.data.table} (${node.data.alias})`;
     return { alias: node.id, label, actions };
   }
@@ -1652,6 +1656,17 @@ export class CanvasStore {
     const ast = this.mainAst;
     const last = ast?.checkpoints?.[ast.checkpoints.length - 1];
     return last && !last.sealed ? last.name : ast?.current;
+  }
+
+  /**
+   * True for a table or result above a group's or `limit … per`'s line: a
+   * later checkpoint seals its stage. Nothing joins from it. A join there
+   * would go in before the checkpoint and change what it groups or limits,
+   * without the line saying so. Joins go below the line, from the result.
+   */
+  isSealed(id: string): boolean {
+    const { block, alias } = this.scopeOf(id);
+    return isSealedIn(withoutEndingSegments(segmentsFromAst(this.textOf(block), this.astOf(block)) ?? []), alias);
   }
 
   private isCheckpointNode(alias: string): boolean {
