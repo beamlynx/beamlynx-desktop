@@ -5,9 +5,11 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 ### Added
-- **Name a query's result, and start another query, from the canvas.** The bar's `name` (key `m`) ends the query with `|= name`, so a later query can read it like a table. `new query` (key `q`) starts a query below the others in the tab: pick its first table, or the name of an earlier result, and the canvas switches to it.
+- **Name a query's result, and start another query, from the canvas.** The bar's `name` (key `m`) ends the query with `|= name`, so a later query can read it like a table, and the name shows at the top of the canvas. `new query` (key `q`) starts a query below the others in the tab on a blank canvas. Its table list includes the names of earlier results.
+- **"Focus on Pine Panel" and "Focus on SQL Panel" in the command palette.** Each opens the panel if it is closed and puts the cursor in it.
 
 ### Changed
+- **`Ctrl`/`Cmd`+`.` toggles Zen mode.** It used to open and close the Pine panel. `Ctrl`/`Cmd`+`Shift`+`.` no longer opens the SQL panel; use the command palette, or `:` on the canvas for the Pine panel.
 - **Every canvas action is in the bar at the bottom.** Tables no longer show their own buttons when you point at them, and the keys always open their lists from the bar. Selecting a table changes what the bar offers: with the bar open, it slides to its new size, that table's actions come in again, and one the last table didn't have glows for a moment. The bar fades out while you type in the Pine panel.
 - **A list from the bar no longer covers the graph.** While it is open, the graph moves up above it, and zooms out if it doesn't fit. When the list closes, the view goes back, unless you panned or zoomed in the meantime.
 - **Moving between tables with the keys keeps the selected table in view.** When it is off screen, the canvas pans just enough to show it, without changing the zoom.

@@ -66,8 +66,10 @@ a time by construction, not by an extra mutual-exclusion check. Toggling the
 mode that's already open closes the panel; toggling the other mode while the
 panel is open just switches modes without closing it. Reachable from the
 canvas toolbar's PINE/SQL buttons (`CanvasToolbar.tsx`, lit when that mode is
-the one currently open) or `Ctrl`/`Cmd`+`Shift`+`E` (Pine) / `Ctrl`/`Cmd`+`Shift`+`S`
-(SQL). The panel and its divider (drag to resize, persisted per
+the one currently open). From the keyboard, `:` on the canvas gives the Pine
+panel the keyboard, and the command palette has "Focus on Pine Panel" and
+"Focus on SQL Panel"; these open the panel but never close it.
+`Ctrl`/`Cmd`+`.` toggles Zen mode (the results pane hides). The panel and its divider (drag to resize, persisted per
 `STORAGE_KEYS.NEW_LAYOUT_PANEL_WIDTH`/`NEW_LAYOUT_PANEL_HEIGHT`) live in
 `components/NewLayoutView.tsx`'s `LeftPane`, not under `components/canvas/` —
 canvas mode itself has no notion of this panel; it only reads/writes
@@ -205,7 +207,7 @@ Canvas mode is built around a vim-style modal keyboard layer
 touching the mouse — click once to focus a node, then everything after that
 is a bare letter. It's a single `keydown` listener, separate from the app's
 shared modifier-combo registry (`utils/keybindings.ts`'s `KEYBINDINGS`, used
-for things like `Ctrl`+`K`/`Ctrl`+`Shift`+`E`): these are single, bare letters
+for things like `Ctrl`+`K`/`Ctrl`+`.`): these are single, bare letters
 (`s`, `w`, `i`, …), which only make sense to interpret while canvas mode is
 the active view and nothing else on the page wants keystrokes — folding that
 into the shared registry would mean threading canvas-only state through a
@@ -250,7 +252,7 @@ pipeline is a single strict sequence, not a 2D graph to roam.
 | `w` | Open the where-condition picker |
 | `o` | Open the order-by picker |
 | `m` | Name the query's result (`\|= name`), so a later query can read it |
-| `q` | Start a new query below the others: pick its first table, an earlier result's name included |
+| `q` | Start a new query below the others, on a blank canvas |
 | `g` | Open the group-by picker (not offered on a checkpoint node — grouping an already-grouped result is a different question, not implemented) |
 | `e` | On a nested query's node (a checkpoint, or a table using a named block): expand or collapse its container |
 | `x` | Delete the focused node — a table if `removable`, or, on a checkpoint's node, the checkpoint (as the × on its node does; the tables it sealed stay). On the count line, the last stop, it removes the count |
@@ -472,11 +474,15 @@ actions work across blocks:
 - `name` (key `m`) names the drawn query's result with `|= name` at its end
   (`tab-blocks.ts`'s `nameBlock`), or renames it. It refuses a name Pine
   can't read, one another block has, and a rename while a later block still
-  reads the old name.
-- `new query` (key `q`) lists the tables, with the names of earlier results
-  among them (the list is built after every block). The pick becomes a new
-  block at the end of the tab, and the canvas draws it: the editor's cursor
-  moves into it. Undo takes the block off.
+  reads the old name. The strip at the top of the canvas shows the name,
+  even when the tab has only this one query.
+- `new query` (key `q`) adds a block at the end of the tab and draws it: the
+  editor's cursor moves into it, and the canvas is blank but for the strip
+  and "+ pick a table". A block needs some text to exist, so it starts as the
+  comment `-- new query`; picking the first table replaces it. The table list
+  is built after the blocks above, so the names of earlier results are
+  listed too. Nothing runs until the query has a table. Undo takes the block
+  off.
 
 **Earlier query blocks.** A tab can have several query blocks. The canvas
 draws the last one; each earlier one must end in `|= name` (`tab-blocks.ts`),

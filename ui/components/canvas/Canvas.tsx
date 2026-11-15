@@ -80,6 +80,8 @@ const Banner = ({ children, variant = 'warn' }: { children: React.ReactNode; var
 );
 
 const MIN_ZOOM = 0.5;
+// Between the strip and a new query's start node, as layout.ts leaves between the strip and the tables.
+const STRIP_GAP = 36;
 
 const Flow: React.FC<{
   canvasStore: CanvasStore;
@@ -92,20 +94,20 @@ const Flow: React.FC<{
   const room = useRoomForBarList(canvasStore, reactFlowInstance, graphArea, MIN_ZOOM);
 
   // An empty query shows the start node, whose click picks the first table.
-  const derivedNodes: CanvasNode[] = useMemo(
-    () =>
-      canvasGraph.nodes.length === 0
-        ? [
-            {
-              id: START_NODE_ID,
-              type: 'start-node',
-              position: { x: 0, y: 0 },
-              data: {},
-            } as CanvasNode,
-          ]
-        : canvasGraph.nodes,
-    [canvasGraph.nodes],
-  );
+  // A query of a tab with several (a new one is only a comment) has the
+  // strip above it: the start node goes under the strip.
+  const derivedNodes: CanvasNode[] = useMemo(() => {
+    const strip = canvasGraph.nodes.filter(n => n.type === 'lineage-node');
+    if (strip.length < canvasGraph.nodes.length) return canvasGraph.nodes;
+    const below = strip.length
+      ? Math.max(...strip.map(n => n.position.y + (n.data as CanvasLineageNodeData).height)) + STRIP_GAP
+      : 0;
+    const left = strip.length ? Math.min(...strip.map(n => n.position.x)) : 0;
+    return [
+      ...canvasGraph.nodes,
+      { id: START_NODE_ID, type: 'start-node', position: { x: left, y: below }, data: {} } as CanvasNode,
+    ];
+  }, [canvasGraph.nodes]);
 
   // ReactFlow's `nodes` prop is "controlled", but that doesn't mean it can
   // be handed a fresh MobX-derived array directly on every render - without
