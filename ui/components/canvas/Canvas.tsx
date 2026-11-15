@@ -25,7 +25,7 @@ import {
 } from '../../store/canvas/canvas.model';
 import { useCanvasKeybindings } from '../../hooks/useCanvasKeybindings';
 import { useRoomForBarList } from './useRoomForBarList';
-import { intoView } from '../../store/canvas/into-view';
+import { focusIntoView } from './focus-into-view';
 import { CanvasStoreContext } from './canvas-context';
 import TableNode from './nodes/TableNode';
 import StartNode from './nodes/StartNode';
@@ -153,10 +153,25 @@ const Flow: React.FC<{
     return () => clearTimeout(t);
   }, [derivedNodes, setNodes]);
 
+  // A new graph fits the view to it. A view the user moved to themselves
+  // stays, like a dragged table: the graph then only pans the table the
+  // keyboard is on (often the one just added) into it. Reset layout forgets
+  // the user's view and fits again.
+  const lastBlock = useRef(canvasStore.mainBlock);
   useEffect(() => {
     if (derivedNodes.length === 0) return;
-    // Under an open bar list, the graph keeps clear of it instead (useRoomForBarList).
-    const t = setTimeout(() => (room.listOpen ? room.makeRoom() : reactFlowInstance.fitView({ duration: 200 })), 50);
+    const switched = lastBlock.current !== canvasStore.mainBlock;
+    lastBlock.current = canvasStore.mainBlock;
+    const t = setTimeout(() => {
+      // Under an open bar list, the graph keeps clear of it instead (useRoomForBarList).
+      if (room.listOpen) return room.makeRoom();
+      const view = canvasStore.userView;
+      if (!view) return reactFlowInstance.fitView({ duration: 200 });
+      // Back on a block, its own view comes back.
+      const from = switched ? view : reactFlowInstance.getViewport();
+      const next = focusIntoView(reactFlowInstance, canvasStore, graphArea, from) ?? (switched ? from : null);
+      if (next) reactFlowInstance.setViewport(next, { duration: 200 });
+    }, 50);
     return () => clearTimeout(t);
     // Switching to another query block refits too, whatever its node count.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -167,19 +182,20 @@ const Flow: React.FC<{
   // zoom (into-view.ts). Under an open bar list, useRoomForBarList decides.
   const focused = canvasStore.focusedAlias;
   useEffect(() => {
-    if (!focused || room.listOpen) return;
-    const node = reactFlowInstance.getNode(focused);
-    const box = graphArea.current?.getBoundingClientRect();
-    if (!node?.positionAbsolute || !node.width || !node.height || !box) return;
-    const next = intoView({
-      node: { ...node.positionAbsolute, width: node.width, height: node.height },
-      width: box.width,
-      height: box.height,
-      current: reactFlowInstance.getViewport(),
-    });
+    if (room.listOpen) return;
+    const next = focusIntoView(reactFlowInstance, canvasStore, graphArea);
     if (next) reactFlowInstance.setViewport(next, { duration: 200 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focused]);
+
+  // A pan or zoom of the user's own (it has an event; the canvas's own moves
+  // don't) is kept, like a dragged table.
+  const onMoveEnd = useCallback(
+    (event: unknown, viewport: { x: number; y: number; zoom: number }) => {
+      if (event) canvasStore.setUserView(viewport);
+    },
+    [canvasStore],
+  );
 
   const onNodeDragStop = (_e: React.MouseEvent, node: CanvasNode) => {
     if (node.type === 'table-node' || node.type === 'lineage-node') {
@@ -313,6 +329,7 @@ const Flow: React.FC<{
           onNodesChange={onNodesChange}
           onNodeDragStop={onNodeDragStop}
           onMoveStart={room.onMoveStart}
+          onMoveEnd={onMoveEnd}
           onSelectionChange={onSelectionChange}
           onPaneContextMenu={suppressContextMenu}
           onNodeContextMenu={suppressContextMenu}

@@ -4,6 +4,7 @@ import { CanvasStore } from '../../store/canvas/canvas.store';
 import { PickerAnchor } from '../../store/canvas/canvas.model';
 import { Viewport, roomForList } from '../../store/canvas/room-for-list';
 import { barListTop } from './Picker';
+import { focusIntoView } from './focus-into-view';
 
 /**
  * A list opened from the bar rises over the bottom of the canvas. While it
@@ -76,13 +77,19 @@ export const useRoomForBarList = (
       const before = saved.current;
       saved.current = null;
       if (!before || userMoved.current) return;
-      // A pick that added a table refits the view, as any new table does.
-      if (flow.getNodes().length !== before.nodes) flow.fitView({ duration: 200 });
-      else flow.setViewport(before.viewport, { duration: 200 });
+      // A pick that added a table refits the view, as any new table does,
+      // unless the view is one the user moved to: then it comes back, with
+      // the new table panned into it.
+      if (flow.getNodes().length === before.nodes) flow.setViewport(before.viewport, { duration: 200 });
+      else if (!canvasStore.userView) flow.fitView({ duration: 200 });
+      else {
+        const next = focusIntoView(flow, canvasStore, container, before.viewport) ?? before.viewport;
+        flow.setViewport(next, { duration: 200 });
+      }
     }, 80);
     return () => clearTimeout(t);
     // The anchor moves when the bar unfolds into rows.
-  }, [open, anchor?.y, makeRoom, flow]);
+  }, [open, anchor?.y, makeRoom, flow, canvasStore, container]);
 
   /** For ReactFlow's onMoveStart: a move with an event is the user's own. */
   const onMoveStart = useCallback((event: unknown) => {
