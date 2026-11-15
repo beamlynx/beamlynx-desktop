@@ -280,6 +280,33 @@ test('removing the only table before a checkpoint removes the checkpoint too', (
   assert.equal(deleteNode(pinned, 'c'), 'employee as e');
 });
 
+test('removing a table joined after a checkpoint removes the from: added with it', () => {
+  const seg = (text, kind, owner) => ({ text, start: -1, end: -1, kind, owner });
+  const sealed = [
+    seg('documents_package as dp', 'table', 'dp'),
+    seg('limit: 1', 'limit', 'result_1'),
+    seg('= result_1', 'assign', 'result_1'),
+  ];
+  const joined = {
+    aliasMap: new Map(),
+    segments: [
+      ...sealed,
+      seg('from: result_1', 'from', 'result_1'),
+      seg('documents_package_token .documents_package_id as dpt', 'table', 'dpt'),
+    ],
+  };
+  assert.equal(deleteNode(joined, 'dpt'), 'documents_package as dp | limit: 1 | = result_1');
+  // A from: something still follows from stays.
+  const more = {
+    aliasMap: new Map(),
+    segments: [...joined.segments, seg('select: dpt.id', 'select', 'dpt'), seg('employee as e', 'table', 'e')],
+  };
+  assert.equal(
+    deleteNode(more, 'dpt'),
+    'documents_package as dp | limit: 1 | = result_1 | from: result_1 | employee as e',
+  );
+});
+
 // After a gesture adds a limit, focus moves to the new checkpoint's node,
 // collapsed - the same way focus follows a newly joined table.
 const { Session } = require('../store/session.ts');

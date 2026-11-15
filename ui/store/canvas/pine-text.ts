@@ -688,11 +688,22 @@ export const isRemovableNode = (segments: Segment[], alias: string): boolean =>
  * the server's own (already correct) resolution rather than second-guessing
  * it client-side.
  */
-export const removeNode = (segments: Segment[], alias: string): Segment[] =>
-  segments.filter(s => {
+export const removeNode = (segments: Segment[], alias: string): Segment[] => {
+  const tableAt = segments.findIndex(s => s.kind === 'table' && s.owner === alias);
+  const rest = segments.filter(s => {
     if (s.kind === 'from') return extractFromAlias(s.text) !== alias;
     return s.owner !== alias;
   });
+  // The `from:` written just before the table, to join it from an earlier
+  // table or result (see appendTableSegment), goes with it once nothing
+  // follows it. Left behind, `... | = result_1 | from: result_1` would
+  // only switch to a table nothing uses.
+  const before = segments[tableAt - 1];
+  if (before?.kind !== 'from') return rest;
+  const at = rest.indexOf(before);
+  const next = rest[at + 1];
+  return at >= 0 && (!next || next.kind === 'from') ? rest.filter((_, i) => i !== at) : rest;
+};
 
 // --- alias pinning -----------------------------------------------------
 
