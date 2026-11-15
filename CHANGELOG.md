@@ -5,6 +5,25 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-11-16
+### Added
+- **Name a query's result, and start another query, from the canvas.** The bar's `name` (key `m`) ends the query with `|= name`, so a later query can read it like a table. The name shows on a line under the graph: click it to rename it, or press `x` on it to remove it. `new query` (key `q`) starts a query below the others in the tab on a blank canvas. (bundled beamlynx-ui 0.78.0)
+- **"Focus on Pine Panel" and "Focus on SQL Panel" in the command palette.** Each opens the panel if it is closed and puts the cursor in it. (bundled beamlynx-ui 0.78.0)
+- **An empty list on the canvas says why,** such as "No JSON arrays here", or "Nothing matches" when your filter finds nothing. (bundled beamlynx-ui 0.78.0)
+
+### Changed
+- **The bar works on what you selected.** With a table selected, select, where and order list that table's columns and go into its part of the query, even when a group or limit comes after it. With a group's or limit's line selected, they go after the line. With nothing chosen, they work on the query's last step. (bundled beamlynx-ui 0.78.0)
+- **Every canvas action is in the bar at the bottom.** Tables no longer show their own buttons when you point at them. Selecting a table changes what the bar offers, and the bar slides to its new size. A key for an action in the bar's folded part shows that action's button while its list is open. (bundled beamlynx-ui 0.78.0)
+- **A list from the bar no longer covers the graph.** While it is open, the graph moves up above it. Moving between tables with the keys keeps the selected table in view, and a pan or zoom of your own stays. (bundled beamlynx-ui 0.78.0)
+- **Nothing joins from a table above a group's or limit's line.** Such a join changed what the group or limit counted without saying so. The bar's join starts below the line instead, and group, limit and unnest aren't offered there. (bundled beamlynx-ui 0.78.0)
+- **`Ctrl`/`Cmd`+`.` toggles Zen mode.** It used to open and close the Pine panel. `Ctrl`/`Cmd`+`Shift`+`.` no longer opens the SQL panel; use the command palette. (bundled beamlynx-ui 0.78.0)
+
+### Fixed
+- **A later query can join on every column a named result returns.** In `tenant as t | s: title | company .tenantId |= a`, `a` returns all of company's columns too, but a join on `a .tenantId` failed with "`tenantId` isn't a column". (bundled pine-lang 0.57.1)
+- **The error for two tables nothing connects shows the join the right way round.** `a .x = .y` joins `a`'s x to the earlier table's y; the error said the opposite. (bundled pine-lang 0.57.1)
+- **Removing a table joined after a limit or group leaves a query that runs.** It failed with "missing FROM-clause entry for table result_1". (bundled pine-lang 0.57.1, beamlynx-ui 0.78.0)
+- **Removing a limit or group from the canvas keeps the query's name.** (bundled beamlynx-ui 0.78.0)
+
 ## [0.32.0] - 2026-11-14
 ### Added
 - **Every canvas action is in one bar at the bottom of the canvas:** join, select and where, and › (or `>`) to show the rest in the bar itself: order, group, limit, count and path for the query, then traverse, unnest, describe and references for the selected table. ‹ (or `<`, or Escape) closes them. Each button shows its key in bold, and every list it opens rises out of the bar. A table also shows its own join, select and where buttons while you point at it. (bundled beamlynx-ui 0.77.0)
