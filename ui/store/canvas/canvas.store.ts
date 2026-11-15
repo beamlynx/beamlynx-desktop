@@ -1750,6 +1750,7 @@ export class CanvasStore {
     if (!anchorAlias || !this.selectedNodeActions) return;
     this.closePicker();
     this.barExpanded = true;
+    this.barOnly = null;
     const key = this.unnestKey(anchorAlias);
     if (!this.isCheckpointNode(anchorAlias) && this.unnestColumns.get(key) === undefined) {
       void this.probeUnnestColumns(anchorAlias, key);
@@ -1757,22 +1758,30 @@ export class CanvasStore {
   }
 
   /**
-   * A key for an action in the bar's folded part: the bar opens, so the
-   * action's button shows while its list is open. runBarAction folds it
-   * again when the list closes, as it does after a click. False when the
-   * bar doesn't offer the action now.
+   * Set while a key unfolded the bar for one action: the bar then shows only
+   * that action's button, not all the folded ones.
+   */
+  barOnly: MoreAction | null = null;
+
+  /**
+   * A key for an action in the bar's folded part: that action's button shows
+   * in the bar while its list is open (barOnly). runBarAction folds it again
+   * when the list closes, as it does after a click. An already open bar stays
+   * as it is. False when the bar doesn't offer the action now.
    */
   unfoldFor(action: MoreAction): boolean {
     if (!this.barMoreActions.includes(action)) return false;
     if (!this.barExpanded) {
       this.closePicker();
       this.barExpanded = true;
+      this.barOnly = action;
     }
     return true;
   }
 
   collapseBar() {
     this.barExpanded = false;
+    this.barOnly = null;
     this.barPickerOpen = false;
   }
 

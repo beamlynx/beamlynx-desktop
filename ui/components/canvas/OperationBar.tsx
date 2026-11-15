@@ -196,7 +196,9 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
   const dim = (kind: string) => active !== null && active !== kind;
   const expanded = canvasStore.barExpanded;
   const { stacked, width: rowsWidth, main: mainWidth } = layout;
-  const more = MORE_ACTIONS.filter(a => canvasStore.barMoreActions.includes(a.action));
+  // Unfolded by a key, the bar shows only that key's action (CanvasStore.barOnly).
+  const only = canvasStore.barOnly;
+  const more = MORE_ACTIONS.filter(a => canvasStore.barMoreActions.includes(a.action) && (!only || a.action === only));
   // For the whole query, then for the selected table.
   const queryActions = more.filter(a => QUERY_ACTIONS.includes(a.action));
   const tableActions = more.filter(a => !QUERY_ACTIONS.includes(a.action));
