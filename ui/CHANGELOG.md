@@ -5,7 +5,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 ### Changed
-- **Nothing joins from a table above a group's or limit's line.** Such a join went in before the group or limit, and changed what it grouped or limited without saying so. The bar's join is dimmed while such a table is selected, and the table has no join button of its own. Join from the result below the line instead.
+- **On the canvas, the keys always work through the bar at the bottom, and their lists open there.** Before, while the mouse rested on a table, the keys opened that table's own buttons, and `i` always opened its join list at the table. A table's own buttons are now for the mouse only.
+- **A key for an action in the bar's folded part opens the bar while its list is open.** `o`, `g`, `l` and `p` show their button lit, and the bar folds again when the list closes.
+- **Nothing joins from a table above a group's or limit's line.** Such a join went in before the group or limit, and changed what it grouped or limited without saying so. With such a table selected, the bar's join starts from where the query goes on below the line. The table has no join button of its own.
 
 ### Fixed
 - **Removing a table joined after a limit or group leaves the query as it was before the join.** The canvas left a `from: result_1` behind, and the query failed with "missing FROM-clause entry for table result_1".

@@ -53,7 +53,6 @@ const BarButton = ({
   dimmed,
   keyIndex,
   hidden,
-  title,
   children,
 }: {
   label: string;
@@ -63,8 +62,6 @@ const BarButton = ({
   keyIndex?: number;
   /** In the closed part of the bar: drawn at no size, so out of Tab's way too. */
   hidden?: boolean;
-  /** What the pointer shows: why a dimmed button does nothing. */
-  title?: string;
   children?: React.ReactNode;
 }) => {
   const [hover, setHover] = useState(false);
@@ -72,7 +69,6 @@ const BarButton = ({
     <button
       type="button"
       data-testid={testId}
-      title={title}
       tabIndex={hidden ? -1 : undefined}
       aria-hidden={hidden || undefined}
       // Picker.tsx's click-outside handler leaves these alone, so a click
@@ -191,12 +187,13 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
   }
   // A picker opened from a node's own buttons isn't the bar's.
   const active = canvasStore.nodePicker ? null : activeBarAction(canvasStore.picker);
-  const pointed = !!canvasStore.pointerAlias;
-  // While the pointer is on a node, the keys are that node's (TableNode.tsx).
-  // A bold letter says its key works now: not while typing goes elsewhere.
-  const keys = canvasStore.mode === 'normal' && !pointed && global.keyboardPane === 'graph';
+  // The bar dims while the pointer is on a table, whose own buttons show,
+  // but not while one of its own lists is open.
+  const pointed = !!canvasStore.pointerAlias && active === null;
+  // The keys are always the bar's. A bold letter says its key works now:
+  // not while typing goes elsewhere.
+  const keys = canvasStore.mode === 'normal' && global.keyboardPane === 'graph';
   const dim = (kind: string) => active !== null && active !== kind;
-  const canJoin = canvasStore.selectedNodeActions.actions.includes('join');
   const expanded = canvasStore.barExpanded;
   const { stacked, width: rowsWidth, main: mainWidth } = layout;
   const more = MORE_ACTIONS.filter(a => canvasStore.barMoreActions.includes(a.action));
@@ -277,6 +274,7 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
     // at their full width.
     <div
       data-testid="operation-bar-extras"
+      data-stacked="true"
       style={{ display: 'grid', gridTemplateRows: expanded ? '1fr' : '0fr', transition: `grid-template-rows 240ms ${slide}` }}
     >
       <div
@@ -361,10 +359,8 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
           close();
           canvasStore.openNodeAction('join', barAnchor());
         }}
-        // Nothing joins from above a line: the button stays, dimmed, so the bar doesn't shift.
-        dimmed={dim('join') || !canJoin}
-        title={canJoin ? undefined : 'This table is above a line. Join from the result below it.'}
-        keyIndex={keys && canJoin ? 2 : undefined}
+        dimmed={dim('join')}
+        keyIndex={keys ? 2 : undefined}
       />
       <BarButton
         label="select"

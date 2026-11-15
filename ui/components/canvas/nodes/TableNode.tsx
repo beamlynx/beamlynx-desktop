@@ -960,15 +960,14 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
   // node also has its own buttons, in the row above its card, shown while
   // the pointer is on it or one of their pickers is open: join, select,
   // where, and "+" for order, traverse, describe and references. Select,
-  // where and order list this table's columns alone. While the pointer is
-  // here, the keys work on this node too (CanvasStore.pointerAlias).
+  // where and order list this table's columns alone. They are for the
+  // mouse only: the keys are always the bar's.
   const pointed = canvasStore.pointerAlias === data.alias;
   const ownPicker = canvasStore.nodePicker === data.alias;
   const hasButtons = !checkpoint;
   const sealed = canvasStore.isSealed(data.alias);
   const showButtons = hasButtons && (pointed || ownPicker);
   const activeOwn = ownPicker ? activeNodeOperation(canvasStore.picker) : null;
-  const keys = pointed && canvasStore.mode === 'normal';
   const nodeOp = (kind: NodeOperation) => (e: React.MouseEvent) =>
     canvasStore.openNodeOperation(data.alias, kind, { x: e.clientX, y: e.clientY });
 
@@ -1053,13 +1052,12 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
             the pointer's first move must still land (see above). */}
         {hasButtons && (
           <div style={{ display: 'flex', gap: 3, opacity: showButtons ? 1 : 0, transition: 'opacity 0.1s ease-in-out' }}>
-            {/* `i` joins: it's join's third letter. */}
             {/* Nothing joins from above a line (CanvasStore.isSealed). */}
             {!sealed && (
-              <NodeButton label="join" testId={`node-join-${data.alias}`} onClick={nodeOp('join')} dimmed={activeOwn !== null && activeOwn !== 'join'} keyIndex={keys ? 2 : undefined} />
+              <NodeButton label="join" testId={`node-join-${data.alias}`} onClick={nodeOp('join')} dimmed={activeOwn !== null && activeOwn !== 'join'} />
             )}
-            <NodeButton label="select" testId={`node-select-${data.alias}`} onClick={nodeOp('select')} dimmed={activeOwn !== null && activeOwn !== 'select'} keyIndex={keys ? 0 : undefined} />
-            <NodeButton label="where" testId={`node-where-${data.alias}`} onClick={nodeOp('where')} dimmed={activeOwn !== null && activeOwn !== 'where'} keyIndex={keys ? 0 : undefined} />
+            <NodeButton label="select" testId={`node-select-${data.alias}`} onClick={nodeOp('select')} dimmed={activeOwn !== null && activeOwn !== 'select'} />
+            <NodeButton label="where" testId={`node-where-${data.alias}`} onClick={nodeOp('where')} dimmed={activeOwn !== null && activeOwn !== 'where'} />
             <NodeButton label="+" testId={`node-more-${data.alias}`} onClick={nodeOp('more')} dimmed={activeOwn !== null && activeOwn !== 'more'} />
           </div>
         )}

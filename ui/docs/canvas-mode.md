@@ -92,6 +92,29 @@ whatever they showed before the edit — and a session restored with
 `inputMode` already `'sql'` from a previous visit got stuck on the
 "Connecting…" banner forever, since nothing else was left to trigger a build.
 
+## How the canvas is used
+
+There are two ways to work on the canvas, and each has its own place where
+things open. Check every change to the canvas against these rules.
+
+- **The keyboard works on the query.** Every key runs the bar's action, and
+  its list opens from the bar at the bottom. Where the mouse happens to rest
+  doesn't matter. A key never opens a table's own buttons.
+- **The mouse works on what it clicks.** Pointing at a table shows its own
+  buttons, and clicking one opens that table's list at the table. Pointing
+  alone changes nothing about what the keys do.
+- **The bar always adds to the end of the query.** Select, where, order,
+  group, limit, count and path add the next step there.
+- **The selected table only says where the bar's table actions start.**
+  Join, traverse, describe and references start from the table selected
+  with the keys (j/k) or a click. A table above a group's or limit's line
+  can't take a join: the bar joins from where the query goes on instead
+  (the newest table below the last line, or the result itself when nothing
+  follows it), and the table has no join button of its own.
+- **The bar shows what you are doing.** A key for an action in the bar's
+  folded part (`o`, `g`, `l`, `p`) opens the bar for as long as its list is
+  open, with that action lit. When the list closes, the bar folds again.
+
 ## Interaction model
 
 - **Pick a first table** — an empty session shows a single dashed "+ pick a
@@ -189,7 +212,8 @@ letter is bold. Its `›` (key `>`, or `+`) grows the bar to show the rest,
 each with its key: the query's actions past a divider, then the selected
 table's under its name. Where they don't fit on one row, they open
 upward, in rows above the bar. `‹`, `<` or Escape closes them. A table's own buttons,
-shown while the pointer is on it, do the same for that table.
+shown while the pointer is on it, do the same for that table, for the mouse
+only: the keys stay the bar's (see "How the canvas is used").
 
 **Moving focus** (normal mode only):
 
@@ -210,7 +234,7 @@ pipeline is a single strict sequence, not a 2D graph to roam.
 
 | Key | Action |
 | --- | --- |
-| `i` or `\|` | Join a new table onto the focused one (`\|` doubles as `i` since a join is "pipe a new table on" — Pine's own mental model). On the empty-canvas start node, opens the first-table picker instead. |
+| `i` or `\|` | The bar's join: a new table onto the focused one, or, above a line, onto where the query goes on below it. The list opens from the bar (`\|` doubles as `i` since a join is "pipe a new table on" — Pine's own mental model). On the empty-canvas start node, opens the first-table picker instead. |
 | `s` | Open the select-columns picker |
 | `w` | Open the where-condition picker |
 | `o` | Open the order-by picker |
