@@ -23,6 +23,72 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.78.0',
+    date: '2026-11-16',
+    added: [
+      {
+        title: "Name a query's result, and start another query, from the canvas",
+        description: "The bar's `name` (key `m`) ends the query with `|= name`, so a later query can read it like a table. The name shows on a line under the graph: click it to rename it, or press `x` on it to remove it. `new query` (key `q`) starts a query below the others in the tab on a blank canvas. Its table list includes the names of earlier results.",
+      },
+      {
+        title: '"Focus on Pine Panel" and "Focus on SQL Panel" in the command palette',
+        description: 'Each opens the panel if it is closed and puts the cursor in it.',
+      },
+      {
+        title: 'An empty list on the canvas says why',
+        description: 'For example "No JSON arrays here", or "Nothing matches" when your filter finds nothing.',
+      },
+    ],
+    changed: [
+      {
+        title: '`Ctrl`/`Cmd`+`.` toggles Zen mode',
+        description: 'It used to open and close the Pine panel. `Ctrl`/`Cmd`+`Shift`+`.` no longer opens the SQL panel; use the command palette, or `:` on the canvas for the Pine panel.',
+      },
+      {
+        title: 'Every canvas action is in the bar at the bottom',
+        description: "Tables no longer show their own buttons when you point at them, and the keys always open their lists from the bar. Selecting a table changes what the bar offers: with the bar open, it slides to its new size, that table's actions come in again, and one the last table didn't have glows for a moment. The bar fades out while you type in the Pine panel.",
+      },
+      {
+        title: 'A list from the bar no longer covers the graph',
+        description: "While it is open, the graph moves up above it, and zooms out if it doesn't fit. When the list closes, the view goes back, unless you panned or zoomed in the meantime.",
+      },
+      {
+        title: 'Moving between tables with the keys keeps the selected table in view',
+        description: 'When it is off screen, the canvas pans just enough to show it, without changing the zoom.',
+      },
+      {
+        title: 'A pan or zoom of your own on the canvas stays, like a moved table',
+        description: "Adding a table no longer refits the view: the new table is panned into yours. Reset layout fits the view again.",
+      },
+      {
+        title: "A key for an action in the bar's folded part shows that action's button in the bar while its list is open",
+        description: '`o`, `g`, `l` and `p` add their own button to the bar, lit, so you see which action you are in. It goes again when the list closes.',
+      },
+      {
+        title: 'The bar works on what you selected',
+        description: "With a table selected, select, where and order list that table's columns and go into its part of the query, even when a group or limit comes after it. With a group's or limit's line selected, they go after the line. With nothing chosen, they work on the query's last step.",
+      },
+      {
+        title: "Nothing joins from a table above a group's or limit's line",
+        description: "Such a join went in before the group or limit, and changed what it grouped or limited without saying so. With such a table selected, the bar's join starts from where the query goes on below the line. Group, limit and unnest aren't offered there either: the line already ends that part of the query.",
+      },
+    ],
+    fixed: [
+      {
+        title: "Removing a limit or group from the canvas keeps the query's name",
+        description: 'The × on its line, or `x`, took the `|= name` that ended the query with it.',
+      },
+      {
+        title: 'Unnest shows in the open bar after you select another table or change the query',
+        description: 'Before, it could stay missing until you closed the bar and opened it again.',
+      },
+      {
+        title: 'Removing a table joined after a limit or group leaves the query as it was before the join',
+        description: 'The canvas left a `from: result_1` behind, and the query failed with "missing FROM-clause entry for table result_1".',
+      },
+    ],
+  },
+  {
     version: '0.77.0',
     date: '2026-11-14',
     added: [
@@ -2965,4 +3031,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.77.0';
+export const LATEST_VERSION = '0.78.0';
