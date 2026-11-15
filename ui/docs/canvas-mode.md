@@ -119,6 +119,9 @@ things open. Check every change to the canvas against these rules.
   (`room-for-list.ts`, `useRoomForBarList.ts`). When the list closes, the
   view goes back. The view is the user's: if they pan or zoom while the list
   is open, theirs stays.
+- **The table the keyboard is on is always in view.** Moving between tables
+  with the keys pans the view along with them, by as little as it takes,
+  and never changes the zoom (`into-view.ts`).
 
 ## Interaction model
 

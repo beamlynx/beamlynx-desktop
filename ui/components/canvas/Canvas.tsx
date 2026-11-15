@@ -25,6 +25,7 @@ import {
 } from '../../store/canvas/canvas.model';
 import { useCanvasKeybindings } from '../../hooks/useCanvasKeybindings';
 import { useRoomForBarList } from './useRoomForBarList';
+import { intoView } from '../../store/canvas/into-view';
 import { CanvasStoreContext } from './canvas-context';
 import TableNode from './nodes/TableNode';
 import StartNode from './nodes/StartNode';
@@ -160,6 +161,25 @@ const Flow: React.FC<{
     // Switching to another query block refits too, whatever its node count.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [derivedNodes.length, canvasGraph.edges.length, recenterRequestCount, canvasStore.layoutResets, canvasStore.mainBlock]);
+
+  // The table the keyboard is on stays in view: moving between tables walks
+  // the view along with them, panning as little as it takes, at the same
+  // zoom (into-view.ts). Under an open bar list, useRoomForBarList decides.
+  const focused = canvasStore.focusedAlias;
+  useEffect(() => {
+    if (!focused || room.listOpen) return;
+    const node = reactFlowInstance.getNode(focused);
+    const box = graphArea.current?.getBoundingClientRect();
+    if (!node?.positionAbsolute || !node.width || !node.height || !box) return;
+    const next = intoView({
+      node: { ...node.positionAbsolute, width: node.width, height: node.height },
+      width: box.width,
+      height: box.height,
+      current: reactFlowInstance.getViewport(),
+    });
+    if (next) reactFlowInstance.setViewport(next, { duration: 200 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focused]);
 
   const onNodeDragStop = (_e: React.MouseEvent, node: CanvasNode) => {
     if (node.type === 'table-node' || node.type === 'lineage-node') {
