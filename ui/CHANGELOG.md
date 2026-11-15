@@ -5,7 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 ### Changed
-- **Every canvas action is in the bar at the bottom.** Tables no longer show their own buttons when you point at them, and the keys always open their lists from the bar. Selecting a table changes what the bar offers: with the bar open, that table's actions come in again, and one the last table didn't have glows for a moment. The bar fades out while you type in the Pine panel.
+- **Every canvas action is in the bar at the bottom.** Tables no longer show their own buttons when you point at them, and the keys always open their lists from the bar. Selecting a table changes what the bar offers: with the bar open, it slides to its new size, that table's actions come in again, and one the last table didn't have glows for a moment. The bar fades out while you type in the Pine panel.
 - **A list from the bar no longer covers the graph.** While it is open, the graph moves up above it, and zooms out if it doesn't fit. When the list closes, the view goes back, unless you panned or zoomed in the meantime.
 - **Moving between tables with the keys keeps the selected table in view.** When it is off screen, the canvas pans just enough to show it, without changing the zoom.
 - **A pan or zoom of your own on the canvas stays, like a moved table.** Adding a table no longer refits the view: the new table is panned into yours. Reset layout fits the view again.

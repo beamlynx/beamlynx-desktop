@@ -3,6 +3,7 @@ import { observer } from 'mobx-react-lite';
 import { CanvasStore } from '../../store/canvas/canvas.store';
 import { useStores } from '../../store/store-container';
 import { MORE_ACTIONS, MoreAction, PickerAnchor, PickerState } from '../../store/canvas/canvas.model';
+import { prefersReducedMotion } from '../../styles/motion';
 
 /** How much of the canvas's bottom the bar takes: Canvas.tsx keeps the graph above it. */
 export const operationBarSpace = 60;
@@ -21,6 +22,8 @@ export const barAnchor = (): PickerAnchor => {
 /** The space between the bar's buttons, and the bar's side padding. */
 const barGap = 6;
 const barPadding = 10;
+/** How long the open bar takes to slide to a new size when the selected table changes. */
+const resizeMs = 240;
 /** A divider's width with its margins. */
 const dividerSpace = 5;
 
@@ -191,6 +194,59 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
     observer.observe(parent);
     return () => observer.disconnect();
   });
+
+  // Selecting a table with more or fewer actions resizes the open bar: it
+  // slides from its old size to the new one, as it does when it opens,
+  // instead of jumping. `size` follows the bar's size as it changes, so it
+  // holds the size from before the change when the change renders.
+  const size = useRef<{ width: number; height: number } | null>(null);
+  const resizing = useRef<(() => void) | null>(null);
+  useLayoutEffect(() => {
+    const bar = barRef.current;
+    if (!bar) return;
+    const observer = new ResizeObserver(() => {
+      if (resizing.current) return;
+      const r = bar.getBoundingClientRect();
+      size.current = { width: r.width, height: r.height };
+    });
+    observer.observe(bar);
+    return () => observer.disconnect();
+  });
+  const resizeKey = `${canvasStore.operationAnchor}|${canvasStore.barMoreActions.join(',')}`;
+  useLayoutEffect(() => {
+    const bar = barRef.current;
+    // A slide still running stops where it is, and the new one starts there.
+    const from = size.current;
+    resizing.current?.();
+    if (!bar || !from || !canvasStore.barExpanded || canvasStore.barOnly || prefersReducedMotion()) return;
+    const to = bar.getBoundingClientRect();
+    if (Math.abs(to.width - from.width) < 1 && Math.abs(to.height - from.height) < 1) return;
+    const kept = { width: bar.style.width, height: bar.style.height, overflow: bar.style.overflow, transition: bar.style.transition };
+    // Stopped early by the next change, the bar's size from before stays
+    // where the next slide starts; it follows the bar again once it's done.
+    const stop = () => {
+      clearTimeout(timer);
+      Object.assign(bar.style, kept);
+      resizing.current = null;
+    };
+    const done = () => {
+      stop();
+      const r = bar.getBoundingClientRect();
+      size.current = { width: r.width, height: r.height };
+    };
+    resizing.current = stop;
+    // Rows above the bar slide their own width already (the extras' clip
+    // below), so then only the height slides here; in one row, the width.
+    const side = layout.stacked ? 'height' : 'width';
+    Object.assign(bar.style, { [side]: `${from[side]}px`, overflow: 'hidden', transition: 'none' });
+    void bar.offsetWidth;
+    Object.assign(bar.style, { [side]: `${to[side]}px`, transition: `${side} ${resizeMs}ms cubic-bezier(0.2, 0, 0, 1)` });
+    const timer = setTimeout(done, resizeMs + 20);
+    // The bar can turn from one row into rows above it (or back) in a second
+    // render, right after the first: the slide starts again for that size.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resizeKey, layout.stacked, layout.width]);
+
   if (!canvasStore.selectedNodeActions || !canvasStore.operationAnchor || canvasStore.selectedAliases.length >= 2) {
     return null;
   }

@@ -104,8 +104,9 @@ things open. Check every change to the canvas against these rules.
   move.
 - **Selecting a table changes what the bar offers.** Select a table with
   the keys (j/k) or a click, and the bar shows the actions that fit it.
-  When the bar is open, that table's actions come in again, and one the
-  last table didn't have glows for a moment, so the change is seen.
+  When the bar is open, it slides to its new size, that table's actions
+  come in again, and one the last table didn't have glows for a moment, so
+  the change is seen.
 - **The bar always adds to the end of the query.** Select, where, order,
   group, limit, count and path add the next step there.
 - **The selected table only says where the bar's table actions start.**
