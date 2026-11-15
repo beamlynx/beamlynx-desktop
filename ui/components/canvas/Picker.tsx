@@ -9,6 +9,7 @@ import {
   PickerAnchor,
   PickerGroup,
   PickerItem,
+  PickerRequest,
   RELATIVE_DATE_UNITS,
   RelativeDateUnit,
   WHERE_OPERATORS,
@@ -22,6 +23,27 @@ import { filterGroups } from '../../store/canvas/picker-filter';
 import { useCanvasStore } from './canvas-context';
 
 const pluralize = (count: number, unit: string): string => (count === 1 ? unit : `${unit}s`);
+
+/** What an empty list says: why nothing is there, in a few words. */
+const emptyListMessage = (request: PickerRequest, filter: string): string => {
+  if (filter.trim()) return `Nothing matches "${filter.trim()}"`;
+  switch (request.kind) {
+    case 'table':
+      return 'No tables found';
+    case 'join':
+      return request.column ? `Nothing joins on ${request.column}` : 'No tables join here';
+    case 'aggregate':
+      return `No columns ${request.fn} can use`;
+    case 'unnest':
+      return 'No JSON arrays here';
+    case 'path':
+      return 'No tables to reach from here';
+    case 'path-route':
+      return 'No route found';
+    default:
+      return 'No columns here';
+  }
+};
 
 const pickerWidth = 280;
 const pickerHeight = 320;
@@ -269,6 +291,11 @@ const Picker: React.FC = observer(() => {
   const flatItems: PickerItem[] =
     picker.open && picker.mode === 'list' && !picker.loading && !picker.error ? picker.groups.flatMap(shownItems) : [];
   const flatKey = flatItems.map(i => i.id).join('|');
+  // An empty list says why, in a few words, instead of showing nothing.
+  const emptyMessage =
+    picker.open && picker.mode === 'list' && !picker.loading && !picker.error && flatItems.length === 0
+      ? emptyListMessage(picker.request, picker.filter)
+      : null;
   const focusValue = picker.open && picker.mode === 'list' ? picker.focusValue : undefined;
 
   // Reset the highlight whenever a fresh picker opens or the visible set
@@ -1227,6 +1254,11 @@ const Picker: React.FC = observer(() => {
           <div data-testid="picker-path-hint" style={{ opacity: 0.6, padding: '3px 4px' }}>
             type a key inside {pathStart.value}, like <code>{pathStart.value}.name</code> or{' '}
             <code>{pathStart.value}.tags[0]</code>
+          </div>
+        )}
+        {emptyMessage && !pathStart && (
+          <div data-testid="picker-empty" style={{ opacity: 0.6, padding: '3px 4px' }}>
+            {emptyMessage}
           </div>
         )}
         {!picker.loading &&

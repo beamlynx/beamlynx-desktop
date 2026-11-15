@@ -7,6 +7,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Added
 - **Name a query's result, and start another query, from the canvas.** The bar's `name` (key `m`) ends the query with `|= name`, so a later query can read it like a table. The name shows on a line under the graph: click it to rename it, or press `x` on it to remove it. `new query` (key `q`) starts a query below the others in the tab on a blank canvas. Its table list includes the names of earlier results.
 - **"Focus on Pine Panel" and "Focus on SQL Panel" in the command palette.** Each opens the panel if it is closed and puts the cursor in it.
+- **An empty list on the canvas says why.** For example "No JSON arrays here", or "Nothing matches" when your filter finds nothing.
 
 ### Changed
 - **`Ctrl`/`Cmd`+`.` toggles Zen mode.** It used to open and close the Pine panel. `Ctrl`/`Cmd`+`Shift`+`.` no longer opens the SQL panel; use the command palette, or `:` on the canvas for the Pine panel.
@@ -19,6 +20,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **Nothing joins from a table above a group's or limit's line.** Such a join went in before the group or limit, and changed what it grouped or limited without saying so. With such a table selected, the bar's join starts from where the query goes on below the line. Group, limit and unnest aren't offered there either: the line already ends that part of the query.
 
 ### Fixed
+- **Removing a limit or group from the canvas keeps the query's name.** The × on its line, or `x`, took the `|= name` that ended the query with it.
 - **Unnest shows in the open bar after you select another table or change the query.** Before, it could stay missing until you closed the bar and opened it again.
 - **Removing a table joined after a limit or group leaves the query as it was before the join.** The canvas left a `from: result_1` behind, and the query failed with "missing FROM-clause entry for table result_1".
 

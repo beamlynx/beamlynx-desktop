@@ -693,8 +693,16 @@ const withoutOrphanCheckpoints = (segments: Segment[]): Segment[] => {
  * node carries, and any `from: name`). Tables joined after it stay, and now
  * join from the table before the checkpoint, as if it had never been there.
  * Returns the text unchanged if no segment belongs to `name`.
+ *
+ * A name someone wrote that ends the query stays: it names the whole query
+ * (`company as c | limit: 5 | = top` becomes `company as c | = top`).
  */
-export const deleteCheckpoint = (base: PinnedBase, name: string): string => toText(withoutCheckpoint(base.segments, name));
+export const deleteCheckpoint = (base: PinnedBase, name: string): string => {
+  const last = base.segments[base.segments.length - 1];
+  const keepsName = last?.kind === 'assign' && last.owner === name && !AUTO_CHECKPOINT_NAME.test(name);
+  const rest = withoutCheckpoint(base.segments, name);
+  return toText(keepsName ? [...rest, last] : rest);
+};
 
 const withoutCheckpoint = (segments: Segment[], name: string): Segment[] =>
   segments.filter(s => {
