@@ -14,6 +14,7 @@ const {
   ensureExplicitCheckpointName,
   appendOwnedSegment,
   appendTableSegment,
+  isSealedIn,
   pipelineTables,
   stageEnd,
   toText,
@@ -110,6 +111,19 @@ test('the checkpoint a gesture adds is found by name', () => {
   // Changing or removing one isn't adding one.
   assert.equal(newCheckpointName([c1], [c1]), null);
   assert.equal(newCheckpointName([c1, c2], [c1]), null);
+});
+
+test('nothing above a line takes a join', () => {
+  // company as c | employee as e | limit: 10 | = result_1 | document as d | limit: 5
+  const s = segments(TWO);
+  assert.equal(isSealedIn(s, 'c'), true);
+  assert.equal(isSealedIn(s, 'e'), true);
+  // result_1's own stage holds d, and limit: 5 seals it too.
+  assert.equal(isSealedIn(s, 'result_1'), true);
+  assert.equal(isSealedIn(s, 'd'), true);
+  // The last result is below every line.
+  assert.equal(isSealedIn(segments(GROUP), 'result_1'), false);
+  assert.equal(isSealedIn(segments(GROUP), 'c'), true);
 });
 
 test('a trailing checkpoint is a line under the tables it groups', () => {

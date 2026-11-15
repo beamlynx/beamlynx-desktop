@@ -53,6 +53,7 @@ const BarButton = ({
   dimmed,
   keyIndex,
   hidden,
+  title,
   children,
 }: {
   label: string;
@@ -62,6 +63,8 @@ const BarButton = ({
   keyIndex?: number;
   /** In the closed part of the bar: drawn at no size, so out of Tab's way too. */
   hidden?: boolean;
+  /** What the pointer shows: why a dimmed button does nothing. */
+  title?: string;
   children?: React.ReactNode;
 }) => {
   const [hover, setHover] = useState(false);
@@ -69,6 +72,7 @@ const BarButton = ({
     <button
       type="button"
       data-testid={testId}
+      title={title}
       tabIndex={hidden ? -1 : undefined}
       aria-hidden={hidden || undefined}
       // Picker.tsx's click-outside handler leaves these alone, so a click
@@ -192,6 +196,7 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
   // A bold letter says its key works now: not while typing goes elsewhere.
   const keys = canvasStore.mode === 'normal' && !pointed && global.keyboardPane === 'graph';
   const dim = (kind: string) => active !== null && active !== kind;
+  const canJoin = canvasStore.selectedNodeActions.actions.includes('join');
   const expanded = canvasStore.barExpanded;
   const { stacked, width: rowsWidth, main: mainWidth } = layout;
   const more = MORE_ACTIONS.filter(a => canvasStore.barMoreActions.includes(a.action));
@@ -356,8 +361,10 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
           close();
           canvasStore.openNodeAction('join', barAnchor());
         }}
-        dimmed={dim('join')}
-        keyIndex={keys ? 2 : undefined}
+        // Nothing joins from above a line: the button stays, dimmed, so the bar doesn't shift.
+        dimmed={dim('join') || !canJoin}
+        title={canJoin ? undefined : 'This table is above a line. Join from the result below it.'}
+        keyIndex={keys && canJoin ? 2 : undefined}
       />
       <BarButton
         label="select"

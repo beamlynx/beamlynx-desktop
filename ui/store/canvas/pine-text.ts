@@ -476,6 +476,13 @@ export const stageEnd = (segments: Segment[], alias: string): number => {
 };
 
 /**
+ * True when a group: or limit: after `alias`'s stage seals it: the table,
+ * or a checkpoint's result, is above a line on the canvas.
+ */
+export const isSealedIn = (segments: Segment[], alias: string): boolean =>
+  segments.some(s => s.owner === alias) && stageEnd(segments, alias) < segments.length;
+
+/**
  * Where a table's stage starts: the index after the group:/limit: before
  * its first segment, or 0. For a checkpoint's name, the index after its own
  * group:/limit:, since its stage is what comes after it.
