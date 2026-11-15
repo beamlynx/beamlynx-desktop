@@ -122,6 +122,10 @@ things open. Check every change to the canvas against these rules.
 - **The table the keyboard is on is always in view.** Moving between tables
   with the keys pans the view along with them, by as little as it takes,
   and never changes the zoom (`into-view.ts`).
+- **A view the user moved to stays, like a dragged table.** A new table
+  fits the view to the graph only until the user pans or zooms. After that,
+  a new table is panned into their view instead. Reset layout forgets it
+  (`CanvasStore.views`).
 
 ## Interaction model
 

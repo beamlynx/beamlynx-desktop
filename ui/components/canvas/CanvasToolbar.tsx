@@ -246,12 +246,12 @@ const CanvasToolbar: React.FC<{ canvasStore: CanvasStore; extraAction?: CanvasTo
         )}
         {/* Rightmost: it only appears once a node has moved, so it
             doesn't shift the other buttons along. */}
-        {canvasStore.hasMovedNodes && (
+        {canvasStore.hasMovedLayout && (
           <>
             <Divider />
             <span
               data-testid="canvas-reset-layout"
-              title="Reset the layout: put moved nodes back"
+              title="Reset the layout: put moved tables back and fit the view"
               style={iconButtonStyle}
               onClick={() => canvasStore.resetLayout()}
             >

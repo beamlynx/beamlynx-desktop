@@ -100,6 +100,12 @@ export class CanvasStore {
    * it in: two queries in one tab can use the same alias.
    */
   positions: Record<number, Record<string, { x: number; y: number }>> = {};
+  /**
+   * The view the user panned or zoomed to, by query block, like `positions`.
+   * While a block has one, the canvas stops refitting the view to the graph:
+   * it only pans a new or selected table into view. resetLayout forgets it.
+   */
+  views: Record<number, { x: number; y: number; zoom: number }> = {};
   /** Where each dragged chip of the strip at the top was dropped: the strip is the same for every block. */
   stripPositions: Record<string, { x: number; y: number }> = {};
   picker: PickerState = { open: false };
@@ -887,9 +893,18 @@ export class CanvasStore {
     this.recompute();
   }
 
-  /** Whether a node has been dragged since the layout was last reset: the toolbar then offers a reset. */
-  get hasMovedNodes(): boolean {
-    return Object.keys({ ...this.stripPositions, ...this.positions[this.mainBlock] }).length > 0;
+  /** The view the user moved to in the query drawn, if they did. */
+  get userView(): { x: number; y: number; zoom: number } | undefined {
+    return this.views[this.mainBlock];
+  }
+
+  setUserView(view: { x: number; y: number; zoom: number }) {
+    this.views = { ...this.views, [this.mainBlock]: view };
+  }
+
+  /** Whether a node has been dragged, or the view moved, since the layout was last reset: the toolbar then offers a reset. */
+  get hasMovedLayout(): boolean {
+    return !!this.userView || Object.keys({ ...this.stripPositions, ...this.positions[this.mainBlock] }).length > 0;
   }
 
   /**
@@ -898,9 +913,11 @@ export class CanvasStore {
    */
   layoutResets = 0;
 
-  /** Forgets where the nodes of the query drawn were dragged, and lays it out again. UI-only. */
+  /** Forgets where the nodes of the query drawn were dragged, and the view the user moved to, and lays it out again. UI-only. */
   resetLayout() {
     this.positions = { ...this.positions, [this.mainBlock]: {} };
+    const { [this.mainBlock]: _, ...views } = this.views;
+    this.views = views;
     this.stripPositions = {};
     this.layoutResets += 1;
     this.recompute();
