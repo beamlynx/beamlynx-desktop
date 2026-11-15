@@ -5,12 +5,12 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 ### Changed
-- **On the canvas, the keys always work through the bar at the bottom, and their lists open there.** Before, while the mouse rested on a table, the keys opened that table's own buttons, and `i` always opened its join list at the table. A table's own buttons are now for the mouse only.
+- **Every canvas action is in the bar at the bottom.** Tables no longer show their own buttons when you point at them, and the keys always open their lists from the bar. Selecting a table changes what the bar offers: with the bar open, that table's actions come in again, and one the last table didn't have glows for a moment.
 - **A list from the bar no longer covers the graph.** While it is open, the graph moves up above it, and zooms out if it doesn't fit. When the list closes, the view goes back, unless you panned or zoomed in the meantime.
 - **Moving between tables with the keys keeps the selected table in view.** When it is off screen, the canvas pans just enough to show it, without changing the zoom.
 - **A pan or zoom of your own on the canvas stays, like a moved table.** Adding a table no longer refits the view: the new table is panned into yours. Reset layout fits the view again.
 - **A key for an action in the bar's folded part shows that action's button in the bar while its list is open.** `o`, `g`, `l` and `p` add only their own button, not the whole folded part, and it goes again when the list closes.
-- **Nothing joins from a table above a group's or limit's line.** Such a join went in before the group or limit, and changed what it grouped or limited without saying so. With such a table selected, the bar's join starts from where the query goes on below the line. The table has no join button of its own.
+- **Nothing joins from a table above a group's or limit's line.** Such a join went in before the group or limit, and changed what it grouped or limited without saying so. With such a table selected, the bar's join starts from where the query goes on below the line.
 
 ### Fixed
 - **Removing a table joined after a limit or group leaves the query as it was before the join.** The canvas left a `from: result_1` behind, and the query failed with "missing FROM-clause entry for table result_1".

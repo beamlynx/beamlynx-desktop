@@ -125,15 +125,24 @@ const BarButton = ({
  * columns, the selected table's first (beamlynx-plans #28). Every picker
  * opens in the same place, above the bar (barAnchor).
  *
- * While the pointer is on a table, its own buttons are the ones that
- * apply (TableNode.tsx), so the bar dims. It gives way while the
- * multi-select toolbar shows, which has its own limit.
+ * Tables have no buttons of their own: selecting one changes what the bar
+ * offers, and the table's actions come in again so the change is seen. It
+ * gives way while the multi-select toolbar shows, which has its own limit.
  */
 const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasStore }) => {
   const { global } = useStores();
   const barRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLDivElement>(null);
   const extrasRef = useRef<HTMLDivElement>(null);
+  // What the bar offered for the table selected before. Selecting another
+  // while the bar is open brings that table's actions in again, and marks
+  // the ones the last table didn't have, so the change is seen.
+  const seen = useRef<{ alias: string | null; actions: MoreAction[]; swapped: boolean; fresh: Set<MoreAction> }>({
+    alias: null,
+    actions: [],
+    swapped: false,
+    fresh: new Set(),
+  });
   // Too narrow for every action on one row: the rest open upward, in rows
   // of their own above the bar, instead of reflowing it. `width` is how
   // wide those rows are, and `main` the bar's own row: the rows are laid
@@ -185,11 +194,7 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
   if (!canvasStore.selectedNodeActions || !canvasStore.operationAnchor || canvasStore.selectedAliases.length >= 2) {
     return null;
   }
-  // A picker opened from a node's own buttons isn't the bar's.
-  const active = canvasStore.nodePicker ? null : activeBarAction(canvasStore.picker);
-  // The bar dims while the pointer is on a table, whose own buttons show,
-  // but not while one of its own lists is open.
-  const pointed = !!canvasStore.pointerAlias && active === null;
+  const active = activeBarAction(canvasStore.picker);
   // The keys are always the bar's. A bold letter says its key works now:
   // not while typing goes elsewhere.
   const keys = canvasStore.mode === 'normal' && global.keyboardPane === 'graph';
@@ -200,6 +205,20 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
   const only = canvasStore.barOnly;
   const more = MORE_ACTIONS.filter(a => canvasStore.barMoreActions.includes(a.action) && (!only || a.action === only));
   // For the whole query, then for the selected table.
+  const alias = canvasStore.operationAnchor;
+  const offered = canvasStore.barMoreActions;
+  {
+    const before = seen.current;
+    const added = offered.filter(a => !before.actions.includes(a));
+    if (before.alias !== alias) {
+      const watched = expanded && before.alias !== null;
+      seen.current = { alias, actions: offered, swapped: watched, fresh: new Set(watched ? added : []) };
+    } else if (added.length) {
+      // Unnest comes once the probe for JSON columns answers.
+      seen.current = { ...before, actions: offered, fresh: new Set(Array.from(before.fresh).concat(expanded ? added : [])) };
+    }
+  }
+  const { swapped, fresh } = seen.current;
   const queryActions = more.filter(a => QUERY_ACTIONS.includes(a.action));
   const tableActions = more.filter(a => !QUERY_ACTIONS.includes(a.action));
   const close = () => {
@@ -212,16 +231,19 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
   // so opening the bar can be watched: the strip slides open (row) or up
   // (stacked), and each button fades in behind its edge, one after another.
   let shown = 0;
-  const item = (a: (typeof MORE_ACTIONS)[number]) => {
+  const item = (a: (typeof MORE_ACTIONS)[number], index: number) => {
     const delay = expanded ? 90 + shown++ * 30 : 0;
     return (
       <span
         key={a.action}
+        className={fresh.has(a.action) ? 'bar-action-new' : undefined}
         style={{
           display: 'inline-flex',
           opacity: expanded ? 1 : 0,
           transform: expanded ? 'none' : 'translateY(2px)',
           transition: `opacity 180ms ease ${delay}ms, transform 180ms ease ${delay}ms`,
+          // One after another when a table's actions come in again (bar-actions-swap).
+          animationDelay: `${index * 40}ms`,
         }}
       >
         <BarButton
@@ -244,9 +266,10 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
   );
   // Each group stays together on a row: the query's actions, and the
   // table's.
-  const group = (key: string, children: React.ReactNode) => (
+  const group = (key: string, children: React.ReactNode, className?: string) => (
     <span
       key={key}
+      className={className}
       data-bar-group
       style={{
         display: 'inline-flex',
@@ -263,7 +286,8 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
   const queryGroup = queryActions.length ? group('query', queryActions.map(item)) : null;
   const tableGroup = tableActions.length
     ? // No name in front: the selected table's ring already says which one.
-      group('table', tableActions.map(item))
+      // Keyed by the table, so selecting another brings its actions in again.
+      group(`table-${alias}`, tableActions.map(item), swapped ? 'bar-actions-swap' : undefined)
     : null;
   // In a row of the bar, a divider before each group; rows of their own need none.
   const extrasContent = stacked
@@ -346,8 +370,6 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
         background: 'var(--canvas-node-bg)',
         border: '1px solid var(--canvas-node-border)',
         boxShadow: '0 2px 12px rgba(0,0,0,0.3)',
-        opacity: pointed ? 0.4 : 1,
-        transition: 'opacity 0.15s ease-in-out',
         maxWidth: 'calc(100% - 32px)',
       }}
     >

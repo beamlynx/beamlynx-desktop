@@ -308,6 +308,31 @@ body.is-resizing {
   .canvas-flow .react-flow__node.canvas-exiting > div {
     animation: canvas-shrink 250ms ease-in-out forwards;
   }
+  /* The operation bar (components/canvas/OperationBar.tsx): selecting another
+     table while it is open brings that table's actions in again, one after
+     another, and an action the last table didn't have glows for a moment. */
+  .bar-actions-swap > span {
+    animation: bar-action-in 200ms ease both;
+  }
+  .bar-action-new button {
+    animation: bar-action-new 1200ms ease-out;
+  }
+}
+@keyframes bar-action-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes bar-action-new {
+  from {
+    border-color: var(--canvas-trace);
+    background: var(--canvas-chip-bg);
+  }
 }
 
 @keyframes canvas-grow {

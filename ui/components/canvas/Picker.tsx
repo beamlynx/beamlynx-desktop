@@ -391,7 +391,7 @@ const Picker: React.FC = observer(() => {
     return () => window.removeEventListener('mousedown', onMouseDown, true);
   }, [picker.open, store]);
 
-  // Focuses the join-type/more panel's own root div so its onKeyDown below
+  // Focuses the join-type/traverse panel's own root div so its onKeyDown below
   // (mnemonics, arrow keys) fires without a click first - the filter/value
   // inputs in every other mode get this via a plain `autoFocus` attribute,
   // which a bare `<div>` doesn't support (it's not natively focusable
@@ -400,7 +400,6 @@ const Picker: React.FC = observer(() => {
   const focusRootAlias =
     picker.open &&
     (picker.mode === 'join-type' ||
-      picker.mode === 'more' ||
       picker.mode === 'traverse' ||
       picker.mode === 'order-direction')
       ? picker.alias
@@ -411,53 +410,7 @@ const Picker: React.FC = observer(() => {
 
   if (!picker.open) return null;
 
-  if (picker.mode === 'more') {
-    const offered = MORE_ACTIONS.filter(o => picker.offer.includes(o.action));
-    return (
-      <div
-        ref={rootRef}
-        tabIndex={-1}
-        onKeyDown={e => {
-          const match = offered.find(o => o.key === e.key.toLowerCase());
-          if (match) {
-            e.preventDefault();
-            // See the traverse menu below: only on a match, so Escape still
-            // reaches the window-level listener.
-            e.stopPropagation();
-            store.activateMoreAction(picker.alias, match.action, picker.isCheckpoint, picker.anchor);
-          }
-        }}
-        style={{ ...anchoredStyle(picker.anchor), padding: 8, minWidth: 140, maxHeight: 'none' }}
-        data-testid="canvas-picker"
-      >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {offered.length === 0 && (
-            // The operation bar's "+" offers unnest once a table has a JSON column.
-            <div style={{ padding: '4px 6px', opacity: 0.6 }}>No table here has a JSON column to unnest.</div>
-          )}
-          {offered.map(option => (
-            <div
-              key={option.action}
-              data-testid={`more-${option.action}-${picker.alias}`}
-              onClick={() => store.activateMoreAction(picker.alias, option.action, picker.isCheckpoint, picker.anchor)}
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                padding: '4px 6px',
-                borderRadius: 3,
-                cursor: 'pointer',
-              }}
-            >
-              <span>{option.label}</span>
-              <span style={{ opacity: 0.5 }}>{option.key}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  // The verb menu behind "+" -> traverse. Two fixed entries, so it renders
+  // The verb menu behind traverse. Two fixed entries, so it renders
   // like the "+" menu itself rather than going through the list picker.
   if (picker.mode === 'traverse') {
     const blocked = picker.deleteBlockedReason;

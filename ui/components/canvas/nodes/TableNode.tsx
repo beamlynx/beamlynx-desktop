@@ -29,7 +29,6 @@ export const pickerAliasFor = (picker: PickerState): string | null => {
   if (
     picker.mode === 'where-value' ||
     picker.mode === 'join-type' ||
-    picker.mode === 'more' ||
     picker.mode === 'traverse' ||
     picker.mode === 'order-direction' ||
     picker.mode === 'select-name' ||
@@ -51,7 +50,6 @@ export const activeGlobalOperation = (picker: PickerState): GlobalOperation | No
   if (picker.mode === 'limit-value') return 'limit';
   // Traverse is behind the bar's "+".
   if (picker.mode === 'traverse') return 'more';
-  if (picker.mode === 'more') return picker.global ? 'more' : null;
   if (picker.mode !== 'list') return null;
   const kind = picker.request.kind;
   if (kind === 'path-route') return 'path';
@@ -61,73 +59,6 @@ export const activeGlobalOperation = (picker: PickerState): GlobalOperation | No
     : null;
 };
 
-type NodeOperation = 'join' | 'select' | 'where' | 'more';
-
-/** Which of a node's own buttons has its picker open: the others dim. Order, traverse, describe and references are behind its "+". */
-const activeNodeOperation = (picker: PickerState): NodeOperation | null => {
-  const active = picker.open && picker.mode === 'more' ? 'more' : activeGlobalOperation(picker);
-  return active === 'join' || active === 'select' || active === 'where' ? active : active ? 'more' : null;
-};
-
-/**
- * One of a node's own buttons, in the row above its card. Smaller than the
- * operation bar's, in the same capitals; while the keys work on this node,
- * the key letter is bold and the rest dimmed, as on the bar.
- */
-const NodeButton = ({
-  label,
-  testId,
-  onClick,
-  dimmed,
-  keyIndex,
-}: {
-  label: string;
-  testId: string;
-  onClick: (e: React.MouseEvent) => void;
-  dimmed: boolean;
-  keyIndex?: number;
-}) => {
-  const [hover, setHover] = useState(false);
-  return (
-    <button
-      type="button"
-      data-testid={testId}
-      className="picker-trigger"
-      onClick={e => {
-        e.stopPropagation();
-        onClick(e);
-      }}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        fontFamily: 'var(--canvas-font)',
-        fontSize: 'calc(10px * var(--text-scale, 1))',
-        lineHeight: 'calc(12px * var(--text-scale, 1))',
-        fontWeight: 600,
-        textTransform: 'uppercase',
-        letterSpacing: '0.4px',
-        padding: '2px 6px',
-        borderRadius: 3,
-        cursor: 'pointer',
-        color: 'var(--canvas-trace)',
-        background: hover ? 'var(--canvas-chip-bg)' : 'var(--canvas-node-bg)',
-        border: `1px solid ${hover ? 'var(--canvas-trace)' : 'var(--canvas-chip-border)'}`,
-        opacity: dimmed ? 0.35 : 1,
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {keyIndex !== undefined ? (
-        <>
-          <span style={{ color: 'var(--canvas-text-dim)' }}>{label.slice(0, keyIndex)}</span>
-          <span style={{ fontWeight: 800 }}>{label[keyIndex]}</span>
-          <span style={{ color: 'var(--canvas-text-dim)' }}>{label.slice(keyIndex + 1)}</span>
-        </>
-      ) : (
-        label
-      )}
-    </button>
-  );
-};
 
 // A small, self-contained equivalent of RelationHandles.tsx - not imported
 // from there because that component's props are typed against model.d.ts's
@@ -876,7 +807,6 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
       if (canvasStore.hoveredAlias === data.alias) {
         canvasStore.setHoveredAlias(null);
       }
-      if (canvasStore.pointerAlias === data.alias) canvasStore.setPointerAlias(null);
     };
   }, [canvasStore, data.alias]);
 
@@ -956,25 +886,12 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
   const pinning = !!checkpoint && canvasStore.checkpointPinning === data.alias;
   // A checkpoint of the last query block is drawn as a line (beamlynx-plans #33).
   const line = checkpoint?.line;
-  // The operation bar (OperationBar.tsx) works on the whole query. A table
-  // node also has its own buttons, in the row above its card, shown while
-  // the pointer is on it or one of their pickers is open: join, select,
-  // where, and "+" for order, traverse, describe and references. Select,
-  // where and order list this table's columns alone. They are for the
-  // mouse only: the keys are always the bar's.
-  const pointed = canvasStore.pointerAlias === data.alias;
-  const ownPicker = canvasStore.nodePicker === data.alias;
-  const hasButtons = !checkpoint;
-  const sealed = canvasStore.isSealed(data.alias);
-  const showButtons = hasButtons && (pointed || ownPicker);
-  const activeOwn = ownPicker ? activeNodeOperation(canvasStore.picker) : null;
-  const nodeOp = (kind: NodeOperation) => (e: React.MouseEvent) =>
-    canvasStore.openNodeOperation(data.alias, kind, { x: e.clientX, y: e.clientY });
+  // A table has no operations of its own: the operation bar
+  // (OperationBar.tsx) offers what fits the selected table.
 
   return (
     <div
       style={line ? { width: line.width, paddingLeft: 0 } : { width: nodeWidth }}
-      onMouseMove={checkpoint ? undefined : () => canvasStore.setPointerAlias(data.alias)}
       onMouseEnter={() => {
         setHovered(true);
         // Hover only reveals this node's action bar and spotlights its
@@ -997,35 +914,11 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
         if (canvasStore.hoveredAlias === data.alias) {
           canvasStore.setHoveredAlias(null);
         }
-        if (canvasStore.pointerAlias === data.alias) canvasStore.setPointerAlias(null);
       }}
     >
-      {/* Action bar - progressive disclosure: hidden until the node is
-          hovered (or its own picker is open, see `engaged` above), so a
-          graph with many nodes isn't wall-to-wall buttons. Opacity only
-          (not pointer-events, not conditional rendering). Layout space
-          stays reserved either way - dagre already budgets for it via
-          actionBarHeight (layout.ts), and removing it from the DOM on
-          hover would shift the box beneath it on every mouse-enter.
-          Deliberately NOT `pointerEvents: engaged ? 'auto' : 'none'`: that
-          gates on React state that only flips a tick after the mouseenter
-          that triggered it, and a click arriving in that same tick (a fast
-          real click, or - confirmed live - Playwright's `.click()`, which
-          moves the mouse and clicks with no gap) lands while pointer-events
-          is still 'none' and is silently swallowed. A real pointer can't
-          click a spot it hasn't already hovered, so opacity alone already
-          keeps the button invisible-until-hovered for a human; disabling
-          pointer-events on top only adds a race, it doesn't add safety.
-          `nodrag` (a ReactFlow convention) keeps a click here from also
-          being read as a zero-movement node drag, which would otherwise
-          call onNodeDragStop with the node's current (possibly still-
-          default) internal position and permanently freeze it there -
-          confirmed live: clicking "join" right after a node's first
-          render pinned it at {x:0,y:0}, which then collided with the next
-          node's fresh dagre layout instead of being re-laid-out.
-          stopPropagation on the button's click handler alone doesn't
-          prevent this - ReactFlow's drag listener triggers on pointerdown,
-          beneath React's synthetic click bubbling. */}
+      {/* The row above the card. It once held the table's own buttons; now
+          it only says "loading..." while a checkpoint's name is written in.
+          Its space stays: dagre budgets for it (actionBarHeight, layout.ts). */}
       <div
         data-testid={`canvas-node-${data.alias}`}
         className="nodrag"
@@ -1035,7 +928,7 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
           gap: '3px',
           marginBottom: '4px',
           flexWrap: 'nowrap',
-          opacity: engaged || showButtons ? 1 : 0,
+          opacity: engaged ? 1 : 0,
           transition: 'opacity 0.1s ease-in-out',
           // A checkpoint's connector runs down through this row to the box
           // (CheckpointDividerNode.tsx); while the bar shows, it covers the
@@ -1046,19 +939,6 @@ const TableNode: React.FC<NodeProps<CanvasTableNodeData>> = observer(({ id, data
         {pinning && (
           <div data-testid={`checkpoint-pinning-${data.alias}`} style={{ opacity: 0.7, fontSize: 'calc(10px * var(--text-scale, 1))' }}>
             loading...
-          </div>
-        )}
-        {/* Hidden by opacity only: a click that arrives in the same tick as
-            the pointer's first move must still land (see above). */}
-        {hasButtons && (
-          <div style={{ display: 'flex', gap: 3, opacity: showButtons ? 1 : 0, transition: 'opacity 0.1s ease-in-out' }}>
-            {/* Nothing joins from above a line (CanvasStore.isSealed). */}
-            {!sealed && (
-              <NodeButton label="join" testId={`node-join-${data.alias}`} onClick={nodeOp('join')} dimmed={activeOwn !== null && activeOwn !== 'join'} />
-            )}
-            <NodeButton label="select" testId={`node-select-${data.alias}`} onClick={nodeOp('select')} dimmed={activeOwn !== null && activeOwn !== 'select'} />
-            <NodeButton label="where" testId={`node-where-${data.alias}`} onClick={nodeOp('where')} dimmed={activeOwn !== null && activeOwn !== 'where'} />
-            <NodeButton label="+" testId={`node-more-${data.alias}`} onClick={nodeOp('more')} dimmed={activeOwn !== null && activeOwn !== 'more'} />
           </div>
         )}
       </div>

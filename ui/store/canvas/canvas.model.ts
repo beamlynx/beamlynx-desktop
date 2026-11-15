@@ -435,18 +435,6 @@ export type PickerState =
     }
   | {
       open: true;
-      mode: 'more';
-      alias: string;
-      /** Which overflow actions to offer - group is never offered on a checkpoint's node. */
-      offer: MoreAction[];
-      /** Whether `alias` names a checkpoint's node rather than a plain table - decides routing (openCheckpointPicker vs the direct open*Picker methods). */
-      isCheckpoint: boolean;
-      /** The operation bar's "+" (unnest), not a node's: no node's own "+" shows as open. */
-      global?: boolean;
-      anchor: PickerAnchor;
-    }
-  | {
-      open: true;
       mode: 'limit-value';
       /** The node the gesture was opened from. The limit changed is the one ending this node's stage (see pine-actions.ts's setLimit). */
       alias: string;
@@ -508,21 +496,6 @@ export const MORE_ACTIONS: { action: MoreAction; label: string; key: string }[] 
 ];
 
 /**
- * What a node's "+" menu offers, by node kind. Defined once because it is
- * read from several places - TableNode's button for a table and for a
- * checkpoint, and the keyboard shortcut in useCanvasKeybindings - and
- * hand-maintained copies drift: `traverse` was added to the button's list
- * and the keyboard opened a menu without it.
- *
- * A node's own buttons show while the pointer is on it. Its "+" offers
- * order on that table's columns, and what is about that one table. Group,
- * limit, path and unnest work on the whole query, from the operation bar
- * (OperationBar.tsx, beamlynx-plans #28). `traverse` is only offered on the
- * most recent table: see CanvasStore.openMorePicker. A checkpoint's node
- * offers nothing: following a foreign key out of a CTE's sealed output is
- * not a thing.
- */
-/**
  * The aggregates a group's line offers, each with the sign its chip shows.
  * `count` takes no column; the others read one. pine-lang also has `any`
  * and `all`, which take a condition: their chips show, but they are typed.
@@ -562,8 +535,6 @@ export const aggregateSign = (fn: string | undefined): string =>
   AGGREGATE_FUNCTIONS.find(f => f.fn === fn)?.sign ??
   'ƒ';
 
-export const MORE_ACTIONS_FOR_TABLE: MoreAction[] =['order', 'traverse', 'describe', 'references'];
-export const MORE_ACTIONS_FOR_CHECKPOINT: MoreAction[] = [];
 
 /**
  * What the operation bar offers for the selected node
