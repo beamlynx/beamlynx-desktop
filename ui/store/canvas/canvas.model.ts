@@ -158,7 +158,17 @@ export type CanvasLineageNode = Node<CanvasLineageNodeData>;
 export type CanvasCountNodeData = { width: number };
 export type CanvasCountNode = Node<CanvasCountNodeData>;
 export const COUNT_NODE_ID = '__count__';
-export type CanvasNode = CanvasTableNode | CanvasStartNode | CanvasContainerNode | CanvasLineageNode | CanvasCountNode;
+/** The query ends in `|= name`: a line at the bottom of the graph that names its result (NameLineNode.tsx). */
+export type CanvasNameNodeData = { width: number; name: string };
+export type CanvasNameNode = Node<CanvasNameNodeData>;
+export const NAME_NODE_ID = '__name__';
+export type CanvasNode =
+  | CanvasTableNode
+  | CanvasStartNode
+  | CanvasContainerNode
+  | CanvasLineageNode
+  | CanvasCountNode
+  | CanvasNameNode;
 export type CanvasEdge = Edge & {
   unresolved?: boolean;
   uncertain?: boolean;

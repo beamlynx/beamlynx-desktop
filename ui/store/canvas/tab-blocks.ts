@@ -35,6 +35,13 @@ export const nameBlock = (text: string, name: string): string => {
   return named ? `${body.slice(0, named.index)}|= ${name}${tail}` : `${body} |= ${name}${tail}`;
 };
 
+/** `text` without the `|= name` at its end. A comment after it stays. */
+export const unnameBlock = (text: string): string => {
+  const body = text.replace(TRAILING_NOISE, '');
+  const named = /\s*\|\s*=\s*[A-Za-z_][A-Za-z0-9_]*$/.exec(body);
+  return named ? body.slice(0, named.index) + text.slice(body.length) : text;
+};
+
 /** The tab split for the canvas. A tab with no query block has an empty last query. */
 export function tabBlocks(expression: string): TabBlocks {
   const blocks = splitExpressions(expression);

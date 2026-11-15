@@ -109,14 +109,19 @@ things open. Check every change to the canvas against these rules.
   When the bar is open, it slides to its new size, that table's actions
   come in again, and one the last table didn't have glows for a moment, so
   the change is seen.
-- **The bar always adds to the end of the query.** Select, where, order,
-  group, limit, count and path add the next step there.
-- **The selected table only says where the bar's table actions start.**
-  Join, traverse, describe and references start from the table selected
-  with the keys (j/k) or a click. A table above a group's or limit's line
-  can't take a join: the bar joins from where the query goes on instead
+- **The bar works on what is selected.** With a table selected, select,
+  where and order list its columns first and go into its own part of the
+  query, even above a group's or limit's line (before the line). With a
+  group's or limit's line selected, they list what that line returns and
+  go after it. With nothing chosen, the selection is on the query's last
+  step: the line it ends in, or else its newest table
+  (`CanvasStore.focusedAlias`, `operationAnchor`).
+- **A table above a line takes no group, limit, unnest or join.** Those end
+  a stage, which the line already does. The bar leaves group, limit and
+  unnest out, and its join starts from where the query goes on instead
   (the newest table below the last line, or the result itself when nothing
-  follows it).
+  follows it). Count, name, new query and path are for the whole query
+  whatever is selected.
 - **The bar shows what you are doing.** A key for an action in the bar's
   folded part (`o`, `g`, `l`, `p`) shows only that action's button in the
   bar for as long as its list is open, not the whole folded part. When the
@@ -255,7 +260,7 @@ pipeline is a single strict sequence, not a 2D graph to roam.
 | `q` | Start a new query below the others, on a blank canvas |
 | `g` | Open the group-by picker (not offered on a checkpoint node — grouping an already-grouped result is a different question, not implemented) |
 | `e` | On a nested query's node (a checkpoint, or a table using a named block): expand or collapse its container |
-| `x` | Delete the focused node — a table if `removable`, or, on a checkpoint's node, the checkpoint (as the × on its node does; the tables it sealed stay). On the count line, the last stop, it removes the count |
+| `x` | Delete the focused node — a table if `removable`, or, on a checkpoint's node, the checkpoint (as the × on its node does; the tables it sealed stay). On the count line it removes the count, and on the name line, the last stop, the name |
 | `c` | Count the query's rows: ends it with `count:`, drawn as a group's line with no keys, `all rows with # count` (`CountLineNode`). Adding a key or an aggregate there, or picking another function, writes it out as that group (`CanvasStore.countToGroup`) |
 | `u` | Undo the last canvas gesture |
 | `n` | Write (or edit) the note: the comment at the top of the expression — see "The comment" below |
@@ -474,8 +479,13 @@ actions work across blocks:
 - `name` (key `m`) names the drawn query's result with `|= name` at its end
   (`tab-blocks.ts`'s `nameBlock`), or renames it. It refuses a name Pine
   can't read, one another block has, and a rename while a later block still
-  reads the old name. The strip at the top of the canvas shows the name,
-  even when the tab has only this one query.
+  reads the old name. The name shows on a dotted line under the graph (and
+  under its count line), `|= name ×` (`NameLineNode.tsx`). It is the last
+  keyboard stop: Enter or a click renames, and `x` or its × takes the name
+  off (`CanvasStore.removeQueryName`), refused while a later query reads
+  it. A `result_N` at the end is the name Pine gives a group or limit
+  itself, written in when a list opens on its line, so it gets no line.
+  The strip at the top shows only for two queries or more.
 - `new query` (key `q`) adds a block at the end of the tab and draws it: the
   editor's cursor moves into it, and the canvas is blank but for the strip
   and "+ pick a table". A block needs some text to exist, so it starts as the

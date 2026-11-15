@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { CanvasStore } from '../store/canvas/canvas.store';
 import { Session } from '../store/session';
 import { GlobalStore } from '../store/global.store';
-import { COUNT_NODE_ID, CanvasTableNodeData, MORE_ACTIONS, START_NODE_ID } from '../store/canvas/canvas.model';
+import { COUNT_NODE_ID, NAME_NODE_ID, CanvasTableNodeData, MORE_ACTIONS, START_NODE_ID } from '../store/canvas/canvas.model';
 import { barAnchor } from '../components/canvas/OperationBar';
 
 interface CanvasKeybindingsProps {
@@ -114,10 +114,13 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
       // this line, precisely so this can be a blanket bail-out.
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 
-      // The count line under the graph is the last stop. `x` on it removes
-      // the count; anything else works as from where the query goes on.
+      // The count line and the name line under the graph are the last
+      // stops. `x` on one removes it (Enter on the name renames it);
+      // anything else works as from where the query goes on.
       const onCount = canvasStore.focusedAlias === COUNT_NODE_ID;
-      const alias = onCount ? (canvasStore.nextStepAlias ?? canvasStore.focusedAlias) : canvasStore.focusedAlias;
+      const onName = canvasStore.focusedAlias === NAME_NODE_ID;
+      const alias =
+        onCount || onName ? (canvasStore.nextStepAlias ?? canvasStore.focusedAlias) : canvasStore.focusedAlias;
       const isStart = alias === START_NODE_ID;
       // A checkpoint's node is focused like a table, but its operations go
       // through openCheckpointPicker, not openColumnPicker/openJoinPicker
@@ -249,6 +252,11 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
         // below, same as any other unbound key.
         case 'Enter':
         case ' ':
+          if (onName) {
+            e.preventDefault();
+            canvasStore.openQueryNameEditor(barAnchor());
+            return;
+          }
           if (canvasStore.focusedConfigItem) {
             e.preventDefault();
             canvasStore.openConfigCursor(anchorFor(alias));
@@ -322,6 +330,11 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
           if (onCount) {
             e.preventDefault();
             void canvasStore.removeCount();
+            return;
+          }
+          if (onName) {
+            e.preventDefault();
+            canvasStore.removeQueryName(barAnchor());
             return;
           }
           if (isStart) return;
