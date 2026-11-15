@@ -99,7 +99,9 @@ things open. Check every change to the canvas against these rules.
 
 - **Every action is in the bar.** Tables have no buttons of their own. A
   key runs the bar's action, and its list opens from the bar at the bottom.
-  Where the mouse happens to rest doesn't matter.
+  Where the mouse happens to rest doesn't matter. While the Pine panel has
+  the keyboard, the bar fades out; its space stays, so the graph doesn't
+  move.
 - **Selecting a table changes what the bar offers.** Select a table with
   the keys (j/k) or a click, and the bar shows the actions that fit it.
   When the bar is open, that table's actions come in again, and one the

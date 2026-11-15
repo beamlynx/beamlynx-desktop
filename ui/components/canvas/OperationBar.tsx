@@ -198,6 +198,9 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
   // The keys are always the bar's. A bold letter says its key works now:
   // not while typing goes elsewhere.
   const keys = canvasStore.mode === 'normal' && global.keyboardPane === 'graph';
+  // While the Pine panel has the keyboard, the bar fades out: it is for
+  // working on the canvas. Its space stays, so the graph doesn't move.
+  const away = global.keyboardPane === 'input';
   const dim = (kind: string) => active !== null && active !== kind;
   const expanded = canvasStore.barExpanded;
   const { stacked, width: rowsWidth, main: mainWidth } = layout;
@@ -371,6 +374,9 @@ const OperationBar: React.FC<{ canvasStore: CanvasStore }> = observer(({ canvasS
         border: '1px solid var(--canvas-node-border)',
         boxShadow: '0 2px 12px rgba(0,0,0,0.3)',
         maxWidth: 'calc(100% - 32px)',
+        opacity: away ? 0 : 1,
+        visibility: away ? 'hidden' : 'visible',
+        transition: away ? 'opacity 150ms ease, visibility 0s linear 150ms' : 'opacity 150ms ease',
       }}
     >
       {stacked && extras}
