@@ -40,7 +40,7 @@ const activeBarAction = (picker: PickerState): string | null => {
   if (picker.mode === 'query-name') return 'name';
   if (picker.mode !== 'list') return null;
   const kind = picker.request.kind;
-  if (kind === 'table') return picker.request.newQuery ? 'query' : null;
+  if (kind === 'table') return null;
   return kind === 'path-route' ? 'path' : kind;
 };
 

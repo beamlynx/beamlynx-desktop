@@ -5,7 +5,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 ### Added
-- **Name a query's result, and start another query, from the canvas.** The bar's `name` (key `m`) ends the query with `|= name`, so a later query can read it like a table. `new query` (key `q`) starts a query below the others in the tab: pick its first table, or the name of an earlier result, and the canvas switches to it.
+- **Name a query's result, and start another query, from the canvas.** The bar's `name` (key `m`) ends the query with `|= name`, so a later query can read it like a table, and the name shows at the top of the canvas. `new query` (key `q`) starts a query below the others in the tab on a blank canvas. Its table list includes the names of earlier results.
 - **"Focus on Pine Panel" and "Focus on SQL Panel" in the command palette.** Each opens the panel if it is closed and puts the cursor in it.
 
 ### Changed

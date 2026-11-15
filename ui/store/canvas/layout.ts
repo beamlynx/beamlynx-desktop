@@ -848,8 +848,9 @@ export const lineageId = (id: string) => `lineage:${id}`;
 
 /**
  * The lineage strip's chips and arrows, at the top left from y = 0, and the
- * strip's height. Nothing when the tab has a single query block: there is
- * nothing to switch to. A chip is as wide as its text. `details` are what
+ * strip's height. Nothing when the tab has a single query block without a
+ * name: there is nothing to switch to and no name to show. A chip is as wide
+ * as its text. `details` are what
  * the named blocks above the drawn one end in, by name.
  */
 const layoutLineage = (
@@ -858,7 +859,7 @@ const layoutLineage = (
   expandedBlock: string | null,
   positions: Record<string, { x: number; y: number }>,
 ): { nodes: CanvasLineageNode[]; edges: CanvasEdge[]; height: number } => {
-  if (lineage.blocks.length < 2) return { nodes: [], edges: [], height: 0 };
+  if (lineage.blocks.length < 2 && !lineage.blocks[0]?.name) return { nodes: [], edges: [], height: 0 };
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({ rankdir: 'LR', nodesep: 10, ranksep: 40, marginx: 0, marginy: 0 });

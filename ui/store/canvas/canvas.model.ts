@@ -275,8 +275,7 @@ export type WhereDraft = {
 };
 
 export type PickerRequest =
-  /** `newQuery`: the bar's "new query", so the table starts a query block of its own after the others. */
-  | { kind: 'table'; newQuery?: boolean }
+  | { kind: 'table' }
   /** `column`: from a chip on a checkpoint's line, only the joins on that column of its result. */
   | { kind: 'join'; alias: string; column?: string }
   /** `only`: opened from the node itself, so it lists that table's columns alone. */

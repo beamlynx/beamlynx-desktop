@@ -252,7 +252,7 @@ pipeline is a single strict sequence, not a 2D graph to roam.
 | `w` | Open the where-condition picker |
 | `o` | Open the order-by picker |
 | `m` | Name the query's result (`\|= name`), so a later query can read it |
-| `q` | Start a new query below the others: pick its first table, an earlier result's name included |
+| `q` | Start a new query below the others, on a blank canvas |
 | `g` | Open the group-by picker (not offered on a checkpoint node — grouping an already-grouped result is a different question, not implemented) |
 | `e` | On a nested query's node (a checkpoint, or a table using a named block): expand or collapse its container |
 | `x` | Delete the focused node — a table if `removable`, or, on a checkpoint's node, the checkpoint (as the × on its node does; the tables it sealed stay). On the count line, the last stop, it removes the count |
@@ -474,11 +474,15 @@ actions work across blocks:
 - `name` (key `m`) names the drawn query's result with `|= name` at its end
   (`tab-blocks.ts`'s `nameBlock`), or renames it. It refuses a name Pine
   can't read, one another block has, and a rename while a later block still
-  reads the old name.
-- `new query` (key `q`) lists the tables, with the names of earlier results
-  among them (the list is built after every block). The pick becomes a new
-  block at the end of the tab, and the canvas draws it: the editor's cursor
-  moves into it. Undo takes the block off.
+  reads the old name. The strip at the top of the canvas shows the name,
+  even when the tab has only this one query.
+- `new query` (key `q`) adds a block at the end of the tab and draws it: the
+  editor's cursor moves into it, and the canvas is blank but for the strip
+  and "+ pick a table". A block needs some text to exist, so it starts as the
+  comment `-- new query`; picking the first table replaces it. The table list
+  is built after the blocks above, so the names of earlier results are
+  listed too. Nothing runs until the query has a table. Undo takes the block
+  off.
 
 **Earlier query blocks.** A tab can have several query blocks. The canvas
 draws the last one; each earlier one must end in `|= name` (`tab-blocks.ts`),

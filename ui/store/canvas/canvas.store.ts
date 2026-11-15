@@ -59,12 +59,13 @@ import { canDeleteTraverse } from './traversal';
 import { computeDateBounds } from './relative-date';
 
 
+/** What the bar's "new query" writes: a block needs some text, and a comment draws a blank canvas. */
+const NEW_QUERY_TEXT = '-- new query';
+
 /** Identifies a picker request for the "already open for this" check below - table has no alias to key on. */
 const requestKey = (r: PickerRequest): string =>
   r.kind === 'table'
-    ? r.newQuery
-      ? 'table:new'
-      : 'table'
+    ? 'table'
     : r.kind === 'path-route'
       ? `path-route:${r.alias}:${r.target}`
       : `${r.kind}:${r.alias}${'only' in r && r.only ? ':only' : ''}${'column' in r && r.column ? `:${r.column}` : ''}${
@@ -787,10 +788,14 @@ export class CanvasStore {
     });
   }
 
-  /** Which of the tab's query blocks is made from which - see lineage.ts. */
+  /**
+   * Which of the tab's query blocks is made from which - see lineage.ts. The
+   * last block's name counts too here (tab.names leaves it out, as no block
+   * reads it), so the strip shows it.
+   */
   private get lineage(): Lineage {
     return lineageOf(
-      this.tab.names.map((name, k) => ({ name, text: this.textOf(k) })),
+      this.tab.queries.map((_, k) => ({ name: blockName(this.textOf(k)), text: this.textOf(k) })),
       this.mainBlock,
     );
   }
@@ -1399,15 +1404,13 @@ export class CanvasStore {
   }
 
   /**
-   * The tables to start a query with. With `newQuery` (the bar's "new
-   * query"), the query goes below every other in the tab, so the list is
-   * built after them: the names of earlier results are tables too.
+   * The tables to start a query with. The list is built after the blocks
+   * above the drawn one, so the names of their results are tables too.
    */
-  openTablePicker(anchor: PickerAnchor = CanvasStore.defaultAnchor, newQuery = false) {
-    const request: PickerRequest = newQuery ? { kind: 'table', newQuery } : { kind: 'table' };
-    const context = newQuery ? this.tab.blocks.map(b => b.text) : [];
+  openTablePicker(anchor: PickerAnchor = CanvasStore.defaultAnchor) {
+    const request: PickerRequest = { kind: 'table' };
     void this.openListPicker(request, anchor, async () => {
-      const ast = await probeBuild('', this.session.connectionId, context);
+      const ast = await probeBuild('', this.session.connectionId, contextFor(this.tab, this.mainBlock));
       if (!ast) throw new Error('Failed to build table suggestions');
       const items: PickerItem[] = ast.hints.table.map(h => ({
         id: h.pine,
@@ -1751,7 +1754,7 @@ export class CanvasStore {
         this.openQueryNameEditor(anchor);
         break;
       case 'query':
-        this.openTablePicker(anchor, true);
+        this.addQuery();
         break;
       case 'unnest': {
         // For the whole query: from where it goes on, which lists every table's JSON columns.
@@ -2270,14 +2273,9 @@ export class CanvasStore {
 
   commitFirstTable(hint: TableHint) {
     const alias = makeAlias(hint.table, new Set());
-    const p = this.picker;
-    if (p.open && p.mode === 'list' && p.request.kind === 'table' && p.request.newQuery) {
-      this.addQueryBlock(actions.pickFirstTable(hint, alias));
-      this.closePicker();
-      this.focusNode(alias);
-      return;
-    }
-    this.applyExpression(actions.pickFirstTable(hint, alias));
+    // A new query's placeholder comment goes; a comment the user wrote stays.
+    const placeholder = this.textOf(this.mainBlock).trim() === NEW_QUERY_TEXT;
+    this.applyExpression(actions.pickFirstTable(hint, alias), { preserveDoc: !placeholder });
     this.closePicker();
     // Cursor lands on what was just inserted - the vim convention this
     // keyboard layer follows throughout (see commitJoin below).
@@ -2285,12 +2283,15 @@ export class CanvasStore {
   }
 
   /**
-   * Adds `text` as a query block of its own, after every other block in the
-   * tab, and draws it: the editor's cursor moves into it (see mainBlock).
+   * The bar's "new query": a blank canvas for a query of its own, after
+   * every other block in the tab. A block needs some text to exist, so it
+   * starts as a comment; picking the first table replaces it. The editor's
+   * cursor moves into it, which draws it (see mainBlock). Nothing runs yet.
    * Undoable like a gesture.
    */
-  private addQueryBlock(text: string) {
-    const expression = `${this.session.expression.replace(/\s+$/, '')}\n\n${text}`;
+  private addQuery() {
+    const before = this.session.expression.replace(/\s+$/, '');
+    const expression = before ? `${before}\n\n${NEW_QUERY_TEXT}` : NEW_QUERY_TEXT;
     this.undoStack.push(this.session.expression);
     this.redoStack = [];
     this.canvasWrittenExpression = expression;
@@ -2298,7 +2299,7 @@ export class CanvasStore {
     const tab = tabBlocks(expression);
     const last = tab.queries[tab.queries.length - 1];
     if (last !== undefined) this.session.moveCursorToLine(tab.blocks[last].startLine);
-    this.notifyAutoRun();
+    this.focusNode(START_NODE_ID);
   }
 
   /** The bar's "name": a field for the name of the query's result (`|= name`). */
