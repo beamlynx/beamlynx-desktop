@@ -164,21 +164,9 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
         }
       }
 
-      // The pointer is on a table node: its own buttons show, and these keys
-      // are that node's (TableNode.tsx). Select, where and order list its
-      // columns alone. The picker opens under the node's button.
-      const pointed = canvasStore.pointerAlias;
-      const nodeKind = ({ i: 'join', '|': 'join', s: 'select', w: 'where', o: 'order', '+': 'more' } as const)[
-        e.key as 'i' | '|' | 's' | 'w' | 'o' | '+'
-      ];
-      if (pointed && nodeKind) {
-        e.preventDefault();
-        const button = nodeKind === 'order' ? 'more' : nodeKind;
-        const el = document.querySelector(`[data-testid="node-${button}-${pointed}"]`);
-        const rect = el?.getBoundingClientRect();
-        canvasStore.openNodeOperation(pointed, nodeKind, rect ? { x: rect.left, y: rect.bottom } : anchorFor(pointed));
-        return;
-      }
+      // The keyboard works on the query, through the bar. Where the pointer
+      // rests doesn't matter: a table's own buttons are for the mouse only
+      // (docs/canvas-mode.md, "How the canvas is used").
 
       // Arrow-key navigation always works, vim mode or not - it's plain
       // directional navigation, not a vim convention, so there's no reason
@@ -272,13 +260,10 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
         case 'i':
         case '|':
           e.preventDefault();
-          if (isStart) {
-            canvasStore.openTablePicker(anchorFor(alias));
-          } else if (isCheckpoint) {
-            void canvasStore.openCheckpointPicker(alias, 'join', anchorFor(alias));
-          } else {
-            canvasStore.openJoinPicker(alias, anchorFor(alias));
-          }
+          // The first table is picked where the canvas starts; every join
+          // after it is the bar's.
+          if (isStart) canvasStore.openTablePicker(anchorFor(alias));
+          else canvasStore.openNodeAction('join', barAnchor());
           return;
         // The operation bar's operations (OperationBar.tsx): they work on
         // the whole query, so they need no focused node. A focused node's
@@ -291,8 +276,20 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
         case 'l': {
           if (!canvasStore.operationAnchor) return;
           e.preventDefault();
-          const kind = ({ s: 'select', w: 'where', o: 'order', g: 'group', p: 'path', l: 'limit' } as const)[e.key];
-          canvasStore.openOperation(kind, barAnchor());
+          if (e.key === 's' || e.key === 'w') {
+            canvasStore.openOperation(e.key === 's' ? 'select' : 'where', barAnchor());
+            return;
+          }
+          // These are in the bar's folded part: it opens while their list
+          // is open, so you see which action it is (CanvasStore.unfoldFor).
+          const folded = ({ o: 'order', g: 'group', p: 'path', l: 'limit' } as const)[e.key];
+          if (!canvasStore.unfoldFor(folded)) return;
+          // On a narrow canvas the folded part opens upward, in rows, over
+          // 240 ms: the list rises from where the bar's top ends up.
+          const rows = document.querySelector('[data-testid="operation-bar-extras"][data-stacked]');
+          const open = () => canvasStore.runBarAction(folded, barAnchor());
+          if (rows) setTimeout(open, 260);
+          else open();
           return;
         }
         // Expand or collapse the focused checkpoint's contents - the stage it

@@ -1617,11 +1617,9 @@ export class CanvasStore {
     const node = tables.find(n => n.id === this.focusedAlias) ?? tables.find(n => n.id === this.nextStepAlias);
     if (!node) return null;
     const checkpoint = !!node.data.checkpoint;
-    // Nothing joins from above a line (see isSealed).
-    const join: NodeAction[] = this.isSealed(node.id) ? [] : ['join'];
     const actions: NodeAction[] = checkpoint
-      ? join
-      : [...join, ...(node.id === this.nextStepAlias ? (['traverse'] as const) : []), 'describe', 'references'];
+      ? ['join']
+      : ['join', ...(node.id === this.nextStepAlias ? (['traverse'] as const) : []), 'describe', 'references'];
     const label = node.data.table === node.data.alias ? node.data.alias : `${node.data.table} (${node.data.alias})`;
     return { alias: node.id, label, actions };
   }
@@ -1633,10 +1631,16 @@ export class CanvasStore {
     this.nodePickerAlias = null;
     const { alias } = selected;
     switch (action) {
-      case 'join':
-        if (this.isCheckpointNode(alias)) void this.openCheckpointPicker(alias, 'join', anchor);
-        else this.openJoinPicker(alias, anchor);
+      case 'join': {
+        // Nothing joins from above a line (see isSealed): the bar joins
+        // from where the query goes on below it: the newest table after
+        // the last line, or the result itself (nextStepAlias).
+        const from = this.isSealed(alias) ? this.nextStepAlias : alias;
+        if (!from) return;
+        if (this.isCheckpointNode(from)) void this.openCheckpointPicker(from, 'join', anchor);
+        else this.openJoinPicker(from, anchor);
         return;
+      }
       case 'traverse':
         void this.openTraversePicker(alias, anchor);
         return;
@@ -1733,6 +1737,21 @@ export class CanvasStore {
     if (!this.isCheckpointNode(anchorAlias) && this.unnestColumns.get(key) === undefined) {
       void this.probeUnnestColumns(anchorAlias, key);
     }
+  }
+
+  /**
+   * A key for an action in the bar's folded part: the bar opens, so the
+   * action's button shows while its list is open. runBarAction folds it
+   * again when the list closes, as it does after a click. False when the
+   * bar doesn't offer the action now.
+   */
+  unfoldFor(action: MoreAction): boolean {
+    if (!this.barMoreActions.includes(action)) return false;
+    if (!this.barExpanded) {
+      this.closePicker();
+      this.barExpanded = true;
+    }
+    return true;
   }
 
   collapseBar() {
