@@ -7,6 +7,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Added
 - **Name a query's result, and start another query, from the canvas.** The bar's `name` (key `m`) ends the query with `|= name`, so a later query can read it like a table. The name shows on a line under the graph: click it to rename it, or press `x` on it to remove it. `new query` (key `q`) starts a query below the others in the tab on a blank canvas. Its table list includes the names of earlier results.
 - **"Focus on Pine Panel" and "Focus on SQL Panel" in the command palette.** Each opens the panel if it is closed and puts the cursor in it.
+- **An empty list on the canvas says why.** For example "No JSON arrays here", or "Nothing matches" when your filter finds nothing.
 
 ### Changed
 - **`Ctrl`/`Cmd`+`.` toggles Zen mode.** It used to open and close the Pine panel. `Ctrl`/`Cmd`+`Shift`+`.` no longer opens the SQL panel; use the command palette, or `:` on the canvas for the Pine panel.
