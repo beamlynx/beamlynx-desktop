@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Fixed
+- **Long conditions under a table on the canvas no longer get drawn over.** A group's or limit's dashed line, a named query's border, or the next table could sit on top of them. The canvas now leaves room for each condition's full length.
 
 ## [0.78.0] - 2026-11-16
 ### Added

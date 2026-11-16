@@ -90,24 +90,63 @@ export const getNodeHeight = (node: CanvasNode): number => {
   return rows === 0 ? minNodeHeight : headerHeight + rows * handleRowHeight + 10;
 };
 
-// The chip rows (sel/where/order/group) below a node's box. A rough estimate,
-// not a measurement: about two chips to a line at nodeWidth. Counted so that
-// the next node in a stage, and a checkpoint's divider below the stage,
-// don't sit on top of them.
-const chipRowHeight = 22;
-const chipsHeight = (data: CanvasTableNodeData): number =>
-  [
-    data.unnestChips ?? [],
-    [...data.selectColumns, ...(data.elementChips?.select ?? [])],
-    [...data.whereChips, ...(data.elementChips?.where ?? [])],
-    [...data.orderChips, ...(data.elementChips?.order ?? [])],
-    [...data.groupChips, ...(data.elementChips?.group ?? [])],
-    data.write?.items ?? [],
-    data.describe ? [data.describe] : [],
-  ].reduce(
-    (height, chips) => (chips.length ? height + chipRowHeight * Math.ceil(chips.length / 2) : height),
-    0,
-  );
+// The chip rows (sel/where/order/group) below a node's box, laid out the way
+// TableNode's ChipRow wraps them: the row's label, then each chip, as many
+// to a line as fit in nodeWidth. A chip too long for a line takes a line of
+// its own and wraps its text. Text width is estimated from its length, not
+// measured: chip text averages 4.2-4.7px a character in Liberation Sans, a
+// little more in Apple's font, so 5 errs on the side of more room. Counted
+// so that the next node in a stage, and a checkpoint's line or a
+// container's border below the stage, don't sit on the chips.
+const chipCharWidth = 5;
+const chipLabelCharWidth = 7;
+// A chip's pin, gaps, padding, border and ×, around its text.
+const chipChrome = 33;
+const chipLineHeight = 17;
+const chipTextLineHeight = 12;
+const chipGap = 4;
+const chipRowHeight = (label: string, chips: string[]): number => {
+  if (chips.length === 0) return 0;
+  let x = label.length * chipLabelCharWidth;
+  let lineHeight = chipLineHeight;
+  let height = chipGap;
+  for (const chip of chips) {
+    const text = chip.length * chipCharWidth;
+    const fits = text + chipChrome <= nodeWidth;
+    const width = fits ? text + chipChrome : nodeWidth;
+    const chipHeight = fits
+      ? chipLineHeight
+      : chipLineHeight + chipTextLineHeight * (Math.ceil(text / (nodeWidth - chipChrome)) - 1);
+    if (x > 0 && x + chipGap + width > nodeWidth) {
+      height += lineHeight + chipGap;
+      x = 0;
+      lineHeight = chipLineHeight;
+    }
+    x += (x > 0 ? chipGap : 0) + width;
+    lineHeight = Math.max(lineHeight, chipHeight);
+  }
+  return height + lineHeight;
+};
+export const chipsHeight = (data: CanvasTableNodeData): number =>
+  (
+    [
+      ['unnest', data.unnestChips ?? []],
+      [
+        'sel',
+        [
+          ...data.selectColumns.map((c, i) => (data.selectNames?.[i] ? `${c} as ${data.selectNames[i]}` : c)),
+          ...(data.elementChips?.select ?? []).map((c, i) =>
+            data.elementChips?.selectNames?.[i] ? `${c} as ${data.elementChips.selectNames[i]}` : c,
+          ),
+        ],
+      ],
+      ['where', [...data.whereChips, ...(data.elementChips?.where ?? [])]],
+      ['order', [...data.orderChips, ...(data.elementChips?.order ?? [])]],
+      ['group', [...data.groupChips, ...(data.elementChips?.group ?? [])]],
+      [data.write?.kind ?? '', data.write?.items ?? []],
+      [data.describe ?? '', data.describe ? ['how it joins'] : []],
+    ] as [string, string[]][]
+  ).reduce((height, [label, chips]) => height + chipRowHeight(label, chips), 0);
 
 /** Total on-screen footprint - what dagre needs for spacing. Only table nodes reserve actionBarHeight and their chips. */
 const getNodeFootprintHeight = (node: CanvasNode): number =>
