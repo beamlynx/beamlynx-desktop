@@ -18,19 +18,35 @@ const text = [
 ].join('\n');
 const blocks = splitExpressions(text);
 
-test('blocksToRun: no selection runs every query block, not values blocks', () => {
-  assert.deepEqual(blocksToRun(blocks, null), [0, 2, 3]);
+// Block 0 is named: block 2 runs its query inside its own.
+test('blocksToRun: no selection runs every query block that is not named, not values blocks', () => {
+  assert.deepEqual(blocksToRun(blocks, null), [2, 3]);
 });
 
 test('blocksToRun: a selection runs the blocks it touches', () => {
   assert.deepEqual(blocksToRun(blocks, { from: 5, to: 5 }), [2]);
   assert.deepEqual(blocksToRun(blocks, { from: 4, to: 7 }), [2, 3]);
-  assert.deepEqual(blocksToRun(blocks, { from: 0, to: 0 }), [0]);
 });
 
-test('blocksToRun: a selection on blank lines or a values block runs every query block', () => {
-  assert.deepEqual(blocksToRun(blocks, { from: 2, to: 3 }), [0, 2, 3]);
-  assert.deepEqual(blocksToRun(blocks, { from: 6, to: 6 }), [0, 2, 3]);
+test('blocksToRun: a named block runs when it is all the selection touches', () => {
+  assert.deepEqual(blocksToRun(blocks, { from: 0, to: 0 }), [0]);
+  assert.deepEqual(blocksToRun(blocks, { from: 0, to: 4 }), [2]);
+});
+
+test('blocksToRun: a selection on blank lines or a values block counts as none', () => {
+  assert.deepEqual(blocksToRun(blocks, { from: 2, to: 3 }), [2, 3]);
+  assert.deepEqual(blocksToRun(blocks, { from: 6, to: 6 }), [2, 3]);
+});
+
+// SQL converted to Pine: one block per WITH query, then the statement.
+test('blocksToRun: a query split into named blocks runs once, as its last block', () => {
+  const split = splitExpressions('case_item |= processing\n\nprocessing | count: |= n -- note\n\nn | update! x = 1');
+  assert.deepEqual(blocksToRun(split, null), [2]);
+});
+
+test('blocksToRun: when every block is named, the last one runs', () => {
+  const named = splitExpressions('company |= c\n\nc | employee | = e');
+  assert.deepEqual(blocksToRun(named, null), [1]);
 });
 
 test('describesTable: the last block ends in describe:', () => {

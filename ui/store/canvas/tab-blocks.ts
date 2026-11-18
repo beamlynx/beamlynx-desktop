@@ -3,7 +3,16 @@
 // picked in the strip at the top of the canvas. Earlier blocks ending in
 // `|= name` are nested queries of it.
 // Pure text work, no network: the canvas store builds each block itself.
-import { ExpressionBlock, findActiveQueryBlock, isValuesBlock, splitExpressions } from '../blocks';
+import {
+  ExpressionBlock,
+  TRAILING_NOISE,
+  blockName,
+  findActiveQueryBlock,
+  isValuesBlock,
+  splitExpressions,
+} from '../blocks';
+
+export { blockName };
 
 export type TabBlocks = {
   blocks: ExpressionBlock[];
@@ -11,17 +20,6 @@ export type TabBlocks = {
   queries: number[];
   /** Each query block's `|= name`, or null for a query of its own. The last block's entry is always null. */
   names: (string | null)[];
-};
-
-// Comments and whitespace at the end of a block, so `... |= x -- note` still
-// ends in `|= x`.
-const TRAILING_NOISE = /(?:\s|--[^\n]*$|\/\*[\s\S]*?\*\/)*$/;
-
-/** The name of a block ending in `|= name`, or null. */
-export const blockName = (text: string): string | null => {
-  // `|= name`, or `| = name` as the canvas and the prettifier write it.
-  const m = /\|\s*=\s*([A-Za-z_][A-Za-z0-9_]*)$/.exec(text.replace(TRAILING_NOISE, ''));
-  return m ? m[1] : null;
 };
 
 /**

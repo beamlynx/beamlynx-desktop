@@ -820,7 +820,7 @@ export class CanvasStore {
    * Draw query block `block` (an index into `tab.queries`): a chip of the
    * strip at the top. Moves the editor's cursor to the block's first line, so
    * the Pine panel opens on the block the canvas draws. Run runs every block
-   * (Session.run), not only this one.
+   * that isn't named (Session.run), not only this one.
    */
   selectQuery(block: number) {
     const at = this.tab.queries[block];
