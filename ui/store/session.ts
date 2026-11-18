@@ -396,8 +396,9 @@ export class Session {
     return this.sqlPanelText ?? this.shownBuiltQuery(!!this.globalStore?.showHiddenSqlColumns);
   }
   /**
-   * The SQL of every query block, while the SQL panel is open on a tab with
-   * more than one; null otherwise. Each block's SQL is under a comment with
+   * The SQL of every query block Run would run (blocksToRun: not those ending
+   * in `|= name`, which are in the SQL of the blocks that read them), while
+   * the SQL panel is open on a tab with more than one; null otherwise. Each block's SQL is under a comment with
    * its first line. Read-only: converting SQL back to Pine takes one
    * statement, and would replace every block with it. Set by the reaction in
    * the constructor.
@@ -1460,7 +1461,8 @@ export class Session {
    * What Run does (the Run button, Ctrl+Enter, the Run Query command). With
    * one query block, or in SQL mode, it is evaluate(). With several, each
    * block runs in turn, top to bottom, and its result gets its own section
-   * (blockRuns). Lines selected in the Pine editor narrow it to the blocks
+   * (blockRuns). A block ending in `|= name` doesn't run on its own: the
+   * blocks that read it run its query inside theirs (blocksToRun). Lines selected in the Pine editor narrow it to the blocks
    * they touch. A block that fails stops the ones after it, which may build
    * on it.
    *

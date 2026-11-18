@@ -150,24 +150,48 @@ export function blockTitle(text: string): string {
     .trim();
 }
 
+// Comments and whitespace at the end of a block, so `... |= x -- note` still
+// ends in `|= x`.
+export const TRAILING_NOISE = /(?:\s|--[^\n]*$|\/\*[\s\S]*?\*\/)*$/;
+
+/** The name of a block ending in `|= name`, or null. */
+export const blockName = (text: string): string | null => {
+  // `|= name`, or `| = name` as the canvas and the prettifier write it.
+  const m = /\|\s*=\s*([A-Za-z_][A-Za-z0-9_]*)$/.exec(text.replace(TRAILING_NOISE, ''));
+  return m ? m[1] : null;
+};
+
 /**
  * The blocks Run runs, in order: every query block, or, when lines are
- * selected, the query blocks the selection touches. Values blocks have no
- * query of their own, so they never run alone. A selection that touches
- * only values blocks runs every query block.
+ * selected, the query blocks the selection touches.
+ *
+ * A block ending in `|= name` is part of the blocks that read it: they run
+ * its query inside their own. So it doesn't run as well, unless it is all
+ * the selection touches, or every query block is named (then the last one
+ * runs).
+ *
+ * Values blocks have no query of their own, so they never run alone. A
+ * selection that touches only values blocks counts as no selection.
  */
 export function blocksToRun(
   blocks: ExpressionBlock[],
   selection: { from: number; to: number } | null,
 ): number[] {
   const queries = blocks.map((_, i) => i).filter(i => !isValuesBlock(blocks[i].text));
-  if (!selection) return queries;
-  const touched = queries.filter(i => {
-    const start = blocks[i].startLine;
-    const end = start + blocks[i].text.split('\n').length - 1;
-    return start <= selection.to && end >= selection.from;
-  });
-  return touched.length ? touched : queries;
+  const withoutNamed = (chosen: number[]) => {
+    const unnamed = chosen.filter(i => blockName(blocks[i].text) === null);
+    return unnamed.length ? unnamed : chosen.slice(-1);
+  };
+  const touched = selection
+    ? queries.filter(i => {
+        const start = blocks[i].startLine;
+        const end = start + blocks[i].text.split('\n').length - 1;
+        return start <= selection.to && end >= selection.from;
+      })
+    : [];
+  if (!touched.length) return withoutNamed(queries);
+  const unnamed = touched.filter(i => blockName(blocks[i].text) === null);
+  return unnamed.length ? unnamed : touched;
 }
 
 /**
