@@ -378,7 +378,7 @@ const NewLayoutView: React.FC<NewLayoutViewProps> = observer(({ sessionId }) => 
       motionDuration(MOTION.enter) + 32,
     );
     return () => clearTimeout(timer);
-  }, [effectiveOrientation, global.isZenModeActive, global.newLayoutPanelVisible]);
+  }, [effectiveOrientation, global.isZenModeActive, global.zenHidesResults, global.newLayoutPanelVisible]);
 
   return (
     <Box
@@ -419,12 +419,13 @@ const NewLayoutView: React.FC<NewLayoutViewProps> = observer(({ sessionId }) => 
               ? {
                   width: paneWidth,
                   flexShrink: 0,
-                  // Canvas only needs to GROW in Zen mode when the split is
+                  // Canvas only needs to GROW while Zen mode hides the
+                  // results (stages 1 and 2) when the split is
                   // side-by-side - it's the fixed-width pane there, so
                   // without this it would stay at paneWidth with empty space
                   // where Results used to be. Top/bottom already has Canvas
                   // as the flexible pane, so it fills the gap on its own.
-                  flexGrow: global.isZenModeActive ? 1 : 0,
+                  flexGrow: global.zenHidesResults ? 1 : 0,
                   height: '100%',
                 }
               : { flex: 1, minHeight: 0 }),
@@ -451,10 +452,10 @@ const NewLayoutView: React.FC<NewLayoutViewProps> = observer(({ sessionId }) => 
             display: 'flex',
             flexDirection: isHorizontal ? 'row' : 'column',
             overflow: 'hidden',
-            opacity: global.isZenModeActive ? 0 : 1,
+            opacity: global.zenHidesResults ? 0 : 1,
             ...(isHorizontal
               ? {
-                  flexGrow: global.isZenModeActive ? 0 : 1,
+                  flexGrow: global.zenHidesResults ? 0 : 1,
                   flexBasis: 0,
                   // Without this the wrapper bottoms out at the divider's own
                   // 8px min-content width instead of disappearing.
@@ -462,7 +463,7 @@ const NewLayoutView: React.FC<NewLayoutViewProps> = observer(({ sessionId }) => 
                   height: '100%',
                 }
               : {
-                  height: global.isZenModeActive ? 0 : paneHeight + NEW_LAYOUT_GUTTER,
+                  height: global.zenHidesResults ? 0 : paneHeight + NEW_LAYOUT_GUTTER,
                   flexShrink: 0,
                 }),
             transition: global.isZenModeActive

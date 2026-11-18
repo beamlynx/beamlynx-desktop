@@ -6,6 +6,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ## [Unreleased]
 ### Changed
 - **Run no longer runs a query that ends with `|= name` on its own.** The queries that read it already include it, so one SQL statement converted to several queries now runs once, as you wrote it. The SQL panel no longer shows it as a separate statement either. To run it by itself, select a line in it first.
+- **`Ctrl`/`Cmd`+`.` steps through three Zen views.** The first press shows only the canvas. The second adds the Pine or SQL panel, in whichever mode it was in. The third adds the results, and the fourth goes back to the canvas alone. Auto-run pauses while the results are hidden. To leave Zen mode, use "Leave Zen Mode" in the command palette.
 
 ### Fixed
 - **Long conditions under a table on the canvas no longer get drawn over.** A group's or limit's dashed line, a named query's border, or the next table could sit on top of them. The canvas now leaves room for each condition's full length.
