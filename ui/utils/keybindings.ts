@@ -306,19 +306,21 @@ export const KEYBINDINGS: KeybindingConfig[] = [
     // nothing on `.` or `,`), so it reaches the page on every platform. The
     // panels have no keys of their own: `:` on the canvas goes to the Pine
     // panel, and the palette has "Focus on Pine Panel" and "Focus on SQL
-    // Panel".
-    name: 'toggle-zen-mode',
-    description: 'Toggle Zen Mode',
+    // Panel". Each press is the next Zen view: canvas, canvas + panel,
+    // canvas + panel + results, then the canvas alone again
+    // (GlobalStore.cycleZenMode). "Leave Zen Mode" is in the palette.
+    name: 'cycle-zen-mode',
+    description: 'Zen Mode: Next View',
     display: createKeybindingDisplay(['ctrl'], '.'),
     combos: [{ combo: { mod: true, shift: false, key: '.' } }],
-    commandId: 'toggle-zen-mode',
+    commandId: 'cycle-zen-mode',
   },
 
   {
     // Cmd+, is macOS's own "Preferences" convention (Slack and most native
     // Mac apps use exactly this) -- only ever intercepted when some app menu
     // item actually binds that accelerator (typically `role: 'preferences'`),
-    // and beamlynx-desktop's menu has no such item (see toggle-zen-mode's
+    // and beamlynx-desktop's menu has no such item (see cycle-zen-mode's
     // comment above), so it isn't reserved here; free to mean the same thing
     // in this app as it does everywhere else.
     name: 'open-settings',

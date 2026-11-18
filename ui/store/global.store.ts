@@ -587,28 +587,33 @@ export class GlobalStore {
     setUserPreference(STORAGE_KEYS.TAB_ORIENTATION, value);
   }
 
-  // A graph-only, distraction-free view: the header, tab strip, and Results
-  // pane all hide, leaving just Canvas (see AppView.tsx/PineTabs.tsx/
-  // NewLayoutView.tsx's isZenModeActive checks). Transient, not persisted -
-  // this is a momentary focus toggle for the current sitting, not a lasting
-  // preference, so it always starts off on reload. Read isZenModeActive
-  // below, not this field directly, in every one of those render checks.
-  zenMode = false;
+  // A distraction-free view. The header, sidebar and tab strip hide in
+  // every stage; the stages differ in what stays beside the canvas:
+  //   0  off
+  //   1  the canvas alone
+  //   2  the canvas and the Pine/SQL panel (whichever mode it is in)
+  //   3  the canvas, the panel and the results
+  // Ctrl/Cmd+. walks 1 → 2 → 3 → 1 (cycleZenMode). Transient, not persisted:
+  // it is a view for the current sitting, so it always starts off on reload.
+  // Read the getters below, not this field, at render sites.
+  zenStage: 0 | 1 | 2 | 3 = 0;
 
-  // What autoRunEnabled was the instant before toggleZenMode last turned Zen
-  // mode on - null whenever Zen mode is off. Not persisted, same reasoning
-  // as zenMode itself; auto-run doesn't make sense while heads-down on the
-  // graph (see toggleZenMode), and this is what lets turning it back off
-  // hand auto-run back exactly as you left it instead of guessing a default.
+  // What autoRunEnabled was before Zen mode hid the results - null whenever
+  // the results are showing. Auto-run is paused while they are hidden, and
+  // this hands it back exactly as it was when they come back.
   _autoRunBeforeZenMode: boolean | null = null;
 
-  // A separate getter (rather than reading `zenMode` directly at every
-  // render site) since Zen mode used to only make sense in New Layout - now
-  // the only layout there is, so this is just `zenMode`, but kept named for
-  // the same reason `canvasActive` is: every call site reads it as asking a
-  // real question, not an implementation detail.
+  // Whether the Pine/SQL panel was open before Zen mode started - null
+  // whenever Zen mode is off. Leaving Zen mode puts the panel back as it was.
+  _panelBeforeZenMode: boolean | null = null;
+
   get isZenModeActive(): boolean {
-    return this.zenMode;
+    return this.zenStage !== 0;
+  }
+
+  /** Zen stages 1 and 2 hide the results; stage 3 shows them. */
+  get zenHidesResults(): boolean {
+    return this.zenStage === 1 || this.zenStage === 2;
   }
 
   // User
@@ -1411,17 +1416,48 @@ export class GlobalStore {
     this.tabOrientation = this.tabOrientation === 'horizontal' ? 'vertical' : 'horizontal';
   }
 
-  public toggleZenMode() {
-    if (this.zenMode) {
-      this.zenMode = false;
-      if (this._autoRunBeforeZenMode !== null) {
-        this.autoRunEnabled = this._autoRunBeforeZenMode;
-        this._autoRunBeforeZenMode = null;
+  /**
+   * Ctrl/Cmd+.: the next Zen stage. From outside Zen mode it starts at the
+   * canvas alone; after the last stage it goes back to the canvas alone.
+   * Each stage sets the panel itself, so a panel opened with `:` in stage 1
+   * doesn't change where the cycle goes next.
+   */
+  public cycleZenMode() {
+    if (this.zenStage === 0) this._panelBeforeZenMode = this.newLayoutPanelVisible;
+    this.setZenStage(this.zenStage === 0 || this.zenStage === 3 ? 1 : this.zenStage === 1 ? 2 : 3);
+  }
+
+  public exitZenMode() {
+    if (this.zenStage === 0) return;
+    this.setZenStage(0);
+    if (this._panelBeforeZenMode !== null) {
+      this.newLayoutPanelVisible = this._panelBeforeZenMode;
+      this._panelBeforeZenMode = null;
+    }
+  }
+
+  private setZenStage(stage: 0 | 1 | 2 | 3) {
+    if (stage === 1 && this.newLayoutPanelVisible) {
+      // Hides the panel without hideNewLayoutPanel's switch back to Pine:
+      // stage 2 brings it back in the mode it was in. The cursor leaves it
+      // for the canvas, for the same reason hideNewLayoutPanel blurs.
+      this.newLayoutPanelVisible = false;
+      Object.values(this.sessions).forEach(session => session.blurTextInput());
+      if (typeof document !== 'undefined') setTimeout(() => this.focusCanvas(), 0);
+    } else if (stage === 2 || stage === 3) {
+      this.newLayoutPanelVisible = true;
+    }
+    this.zenStage = stage;
+    // Auto-run pauses while the results are hidden, and comes back as it
+    // was once they show again.
+    if (this.zenHidesResults) {
+      if (this._autoRunBeforeZenMode === null) {
+        this._autoRunBeforeZenMode = this.autoRunEnabled;
+        this.autoRunEnabled = false;
       }
-    } else {
-      this._autoRunBeforeZenMode = this.autoRunEnabled;
-      this.autoRunEnabled = false;
-      this.zenMode = true;
+    } else if (this._autoRunBeforeZenMode !== null) {
+      this.autoRunEnabled = this._autoRunBeforeZenMode;
+      this._autoRunBeforeZenMode = null;
     }
   }
 

@@ -33,9 +33,9 @@ beforeEach(() => {
   DevState.desktop = undefined;
 });
 
-test('Ctrl/Cmd+. toggles Zen mode, and Ctrl/Cmd+Shift+. is not bound', () => {
-  const config = entry('toggle-zen-mode');
-  assert.equal(config.commandId, 'toggle-zen-mode');
+test("Ctrl/Cmd+. shows Zen mode's next view, and Ctrl/Cmd+Shift+. is not bound", () => {
+  const config = entry('cycle-zen-mode');
+  assert.equal(config.commandId, 'cycle-zen-mode');
   assert.ok(keybindingMatches(config, keyEvent({ key: '.', code: 'Period', ctrlKey: true })));
   assert.ok(keybindingMatches(config, keyEvent({ key: '.', code: 'Period', metaKey: true })));
   const shifted = keyEvent({ key: '>', code: 'Period', ctrlKey: true, shiftKey: true });

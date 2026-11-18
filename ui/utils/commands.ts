@@ -132,11 +132,18 @@ const COMMANDS: Command[] = [
     isEnabled: ALWAYS_ENABLED,
   },
   {
-    id: 'toggle-zen-mode',
-    label: 'Toggle Zen Mode',
+    id: 'cycle-zen-mode',
+    label: 'Zen Mode: Next View',
     category: 'View',
-    handler: global => global.toggleZenMode(),
+    handler: global => global.cycleZenMode(),
     isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'exit-zen-mode',
+    label: 'Leave Zen Mode',
+    category: 'View',
+    handler: global => global.exitZenMode(),
+    isEnabled: global => global.isZenModeActive,
   },
   {
     id: 'open-appearance',
