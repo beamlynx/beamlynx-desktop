@@ -701,8 +701,10 @@ export class Session {
     }, 300);
 
     // The SQL panel on a tab with several query blocks shows the SQL of
-    // each (blockSql). Built only while the panel is open: one build per
-    // block, on top of the canvas's own.
+    // each block Run runs (blockSql). Built only while the panel is open:
+    // one build per block, on top of the canvas's own. That is so even when
+    // Run runs only one: the canvas builds the block under the cursor,
+    // which may be a named block that Run leaves out.
     let blockSqlSeq = 0;
     reaction(
       () => ({
@@ -715,7 +717,8 @@ export class Session {
         const seq = ++blockSqlSeq;
         const blocks = splitExpressions(expression);
         const chosen = blocksToRun(blocks, null);
-        if (!open || chosen.length <= 1) {
+        const queries = blocks.filter(b => !isValuesBlock(b.text)).length;
+        if (!open || queries <= 1) {
           if (this.blockSql) runInAction(() => (this.blockSql = null));
           return;
         }
