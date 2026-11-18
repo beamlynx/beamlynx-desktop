@@ -42,12 +42,14 @@ import { getUserPreference, setUserPreference, STORAGE_KEYS } from './preference
 import { debounce } from './util';
 import { cursorAfterReformat, offsetOf, pastSpaceAfterPipe, sameApartFromWhitespace } from '../utils/cursor';
 import { captureUsage } from '../utils/usage-stats';
+import { Range, sqlBlockRanges } from '../utils/sqlBlockRanges';
 import type { HiddenColumn, QuerySnapshot } from './investigations';
 
 // The editor text split into blocks, and which block is the query a build
 // works on: in store/blocks.ts, a module with no imports, so the canvas and
 // values-block helpers can use them without importing this store.
 import {
+  blockName,
   blocksForBuild,
   blockTitle,
   blocksToRun,
@@ -67,6 +69,25 @@ export type Mode = 'documentation' | 'graph' | 'result' | 'monitor';
 export type Theme = 'light' | 'dark';
 
 export type InputMode = 'pine' | 'sql';
+
+/** SQL with and without the hidden columns, as pine-lang wrote it. */
+type BothSql = { withHidden: string; withoutHidden: string };
+
+/**
+ * The SQL panel's text on a tab with several query blocks. Set by the
+ * reaction in the Session constructor, while the panel is open.
+ */
+export type BlockSql = {
+  /** One statement for each block Run runs (blocksToRun), in order. */
+  parts: (BothSql & { index: number })[];
+  /** The blocks ending in `|= name`, in order. */
+  named: { index: number; name: string }[];
+  /**
+   * The own SQL of each named block that no part reads. Shown alone while
+   * the cursor is in it: the parts have nothing to show for it.
+   */
+  alone: Map<number, BothSql>;
+};
 
 /** Where converting the SQL panel's text to Pine stands. */
 /**
@@ -390,20 +411,76 @@ export class Session {
    * the panel is closed.
    */
   get query(): string {
-    if (this.blockSql) {
-      return this.globalStore?.showHiddenSqlColumns ? this.blockSql.withHidden : this.blockSql.withoutHidden;
-    }
+    const shown = this.blockSqlShown;
+    if (shown && !(this.sqlPanelEditable && this.sqlPanelText !== null)) return shown.text;
     return this.sqlPanelText ?? this.shownBuiltQuery(!!this.globalStore?.showHiddenSqlColumns);
   }
   /**
-   * The SQL of every query block Run would run (blocksToRun: not those ending
-   * in `|= name`, which are in the SQL of the blocks that read them), while
-   * the SQL panel is open on a tab with more than one; null otherwise. Each block's SQL is under a comment with
-   * its first line. Read-only: converting SQL back to Pine takes one
-   * statement, and would replace every block with it. Set by the reaction in
-   * the constructor.
+   * The SQL of the tab's query blocks, while the SQL panel is open on a tab
+   * with more than one; null otherwise. See BlockSql.
    */
-  blockSql: { withHidden: string; withoutHidden: string } | null = null;
+  blockSql: BlockSql | null = null;
+
+  /** The query block the cursor is in: the one the canvas draws. */
+  get activeQueryBlock(): number {
+    return findActiveQueryBlock(splitExpressions(this.expression), this.cursorPosition?.line);
+  }
+
+  /**
+   * What the SQL panel shows on a tab with several query blocks, and the
+   * part of it each block wrote (sqlBlockRanges). The statement of each
+   * block Run runs. With more than one, each is under a comment with its
+   * block's first line. While the cursor is in a named block none of them
+   * reads, that block's own SQL alone, with no parts.
+   */
+  get blockSqlShown(): { text: string; ranges: Map<number, Range[]> } | null {
+    const blockSql = this.blockSql;
+    if (!blockSql) return null;
+    // Each statement ends in one `;`. The formatter keeps one that is
+    // already there. A block that didn't build shows why, as a comment.
+    const pick = (sql: BothSql) => {
+      const raw = this.globalStore?.showHiddenSqlColumns ? sql.withHidden : sql.withoutHidden;
+      return raw.startsWith('-- ') ? raw : `${formatSql(raw).replace(/;\s*$/, '')};`;
+    };
+    const alone = blockSql.alone.get(this.activeQueryBlock);
+    if (alone) return { text: pick(alone), ranges: new Map() };
+    const blocks = splitExpressions(this.expression);
+    const ranges = new Map<number, Range[]>();
+    let text = '';
+    blockSql.parts.forEach((part, k) => {
+      if (k > 0) text += '\n\n';
+      if (blockSql.parts.length > 1) text += `-- ${blockTitle(blocks[part.index]?.text ?? '')}\n`;
+      const sql = pick(part);
+      const named = blockSql.named.filter(n => n.index < part.index);
+      sqlBlockRanges(sql, named, part.index).forEach((rs, index) => {
+        const moved = rs.map(r => ({ from: r.from + text.length, to: r.to + text.length }));
+        ranges.set(index, [...(ranges.get(index) ?? []), ...moved]);
+      });
+      text += sql;
+    });
+    return { text, ranges };
+  }
+
+  /**
+   * Whether the SQL panel can be typed in. Not while it shows several
+   * statements, or a named block's SQL alone: converting SQL back to Pine
+   * takes one statement, and replaces every block with what it gives.
+   */
+  get sqlPanelEditable(): boolean {
+    const blockSql = this.blockSql;
+    return !blockSql || (blockSql.parts.length === 1 && !blockSql.alone.has(this.activeQueryBlock));
+  }
+
+  /**
+   * The part of the SQL panel's text that the block the canvas draws wrote,
+   * to highlight there. Empty when the panel shows only that block's SQL,
+   * or what was typed into it.
+   */
+  get sqlPanelHighlight(): Range[] {
+    const shown = this.blockSqlShown;
+    if (!shown || this.query !== shown.text) return [];
+    return shown.ranges.get(this.activeQueryBlock) ?? [];
+  }
   set query(text: string) {
     this.sqlPanelText = text;
   }
@@ -704,7 +781,9 @@ export class Session {
     // each block Run runs (blockSql). Built only while the panel is open:
     // one build per block, on top of the canvas's own. That is so even when
     // Run runs only one: the canvas builds the block under the cursor,
-    // which may be a named block that Run leaves out.
+    // which may be a named block that Run leaves out. A named block is a
+    // WITH query in the SQL of the blocks that read it; one that none of
+    // them reads is built on its own too.
     let blockSqlSeq = 0;
     reaction(
       () => ({
@@ -717,40 +796,49 @@ export class Session {
         const seq = ++blockSqlSeq;
         const blocks = splitExpressions(expression);
         const chosen = blocksToRun(blocks, null);
-        const queries = blocks.filter(b => !isValuesBlock(b.text)).length;
-        if (!open || queries <= 1) {
+        const queries = blocks.map((_, i) => i).filter(i => !isValuesBlock(blocks[i].text));
+        if (!open || queries.length <= 1) {
           if (this.blockSql) runInAction(() => (this.blockSql = null));
           return;
         }
-        const parts = await Promise.all(
-          chosen.map(async index => {
-            const head = `-- ${blockTitle(blocks[index].text)}`;
-            try {
-              const r = await client.build(blocksForBuild(blocks, index), undefined, connectionId, policy);
-              if (r?.error || !r?.query) {
-                const why = `-- Not built: ${(r?.error || 'no SQL').split('\n')[0]}`;
-                return { withHidden: `${head}\n${why}`, withoutHidden: `${head}\n${why}` };
-              }
-              const without = r['query-without-hidden'] || r.query;
-              // Each statement ends in one `;`. The formatter keeps one
-              // that is already there.
-              const statement = (q: string) => `${formatSql(q).replace(/;\s*$/, '')};`;
-              return {
-                withHidden: `${head}\n${statement(r.query)}`,
-                withoutHidden: `${head}\n${statement(without)}`,
-              };
-            } catch (e) {
-              const why = `-- Not built: ${e instanceof Error ? e.message : String(e)}`;
-              return { withHidden: `${head}\n${why}`, withoutHidden: `${head}\n${why}` };
+        const build = async (index: number): Promise<BothSql> => {
+          try {
+            const r = await client.build(blocksForBuild(blocks, index), undefined, connectionId, policy);
+            if (r?.error || !r?.query) {
+              const why = `-- Not built: ${(r?.error || 'no SQL').split('\n')[0]}`;
+              return { withHidden: why, withoutHidden: why };
             }
-          }),
+            // Formatted when shown (blockSqlShown): the formatter may not
+            // have loaded yet.
+            return { withHidden: r.query, withoutHidden: r['query-without-hidden'] || r.query };
+          } catch (e) {
+            const why = `-- Not built: ${e instanceof Error ? e.message : String(e)}`;
+            return { withHidden: why, withoutHidden: why };
+          }
+        };
+        const parts = await Promise.all(chosen.map(async index => ({ index, ...(await build(index)) })));
+        const named = queries.flatMap(index => {
+          const name = blockName(blocks[index].text);
+          return name === null || chosen.includes(index) ? [] : [{ index, name }];
+        });
+        const read = new Set(
+          parts.flatMap(part =>
+            Array.from(
+              sqlBlockRanges(
+                part.withoutHidden,
+                named.filter(n => n.index < part.index),
+                part.index,
+              ).keys(),
+            ),
+          ),
+        );
+        const unread = named.filter(n => !read.has(n.index));
+        const alone = new Map(
+          await Promise.all(unread.map(async n => [n.index, await build(n.index)] as const)),
         );
         if (seq !== blockSqlSeq) return;
         runInAction(() => {
-          this.blockSql = {
-            withHidden: parts.map(p => p.withHidden).join('\n\n'),
-            withoutHidden: parts.map(p => p.withoutHidden).join('\n\n'),
-          };
+          this.blockSql = { parts, named, alone };
         });
       }, 200),
       { fireImmediately: true },
@@ -1676,6 +1764,9 @@ export class Session {
     const offset = lines.slice(0, line).reduce((n, l) => n + l.length + 1, 0);
     this.cursorPosition = { line, character: 0 };
     this.pendingSelection = { anchor: offset, head: offset, focus: false };
+    // The SQL panel shows the tab's SQL again, rather than what was typed
+    // there, so it can highlight the block picked (sqlPanelHighlight).
+    if (this.blockSql) this.sqlPanelText = null;
     this.requestHints();
   }
 

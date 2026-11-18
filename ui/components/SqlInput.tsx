@@ -5,8 +5,8 @@ import {
   moveCompletionSelection,
   startCompletion,
 } from '@codemirror/autocomplete';
-import { EditorView, keymap } from '@codemirror/view';
-import { Prec } from '@codemirror/state';
+import { Decoration, DecorationSet, EditorView, keymap } from '@codemirror/view';
+import { Prec, StateEffect, StateField } from '@codemirror/state';
 import { sql } from '@codemirror/lang-sql';
 import React, { useRef, useEffect, useCallback, useMemo } from 'react';
 import { Session } from '../store/session';
@@ -45,6 +45,34 @@ const basicSetup = {
 // editor never scrolls.
 const editorStyle = { outline: 'none', height: '100%' };
 
+// The part of the SQL that the block the canvas draws wrote
+// (Session.sqlPanelHighlight): its WITH query, or the rest of the statement.
+const setBlockHighlight = StateEffect.define<{ from: number; to: number }[]>();
+const blockMark = Decoration.mark({ class: 'cm-pine-block' });
+const blockHighlight = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(marks, tr) {
+    let next = marks.map(tr.changes);
+    for (const e of tr.effects) {
+      if (!e.is(setBlockHighlight)) continue;
+      const length = tr.state.doc.length;
+      next = Decoration.set(
+        e.value
+          .filter(r => r.from < r.to && r.to <= length)
+          .map(r => blockMark.range(r.from, r.to)),
+        true,
+      );
+    }
+    return next;
+  },
+  provide: field => EditorView.decorations.from(field),
+});
+const blockHighlightTheme = EditorView.theme({
+  '.cm-pine-block': {
+    backgroundColor: 'color-mix(in srgb, var(--canvas-trace) 12%, transparent)',
+  },
+});
+
 const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true }) => {
   const { global } = useStores();
   const inputRef = useRef<ReactCodeMirrorRef | null>(null);
@@ -82,6 +110,29 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true 
       updateEditorValue(session.query);
     }
   }, [session.query, updateEditorValue]);
+
+  // Highlight the part the canvas's block wrote, and scroll to it when it
+  // changes. After the effect above, so the ranges are of the text shown.
+  const highlight = session.sqlPanelHighlight;
+  const highlightKey = JSON.stringify(highlight);
+  const scrolledTo = useRef('');
+  useEffect(() => {
+    const view = inputRef.current?.view;
+    if (!view) return;
+    const first = highlight[0];
+    const scroll = first && scrolledTo.current !== highlightKey;
+    scrolledTo.current = highlightKey;
+    view.dispatch({
+      effects: [
+        setBlockHighlight.of(highlight),
+        ...(scroll && first.to <= view.state.doc.length
+          ? [EditorView.scrollIntoView(first.from, { y: 'start', yMargin: 24 })]
+          : []),
+      ],
+    });
+    // highlightKey stands for highlight's contents.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightKey, session.query]);
 
   useEffect(() => {
     if (session.textInputFocused) {
@@ -157,6 +208,8 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true 
       editorChrome(isDark),
       ...(isDark ? [editorDarkSyntax] : []),
       selectionUpdateExtension,
+      blockHighlight,
+      blockHighlightTheme,
       // Structural only (height/padding) - color and font-family now come
       // entirely from editorChrome, shared with PineInput.tsx.
       EditorView.theme({
@@ -235,7 +288,7 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true 
           ref={inputRef}
           id="sql-input"
           value={session.query}
-          readOnly={!!session.blockSql}
+          readOnly={!session.sqlPanelEditable}
           height="100%"
           theme="none"
           extensions={extensions}
@@ -265,8 +318,12 @@ const SqlInput: React.FC<SqlInputProps> = observer(({ session, autoFocus = true 
  */
 const SqlConversionStatus: React.FC<{ session: Session }> = observer(({ session }) => {
   const { status, message } = session.sqlConversion;
-  const lines = session.blockSql
-    ? ['This tab has several queries, so their SQL is read-only. Edit them in the Pine panel.']
+  const lines = !session.sqlPanelEditable
+    ? [
+        session.blockSql && session.blockSql.parts.length > 1
+          ? 'This tab has several queries, so their SQL is read-only. Edit them in the Pine panel.'
+          : 'No query below reads this one, so its SQL is shown alone, read-only. Edit it in the Pine panel.',
+      ]
     : status === 'idle'
       ? []
       : sqlConversionLines(session.sqlConversion);
