@@ -51,6 +51,16 @@ orders | where: id = 9 | update! price = 19.99
 A value can be a literal, `null`, `now()`, a `$variable`, or another column of the same table,
 whose value is copied.
 
+### A value from another table
+
+```
+orders as o | customers as c .id = .customer_id | from: o | update! customer_name = c.name
+```
+
+Join the table that holds the value, then go back to the table being changed with `from:`. Each
+order gets its own customer's name. If an order is joined to two different values, nothing changes
+and the error names the table.
+
 ### One key inside a JSON column
 
 ```
