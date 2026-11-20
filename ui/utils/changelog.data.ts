@@ -23,6 +23,32 @@ export interface ChangelogVersion {
 
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: '0.79.0',
+    date: '2026-11-20',
+    added: [
+      {
+        title: 'The SQL panel follows the query you pick on the canvas',
+        description: 'On a tab with several queries, it shows the SQL that runs, with each named query inside it as a `WITH` query. Picking a query in the strip at the top of the canvas highlights its part and scrolls to it. A named query that nothing below reads shows its own SQL. When the panel shows one statement, you can edit it.',
+      },
+    ],
+    changed: [
+      {
+        title: 'Run no longer runs a query that ends with `|= name` on its own',
+        description: 'The queries that read it already include it, so one SQL statement converted to several queries now runs once, as you wrote it. The SQL panel no longer shows it as a separate statement either. To run it by itself, select a line in it first.',
+      },
+      {
+        title: '`Ctrl`/`Cmd`+`.` steps through three Zen views',
+        description: 'The first press shows only the canvas. The second adds the Pine or SQL panel, in whichever mode it was in. The third adds the results, and the fourth goes back to the canvas alone. Auto-run pauses while the results are hidden. To leave Zen mode, use "Leave Zen Mode" in the command palette.',
+      },
+    ],
+    fixed: [
+      {
+        title: 'Long conditions under a table on the canvas no longer get drawn over',
+        description: "A group's or limit's dashed line, a named query's border, or the next table could sit on top of them. The canvas now leaves room for each condition's full length.",
+      },
+    ],
+  },
+  {
     version: '0.78.0',
     date: '2026-11-16',
     added: [
@@ -3031,4 +3057,4 @@ export const CHANGELOG: ChangelogVersion[] = [
   },
 ];
 
-export const LATEST_VERSION = '0.78.0';
+export const LATEST_VERSION = '0.79.0';
