@@ -5,6 +5,22 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-11-20
+### Added
+- **The SQL panel follows the query you pick on the canvas.** On a tab with several queries, it shows the SQL that runs, with each named query inside it as a `WITH` query. Picking a query in the strip at the top of the canvas highlights its part and scrolls to it. When the panel shows one statement, you can edit it. (bundled beamlynx-ui 0.79.0)
+- **`update!` can take a value from another table in the query.** In `employee as e | company as c .id = .company_id | from: e | update! note = c.name`, each employee gets its own company's name. If a row is joined to two different values, nothing changes and Pine says which table. SQL's `UPDATE ... SET c = other.c FROM other` now converts to this. (bundled pine-lang 0.58.0)
+- **SQL with an `EXISTS` that refers to the outer query more than once converts.** For example, `NOT EXISTS (SELECT 1 FROM b WHERE b.request_id = p.request_id AND b.item_id <> p.item_id)`. (bundled pine-lang 0.58.0)
+
+### Changed
+- **Run no longer runs a query that ends with `|= name` on its own.** The queries that read it already include it, so one SQL statement converted to several queries now runs once, as you wrote it. To run it by itself, select a line in it first. (bundled beamlynx-ui 0.79.0)
+- **`Ctrl`/`Cmd`+`.` steps through three Zen views.** The first press shows only the canvas. The second adds the Pine or SQL panel, and the third adds the results. The fourth goes back to the canvas alone. To leave Zen mode, use "Leave Zen Mode" in the command palette. (bundled beamlynx-ui 0.79.0)
+
+### Fixed
+- **`update!` and `delete!` no longer overwrite a row another person has just changed.** If someone else changes a row while your write waits for it, Postgres checks your `where:` conditions on that table again, and leaves the row alone when they no longer hold. (bundled pine-lang 0.58.0)
+- **Editing a decimal number in the results grid saves.** On Postgres, saving a cell of a `numeric`, `decimal` or floating-point column failed with "column is of type numeric but expression is of type character varying". (bundled pine-lang 0.58.0)
+- **The SQL shown for a query writes whole numbers without quotes.** `where: count = 1` was shown as `"count" = '1'`. (bundled pine-lang 0.58.0)
+- **Long conditions under a table on the canvas no longer get drawn over.** (bundled beamlynx-ui 0.79.0)
+
 ## [0.33.0] - 2026-11-16
 ### Added
 - **Name a query's result, and start another query, from the canvas.** The bar's `name` (key `m`) ends the query with `|= name`, so a later query can read it like a table. The name shows on a line under the graph: click it to rename it, or press `x` on it to remove it. `new query` (key `q`) starts a query below the others in the tab on a blank canvas. (bundled beamlynx-ui 0.78.0)
