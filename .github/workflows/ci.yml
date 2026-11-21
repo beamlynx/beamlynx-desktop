@@ -1,17 +1,63 @@
 name: CI
 
-# Cheap build-validation on every push/PR: compiles, builds a Linux
-# app-image + UI export, and runs electron-builder against an unpacked
-# (`dir`) target -- no installer formats, no other OSes, no publish. Catches
-# breakage immediately rather than only at release time. The full signed,
-# multi-OS installer matrix lives in release.yml, triggered by a version tag.
+# Cheap build-validation on every pull request and every push to main:
+# compiles, builds a Linux app-image + UI export, and runs electron-builder
+# against an unpacked (`dir`) target -- no installer formats, no other OSes,
+# no publish. Catches breakage immediately rather than only at release time.
+# The full signed, multi-OS installer matrix lives in release.yml, triggered
+# by a version tag.
+#
+# Only pull requests and main: a push to a PR's branch would otherwise run
+# everything twice, once for the push and once for the pull request.
 
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
 
 jobs:
+  # Whether anything but documentation changed. When only docs changed,
+  # validate is skipped. It isn't a required check, so a skip never blocks
+  # a merge. The agents' Pine docs (desktop/src/main/mcp/pine-reference/)
+  # are Markdown, but they ship inside the app and validate parses them, so
+  # they count as code.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.files.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Did anything but documentation change?
+        id: files
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            base=$(git merge-base origin/main HEAD)
+          else
+            base="$BEFORE"
+          fi
+          # No usable base: check everything.
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          code=$(git diff --name-only "$base" HEAD \
+            | grep -vE '\.md$|(^|/)LICENSE$' \
+            || true)
+          shipped_docs=$(git diff --name-only "$base" HEAD \
+            | grep -E '^desktop/src/main/mcp/pine-reference/' \
+            || true)
+          if [ -z "$code" ] && [ -z "$shipped_docs" ]; then
+            echo "::notice::Only documentation changed, so the build is skipped."
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          fi
+
   # The live database is shared by every released app, so a migration must
   # never break one. See desktop/supabase/README.md.
   #
@@ -61,6 +107,8 @@ jobs:
         run: ./scripts/test-supabase-token-claims.sh
 
   validate:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
