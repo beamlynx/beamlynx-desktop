@@ -1,6 +1,27 @@
-# Agent Development Guidelines
+# The interface
 
-The rules for the whole repo, and how to run and check the app, are in `../AGENTS.md`.
+The app's interface: the Pine and SQL editors, the canvas that draws a query, and the results grid. It is a Next.js app with MobX stores. The desktop app shows a static export of it in its window. The same code also runs as a web page.
+
+The rules for the whole repo, and how to run and check the app, are in `../AGENTS.md`. To see a change here, run `bin/beam web` from the repo's root, or `bin/beam dev` for something only the desktop app does.
+
+## Where things are
+
+| Path | What it holds |
+|---|---|
+| `pages/index.tsx`, `components/AppView.tsx` | The page and the app's layout. |
+| `store/global.store.ts` | `GlobalStore`: the tabs, the saved connections, and what is open. |
+| `store/session.ts` | `Session`: one tab. Its text, its connection, its results. |
+| `store/client.ts` | Every call to the Pine server. |
+| `store/canvas/`, `components/canvas/` | The canvas: how a query becomes a drawing, and how editing the drawing edits the text. Read `docs/canvas-mode.md` first. |
+| `components/results-grid/` | The results grid, drawn on a canvas element by Glide Data Grid. |
+| `components/settings/`, `components/recipes/` | Settings, and the Library of saved queries. |
+| `store/mcp-query.ts`, `components/McpBridge.tsx` | Where an AI agent's tool calls run, in a tab the person can watch. |
+| `store/preferences.ts` | Saved preferences: local storage, and `beamlynx.db` on desktop. |
+| `utils/changelog.data.ts` | What's New in the app. It mirrors `CHANGELOG.md`, and is updated at a release. |
+| `desktop.d.ts` | The calls the desktop app offers, as `window.beamlynxDesktop`. Matches `../desktop/src/preload/index.ts`. |
+| `__tests__/` | Unit tests. `npm test` runs them. They test stores and utilities, not rendered components. |
+
+**Formatting:** run Prettier only on the lines you change. Many existing files aren't Prettier-clean, and formatting a whole file buries a small change in a large diff. Don't run `npm run format`.
 
 ## Canvas Mode
 

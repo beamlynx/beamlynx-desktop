@@ -1,10 +1,14 @@
-# Pine Project Instructions
+# Pine
 
 ## What is Pine?
 
-Pine is a domain-specific language (DSL) for querying databases. It provides a concise, pipe-based syntax that compiles to SQL.
+Pine is a domain-specific language (DSL) for querying databases. It provides a concise, pipe-based syntax that compiles to SQL. This folder is the language and the local HTTP server the app talks to. The server reads each database's schema, turns Pine into SQL, runs it, and converts SQL into Pine.
 
 **Tech Stack**: Clojure 1.11.3, Instaparse (BNF grammar-based parsing), PostgreSQL, MySQL 8.0+ and SQLite (a local file, desktop only: see `PINE_SQLITE`) (MySQL 5.7 isn't supported — Pine emits `WITH`/CTEs for `count:`, `group:`, every `|=` variable, and auto-checkpoints, which 5.7 can't run)
+
+The rules for the whole repo, and how to run and check the app, are in `../AGENTS.md`. To see a change here, run `bin/beam api` from the repo's root and send it requests, or `bin/beam web` to see it in the app.
+
+**Read the feature's doc first.** `docs/` has one file for each feature: joins, paths, computed values, JSON paths, named results, SQL to Pine, the access policy, and more. Each explains how the feature works and why. Read the one for what you are changing, and update it in the same PR.
 
 ## Key Files
 
@@ -12,6 +16,10 @@ Pine is a domain-specific language (DSL) for querying databases. It provides a c
 - `src/pine/parser.clj` — Parses Pine syntax into AST
 - `src/pine/ast/` — AST processing modules (one per SQL clause/operation)
 - `src/pine/eval.clj` — Evaluates AST to SQL
+- `src/pine/api.clj` — The HTTP API the UI and the desktop app call
+- `src/pine/db/` — Connections, running SQL, and reading each database's schema and references (`references.clj`)
+- `src/pine/sql/` — SQL to Pine: its own SQL grammar (`sql.bnf`) and `transpile.clj`
+- `src/pine/access_policy.clj` — The masking policy
 - `test/pine/` — Tests mirror src structure
 
 ## Key Concepts
