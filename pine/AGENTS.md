@@ -101,9 +101,3 @@ Every fix/feat PR must add its own entry under `## [Unreleased]` in `CHANGELOG.m
 **Important**: `src/pine/version.clj` must match `playground.docker-compose.yml` Docker image version.
 
 Check with: `./scripts/check-version-sync.sh`
-
----
-
-## Self-Update Instructions
-
-When working on this codebase, actively look for opportunities to improve this file. If you discover new patterns, conventions, or project knowledge, **propose updates to AGENTS.md**.

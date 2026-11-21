@@ -6,12 +6,17 @@ Thank you for helping. Bug reports, ideas and pull requests are all welcome.
 
 **Sign the [Contributor License Agreement](https://gist.github.com/ahmadnazir/d8eb4ad2c33318cab51f316f51b70aa5) (CLA).** A bot asks you to on your first pull request. It takes one click. Beamlynx is offered under the AGPL and under a commercial license, and the CLA is what lets your contribution be part of both. You keep the copyright to your work.
 
-## Finding your way
+## Working on a change
 
+1. **Run it.** `bin/beam web` shows the interface in your browser. `bin/beam dev` opens the desktop app. Both reload as you edit. The root [`AGENTS.md`](AGENTS.md) says which to use for which change, and where to get a database to try it on.
+2. **Look at it.** Use the feature the way someone would, not only through its tests.
+3. **Check it.** `bin/beam check` runs the tests and checks CI runs.
+
+To find your way around:
 - What each folder holds, and the rules that span them: [`AGENTS.md`](AGENTS.md)
-- Running the app from source: [`desktop/DEVELOPMENT.md`](desktop/DEVELOPMENT.md)
 - Working on Pine, the query language: [`pine/AGENTS.md`](pine/AGENTS.md)
 - Working on the interface: [`ui/AGENTS.md`](ui/AGENTS.md)
+- Working on the desktop app: [`desktop/AGENTS.md`](desktop/AGENTS.md) and [`desktop/DEVELOPMENT.md`](desktop/DEVELOPMENT.md)
 
 ## A good pull request
 
@@ -20,7 +25,7 @@ Thank you for helping. Bug reports, ideas and pull requests are all welcome.
 - Changes every folder it needs to. A Pine feature, the UI for it, and the agent docs for it belong in one PR.
 - Passes CI.
 
-You don't need to edit a `CHANGELOG.md`. The maintainer writes the changelog line when merging.
+You don't need to edit a `CHANGELOG.md`, but a line is welcome. The maintainer writes or rewrites it when merging.
 
 ## Reporting a security problem
 

@@ -23,23 +23,59 @@ usage() {
   cat <<EOF
 Usage: bin/beam <command>
 
-  dev            Start the UI dev server and the desktop app together.
-                 Quitting the app stops the dev server.
-  desktop        Start the desktop app against a UI dev server that is
-                 already running ('beam ui' in another terminal).
-  ui [--browser] Start the UI dev server on port $DEV_UI_PORT, in desktop mode.
-                 With --browser, as the web build instead.
-  api            Start the Pine server on its own, on port 33333.
-  db [down|logs] Start the local Postgres and MySQL test databases.
-  kill           Stop stray dev processes on the dev ports.
+See a change:
+  dev            The desktop app, from source: the UI dev server with hot
+                 reload, and Electron on top of it. Rebuilds the bundled Pine
+                 server first when pine/ changed. Quitting the app stops both.
+  web            The UI as a web page on http://localhost:$DEV_UI_PORT, with the
+                 Pine server it needs. No Electron. Ctrl+C stops both.
+  ui [--browser] Only the UI dev server, on port $DEV_UI_PORT. Desktop mode unless
+                 --browser.
+  desktop        Only Electron, against a UI dev server already running.
+  api            Only the Pine server, on port 33333.
+
+Data to try it on:
+  sample-db      Build a small SQLite database to connect to in 'beam dev'.
+  db [down|logs] Start the Postgres and MySQL test databases (needs Docker).
+
+Check a change:
+  check [pine|ui|desktop]
+                 Run the tests and checks CI runs, for every part or one.
+
+  kill           Stop stray dev processes left on the dev ports.
 
 Logs: $LOGS
 EOF
 }
 
+# Installs a folder's npm packages the first time.
+ensure_npm() {
+  if [ ! -d "$1/node_modules" ]; then
+    log "Installing the npm packages in ${1#$ROOT/}/ (first run only)"
+    (cd "$1" && npm ci)
+  fi
+}
+
+# The UI pins its Node version in ui/.nvmrc, and CI uses that one. An older
+# Node often works, but when something fails oddly, this is the first
+# thing to rule out.
+check_node() {
+  local want have
+  want=$(tr -dc '0-9' < "$UI/.nvmrc")
+  # From ui/, so a version manager that reads ui/.nvmrc picks the right Node.
+  have=$(cd "$UI" && node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)
+  if [ "$have" -lt "$want" ]; then
+    log "Note: ui/.nvmrc asks for Node $want, and this shell has Node $have. If something fails oddly, switch (mise use node@$want, or nvm use in ui/)."
+  fi
+}
+
+# Ports: the installed Beamlynx app runs its Pine server on 33333 (and its
+# agent control plane on 33334). A desktop app run from source uses 43333 and
+# 43334, so both can run side by side. 'beam api' uses 33333 too, so it can't
+# run while the installed app is open.
 cmd_kill() {
-  local entry port desc pids
-  for entry in "$DEV_UI_PORT:UI dev server" "9229:node inspector" "33333:Pine server" "5173:beamlynx.com dev server"; do
+  local entry port desc pids pid
+  for entry in "$DEV_UI_PORT:UI dev server" "9229:node inspector" "43333:dev app's Pine server" "43334:dev app's control plane" "5173:beamlynx.com dev server"; do
     port="${entry%%:*}"
     desc="${entry#*:}"
     pids=$(lsof -ti tcp:"$port" 2>/dev/null || true)
@@ -48,9 +84,18 @@ cmd_kill() {
       kill -9 $pids
     fi
   done
+  # 33333 only when it is 'beam api' (Clojure), never the installed app.
+  for pid in $(lsof -ti tcp:33333 2>/dev/null || true); do
+    if ps -o args= -p "$pid" 2>/dev/null | grep -q clojure; then
+      log "Stopping 'beam api' on port 33333 (pid $pid)"
+      kill -9 "$pid"
+    fi
+  done
 }
 
 cmd_ui() {
+  check_node
+  ensure_npm "$UI"
   if [ "$1" = "--browser" ]; then
     log "Starting the UI as the web build"
   else
@@ -62,9 +107,73 @@ cmd_ui() {
 }
 
 cmd_api() {
-  log "Starting the Pine server"
+  if lsof -ti tcp:33333 >/dev/null 2>&1; then
+    echo "ERROR: something already listens on port 33333, probably the installed Beamlynx app. Quit it first." >&2
+    exit 1
+  fi
+  log "Starting the Pine server on http://localhost:33333"
   cd "$PINE"
   clj -M:run-dev
+}
+
+# The UI as a web page, with the Pine server it talks to. Both stop together.
+cmd_web() {
+  check_node
+  ensure_npm "$UI"
+  if lsof -ti tcp:33333 >/dev/null 2>&1; then
+    echo "ERROR: something already listens on port 33333, probably the installed Beamlynx app. Quit it first: the web page talks to Pine on that port." >&2
+    exit 1
+  fi
+  mkdir -p "$LOGS"
+  log "Starting the Pine server (log: $LOGS/api.log)"
+  (cd "$PINE" && exec clojure -M:run-dev) > "$LOGS/api.log" 2>&1 &
+  api_pid=$!
+  # Stops this command's own Pine server, and nothing else.
+  trap 'kill "$api_pid" 2>/dev/null || true; for p in $(lsof -ti tcp:33333 2>/dev/null); do ps -o args= -p "$p" | grep -q clojure && kill "$p"; done; true' EXIT INT TERM
+  log "The page will be on http://localhost:$DEV_UI_PORT once both are up."
+  log "Pine takes about 20 seconds to start. Connect to a database from the page, such as 'beam db' gives you."
+  cd "$UI"
+  PORT=$DEV_UI_PORT npm run dev
+}
+
+cmd_sample_db() {
+  local target="${XDG_STATE_HOME:-$HOME/.local/state}/beamlynx/sample.db"
+  mkdir -p "$(dirname "$target")"
+  # node:sqlite needs Node 22 or later.
+  if ! node -e 'require("node:sqlite")' 2>/dev/null; then
+    echo "ERROR: building the database needs Node 22 or later. This shell has $(node -v)." >&2
+    exit 1
+  fi
+  node "$DESKTOP/scripts/agent-case-db.mjs" "$target" >/dev/null
+  log "Built $target"
+  echo
+  echo "Three tenants, five users, and their logins and exports."
+  echo "In the app from 'beam dev': add a SQLite connection with this file."
+  echo "It needs the desktop app: the web page can't open SQLite files."
+}
+
+cmd_check() {
+  local part="${1:-all}" failed=""
+  if [ "$part" = all ] || [ "$part" = pine ]; then
+    log "Pine: format and tests (MySQL and Postgres tests run only with 'beam db' up; see pine/AGENTS.md)"
+    (cd "$PINE" && clojure -M:fmt check && clojure -M:test) || failed="$failed pine"
+  fi
+  if [ "$part" = all ] || [ "$part" = ui ]; then
+    check_node
+    ensure_npm "$UI"
+    log "UI: types and tests"
+    (cd "$UI" && npm run type-check && npm test) || failed="$failed ui"
+  fi
+  if [ "$part" = all ] || [ "$part" = desktop ]; then
+    ensure_npm "$DESKTOP"
+    log "Desktop: build and tests"
+    (cd "$DESKTOP" && npm test) || failed="$failed desktop"
+  fi
+  if [ -n "$failed" ]; then
+    echo "FAILED:$failed" >&2
+    exit 1
+  fi
+  log "All checks passed"
 }
 
 cmd_db() {
@@ -133,7 +242,10 @@ stage_pine() {
 }
 
 cmd_desktop() {
+  ensure_npm "$DESKTOP"
   stage_pine
+  # The Pine docs the app hands to AI agents. A quick copy.
+  (cd "$DESKTOP" && ./scripts/stage-docs.sh >/dev/null)
   log "Starting the desktop app against http://localhost:$DEV_UI_PORT"
   [ -z "$BEAM_DEV" ] && log "The UI dev server must be running: 'beam ui' in another terminal."
   cd "$DESKTOP"
@@ -143,6 +255,9 @@ cmd_desktop() {
 cmd_dev() {
   local ui_log="$LOGS/ui.log" ui_pid="" ui_pgid="" waited=0
   mkdir -p "$LOGS"
+  check_node
+  ensure_npm "$UI"
+  ensure_npm "$DESKTOP"
 
   show_ui_log() {
     echo
@@ -171,8 +286,8 @@ cmd_dev() {
   trap cleanup EXIT INT TERM
 
   # Leftovers from an earlier run hold the ports this needs: the dev
-  # server's, and 33333, where the app's own Pine server refuses to start if
-  # something else listens.
+  # server's, and 43333, where the dev app's Pine server refuses to start if
+  # something else listens. The installed app (33333) is never touched.
   cmd_kill
 
   log "Starting the UI dev server in desktop mode (log: $ui_log)"
@@ -214,10 +329,13 @@ cmd_dev() {
 
 case "$1" in
   dev) cmd_dev ;;
+  web) cmd_web ;;
   desktop) cmd_desktop ;;
   ui) cmd_ui "$2" ;;
   api) cmd_api ;;
+  sample-db) cmd_sample_db ;;
   db) cmd_db "$2" ;;
+  check) cmd_check "$2" ;;
   kill) cmd_kill ;;
   *) usage ;;
 esac

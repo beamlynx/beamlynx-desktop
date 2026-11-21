@@ -18,17 +18,21 @@ Until November 2026 these were three repos: `beamlynx-desktop`, `beamlynx/pine-l
 
 ## Working on it
 
-Run the app from source with one command:
+**You need:** Node 24 (`ui/.nvmrc`), the Clojure CLI, and JDK 21 (`mise install java@temurin-21` works). Docker is optional, for the test databases.
+
+**Run it from source:**
 
 ```sh
-bin/beam dev
+bin/beam web     # the interface in your browser, on http://localhost:3142
+bin/beam dev     # the desktop app
 ```
 
-It starts the UI's dev server, then the desktop app against it, with hot reload. It first rebuilds the bundled Pine server if `pine/` changed. Quitting the app stops everything. `bin/beam` with no command lists the others: the UI alone in a browser, the Pine server alone, the test databases, and cleaning up stray dev processes.
+Both hot-reload as you edit. They install the npm packages the first time. `bin/beam dev` also rebuilds the bundled Pine server when `pine/` changed. For a database to try things on, `bin/beam db` starts Postgres and MySQL with sample data (Docker), and `bin/beam sample-db` builds a small SQLite file.
 
-You need Node 22 or later, the Clojure CLI, and JDK 21 (`mise install java@temurin-21` works).
+**Check it:** `bin/beam check` runs the tests and checks CI runs. `bin/beam` with no command lists everything it does.
 
-- More on running from source: [`desktop/DEVELOPMENT.md`](desktop/DEVELOPMENT.md)
+- Which command to use for which change, and the ports: [`AGENTS.md`](AGENTS.md)
+- More on the desktop app's pieces: [`desktop/DEVELOPMENT.md`](desktop/DEVELOPMENT.md)
 - Pine's grammar, tests and formatting: [`pine/AGENTS.md`](pine/AGENTS.md)
 - The UI's conventions: [`ui/AGENTS.md`](ui/AGENTS.md)
 - Releasing: [`RELEASING.md`](RELEASING.md)

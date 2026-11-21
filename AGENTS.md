@@ -6,24 +6,58 @@ This repo holds the whole app, in three folders. Each has its own `AGENTS.md` wi
 - `ui/`: the interface (Next.js, TypeScript, MobX).
 - `pine/`: the Pine language and its server (Clojure).
 
-## Running it
+## See your change
 
-`bin/beam` runs everything in development. Use it rather than starting the parts by hand:
+A change isn't done when its tests pass. Run the app and look at it. `bin/beam` starts each part; it installs npm packages the first time. Pick by what you changed:
 
-- `bin/beam dev`: the UI dev server and the desktop app together. Quitting the app stops both.
-- `bin/beam ui [--browser]`: only the UI, on port 3142, in a browser tab.
-- `bin/beam api`: only the Pine server, on port 33333.
-- `bin/beam db [down|logs]`: the local Postgres and MySQL test databases.
-- `bin/beam kill`: stops stray dev processes on those ports.
+| You changed | Run | Then |
+|---|---|---|
+| The interface (`ui/`) | `bin/beam web` | Open http://localhost:3142. The page hot-reloads as you edit. |
+| Something only the desktop app does (`desktop/`, or UI behind `isDesktop()`) | `bin/beam dev` | The app opens from source, on top of the UI dev server. |
+| Pine (`pine/`) | `bin/beam api` | Send requests to http://localhost:33333/api/v1/. `pine/resources/example-requests/` has examples. For the canvas and results, use `bin/beam web` instead. |
+| The tools AI agents call (`desktop/src/main/mcp/`) | `bin/beam dev` | Try the questions in `desktop/test/agent-cases/` through an agent connected to the dev app. |
 
-Don't run `bin/beam kill` or `bin/beam dev` while the owner may be using a dev app: both kill whatever holds the dev ports. Never run a test Pine server on 33333 or 33334, which the installed and dev apps use.
+**A database to try it on:**
+- `bin/beam db` starts Postgres on localhost:5435 and MySQL on localhost:3308, both with the same tables and data. User, password and database are all `pine`. It needs Docker.
+- `bin/beam sample-db` builds a small SQLite file, with no Docker. Only the desktop app (`bin/beam dev`) opens SQLite.
+
+**If you are an agent and can't see a screen:** check the page with a browser tool if you have one (Playwright, a browser MCP), against `bin/beam web`. A new browser profile has empty local storage, so it shows a first-run app. To check a saved setting, set it in local storage before the page loads. If you can't look at all, say so in the PR, and say what the person should check by hand.
+
+**Ports, so nothing collides:**
+
+| Port | Used by |
+|---|---|
+| 3142 | the UI dev server |
+| 33333, 33334 | the installed Beamlynx app (Pine server, agent control plane), and `bin/beam api` / `bin/beam web` |
+| 43333, 43334 | the desktop app run from source (`bin/beam dev`) |
+
+`bin/beam api` and `bin/beam web` can't run while the installed app is open, and say so. `bin/beam kill` stops stray dev processes, and never the installed app.
+
+## Check your change
+
+Before you open a PR, run what CI runs for the parts you changed:
+
+```sh
+bin/beam check            # everything
+bin/beam check ui         # or one part: pine, ui, desktop
+```
+
+| Part | What runs |
+|---|---|
+| `pine` | the formatter's check, and the tests. MySQL and Postgres tests run only when `bin/beam db` is up (see `pine/AGENTS.md`). |
+| `ui` | the type check and the unit tests |
+| `desktop` | the TypeScript build and the unit tests |
+
+CI also builds the app, and parses every example in the agents' Pine docs.
 
 ## Rules for the whole repo
 
 - **A change that spans folders is one PR.** For example, a Pine feature, the UI that uses it, and the agent docs for it land together.
 - **The three parts always ship together.** A release builds them from one commit, so the UI never meets an older Pine. Prefer the right shape for what the UI and Pine send each other over keeping the old one working.
 - **Agent docs follow Pine in the same PR.** AI agents learn Pine from `desktop/src/main/mcp/pine-reference/`. A Pine change that an agent would write differently updates those files too. CI parses every example there with the Pine in `pine/`.
-- **Every fix or feature adds a changelog entry right away**, under `## [Unreleased]` in the `CHANGELOG.md` of each folder it changes. Write for someone who knows the app only from the outside: what they notice, in one or two sentences. The release only moves these entries; it doesn't write them.
+- **Every fix or feature gets a changelog entry**, under `## [Unreleased]` in the `CHANGELOG.md` of each folder it changes. Write for someone who knows the app only from the outside: what they notice, in one or two sentences. The release only moves these entries; it doesn't write them. A contributor may leave it out: the maintainer writes or rewrites it when merging.
+- **A PR shows what it does.** For a visible change, a screenshot or a short video. For a Pine change, a query and its result, before and after.
+- **Suggest changes to the `AGENTS.md` files; don't make them on your own.** If you learn something the next person should know, say so in the PR description. Edit an `AGENTS.md` only when the change is asked for.
 - **Never change these in `desktop/`:**
   - `"name": "beamlynx-desktop"` in `package.json`, which names the app's data folder;
   - `appId` and `productName`;
