@@ -14,4 +14,4 @@ or use `Format Document (forced)` from vscode.
 
 ## License
 
-[PolyForm Noncommercial License 1.0.0](LICENSE) - free for noncommercial use. For commercial licensing, contact contact@grephyte.com.
+GNU AGPL-3.0, with a commercial license available. See [`LICENSING.md`](../LICENSING.md) at the repo's root.

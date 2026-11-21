@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Changed
+- **Beamlynx is open source.** It is now under the GNU AGPL-3.0, and Settings → About says so. A commercial license is available for those who need one.
 
 ## [0.79.0] - 2026-11-20
 ### Added
