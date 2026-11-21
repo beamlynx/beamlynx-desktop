@@ -1,0 +1,127 @@
+import { Box, Typography } from '@mui/material';
+import { observer } from 'mobx-react-lite';
+import { useStores } from '../store/store-container';
+import { UNREACHABLE_RETRY_MS } from '../store/global.store';
+import type { Session } from '../store/session';
+
+interface ErrorMessageProps {
+  sessionId: string;
+  /** A block's own session in a Run of several blocks (BlockResults). */
+  session?: Session;
+}
+
+/**
+ * The band above Results, shown when the last build or run failed.
+ *
+ * It shows the whole message. It used to be cut to the first 120
+ * characters (40 on a narrow window), with the rest reachable only by
+ * hovering for a tooltip - and a database error puts the useful part last:
+ * Postgres's DETAIL, HINT and the position of the offending token all come
+ * after the one-line summary that was all that survived. A long message
+ * scrolls inside a capped band instead, so it can never push the results
+ * grid down the page.
+ *
+ * A parse error is shown without the 🚨: it comes back with a caret line
+ * pointing at the offending character, and a prefix would shift the text
+ * out from under it. A query stopped on purpose ("Query stopped.") is shown
+ * without it too, and not in the error colour.
+ *
+ * A database that can't be reached is the one message the tab shows for
+ * it, whether connecting or building failed: the canvas shows no banner.
+ * It isn't an error in the expression, so it's not in the error colour,
+ * and it says the tab is trying again (GlobalStore's UNREACHABLE_RETRY_MS).
+ *
+ * Nothing is shown while the tab is still getting its connection
+ * (Session.connectionPending): its builds fail for want of one, which says
+ * nothing about the query. The canvas says "Connecting…" meanwhile.
+ */
+const ErrorMessage = observer(({ sessionId, session: blockSession }: ErrorMessageProps) => {
+  const { global } = useStores();
+  const session = blockSession ?? global.getSession(sessionId);
+
+  if (session.connectionPending) {
+    return null;
+  }
+
+  if (session.unreachable !== null) {
+    return (
+      <Box sx={{ padding: 1 }}>
+        <Typography
+          variant="caption"
+          data-testid="database-unreachable"
+          sx={{ display: 'block', whiteSpace: 'break-spaces', lineHeight: 1.4, color: 'text.secondary' }}
+        >
+          {session.unreachable}
+          {`\nTrying again every ${UNREACHABLE_RETRY_MS / 1000} seconds while this tab is open.`}
+        </Typography>
+      </Box>
+    );
+  }
+
+  if (!session.error) {
+    return null;
+  }
+
+  const isParseError = session.errorType === 'parse';
+  // Stopped with Stop or Escape: what the person asked for, not a failure.
+  const isStopped = session.evalErrorType === 'cancelled';
+  // A run that couldn't reach the database, while builds still can.
+  const calm = isStopped || session.evalErrorType === 'database-unreachable';
+
+  // Padding, not margin. The band's height is measured from this subtree
+  // (CollapsibleHeight -> useCollapseHeight), and a margin here collapses
+  // out of that measurement -- so the band was sized 16px shorter than the
+  // content it clips, and the bottom of the message disappeared behind the
+  // results grid. Padding is inside the measured box.
+  return (
+    <Box sx={{ padding: 1 }}>
+      <Typography
+        variant="caption"
+        sx={{
+          display: 'block',
+          fontFamily: 'var(--code-font)',
+          // Preserves the server's own line breaks and the runs of spaces a
+          // parse error's caret line is made of.
+          whiteSpace: 'break-spaces',
+          // A long identifier or a quoted value with no spaces in it has
+          // nowhere to break otherwise, and would run off the side.
+          overflowWrap: 'anywhere',
+          lineHeight: 1.4,
+          // Six lines (8.4/1.4) before it scrolls, in `em` so the cap
+          // follows the Text Size preference the way the text does -- but
+          // never more than 40% of the results pane, whose height the
+          // person controls by dragging the divider. Six lines of a short
+          // pane is the whole pane, and the grid underneath would be
+          // squeezed down to its footer. `cqh` resolves against RightPane
+          // in NewLayoutView.tsx, which declares itself a size container
+          // for this.
+          maxHeight: 'min(8.4em, 40cqh)',
+          overflowY: 'auto',
+          // A visible scrollbar once there is more than fits: six lines of
+          // a longer message look exactly like the whole of a six-line one
+          // otherwise, which is the confusion this change is about. Same
+          // tokens as JsonInspectorPanel.tsx/CommandPalette.tsx, not a new
+          // style invented here.
+          '&::-webkit-scrollbar': {
+            width: '8px',
+          },
+          '&::-webkit-scrollbar-track': {
+            background: 'transparent',
+          },
+          '&::-webkit-scrollbar-thumb': {
+            background: 'var(--border-color)',
+            borderRadius: '4px',
+          },
+          '&::-webkit-scrollbar-thumb:hover': {
+            background: 'var(--text-color)',
+          },
+          color: calm ? 'text.secondary' : 'error.main',
+        }}
+      >
+        {isParseError || calm ? session.error : `🚨 ${session.error}`}
+      </Typography>
+    </Box>
+  );
+});
+
+export default ErrorMessage;

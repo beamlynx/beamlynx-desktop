@@ -1,0 +1,313 @@
+import CheckIcon from '@mui/icons-material/Check';
+import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
+import { Box, ButtonBase, Divider, Menu, MenuItem, Tooltip, Typography } from '@mui/material';
+import { observer } from 'mobx-react-lite';
+import { useState, type MouseEvent } from 'react';
+import { useStores } from '../store/store-container';
+import { isDesktop } from '../store/util';
+import { DecryptionFailedError } from '../store/global.store';
+
+/**
+ * A quick connection switcher -- click the label, pick a connection, done.
+ * Connection *management* (add/delete/MCP access/color) lives in the Settings
+ * modal's Connections section (see components/settings/ConnectionsSection.tsx)
+ * now, not here; this dropdown used to also carry that plus an "MCP setup
+ * instructions…" entry, which read as out of place in a menu whose header
+ * is just "pick a connection" -- "Manage database connections…" below opens Settings
+ * instead of duplicating that UI in two places.
+ */
+/**
+ * It sits at the top of the sidebar (SideRail.tsx), as a workspace does in
+ * Slack's: a tile in the connection's colour with its initial, and, with the
+ * sidebar expanded, its name and whether it's connected. The connection is
+ * the active tab's: picking another switches this tab, as it always has.
+ */
+// Fainter and slower than the agent's pulse (SideRail.tsx): connecting is
+// usually over in a moment, and shouldn't pull the eye while it lasts.
+const connectingPulse = {
+  animation: 'pine-connecting-pulse 1.8s ease-in-out infinite',
+  '@keyframes pine-connecting-pulse': {
+    '0%, 100%': { opacity: 1 },
+    '50%': { opacity: 0.5 },
+  },
+};
+
+const ActiveConnection = ({ expanded }: { expanded: boolean }) => {
+  const { global } = useStores();
+  const [connectionMenuAnchor, setConnectionMenuAnchor] = useState<null | HTMLElement>(null);
+  const [switchingConnection, setSwitchingConnection] = useState(false);
+
+  const activeSession = global.sessions[global.activeSessionId];
+  const connectionId = activeSession?.connectionId || '';
+  const connectionColor = global.getConnectionColor(connectionId);
+  const isConnectionLive = global.isConnectionLive(connectionId);
+
+  // No auto-popup here: a disconnected tab's own connection (if it has one)
+  // is reconnected lazily and silently by GlobalStore's activeSessionId/
+  // pineConnected reactions (see ensureSessionConnected). Forcing a modal
+  // open on every tab that happens to not be live yet is exactly the bad
+  // UX this replaced -- connecting is now automatic, and the connections
+  // picker/settings stay available only as a manual click.
+
+  const connectionLabel = connectionId ? global.getConnectionLabel(connectionId) : '';
+  const truncatedLabel =
+    connectionLabel.length > 24 ? connectionLabel.substring(0, 24) + '...' : connectionLabel;
+  const displayName = !connectionId
+    ? 'Not connected to database'
+    : activeSession?.connectionPending
+      ? `${truncatedLabel} (connecting…)`
+      : isConnectionLive
+        ? truncatedLabel
+        : `${truncatedLabel} (not connected)`;
+
+  const displayText = global.pineConnected
+    ? displayName
+    : global.serverRejected
+      ? '🔒 The Pine server refused this app. Restart beamlynx.'
+      : '🔌 No connection to Pine server!';
+
+  // Reconnect is only meaningful once the DB actually comes back up -- an
+  // assigned connection whose pool died (or never got established because
+  // the DB wasn't running yet at app boot). Before this, there was no way
+  // to retry short of switching tabs (which re-fires the reaction that
+  // calls ensureSessionConnected as a side effect) or reloading the whole
+  // app; reported live as "I run the DB, go back to the app, but there's
+  // no way to reconnect." ensureSessionConnected itself already no-ops if
+  // Pine server isn't reachable (`!this.pineConnected`) or nothing's
+  // actually assigned, so gating the button on the same two conditions
+  // just avoids showing a control that would silently do nothing.
+  const showReconnect =
+    global.pineConnected && !!connectionId && !isConnectionLive && !activeSession?.connectionPending;
+
+  const handleReconnect = (e: MouseEvent<HTMLElement>) => {
+    e.stopPropagation();
+    void global.ensureSessionConnected(global.activeSessionId);
+  };
+
+  const handleSwitchTo = async (id: string) => {
+    // Already this tab's, and open. Picking it while it isn't open
+    // reconnects it.
+    if (id === connectionId && isConnectionLive) {
+      setConnectionMenuAnchor(null);
+      return;
+    }
+    if (isDesktop()) {
+      if (activeSession?.expression.trim()) {
+        global.requestConnectionSwitch({ kind: 'connectToSavedProfile', id });
+        setConnectionMenuAnchor(null);
+        return;
+      }
+      setSwitchingConnection(true);
+      try {
+        await global.connectToSavedProfile(id);
+      } catch (e) {
+        // A saved profile may not have a live pool yet this session (or, on
+        // decryption failure, opening Settings lets the user re-enter just
+        // the password) -- either way there's nothing more to do here;
+        // connectToSavedProfile/connect already surface the failure via
+        // global.connectionError (see ConnectionErrorSnackbar).
+        if (e instanceof DecryptionFailedError) {
+          global.setShowSettings(true, 'connections');
+        }
+      } finally {
+        setSwitchingConnection(false);
+        setConnectionMenuAnchor(null);
+      }
+      return;
+    }
+    setSwitchingConnection(true);
+    try {
+      await global.selectConnection(id);
+    } catch (e) {
+      // selectConnection has already shown why; this only stops the
+      // rejection from going unhandled.
+      console.error('[connections] switching failed ->', e);
+    } finally {
+      setSwitchingConnection(false);
+      setConnectionMenuAnchor(null);
+    }
+  };
+
+  const initial = connectionLabel.trim().charAt(0).toUpperCase();
+  // Getting the tab's connection: a restored tab at startup, a reconnect, or
+  // a switch picked from the menu below.
+  const connecting =
+    !!activeSession?.connectionPending || global.connecting || switchingConnection;
+  const state = !global.pineConnected
+    ? displayText
+    : !connectionId
+      ? 'Pick a database'
+      : connecting
+        ? 'Connecting…'
+        : isConnectionLive
+          ? 'Connected'
+          : 'Not connected';
+
+  const trigger = (
+    <ButtonBase
+      onClick={(e: MouseEvent<HTMLElement>) => global.pineConnected && setConnectionMenuAnchor(e.currentTarget)}
+      aria-label={`Database connection: ${displayText}. Switch connection`}
+      sx={{
+        width: '100%',
+        justifyContent: expanded ? 'flex-start' : 'center',
+        gap: 1,
+        px: expanded ? 0.75 : 0,
+        py: 0.5,
+        borderRadius: 1,
+        textAlign: 'left',
+        '&:hover': { backgroundColor: 'var(--node-column-bg)' },
+      }}
+    >
+      {/* The connection's tile: its colour, filled when connected and only
+          outlined when not, with its initial. Empty with no connection.
+          It breathes, slowly and faintly, while connecting. */}
+      <Box
+        sx={{
+          ...(connecting && connectionId ? connectingPulse : {}),
+          width: 30,
+          height: 30,
+          flexShrink: 0,
+          borderRadius: 1,
+          boxSizing: 'border-box',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 14,
+          fontWeight: 700,
+          fontFamily: 'var(--canvas-font)',
+          color: isConnectionLive ? 'var(--background-color)' : connectionColor || 'var(--canvas-text-dim)',
+          backgroundColor: isConnectionLive ? connectionColor || 'var(--canvas-trace)' : 'transparent',
+          border: isConnectionLive ? 'none' : `1.5px dashed ${connectionColor || 'var(--border-color)'}`,
+        }}
+      >
+        {connectionId ? initial : ''}
+      </Box>
+      {expanded && (
+        <>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography noWrap sx={{ fontSize: 13, fontWeight: 600, color: 'var(--text-color)', fontFamily: 'var(--canvas-font)' }}>
+              {connectionId ? connectionLabel : 'No database'}
+            </Typography>
+            <Typography noWrap sx={{ fontSize: 11, color: 'var(--canvas-text-dim)' }}>
+              {state}
+            </Typography>
+          </Box>
+          <UnfoldMoreIcon sx={{ fontSize: 16, color: 'var(--canvas-text-dim)', flexShrink: 0 }} />
+        </>
+      )}
+    </ButtonBase>
+  );
+
+  return (
+    <Box>
+      {expanded ? (
+        trigger
+      ) : (
+        <Tooltip title={displayText} placement="right">
+          {trigger}
+        </Tooltip>
+      )}
+      <Menu
+        anchorEl={connectionMenuAnchor}
+        open={Boolean(connectionMenuAnchor)}
+        onClose={() => setConnectionMenuAnchor(null)}
+        // Beside the sidebar, not over it.
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+        slotProps={{
+          paper: {
+            sx: {
+              minWidth: 260,
+              maxHeight: 320,
+              bgcolor: 'var(--background-color)',
+              // MUI's Paper applies a dark-mode "elevation overlay" (a
+              // semi-transparent white gradient, opacity scaling with
+              // elevation) by default - confirmed live that it rendered
+              // this menu visibly lighter than the rest of the app's plain
+              // Box surfaces, even though both set the exact same
+              // background token. Suppressed so they actually match.
+              backgroundImage: 'none',
+              border: '1px solid var(--border-color)',
+              color: 'var(--text-color)',
+            },
+          },
+        }}
+      >
+        {showReconnect && (
+          <MenuItem
+            onClick={e => {
+              handleReconnect(e);
+              setConnectionMenuAnchor(null);
+            }}
+            sx={{ fontSize: '0.85rem', fontFamily: 'var(--canvas-font)', color: 'var(--primary-color)' }}
+          >
+            ↻ Reconnect {truncatedLabel}
+          </MenuItem>
+        )}
+        {showReconnect && <Divider sx={{ borderColor: 'var(--border-color)' }} />}
+        {global.connections.map(({ id, label }) => (
+          <MenuItem
+            key={id}
+            selected={id === connectionId}
+            disabled={switchingConnection}
+            onClick={() => handleSwitchTo(id)}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              fontFamily: 'inherit',
+              fontSize: '0.8rem',
+            }}
+          >
+            <Box
+              title={global.isConnectionLive(id) ? undefined : 'Not connected yet'}
+              sx={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                flexShrink: 0,
+                boxSizing: 'border-box',
+                backgroundColor: global.isConnectionLive(id)
+                  ? global.getConnectionColor(id) || 'var(--border-color)'
+                  : 'transparent',
+                border: global.isConnectionLive(id)
+                  ? 'none'
+                  : `1.5px solid ${global.getConnectionColor(id) || 'var(--border-color)'}`,
+              }}
+            />
+            <Typography
+              component="span"
+              variant="body2"
+              sx={{
+                flex: 1,
+                fontSize: '0.75rem',
+                fontFamily: 'var(--canvas-font)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {label}
+            </Typography>
+            {id === connectionId && (
+              <CheckIcon sx={{ fontSize: 16, opacity: 0.7 }} />
+            )}
+          </MenuItem>
+        ))}
+        {global.connections.length > 0 ? (
+          <Divider sx={{ borderColor: 'var(--border-color)' }} />
+        ) : null}
+        <MenuItem
+          onClick={() => {
+            global.setShowSettings(true, 'connections');
+            setConnectionMenuAnchor(null);
+          }}
+          sx={{ fontSize: '0.85rem', fontFamily: 'var(--canvas-font)' }}
+        >
+          Manage database connections…
+        </MenuItem>
+      </Menu>
+    </Box>
+  );
+};
+
+export default observer(ActiveConnection);

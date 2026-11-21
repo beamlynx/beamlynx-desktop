@@ -1,0 +1,82 @@
+import { Box, Typography } from '@mui/material';
+import { observer } from 'mobx-react-lite';
+import { useStores } from '../../store/store-container';
+import ToggleRow from './ToggleRow';
+import { getKeybindingDisplayForCommand } from '../../utils/keybindings';
+
+/**
+ * Previously these toggles only existed as command-palette entries
+ * (utils/commands.ts) -- no visible switch anywhere, so a user who didn't
+ * know Cmd/Ctrl+K existed had no way to find them at all. This is that
+ * discoverability fix, not just a relocation. Dark theme has since moved to
+ * ThemeSection.tsx alongside the rest of the visual/appearance settings.
+ */
+const PreferencesSection = () => {
+  const { global } = useStores();
+  const session = global.getSession(global.activeSessionId);
+
+  return (
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <Typography
+        variant="h6"
+        component="h2"
+        sx={{
+          flexShrink: 0,
+          color: 'var(--text-color)',
+          pb: 1.5,
+          mb: 2,
+          borderBottom: '1px solid var(--border-color)',
+        }}
+      >
+        Preferences
+      </Typography>
+
+      <Box className="styled-scrollbar" sx={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+        <ToggleRow
+          label="Table colors"
+          description="Color-code result table segments and columns by their source table."
+          checked={global.pineTableColorsEnabled}
+          onChange={() => global.togglePineTableColors()}
+        />
+        <ToggleRow
+          label="Auto-run on canvas edit"
+          description="Automatically run the query each time a canvas gesture commits a valid change."
+          checked={global.autoRunEnabled}
+          onChange={() => global.toggleAutoRunEnabled()}
+        />
+        <ToggleRow
+          label="Pine panel"
+          description="Show an editable Pine text panel alongside the canvas, in addition to point-and-click editing."
+          checked={global.newLayoutPanelVisible && session.inputMode === 'pine'}
+          onChange={() => global.togglePinePanel(session)}
+        />
+        <ToggleRow
+          label="SQL panel"
+          description="Show an editable SQL text panel alongside the canvas, in addition to point-and-click editing."
+          checked={global.newLayoutPanelVisible && session.inputMode === 'sql'}
+          onChange={() => global.toggleSqlPanel(session)}
+        />
+        <ToggleRow
+          label="Hidden columns in SQL"
+          description="Show the columns beamlynx adds to the SQL so results can be edited: each table's key, and the type of each JSON value. They are fetched either way."
+          checked={global.showHiddenSqlColumns}
+          onChange={() => global.toggleShowHiddenSqlColumns()}
+        />
+        <ToggleRow
+          label="Format Pine as you type"
+          description={`Typing | at the end of a query, or picking a suggestion, puts each step on its own line. When off, format with the button in the Pine panel or ${getKeybindingDisplayForCommand('format-pine')}.`}
+          checked={global.autoFormat}
+          onChange={() => global.toggleAutoFormat()}
+        />
+        <ToggleRow
+          label="Vim keybindings"
+          description="Use vim-style editing in the query editor, and j/k navigation on the canvas and in Settings' own section list. The canvas's other single-letter shortcuts (s/w/o/g/x/u/U/i) aren't vim conventions and are always available regardless of this setting."
+          checked={global.vimMode}
+          onChange={() => global.toggleVimMode()}
+        />
+      </Box>
+    </Box>
+  );
+};
+
+export default observer(PreferencesSection);

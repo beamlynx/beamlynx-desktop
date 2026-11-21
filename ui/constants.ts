@@ -1,0 +1,89 @@
+/* DB Connection Monitor Constants */
+export const TOTAL_BARS = 100;
+export const MAX_COUNT = 300;
+
+/* New Layout (Canvas + Results) pane sizing. */
+export const DEFAULT_NEW_LAYOUT_PANE_WIDTH = 640;
+export const DEFAULT_NEW_LAYOUT_PANE_HEIGHT = 420;
+export const MIN_NEW_LAYOUT_PANE_SIZE = 240;
+
+/* New Layout's one shared spacing unit: the gap above/below the pane row
+ * (NewLayoutView.tsx) and the width/height of the resizable divider between
+ * the two panes (ResizableDividers.tsx) all use this same value, so the
+ * "space between the panes" and the "space around them" read as one
+ * consistent gap instead of independently-guessed numbers that happen to be
+ * close (previously 10px for the divider vs. 8px - MUI's theme.spacing(1) -
+ * for the surrounding margin). Matches AppView.tsx's own `m: 1` left/right
+ * inset around the tab region, so all four sides plus the pane divider end
+ * up the same. */
+export const NEW_LAYOUT_GUTTER = 8;
+
+/* New Layout's Pine/SQL panel sizing - separate from the pane sizing above,
+ * which governs the Canvas|Results split; this one governs the panel next
+ * to (or below) Canvas, a smaller, secondary widget. */
+export const DEFAULT_NEW_LAYOUT_PANEL_WIDTH = 340;
+export const DEFAULT_NEW_LAYOUT_PANEL_HEIGHT = 220;
+export const MIN_NEW_LAYOUT_PANEL_SIZE = 160;
+
+/* New Layout's docked Settings panel - a third sibling alongside the
+ * Canvas|Results split (NewLayoutView.tsx), not part of it, so it gets its
+ * own sizing rather than reusing the pane/panel constants above. The
+ * section's content only: the list of sections is in the sidebar
+ * (SideRail.tsx). */
+export const DEFAULT_SETTINGS_PANEL_WIDTH = 520;
+export const MIN_SETTINGS_PANEL_WIDTH = 360;
+
+/* Results grid's JSON cell inspector (JsonInspectorPanel.tsx) - a fixed-
+ * position Drawer, not a layout sibling, so its own sizing rather than
+ * reusing the docked-panel constants above. Narrower default than Settings:
+ * this holds one value, not a whole settings UI. */
+export const DEFAULT_JSON_PANEL_WIDTH = 420;
+export const MIN_JSON_PANEL_WIDTH = 320;
+
+/* Results grid column sizing (Result.tsx, column-width.util.ts). Each
+ * column gets a fixed pixel width estimated from its own content rather
+ * than MUI DataGrid's `flex: 1`, which recalculates every column across
+ * every visible row on every container resize - expensive enough on its
+ * own to stutter a panel animation happening at the same time. These are
+ * the same bounds `flex: 1, minWidth: 100, maxWidth: 400` used to enforce,
+ * kept for continuity - only the sizing mechanism changed, not the range a
+ * column can land in. */
+export const MIN_RESULT_COLUMN_WIDTH = 100;
+export const MAX_RESULT_COLUMN_WIDTH = 400;
+
+/* Vertical tab rail (PineTabs.tsx, Appearance -> Tabs = Vertical). Fixed,
+ * not resizable: the rail only ever holds session names, so there's no
+ * content whose size would justify a drag handle -- and every other
+ * resizable boundary in the app separates two panes that both compete for
+ * the same space, which this doesn't. Wide enough for a typical session
+ * name plus its connection dot and close button; longer names ellipsize. */
+export const VERTICAL_TAB_RAIL_WIDTH = 190;
+
+/* Pine Server */
+export const RequiredVersion = '0.57.0';
+
+// The oldest pine-lang that can refuse an expression which changes data --
+// `allow-writes` on /api/v1/eval, see its docs/side-effects.md. Deliberately
+// NOT RequiredVersion: that one gates the whole app (GlobalStore sets
+// requiresUpgrade from it, which replaces the UI with the upgrade screen),
+// and only the MCP path needs this. Raising RequiredVersion instead would
+// black out the app for everyone on an older server to protect a surface
+// most of them aren't using -- and pine-lang's RELEASING.md calls out that
+// exact failure, since the playground deploys its UI and its server
+// separately. MCP alone refuses to run below this; see mcp-query.ts.
+export const McpWriteRefusalMinVersion = '0.46.0';
+
+/* Layout Constants */
+// Height calculations for main content areas
+// These account for header, margins, and other UI elements
+export const LAYOUT_HEIGHTS = {
+  // +8px each (the tab row's new `mt: 1` in AppView.tsx, added once the tab
+  // row itself gained a solid background and needed visual separation from
+  // the header row above it - see the plan doc's follow-up pass 12).
+  // Without this, the app's actual total height grew by that same 8px
+  // while these calc(100vh - Npx) heights stayed put, overflowing the
+  // viewport by exactly 8px and forcing a whole-page scrollbar.
+  DEFAULT_MODE_OFFSET: 120,
+} as const;
+
+export const getTabHeight = () => `calc(100vh - ${LAYOUT_HEIGHTS.DEFAULT_MODE_OFFSET}px)`;

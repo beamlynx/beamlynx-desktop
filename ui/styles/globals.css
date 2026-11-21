@@ -1,0 +1,401 @@
+/* The interface font (--canvas-font) and the code font (--code-font), as
+ * they stand before pages/_app.tsx applies the user's choice - the defaults
+ * of styles/app-font.ts ('system' and 'plex-mono'). */
+:root {
+  --canvas-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell,
+    sans-serif;
+  --code-font: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono',
+    monospace;
+  /* The border of the pane that has the keyboard (canvas or Pine panel): a
+   * tint of the accent, enough to find it without shouting. */
+  --pane-focus-border: color-mix(in srgb, var(--primary-color) 45%, var(--border-color));
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    Segoe UI,
+    Roboto,
+    Oxygen,
+    Ubuntu,
+    Cantarell,
+    Fira Sans,
+    Droid Sans,
+    Helvetica Neue,
+    sans-serif;
+  color: var(--text-color);
+  background-color: var(--background-color);
+  cursor: default;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* When hovering over a data grid cell, show a pointer instead of a cursor */
+/* The results grid's scroller (components/results-grid/ResultsGrid.tsx):
+   themed like every other scrollable code surface (see editor-theme.ts). */
+[data-results-grid] ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+[data-results-grid] ::-webkit-scrollbar-track {
+  background: transparent;
+}
+[data-results-grid] ::-webkit-scrollbar-thumb {
+  background-color: var(--canvas-pin);
+  border-radius: 5px;
+}
+[data-results-grid] ::-webkit-scrollbar-thumb:hover {
+  background: var(--canvas-trace);
+}
+[data-results-grid] ::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Text utility classes */
+.text-primary {
+  color: var(--text-primary-color);
+  font-weight: 500;
+}
+
+.text-warning {
+  color: var(--text-warning-color);
+}
+
+/* ReactFlow Edge Styles */
+.react-flow__edge-path {
+  stroke: var(--divider-color);
+  stroke-width: 2;
+}
+
+.react-flow__edge-text {
+  fill: var(--text-color);
+}
+
+.react-flow__edge-textbg {
+  fill: var(--graph-background) !important;
+}
+
+.react-flow__edge.react-flow__edge-straight,
+.react-flow__edge.react-flow__edge-step,
+.react-flow__edge.react-flow__edge-bezier {
+  stroke: var(--divider-color);
+  stroke-width: 2;
+}
+
+/* Dark theme edge styles - use very subtle color */
+[data-theme='dark'] .react-flow__edge-path {
+  stroke: #353a45;
+  stroke-width: 2;
+}
+
+[data-theme='dark'] .react-flow__edge.react-flow__edge-straight,
+[data-theme='dark'] .react-flow__edge.react-flow__edge-step,
+[data-theme='dark'] .react-flow__edge.react-flow__edge-bezier {
+  stroke: #353a45;
+  stroke-width: 2;
+}
+
+/* Node styling enhancements for dark mode */
+/* Light mode suggested node styling */
+.react-flow__node-suggested-node > div {
+  border: 2px solid var(--node-suggested-border) !important;
+}
+
+/* Suggested variable/checkpoint reference - dashed border like the real
+ * container it becomes once piped in. Higher specificity than the rule
+ * above (extra class) so it wins despite both using !important. */
+.react-flow__node-suggested-node > div.suggested-node-variable {
+  border: 2px dashed var(--node-variable-border, #7c5cbf) !important;
+}
+
+/* Dark mode node styling enhancements - glow tints match the blueprint
+   palette's own accent colors (--canvas-trace/--node-variable-border), not
+   the pre-redesign hex values they were originally tuned against. Suggested
+   nodes no longer get a colored glow at all - their border is now the same
+   neutral blue-gray as every other node border (matching canvas mode's own
+   StartNode, which has no glow either), so a leftover amber tint would be
+   glowing a color that isn't on the node anymore. */
+[data-theme='dark'] .selected-node-inner {
+  border: 3px solid var(--node-border) !important;
+  box-shadow: 0 0 8px rgba(79, 209, 255, 0.3) !important;
+}
+
+[data-theme='dark'] .react-flow__node-suggested-node > div.suggested-node-variable {
+  border: 2px dashed var(--node-variable-border, #7c5cbf) !important;
+  box-shadow: 0 0 4px rgba(155, 127, 212, 0.25) !important;
+}
+
+/* Scrollbar styling for dark mode - shared by CodeMirror and any other
+   scrollable panel (e.g. the canvas picker) via .styled-scrollbar. */
+.cm-editor ::-webkit-scrollbar,
+.styled-scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.cm-editor ::-webkit-scrollbar-track,
+.styled-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cm-editor ::-webkit-scrollbar-thumb,
+.styled-scrollbar::-webkit-scrollbar-thumb {
+  background-color: var(--node-handle-bg);
+  border-radius: 5px;
+}
+
+.cm-editor ::-webkit-scrollbar-thumb:hover,
+.styled-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--text-color);
+}
+
+.styled-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--node-handle-bg) transparent;
+}
+
+/* Pine autocomplete: selected item highlight (override CodeMirror theme).
+ * The canvas pickers' selected row has the same colours (Picker.tsx). */
+.cm-editor .cm-tooltip-autocomplete ul li[aria-selected],
+.cm-editor.cm-dark .cm-tooltip-autocomplete ul li[aria-selected] {
+  background: var(--primary-color) !important;
+  color: var(--primary-text-color) !important;
+}
+
+/* The loading/no-results row is auto-selected (it's the only option), but
+ * it isn't a real candidate — give it its own colors instead of the
+ * selected-candidate highlight above. */
+.cm-editor .cm-tooltip-autocomplete ul li.pine-autocomplete-loading,
+.cm-editor .cm-tooltip-autocomplete ul li.pine-autocomplete-loading[aria-selected] {
+  background: transparent !important;
+  color: var(--icon-color) !important;
+}
+
+.cm-editor .cm-tooltip-autocomplete ul li.pine-autocomplete-empty,
+.cm-editor .cm-tooltip-autocomplete ul li.pine-autocomplete-empty[aria-selected] {
+  background: transparent !important;
+  color: var(--node-suggested-border) !important;
+}
+
+/* A section heading in the Pine panel's completions: a table, `user (u)`,
+ * whose columns follow, or Tables/Paths. CodeMirror draws it like an
+ * option at 70% opacity, so it read as one more column. It gets its own
+ * colour and band instead, and the options under it are indented. */
+/* !important: CodeMirror's theme styles these with generated classes that
+ * win on specificity. */
+.cm-editor .cm-tooltip-autocomplete ul completion-section {
+  display: block !important;
+  /* Pinned at the top of the list while its table's columns scroll under
+   * it, as the canvas pickers' headings are (Picker.tsx). */
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  opacity: 1 !important;
+  margin-top: 2px;
+  padding: 3px 8px !important;
+  font-weight: 700;
+  color: var(--primary-color);
+  background: var(--node-column-bg);
+  border-left: 3px solid var(--primary-color);
+  border-bottom: 1px solid var(--border-color) !important;
+}
+
+.cm-editor .cm-tooltip-autocomplete ul completion-section ~ li {
+  padding-left: 18px !important;
+}
+
+/* The canvas operation bar's `›`, which turns to `‹` as the bar opens
+ * (components/canvas/OperationBar.tsx). */
+.operation-bar-more {
+  transition: transform 240ms cubic-bezier(0.2, 0, 0, 1);
+}
+/* A list the bar opens rises out of it (components/canvas/Picker.tsx's anchoredStyle). */
+@keyframes canvas-picker-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scaleY(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Motion
+ * ------------------------------------------------------------------------- */
+
+/* Panels animate their width/height to open and close (see
+ * hooks/usePanelPresence.ts). A resizable divider sets that same dimension
+ * on every mousemove, so without this the panel would animate each step of
+ * the drag and lag rubber-band-style behind the cursor. useResizeDrag adds
+ * this class for the duration of a drag; every animated panel opts in by
+ * carrying data-panel-motion. */
+body.is-resizing [data-panel-motion] {
+  transition: none !important;
+}
+
+/* Keeps an animating panel's cost to itself. Without this, each frame of a
+ * panel's width change relaid out the whole document -- including the
+ * canvas and the results grid, which are the two most expensive things in
+ * it -- and the animation dropped frames the whole way. Measured: a single
+ * 82ms long task on opening Settings, gone with this. `layout paint` and
+ * not `strict`, which would also require us to declare a size. */
+[data-panel-motion],
+[data-keyboard-panel='graph'] {
+  contain: layout paint;
+}
+
+/* Dragging a divider used to select whatever text it passed over. */
+body.is-resizing {
+  user-select: none;
+}
+
+/* Honor the OS's "reduce motion" setting. Deliberately not a preference of
+ * our own: the OS already owns this choice, and a second switch that can
+ * disagree with it is a third state to keep working.
+ *
+ * This reaches CSS only. MUI's own transitions (Drawer, Modal) animate via
+ * inline styles and are handled in styles/theme.ts; our JS-side delays are
+ * handled by motionDuration() in styles/motion.ts.
+ *
+ * 0.01ms rather than 0: a zero-length transition never fires transitionend,
+ * which would strand any code waiting on one. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Canvas: expanding or collapsing a nested query (components/canvas/Canvas.tsx).
+   Nodes that stay move to their new place; a node that appears grows in, and
+   one that goes shrinks out - a container collapsing into the node below it.
+   The animation is on the node's content, not ReactFlow's wrapper, whose
+   transform is its position. A node being dragged follows the pointer with
+   no transition. */
+@media (prefers-reduced-motion: no-preference) {
+  .canvas-flow .react-flow__node {
+    transition: transform 250ms ease-in-out;
+  }
+  .canvas-flow .react-flow__node.dragging {
+    transition: none;
+  }
+  /* A container that stays open but changes size - an outer one when an
+     inner one opens or closes - grows or shrinks with it, connector too. */
+  .canvas-flow .canvas-container,
+  .canvas-flow .canvas-container > div {
+    transition: width 250ms ease-in-out, height 250ms ease-in-out, top 250ms ease-in-out, left 250ms ease-in-out;
+  }
+  .canvas-flow .react-flow__node.canvas-entering > div {
+    animation: canvas-grow 250ms ease-in-out;
+  }
+  .canvas-flow .react-flow__node.canvas-exiting > div {
+    animation: canvas-shrink 250ms ease-in-out forwards;
+  }
+  /* The operation bar (components/canvas/OperationBar.tsx): selecting another
+     table while it is open brings that table's actions in again, one after
+     another, and an action the last table didn't have glows for a moment. */
+  .bar-actions-swap > span {
+    animation: bar-action-in 200ms ease both;
+  }
+  .bar-action-new button {
+    animation: bar-action-new 1200ms ease-out;
+  }
+}
+@keyframes bar-action-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes bar-action-new {
+  from {
+    border-color: var(--canvas-trace);
+    background: var(--canvas-chip-bg);
+  }
+}
+
+@keyframes canvas-grow {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+    transform-origin: 50% 100%;
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+    transform-origin: 50% 100%;
+  }
+}
+
+@keyframes canvas-shrink {
+  from {
+    opacity: 1;
+    transform: scale(1);
+    transform-origin: 50% 100%;
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.85);
+    transform-origin: 50% 100%;
+  }
+}
+
+/* Canvas: a peek at a JSON value (components/canvas/JsonPeek.tsx), a card
+   over the results pane. A line sweeps along its top edge while the value
+   is loading, and once more when it arrives, so the change of results is
+   noticed. */
+.json-peek {
+  animation: json-peek-in var(--motion-fast, 150ms) ease-out;
+}
+.json-peek-line {
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, var(--primary-color) 50%, transparent 100%) no-repeat;
+  background-size: 50% 100%;
+  animation: json-peek-sweep 700ms ease-in-out 1 both;
+}
+.json-peek-line[data-loading='true'] {
+  animation-iteration-count: infinite;
+}
+
+@keyframes json-peek-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes json-peek-sweep {
+  from {
+    background-position: -100% 0;
+    opacity: 1;
+  }
+  to {
+    background-position: 200% 0;
+    opacity: 0.35;
+  }
+}

@@ -1,0 +1,408 @@
+import { useEffect } from 'react';
+import { CanvasStore } from '../store/canvas/canvas.store';
+import { Session } from '../store/session';
+import { GlobalStore } from '../store/global.store';
+import { COUNT_NODE_ID, NAME_NODE_ID, CanvasTableNodeData, MORE_ACTIONS, START_NODE_ID } from '../store/canvas/canvas.model';
+import { barAnchor } from '../components/canvas/OperationBar';
+
+interface CanvasKeybindingsProps {
+  canvasStore: CanvasStore;
+  session: Session;
+  global: GlobalStore;
+}
+
+/**
+ * The bare-key keyboard layer for canvas mode: node-to-node navigation
+ * (arrows always, j/k only with Vim Mode on), Shift+J/Shift+K's finer-
+ * grained walk through every node's own configured items (always available,
+ * regardless of Vim Mode), and this app's own mnemonic single-letter
+ * operation shortcuts (s/w/o/g/l/p/+/x/u/U/i, always available -- these
+ * aren't vim conventions and don't depend on Vim Mode) on whichever node
+ * currently has keyboard focus (CanvasStore.focusedAlias).
+ *
+ * Mirrors useGlobalKeybindings.ts's structure (a single document-level
+ * `keydown` listener) but is deliberately its own hook rather than an
+ * addition to that registry - these bindings are single, bare letters
+ * (`s`, `w`, `o`, ...), which only make sense to interpret while canvas mode
+ * is the active view and nothing else on the page wants keystrokes. Folding
+ * that guard into the shared KEYBINDINGS registry (built for modifier-key
+ * combos like Ctrl+K) would mean threading canvas-specific state through a
+ * registry every *other* consumer has nothing to do with.
+ *
+ * `mode` (CanvasStore's own getter, derived from `picker.open`) gates
+ * everything below: while a picker is open, Picker.tsx's own listeners
+ * (ArrowUp/Down/Tab/Enter on its filter input, Escape globally) already own
+ * the keyboard, and this hook is a strict no-op.
+ */
+export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKeybindingsProps) => {
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // canvasActive: Canvas is the mounted graph editor (layout/mode check).
+      // activeKeyboardPanel: who currently owns bare-key input (DOM-focus
+      // check) -- see GlobalStore.activeKeyboardPanel's own comment. Both
+      // must hold: without the second check, j/k fired here even while
+      // Settings' rail (or the Pine/SQL Input panel) had real focus.
+      if (!global.canvasActive || global.activeKeyboardPanel !== 'graph') return;
+
+      // The Pine/SQL editors are CodeMirror 6, which renders `contenteditable`
+      // divs, not `<input>`/`<textarea>` - `session.textInputFocused` is the
+      // flag those editors themselves maintain on focus/blur (see
+      // PineInput.tsx/SqlInput.tsx), and useGlobalKeybindings already relies
+      // on it for the same reason. The tag/contenteditable check below is a
+      // belt-and-suspenders net for anything else with a real text input
+      // (the picker's own filter box, MultiSelectToolbar's limit input).
+      if (session.textInputFocused) return;
+      const target = e.target instanceof Element ? e.target : null;
+      if (target?.closest('input, textarea, [contenteditable="true"]')) return;
+
+      // Anything typed inside the picker belongs to the picker, whatever the
+      // store says by the time this runs. The `mode` check below isn't enough
+      // on its own: a picker entry that CLOSES the picker does so during the
+      // same keydown, so by the time this document-level listener sees the
+      // event, mode has already flipped back to 'normal' and the key falls
+      // through to the bindings below. That's how `c` for "Count rows" in the
+      // traverse menu also opened the comment editor. The "+" menu's own
+      // o/g/p never showed it, because each of those opens ANOTHER picker, so
+      // the guard still held.
+      if (target?.closest('[data-testid="canvas-picker"]')) return;
+
+      // A dialog (the Ctrl+O recipe picker, Save as recipe, the command
+      // palette, ...) sits on top of the canvas, so nothing typed inside it
+      // is for the canvas. Clicking a dialog's text that isn't an input, then
+      // pressing Backspace, used to fall through to the bindings below and
+      // delete the selected item in the tab behind it.
+      if (target?.closest('.MuiModal-root, [role="dialog"]')) return;
+
+      // The results grid is a <canvas>, not a text input, so the check above
+      // doesn't see it - but once it has focus, arrow keys move between its
+      // cells and typing starts editing one. Those keys are the grid's.
+      if (target?.closest('[data-results-grid]')) return;
+
+      // A picker is open (insert mode) - its own keydown handlers
+      // (Picker.tsx's onListKeyDown and window-level Escape listener) keep
+      // exclusive control of the keyboard while it's up.
+      if (canvasStore.mode !== 'normal') return;
+
+      // Conventional undo/redo (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y),
+      // alongside vim's own u/Shift+U below - same actions, just the
+      // shortcut most people already know. Checked ahead of the plain-key
+      // switch since these need a modifier check the switch below doesn't
+      // do. Safe to claim here: the guards above already bail out whenever
+      // a real text input has focus, so Ctrl+Z still reaches CodeMirror's
+      // own undo there instead of being intercepted.
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          if (canvasStore.canRedo) canvasStore.redo();
+        } else if (canvasStore.canUndo) {
+          canvasStore.undo();
+        }
+        return;
+      }
+      if (e.ctrlKey && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        if (canvasStore.canRedo) canvasStore.redo();
+        return;
+      }
+
+      // Every binding below is a bare letter, and none of them wants a
+      // modifier held. Without this, the switch matched on `e.key` alone and
+      // happily fired on Ctrl/Cmd+<letter> too -- so Ctrl+C, the most ordinary
+      // thing anyone does on a canvas, opened the comment editor instead of
+      // copying, and Ctrl+V/Ctrl+A/Ctrl+F had their own collisions waiting.
+      // The two shortcuts that DO take a modifier are handled above, before
+      // this line, precisely so this can be a blanket bail-out.
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      // The count line and the name line under the graph are the last
+      // stops. `x` on one removes it (Enter on the name renames it);
+      // anything else works as from where the query goes on.
+      const onCount = canvasStore.focusedAlias === COUNT_NODE_ID;
+      const onName = canvasStore.focusedAlias === NAME_NODE_ID;
+      const alias =
+        onCount || onName ? (canvasStore.nextStepAlias ?? canvasStore.focusedAlias) : canvasStore.focusedAlias;
+      const isStart = alias === START_NODE_ID;
+      // A checkpoint's node is focused like a table, but its operations go
+      // through openCheckpointPicker, not openColumnPicker/openJoinPicker
+      // directly - the same store method its own action bar calls
+      // (TableNode.tsx).
+      const focused = canvasStore.canvasGraph.nodes.find(n => n.id === alias);
+      const isCheckpoint = focused?.type === 'table-node' && !!(focused.data as CanvasTableNodeData).checkpoint;
+      // A nested query's node: a checkpoint's, or a table that uses a named
+      // block from an earlier query block.
+      const nested = focused?.type === 'table-node' ? (focused.data as CanvasTableNodeData).nested : undefined;
+
+      // Synthesized anchor: there's no click event to read a position from
+      // when a picker is opened by keyboard - use the focused node's own
+      // rendered position instead (both TableNode.tsx and StartNode.tsx tag
+      // their root with this same test id).
+      const anchorFor = (targetAlias: string): { x: number; y: number } => {
+        const el = document.querySelector(`[data-testid="canvas-node-${targetAlias}"]`);
+        if (!el) return { x: 24, y: 24 };
+        const rect = el.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      };
+
+      // `:` goes to the Pine panel, opening it if it is closed. Escape in
+      // the panel comes back here (PineInput.tsx).
+      if (e.key === ':') {
+        e.preventDefault();
+        global.focusPinePanel(session);
+        return;
+      }
+
+      // The bar is open: the letters of what it shows run those actions, `u`
+      // included (unnest, not undo), and Escape or `<` closes it.
+      if (canvasStore.barExpanded) {
+        if (e.key === 'Escape' || e.key === '<') {
+          e.preventDefault();
+          canvasStore.collapseBar();
+          return;
+        }
+        const action = MORE_ACTIONS.find(a => a.key === e.key && canvasStore.barMoreActions.includes(a.action));
+        if (action) {
+          e.preventDefault();
+          canvasStore.runBarAction(action.action, barAnchor());
+          return;
+        }
+      }
+
+      // The keyboard works on the query, through the bar. Where the pointer
+      // rests doesn't matter: a table's own buttons are for the mouse only
+      // (docs/canvas-mode.md, "How the canvas is used").
+
+      // Arrow-key navigation always works, vim mode or not - it's plain
+      // directional navigation, not a vim convention, so there's no reason
+      // to gate it on global.vimMode the way j/k below are.
+      switch (e.key) {
+        case 'ArrowDown':
+          e.preventDefault();
+          canvasStore.focusNext();
+          return;
+        case 'ArrowUp':
+          e.preventDefault();
+          canvasStore.focusPrev();
+          return;
+      }
+
+      // j/k are vim's own hjkl movement keys, gated on global.vimMode the
+      // same way PineInput.tsx/SqlInput.tsx gate CodeMirror's vim mode --
+      // one app-wide "Vim Mode" preference governs both. This does NOT
+      // extend to the single-letter operation shortcuts below (s/w/o/g/x/
+      // u/U/i), nor to Shift+J/Shift+K below - those are this app's own
+      // mnemonic scheme for canvas operations, not vim conventions, and
+      // stay independent of this setting (confirmed live: gating them on
+      // Vim Mode too was wrong, since they have nothing to do with vim in
+      // the first place).
+      if (global.vimMode) {
+        switch (e.key) {
+          case 'j':
+            e.preventDefault();
+            canvasStore.focusNext();
+            return;
+          case 'k':
+            e.preventDefault();
+            canvasStore.focusPrev();
+            return;
+        }
+      }
+
+      switch (e.key) {
+        // The fine-grained counterpart to plain j/k (or ArrowUp/Down) above:
+        // those jump straight between nodes, skipping whatever's configured
+        // on each one. Shift+J/Shift+K instead walk EVERY stop in the
+        // pipeline one at a time - a node's own bare stop, then its
+        // incoming join/select columns/where conditions/order columns/
+        // group columns, then the next node's - see CanvasStore.flatStops.
+        // Deliberately not ArrowLeft/ArrowRight (an earlier version of this):
+        // "next"/"previous" in that flat sequence has nothing to do with
+        // on-screen left/right - a "belongs to" relation can render a
+        // node's own parent to its LEFT (confirmed live: pressing the arrow
+        // that reads as "forward" kept landing on a node rendered further
+        // left on screen, which read as backwards). J/K read as "next/
+        // previous" the same way they already do for plain j/k, with no
+        // implied screen direction to contradict. `e.key` is 'J'/'K' (not
+        // 'j'/'k' + shiftKey) when Shift is held - same convention as 'U'
+        // below - and this is deliberately NOT gated on global.vimMode: it's
+        // this app's own mnemonic scheme, not a vim convention (see the
+        // comment on plain j/k above).
+        case 'J':
+          e.preventDefault();
+          canvasStore.configNext();
+          return;
+        // Moves the select or group chip the cursor is on (Shift+J/K) one
+        // place left or right in its row: the result's columns follow. On
+        // screen, the row runs left to right, so the arrows mean what they show.
+        case 'ArrowLeft':
+        case 'ArrowRight': {
+          const item = canvasStore.focusedConfigItem;
+          if (!e.shiftKey || (item?.kind !== 'select' && item?.kind !== 'group')) return;
+          e.preventDefault();
+          void canvasStore.moveFocusedChip(e.key === 'ArrowLeft' ? -1 : 1);
+          return;
+        }
+        case 'K':
+          e.preventDefault();
+          canvasStore.configPrev();
+          return;
+        // Opens whatever Shift+J/Shift+K above last highlighted on the
+        // focused node - the same editor its mouse equivalent (TraceEdge's
+        // own click, or a where chip's click) opens. A bare Enter/Space
+        // with nothing highlighted falls through to the `default: return`
+        // below, same as any other unbound key.
+        case 'Enter':
+        case ' ':
+          if (onName) {
+            e.preventDefault();
+            canvasStore.openQueryNameEditor(barAnchor());
+            return;
+          }
+          if (canvasStore.focusedConfigItem) {
+            e.preventDefault();
+            canvasStore.openConfigCursor(anchorFor(alias));
+          }
+          return;
+        // `|` is Pine's own pipe operator - a join is "pipe a new table onto
+        // this one", so it doubles as a second, mnemonic way to trigger the
+        // exact same action as `i` below (not a different one).
+        case 'i':
+        case '|':
+          e.preventDefault();
+          // The first table is picked where the canvas starts; every join
+          // after it is the bar's.
+          if (isStart) canvasStore.openTablePicker(anchorFor(alias));
+          else canvasStore.openNodeAction('join', barAnchor());
+          return;
+        // The operation bar's operations (OperationBar.tsx): they work on
+        // the whole query, so they need no focused node. A focused node's
+        // columns are listed first. The picker opens above the bar.
+        case 's':
+        case 'w':
+        case 'o':
+        case 'g':
+        case 'p':
+        case 'l':
+        case 'm':
+        case 'q': {
+          if (!canvasStore.operationAnchor) return;
+          e.preventDefault();
+          if (e.key === 's' || e.key === 'w') {
+            canvasStore.openOperation(e.key === 's' ? 'select' : 'where', barAnchor());
+            return;
+          }
+          // These are in the bar's folded part: their own button shows in
+          // the bar while their list is open, so you see which action it is
+          // (CanvasStore.unfoldFor). One button fits in the bar's row, so the
+          // bar doesn't grow upward and the list opens at once.
+          const folded = ({ o: 'order', g: 'group', p: 'path', l: 'limit', m: 'name', q: 'query' } as const)[e.key];
+          if (!canvasStore.unfoldFor(folded)) return;
+          canvasStore.runBarAction(folded, barAnchor());
+          return;
+        }
+        // Expand or collapse the focused checkpoint's contents - the stage it
+        // seals (CanvasStore.toggleNested). The same as the toggle on its
+        // node. Checkpoints' nodes only.
+        case 'e':
+          if (!nested) return;
+          e.preventDefault();
+          canvasStore.toggleNested(nested.name);
+          return;
+        // The operation bar's `›`: the bar grows to show order, group,
+        // limit, path, count, traverse, unnest, describe and references.
+        // `>` opens it, as its sign says; `+` still toggles it.
+        case '>':
+        case '+':
+          if (!canvasStore.operationAnchor) return;
+          if (e.key === '>' && canvasStore.barExpanded) return;
+          e.preventDefault();
+          canvasStore.toggleBarMore();
+          return;
+        // 'x' and Delete/Backspace are the same gesture - "remove the thing
+        // that's the target of a key right now" - so a person who reaches
+        // for Delete (the natural instinct on a regular keyboard) gets
+        // exactly what 'x' (this app's original, vim-flavored binding) does.
+        // With a config item highlighted (see Shift+J/Shift+K above),
+        // that target is the highlighted chip/join, not the whole node -
+        // the keyboard equivalent of that item's own ChipRow `×`.
+        case 'x':
+        case 'Delete':
+        case 'Backspace': {
+          if (onCount) {
+            e.preventDefault();
+            void canvasStore.removeCount();
+            return;
+          }
+          if (onName) {
+            e.preventDefault();
+            canvasStore.removeQueryName(barAnchor());
+            return;
+          }
+          if (isStart) return;
+          if (canvasStore.focusedConfigItem) {
+            e.preventDefault();
+            void canvasStore.removeConfigCursor();
+            return;
+          }
+          if (isCheckpoint) {
+            // Removes the checkpoint itself, as the × on its divider does
+            // (canvasStore.deleteCheckpoint). The tables it sealed stay.
+            e.preventDefault();
+            void canvasStore.deleteCheckpoint(alias);
+            return;
+          }
+          // `node.type` isn't a literal-discriminated field on reactflow's
+          // `Node<T>` - see layout.ts's getNodeHeight comment - hence the
+          // explicit cast rather than relying on narrowing.
+          const node = canvasStore.canvasGraph.nodes.find(n => n.type === 'table-node' && n.id === alias);
+          if (node && (node.data as CanvasTableNodeData).removable) {
+            e.preventDefault();
+            void canvasStore.deleteNode(alias);
+          }
+          return;
+        }
+        // `e.key` is 'U' (not 'u' + shiftKey) when Shift is held - both
+        // cases land here. Plain `u` undoes; Shift+U redoes. Not Ctrl+R
+        // (vim's own redo combo): that's the browser's reload shortcut, and
+        // utils/keybindings.ts already documents this exact class of
+        // collision (Ctrl+T/Ctrl+W/Ctrl+K are similarly unavailable in the
+        // browser build) and picks browser-safe alternates instead of
+        // fighting the host chrome. Shift+U pairs visibly with plain `u`
+        // without touching a combo a real browser tab would intercept.
+        // `n` (note) writes the query's comment. Canvas-scoped, like u/U
+        // below: a comment describes the whole query, so it needs no
+        // focused node and works on the start node too. Safe as a bare
+        // letter - the guards at the top bail out on any real text input,
+        // which includes the comment field this opens, so typing an `n`
+        // into a comment can never re-fire this.
+        case 'n':
+          e.preventDefault();
+          canvasStore.startDocEdit();
+          return;
+        // `c` counts the query's rows: the bar's count, for the whole
+        // query like its other keys.
+        case 'c':
+          if (!canvasStore.operationAnchor || canvasStore.counted) return;
+          e.preventDefault();
+          void canvasStore.addCount();
+          return;
+        case 'u':
+          if (canvasStore.canUndo) {
+            e.preventDefault();
+            canvasStore.undo();
+          }
+          return;
+        case 'U':
+          if (canvasStore.canRedo) {
+            e.preventDefault();
+            canvasStore.redo();
+          }
+          return;
+        default:
+          return;
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [canvasStore, session, global]);
+};

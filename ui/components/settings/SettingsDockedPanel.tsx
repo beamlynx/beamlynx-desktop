@@ -1,0 +1,96 @@
+import { Box } from '@mui/material';
+import { useEffect, useRef } from 'react';
+import SettingsPanelContent from './SettingsPanelContent';
+import LibraryPanel from '../recipes/LibraryPanel';
+
+/**
+ * Settings' shell -- a plain docked panel, not a Modal. The app can show
+ * Canvas and Results side by side, and a floating overlay (any position --
+ * centered, or anchored to a side) either covers the canvas outright or is
+ * a guess about where it happens to be. Docking instead shrinks the layout
+ * to make room for itself (see NewLayoutView.tsx, which renders this as a
+ * flex sibling of the Canvas|Results split, sized by its own resizable
+ * divider) -- nothing is ever covered, so there's nothing to judge a change
+ * against that Settings itself is hiding.
+ *
+ * No backdrop/scrim -- the whole point of docking is that nothing needs
+ * dimming. Also, no Escape-to-close -- that made sense for the floating
+ * Modal this replaced (Escape is Modal's own built-in dismiss), but a
+ * docked panel isn't in anyone's way, and stealing Escape here would fight
+ * whatever else on screen wants it (closing a picker, say) while Settings
+ * sits open in the background. Closed only by its own IconButton
+ * (SettingsPanelContent) or the gear icon.
+ */
+const SettingsDockedPanel = ({ open, kind }: { open: boolean; kind: 'settings' | 'library' }) => {
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // Opening Settings (the gear icon, Ctrl/Cmd+,, the command palette, a
+  // reconnect banner's deep link -- whatever triggers it) leaves DOM focus
+  // wherever the trigger itself was, e.g. the gear IconButton, which isn't
+  // under this component's [data-keyboard-panel] root at all. Without
+  // this, GlobalStore.activeKeyboardPanel fell back to 'graph' the instant
+  // Settings appeared, and canvas shortcuts (j/k, vim-style single letters)
+  // kept firing until the user happened to click something inside the
+  // panel (confirmed live: opening Settings and immediately pressing a
+  // canvas shortcut still hit the canvas). It doesn't fight the
+  // click-to-focus handler below, which only matters for moving focus back
+  // here *after* it's left (e.g. clicking the canvas, then clicking back
+  // into Settings).
+  //
+  // Keyed on `open`, NOT on mount. This used to be a mount-time effect,
+  // which worked because the component only existed while
+  // global.showSettings was true. It now outlives that flag by the length
+  // of its closing transition (AppView.tsx's usePanelPresence keeps it
+  // mounted so it has something to animate), so closing and immediately
+  // reopening -- inside that window -- reuses the same instance and would
+  // never re-run a mount-time effect, silently losing the focus grab and
+  // with it the whole fix above.
+  //
+  // Library shares this slot (SettingsDock), so switching between it and
+  // Settings while open takes focus too.
+  useEffect(() => {
+    if (open) rootRef.current?.focus();
+  }, [open, kind]);
+
+  return (
+    <Box
+      ref={rootRef}
+      data-keyboard-panel={kind}
+      // -1, not a real Tab stop: closing Settings (its own IconButton, or
+      // the gear icon) is the way back to the Canvas panel -- Tab was tried
+      // as a second way to cross panels and reverted (broke the focus ring
+      // and wasn't the flow that was wanted), so this root is reachable only
+      // by clicking, same as Canvas/Input's own roots in NewLayoutView.tsx.
+      tabIndex={-1}
+      onMouseDownCapture={e => {
+        // Only steal focus onto the panel root when the click target won't
+        // already take it natively -- otherwise this would fight the
+        // browser's own click-to-focus behavior for e.g. a connection name
+        // TextField inside a section (see useFocusedPanelTracking.ts's doc
+        // comment for why that's fine either way: focusin bubbles up to this
+        // same [data-keyboard-panel] root regardless of which descendant
+        // actually ends up focused).
+        const target = e.target as HTMLElement;
+        if (!target.closest('input, textarea, button, [tabindex], [contenteditable="true"]')) {
+          e.currentTarget.focus();
+        }
+      }}
+      sx={{
+        height: '100%',
+        bgcolor: 'var(--background-color)',
+        overflow: 'hidden',
+        outline: 'none',
+      }}
+    >
+      {/* Settings' contents stay mounted while Library shows (see
+          SettingsDock on why they are kept). Library reads the recipes
+          afresh each time it opens (LibraryPanel). */}
+      <Box sx={{ height: '100%', display: kind === 'settings' ? 'block' : 'none' }}>
+        <SettingsPanelContent />
+      </Box>
+      {kind === 'library' && <LibraryPanel />}
+    </Box>
+  );
+};
+
+export default SettingsDockedPanel;

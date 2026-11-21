@@ -1,0 +1,43 @@
+import { AppliedAccessPolicy, Ast, HttpClient, Response } from '../client';
+
+// A dedicated, stateless client for speculative builds - never the visible
+// session's own client instance. No `onBuild` callback (there's nothing to
+// wire one to), and no cursor is ever sent: probe expressions are always
+// complete, self-contained strings (`expr + " | s: "`, etc.), not a partial
+// edit of what's on screen, so there is no caret position that means
+// anything for them.
+const client = new HttpClient();
+
+/**
+ * Speculative build for a picker: never touches session.expression/ast.
+ * Resolves (not rejects) with `undefined` when the server can't build the
+ * expression into a proper ast at all - confirmed live for text referencing
+ * an alias that doesn't exist (canvas.store.ts's deleteNode deliberately
+ * produces this - see pine-text.ts's removeNode). The `| undefined` here
+ * used to just say `Ast`, which let a caller's `ast.prettified` compile
+ * clean and then crash the whole app at runtime the first time this
+ * actually happened.
+ */
+export const probeBuild = async (
+  expression: string,
+  connectionId?: string,
+  // The blocks before it in the tab (and values blocks after), as the
+  // session's own build sends them: a named result from an earlier block
+  // only resolves with that block in the request. See tab-blocks.ts.
+  context: string[] = [],
+): Promise<Ast | undefined> => {
+  const response = await client.build([...context, expression], undefined, connectionId);
+  return response.ast;
+};
+
+/**
+ * Speculative run, for a canvas peek (see json-peek.ts): never touches the
+ * session's own rows. Never writes, and the tab's access policy applies, so
+ * a masked column is masked here too.
+ */
+export const probeEval = (
+  expression: string,
+  connectionId: string | undefined,
+  accessPolicy: AppliedAccessPolicy,
+  context: string[] = [],
+): Promise<Response> => client.eval([...context, expression], connectionId, accessPolicy, false);
