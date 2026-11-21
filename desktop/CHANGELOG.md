@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Changed
+- **Beamlynx is open source.** The app, its query language and its interface are now under the GNU AGPL-3.0, in one repo: [github.com/beamlynx/beamlynx-desktop](https://github.com/beamlynx/beamlynx-desktop). A commercial license is available for those who need one.
 
 ## [0.34.0] - 2026-11-20
 ### Added

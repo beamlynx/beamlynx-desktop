@@ -68,20 +68,20 @@ const AboutSection = () => {
         </InfoRow>
 
         <InfoRow label="License">
-          Free to install and use for noncommercial purposes under the{' '}
+          Open source under the{' '}
           <Link
-            href="https://polyformproject.org/licenses/noncommercial/1.0.0"
+            href="https://github.com/beamlynx/beamlynx-desktop/blob/main/LICENSING.md"
             target="_blank"
             rel="noopener noreferrer"
             underline="hover"
           >
-            PolyForm Noncommercial License 1.0.0
+            GNU AGPL-3.0
           </Link>
-          . Commercial use isn&apos;t licensed under these terms --{' '}
+          . For a commercial license, write to{' '}
           <Link href="mailto:contact@grephyte.com" underline="hover">
             contact@grephyte.com
-          </Link>{' '}
-          to discuss a commercial license.
+          </Link>
+          .
         </InfoRow>
 
         {isDesktop() && appVersion && <InfoRow label="App version">{appVersion}</InfoRow>}

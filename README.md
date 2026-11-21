@@ -25,4 +25,6 @@ Until November 2026 these were three repos: `beamlynx-desktop`, `beamlynx/pine-l
 
 ## License
 
-Each folder has its own `LICENSE`.
+Beamlynx is open source under the [GNU AGPL-3.0](LICENSE). A commercial license is available too. [`LICENSING.md`](LICENSING.md) explains both. The name and logo are covered by [`TRADEMARKS.md`](TRADEMARKS.md).
+
+Contributions are welcome: see [`CONTRIBUTING.md`](CONTRIBUTING.md).
