@@ -5,6 +5,8 @@ export of the UI (`../ui`) inside Electron. Its own code is in `src/main/`.
 Two different things you might be testing call for two different
 workflows. Commands below run from this folder unless they `cd`.
 
+**The quick way:** `bin/beam dev` at the repo's root does all of the below in one step. It rebuilds and stages the Pine server when `pine/` changed, starts the UI dev server, and opens the app against it. This page explains the pieces, for when you need one on its own.
+
 ## Iterating on beamlynx-ui behavior (fast path)
 
 Most UI changes -- including anything gated by `isDesktop()`

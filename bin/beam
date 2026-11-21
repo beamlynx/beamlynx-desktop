@@ -1,0 +1,223 @@
+#!/usr/bin/env bash
+# Runs Beamlynx from source, for development. `bin/beam` with no command
+# lists the commands. Works from anywhere, including through a symlink such
+# as ~/.local/bin/beam.
+set -e
+
+ROOT="$(cd "$(dirname "$(realpath "$0")")/.." && pwd)"
+PINE="$ROOT/pine"
+UI="$ROOT/ui"
+DESKTOP="$ROOT/desktop"
+LOGS="${XDG_STATE_HOME:-$HOME/.local/state}/beamlynx/logs"
+
+# The port the UI dev server listens on, and Electron loads in dev.
+DEV_UI_PORT=3142
+# The first Next.js compile is slow on a cold .next folder.
+UI_READY_TIMEOUT=180
+
+log() {
+  echo " :: $(date -u +"%H:%M:%S") :: $1"
+}
+
+usage() {
+  cat <<EOF
+Usage: bin/beam <command>
+
+  dev            Start the UI dev server and the desktop app together.
+                 Quitting the app stops the dev server.
+  desktop        Start the desktop app against a UI dev server that is
+                 already running ('beam ui' in another terminal).
+  ui [--browser] Start the UI dev server on port $DEV_UI_PORT, in desktop mode.
+                 With --browser, as the web build instead.
+  api            Start the Pine server on its own, on port 33333.
+  db [down|logs] Start the local Postgres and MySQL test databases.
+  kill           Stop stray dev processes on the dev ports.
+
+Logs: $LOGS
+EOF
+}
+
+cmd_kill() {
+  local entry port desc pids
+  for entry in "$DEV_UI_PORT:UI dev server" "9229:node inspector" "33333:Pine server" "5173:beamlynx.com dev server"; do
+    port="${entry%%:*}"
+    desc="${entry#*:}"
+    pids=$(lsof -ti tcp:"$port" 2>/dev/null || true)
+    if [ -n "$pids" ]; then
+      log "Stopping the $desc on port $port (pid $pids)"
+      kill -9 $pids
+    fi
+  done
+}
+
+cmd_ui() {
+  if [ "$1" = "--browser" ]; then
+    log "Starting the UI as the web build"
+  else
+    log "Starting the UI in desktop mode (NEXT_PUBLIC_DESKTOP=1). It opens in a browser tab; 'beam dev' opens the real app."
+    export NEXT_PUBLIC_DESKTOP=1
+  fi
+  cd "$UI"
+  PORT=$DEV_UI_PORT npm run dev
+}
+
+cmd_api() {
+  log "Starting the Pine server"
+  cd "$PINE"
+  clj -M:run-dev
+}
+
+cmd_db() {
+  cd "$PINE"
+  case "$1" in
+    down)
+      log "Stopping the test databases"
+      docker compose -f dev.docker-compose.yml down
+      ;;
+    logs)
+      docker compose -f dev.docker-compose.yml logs -f
+      ;;
+    *)
+      log "Starting the local Postgres and MySQL test databases (same tables, same seed data; see pine/DEV.md)"
+      docker compose -f dev.docker-compose.yml up -d
+      echo
+      echo "Postgres: localhost:5435  (db pine, user pine, password pine)"
+      echo "MySQL:    localhost:3308  (db pine, user pine, password pine)"
+      echo
+      echo "'beam db down' stops them, 'beam db logs' follows their logs."
+      ;;
+  esac
+}
+
+# Rebuilds what is behind the Pine source (jar, then app-image, then the copy
+# staged in desktop/resources/server), so Electron never starts an old Pine.
+stage_pine() {
+  local jar="$PINE/target/pine-standalone.jar"
+  local app_image="$PINE/desktop/build/app-image"
+  local staged="$DESKTOP/resources/server"
+  local rebuild_jar=false rebuild_app_image=false restage=false
+
+  if [ ! -f "$jar" ] || [ -n "$(find "$PINE/src" -newer "$jar" -print -quit)" ]; then
+    rebuild_jar=true
+  fi
+  if $rebuild_jar || [ ! -d "$app_image" ] || [ "$app_image" -ot "$jar" ]; then
+    rebuild_app_image=true
+  fi
+  if $rebuild_app_image || [ ! -d "$staged" ] || [ "$staged" -ot "$app_image" ]; then
+    restage=true
+  fi
+  $restage || return 0
+
+  if $rebuild_jar; then
+    log "Pine's source is newer than its jar, so the jar is rebuilt"
+    rm -f "$jar"
+  fi
+  if $rebuild_app_image; then
+    # jlink and jpackage output depends on the JDK: use the one
+    # pine/desktop/JDK_VERSION pins.
+    local jdk
+    jdk=$(grep -v '^#' "$PINE/desktop/JDK_VERSION" | grep -v '^\s*$')
+    if [ -z "$JAVA_HOME" ] || ! "$JAVA_HOME/bin/java" -version 2>&1 | grep -q "version \"$jdk"; then
+      JAVA_HOME="$(mise where "java@temurin-$jdk" 2>/dev/null || true)"
+    fi
+    if [ -z "$JAVA_HOME" ]; then
+      echo "ERROR: JDK $jdk not found. Install it, for example: mise install java@temurin-$jdk" >&2
+      exit 1
+    fi
+    export JAVA_HOME
+    log "Building Pine's app-image with JDK $jdk ($JAVA_HOME)"
+    (cd "$PINE" && ./desktop/build-app-image.sh)
+  fi
+  log "Staging the Pine server into desktop/resources/server"
+  (cd "$DESKTOP" && ./scripts/stage-server.sh)
+}
+
+cmd_desktop() {
+  stage_pine
+  log "Starting the desktop app against http://localhost:$DEV_UI_PORT"
+  [ -z "$BEAM_DEV" ] && log "The UI dev server must be running: 'beam ui' in another terminal."
+  cd "$DESKTOP"
+  BEAMLYNX_DEV_UI_URL="http://localhost:$DEV_UI_PORT" npm start
+}
+
+cmd_dev() {
+  local ui_log="$LOGS/ui.log" ui_pid="" ui_pgid="" waited=0
+  mkdir -p "$LOGS"
+
+  show_ui_log() {
+    echo
+    echo "Last lines of $ui_log:"
+    tail -n 20 "$ui_log" 2>/dev/null || true
+    echo
+  }
+
+  # Runs when the app quits, on Ctrl+C, and on any failure: the dev server
+  # was started here, so it is stopped here.
+  cleanup() {
+    trap - EXIT INT TERM
+    if [ -n "$ui_pgid" ] && kill -0 "-$ui_pgid" 2>/dev/null; then
+      log "Stopping the UI dev server"
+      kill -TERM "-$ui_pgid" 2>/dev/null || true
+    elif [ -n "$ui_pid" ] && kill -0 "$ui_pid" 2>/dev/null; then
+      log "Stopping the UI dev server"
+      kill -TERM "$ui_pid" 2>/dev/null || true
+    fi
+    # `next dev` sometimes outlives its npm parent: whatever still holds the
+    # port goes too.
+    local stray
+    stray=$(lsof -ti tcp:"$DEV_UI_PORT" 2>/dev/null || true)
+    [ -n "$stray" ] && kill -9 $stray 2>/dev/null || true
+  }
+  trap cleanup EXIT INT TERM
+
+  # Leftovers from an earlier run hold the ports this needs: the dev
+  # server's, and 33333, where the app's own Pine server refuses to start if
+  # something else listens.
+  cmd_kill
+
+  log "Starting the UI dev server in desktop mode (log: $ui_log)"
+  : > "$ui_log"
+  # In its own process group, so Ctrl+C reaches this script and Electron
+  # first. cleanup stops the dev server after Electron is gone.
+  local start="cd '$UI' && NEXT_PUBLIC_DESKTOP=1 PORT=$DEV_UI_PORT npm run dev"
+  if command -v setsid >/dev/null 2>&1; then
+    setsid bash -c "$start" >> "$ui_log" 2>&1 &
+  else
+    bash -c "$start" >> "$ui_log" 2>&1 &
+  fi
+  ui_pid=$!
+  ui_pgid=$(ps -o pgid= -p "$ui_pid" 2>/dev/null | tr -d ' ' || true)
+  # Only a separate group may be killed: our own would take this script down.
+  [ "$ui_pgid" = "$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')" ] && ui_pgid=""
+
+  log "Waiting for it on http://localhost:$DEV_UI_PORT (the first compile takes a while)"
+  until curl -sf -o /dev/null "http://127.0.0.1:$DEV_UI_PORT/"; do
+    if ! kill -0 "$ui_pid" 2>/dev/null; then
+      echo "ERROR: the UI dev server stopped before it was ready." >&2
+      show_ui_log
+      exit 1
+    fi
+    if [ "$waited" -ge "$UI_READY_TIMEOUT" ]; then
+      echo "ERROR: the UI dev server didn't answer within ${UI_READY_TIMEOUT}s." >&2
+      show_ui_log
+      exit 1
+    fi
+    sleep 2
+    waited=$((waited + 2))
+    [ $((waited % 20)) -eq 0 ] && log "Still waiting (${waited}s)"
+  done
+  log "The UI dev server is up"
+
+  # In the foreground: when the app quits, cleanup stops the dev server.
+  BEAM_DEV=1 cmd_desktop
+}
+
+case "$1" in
+  dev) cmd_dev ;;
+  desktop) cmd_desktop ;;
+  ui) cmd_ui "$2" ;;
+  api) cmd_api ;;
+  db) cmd_db "$2" ;;
+  kill) cmd_kill ;;
+  *) usage ;;
+esac
