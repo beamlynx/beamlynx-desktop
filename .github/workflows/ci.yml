@@ -106,6 +106,54 @@ jobs:
         if: steps.changed.outputs.run == 'true'
         run: ./scripts/test-supabase-token-claims.sh
 
+  # The UI's type check and unit tests, on the Node ui/.nvmrc names. Same
+  # as 'bin/beam check ui'.
+  ui:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ui/.nvmrc
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - run: npm ci
+
+      - name: Type check
+        run: npm run type-check
+
+      - name: Unit tests
+        run: npm test
+
+  # The desktop app's unit tests. Same as 'bin/beam check desktop'.
+  desktop:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: desktop/.nvmrc
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
   validate:
     needs: changes
     if: needs.changes.outputs.code == 'true'
