@@ -1,0 +1,901 @@
+(ns pine.ast.hints
+  (:require [clojure.set :as set]
+            [clojure.string :as str]
+            [pine.ast.path :as path]
+            [pine.ast.table :as table]
+            [pine.cache :as cache]))
+
+(set! *warn-on-reflection* true)
+
+(defn- filter-relations
+  "Given a partial token (which can be completed to a table) and all the
+  candidate relations, we filter out the unrelated candidates"
+  [token candidates]
+  (let [token (clojure.string/lower-case (or token ""))]
+    (filter #(-> %1
+                 first
+                 clojure.string/lower-case
+                 (clojure.string/includes? token)) candidates)))
+;; ---------------------------------------------------------------------------
+;; Table Hints
+;; ---------------------------------------------------------------------------
+
+(defn- known-variables
+  "Every variable currently in scope: already-defined ones plus any assigned
+  earlier in this same expression."
+  [state]
+  (merge (:named-results state) (:pending-assignments state)))
+
+(defn- schemas-containing-table
+  "Every schema (from the schema-qualified index) that has this table. Used
+  as a fallback for a table with no FK/heuristic relation of its own (so
+  :in was never set on it) but that's still a real, indexed table."
+  [state table]
+  (for [[schema-name schema-data] (-> state :references :schema)
+        :when (contains? (:table schema-data) table)]
+    schema-name))
+
+(defn create-hint-from-table [state tables]
+  (let [refs      (-> state :references :table)
+        variables (known-variables state)]
+    (mapcat identity
+            (for [table tables
+                  :let [in-schemas (->> table refs :in keys)
+                        schemas (if (seq in-schemas)
+                                  in-schemas
+                                  (schemas-containing-table state table))]]
+              (if (contains? variables table)
+                [{:schema nil :table table}]
+                (for [schema schemas]
+                  {:schema schema :table table}))))))
+
+(defn table-hints
+  "No context - get all the tables matching the token. Includes both real
+  tables (from the schema-derived references map) and any variables in
+  scope, which aren't real tables and so never appear in that map."
+  [state token]
+  (let [real-candidates (-> state :references :table)
+        variable-candidates (map vector (keys (known-variables state)) (repeat nil))
+        suggestions (filter-relations token (concat real-candidates variable-candidates))]
+    (create-hint-from-table state (->> suggestions (map first) distinct (sort-by count)))))
+;; ---------------------------------------------------------------------------
+;; Relation Hints
+;; ---------------------------------------------------------------------------
+
+(defn generate-expression [{:keys [schema table column related-column columns parent resolution alias]}]
+  ;; The `.hint_col` a user types to name a relation always names the
+  ;; *child*'s columns (see docs/joins.md - the via map is keyed by them),
+  ;; which is `column` when this table is the child (parent false) but
+  ;; `related-column` (the context table's own column) when this table is the
+  ;; parent (parent true). It stays the child's side either way: the columns
+  ;; are a name for the relation, and a relation is named the same from both
+  ;; ends.
+  ;;
+  ;; A key made of several columns names all of them. Naming one is enough
+  ;; when only one relation holds it, but a suggestion that showed only the
+  ;; first could not tell two keys sharing a column apart - both would render
+  ;; as the same text, and picking either would give the same join.
+  ;;
+  ;; Skip it entirely for a synthetic join: there's exactly one synthetic
+  ;; id=id entry, never ambiguous, so no name is needed - keeps
+  ;; `var_x | var_y` as the canonical form instead of `var_x | var_y .id`.
+  ;; A join from a name given with `as` needs none either: the bare table
+  ;; finds the name, and a `.column` would pick a relation of the index.
+  (let [pairs (or columns [{:column column :related-column related-column}])
+        hint-columns (when-not (#{"synthetic" "alias"} resolution)
+                       (keep (if parent :related-column :column) pairs))]
+    (str (if schema (str schema ".") "") table
+         (if alias (str " as " alias) "")
+         (if (seq hint-columns) (str " ." (str/join ", ." hint-columns)) "")
+         ;; `:parent` would skip the join on a name given with `as`
+         ;; (ast/table.clj's update-joins): the bare table is what finds it.
+         (if (and parent (not= "alias" resolution)) " :parent" ""))))
+
+(defn- relations-of
+  "Every relation an index entry holds, flattened out of the per-column
+  :via map. The same relation is filed under each of its key's columns, so
+  this can hand back the same relation more than once - the caller
+  dedupes (relation-hints's own `distinct`)."
+  [entry]
+  (distinct (mapcat identity (vals (:via entry)))))
+
+(defn- create-hint-from-relation
+  "Turn the relations reachable from the context table into hints.
+
+  `direction` is the half of the index these came out of, and it is what
+  says which side of each relation is the suggestion: :refers-to means the
+  context is the child and the suggested table is its parent,
+  :referred-by the other way round. The relation itself is stored once and
+  filed under both, so it never carries the direction - the lookup does.
+
+  context-rename/target-rename translate the context's/suggested table's
+  own column back through whatever name a variable exposes it under (see
+  table/translate-column) - the hint is dropped entirely when either
+  side's column isn't actually exposed there (a restricted variable that
+  never selected it), since that relation isn't reachable through the CTE
+  at all.
+
+  A hint names one column pair, the first, which is the one its `pine`
+  text tells the user to type. Naming any column of a key joins on the
+  whole key, so a longer key needs no more than this to identify itself.
+  Every pair still has to translate, though: a variable that exposes only
+  some of a key's columns can't serve the join at all (join-helper refuses
+  to build it), so suggesting it would offer something that then doesn't
+  resolve.
+
+  A key of more than one column also carries :columns, every pair of it.
+  Something that has to name the whole key rather than join on it - a
+  DELETE scoped to the rows this relation reaches, for instance - needs
+  them all. It is left off a single-column key, where it would just repeat
+  :column/:related-column on every one of what can be thousands of hints.
+
+  resolution-of (table/resolution-of - shared with ast/table.clj, which
+  tags committed joins the same way) only ever sees :foreign-key/
+  :heuristic here - a real relation from the index. \"synthetic\" (the
+  third :resolution value - see docs/joins.md) never comes from one at
+  all; it's set directly wherever a same-source join is fabricated on the
+  fly (below), since nothing in the references map describes it."
+  [direction table relations context-rename target-rename]
+  (let [parent?      (= direction :refers-to)
+        target-side  (if parent? :parent :child)
+        context-side (if parent? :child :parent)]
+    (keep (fn [rel]
+            (let [columns (map #(table/translate-column target-rename (get % target-side))
+                               (:columns rel))
+                  related (map #(table/translate-column context-rename (get % context-side))
+                               (:columns rel))]
+              (when (and (seq columns) (every? some? columns) (every? some? related))
+                (cond-> {:schema (get-in rel [target-side :schema])
+                         :table table
+                         :column (first columns)
+                         :related-column (first related)
+                         :parent parent?
+                         :resolution (table/resolution-of rel)}
+                  (next columns)
+                  (assoc :columns (mapv (fn [column related-column]
+                                          {:column column :related-column related-column})
+                                        columns related))))))
+          relations)))
+
+(defn- variables-resolving-to
+  "Every known variable that includes real-table among its own resolved
+  source(s), alongside the rename it applies for that specific source -
+  i.e. every variable that could stand in for real-table as a join target."
+  [state real-table]
+  (for [[vname var-ast] (known-variables state)
+        candidate (table/resolve-table {:table vname :schema nil :ast var-ast})
+        :when (= real-table (:table candidate))]
+    [vname (:rename candidate)]))
+
+(defn- has-id-column? [state real-table]
+  (some #(= "id" (:column %)) (get-in state [:references :table real-table :columns])))
+
+(defn relation-hints
+  "Suggestions for what can be piped in next from the current table/variable.
+  Resolves the context through its real source table(s) first (a no-op for a
+  real table), so the same schema-derived relationships used for real joins
+  drive hints too - then layers in cases the plain schema can't express on
+  its own, all variants of the same same-source synthetic join (see
+  docs/named-results.md): another variable standing in for a real target (mirrors
+  seeding a real relationship onto a variable), two variables sharing the
+  same source with no real FK between them, and - symmetrically - the source
+  table itself, when the context is a variable that only restrictedly
+  resolves to it (e.g. `aggregate | tenant`, the reverse of `tenant |
+  aggregate`)."
+  [state token]
+  (let [from-alias (state :context)
+        from-entry (-> state :aliases (get from-alias))
+        from-name  (:table from-entry)
+        sources    (table/resolve-table from-entry)
+        hints
+        (mapcat
+         (fn [{:keys [table schema rename]}]
+           (let [;; Kept apart, not concat'd: which half a relation came out
+                 ;; of is what says whether the suggested table is the
+                 ;; context's parent or its child. The relation itself is
+                 ;; filed under both and doesn't carry the direction.
+                 parents    (-> state :references :table (get table) :refers-to)
+                 children   (-> state :references :table (get table) :referred-by)
+                 real-rel   (seq (concat (for [e parents] [:refers-to e])
+                                         (for [e children] [:referred-by e])))
+                 real-hints (mapcat
+                             (fn [[direction [target relation]]]
+                               (create-hint-from-relation
+                                direction target (relations-of relation) rename {}))
+                             real-rel)
+                 variable-hints (mapcat
+                                 (fn [[direction [target relation]]]
+                                   (mapcat
+                                    (fn [[vname var-rename]]
+                                      (when (not= vname from-name)
+                                        (create-hint-from-relation
+                                         direction vname (relations-of relation) rename var-rename)))
+                                    (variables-resolving-to state target)))
+                                 real-rel)
+                 same-source-hints (when (has-id-column? state table)
+                                     (keep
+                                      (fn [[vname var-rename]]
+                                        (when (not= vname from-name)
+                                          (let [column (table/translate-column var-rename "id")
+                                                related-column (table/translate-column rename "id")]
+                                            (when (and column related-column)
+                                              {:schema nil :table vname
+                                               :column column
+                                               :related-column related-column
+                                               :parent false
+                                               :resolution "synthetic"}))))
+                                      (variables-resolving-to state table)))
+                 ;; The context is itself a restricted variable (non-empty
+                 ;; rename) - the source table it traces back to is just as
+                 ;; valid a same-source candidate as another variable would
+                 ;; be, since it's the same table both times, just reached
+                 ;; through a snapshot on one side. Only fires if the
+                 ;; context's own rename actually exposes "id" - a restricted
+                 ;; variable that never selected id can't reach this join.
+                 self-source-hint (when (and (seq rename) (has-id-column? state table) (not= table from-name))
+                                    (when-let [related-column (table/translate-column rename "id")]
+                                      [{:schema schema :table table
+                                        :column "id"
+                                        :related-column related-column
+                                        :parent false
+                                        :resolution "synthetic"}]))]
+             (concat real-hints variable-hints same-source-hints self-source-hint)))
+         sources)
+        ;; Tables a name given with `as` leads to, `s: resourceId as
+        ;; company_id` to `company`. First, since a bare table joins on them.
+        named (table/named-values state from-alias)
+        named-hints (when (seq named)
+                      (for [[t {:keys [columns]}] (get-in state [:references :table])
+                            :when (and (not= t from-name) (some #(= "id" (:column %)) columns))
+                            :let [{:keys [name]} (some #(table/named-value-target % t) named)]
+                            :when name]
+                        ;; The value names a row of `t`: `t` is its parent.
+                        {:schema nil :table t :column "id" :related-column name
+                         :parent true :resolution "alias"}))]
+    (->> (concat named-hints hints)
+         (filter #(str/includes? (str/lower-case (:table %)) (str/lower-case (or token ""))))
+         (map (fn [h]
+                (if (contains? (known-variables state) (:table h))
+                  (assoc h :schema nil)
+                  h)))
+         distinct
+         ;; Smaller (shorter-named) tables first, e.g. `company` before
+         ;; `company_structure` — mirrors the sort already done in table-hints.
+         (sort-by (comp count :table)))))
+
+;; ---------------------------------------------------------------------------
+;; Path Hints (`? target-table` - all join chains between two tables)
+;; ---------------------------------------------------------------------------
+
+;; A densely-connected schema (e.g. most tables FK'd to a shared tenant/company
+;; hub) can otherwise make the search explode combinatorially - these keep it
+;; bounded rather than trying to be individually "smart" about which paths
+;; matter more.
+(def ^:private max-path-depth 4)
+(def ^:private max-paths 20)
+
+;; A hop/result cap alone doesn't bound how much SEARCHING an unreachable or
+;; genuinely rare target can force - max-paths never engages if nothing is
+;; ever found, and max-path-depth only bounds any one path's length, not how
+;; much of a densely-branching depth-4 space has to be explored before
+;; concluding nothing more exists. This is deliberately wall-clock, not a
+;; fixed expansion count: it directly bounds what actually matters (how long
+;; the search takes) rather than a proxy that would need re-tuning if a
+;; future change alters the cost of a single expansion. Checked once per
+;; queue pop in find-table-paths (see there) - cheap relative to a pop's own
+;; cost, so checking every single time costs nothing worth batching.
+(def ^:private max-search-millis 150)
+
+(defn- real-relation-hints
+  "Single-hop candidates from a REAL table (own schema, with `rename`
+  translating its columns back through whatever a variable might expose them
+  as). This is the real-relation half of relation-hints's per-source lookup,
+  generalized so multi-hop path search can call it again for every
+  intermediate hop - always with an empty rename past the first hop, since
+  every hop after the first is a real table, never a variable."
+  [state table rename]
+  (let [parents  (-> state :references :table (get table) :refers-to)
+        children (-> state :references :table (get table) :referred-by)]
+    (mapcat
+     (fn [[direction [target relation]]]
+       (create-hint-from-relation direction target (relations-of relation) rename {}))
+     (concat (for [e parents] [:refers-to e])
+             (for [e children] [:referred-by e])))))
+
+(defn- same-direction-hints
+  "Single-hop candidates from `table`, restricted to one direction only -
+  either every :refers-to relation (parent? true) or every :referred-by
+  one (parent? false) - used to walk 'the same kind of ownership step'
+  when checking whether a hop is transitively redundant (see
+  redundant-hop? below).
+
+  `relation-lookup` is a `(fn [table] hints)` - always as if called with
+  an empty rename, since this is only ever used on a real intermediate
+  table, same as real-relation-hints past the first hop (a source's own
+  possibly-non-empty rename is the main search loop's business, not this
+  redundancy sub-search's) - and, in find-table-paths, memoized across
+  the whole search, since the same table/direction pair gets asked about
+  repeatedly by many different candidate routes that happen to share a
+  prefix."
+  [relation-lookup table parent?]
+  (filter #(= (:parent %) parent?) (relation-lookup table)))
+
+(defn- redundant-hop?
+  "True if `target` is reachable from `table` via some OTHER same-direction
+  (all :parent parent?) route of at least two hops - i.e. the direct
+  table->target edge in this direction is a transitively redundant
+  shortcut: dropping it loses no reachability, since the same destination
+  is already derivable through a longer, more specific chain. This is
+  transitive reduction (Aho/Garey/Ullman 1972) - the standard graph
+  operation for finding exactly this: the minimal edge set that preserves
+  a DAG's reachability, i.e. which edges are shortcuts implied by a
+  longer path already in the graph.
+
+  This is what a denormalized foreign key looks like: e.g.
+  document.company_id duplicates what company->employee->document
+  already reaches, so it's redundant - as opposed to a genuinely distinct
+  relation like department.lead_worker_id, which ISN'T redundant, because
+  department has no other same-direction route to worker at all. Fan-in
+  (how many tables point at the same target) can't tell these two cases
+  apart on its own - lead_worker_id and company_id might have similar
+  fan-in - only actually checking reachability can.
+
+  `table` itself is never revisited - looping back through the very
+  start doesn't count as an alternate route (some of these ownership
+  graphs contain real cycles once a 'wrong-direction' shortcut FK like
+  lead_worker_id is added - e.g. department->worker->team->department -
+  and going around one of those isn't a genuine alternate path either).
+  This matters even at depth 1: a self-referential FK (e.g.
+  employee.reports_to) puts `table` in its OWN same-direction neighbor
+  set, and without excluding `table` from the very first frontier too, a
+  search would bounce off that self-loop and re-derive `table`'s own
+  direct edges a second time, making every one of them look falsely
+  redundant with itself."
+  [relation-lookup table target parent?]
+  (loop [frontier (->> (same-direction-hints relation-lookup table parent?)
+                       (map :table)
+                       (remove #(or (= % target) (= % table)))
+                       distinct)
+         visited #{table}
+         depth 1]
+    (cond
+      (some #(= % target) frontier) true
+      (or (empty? frontier) (>= depth max-path-depth)) false
+      :else
+      (recur (->> frontier
+                  (mapcat #(same-direction-hints relation-lookup % parent?))
+                  (map :table)
+                  (remove visited)
+                  distinct)
+             (into visited frontier)
+             (inc depth)))))
+
+(defn- path-priority
+  "A path's sort key: fewest transitively-redundant hops first, then
+  fewest direction changes, then fewest total hops as the final tiebreak.
+  Lower sorts first.
+
+  Redundant hops (see redundant-hop? above) are checked first and
+  outrank everything else: a denormalized shortcut FK is the least
+  meaningful reason two tables are 'connected', even when it's also the
+  shortest and most direction-pure route. Direction changes are checked
+  next - a run of hops all in the same direction (all child, e.g.
+  company->employee->document, or all parent, e.g. the same route read
+  backwards) is a coherent 'zoom in' or 'zoom out', equally meaningful
+  either way, which is why this counts CHANGES of direction rather than
+  penalizing one direction over the other - they're symmetric. A path
+  that hops up and then back down (or vice versa) is a detour through a
+  branch unrelated to either table, worth taking only when nothing more
+  direct exists.
+
+  Both are turn-penalty-shaped costs (the technique road-network routers
+  use to penalize a U-turn/reversal, or here, a denormalized shortcut -
+  not just distance): a hop's cost depends on context (the hop before
+  it, or the wider reference graph), not just the hop itself. Rather
+  than track that context as explicit search state, both are just
+  recomputed from the path so far each time (cheap at these lengths) -
+  and since a path can only ever gain redundant hops or turns as it's
+  extended (never lose one), this still makes find-table-paths below a
+  uniform-cost search (Dijkstra's algorithm) rather than plain
+  breadth-first search: paths are popped from the frontier in
+  non-decreasing total cost, so a longer but more meaningful route can
+  outrank a shorter, less meaningful one.
+
+  `redundant?` is a `(fn [from to parent?] bool)` - find-table-paths passes
+  a memoized redundant-hop? (scoped to the whole search), since the exact
+  same (from, to, direction) question recurs constantly across sibling
+  candidate routes that share a prefix, and redundant-hop? runs its own
+  bounded BFS every time it's asked - the loop/frontier-building overhead
+  of redundant-hop? itself, not just the relation lookups inside it (see
+  find-table-paths's own docstring for why both need memoizing)."
+  [redundant? source-table hops]
+  (let [froms (into [source-table] (map :table (butlast hops)))
+        redundant (->> (map vector froms hops)
+                       (filter (fn [[from hop]] (redundant? from (:table hop) (:parent hop))))
+                       count)
+        turns (->> (partition 2 1 hops)
+                   (filter (fn [[a b]] (not= (:parent a) (:parent b))))
+                   count)]
+    [redundant turns (count hops)]))
+
+(defn- piped-table-names
+  "Every real table the expression has already joined - the set both halves
+  of generate-path-hints treat as already visited before a path search even
+  starts. `? target` asks for a route the expression does not already have,
+  so a route that re-enters one of these is not a new route at all: it lands
+  the user in a second copy of a table they already joined, almost always
+  holding the row they started from, just under a second alias. Those
+  suggestions do evaluate (Pine auto-aliases the second occurrence), they
+  are simply not answers to the question asked - and in a hub-and-spoke
+  schema, where the hub is usually the first thing in the pipe, they crowd
+  out the real ones.
+
+  Read off `:tables`, not `:aliases`: a checkpoint (`l:`/`group:`) seals
+  everything before it into a CTE and resets `:tables`, which is exactly
+  right here - a table sealed inside a CTE is no longer joined by the outer
+  query, so joining it out there is a genuinely new join (see
+  ast/main.clj's seal-as-cte).
+
+  Variables are skipped (`:ast` entries, including the synthetic CTE one a
+  checkpoint injects): a variable is a sealed snapshot, and re-joining the
+  real table it was built from is a meaningful, supported join - Pine has a
+  synthetic same-source join for precisely that (see docs/named-results.md).
+  Bare table names, matching what find-table-paths's own `visited` holds."
+  [state]
+  (into #{} (comp (remove :ast) (map :table)) (:tables state)))
+
+(defn- find-table-paths
+  "All simple paths from each of `sources` to `target-table` (optionally
+  narrowed to `target-schema`), walking the same FK/heuristic graph
+  relation-hints walks one hop at a time, popped off a priority queue in
+  path-priority order (see above) rather than level-by-level - so results
+  already come back best-first, not just grouped by depth. A table already
+  used earlier in a given path is never revisited (simple paths only) -
+  this is also why searching a table against itself (`company | ? company`)
+  comes back empty with no special-casing: the source is in its own path's
+  visited set from the start. `excluded` (piped-table-names) extends that
+  same mechanism from the source alone to every table the expression has
+  already joined, so no path re-enters one - same reasoning, one table or
+  all of them. A target that is ITSELF excluded short-circuits to empty
+  rather than searching: no hop into it is ever created, so nothing can
+  ever match, and without the short-circuit that provably-empty case would
+  run the search to exhaustion or the deadline below - the most expensive
+  outcome there is, for the answer that is now the most common one (`t1 |
+  t2 | ? t1`).
+
+  A path is only ever tested against the target when it's POPPED off the
+  queue (in priority order), never at the moment it's created - since
+  path-priority only ever grows as a path is extended (a hop is worth 0 or
+  1, monotonically), whatever gets popped next is guaranteed to be at
+  least as good as anything still waiting, so `found` fills up in true
+  priority order rather than whatever order paths happened to be
+  discovered in (this is the standard uniform-cost/Dijkstra optimality
+  argument, just enumerating every hit instead of stopping at the first).
+  A path stops being expanded once it reaches max-path-depth hops - unlike
+  a global depth counter, this lets a genuinely longer path keep being
+  explored even while shorter, lower-priority paths elsewhere in the
+  queue are still being popped first.
+
+  Three things that used to make this scale badly on a densely-connected
+  schema (confirmed by timing synthetic fixtures - a 150-table shared-hub
+  fixture at several seconds, a 200-table/15-branches-per-table fixture at
+  over a minute - both growing far worse than linearly before this fix):
+
+  - `relation-lookup` memoizes real-relation-hints (always with an empty
+    rename - see same-direction-hints), scoped to this one call - reused
+    for the main search's own expansion below too, whenever an entry's
+    rename is already empty (every hop past the first always is; only a
+    restricted-variable source's very first hop can have a real rename,
+    and that's a handful of calls at most). Without this, the same table
+    got re-queried from scratch every time a different candidate route
+    happened to pass through it.
+  - `redundant?` memoizes redundant-hop? ITSELF (not just the relation
+    lookups inside it), keyed by the (from, to, direction) triple being
+    asked about. This mattered even after the point above: redundant-hop?
+    re-runs its own bounded BFS - building a fresh frontier/visited set,
+    iterating up to max-path-depth times - on every single call, and a
+    factor with 20-ish relations at every hop asks it about a very large
+    number of distinct triples across a single search. Caching the
+    relation lookups it makes internally left that outer loop-and-set
+    overhead unpaid for; caching its own result outright removes it.
+  - Each entry's :priority is computed once, when the entry is created,
+    not recomputed on every comparison - and the queue itself is a real
+    heap (java.util.PriorityQueue, O(log n) push/pop) rather than
+    `sort-by`-ing the entire remaining frontier on every single pop (that
+    was O(n) pops each doing an O(n log n) sort - O(n^2 log n) overall,
+    even before accounting for what each comparison cost).
+    A monotonic :seq tiebreaks entries of otherwise-equal priority, since
+    PriorityQueue (unlike sort-by) isn't stable - without it, routes
+    genuinely tied in priority (e.g. document's two FKs to employee)
+    could come back in a different order from one run to the next.
+
+  None of the above bounds how much SEARCHING an unreachable or genuinely
+  rare target can force in the first place - max-paths never engages if
+  nothing is ever found, and a dense-enough schema can still take a while
+  to exhaust even with cheap per-expansion cost. `deadline` (max-search-
+  millis, checked once per pop) bounds that directly: once time is up,
+  return whatever's been found so far, the same 'bounded, not necessarily
+  exhaustive' guarantee max-path-depth and max-paths already make."
+  [state sources target-table target-schema excluded]
+  (if (contains? excluded target-table)
+    []
+    (let [target? (fn [hop]
+                    (and (= (:table hop) target-table)
+                         (or (nil? target-schema) (= (:schema hop) target-schema))))
+          relation-lookup (memoize (fn [table] (real-relation-hints state table {})))
+          redundant? (memoize (fn [from to parent?] (redundant-hop? relation-lookup from to parent?)))
+          hints-for (fn [table rename] (if (seq rename) (real-relation-hints state table rename) (relation-lookup table)))
+          next-seq (let [counter (atom -1)] (fn [] (swap! counter inc)))
+          make-entry (fn [visited hops table rename origin]
+                       {:visited visited :hops hops :table table :rename rename :origin origin
+                        :priority (path-priority redundant? origin hops)
+                        :seq (next-seq)})
+          queue (java.util.PriorityQueue.
+                 (reify java.util.Comparator
+                   (compare [_ a b]
+                     (compare [(:priority a) (:seq a)] [(:priority b) (:seq b)]))))]
+      (doseq [{:keys [table rename]} sources]
+        (.add queue (make-entry (conj excluded table) [] table rename table)))
+      (let [deadline (+ (System/nanoTime) (* max-search-millis 1000000))]
+        (loop [found []]
+          (if (or (.isEmpty queue) (>= (count found) max-paths) (> (System/nanoTime) deadline))
+            ;; :cut-short says the deadline ended the search, not the
+            ;; search itself (cached-table-paths).
+            (with-meta found {:cut-short (and (not (.isEmpty queue)) (< (count found) max-paths))})
+            (let [{:keys [visited hops table rename origin]} (.poll queue)]
+              (if (and (seq hops) (target? (last hops)))
+                (recur (conj found hops))
+                (do
+                  (when (< (count hops) max-path-depth)
+                    (doseq [hop (->> (hints-for table rename)
+                                     (remove #(contains? visited (:table %))))]
+                      (.add queue (make-entry (conj visited (:table hop)) (conj hops hop)
+                                              (:table hop) {} origin))))
+                  (recur found))))))))))
+
+(def ^:private path-cache-size 64)
+
+;; The last searches' results, most recently used last. A key holds the
+;; schema index's identity, not its value: reindexing or switching
+;; connection makes a new index, so an old entry can't match again.
+(def ^:private path-cache (cache/lru path-cache-size))
+
+(defn- cached-table-paths
+  "find-table-paths, remembered for the same schema index and the same
+  question: the same sources, target and tables already joined. Typing
+  elsewhere in an expression that ends in `? target` asks the same
+  question again, and the search can take its whole time budget.
+
+  A search the deadline cut short runs once more when it is asked again,
+  and the result with more paths is kept. The first search after the
+  server starts runs on a cold JVM and finds less than a later one. After
+  that retry the answer stays the same between keystrokes."
+  [state sources target-table target-schema excluded]
+  (let [references (:references state)
+        k [(System/identityHashCode references) sources target-table target-schema excluded]
+        hit (cache/lookup path-cache k)
+        hit (when (and hit (identical? (:references hit) references)) hit)]
+    (if (and hit (or (:final hit) (not (:cut-short (meta (:paths hit))))))
+      (:paths hit)
+      (let [paths (find-table-paths state sources target-table target-schema excluded)
+            paths (if (and hit (> (count (:paths hit)) (count paths))) (:paths hit) paths)]
+        (cache/store! path-cache k {:references references :paths paths :final (some? hit)})
+        paths))))
+
+(defn- reachable-table-names
+  "Every real table name reachable from `sources` within max-path-depth hops
+  - not full paths (see find-table-paths), just which table *names* are
+  reachable at all. Cheaper than full path enumeration (a table is only
+  ever expanded once, however many parallel edges lead to it) and is what
+  actually answers 'is this a valid destination', since a table this
+  doesn't include is guaranteed to come back with zero paths once fully
+  named anyway. A source table itself is never included - it's excluded
+  from its own reachable set from the start, the same reason
+  find-table-paths always returns empty for `t | ? t`.
+
+  `excluded` (piped-table-names) is blocked the same way, and for the same
+  reason it is in find-table-paths - but it has to be blocked HERE too, not
+  just there: this is what answers 'is this a valid destination' while the
+  target is still being typed, and a table it offers that the path search
+  would then refuse is exactly the zero-paths-once-fully-typed case
+  docs/paths.md promises can't happen."
+  [state sources excluded]
+  (let [blocked (into (into #{} (map :table sources)) excluded)]
+    (loop [frontier (for [{:keys [table rename]} sources] {:table table :rename rename})
+           seen blocked
+           depth 0]
+      (if (or (empty? frontier) (>= depth max-path-depth))
+        (set/difference seen blocked)
+        (let [next (->> frontier
+                        (mapcat (fn [{:keys [table rename]}] (real-relation-hints state table rename)))
+                        (remove #(contains? seen (:table %)))
+                        (map (fn [hop] {:table (:table hop) :rename {}}))
+                        distinct)]
+          (recur next (into seen (map :table next)) (inc depth)))))))
+
+(defn- path->hint
+  "Render one discovered path as {:pine ... :length N :hops [...]}. Each hop
+  keeps the same shape a single-hop table hint already has (schema/table/
+  column/related-column/parent/resolution/pine) - a path is a subset of that,
+  not a new shape - and the path's own :pine is just those hops' :pine joined
+  the same way the user would type them: piped, in order."
+  [hops]
+  (let [hops (mapv #(assoc % :pine (generate-expression %)) hops)]
+    {:pine (str/join " | " (map :pine hops))
+     :length (count hops)
+     :hops hops}))
+
+(defn generate-path-hints
+  "Dispatch for a `? token` operation. While `token` isn't (yet) the exact
+  name of a real table, this is still table-name typeahead (:table bucket)
+  rather than the path search itself - but narrowed to table-hints ∩
+  reachable-table-names, not every table in the schema: a path can be many
+  hops away, so this isn't limited to direct joins from the current
+  context, but it IS limited to tables a path could actually reach, since
+  anything outside that set is guaranteed to resolve to zero paths the
+  moment it's fully typed. Only once `token` names a real table does this
+  run the actual path search (:paths bucket). Both buckets exclude the
+  tables the expression has already joined (piped-table-names)."
+  [state]
+  (let [{token :table target-schema :schema} (-> state :operation :value)
+        current-entry (-> state :aliases (get (state :current)))
+        sources (when current-entry (table/resolve-table current-entry))
+        excluded (piped-table-names state)]
+    (if (and (seq token) (contains? (-> state :references :table) token))
+      (let [paths (cached-table-paths state sources token target-schema excluded)]
+        {:key :paths :hints (map path->hint paths)})
+      (let [reachable (reachable-table-names state sources excluded)]
+        {:key :table
+         :hints (->> (table-hints state token)
+                     (filter #(contains? reachable (:table %)))
+                     (map (fn [h] (assoc h :pine (generate-expression h)))))}))))
+
+(defn generate-table-hints [state]
+  (let [{token :table parent :parent} (-> state :tables reverse first)
+        from-alias (state :context)
+        table-hints (if from-alias
+                      ;; This is not the first table, then filter out the related tables
+                      (relation-hints state token)
+                      ;; This is the first table - get all the tables matching the token
+                      (table-hints state token))
+        ;; Filter by parent if specified
+        table-hints (if parent
+                      (filter #(= (:parent %) true) table-hints)
+                      table-hints)
+        ;; Add pine expression to each hint
+        add-pine-expression (fn [h] (assoc h :pine (generate-expression h)))]
+    (map add-pine-expression table-hints)))
+
+(defn generate-all-column-hints
+  ([state] (generate-all-column-hints state (state :current))) ;; Overload for default `a`
+  ([state a]
+   (let [entry (get (state :aliases) a)
+         explicit-cols (when (:ast entry) (remove table/added-column? (:columns (:ast entry))))]
+     (if (or (not (:ast entry)) (empty? explicit-cols))
+       ;; Real table, or a variable with no explicit columns (`*`) - the CTE
+       ;; implicitly selects everything, so the column list (names, types)
+       ;; is exactly the real underlying table's own schema. Resolve through
+       ;; the same one-hop rule join resolution uses to reach it, even
+       ;; through a chain of variables. Each hint carries the column's
+       ;; database type, as the schema has it (`integer`, `numeric`, `text`):
+       ;; a client can offer only the columns an aggregate can read. A
+       ;; selected column (below) has none.
+       (mapcat (fn [{:keys [table schema]}]
+                 (let [columns (if schema
+                                 (get-in state [:references :schema schema :table table :columns])
+                                 (get-in state [:references :table table :columns]))]
+                   (map #(-> % (select-keys [:column :type]) (assoc :alias a)) columns)))
+               (table/resolve-table entry))
+       ;; Explicit columns: only what was actually selected, under its
+       ;; exposed name. A `t.*` among them is every column of t, as the
+       ;; named result's own state knows them.
+       (->> explicit-cols
+            (mapcat (fn [c]
+                      (if (and (str/blank? (:column c)) (= "*" (:symbol c)) (not (:column-alias c)))
+                        (map :column (generate-all-column-hints (:ast entry) (:alias c)))
+                        [(or (:column-alias c) (:column c))])))
+            distinct
+            (map (fn [column-name] {:column column-name :alias a})))))))
+
+(defn find-relevant-columns [hints column]
+  (if column
+    (filter #(str/includes? (:column %) (:column column)) hints)
+    hints))
+
+(defn exclude-columns
+  "Leave out the hints for columns already listed. A column is its alias and
+  its name: `s: id, ` still offers `u.id`. Pine's own hidden columns (a
+  table's key, see table/added-column?) aren't listed by the user. A path
+  into a JSON column (`data.plan`) doesn't use up the column: `data.region`
+  can still follow."
+  [hints columns]
+  (let [taken (set (keep #(when-not (or (:path %) (table/added-column? %))
+                            [(:alias %) (:column %)])
+                         columns))]
+    (remove #(taken [(:alias %) (:column %)]) hints)))
+
+(defn- stage-aliases
+  "The aliases a column can come from here: the tables of the current
+  stage. A checkpoint (group:, `limit: … per`) seals the tables before it,
+  and they leave (:tables state). The current table comes first, then the
+  others, nearest in the pipe first."
+  [state]
+  (let [current (:current state)
+        others (->> (:tables state) (map :alias) reverse (remove #{current}) distinct)]
+    (if current (cons current others) others)))
+
+(defn- stage-column-hints
+  "The columns of `typed-alias` when one was typed (`s: e.`), else of every
+  table in the stage, in stage-aliases order."
+  [state typed-alias]
+  (mapcat #(generate-all-column-hints state %)
+          (if typed-alias [typed-alias] (stage-aliases state))))
+
+(defn- sort-column-hints
+  "Group the hints by table, in stage-aliases order, and sort each group by
+  the column's length, then its name. A client shows them in this order."
+  [state hints]
+  (let [rank (zipmap (stage-aliases state) (range))
+        last-rank (count rank)]
+    (vec (sort-by (fn [{:keys [alias column]}]
+                    [(get rank alias last-rank) (count column) (str/lower-case column)])
+                  hints))))
+
+(defn generate-where-hints
+  "The columns for a where: condition, from every table in the stage:
+  * `where:`, or after `id = 1 or ` → every column
+  * `w: i` → the columns matching \"i\"
+  * `w: e.i` → the columns of e matching \"i\""
+  [state]
+  (let [partial-condition (get-in state [:operation :value :partial-condition])
+        typing? (and (:column partial-condition) (not (contains? partial-condition :operator)))]
+    (if typing?
+      (find-relevant-columns (stage-column-hints state (:alias partial-condition)) partial-condition)
+      (stage-column-hints state nil))))
+
+(defn generate-update-hints [state]
+  (let [assignments (get-in state [:update :assignments] [])
+        partial-column (get-in state [:update :partial-column])
+        lookup-alias (or (and partial-column (:alias partial-column)) (state :current))
+        ;; update! writes into one table: what's assigned is that table's.
+        assigned-columns (map (fn [a] {:column (get-in a [:column :column]) :alias lookup-alias}) assignments)
+        lookup-alias (or (and partial-column (:alias partial-column)) (state :current))
+        hints (-> (generate-all-column-hints state lookup-alias)
+                  (exclude-columns assigned-columns))]
+    (if partial-column
+      (find-relevant-columns hints partial-column)
+      hints)))
+
+(defn generate-column-hints
+  "The columns for a list of them: select:, order: and the columns after
+  `per`. `listed` is what the list holds so far.
+  * While a column is being typed (`s: id, em`), the columns matching it.
+  * In an empty slot (`s: id, `), the columns not listed yet.
+  Both come from every table in the stage, or from the alias typed before
+  the column (`s: e.em`, `s: e.`)."
+  [state listed]
+  (let [{:keys [type value per partial-alias]} (:operation state)
+        typing (case type
+                 (:select :order) (last value)
+                 :limit (last per)
+                 nil)
+        hints (stage-column-hints state (:alias (or typing partial-alias)))]
+    (cond
+      ;; A computed column is complete: nothing is being typed.
+      (and (= :select type) (:computed typing)) []
+      typing (find-relevant-columns hints typing)
+      (#{:select-partial :order-partial :limit-partial} type) (exclude-columns hints listed)
+      :else hints)))
+
+(defn- computed-hints
+  "The names of the computed columns selected so far, offered like columns
+  where a later step can use them by name: where:, order: and after `per`.
+  Each is marked :computed. Narrowed the way column hints are: by the name
+  being typed, and leaving out the ones already listed."
+  [state op-type]
+  (let [names (keep #(when (and (:computed %) (not (:aggregate %))) (:column-alias %)) (:columns state))
+        hint (fn [n] {:column n :alias (:current state) :computed true})
+        operation (:operation state)
+        typed (fn [names column] (if column (filter #(str/includes? % column) names) names))]
+    (map hint
+         (case op-type
+           :where names
+           :where-partial (let [pc (get-in operation [:value :partial-condition])]
+                            (cond
+                              (or (nil? pc) (contains? pc :operator)) names
+                              (:alias pc) []
+                              :else (typed names (:column pc))))
+           (:order :limit) (let [c (last (if (= :order op-type) (:order state) (get-in state [:limit-per :columns])))]
+                             (if c (typed names (:column c)) names))
+           (:order-partial :limit-partial) (if (:partial-alias operation)
+                                             []
+                                             (let [listed (set (map :column (if (= :order-partial op-type) (:order state) (get-in state [:limit-per :columns]))))]
+                                               (remove listed names)))
+           []))))
+
+(defn- generate-unnest-hints
+  "The columns `unnest:` can read: the JSON columns of every table in the
+  stage, or of the alias typed, `unnest: a.`. SQLite has no JSON type and
+  keeps JSON in text, so there its text columns are offered too (see
+  path/may-hold-json?). When no table has one there are none, and the
+  canvas leaves `unnest` out of its menu.
+  While `unnest: da` is typed, the columns matching `da`. Keys inside a
+  column aren't in the schema, so a path gets none."
+  [state]
+  (let [{:keys [type value partial-alias]} (:operation state)
+        typed (if (= :elements type) value partial-alias)
+        a (:alias typed)]
+    (if (or (seq (:path typed)) (and a (not (contains? (:aliases state) a))))
+      []
+      (let [hints (filter #(path/may-hold-json? state (:alias %) (:column %)) (stage-column-hints state a))]
+        (cond-> hints
+          (seq (:column typed)) (find-relevant-columns typed))))))
+
+(defn- in-json-path?
+  "Whether the name being typed stops inside a JSON path, like `c.data.`.
+  What follows is a key, and keys aren't in the schema, so there are no
+  hints yet."
+  [state]
+  (boolean (or (get-in state [:operation :partial-alias :json-partial])
+               (get-in state [:operation :value :partial-condition :json-partial])
+               (get-in state [:update :partial-column :json-partial]))))
+
+(defn handle
+  "Generate hints based on the current operation.
+   If truncated-state is provided, use it for hint generation context."
+  ([state]
+   (handle state nil))
+  ([state truncated-state]
+   (let [state-for-hints (or truncated-state state)
+         op-type (-> state-for-hints :operation :type)
+         json-path? (in-json-path? state-for-hints)]
+     ;; :paths is handled separately: unlike every other op-type, which bucket
+     ;; it lands in (:table vs :paths) depends on the search's runtime result,
+     ;; not on op-type alone (see generate-path-hints).
+     (cond
+       (= op-type :paths)
+       (let [{:keys [key hints]} (generate-path-hints state-for-hints)]
+         (assoc-in state [:hints key] (or hints [])))
+
+       (#{:elements :unnest-partial} op-type)
+       ;; Its own key: picking one completes the column alone, not `col, `.
+       (assoc-in state [:hints :unnest] (if json-path? [] (sort-column-hints state-for-hints (generate-unnest-hints state-for-hints))))
+
+       :else
+       (let [hints (case (if json-path? :json-path op-type)
+                     :json-path []
+                     :table (generate-table-hints state-for-hints)
+                     :select (generate-column-hints state-for-hints (state-for-hints :columns))
+                     :select-partial (generate-column-hints state-for-hints (state-for-hints :columns))
+                     :order-partial (generate-column-hints state-for-hints (state-for-hints :order))
+                     :order (generate-column-hints state-for-hints (state-for-hints :order))
+                     :where-partial (generate-where-hints state-for-hints)
+                     :where (stage-column-hints state-for-hints nil)
+                     :update-partial (generate-update-hints state-for-hints)
+                     ;; The columns after `per`. A plain limit: has none.
+                     :limit (when (seq (get-in state-for-hints [:operation :per]))
+                              (generate-column-hints state-for-hints (get-in state-for-hints [:limit-per :columns])))
+                     :limit-partial (generate-column-hints state-for-hints (get-in state-for-hints [:limit-per :columns]))
+                     [])
+             hints (if (#{:where :where-partial :order :order-partial :limit-partial} op-type)
+                     (concat hints (computed-hints state-for-hints op-type))
+                     hints)
+             hints (if (and (= :limit op-type) (seq (get-in state-for-hints [:operation :per])))
+                     (concat hints (computed-hints state-for-hints op-type))
+                     hints)
+             hints (if (#{:select :select-partial :order :order-partial
+                          :where :where-partial :update-partial :limit :limit-partial}
+                        op-type)
+                     (sort-column-hints state-for-hints hints)
+                     hints)
+             hint-key (case op-type
+                        :select-partial :select
+                        :order-partial :order
+                        :where-partial :where
+                        :update-partial :update
+                        ;; Under :select, which clients already show, and
+                        ;; whose completion adds `column, `: right for a
+                        ;; list of columns.
+                        (:limit :limit-partial) :select
+                        op-type)]
+         (assoc-in state [:hints hint-key] (or hints [])))))))

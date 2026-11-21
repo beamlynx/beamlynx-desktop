@@ -1,0 +1,244 @@
+# Side effects
+
+Which operations change data, and how a caller refuses to run them.
+
+## Why
+
+Most of Pine reads. Two operations write: `delete!` and `update!`. The grammar
+marks them with `!`, which tells a person reading an expression what it does —
+but only a person. A program that needed the same answer had to match the
+expression text itself.
+
+That is fragile in a way that matters, because the callers who need this answer
+are exactly the ones where being wrong is expensive. beamlynx's MCP server runs
+Pine on behalf of an AI agent, and an agent must not change the database. It used
+to enforce that with a regular expression looking for `delete!` — which silently
+missed `update!`, and missed the `d!` and `u!` short forms too.
+
+So the engine answers the question instead. It parses the expression anyway; it
+already knows which operations are in it.
+
+## What counts as a write
+
+| Operation | Short form |
+| --- | --- |
+| `delete!` | `d!` |
+| `update!` | `u!` |
+
+That is the whole list. Everything else — `select:`, `where:`, `order:`,
+`limit:`, `group:`, `count:`, `from:`, `? table`, a join, a `|= name`
+assignment — only reads.
+
+`delete!` and `update!` are the operations that carry a `!`, and that is not a
+coincidence: the mark and the meaning are the same fact. If an operation writes,
+it has a `!`; if it has a `!`, it writes.
+
+### Which rows `delete!` removes
+
+`delete!` names the column (or columns) that identify the rows to remove, and
+the DELETE matches them against the same columns selected by the expression it
+is piped onto:
+
+```
+company | where: id = 1 | employee | delete! .id
+```
+
+```sql
+DELETE FROM "employee" WHERE "id" IN (
+  SELECT "e_1"."id" FROM "company" AS "c_0"
+    JOIN "employee" AS "e_1" ON "c_0"."id" = "e_1"."company_id"
+  WHERE "c_0"."id" = ? )
+```
+
+Name several columns, comma-separated, and they are matched as a row:
+
+```
+k.case | where: id = 1 | k.case_ref | delete! .case_id, .search_id
+```
+
+```sql
+DELETE FROM "k"."case_ref" WHERE ("case_id", "search_id") IN (
+  SELECT "cr_1"."case_id", "cr_1"."search_id" FROM "k"."case" AS "c_0"
+    JOIN "k"."case_ref" AS "cr_1"
+      ON "c_0"."id" = "cr_1"."case_id" AND "c_0"."search_id" = "cr_1"."search_id"
+  WHERE "c_0"."id" = ? )
+```
+
+This is what a table with a composite key needs. `case_ref` has no single
+column that picks out one of its rows: `case_id` alone matches every reference
+belonging to that case, and `search_id` alone matches references belonging to
+*other* cases entirely. Either one deletes rows nobody asked to delete, and says
+nothing about it. Naming both columns deletes exactly the rows the expression
+selected.
+
+At least one column is required — a bare `delete!` has nothing to match on and
+does not parse.
+
+### Which rows `update!` changes
+
+`update!` finds the rows to change by the table's primary key. You don't name
+it: Pine reads it from the database.
+
+```sql
+UPDATE "employee" SET "name" = ? WHERE "id" IN ( SELECT "e_1"."id" FROM ... )
+```
+
+A key of several columns is matched as a row, the way `delete!` matches several
+named columns:
+
+```sql
+UPDATE "k"."case_ref" SET "note" = ? WHERE ("case_id", "search_id") IN (
+  SELECT "cr_1"."case_id", "cr_1"."search_id" FROM ... )
+```
+
+A table with no primary key, such as a view, is refused: no column is known to
+pick out one row, so the update could change rows nobody meant.
+
+### Conditions on the changed table
+
+A `where:` that reads only the changed table is written twice: in the subquery
+that picks the rows, and on the changed row itself.
+
+```
+case_item | where: reference_id is null | where: status = 'Pending' | update! status = 'Done'
+```
+
+```sql
+UPDATE "case_item" SET "status" = ?
+WHERE "case_item"."reference_id" IS NULL AND "case_item"."status" = ?
+  AND "id" IN ( SELECT "c_0"."id" FROM "case_item" AS "c_0" WHERE ... )
+```
+
+On its own, the second copy changes nothing. It matters when another
+transaction changes one of the rows while the write waits for it. Postgres
+then checks the statement's own `WHERE` again on the new version of the row,
+but not a subquery's. Without the copy, a row someone else has just filled in
+would be overwritten. With it, the row is left alone, as the same `UPDATE`
+written by hand would leave it. `delete!` does the same.
+
+A condition that reads another table, such as `where: name = c.name`, or an
+`in` with a named result, stays in the subquery only.
+
+### A value from another table
+
+A value can read a column of another table in the pipe. Each changed row takes
+the value from the row the pipe joins to it:
+
+```
+employee as e | company as c .id = .company_id | from: e | update! note = c.name
+```
+
+A column of the changed table is written bare, as in `coalesce(c.note, note)`.
+
+The pipe's rows are read once: each changed row's key, and the values it takes
+from the other tables. The `UPDATE` joins them to the changed table by its key.
+That join also picks the rows it changes.
+
+```sql
+UPDATE "employee" SET "note" = "__pine_source__"."__pine_value_1__"
+FROM ( SELECT "e"."id" AS "__pine_key_1__", "c"."name" AS "__pine_value_1__" FROM ... ) AS "__pine_source__"
+WHERE "__pine_source__"."__pine_key_1__" = "employee"."id"
+```
+
+That is Postgres and SQLite. MySQL writes the same join as `UPDATE "employee"
+JOIN ( ... ) AS "__pine_source__" ON ... SET ...`.
+
+The pipe must give each changed row one value. It may reach a row twice with
+the same value. A row it reaches with different values refuses the whole
+`update!`, and nothing changes: "update! found more than one value for some
+rows of `employee`". Before the `UPDATE`, in the same transaction, Pine looks
+for such a row.
+
+One `update!` can't change a table and also read from it. `update! c.name =
+e.note, e.note = c.name` is refused: each table's `UPDATE` runs after the one
+before, so the second would read the first's new values.
+
+### Writes Pine refuses to build
+
+Some writes would act on more rows than the person can have meant. Pine refuses
+to build them, whoever asks, with `error-type: "write-refused"`:
+
+| Expression | Why it's refused |
+| --- | --- |
+| `company \| delete! .id` | Nothing narrows the rows, so it changes the whole table. Add a `where:` or a `limit:` first. |
+| `company \| g: name \| delete! .id` | `group:` collapses rows into groups. The `GROUP BY` would stay in the subquery that picks the rows: an error on Postgres, and on MySQL one arbitrary row per group. |
+| `x \| update! name = 'a'`, where `x` is a grouped named result, or one whose `select:` leaves out its table's key | The write changes the named result's table, finding its rows by the table's key. A group isn't a row of the table, and without the key there is no way to find the rows. See [named-results.md](named-results.md#changing-its-rows-with-update-or-delete). |
+
+A `limit:` sealed into a checkpoint still counts as narrowing.
+`company | l: 10 | employee | delete! .id` deletes the employees of ten
+companies, so it is built. A named result counts only if its own query is
+narrowed. `limit: N per <columns>` ([limit-per.md](limit-per.md)) narrows too:
+`ticket_status | o: created_at desc | l: 1 per ticket_id | delete! .id`
+deletes the latest status of each ticket.
+
+An unresolved join, where Pine found nothing connecting two tables, is refused
+for every operation with `error-type: "unresolved-join"`. It used to render
+with no `ON` clause: a syntax error on Postgres, and on MySQL a cross join that
+a `delete!` would then act on.
+
+An `update!` that ends in a comma is still being typed. `/eval` refuses it with
+`error-type: "incomplete"` rather than running the assignments before the comma.
+
+Every `delete!` and `update!` runs in a transaction, so a statement that fails
+part way leaves nothing half-applied.
+
+`/api/v1/build` still returns the AST and hints for a refused write or an
+unresolved join, since the person is usually still typing. Its `query` is then
+an SQL comment with the reason, and `query-error` and `query-error-type` hold it.
+
+## Finding out: `writes`
+
+Every `/api/v1/eval` response carries a `writes` boolean, and so does every
+`/api/v1/build` response, so a caller can refuse a write before running it.
+
+```json
+{ "connection-id": "...", "writes": false, "result": [...], "columns": [...] }
+```
+
+It is true if **any** operation in the expression writes, not only the last one.
+The last operation is what decides which query gets built, so
+`company | delete! .id | select: name` builds a `SELECT` today and the `delete!`
+does nothing. `writes` still reports `true`. A caller refusing writes should not
+have to depend on that staying true.
+
+## Refusing: `allow-writes`
+
+Send `allow-writes: false` and the endpoint refuses a writing expression instead
+of running it.
+
+```json
+POST /api/v1/eval
+{
+  "expressions": ["company | where: id = 1 | delete! .id"],
+  "connection-id": "...",
+  "allow-writes": false
+}
+```
+
+```json
+{
+  "error-type": "write-refused",
+  "error": "Refusing to run an expression that changes data: delete-action. This caller asked for read-only evaluation.",
+  "writes": true
+}
+```
+
+Nothing is executed. The refusal happens after the expression is built and before
+the query runs, so the database is untouched.
+
+**Leaving the field out means writes are allowed.** Every existing caller keeps
+working, and a person running `delete!` in their own editor is doing it on
+purpose. Only an explicit `false` turns writes off — a missing or malformed value
+never reads as "refuse everything" for a caller that does not send it.
+
+## What this does not do
+
+It does not make a connection read-only. `allow-writes: false` is a property of
+one request, not of the connection, so it protects the caller that asks for it
+and nothing else.
+
+If you want a connection that genuinely cannot be written to — and for a
+connection an agent can reach, you probably do — give it a database role with no
+`INSERT`/`UPDATE`/`DELETE` grant. Schema introspection reads `pg_catalog`, which
+every role can read regardless of grants, so hints and completion still work
+fully on a role with only `SELECT`.

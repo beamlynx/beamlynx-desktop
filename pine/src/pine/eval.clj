@@ -1,0 +1,1688 @@
+(ns pine.eval
+  (:require
+   [cheshire.core :as json]
+   [clojure.string :as s]
+   [pine.access-policy :as access-policy]
+   [pine.ast.table :as table]
+   [pine.computed :as computed]
+   [pine.data-types :as dt]
+   [pine.db.connections :as connections]
+   [pine.db.main :as db]
+   [pine.db.references :as refs]
+   [pine.describe :as describe]))
+
+(def ^:dynamic *dialect*
+  "Which SQL dialect build-query is rendering for - bound once at the top of
+  build-query from the state's :connection-id, then read by every pure
+  string-builder below it in the same call tree (q, casts, date bucketing,
+  the action-subquery wrap). Defaults to :postgres so eval/q and friends
+  stay usable standalone, outside any build-query call, exactly as before
+  dialects existed."
+  :postgres)
+
+(def ^:dynamic *element-aliases*
+  "The aliases of `unnest: a.data as e` in the query being built. On SQLite an
+  element's column holds the element as an SQL value, so `e.value` is
+  written as the element's JSON text (see element-json)."
+  #{})
+
+(declare element-json)
+
+(defn q
+  ([a b]
+   (cond
+     (and (= *dialect* :sqlite) (= "value" b) (contains? *element-aliases* a)) (element-json a)
+     a (str (q a) "." (q b))
+     :else (q b)))
+  ([a]
+   ;; A quote inside the name is written twice. A JSON path column is named
+   ;; after its keys, and a key can hold any character.
+   (let [quote-char (if (= *dialect* :mysql) "`" "\"")]
+     (str quote-char (s/replace (str a) quote-char (str quote-char quote-char)) quote-char))))
+
+(defn- element-json
+  "An element of SQLite's json_each as JSON text. json_each gives a string
+  or a number as its SQL value, true and false as 1 and 0, and an object or
+  an array as its JSON text, which json_extract can't read when it isn't
+  JSON."
+  [a]
+  (let [col #(str (q a) "." (q %))]
+    (str "(CASE " (col "type") " WHEN 'object' THEN " (col "value") " WHEN 'array' THEN " (col "value")
+         " WHEN 'true' THEN 'true' WHEN 'false' THEN 'false' WHEN 'null' THEN 'null'"
+         " ELSE json_quote(" (col "value") ") END)")))
+
+(def ^:dynamic *column-ref*
+  "How a column of a computed value or a condition is written: (fn [alias
+  column] sql). Normally `\"alias\".\"column\"`. The outer query of a
+  terminal group: reads the inner query's columns under other names, and
+  UPDATE has no alias in scope, so those bind it to their own."
+  nil)
+
+(defn- col-ref [alias column]
+  (if *column-ref* (*column-ref* alias column) (q alias column)))
+
+(declare render-value)
+
+(def ^:private mysql-cast-types
+  "Translation table for a user's explicit `::cast` (and the internal
+  ::text cast used to reconcile a mismatched heuristic join) into MySQL's
+  CAST() target vocabulary, which is closed - CAST(x AS TEXT) is a hard
+  syntax error, unlike Postgres's x::text. Anything not listed here is
+  uppercased and passed through, same \"trust the user\" behavior Postgres
+  already has for casts it doesn't specifically know about."
+  {"text" "CHAR" "varchar" "CHAR" "char" "CHAR"
+   "json" "JSON" "jsonb" "JSON"
+   "uuid" "CHAR(36)"
+   "timestamp" "DATETIME" "datetime" "DATETIME"
+   "int" "SIGNED" "integer" "SIGNED" "bigint" "SIGNED" "smallint" "SIGNED"
+   "numeric" "DECIMAL" "decimal" "DECIMAL"
+   "bool" "SIGNED" "boolean" "SIGNED"})
+
+(def ^:private sqlite-cast-types
+  "Translation table for a user's explicit `::cast` into SQLite's CAST()
+  targets. SQLite has no `::`, and a CAST target only picks an affinity, so
+  the names map to the five that matter. Dates and times map to TEXT, not
+  DATE: a cast to DATE gets NUMERIC affinity, which would turn the text
+  `2024-01-31` into the number 2024. Anything not listed is uppercased and
+  passed through, as for the other dialects."
+  {"text" "TEXT" "varchar" "TEXT" "char" "TEXT"
+   "json" "TEXT" "jsonb" "TEXT" "uuid" "TEXT"
+   "date" "TEXT" "timestamp" "TEXT" "datetime" "TEXT" "time" "TEXT"
+   "int" "INTEGER" "integer" "INTEGER" "bigint" "INTEGER" "smallint" "INTEGER"
+   "bool" "INTEGER" "boolean" "INTEGER"
+   "numeric" "NUMERIC" "decimal" "NUMERIC"
+   "real" "REAL" "float" "REAL" "double" "REAL"})
+
+(defn- render-cast
+  "Apply an explicit cast to an already-rendered expression, dialect-aware:
+  Postgres's `expr::cast` suffix vs. MySQL's and SQLite's `CAST(expr AS
+  TYPE)` wrapper."
+  [expr cast]
+  (case *dialect*
+    :mysql (str "CAST(" expr " AS " (get mysql-cast-types (s/lower-case cast) (s/upper-case cast)) ")")
+    :sqlite (str "CAST(" expr " AS " (get sqlite-cast-types (s/lower-case cast) (s/upper-case cast)) ")")
+    (str expr "::" cast)))
+
+(defn- column-ref-with-cast
+  "A column reference, optionally cast - the WHERE-clause column side."
+  [alias column cast]
+  (let [ref (col-ref alias column)]
+    (if cast (render-cast ref cast) ref)))
+
+(defn- auto-cast-placeholder
+  "The `?` placeholder for a value whose column type demands an implicit
+  cast pine adds on the user's behalf (as opposed to an explicit `::cast`
+  the user wrote, which is rendered on the column side instead - see
+  render-cast). Kept deliberately minimal for MySQL: :jsonb needs
+  CAST(? AS JSON), but :uuid and :date render as a bare `?` - MySQL has no
+  UUID type (the value's already a string) and Connector/J binds dates
+  correctly without help, so every unneeded CAST is just a new
+  syntax-error surface for no benefit."
+  [value-type]
+  (case *dialect*
+    :mysql (case value-type :jsonb "CAST(? AS JSON)" "?")
+    ;; SQLite stores what it is given: a json value is already text, a uuid
+    ;; a string, and a date is written as text by the driver.
+    :sqlite "?"
+    (case value-type :jsonb "?::jsonb" :uuid "?::uuid" :date "?::timestamp" "?")))
+
+(defn- enum-placeholder
+  "`?::\"schema\".\"type\"` for a string compared with or written to a
+  Postgres enum column (pine.data-types/convert-value-for-column put the
+  type in :enum), or nil. Postgres has no `=` between an enum and the
+  varchar a string is bound as. Casting the parameter, not the column, keeps
+  an index on the column usable. MySQL compares its ENUM columns with
+  strings as they are, and SQLite has no enums."
+  [value]
+  (when-let [[schema type-name] (and (= *dialect* :postgres) (map? value) (:enum value))]
+    (str "?::" (q schema type-name))))
+
+(defn- value-placeholder
+  "The `?` for a value pine binds, with whatever cast its column needs."
+  [value]
+  (or (enum-placeholder value) (auto-cast-placeholder (:type value))))
+
+(def ^:private like-operators #{"LIKE" "NOT LIKE" "ILIKE" "NOT ILIKE"})
+
+(defn- enum-like-cast
+  "Postgres has no LIKE for an enum, so a Postgres enum column is compared
+  as text there: `\"type\"::text LIKE ?`. Returns the cast to use."
+  [cast operator value]
+  (if (and (nil? cast) (like-operators operator) (enum-placeholder value))
+    "text"
+    cast))
+
+(defn- render-operator
+  "MySQL and SQLite have no ILIKE/NOT ILIKE - map to LIKE. SQLite's LIKE is
+  already case-insensitive for ASCII letters (not for the rest of Unicode),
+  and MySQL's follows the column's collation."
+  [operator]
+  (if (#{:mysql :sqlite} *dialect*)
+    (case operator "ILIKE" "LIKE" "NOT ILIKE" "NOT LIKE" operator)
+    operator))
+
+(defn- json-path-params
+  "The parameters that name a path inside a JSON value. Postgres takes one
+  per key or index. MySQL and SQLite take one path expression,
+  `$.\"address\".\"city\"` or `$.\"tags\"[0]`, with each key quoted so it can hold
+  any character. Keys are typed by the user, so they're always parameters,
+  never SQL text."
+  [path]
+  (if (#{:mysql :sqlite} *dialect*)
+    [(dt/string (apply str "$" (map #(cond (= :* %) "[*]"
+                                           (integer? %) (str "[" % "]")
+                                           :else (str "." (json/generate-string %)))
+                                    path)))]
+    (map #(dt/string (str %)) path)))
+
+(defn- json-root
+  "[sql params] for a JSON value itself, an element of `unnest: a.data as e`:
+  as JSON or as text, as json-extract gives a key."
+  [as x]
+  [(case *dialect*
+     ;; A JSON null is NULL as text, as in json-extract.
+     :mysql (if (= as :text) (str "CASE WHEN JSON_TYPE(" x ") = 'NULL' THEN NULL ELSE JSON_UNQUOTE(" x ") END") x)
+     ;; The value itself, as json_extract gives a key's.
+     :sqlite (str "json_extract(" x ", '$')")
+     (if (= as :text) (str "(" x "::jsonb #>> '{}')") (str x "::jsonb")))
+   []])
+
+(declare json-extract*)
+
+(defn- json-extract
+  "The value at `path` inside the JSON column `col-ref`, as [sql params]:
+  as JSON (`:json`), to compare or sort as JSON values, or as text
+  (`:text`), to show or to match with like. A missing key is NULL. A plain
+  Postgres `json` column is cast to `jsonb`, which a `jsonb` one already is.
+  An empty path is the value itself (see json-root)."
+  [as col-ref path]
+  (if (empty? path)
+    (json-root as col-ref)
+    (json-extract* as col-ref path)))
+
+(defn- json-extract*
+  [as col-ref path]
+  (let [params (json-path-params path)
+        ;; MySQL's JSON_UNQUOTE turns a JSON null into the text 'null'. As
+        ;; text, a JSON null is NULL, as it is on Postgres and SQLite, so the
+        ;; path is read twice there.
+        mysql-text? (and (= *dialect* :mysql) (= as :text))]
+    [(case *dialect*
+       :mysql
+       (let [x (str "JSON_EXTRACT(" col-ref ", ?)")]
+         (if mysql-text?
+           (str "CASE WHEN JSON_TYPE(" x ") = 'NULL' THEN NULL ELSE JSON_UNQUOTE(" x ") END")
+           x))
+
+       ;; SQLite has no JSON type. json_extract gives the value itself, as
+       ;; an SQL integer, real or text, and NULL for a missing key or a JSON
+       ;; null. An object or array comes back as JSON text, which is the
+       ;; same either way, so `as` makes no difference here.
+       :sqlite (str "json_extract(" col-ref ", ?)")
+
+       (str (if (= as :text) "jsonb_extract_path_text(" "jsonb_extract_path(")
+            col-ref "::jsonb, " (s/join ", " (repeat (count params) "?::text")) ")"))
+     (if mysql-text? (concat params params) params)]))
+
+(defn- json-type-sql
+  "[sql params] naming the JSON type of the value at `path`: string, number,
+  boolean, null, object or array, and NULL when the key is missing. Each
+  database has its own names, so they are mapped to Postgres's."
+  [col-ref path]
+  (let [[x params] (json-extract :json col-ref path)]
+    (case *dialect*
+      :mysql
+      [(str "CASE JSON_TYPE(" x ") WHEN 'INTEGER' THEN 'number' WHEN 'UNSIGNED INTEGER' THEN 'number'"
+            " WHEN 'DOUBLE' THEN 'number' WHEN 'DECIMAL' THEN 'number' ELSE LOWER(JSON_TYPE(" x ")) END")
+       (concat params params)]
+
+      ;; json_type, not json_extract: it tells true and false from 1 and 0.
+      ;; It reads the path itself, so its parameter is the path even when
+      ;; the path is empty, an element itself, where json-extract has none.
+      :sqlite
+      (let [t (str "json_type(" col-ref ", ?)")
+            params (json-path-params path)]
+        [(str "CASE " t " WHEN 'true' THEN 'boolean' WHEN 'false' THEN 'boolean' WHEN 'integer' THEN 'number'"
+              " WHEN 'real' THEN 'number' WHEN 'text' THEN 'string' ELSE " t " END")
+         (concat params params)])
+
+      [(str "jsonb_typeof(" x ")") params])))
+
+(def ^:private mysql-json-types
+  {"number" ["INTEGER" "DOUBLE" "DECIMAL" "UNSIGNED INTEGER"]
+   "string" ["STRING"]
+   "boolean" ["BOOLEAN"]})
+
+(defn- json-type-check
+  "SQL that is true when the JSON value `x` has the type `json-type`. Both
+  databases order values of different JSON types instead of refusing to
+  compare them: on Postgres `true > 10` and `{\"a\":1} > 10` are true. So
+  `<` and `>` only compare values of the literal's own type."
+  [x json-type]
+  (case *dialect*
+    :mysql
+    (str "JSON_TYPE(" x ") IN (" (s/join ", " (map #(str "'" % "'") (mysql-json-types json-type))) ")")
+
+    ;; json_extract has already turned the value into an SQL one, so typeof
+    ;; names what it was. A JSON true or false becomes the integer 1 or 0, so
+    ;; a boolean can't be told from a number; and an object or array comes
+    ;; back as text, so it counts as a string.
+    :sqlite
+    (case json-type
+      "number" (str "typeof(" x ") IN ('integer', 'real')")
+      "string" (str "typeof(" x ") = 'text'")
+      "boolean" (str "typeof(" x ") = 'integer'"))
+
+    (str "jsonb_typeof(" x ") = '" json-type "'")))
+
+(defn- json-value-placeholder
+  "The placeholder for a JSON literal compared with a key inside a JSON
+  column. SQLite compares the SQL value json_extract returned, so the literal
+  is unwrapped to its SQL value the same way: `10` to the integer 10, `\"SE\"`
+  to the text SE."
+  []
+  (if (= *dialect* :sqlite)
+    "json_extract(?, '$')"
+    (auto-cast-placeholder :jsonb)))
+
+(defn- in-subquery
+  "MySQL rejects `<verb> <target> ... WHERE id IN ( SELECT ... FROM <same
+  target> ... )` on two counts: ER_UPDATE_TABLE_USED (1093) - can't select
+  from the update/delete target in its own subquery - and error 1235,
+  LIMIT isn't allowed inside an IN subquery (reachable whenever a user
+  writes `| limit: N | delete!`). Wrapping the inner SELECT in a derived
+  table sidesteps both. Identity for Postgres. The inner select holds
+  exactly the columns being matched - one, or the several of a composite
+  key - and nothing else, so SELECT * here passes them straight through."
+  [sql]
+  (case *dialect*
+    :mysql (str "SELECT * FROM ( " sql " ) AS " (q "pine_sub"))
+    sql))
+
+(defn- join-column-ref
+  "Render a join column, casting to text when the two sides of a heuristic
+  join (a naming-convention guess, not a real FK) turn out to have
+  different DB types - e.g. one side stored as varchar, the other as uuid.
+  Real FK joins are never cast: the constraint already guarantees the types
+  line up, so casting would just throw away index usage."
+  [cast alias column]
+  (let [ref (q alias column)]
+    (if cast (render-cast ref cast) ref)))
+
+(defn- json-element-join
+  "[sql params]: true when the JSON array at `path` in `col-ref` holds an
+  element whose value at the keys after `[*]` equals `value-ref`, the other
+  table's column. `.id = .officers[*].id`.
+
+  Each database tests it without unpacking the array into rows, so a row
+  joins once however many elements match. Postgres tests containment, `@>`,
+  which a GIN index on the column can answer when nothing comes before
+  `[*]`. Values compare as JSON: the column's value becomes the JSON value
+  it is, so the number 5 doesn't match the string \"5\"."
+  [col-ref path value-ref]
+  (let [[before [_ & after]] (split-with #(not= :* %) path)]
+    (case *dialect*
+      :mysql
+      [(str "JSON_CONTAINS(JSON_EXTRACT(" col-ref ", ?), JSON_ARRAY(" value-ref "))")
+       (json-path-params path)]
+
+      :sqlite
+      (let [element (q "pine_each")
+            holder-params (json-path-params before)]
+        (if (seq after)
+          [(str "EXISTS (SELECT 1 FROM json_each(" col-ref ", ?) AS " element " WHERE CASE WHEN "
+                element ".\"type\" IN ('object', 'array') THEN json_extract(" element ".\"value\", ?) END = "
+                value-ref ")")
+           (concat holder-params (json-path-params after))]
+          [(str "EXISTS (SELECT 1 FROM json_each(" col-ref ", ?) AS " element " WHERE "
+                element ".\"value\" = " value-ref ")")
+           holder-params]))
+
+      (let [[holder holder-params] (if (seq before)
+                                     (json-extract :json col-ref before)
+                                     [(str col-ref "::jsonb") []])
+            element (reduce (fn [inner _] (str "jsonb_build_object(?::text, " inner ")"))
+                            value-ref
+                            after)]
+        [(str holder " @> jsonb_build_array(" element ")")
+         (concat holder-params (json-path-params after))]))))
+
+(declare render-condition)
+
+(defn- build-on-clause
+  "The ON condition of one join, as [sql params]: every column pair the
+  relation carries, ANDed together. A key made of several columns is simply
+  a longer list here - this does not care how many there are.
+
+  An unresolved join (nothing connects the two tables, so :columns is
+  empty) never gets here: build-join-clause rejects it first.
+
+  A pair with :from-alias compares with that table instead of the join's
+  :from: `fd .id = av.attributeId, .tenant_id = c.tenantId`. Conditions
+  written on the join, `.type = 'entity'`, come after the pairs."
+  [{join-from :from :keys [to columns cast conditions]}]
+  (when (seq columns)
+    (let [pairs (map (fn [{from-column :from to-column :to :keys [from-alias from-cast to-cast from-path to-path from-value-path]}]
+                            ;; A cast written on one side of an explicit
+                            ;; pair, `.resourceableId = .id ::text`, is
+                            ;; that side's alone.
+                       (let [from (or from-alias join-from)
+                             from-ref (join-column-ref (or from-cast cast) from from-column)
+                             to-ref (join-column-ref (or to-cast cast) to to-column)]
+                         (cond
+                                ;; A join from a name given with `as` to a
+                                ;; key inside JSON, or an element: the
+                                ;; value's text. Postgres compares text with
+                                ;; text only, so `id` is cast there.
+                           from-value-path
+                           (let [[x ps] (json-extract :text (q from from-column) from-value-path)]
+                             [(str x " = " (if (= *dialect* :postgres) (render-cast to-ref "text") to-ref)) ps])
+                           from-path (json-element-join (q from from-column) from-path to-ref)
+                           to-path (json-element-join (q to to-column) to-path from-ref)
+                           :else [(str from-ref " = " to-ref) []])))
+                     columns)
+          conditions (concat pairs (map render-condition conditions))]
+      [(str " ON " (s/join " AND " (map first conditions)))
+       (mapcat second conditions)])))
+
+(defn- table-label
+  "schema.table (or just table) for the table behind alias `a`, for messages."
+  [aliases a]
+  (let [{:keys [schema table]} (get aliases a)]
+    (if schema (str schema "." table) (or table a))))
+
+(defn- check-joins-resolved
+  "Throws when a join has nothing connecting its two tables. Such a join
+  would render with no ON clause: a syntax error on Postgres, and on MySQL a
+  cross join of every row with every row, which a delete! would then act on.
+  The error lists the joins that do exist between the two tables."
+  [{:keys [joins connection-id] :as state}]
+  (doseq [{:keys [from to columns] :as join} joins
+          :when (empty? columns)]
+    ;; Without the index, the error still says which tables; it just can't
+    ;; list the joins.
+    (let [references (or (:references state)
+                         (try (db/init-references connection-id) (catch Exception _ {})))]
+      (throw (ex-info (describe/unresolved-join-message state references join)
+                      {:error-type "unresolved-join" :from from :to to})))))
+
+(defn- element-index-sql
+  "An element's position in its array, from 0. Postgres and MySQL number the
+  elements from 1 (see elements-clause); SQLite's json_each gives an array
+  element's index as its `key`."
+  [alias]
+  (if (= *dialect* :sqlite)
+    (q alias "key")
+    (str "(" (q alias "pine_index") " - 1)")))
+
+(defn- elements-clause
+  "[sql params] adding the elements of `unnest: a.data as e`: one row for each
+  element of the array, with the element as JSON in the column `value`. A
+  value that isn't an array has no elements, so its row drops out, where
+  Postgres's own jsonb_array_elements would stop the query with an error.
+  With `index?`, also each element's position, `pine_index`, from 1. With
+  `:left`, the row stays once, with NULL for the element: a LEFT JOIN ON
+  TRUE."
+  [alias {source :alias :keys [column path left]} index?]
+  (let [col (q source column)
+        e (q alias)
+        join (if left "LEFT JOIN " "CROSS JOIN ")
+        on (if left " ON TRUE" "")]
+    (case *dialect*
+      :mysql
+      (let [[h ps] (json-extract :json col path)]
+        [(str join "JSON_TABLE(CASE WHEN JSON_TYPE(" h ") = 'ARRAY' THEN " h " END, '$[*]' COLUMNS ("
+              (q "value") " JSON PATH '$'" (when index? (str ", " (q "pine_index") " FOR ORDINALITY")) ")) AS " e on)
+         (concat ps ps)])
+
+      ;; json_extract gives an array as its JSON text.
+      :sqlite
+      (let [[h ps] (if (empty? path) [col []] (json-extract :json col path))]
+        [(str join "json_each(CASE WHEN json_type(" col ", ?) = 'array' THEN " h " END) AS " e on)
+         (concat (json-path-params path) ps)])
+
+      (let [[h ps] (json-extract :json col path)]
+        [(str join "LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(" h ") = 'array' THEN " h " END)"
+              (when index? " WITH ORDINALITY") " AS " e "(" (q "value") (when index? (str ", " (q "pine_index"))) ")" on)
+         (concat ps ps)]))))
+
+(defn- build-join-clause
+  "The JOINs, as [sql params], in the order of the tables they add. A join
+  on a JSON path has parameters, and so do the elements of `unnest: a.data`."
+  [{:keys [tables joins aliases] :as state}]
+  (check-joins-resolved state)
+  (when (not-empty (rest tables))
+    (let [indexed (set (keep #(when (:element-index %) (:alias %)) (:columns state)))
+          join-sql (fn [{:keys [to type] :as join}]
+                     (let [{to-table :table to-schema :schema} (get aliases to)
+                           join-keyword (if type (str type " JOIN") "JOIN")
+                           [on params] (build-on-clause join)]
+                       [(str join-keyword " " (q to-schema to-table) " AS " (q to) on) params]))
+          ;; Each join adds the table it goes :to.
+          by-table (group-by :to joins)
+          in-order (mapcat (fn [{:keys [alias]}]
+                             (if-let [elements (get-in aliases [alias :elements])]
+                               [(elements-clause alias elements (contains? indexed alias))]
+                               (map join-sql (by-table alias))))
+                           (rest tables))
+          placed (set (map :alias (rest tables)))
+          join-statements (concat in-order (map join-sql (remove #(placed (:to %)) joins)))]
+      [(s/join " " (map first join-statements)) (mapcat second join-statements)])))
+
+(defn- column-sql
+  "[sql params] for one column of a SELECT list, before its `AS` name."
+  [state rules {:keys [column alias symbol col-fn path json-type-of] :as col}]
+  (cond
+    ;; A position isn't a value of the array, so the policy has nothing to
+    ;; decide: add-element-index-columns leaves it out under a masked column.
+    (:element-index col) [(element-index-sql alias) []]
+    (and (seq rules) (access-policy/sensitive-column? state rules col)) [access-policy/redacted-sql-literal []]
+    (:computed col) (render-value (:computed col))
+    json-type-of (json-type-sql (q alias column) path)
+    path (json-extract :text (q alias column) path)
+    ;; Column function (currently date functions)
+    col-fn [(computed/bucket-sql *dialect* col-fn (q alias column)) []]
+    ;; Symbol-based columns (like aggregates)
+    (empty? column) [(if alias (str (q alias) "." symbol) symbol) []]
+    ;; Regular columns
+    :else [(q alias column) []]))
+
+(defn- select-items
+  "The SELECT list, one entry per item: {:expr :params :out-alias :name},
+  where :expr is the SQL before any `AS`, :out-alias the name written after
+  `AS` (or nil), and :name what the result calls the column. `alias.*` is
+  {:star alias}."
+  [{:keys [operation columns current] :as state}]
+  (let [type (-> operation :type)
+        rules (:access-policy state)
+        restricted? (seq rules)
+        ;; An explicit `select: alias.*` is just as opaque to per-column
+        ;; redaction as the implicit current-table `.*` handled below -
+        ;; expand it first so the rest of this function only ever sees real
+        ;; columns (or, for a variable/CTE alias, is left untouched).
+        ;; vec, not mapcat's lazy seq: the later `(into columns expanded)`
+        ;; below relies on conj appending (vector semantics) - conj on a
+        ;; plain seq prepends instead, which would silently put every
+        ;; expanded/auto-id column in reverse order.
+        columns (if restricted?
+                  (vec (mapcat #(access-policy/expand-explicit-star state %) columns))
+                  columns)
+        ;; Separate auto-ID columns from user-selected columns
+        {auto-id-columns true user-columns nil} (group-by #(:auto-id %) columns)
+        ;; `unnest: a.data as e` adds `e` to the result, in place of the
+        ;; columns of the table it was on, until a select: after it says
+        ;; which columns to show. An `e` whose elements another unnest:
+        ;; reads isn't shown either: those are.
+        elements (->> (vals (:aliases state)) (filter :elements) (sort-by :index))
+        sources (set (map #(get-in % [:elements :alias]) elements))
+        chosen (remove table/added-column? user-columns)
+        shown-elements (remove (fn [{:keys [alias index]}]
+                                 (or (sources alias)
+                                     (some #(some-> (:operation-index %) (> index)) chosen)))
+                               elements)
+        ;; Check if any non-auto-ID columns are selected for the current table
+        current-table-has-columns? (or (some #(= (:alias %) current) user-columns)
+                                       (some #(= current (get-in % [:elements :on])) elements))
+        star-eligible? (not (contains? #{:select :delete-action :group} type))
+        ;; Under the access policy, a bare `current.*` is opaque to the
+        ;; per-column check redaction depends on - expand it into an
+        ;; explicit column list (pine.access-policy/expand-star) so each one
+        ;; can be checked and redacted individually. Policy off: unchanged.
+        expanded (when (and restricted? star-eligible? (not current-table-has-columns?))
+                   (access-policy/expand-star state current))
+        columns (if (seq expanded) (into columns expanded) columns)
+        current-table-has-columns? (or current-table-has-columns? (seq expanded))
+        ;; Don't add .* if current table has explicit columns
+        select-all? (and star-eligible? (not current-table-has-columns?))
+        items (mapv (fn [{:keys [column column-alias symbol alias] :as col}]
+                      ;; Under a policy, a `*` left unexpanded goes through
+                      ;; column-sql, which redacts what it can't check.
+                      (if (and (empty? column) (= symbol "*") (not restricted?))
+                        {:star alias}
+                        (let [redact? (and restricted? (access-policy/sensitive-column? state rules col))
+                              [c params] (column-sql state rules col)
+                              ;; A redacted literal loses Postgres' automatic naming of a
+                              ;; bare column reference, so name it explicitly whenever no
+                              ;; explicit column-alias was already going to do that job.
+                              out-alias (or column-alias (when redact? (if (empty? column) symbol column)))]
+                          {:expr c
+                           :params params
+                           :out-alias out-alias
+                           :name (or out-alias (if (empty? column) symbol column))
+                           ;; A bare column reference, which the database
+                           ;; names after the column without an `AS`.
+                           :plain? (and (nil? out-alias) (seq column) (= c (q alias column)))})))
+                    columns)]
+    (cond-> (into items
+                  (when star-eligible?
+                    (for [{e :alias} shown-elements
+                          :let [[c params] (column-sql state rules {:alias e :column "value" :path []})]]
+                      {:expr c :params params :out-alias e :name e})))
+      select-all? (conj {:star current}))))
+
+(defn- item-sql [{:keys [star expr out-alias]}]
+  (cond
+    star (str (q star) ".*")
+    out-alias (str expr " AS " (q out-alias))
+    :else expr))
+
+(defn- build-columns-clause
+  "{:sql :params} for the SELECT list."
+  [state]
+  (let [items (select-items state)]
+    {:sql (str "SELECT " (s/join ", " (map item-sql items)) " FROM")
+     :params (mapcat :params items)}))
+
+(defn- order-term
+  "[sql params] for one sort key. MySQL has no NULLS FIRST or NULLS LAST, so
+  it sorts by whether the value is NULL first: `x IS NULL DESC` puts the
+  NULLs first."
+  [c params direction nulls]
+  (cond
+    (nil? nulls) [(str c " " direction) params]
+    (= *dialect* :mysql) [(str c " IS NULL " (if (= nulls "FIRST") "DESC" "ASC") ", " c " " direction)
+                          (concat params params)]
+    :else [(str c " " direction " NULLS " nulls) params]))
+
+(defn- order-terms
+  "[sql params] for a list of order columns: `\"a\".\"b\" DESC, ...`. A key
+  inside a JSON column sorts as a JSON value, so numbers sort as numbers."
+  [order]
+  (let [parts (map (fn [{:keys [alias column direction nulls path computed]}]
+                     (let [[c params] (cond
+                                        computed (render-value computed)
+                                        path (json-extract :json (q alias column) path)
+                                        :else [(q alias column) []])]
+                       (order-term c params direction nulls)))
+                   order)]
+    [(s/join ", " (map first parts)) (mapcat second parts)]))
+
+(defn- build-order-clause
+  "[sql params] for ORDER BY, or nil."
+  [{:keys [order]}]
+  (when (seq order)
+    (let [[sql params] (order-terms order)]
+      [(str "ORDER BY " sql) params])))
+
+(defn- remove-symbols
+  "Remove symbols or columns from a vector of values"
+  [vs]
+  (filter #(not (#{:symbol :column :named-result} (:type %))) vs))
+
+(defn- build-group-clause
+  "[sql params] for GROUP BY, or nil. `items` is the SELECT list
+  (select-items), for the position of a computed column."
+  [{:keys [group]} items]
+  (when (seq group)
+    (let [position (fn [n] (some (fn [[i item]] (when (= n (:name item)) (inc i))) (map-indexed vector items)))
+          parts (map (fn [{:keys [alias column column-alias col-fn path computed]}]
+                       (cond
+                         ;; A computed column groups by its place in the
+                         ;; SELECT list. Its name would be read as a table
+                         ;; column first, and its value written again has
+                         ;; parameters of its own, which Postgres doesn't
+                         ;; take for the same expression.
+                         computed [(str (position column-alias)) []]
+                         ;; Use the column alias for columns with functions applied,
+                         ;; and for keys inside a JSON column: the SELECT list names them
+                         (or col-fn path) [(q column-alias) []]
+                         ;; Use the full qualified column for regular columns
+                         :else [(q alias column) []]))
+                     group)]
+      [(str "GROUP BY " (s/join ", " (map first parts))) (mapcat second parts)])))
+
+(defn- render-comparison
+  "`<column-sql> <operator> <value>`, with the column already rendered."
+  [column-sql cast operator value]
+  (cond
+    ;; `in <named result>`: the values its one column returns (pine.ast.where
+    ;; filled in :column). Its CTE is emitted by all-ctes.
+    (= (:type value) :named-result)
+    (str column-sql " " (render-operator operator) " ( SELECT " (q (:column value)) " FROM " (q (:value value)) " )")
+
+    (or (= operator "IN") (= operator "NOT IN"))
+    ;; A map here is an unbound `in $variable` (pine.variables): one `?`
+    ;; standing for the list, shown as `$name` by formatted-query.
+    (str column-sql " " (render-operator operator) " ("
+         (if (map? value) "?" (s/join ", " (map #(or (enum-placeholder %) "?") value))) ")")
+    :else
+    (str column-sql " " (render-operator operator) " "
+         (cond
+           (= (:type value) :symbol) (:value value)
+           (= (:type value) :column) (let [[a col] (:value value)] (col-ref a col))
+           ;; Cast the parameter/value, not the column (unless explicit cast)
+           :else (if cast "?" (value-placeholder value))))))
+
+(defn- value-params
+  "The parameters a condition's value binds: none for a symbol, a column or
+  a named result, one per item of an `in` list."
+  [value]
+  (->> [value] remove-symbols flatten))
+
+(defn- render-path-condition
+  "[sql params] for a condition on a key inside a JSON column. `=`, `!=`,
+  `<` and `>` compare JSON values (pine.ast.where made the literal one).
+  `like`, `in` and `is null` compare the value as text."
+  [{alias :alias col :column :keys [cast operator value path]}]
+  (let [ref (col-ref alias col)
+        [json-x json-params] (json-extract :json ref path)
+        [text-x text-params] (json-extract :text ref path)]
+    (cond
+      (and (#{">" "<" ">=" "<="} operator) (:json-type value))
+      [(str "(" (json-type-check json-x (:json-type value)) " AND " json-x " " operator " " (json-value-placeholder) ")")
+       (concat json-params json-params (value-params value))]
+
+      (= :jsonb (:type value))
+      [(str json-x " " operator " " (json-value-placeholder)) (concat json-params (value-params value))]
+
+      ;; MySQL's JSON_UNQUOTE turns a JSON null into the text 'null', so
+      ;; missing and null are told apart by JSON_TYPE instead.
+      (and (= *dialect* :mysql) (#{"IS" "IS NOT"} operator))
+      [(str "COALESCE(JSON_TYPE(" json-x "), 'NULL') " (if (= operator "IS") "=" "<>") " 'NULL'") json-params]
+
+      :else
+      [(render-comparison (if cast (render-cast text-x cast) text-x) cast operator value)
+       (concat text-params (value-params value))])))
+
+(defn- render-period-condition
+  "[sql params] for a comparison with a period of days, `created_at =
+  today()`: with its range, from its first day up to the first day after it
+  (pine.computed/period-bounds). Equal means within it, and greater means
+  after it ends. The column is left bare, so an index on it still serves."
+  [left left-params operator period]
+  (let [[start end] (computed/period-bounds *dialect* period)
+        sql (case operator
+              "="  (str "(" left " >= " start " AND " left " < " end ")")
+              "!=" (str "(" left " < " start " OR " left " >= " end ")")
+              ">"  (str left " >= " end)
+              ">=" (str left " >= " start)
+              "<"  (str left " < " start)
+              "<=" (str left " < " end)
+              (throw (ex-info (str "`" period "()` is a period of days. Compare it with =, !=, <, <=, > or >=.")
+                              {:error-type "period-operator"})))]
+    [sql left-params]))
+
+(defn- render-condition
+  "[sql params] for one condition. The column may be a computed column's
+  value (:computed), and the value a computed value, `> now()`, or a
+  period, `= today()`."
+  [{alias :alias col :column :keys [cast operator value path computed] :as condition}]
+  (cond
+    (and (= :computed (:type value)) (computed/period? (:node value)))
+    (let [[left left-params] (cond
+                               computed (let [[x ps] (render-value computed)] [(if cast (render-cast x cast) x) ps])
+                               path (json-extract :text (col-ref alias col) path)
+                               :else [(column-ref-with-cast alias col cast) []])]
+      (render-period-condition left left-params operator (:fn (:node value))))
+
+    (= :computed (:type value))
+    (let [[left left-params] (if computed
+                               (let [[x ps] (render-value computed)] [(if cast (render-cast x cast) x) ps])
+                               [(column-ref-with-cast alias col cast) []])
+          [right right-params] (render-value (:node value))]
+      [(str left " " (render-operator operator) " " right) (concat left-params right-params)])
+
+    computed
+    (let [[x ps] (render-value computed)]
+      [(render-comparison (if cast (render-cast x cast) x) cast operator value) (concat ps (value-params value))])
+
+    path
+    (render-path-condition condition)
+
+    :else
+    (let [cast (enum-like-cast cast operator value)]
+      [(render-comparison (column-ref-with-cast alias col cast) cast operator value) (value-params value)])))
+
+(defn- render-or
+  "[sql params] for conditions joined with or, in parentheses."
+  [conditions]
+  (let [rendered (map (fn [c]
+                        (if-let [group (:or c)]
+                          (let [r (map render-condition group)]
+                            [(str "(" (s/join " OR " (map first r)) ")") (mapcat second r)])
+                          (render-condition c)))
+                      conditions)]
+    [(str "(" (s/join " OR " (map first rendered)) ")")
+     (mapcat second rendered)]))
+
+(defn- render-literal
+  "[sql params] for a literal. Numbers, true, false and NULL are written
+  into the SQL; strings and dates are parameters, as everywhere else."
+  [{:keys [type value] :as v}]
+  (case type
+    :number [(str value) []]
+    :symbol [(s/upper-case (str value)) []]
+    :boolean [(if value "TRUE" "FALSE") []]
+    [(value-placeholder v) [v]]))
+
+(declare render-if)
+
+(defn- render-json
+  "[sql params] for a value as JSON, for a function that reads JSON
+  (pine.computed's :json-args). A key inside a JSON column is its JSON
+  value, not its text: `\"5\"` stays a string. SQLite's json_extract gives
+  the text of a string, so there the key is read with `->`, which gives
+  JSON. A Postgres `json` column is cast to `jsonb`, and a string literal
+  is JSON text."
+  [node]
+  (let [{:keys [kind alias column path cast value]} node]
+    (cond
+      (and (= :column kind) (nil? cast) path (empty? path) (= *dialect* :sqlite))
+      [(col-ref alias column) []]
+
+      (and (= :column kind) (nil? cast) (seq path))
+      (if (= *dialect* :sqlite)
+        (let [params (json-path-params path)] [(str "(" (col-ref alias column) " -> ?)") params])
+        (json-extract :json (col-ref alias column) path))
+
+      (and (= :column kind) (nil? cast) (= *dialect* :postgres))
+      [(str (col-ref alias column) "::jsonb") []]
+
+      (and (= :literal kind) (= :string (:type value)))
+      [(case *dialect* :sqlite "json(?)" (auto-cast-placeholder :jsonb)) [value]]
+
+      (= :if kind) (render-if node render-json)
+
+      :else (render-value node))))
+
+(defn- render-call [node]
+  (let [{f :render json-args? :json-args} (get computed/functions (:fn node))
+        [x ps] (if json-args?
+                 (f *dialect* (map render-json (:args node)))
+                 (let [rendered (map render-value (:args node))]
+                   [(f *dialect* (map first rendered)) (mapcat second rendered)]))]
+    [(if-let [cast (:cast node)] (render-cast x cast) x) ps]))
+
+(defn render-value
+  "[sql params] for a resolved computed value (see pine.computed)."
+  [node]
+  (case (:kind node)
+    :column (let [{:keys [alias column path cast]} node
+                  [x ps] (if path (json-extract :text (col-ref alias column) path) [(col-ref alias column) []])]
+              [(if cast (render-cast x cast) x) ps])
+    :literal (render-literal (:value node))
+    :call (render-call node)
+    ;; A condition used as a value is true or false (1 or 0 on MySQL and
+    ;; SQLite), or NULL where SQL's comparison is.
+    :condition (render-or (:conditions node))
+    :if (render-if node render-value)
+    :aggregate (let [[a aps] (when (:arg node) (render-value (:arg node)))
+                     [f fps] (when (:filter node) (render-value (:filter node)))
+                     render (get-in computed/functions [(:fn node) :render])]
+                 ;; MySQL puts the filter before the argument (CASE WHEN f THEN a).
+                 [(render *dialect* a f)
+                  (if (and (= *dialect* :mysql) f) (concat fps aps) (concat aps fps))])))
+
+(defn- render-if
+  "[sql params] for an if. `if a then x else if b then y else z` is one CASE
+  with two WHENs. `render` renders the branches: as JSON, they all are."
+  [node render]
+  (let [branches (loop [n node acc []]
+                   (if (= :if (:kind n))
+                     (recur (:else n) (conj acc n))
+                     [acc n]))
+        [ifs else-node] branches
+        parts (mapcat (fn [{w :when t :then}]
+                        (let [[ws wps] (render-value w)
+                              [ts tps] (render t)]
+                          [[(str " WHEN " ws " THEN " ts) (concat wps tps)]]))
+                      ifs)
+        [es eps] (when else-node (render else-node))]
+    [(str "CASE" (apply str (map first parts)) (when es (str " ELSE " es)) " END")
+     (concat (mapcat second parts) eps)]))
+
+(defn- build-where-clause
+  "[sql params] for WHERE, or nil."
+  [where]
+  (when (not-empty where)
+    (let [parts (for [entry where]
+                  ;; A {:or [...]} entry is the conditions of one where:
+                  ;; segment joined with `or` -- one parenthesized OR group.
+                  (if-let [conditions (:or entry)]
+                    (let [rendered (map render-condition conditions)]
+                      [(str "(" (s/join " OR " (map first rendered)) ")") (mapcat second rendered)])
+                    (render-condition entry)))]
+      [(str "WHERE " (s/join " AND " (map first parts))) (mapcat second parts)])))
+
+(def ^:private rows-alias
+  "The derived table a per-group limit filters." "__pine_rows__")
+(def ^:private group-row-column
+  "A row's place in its group, from 1." "__pine_row__")
+(defn- group-key-column
+  "The name the i-th column after `per` is carried out of the derived table
+  under, from 1, so the outer query can sort the groups by it."
+  [i]
+  (str "__pine_key_" i "__"))
+
+(defn- partition-parts
+  "[sql params] for each column after `per`. A key inside a JSON column
+  groups by its value as text."
+  [columns]
+  (map (fn [{:keys [alias column path computed]}]
+         (cond
+           computed (render-value computed)
+           path (json-extract :text (q alias column) path)
+           :else [(q alias column) []]))
+       columns))
+
+(defn- partition-terms
+  "[sql params] for the columns after `per`."
+  [columns]
+  (let [parts (partition-parts columns)]
+    [(s/join ", " (map first parts)) (mapcat second parts)]))
+
+(defn- row-number
+  "[sql params] for `ROW_NUMBER() OVER (...) AS name`."
+  [partition order name]
+  (let [[p-sql p-params] (when (seq partition) (partition-terms partition))
+        [o-sql o-params] (when (seq order) (order-terms order))]
+    [(str "ROW_NUMBER() OVER ("
+          (s/join " " (filter some? [(when p-sql (str "PARTITION BY " p-sql))
+                                     (when o-sql (str "ORDER BY " o-sql))]))
+          ") AS " (q name))
+     (concat p-params o-params)]))
+
+(defn- spell-out-stars
+  "The SELECT list with each `alias.*` replaced by its columns, from the
+  names pine.ast.limit recorded."
+  [items {:keys [star-columns]} aliases]
+  (vec (mapcat (fn [{:keys [star] :as item}]
+                 (if star
+                   (let [columns (get star-columns star)]
+                     (when (empty? columns)
+                       (throw (ex-info (str "`" (table-label aliases star) "` isn't in the schema index, so limit: ... per "
+                                            "can't list its columns. Re-index the connection, or select its columns by name.")
+                                       {:error-type "unknown-columns" :alias star})))
+                     (map (fn [column] {:expr (q star column) :params [] :name column :plain? true}) columns))
+                   [item]))
+               items)))
+
+(defn- inner-names
+  "The name each item has inside the derived table. A derived table can't
+  hold two columns of the same name, so where names clash (`c.id` next to
+  `o.*`), each clashing item is named after its position instead. MySQL
+  compares names without case, so clashes are found the same way."
+  [items]
+  (let [lower (map #(s/lower-case (:name %)) items)
+        clashing (set (keep (fn [[k n]] (when (> n 1) k)) (frequencies lower)))]
+    (map-indexed (fn [i {:keys [name]}]
+                   (if (clashing (s/lower-case name)) (str "__pine_c" i "__") name))
+                 items)))
+
+(defn- build-per-group-select
+  "`limit: N per <columns>`: the first N rows of each group. ROW_NUMBER()
+  can't be filtered on in the query that computes it, so the query is built
+  as usual, with each row's place in its group added, and an outer query
+  keeps the rows up to N. The outer query names its columns one by one, so
+  the row numbers stay out of the result.
+
+  The result comes in groups: each group's rows together, sorted by the
+  group's columns, and inside a group in the order: before `per`, which is
+  also what decides which rows are first. The group's columns may not be in
+  the result, so the inner query carries each one out under its own name."
+  [state]
+  (let [{:keys [tables limit where aliases limit-per]} state
+        from         (let [{a :alias} (first tables)
+                           {table :table schema :schema} (get aliases a)]
+                       (str (q schema table) " AS " (q a)))
+        items        (spell-out-stars (select-items state) limit-per aliases)
+        names        (inner-names items)
+        inner-items  (map (fn [{:keys [expr plain? name]} inner-name]
+                            (if (and plain? (= name inner-name)) expr (str expr " AS " (q inner-name))))
+                          items names)
+        outer-items  (map (fn [{:keys [name]} inner-name]
+                            (str (q rows-alias inner-name) (when (not= name inner-name) (str " AS " (q name)))))
+                          items names)
+        key-parts    (partition-parts (:columns limit-per))
+        key-names    (map group-key-column (range 1 (inc (count key-parts))))
+        key-items    (map (fn [[expr _] key-name] (str expr " AS " (q key-name))) key-parts key-names)
+        [group-row group-row-params] (row-number (:columns limit-per) (:order limit-per) group-row-column)
+        [join join-params] (build-join-clause state)
+        [where-clause where-params] (build-where-clause where)
+        inner (s/join " " (filter some? [(str "SELECT " (s/join ", " (concat inner-items key-items [group-row])) " FROM")
+                                         from join where-clause]))
+        order-by (s/join ", " (map #(q rows-alias %) (concat key-names [group-row-column])))
+        query (s/join " " (filter some? [(str "SELECT " (s/join ", " outer-items))
+                                         (str "FROM ( " inner " ) AS " (q rows-alias))
+                                         (str "WHERE " (q rows-alias group-row-column) " <= " (:n limit-per))
+                                         (str "ORDER BY " order-by)
+                                         (when limit (str "LIMIT " limit))]))
+        ;; In the order their `?` appear in the query.
+        params (concat (mapcat :params items) (mapcat second key-parts) group-row-params join-params where-params)]
+    {:query query :params (seq params)}))
+
+(defn- build-plain-select [state]
+  (let [{:keys [tables _columns limit where aliases]} state
+        from         (let [{a :alias} (first tables)
+                           {table :table schema :schema} (get aliases a)]
+                       (str (q schema table) " AS " (q a)))
+        select       (build-columns-clause state)
+        [join join-params] (build-join-clause state)
+        [where-clause where-params] (build-where-clause where)
+        [group group-params] (build-group-clause state (select-items state))
+        [order order-params] (build-order-clause state)
+        limit (when limit (str "LIMIT " limit))
+        query (s/join " " (filter some? [(:sql select) from join where-clause group order limit]))
+        ;; In the order their `?` appear in the query.
+        params (concat (:params select) join-params where-params group-params order-params)]
+
+    {:query query :params (seq params)}))
+
+(defn- element-aliases [state]
+  (set (keep (fn [[a {:keys [elements]}]] (when elements a)) (:aliases state))))
+
+(defn- build-bare-select [state]
+  ;; Every SELECT Pine builds goes through here, named results' bodies
+  ;; included, so this is where hidden columns are kept out of where:,
+  ;; order:, group: and `per`.
+  (access-policy/check-references state (:access-policy state))
+  (binding [*element-aliases* (element-aliases state)]
+    (if (:limit-per state)
+      (build-per-group-select state)
+      (build-plain-select state))))
+
+(defn- build-cte-body
+  "Generate the inner SQL for a variable's AST used as a CTE.
+  When the current table has no explicit user columns, .* is added and already
+  includes the key - so the hidden key columns are dropped to avoid duplicate
+  names. When explicit columns are present (no .*), they are kept but their
+  alias is stripped so the key is accessible for join conditions.
+  Returns {:query ... :params ...}."
+  [ast]
+  (let [current-alias    (:current ast)
+        user-columns     (remove table/added-column? (:columns ast))
+        has-explicit?    (some #(= (:alias %) current-alias) user-columns)
+        columns          (keep (fn [col]
+                                 (cond
+                                   ;; Only the results grid reads a JSON type.
+                                   (:json-type-of col) nil
+                                   (and (:auto-id col) (= (:alias col) current-alias))
+                                   (when has-explicit? (dissoc col :column-alias))
+                                   :else col))
+                               (:columns ast))]
+    (build-bare-select (assoc ast :columns columns))))
+
+(declare all-ctes)
+
+(defn- dedupe-ctes [ctes]
+  (->> ctes
+       (reduce (fn [[seen acc] [name _ _ :as cte]]
+                 (if (contains? seen name)
+                   [seen acc]
+                   [(conj seen name) (conj acc cte)]))
+               [#{} []])
+       second))
+
+(defn- cte-for
+  "A named result's own CTE, after every CTE it needs itself."
+  [name ast]
+  (let [{:keys [query params]} (build-cte-body ast)]
+    (conj (vec (all-ctes ast)) [name query params])))
+
+(defn- collect-ctes
+  "Recursively collect [name query params] triples from variable tables in
+  topological order (deepest dependencies first). Deduplicates by name."
+  [tables aliases]
+  (->> tables
+       (mapcat (fn [{:keys [alias]}]
+                 (let [entry (get aliases alias)]
+                   (when-let [ast (:ast entry)]
+                     (cte-for (:table entry) ast)))))
+       dedupe-ctes))
+
+(defn- all-ctes
+  "Every CTE a state needs: the named results it uses as tables, and those
+  it uses after `in` (pine.ast.where's :value-ctes), each after its own
+  dependencies. Deduplicates by name."
+  [state]
+  (dedupe-ctes (concat (collect-ctes (:tables state) (:aliases state))
+                       (mapcat (fn [[name ast]] (cte-for name ast)) (:value-ctes state)))))
+
+(defn build-select-query [state]
+  (let [ctes        (all-ctes state)
+        result      (build-bare-select state)
+        cte-params  (mapcat #(nth % 2 nil) ctes)
+        cte-prefix  (when (seq ctes)
+                      (str "WITH "
+                           (s/join ", " (map (fn [[name body _]]
+                                               (str (q name) " AS ( " body " )"))
+                                             ctes))
+                           " "))]
+    (-> result
+        (update :query  #(str cte-prefix %))
+        (update :params #(seq (concat cte-params %))))))
+
+(defn build-count-query [state]
+  (let [{:keys [query params]} (build-select-query state)]
+    {:query (str "WITH x AS ( " query " ) SELECT COUNT(*) FROM x")
+     :params params}))
+
+(defn- aggregate-inputs
+  "{[alias column] inner-name}: the columns the aggregates of a terminal
+  group: read. The outer query only sees the inner query's columns, so each
+  is selected there under a name of its own."
+  [columns]
+  (let [refs (->> columns
+                  (filter :aggregate)
+                  (mapcat #(computed/columns (:computed %)))
+                  (map (juxt :alias :column))
+                  distinct)]
+    (into {} (map-indexed (fn [i ref] [ref (str "__pine_a" i "__")]) refs))))
+
+(defn- build-inner-select-for-group
+  "Build the inner SELECT for a GROUP query CTE. Includes non-aggregate
+  columns, and the columns the aggregates read (aggregate-inputs)."
+  [state]
+  (access-policy/check-references state (:access-policy state))
+  (let [{:keys [tables columns where aliases joins]} state
+        {a :alias} (first tables)
+        {table :table schema :schema} (get aliases a)
+        ;; Filter out aggregate function columns (those with :symbol but no :column)
+        non-aggregate-cols (filter #(or (:column %) (:auto-id %) (and (:computed %) (not (:aggregate %)))) columns)
+        ;; Build SELECT clause using the same logic as regular queries, but add aliases to all columns
+        rules (:access-policy state)
+        select-parts (concat
+                      (map (fn [{:keys [column column-alias] :as col}]
+                             (let [[c params] (column-sql state rules col)
+                                   ;; Always use an alias: either column-alias or column name
+                                   col-alias (or column-alias column)]
+                               [(str c " AS " (q col-alias)) params]))
+                           non-aggregate-cols)
+                      (map (fn [[[alias column] inner-name]]
+                             [(str (q alias column) " AS " (q inner-name)) []])
+                           (aggregate-inputs columns)))
+        ;; A bare count over no keys reads no column. Only Postgres takes a
+        ;; SELECT of nothing, so it selects 1.
+        select-clause (str "SELECT " (if (seq select-parts) (s/join ", " (map first select-parts)) "1"))
+        from (str "FROM " (q schema table) " AS " (q a))
+        [join join-params] (build-join-clause {:tables tables :joins joins :aliases aliases})
+        [where-clause where-params] (build-where-clause where)]
+    {:query (s/join " " (filter some? [select-clause from join where-clause]))
+     :params (concat (mapcat second select-parts) join-params where-params)}))
+
+(defn- build-outer-select-for-group
+  "Build the outer SELECT for a GROUP query. References CTE columns and includes aggregates."
+  [cte-alias {:keys [columns group] :as state}]
+  (let [;; Get group columns - use column-alias if present, otherwise column name
+        group-cols (map #(or (:column-alias %) (:column %)) group)
+        inputs (aggregate-inputs columns)
+        rules (:access-policy state)
+        select-items (map (fn [{:keys [column column-alias symbol aggregate computed] :as col}]
+                            (cond
+                              ;; An aggregate over a value reads the inner
+                              ;; query's columns, under their names there.
+                              aggregate
+                              (if (and (seq rules) (access-policy/sensitive-column? state rules col))
+                                [(str access-policy/redacted-sql-literal " AS " (q column-alias)) []]
+                                (let [[x params] (binding [*column-ref* (fn [a c] (q cte-alias (get inputs [a c] c)))]
+                                                   (render-value computed))]
+                                  [(str x " AS " (q column-alias)) params]))
+
+                             ;; Aggregate function (has symbol, no column)
+                              (and symbol (empty? column))
+                              [(if column-alias
+                                 (str symbol " AS " (q column-alias))
+                                 symbol) []]
+                             ;; Non-aggregate column - reference from CTE
+                             ;; Use the same alias that was assigned in the inner query
+                              :else [(q cte-alias (or column-alias column)) []]))
+                          columns)
+        ;; No keys (`group: with count as n`): one group, the whole table.
+        group-by (if (seq group-cols)
+                   (str "GROUP BY " (s/join ", " (map #(q cte-alias %) group-cols)))
+                   "")]
+    {:select (str "SELECT " (s/join ", " (map first select-items)) " FROM " (q cte-alias))
+     :params (mapcat second select-items)
+     :group-by group-by}))
+
+(defn- group-cte-name
+  "The name of the CTE a terminal group: reads from: `x_N`, N the group's
+  step, unless that is already taken by a CTE this query defines, a table or
+  alias it reads, or a named result. Then `x_N_2`, `x_N_3`, and so on. Two
+  CTEs of one name are refused by the database, and a table of that name
+  would be shadowed by the CTE."
+  [{:keys [aliases named-results pending-assignments]} index ctes]
+  (let [taken (into #{}
+                    (map s/lower-case)
+                    (concat (map first ctes)
+                            (keys aliases)
+                            (keep :table (vals aliases))
+                            (keys named-results)
+                            (keys pending-assignments)))
+        base (str "x_" index)]
+    (->> (cons base (map #(str base "_" %) (iterate inc 2)))
+         (remove #(taken (s/lower-case %)))
+         first)))
+
+(defn build-group-query [state]
+  (let [{:keys [index tables aliases]} state
+        ;; A checkpoint/variable feeding into a terminal GROUP (e.g. `|= x |
+        ;; g: ...`) needs its own CTE emitted too -- this path used to skip
+        ;; collect-ctes entirely (unlike build-select-query, which already
+        ;; calls it), so the user-named CTE was never defined and the group's
+        ;; wrapper CTE (below) referenced it as a dangling bare relation.
+        ctes        (all-ctes state)
+        cte-params  (mapcat #(nth % 2 nil) ctes)
+        cte-prefix  (when (seq ctes)
+                      (str (s/join ", " (map (fn [[name body _]]
+                                               (str (q name) " AS ( " body " )"))
+                                             ctes))
+                           ", "))
+        cte-alias (group-cte-name state index ctes)
+        ;; Build inner query (base SELECT with non-aggregate columns)
+        {inner-query :query inner-params :params} (build-inner-select-for-group state)
+        ;; Build outer query (SELECT from CTE with aggregates and GROUP BY)
+        {:keys [select group-by] outer-params :params} (build-outer-select-for-group cte-alias state)
+        ;; Combine into CTE
+        query (str "WITH " cte-prefix (q cte-alias) " AS ( " inner-query " ) " select " " group-by)
+        params (concat inner-params outer-params)]
+    {:query query :params (seq (concat cte-params params))}))
+
+(defn- scoped?
+  "Whether a state's rows are narrowed by anything: a where:, a limit: (with
+  or without `per`), or a source table that is a named result or checkpoint
+  CTE whose own query is narrowed. `company | l: 10 | employee` keeps no
+  limit in its final state - the limit was sealed into a CTE - but its rows
+  are still scoped by it."
+  [{:keys [where limit limit-per tables aliases]}]
+  (boolean
+   (or (seq where)
+       limit
+       limit-per
+       (some (fn [{a :alias}]
+               (when-let [cte (get-in aliases [a :ast])]
+                 (scoped? cte)))
+             tables))))
+
+(defn- refuse-write [message]
+  (throw (ex-info message {:error-type "write-refused"})))
+
+(defn- exposed-columns
+  "The column names a named result's CTE gives, or :all when it selects
+  every column of its table (see build-cte-body)."
+  [{current :current columns :columns}]
+  (let [own (filter #(= (:alias %) current) columns)]
+    (if (some #(not (table/added-column? %)) own)
+      (set (keep (fn [col]
+                   (cond
+                     (:auto-id col) (:column col)
+                     (table/added-column? col) nil
+                     :else (or (:column-alias col) (:column col))))
+                 own))
+      :all)))
+
+(defn- named-result-source
+  "The real table behind a named result, which a write on the named result
+  changes: {:schema :table :key}. `:key` is its primary key, which the
+  named result has to give so its rows can be found in the table. Follows a
+  named result built on another one. Refuses one whose rows aren't rows of
+  one table."
+  [op-name references aliases alias]
+  (let [{:keys [ast table]} (get aliases alias)
+        current (:current ast)
+        base (get-in ast [:aliases current])
+        _ (when (or (seq (:group ast)) (#{:count :group} (get-in ast [:operation :type])))
+            (refuse-write (str op-name " can't change the named result `" table
+                               "`: it is grouped, so its rows aren't rows of one table.")))
+        source (if (:ast base)
+                 (named-result-source op-name references (:aliases ast) current)
+                 {:schema (:schema base) :table (:table base)
+                  :key (refs/primary-key (or (:references ast) references) (:schema base) (:table base))})
+        label (if (:schema source) (str (:schema source) "." (:table source)) (:table source))
+        _ (when-not (seq (:key source))
+            (refuse-write (str op-name " can't change `" label
+                               "`: it has no primary key, so there is no way to tell its rows apart.")))
+        exposed (exposed-columns ast)
+        missing (remove #(or (= :all exposed) (contains? exposed %)) (:key source))]
+    (when (seq missing)
+      (refuse-write (str op-name " can't change the named result `" table "`: it doesn't select "
+                         (s/join ", " missing) ", which finds its rows in `" label
+                         "`. Add it to the select: before `|= " table "`.")))
+    source))
+
+(defn- write-target
+  "The table a write on `alias` changes: {:schema :table}, plus :key for a
+  named result."
+  [op-name {:keys [references aliases]} alias]
+  (if (get-in aliases [alias :ast])
+    (named-result-source op-name references aliases alias)
+    (select-keys (get aliases alias) [:schema :table])))
+
+(defn- check-write-allowed
+  "Refuses a delete!/update! that would act on more than the person can have
+  meant. `target` is the alias of the table being changed."
+  [{:keys [group aliases] :as state} op-name target]
+  (when (seq group)
+    (refuse-write (str op-name " after group: is not supported. Remove the group:, or select the rows with where:.")))
+  (when-not (scoped? state)
+    (refuse-write (str "Refusing to change every row of `" (table-label aliases target)
+                       "`. Add a where: or a limit: first."))))
+
+(defn- key-target
+  "The left side of `... IN ( SELECT ... )` for the columns that identify a
+  row: one column, or several matched as a row, `(a, b)`."
+  [columns]
+  (if (next columns)
+    (str "(" (s/join ", " (map q columns)) ")")
+    (q (first columns))))
+
+(defn- condition-aliases
+  "The aliases one where: condition reads. A named result counts as another
+  table: its rows aren't the changed table's."
+  [{:keys [alias value computed]}]
+  (cond-> #{alias}
+    (= :column (:type value)) (conj (first (:value value)))
+    (= :computed (:type value)) (into (map :alias (computed/columns (:node value))))
+    computed (into (map :alias (computed/columns computed)))
+    (= :named-result (:type value)) (conj ::named-result)))
+
+(defn- own-conditions
+  "[sql params] for each where: of the pipe that reads only the changed
+  table `alias`, written on `table` itself, as the UPDATE or DELETE has it
+  in scope: `\"case_item\".\"reference_id\" IS NULL`.
+
+  The pipe already keeps only rows that meet them, so they change nothing
+  on their own. They matter when another transaction changes one of the
+  rows first. Postgres then checks the statement's own WHERE again on the
+  new version of the row, but not a subquery's. So `update! reference_id =
+  ...` after `where: reference_id is null` leaves alone a row someone else
+  has filled in meanwhile, as the SQL it came from did.
+
+  Nil for a named result: its columns may be renamed."
+  [{:keys [where aliases]} alias table]
+  (when-not (get-in aliases [alias :ast])
+    (let [own? #(= #{alias} (condition-aliases %))]
+      (binding [*column-ref* (fn [_ column] (q table column))]
+        (doall
+         (for [entry where
+               :when (if-let [group (:or entry)] (every? own? group) (own? entry))]
+           (if-let [group (:or entry)]
+             (let [rendered (map render-condition group)]
+               [(str "(" (s/join " OR " (map first rendered)) ")") (mapcat second rendered)])
+             (render-condition entry))))))))
+
+(defn build-delete-query
+  "`delete!` names the columns that identify the rows to remove, and the
+  DELETE matches them against those same columns as selected by the
+  expression it is piped onto.
+
+  More than one column is matched as a row: `WHERE (a, b) IN ( SELECT a, b
+  ... )`. A table whose key is composite has no single column that picks
+  out a row on its own, so deleting on one of them at a time would take
+  rows belonging to other records with it."
+  [state]
+  (check-write-allowed state "delete!" (:current state))
+  (let [{:keys [delete current aliases]} state
+        {table :table schema :schema}     (write-target "delete!" state current)
+        {:keys [columns]}                 delete
+        own                               (own-conditions state current table)
+        state                             (assoc state :columns
+                                                 (mapv (fn [column] {:column column :alias current}) columns))
+        {:keys [query params]}            (build-select-query state)]
+    {:query (str "DELETE FROM " (q schema table) " WHERE "
+                 (apply str (map #(str (first %) " AND ") own))
+                 (key-target columns) " IN ( "  (in-subquery query) " )")
+     :params (if (seq own) (concat (mapcat second own) params) params)}))
+
+(def ^:private ^:dynamic *other-table-ref*
+  "While update! writes a value read from another table of the pipe: a
+  function from [alias column] to the SQL for that column, or nil when it
+  isn't one of them."
+  nil)
+
+(defn- update-source-column
+  "SQL for a column on the right of an `update!` assignment. A column of the
+  table being updated is written bare: UPDATE has no alias in scope. A column
+  of another table of the pipe is read through *other-table-ref*."
+  [update-alias {[alias column] :value}]
+  (if (and alias (not= alias update-alias))
+    (or (some-> *other-table-ref* (apply [alias column]))
+        (throw (ex-info (str "update! can't read `" alias "." column "`: there is no table `" alias "` in the pipe.")
+                        {:alias alias :column column})))
+    (q column)))
+
+(defn- update-key
+  "The columns update! finds a table's rows by: its primary key. Refuses a
+  table that has none, such as a view: no column is known to pick out one
+  row, so the update could change rows nobody meant."
+  [{:keys [aliases record-keys]} update-alias]
+  (or (get record-keys update-alias)
+      (refuse-write (str "update! can't change `" (table-label aliases update-alias)
+                         "`: it has no primary key, so there is no way to tell its rows apart."))))
+
+(defn- json-set
+  "[sql params] for the JSON value `col-sql` with the value at `path`
+  replaced by `value`, a JSON value. A missing key is added, and an index
+  past the end adds the value at the end. The object or array holding it has
+  to be there already: see json-holder-check."
+  [col-sql path value]
+  (let [path-params (json-path-params path)]
+    [(case *dialect*
+       :mysql (str "JSON_SET(" col-sql ", ?, " (auto-cast-placeholder :jsonb) ")")
+       ;; SQLite would store the JSON text as a string; json() reads it as JSON.
+       :sqlite (str "json_set(" col-sql ", ?, json(?))")
+       (str "jsonb_set(" col-sql "::jsonb, ARRAY[" (s/join ", " (repeat (count path-params) "?::text")) "], "
+            (auto-cast-placeholder :jsonb) ")"))
+     (concat path-params [value])]))
+
+(defn- json-holder-check
+  "[sql params] that is true when the value holding the last step of `path`
+  is an object (for a key) or an array (for an index). Where it isn't, the
+  databases differ: SQLite builds the missing objects, Postgres refuses a key
+  into an array, and the others leave the value as it was while counting the
+  row as updated. Such a row is left out, so every database leaves it alone
+  and the count says so."
+  [column path]
+  (let [holder (butlast path)
+        container (if (integer? (last path)) "array" "object")
+        col-sql (q column)]
+    (case *dialect*
+      :mysql (let [[x params] (if (seq holder) (json-extract :json col-sql holder) [col-sql []])]
+               [(str "JSON_TYPE(" x ") = '" (s/upper-case container) "'") params])
+      :sqlite (if (seq holder)
+                [(str "json_type(" col-sql ", ?) = '" container "'") (json-path-params holder)]
+                [(str "json_type(" col-sql ") = '" container "'") []])
+      (let [[x params] (if (seq holder) (json-extract :json col-sql holder) [(str col-sql "::jsonb") []])]
+        [(str "jsonb_typeof(" x ") = '" container "'") params]))))
+
+(defn- assignment-value-sql
+  "[sql params] for the right of one whole-column assignment."
+  [update-alias value]
+  (case (:type value)
+    :symbol [(:value value) []]
+    :column [(update-source-column update-alias value) []]
+    ;; `update! deleted_at = now()`. UPDATE has no alias in scope, so a
+    ;; column inside is written bare, as for a column on its own.
+    :computed (binding [*column-ref* (fn [a c] (update-source-column update-alias {:value [a c]}))]
+                (render-value (:node value)))
+    [(value-placeholder value) [value]]))
+
+(defn- set-column
+  "[sql params] for `column = ...` in SET. Several keys written into one
+  JSON column nest, each jsonb_set (or JSON_SET) taking the one before it."
+  [update-alias [{{:keys [column path]} :column :keys [db-type] :as first-assignment} :as assignments]]
+  (if path
+    (let [[sql params] (reduce (fn [[sql params] {{:keys [path]} :column :keys [value]}]
+                                 (let [[sql' params'] (json-set sql path value)]
+                                   [sql' (concat params params')]))
+                               [(q column) []]
+                               assignments)
+          ;; jsonb_set gives jsonb, which a Postgres `json` column takes only cast.
+          sql (if (and (= *dialect* :postgres) (= "json" (some-> db-type s/lower-case)))
+                (str sql "::json")
+                sql)]
+      [(str (q column) " = " sql) params])
+    (let [[sql params] (assignment-value-sql update-alias (:value first-assignment))]
+      [(str (q column) " = " sql) params])))
+
+(defn- group-by-column
+  "Assignments grouped by the column they write, in the order the columns
+  first appear. Keys of one JSON column are written in one SET entry; a
+  whole column assigned twice stays two entries, which the database refuses."
+  [assignments]
+  (let [k (fn [{{:keys [column path]} :column :as a}] (if path column a))
+        groups (group-by k assignments)]
+    (map groups (distinct (map k assignments)))))
+
+(defn- other-table-reads
+  "The [alias column] pairs, in order and once each, that the assignments'
+  values read from tables of the pipe other than `update-alias`. A key
+  inside a JSON column reads its whole column."
+  [update-alias assignments]
+  (->> assignments
+       (mapcat (fn [{:keys [value]}]
+                 (case (:type value)
+                   :column [(vec (take 2 (:value value)))]
+                   :computed (map (juxt :alias :column) (computed/columns (:node value)))
+                   nil)))
+       (filter (fn [[alias _]] (and alias (not= alias update-alias))))
+       distinct))
+
+(defn- sourced-update
+  "update! of `update-alias` where a value comes from another table of the
+  pipe, as in `case_item as ci | unambiguous as u .item_id | update!
+  reference_id = u.request_id`.
+
+  The pipe's rows are read once, as `__pine_source__`: each changed row's
+  key and the values read from the other tables. The UPDATE joins them to
+  the changed table by its key, `UPDATE case_item SET reference_id =
+  s.v FROM (<pipe>) AS s WHERE s.k = case_item.id` (JOIN ... ON on MySQL),
+  so the join also picks the rows it changes. The pipe has to give each
+  changed row one value: the guard query refuses the update where it gives
+  several, which the UPDATE would otherwise settle by picking one. See
+  :guard in pine.db.exec/run-action-queries-in-transaction.
+
+  Returns {:set-entries :source :matches :guard}: the SET entries as
+  set-column's, the source's {:query :params}, and the condition that joins
+  it to `table`."
+  [state update-alias table key-columns assignments reads]
+  (let [key-names (map-indexed (fn [i _] (str "__pine_key_" (inc i) "__")) key-columns)
+        read-names (zipmap reads (map-indexed (fn [i _] (str "__pine_value_" (inc i) "__")) reads))
+        source (-> state
+                   (assoc :columns (vec (concat
+                                         (map (fn [column n] {:column column :alias update-alias :column-alias n})
+                                              key-columns key-names)
+                                         (map (fn [[alias column]] {:column column :alias alias :column-alias (read-names [alias column])})
+                                              reads))))
+                   (assoc :operation {:type :select :value nil})
+                   build-select-query)
+        s (q "__pine_source__")
+        matches (s/join " AND " (map (fn [n column] (str s "." (q n) " = " (q table column))) key-names key-columns))
+        set-entries (binding [*other-table-ref* (fn [alias column]
+                                                  (some->> (read-names [alias column]) q (str s ".")))]
+                      (doall (map #(set-column update-alias %) (group-by-column assignments))))
+        ;; The rows where the pipe gives a key more than one different set
+        ;; of values. Each value is in the SELECT DISTINCT, so the same
+        ;; value twice is one.
+        all-names (concat key-names (vals read-names))
+        guard {:query (str "SELECT " (s/join ", " (map q key-names))
+                           " FROM ( SELECT DISTINCT " (s/join ", " (map q all-names))
+                           " FROM ( " (:query source) " ) AS " s " ) AS " (q "__pine_values__")
+                           " GROUP BY " (s/join ", " (map q key-names))
+                           " HAVING COUNT(*) > 1")
+               :params (:params source)
+               :message (str "update! found more than one value for some rows of `" table
+                             "`: the pipe reaches them more than once, with different values. "
+                             "Narrow it with where: so each row is reached once.")}]
+    {:set-entries set-entries
+     :source (select-keys source [:query :params])
+     :matches matches
+     :guard guard}))
+
+(defn- build-single-update-query [state update-alias assignments]
+  (check-write-allowed state "update!" update-alias)
+  (let [{:keys [aliases]}              state
+        {table :table schema :schema
+         named-key :key}               (write-target "update!" state update-alias)
+        key-columns                    (or named-key (update-key state update-alias))
+        reads                          (other-table-reads update-alias assignments)
+        {sourced :set-entries
+         :keys [source matches guard]} (when (seq reads)
+                                         (sourced-update state update-alias table key-columns assignments reads))
+        set-entries                    (or sourced (map #(set-column update-alias %) (group-by-column assignments)))
+        set-clause                     (s/join ", " (map first set-entries))
+        set-params                     (mapcat second set-entries)
+        ;; The conditions on the changed row itself: each JSON key's holder
+        ;; is there, and the pipe's where: on this table (own-conditions).
+        checks                         (concat (distinct
+                                                (for [{{:keys [column path]} :column} assignments
+                                                      :when (seq path)]
+                                                  (json-holder-check column path)))
+                                               (own-conditions state update-alias table))
+        check-params                   (mapcat second checks)
+        target                         (q schema table)]
+    (cond-> (assoc
+             (cond
+               ;; A value from another table: the pipe's rows, joined once.
+               (and source (= *dialect* :mysql))
+               {:query (str "UPDATE " target " JOIN ( " (:query source) " ) AS " (q "__pine_source__")
+                            " ON " matches " SET " set-clause
+                            (when (seq checks) (str " WHERE " (s/join " AND " (map first checks)))))
+                :params (concat (:params source) set-params check-params)}
+
+               source
+               {:query (str "UPDATE " target " SET " set-clause
+                            " FROM ( " (:query source) " ) AS " (q "__pine_source__")
+                            " WHERE " (s/join " AND " (concat (map first checks) [matches])))
+                :params (concat set-params (:params source) check-params)}
+
+               ;; Otherwise the rows are found by their key among the pipe's.
+               :else
+               (let [{:keys [query params]} (build-select-query
+                                             (-> state
+                                                 (assoc :columns (mapv (fn [column] {:column column :alias update-alias}) key-columns))
+                                                 (assoc :operation {:type :select :value nil})))]
+                 {:query (str "UPDATE " target " SET " set-clause " WHERE "
+                              (apply str (map #(str (first %) " AND ") checks))
+                              (key-target key-columns) " IN ( " (in-subquery query) " )")
+                  :params (concat set-params check-params params)}))
+             :table (if schema (str schema "." table) table))
+      guard (assoc :guard guard))))
+
+(defn build-update-queries [state]
+  "Returns a list of {:table table-name :query query :params params}, one per table being updated."
+  (let [{:keys [update current aliases]} state
+        {:keys [assignments]}             update
+        ;; Group assignments by table alias (use current when column has no alias)
+        grouped (group-by (fn [{:keys [column]}]
+                            (or (:alias column) current))
+                          assignments)]
+    ;; Each table's UPDATE runs after the one before, so a value read from
+    ;; another table this update! changes would depend on that order.
+    (doseq [[update-alias table-assignments] grouped
+            [alias column] (other-table-reads update-alias table-assignments)
+            :when (contains? grouped alias)]
+      (refuse-write (str "update! can't read `" alias "." column "` while it changes `" alias
+                         "` too. Change one table at a time.")))
+    (mapv (fn [[update-alias table-assignments]]
+            (build-single-update-query state update-alias table-assignments))
+          grouped)))
+
+;; The same ceiling as limit: (pine.parser/max-limit).
+(def ^:private max-group-rows 10000)
+
+;; The rows a query returns when it has no limit: of its own.
+(def ^:private default-limit 250)
+
+(defn row-cap
+  "The most rows Pine lets a result have when the expression doesn't say:
+  250 rows, or 10,000 for a group:. Nil when the expression's own limit:
+  decides, or when it returns no table rows (a count, a change, describe:,
+  references:).
+  A result with exactly this many rows may have been cut off."
+  [state]
+  (let [type (get-in state [:operation :type])]
+    (cond
+      (#{:delete-action :update-action :update-partial :count :paths :describe :references} type) nil
+      (= type :group) max-group-rows
+      (:limit state) nil
+      :else default-limit)))
+
+(defn table-aliases
+  "[{:alias :schema :table}] for each table the query reads, in order. An
+  agent reads it to qualify columns: auto-aliases are hard to guess when
+  several tables start with the same letter. A named result or checkpoint
+  has its own name as :table."
+  [state]
+  (->> (:tables state)
+       (map :alias)
+       (distinct)
+       (mapv (fn [a]
+               (let [{:keys [schema table]} (get-in state [:aliases a])]
+                 {:alias a :schema schema :table (or table a)})))))
+
+(defn build-query [state]
+  (describe/check-ends-query (:operation-types state))
+  (binding [*dialect* (connections/get-dialect (:connection-id state))
+            *element-aliases* (element-aliases state)]
+    (let [{:keys [type]} (state :operation)]
+      (cond
+        (let [cur (-> state :current)]
+          (or (nil? cur)
+              (= "" (get-in state [:aliases cur :table])))) {:query "" :params nil}
+        (= type :delete-action) (build-delete-query state)
+        (= type :update-action) {:queries (build-update-queries state)}
+        ;; A trailing comma: the assignment is still being typed. Nothing to
+        ;; build, and run-query refuses to run it.
+        (= type :update-partial) {:query "" :params nil}
+        (= type :count) (build-count-query state)
+        ;; A terminal group: returns at most as many groups as limit: allows.
+        ;; A group sealed into a checkpoint CTE is built elsewhere and keeps
+        ;; every group, since what follows it may narrow them.
+        (= type :group) (update (build-group-query state) :query str " LIMIT " max-group-rows)
+        ;; :paths only generates candidate pine expressions (see hints.paths) -
+        ;; it never builds a query of its own.
+        (= type :paths) {:query " /* No SQL. Pick a path from hints.paths and build that expression instead */ "}
+        ;; `describe:` and `references:` read the schema Pine already holds
+        ;; (pine.describe).
+        (= type :describe) {:query " /* No SQL. describe: lists the table's columns from the schema Pine read */ "}
+        (= type :references) {:query " /* No SQL. references: lists the table's relations from the schema Pine read */ "}
+        :else (build-select-query (update state :limit #(or % default-limit)))))))
+
+(defn- param-preview [{v :value :as param}]
+  (case (:type param)
+    :boolean (str v)
+    ;; Unquoted, as it is bound: a number. Postgres refuses the text '2.5'
+    ;; for an integer column, and '1' reads as text to a reader. A number
+    ;; for a text column is already a string here (data-types).
+    :number (if (decimal? v) (.toPlainString ^BigDecimal v) (str v))
+    ;; Not run, only shown: a $variable with no value yet.
+    :variable (str "$" v)
+    (str "'" (s/replace (str v) "'" "''") "'")))
+
+(defn- fill-params
+  "The query with each `?` replaced by its param, in order, in one pass. Never
+  rescans what it inserted, so a `?` inside a value stays in the value."
+  [query params]
+  (let [parts (s/split query #"\?" -1)]
+    (apply str (first parts)
+           (map (fn [part param] (str (if param (param-preview param) "?") part))
+                (rest parts)
+                (concat params (repeat nil))))))
+
+(defn formatted-query [build-result]
+  (if-let [queries (:queries build-result)]
+    ;; Multiple update queries
+    (s/join "\n" (map (fn [{:keys [query params]}]
+                        (if (empty? query) "" (str (fill-params query params) ";")))
+                      queries))
+    ;; Single query (legacy format or other operations)
+    (let [{:keys [query params]} build-result]
+      (if (empty? query) "" (str "\n" (fill-params query params) ";\n")))))
+
+(defn run-query [state]
+  (if (= (-> state :operation :type) :no-op)
+    [["No operation"] ["-"]]
+    (let [connection-id (state :connection-id)
+          operation-type (-> state :operation :type)
+          _ (when (= operation-type :update-partial)
+              (throw (ex-info "The update! isn't finished: add an assignment after the comma, or remove the comma."
+                              {:error-type "incomplete"})))
+          build-result  (build-query state)]
+      (cond
+        ;; Nothing runs on the database: the rows come from the schema Pine
+        ;; read when it connected. The state may have dropped :references
+        ;; (ast/main.clj's post-handle), so they are looked up again.
+        (= :describe operation-type)
+        (describe/describe-rows state (or (:references state) (db/init-references connection-id)))
+
+        (= :references operation-type)
+        (describe/references-rows state (or (:references state) (db/init-references connection-id)))
+
+        ;; Every write runs in a transaction, even a single statement: if it
+        ;; fails part way, nothing is left half-applied. A multi-table
+        ;; update! rolls back all of its tables together.
+        (= :update-action operation-type)
+        (let [results (db/run-action-queries-in-transaction connection-id (:queries build-result))]
+          (into [["Table" "Rows updated"]]
+                (map (fn [[t n]] [t n]) results)))
+
+        (= :delete-action operation-type)
+        (let [{:keys [query params]} build-result
+              [[_ affected-rows]] (db/run-action-queries-in-transaction
+                                   connection-id [{:table nil :query query :params params}])]
+          [["Rows deleted"] [affected-rows]])
+
+        :else
+        ;; Select and other operations
+        (db/run-query connection-id (select-keys build-result [:query :params]))))))

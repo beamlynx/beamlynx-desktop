@@ -1,0 +1,793 @@
+(ns pine.parser-test
+  (:require [clojure.test :refer [deftest is testing]]
+            [pine.parser :refer [extract-doc parse parse-or-fail prettify]]
+            [pine.data-types :as dt]))
+
+(defn- p [e]
+  (-> e parse-or-fail))
+
+(deftest test-parser
+
+  (testing "Parse `table` expressions"
+    (is (= [{:type :table, :value {:table ""}}]                                 (p "")))
+    (is (= [{:type :table, :value {:table "user"}}]                             (p " user")))
+    (is (= [{:type :table, :value {:table "user" :schema "public"}}]            (p "public.user")))
+    (is (= [{:type :table, :value {:table "user" :schema "public"}}]            (p "public.user")))
+    (is (= [{:type :table, :value {:table "user" :alias "u"}}]                  (p "user as u")))
+    (is (= [{:type :table, :value {:table "user" :schema "public" :alias "u"}}] (p "public.user as u")))
+    (is (= [{:type :table, :value {:table "user" :join-columns ["id"]}}]           (p "user .id")))
+    (is (= [{:type :table, :value {:schema "public"
+                                   :table "user"
+                                   :join-columns ["id"]}}]                         (p "public.user .id"))))
+
+  (testing "Parse identifiers starting with an underscore -- a leading `_` is a
+  common naming convention for internal/prefixed tables and columns (e.g.
+  `_user`), and symbol's regex used to require a leading letter, so these
+  failed to parse at all."
+    (is (= [{:type :table, :value {:table "_user"}}]                            (p "_user")))
+    (is (= {:type :select, :value [{:column "_id"}]}                            (last (p "user | select: _id")))))
+
+  (testing "Parse `table` expressions with directionality"
+
+    ;; table
+    (is (= [{:type :table, :value {:table "user" :parent false}}]                 (p "user :child")))
+    (is (= [{:type :table, :value {:table "user" :parent true}}]                  (p "user :parent")))
+
+    ;; schema.table
+    (is (= [{:type :table, :value {:table "user" :schema "public" :parent false}}] (p "public.user :child")))
+    (is (= [{:type :table, :value {:table "user" :schema "public" :parent true}}]  (p "public.user :parent")))
+
+    ;; schema.table alias
+    (is (= [{:type :table, :value {:table "user" :schema "public" :parent false :alias "u"}}] (p "public.user as u :child")))
+    (is (= [{:type :table, :value {:table "user" :schema "public" :parent true :alias "u"}}]  (p "public.user as u :parent")))
+
+    ;; table .column
+    (is (= [{:type :table, :value {:table "user" :parent false :join-columns ["other_id"]}}]     (p "user .other_id :child")))
+    (is (= [{:type :table, :value {:table "user" :parent true :join-columns ["other_id"]}}]      (p "user .other_id :parent")))
+
+    ;; schema.table .column
+    (is (= [{:type :table, :value {:schema "public" :table "user" :join-columns ["other_id"] :parent false}}]           (p "public.user .other_id :child")))
+    (is (= [{:type :table, :value {:schema "public" :table "user" :join-columns ["other_id"] :parent true}}]            (p "public.user .other_id :parent")))
+
+    ;; schema.table alias .column
+    (is (= [{:type :table, :value {:schema "public" :table "user" :alias "u" :join-columns ["other_id"] :parent false}}] (p "public.user .other_id as u :child")))
+    (is (= [{:type :table, :value {:schema "public" :table "user" :alias "u" :join-columns ["other_id"] :parent true}}]  (p "public.user .other_id as u :parent"))))
+
+  (testing "Parse `table` expressions with join types"
+    ;; table
+    (is (= [{:type :table, :value {:table "user" :join "LEFT"}}]                 (p "user :left")))
+    (is (= [{:type :table, :value {:table "user" :join "RIGHT"}}]                (p "user :right")))
+
+    ;; schema.table
+    (is (= [{:type :table, :value {:table "user" :schema "public" :join "LEFT"}}] (p "public.user :left")))
+    (is (= [{:type :table, :value {:table "user" :schema "public" :join "RIGHT"}}] (p "public.user :right")))
+
+    ;; schema.table alias
+    (is (= [{:type :table, :value {:table "user" :schema "public" :join "LEFT" :alias "u"}}] (p "public.user as u :left")))
+    (is (= [{:type :table, :value {:table "user" :schema "public" :join "RIGHT" :alias "u"}}] (p "public.user as u :right")))
+
+    ;; table .column
+    (is (= [{:type :table, :value {:table "user" :join "LEFT" :join-columns ["other_id"]}}]     (p "user .other_id :left")))
+    (is (= [{:type :table, :value {:table "user" :join "RIGHT" :join-columns ["other_id"]}}]    (p "user .other_id :right")))
+
+    ;; schema.table .column
+    (is (= [{:type :table, :value {:schema "public" :table "user" :join-columns ["other_id"] :join "LEFT"}}]           (p "public.user .other_id :left")))
+    (is (= [{:type :table, :value {:schema "public" :table "user" :join-columns ["other_id"] :join "RIGHT"}}]          (p "public.user .other_id :right")))
+
+    ;; schema.table alias .column
+    (is (= [{:type :table, :value {:schema "public" :table "user" :alias "u" :join-columns ["other_id"] :join "LEFT"}}] (p "public.user .other_id as u :left")))
+    (is (= [{:type :table, :value {:schema "public" :table "user" :alias "u" :join-columns ["other_id"] :join "RIGHT"}}] (p "public.user .other_id as u :right"))))
+
+  (testing "Parse `table` expressions with explicit join columns"
+    ;; Basic explicit columns
+    (is (= [{:type :table, :value {:table "b" :join-column-pairs [{:left "id" :right "a_id"}]}}]
+           (p "b .a_id = .id")))
+
+    ;; With schema
+    (is (= [{:type :table, :value {:table "user" :schema "public" :join-column-pairs [{:left "id" :right "user_id"}]}}]
+           (p "public.user .user_id = .id")))
+
+    ;; With alias
+    (is (= [{:type :table, :value {:table "employee" :alias "e" :join-column-pairs [{:left "company_id" :right "id"}]}}]
+           (p "employee as e .id = .company_id")))
+
+    ;; Combined with join type
+    (is (= [{:type :table, :value {:table "user" :join "LEFT" :join-column-pairs [{:left "user_id" :right "id"}]}}]
+           (p "user .id = .user_id :left")))
+
+    (is (= [{:type :table, :value {:table "user" :join "RIGHT" :join-column-pairs [{:left "user_id" :right "id"}]}}]
+           (p "user .id = .user_id :right")))
+
+    ;; A side may name its table. Which table a bare side is, the AST decides.
+    (is (= [{:type :table, :value {:table "fd" :join-column-pairs [{:right "id" :right-alias "fd" :left "attributeId" :left-alias "av"}
+                                                                   {:right "tenant_id" :left "tenantId" :left-alias "c"}]}}]
+           (p "fd fd.id = av.attributeId, .tenant_id = c.tenantId")))
+    (is (= [{:type :table, :value {:table "t" :join-column-pairs [{:right "id" :left "x" :left-alias "a" :left-cast "text"}]}}]
+           (p "t .id = a.x ::text")))
+
+    ;; A value on the second side is a condition of the join, parsed as
+    ;; where: parses it.
+    (is (= [{:type :table, :value {:table "c" :join "LEFT"
+                                   :join-column-pairs [{:right "id" :left "company_id"}]
+                                   :join-conditions [[(dt/column "type") "=" (dt/string "entity")]
+                                                     [(dt/aliased-column "c" "n") "=" (dt/number "3")]]}}]
+           (p "c :left .id = .company_id, .type = 'entity', c.n = 3")))
+    (is (= [{:type :table, :value {:table "c" :join-column-pairs [] :join-conditions [[(dt/column "live") "=" (dt/pine-symbol "true")]]}}]
+           (p "c .live = true"))))
+
+  (testing "Parse `from` expressions"
+    (is (= [{:type :from, :value {:alias "u"}}] (p "from: u"))))
+
+  (testing "Parse `select-partial` expressions"
+    (is (= [{:type :select-partial, :value []}]                        (p "select:")))
+    (is (= [{:type :select-partial, :value []}]                        (p "s: ")))
+    (is (= [{:type :select-partial, :value [{:column "id"}]}]          (p "s: id,")))
+    (is (= [{:type :select-partial, :value [{:column "id"}]}]          (-> "company | s: id," p rest)))
+    ;; Alias-dot partial
+    (is (= [{:type :select-partial :value [] :partial-alias {:alias "e" :column ""}}]
+           (-> "company | s: e." p rest)))
+    (is (= [{:type :select-partial :value [{:column "id"}] :partial-alias {:alias "e" :column ""}}]
+           (-> "company | s: id, e." p rest))))
+
+  (testing "Parse `select` expressions"
+    (is (= [{:type :select, :value [{:column  "name"}]}]                              (p "select: name")))
+    (is (= [{:type :select, :value [{:alias "u" :column  "name"}]}]                   (p "select: u.name")))
+    (is (= [{:type :select, :value [{:column "id"} {:column  "name"}]}]               (p "s: id, name")))
+    (is (= [{:type :select, :value [{:column-alias "t_id" :column "id"}]}]            (p "s: id as t_id")))
+    (is (= [{:type :select, :value [{:alias "u" :column "id" :column-alias "t_id"}]}] (p "s: u.id as t_id"))))
+
+  (testing "Parse `limit` expressions"
+    (is (= [{:type :limit, :value 100}] (p "limit: 100")))
+    (is (= [{:type :limit, :value 10}]  (p "l: 10")))
+    (is (= [{:type :limit, :value 10}]  (p "10"))))
+
+  (testing "Parse `where` expressions"
+    (is (= [{:type :where, :value [(dt/column "name") "=" (dt/string "John Doe")]}]                           (p "where: name='John Doe'")))
+    (is (= [{:type :where, :value [(dt/column "name") "=" (dt/string "John Doe")]}]                           (p "w: name='John Doe'")))
+    (is (= [{:type :where, :value [(dt/column "name") "=" (dt/string "John Doe")]}]                           (p "name = 'John Doe'")))
+    (is (= [{:type :where, :value [(dt/column "name") "=" (dt/string "John Doe")]}]                           (p "name='John Doe'")))
+    (is (= [{:type :where, :value [(dt/column "name") "LIKE" (dt/string "John%")]}]                           (p "name like 'John%'")))
+    (is (= [{:type :where, :value [(dt/column "name") "NOT LIKE" (dt/string "John%")]}]                       (p "name not like 'John%'")))
+    (is (= [{:type :where, :value [(dt/column "name") "ILIKE" (dt/string "john%")]}]                          (p "name ilike 'john%'")))
+    (is (= [{:type :where, :value [(dt/column "name") "NOT ILIKE" (dt/string "john%")]}]                      (p "name not ilike 'john%'")))
+    (is (= [{:type :where, :value [(dt/column "age") "IS" (dt/pine-symbol "NULL")]}]                          (p "age is null")))
+    (is (= [{:type :where, :value [(dt/column "age") "=" (dt/number "24")]}]                                  (p "age = 24")))
+    (is (= [{:type :where, :value [(dt/column "age") "!=" (dt/number "24")]}]                                 (p "age != 24")))
+    (is (= [{:type :where, :value [(dt/column "name") "=" (dt/column "first_name")]}]                         (p "name = first_name")))
+    (is (= [{:type :where, :value [(dt/column "name") "=" (dt/aliased-column "x" "first_name")]}]             (p "name = x.first_name")))
+    (is (= [{:type :where, :value [(dt/column "public") "=" (dt/pine-symbol "true")]}]                        (p "public = true")))
+    (is (= [{:type :where, :value [(dt/column "public") "=" (dt/pine-symbol "false")]}]                       (p "public = false")))
+    (is (= [{:type :where, :value [(dt/column "public") "!=" (dt/pine-symbol "false")]}]                      (p "public != false")))
+    (is (= [{:type :where, :value [(dt/column "name") "=" (dt/aliased-column "x" "first_name")]}]             (p "name = x.first_name")))
+    (is (= [{:type :where, :value [(dt/aliased-column "x" "name") "=" (dt/aliased-column "x" "first_name")]}] (p "x.name = x.first_name"))))
+
+  (testing "Parse `where` `or` expressions"
+    (is (= [{:type :where, :value {:or [[(dt/column "name") "=" (dt/string "John Doe")]
+                                        [(dt/column "age") "=" (dt/number "24")]]}}]
+           (p "w: name='John Doe' or age=24 ")))
+    (is (= [{:type :where, :value {:or [[(dt/column "id") "=" (dt/number "1")]
+                                        [(dt/column "id") "=" (dt/number "2")]
+                                        [(dt/column "id") "=" (dt/number "3")]]}}]
+           (p "w: id = 1 or id = 2 or id = 3")))
+    ;; Needs whitespace on both sides: a column called `color` or `order_id`
+    ;; is a column, not a condition with `or` in it.
+    (is (= [{:type :where, :value [(dt/column "a") "=" (dt/column "color")]}]
+           (p "w: a = color")))
+    (is (= [{:type :where, :value {:or [[(dt/column "a") "=" (dt/number "1")]
+                                        [(dt/column "order_id") "=" (dt/number "2")]]}}]
+           (p "w: a = 1 or order_id = 2")))
+    ;; A comma or `or` inside a string is part of the string.
+    (is (= [{:type :where, :value {:or [[(dt/column "name") "=" (dt/string "x or y, z")]
+                                        [(dt/column "id") "=" (dt/number "1")]]}}]
+           (p "w: name = 'x or y, z' or id = 1")))
+    ;; The bare form, with no where: in front, takes `or` too.
+    (is (= [{:type :where, :value {:or [[(dt/column "a") "=" (dt/number "1")]
+                                        [(dt/column "b") "=" (dt/number "2")]]}}]
+           (p "a = 1 or b = 2"))))
+
+  (testing "Only `or` joins conditions inside one where:"
+    (is (:error (parse "company | where: a = 1, b = 2")))
+    (is (:error (parse "company | where: a = 1 and b = 2")))
+    (is (:error (parse "company | a = 1, b = 2"))))
+
+  ;; in progress - the case isn't being processed at the moment
+  (testing "Parse `where` expressions with type hinting"
+    (is (= [{:type :where, :value [(dt/column "name" "text") "=" (dt/string "John Doe")]}]       (p "w: name = 'John Doe' ::text")))
+    (is (= [{:type :where, :value [(dt/column "id" "uuid") "=" (dt/string "123e4567-e89b-12d3-a456-426614174000")]}] (p "w: id = '123e4567-e89b-12d3-a456-426614174000' ::uuid"))))
+
+  (testing "Parse `where` `in` expressions"
+    (is (= [{:type :where, :value [(dt/column "age") "IN" [(dt/string "24")]]}]                  (p "age in ('24')")))
+    (is (= [{:type :where, :value [(dt/column "age") "IN" [(dt/string "24")]]}]                  (p "age in ('24' ) ")))
+    (is (= [{:type :where, :value [(dt/column "age") "IN" [(dt/string "24") (dt/string "36")]]}] (p "age in (  '24' ,'36' )")))
+    (is (= [{:type :where, :value [(dt/column "age") "IN" [(dt/string "24") (dt/string "36")]]}] (p "age in ('24' '36')")))
+    (is (= [{:type :where, :value [(dt/column "age") "IN" [(dt/number "24") (dt/number "-1.5")]]}] (p "age in (24, -1.5)")))
+    (is (= [{:type :where, :value [(dt/column "age") "NOT IN" [(dt/string "a") (dt/number "2")]]}] (p "age not in ('a', 2)"))))
+
+  (testing "Parse `where` with >= and <="
+    (is (= [{:type :where, :value [(dt/column "age") ">=" (dt/number "18")]}] (p "age >= 18")))
+    (is (= [{:type :where, :value [(dt/column "age") "<=" (dt/number "65")]}] (p "age <= 65")))
+    (is (= [{:type :where, :value [(dt/column "created_at") ">=" (dt/date "2025-01-01")]}] (p "created_at >= '2025-01-01'")))
+    (is (= [{:type :where, :value [(dt/column "name") "<=" (dt/string "m")]}] (p "name <= 'm'")))
+    (is (= [{:type :where, :value [(dt/column "age") ">=" (dt/variable "min")]}] (p "age >= $min")))
+    (is (= {:column "age" :operator :greater-than-equal}
+           (-> (p "w: age >= ") first :value :partial-condition))))
+
+  (testing "Parse `where` expressions with dates"
+    (is (= [{:type :where, :value [(dt/column "created_at") "=" (dt/date "2025-01-01")]}] (p "created_at = '2025-01-01'")))
+    (is (= [{:type :where, :value [(dt/column "created_at") "!=" (dt/date "2025-01-01")]}] (p "created_at != '2025-01-01'")))
+    (is (= [{:type :where, :value [(dt/column "created_at") ">" (dt/date "2025-01-01")]}] (p "created_at > '2025-01-01'")))
+    (is (= [{:type :where, :value [(dt/column "created_at") "<" (dt/date "2025-01-01")]}] (p "created_at < '2025-01-01'"))))
+
+  (testing "Parse `where-partial` expressions"
+    (is (= [{:type :where-partial, :value {:complete-conditions [] :partial-condition nil}}] (p "where:")))
+    (is (= [{:type :where-partial, :value {:complete-conditions [] :partial-condition nil}}] (p "w: ")))
+    (is (= [{:type :where-partial, :value {:complete-conditions [] :partial-condition {:column "id"}}}] (p "w: id")))
+    (is (= [{:type :where-partial, :value {:complete-conditions [] :partial-condition {:alias "u", :column "id"}}}] (p "w: u.id")))
+    (is (= [{:type :where-partial, :value {:complete-conditions [] :partial-condition {:column "id", :operator :equals}}}] (p "w: id =")))
+    (is (= [{:type :where-partial, :value {:complete-conditions [] :partial-condition {:column "id", :operator :like}}}] (p "w: id like")))
+    ;; Alias-dot partial
+    (is (= [{:type :where-partial :value {:complete-conditions [] :partial-condition {:alias "e" :column ""}}}]
+           (-> "company | w: e." p rest))))
+
+  (testing "Parse `order` with nulls first or last"
+    (is (= [{:type :order :value [{:column "a" :direction "ASC" :nulls "FIRST"}]}] (p "o: a asc nulls first")))
+    (is (= [{:type :order :value [{:column "a" :direction "DESC" :nulls "LAST"} {:column "b" :direction "DESC"}]}]
+           (p "o: a nulls last, b"))))
+
+  (testing "Parse `order-partial` expressions"
+    (is (= [{:type :order-partial, :value []}]                                  (p "order:")))
+    (is (= [{:type :order-partial, :value []}]                                  (p "o: ")))
+    (is (= [{:type :order-partial, :value [{:column "id", :direction "DESC"}]}] (p "o: id,")))
+    ;; Alias-dot partial
+    (is (= [{:type :order-partial :value [] :partial-alias {:alias "e" :column ""}}]
+           (-> "company | o: e." p rest)))
+    (is (= [{:type :order-partial :value [{:column "id" :direction "DESC"}] :partial-alias {:alias "e" :column ""}}]
+           (-> "company | o: id, e." p rest))))
+
+  (testing "Parse `order` expressions"
+    (is (= [{:type :order, :value [{:column  "name" :direction "DESC"}]}]            (p "order: name")))
+    (is (= [{:type :order, :value [{:column  "name" :direction "DESC"}]}]            (p "order: name desc")))
+    (is (= [{:type :order, :value [{:column  "name" :direction "ASC"}]}]            (p "order: name asc")))
+    (is (= [{:type :order, :value [{:column  "name" :direction "DESC"}
+                                   {:column "created_at" :direction "ASC"}]}]       (p "order: name, created_at asc")))
+    ;; Test aliased columns
+    (is (= [{:type :order, :value [{:alias "e" :column "name" :direction "DESC"}]}]  (p "order: e.name")))
+    (is (= [{:type :order, :value [{:alias "e" :column "name" :direction "ASC"}]}]   (p "order: e.name asc")))
+    (is (= [{:type :order, :value [{:alias "e" :column "name" :direction "DESC"}]}]  (p "order: e.name desc")))
+    (is (= [{:type :order, :value [{:alias "e" :column "name" :direction "DESC"}
+                                   {:alias "e" :column "created_at" :direction "ASC"}]}] (p "order: e.name, e.created_at asc")))
+
+    ;; Test multiple columns (mixed aliased and non-aliased)
+    (is (= [{:type :order, :value [{:column "name" :direction "DESC"}
+                                   {:column "age" :direction "DESC"}]}] (p "order: name desc, age desc")))
+    (is (= [{:type :order, :value [{:alias "e" :column "name" :direction "DESC"}
+                                   {:column "title" :direction "ASC"}]}] (p "order: e.name desc, title asc")))
+    (is (= [{:type :order, :value [{:column "created_at" :direction "ASC"}
+                                   {:alias "u" :column "name" :direction "DESC"}]}] (p "order: created_at asc, u.name desc"))))
+
+  (testing "Parse `count` expressions"
+    (is (= [{:type :count, :value {:column "*"}}] (p "count:"))))
+
+  (testing "Parse `delete!` expressions"
+    (is (= [{:type :delete-action, :value {:columns ["id"]}}] (p "delete! .id")))
+    (is (= [{:type :delete-action, :value {:columns ["case_id" "search_id"]}}]
+           (p "delete! .case_id, .search_id")))
+    (is (= [{:type :delete-action, :value {:columns ["case_id" "search_id"]}}]
+           (p "d! .case_id, .search_id")))
+    ;; At least one column is still required - a bare `delete!` has nothing to
+    ;; match on, and must not parse into an empty column list.
+    (is (some? (:error (parse "company | delete!")))))
+
+  (testing "Parse `update!` expressions"
+    (is (= [{:type :update-action, :value {:assignments [{:column {:alias nil :column "name"} :value (dt/string "John Doe")}]}}]
+           (p "update! name = 'John Doe'")))
+    (is (= [{:type :update-action, :value {:assignments [{:column {:alias nil :column "age"} :value (dt/number "25")}]}}]
+           (p "update! age = 25")))
+    (is (= [{:type :update-action, :value {:assignments [{:column {:alias nil :column "active"} :value (dt/pine-symbol "true")}]}}]
+           (p "update! active = true")))
+    (is (= [{:type :update-action, :value {:assignments [{:column {:alias nil :column "deleted_at"} :value (dt/pine-symbol "NULL")}]}}]
+           (p "update! deleted_at = null")))
+    (is (= [{:type :update-action, :value {:assignments [{:column {:alias nil :column "name"} :value (dt/string "John")}
+                                                         {:column {:alias nil :column "age"} :value (dt/number "30")}]}}]
+           (p "update! name = 'John', age = 30")))
+    (is (= [{:type :update-action, :value {:assignments [{:column {:alias "c" :column "x"} :value (dt/string "y")}]}}]
+           (p "update! c.x = 'y'"))))
+
+  (testing "Parse `update-partial` / `u!` expressions"
+    (is (= [{:type :update-partial :value {:assignments [] :partial-column nil}}]
+           (p "u!")))
+    (is (= [{:type :update-partial :value {:assignments []
+                                           :partial-column {:alias nil :column "i"}}}]
+           (p "u! i")))
+    (is (= [{:type :update-partial :value {:assignments [{:column {:alias nil :column "id"}
+                                                          :value (dt/string "1")}]
+                                           :partial-column nil}}]
+           (p "u! id = '1',")))
+    (is (= [{:type :update-partial :value {:assignments [{:column {:alias nil :column "id"}
+                                                          :value (dt/string "1")}]
+                                           :partial-column {:alias nil :column "n"}}}]
+           (p "u! id = '1', n")))
+    ;; Alias-dot partial
+    (is (= {:type :update-partial :value {:assignments []
+                                          :partial-column {:alias "e" :column ""}}}
+           (-> "employee as e | company | u! e." p last)))
+    (is (= {:type :update-partial :value {:assignments [{:column {:alias nil :column "id"}
+                                                         :value (dt/string "1")}]
+                                          :partial-column {:alias "e" :column ""}}}
+           (-> "employee as e | company | u! id = '1', e." p last))))
+
+  (testing "delete: is no longer an operation"
+    ;; It parsed into an op that built no SQL, purely as a marker a client
+    ;; could act on. Traversal is a client-side action now, built from
+    ;; operations that already exist, so there is nothing left to mark.
+    (doseq [expression ["company | delete:" "company | d:"]]
+      (is (:error (parse expression))
+          (str expression " must no longer parse")))
+    (is (nil? (:error (parse "company | where: id = 1 | delete! .id")))
+        "delete! must still parse"))
+
+  (testing "Parse `group` expressions"
+    (is (= [{:type :group, :value {:columns [{:column "status"}], :functions [{:kind :aggregate :fn "count" :arg nil :filter nil}]}}]
+           (p "group: status")))
+    (is (= [{:type :group, :value {:columns [{:column "status"}], :functions [{:kind :aggregate :fn "count" :arg nil :filter nil}]}}]
+           (p "group: status with count")))
+    ;; An aggregate other than count needs a value: `total => sum`.
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"`sum` needs a value: `x => sum`"
+                          (parse "group: status with count, sum")))
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"`avg` needs a value"
+                          (parse "company | group: name with avg")))
+    (is (= [{:type :group, :value {:columns [{:column "name"} {:column "status"}], :functions [{:kind :aggregate :fn "count" :arg nil :filter nil}]}}]
+           (p "group: name, status with count")))
+
+    ;; No keys: one group, the whole table.
+    (is (= [{:type :group, :value {:columns [], :functions [{:kind :aggregate :fn "count" :arg nil :filter nil :column-alias "n"}]}}]
+           (p "group: with count as n")))
+
+    ;; with aliases
+    (is (= [{:type :group, :value {:columns [{:alias "x", :column "status"}], :functions [{:kind :aggregate :fn "count" :arg nil :filter nil}]}}]
+           (p "group: x.status with count"))))
+
+  (testing "Parse date extraction functions in select"
+    (is (= [{:type :select, :value [{:column "created_at", :column-function "year"}]}]
+           (p "select: created_at => year")))
+    (is (= [{:type :select, :value [{:column "created_at", :column-function "month"}]}]
+           (p "select: created_at => month")))
+    (is (= [{:type :select, :value [{:column "created_at", :column-function "day"}]}]
+           (p "select: created_at => day")))
+    (is (= [{:type :select, :value [{:column "created_at", :column-function "week"}]}]
+           (p "select: created_at => week")))
+    (is (= [{:type :select, :value [{:column "created_at", :column-function "hour"}]}]
+           (p "select: created_at => hour")))
+    (is (= [{:type :select, :value [{:column "created_at", :column-function "minute"}]}]
+           (p "select: created_at => minute")))
+
+    ;; with table alias
+    (is (= [{:type :select, :value [{:alias "e", :column "created_at", :column-function "month"}]}]
+           (p "select: e.created_at => month")))
+
+    ;; with custom column alias
+    (is (= [{:type :select, :value [{:column "created_at", :column-function "month", :column-alias "created_at_month"}]}]
+           (p "select: created_at => month as created_at_month")))
+
+    ;; with both table and custom column alias
+    (is (= [{:type :select, :value [{:alias "e", :column "created_at", :column-function "year", :column-alias "yr"}]}]
+           (p "select: e.created_at => year as yr")))
+
+    ;; mixed with regular columns
+    (is (= [{:type :select, :value [{:column "name"} {:column "created_at", :column-function "year"}]}]
+           (p "select: name, created_at => year"))))
+
+  (testing "Parse expressions with line comments"
+    (is (= [{:type :table, :value {:table "user"}}]
+           (p "user -- this is a comment")))
+    (is (= [{:type :table, :value {:table "user"}}]
+           (p "-- comment before\nuser")))
+    (is (= [{:type :where, :value [(dt/column "name") "=" (dt/string "John")]}]
+           (p "name = 'John' -- comment after condition")))
+    (is (= [{:type :limit, :value 10}]
+           (p "limit: 10 -- limit to 10 rows"))))
+
+  (testing "Parse expressions with block comments"
+    (is (= [{:type :table, :value {:table "user"}}]
+           (p "user /* block comment */")))
+    (is (= [{:type :table, :value {:table "user"}}]
+           (p "/* comment before */ user")))
+    (is (= [{:type :where, :value [(dt/column "name") "=" (dt/string "John")]}]
+           (p "name /* comment */ = /* another */ 'John'")))
+    (is (= [{:type :table, :value {:table "user"}}]
+           (p "user /* multi\nline\ncomment */"))))
+
+  (testing "Parse expressions with mixed comments"
+    (is (= [{:type :table, :value {:table "company"}}
+            {:type :where, :value [(dt/column "id") "=" (dt/number "1")]}]
+           (p "company -- get company\n| where: id = 1 /* by id */")))
+    (is (= [{:type :table, :value {:table "user"}}
+            {:type :limit, :value 10}]
+           (p "-- fetch users\nuser | /* limit results */ limit: 10"))))
+
+  (testing "Comments do not affect strings"
+    (is (= [{:type :where, :value [(dt/column "comment") "=" (dt/string "-- not a comment")]}]
+           (p "comment = '-- not a comment'")))
+    (is (= [{:type :where, :value [(dt/column "text") "=" (dt/string "/* also not a comment */")]}]
+           (p "text = '/* also not a comment */'")))
+    (is (= [{:type :where, :value [(dt/column "title") "LIKE" (dt/string "A% /* test */")]}]
+           (p "title like 'A% /* test */'")))
+    (is (= [{:type :where, :value [(dt/column "name") "=" (dt/string "John -- comment in string")]}]
+           (p "name = 'John -- comment in string'")))
+    (is (= [{:type :where, :value [(dt/column "description") "=" (dt/string "Multi\nline /* block */ comment")]}]
+           (p "description = 'Multi\nline /* block */ comment'"))))
+
+  (testing "Parse expressions with consecutive comments"
+    (is (= [{:type :table, :value {:table "user"}}]
+           (p "-- comment 1\n-- comment 2\nuser")))
+    (is (= [{:type :table, :value {:table "user"}}]
+           (p "user /* comment 1 */ /* comment 2 */"))))
+
+  (testing "Comments at EOF"
+    (is (= [{:type :table, :value {:table "user"}}]
+           (p "user --")))
+    (is (= [{:type :table, :value {:table "user"}}]
+           (p "user -- comment at end")))))
+
+(deftest test-prettify
+
+  (testing "A list of join columns survives a round trip"
+    ;; beamlynx rewrites the input with `prettified` on every canvas gesture,
+    ;; and prettify rebuilds each operation from its own parse span - so a
+    ;; span that stopped a character short would silently drop the second
+    ;; column the next time the user clicked anything. No error, no warning.
+    (doseq [expression ["note | note_ref .note_id, .other_id"
+                        "note | note_ref .note_id = .id, .search_id = .other_id"
+                        "note | note_ref .note_id, .other_id as z :left"
+                        "note_ref | note .note_id, .search_id :parent"
+                        "note | note_ref | delete! .note_id, .search_id"]]
+      (is (= (clojure.string/replace expression " | " "\n | ")
+             (:result (prettify expression)))
+          expression)))
+
+  (testing "Single operation"
+    (is (= {:result "company"
+            :operations [{:expression "company" :start 0 :end 7}]}
+           (prettify "company"))))
+
+  (testing "Multiple operations"
+    (is (= {:result "company\n | where: name = 'Acme'\n | select: id"
+            :operations [{:expression "company" :start 0 :end 7}
+                         {:expression "where: name = 'Acme'" :start 10 :end 30}
+                         {:expression "select: id" :start 33 :end 43}]}
+           (prettify "company | where: name = 'Acme' | select: id"))))
+
+  (testing "Pipe inside string value is preserved"
+    (is (= {:result "company\n | where: name = 'test | test'"
+            :operations [{:expression "company" :start 0 :end 7}
+                         {:expression "where: name = 'test | test'" :start 10 :end 37}]}
+           (prettify "company | where: name = 'test | test'"))))
+
+  (testing "Extra whitespace is normalized"
+    (is (= {:result "company\n | where: id = 1\n | select: name"
+            :operations [{:expression "company" :start 0 :end 7}
+                         {:expression "where: id = 1" :start 14 :end 27}
+                         {:expression "select: name" :start 34 :end 46}]}
+           (prettify "company   |   where: id = 1   |   select: name"))))
+
+  (testing "Already formatted expression"
+    (is (= {:result "company\n | where: name = 'Acme'"
+            :operations [{:expression "company" :start 0 :end 7}
+                         {:expression "where: name = 'Acme'" :start 11 :end 31}]}
+           (prettify "company\n | where: name = 'Acme'"))))
+
+  (testing "Trailing pipe is preserved"
+    (is (= {:result "company\n | "
+            :operations [{:expression "company" :start 0 :end 7}
+                         {:expression "" :start 9 :end 9}]}
+           (prettify "company | ")))
+    (is (= {:result "company\n | where: id = 1\n | "
+            :operations [{:expression "company" :start 0 :end 7}
+                         {:expression "where: id = 1" :start 10 :end 23}
+                         {:expression "" :start 25 :end 25}]}
+           (prettify "company | where: id = 1 | "))))
+
+  (testing "Incomplete expressions return an error"
+    (is (contains? (prettify "company | w: name = 'test |") :error)))
+
+  (testing "Assignment is formatted without double pipe"
+    (is (= {:result "company\n | = active_companies"
+            :operations [{:expression "company" :start 0 :end 7}
+                         {:expression "= active_companies" :start 9 :end 27}]}
+           (prettify "company |= active_companies")))
+    (is (= {:result "company\n | = x"
+            :operations [{:expression "company" :start 0 :end 7}
+                         {:expression "= x" :start 10 :end 13}]}
+           (prettify "company | = x")))
+    (is (= {:result "company\n | where: active = true\n | = active_companies"
+            :operations [{:expression "company" :start 0 :end 7}
+                         {:expression "where: active = true" :start 10 :end 30}
+                         {:expression "= active_companies" :start 32 :end 50}]}
+           (prettify "company | where: active = true |= active_companies")))
+    ;; |= is mid-pipeline — operations after it are valid
+    (is (= {:result "company\n | = x\n | "
+            :operations [{:expression "company" :start 0 :end 7}
+                         {:expression "= x" :start 9 :end 12}
+                         {:expression "" :start 14 :end 14}]}
+           (prettify "company |= x | ")))))
+
+(deftest test-assign
+  (testing "|= appears in :result as an assign op"
+    (is (= [{:type :table :value {:table "company"}}
+            {:type :assign :value "active_companies"}]
+           (:result (parse "company |= active_companies"))))
+    (is (= [{:type :table :value {:table "company"}}
+            {:type :assign :value "active_companies"}]
+           (:result (parse "company | = active_companies"))))
+    (is (= [{:type :table :value {:table "company"}}]
+           (:result (parse "company")))))
+
+  (testing ":assign is no longer a top-level field in parse result"
+    (is (nil? (:assign (parse "company |= active_companies"))))
+    (is (nil? (:assign (parse "company")))))
+
+  (testing "|= is mid-pipeline: operations continue after it"
+    (is (= [{:type :table :value {:table "company"}}
+            {:type :assign :value "x"}
+            {:type :table :value {:table "employee"}}]
+           (:result (parse "company |= x | employee"))))
+    (is (= 4 (count (:result (parse "company | where: id = 1 | s: name |= my_var")))))
+    (is (= {:type :assign :value "my_var"}
+           (last (:result (parse "company | where: id = 1 | s: name |= my_var")))))))
+
+(deftest test-describe
+  (testing "`describe:` is an operation after a pipe"
+    (is (= [{:type :table :value {:table "user"}}
+            {:type :describe :value {}}]
+           (p "user | describe:")))
+    (is (= [{:type :table :value {:table "user"}}
+            {:type :table :value {:table "document"}}
+            {:type :describe :value {}}]
+           (p "user | document | describe: "))))
+
+  (testing "without the colon it is a table name"
+    (is (= [{:type :table :value {:table "describe"}}]
+           (p "describe")))))
+
+(deftest test-references
+  (testing "`references:` is an operation after a pipe"
+    (is (= [{:type :table :value {:table "user"}}
+            {:type :references :value {}}]
+           (p "user | references:"))))
+
+  (testing "without the colon it is a table name"
+    (is (= [{:type :table :value {:table "references"}}]
+           (p "references")))))
+
+(deftest test-paths
+  (testing "`? table` parses as a :paths op, composed after an ordinary pipe chain"
+    (is (= [{:type :table :value {:table "company"}}
+            {:type :paths :value {:table ""}}]
+           (p "company | ?")))
+    (is (= [{:type :table :value {:table "company"}}
+            {:type :paths :value {:table "employee"}}]
+           (p "company | ? employee")))
+    (is (= [{:type :table :value {:table "company"}}
+            {:type :paths :value {:table "employee" :schema "y"}}]
+           (p "company | ? y.employee"))))
+
+  (testing "`? table` composes on top of an arbitrary pipe chain, not just a bare table"
+    (is (= [{:type :table :value {:table "company"}}
+            {:type :where :value [(dt/column "id") "=" (dt/number "1")]}
+            {:type :paths :value {:table "employee"}}]
+           (p "company | where: id = 1 | ? employee"))))
+
+  (testing "`? table` has no table-mods of its own - not part of PATHS's grammar"
+    (is (= [{:type :paths :value {:table "employee"}}]
+           (p "? employee")))))
+
+(deftest test-extract-doc
+
+  (testing "No comment at the top"
+    (is (nil? (extract-doc "company")))
+    (is (nil? (extract-doc "")))
+    (is (nil? (extract-doc nil))))
+
+  (testing "A comment that is not at the top is not a doc"
+    (is (nil? (extract-doc "company -- the companies table")))
+    (is (nil? (extract-doc "company | /* only active */ where: active = true"))))
+
+  (testing "Single-line block comment"
+    (is (= {:text "Active companies" :end 22}
+           (extract-doc "/* Active companies */ company"))))
+
+  (testing "Multi-line block comment keeps its line breaks"
+    (is (= "Active companies.\n\nExcludes the internal test tenant."
+           (:text (extract-doc (str "/*\n"
+                                    "   Active companies.\n"
+                                    "\n"
+                                    "   Excludes the internal test tenant.\n"
+                                    "*/\n"
+                                    "company"))))))
+
+  (testing "Javadoc-style leading asterisks are stripped"
+    (is (= "Active companies.\nOne row per tenant."
+           (:text (extract-doc (str "/*\n"
+                                    " * Active companies.\n"
+                                    " * One row per tenant.\n"
+                                    " */\n"
+                                    "company"))))))
+
+  (testing "An asterisk on only some lines is left alone"
+    (is (= "Active companies.\n* and a literal bullet"
+           (:text (extract-doc (str "/*\n"
+                                    "Active companies.\n"
+                                    "* and a literal bullet\n"
+                                    "*/\n"
+                                    "company"))))))
+
+  (testing "A run of line comments"
+    (is (= "Active companies.\nOne row per tenant."
+           (:text (extract-doc (str "-- Active companies.\n"
+                                    "-- One row per tenant.\n"
+                                    "company"))))))
+
+  (testing "A bare -- spaces out paragraphs without ending the run"
+    (is (= "First paragraph.\n\nSecond paragraph."
+           (:text (extract-doc (str "-- First paragraph.\n"
+                                    "--\n"
+                                    "-- Second paragraph.\n"
+                                    "company"))))))
+
+  (testing "A blank line ends the run of line comments"
+    (is (= "First paragraph."
+           (:text (extract-doc (str "-- First paragraph.\n"
+                                    "\n"
+                                    "-- Not part of the doc\n"
+                                    "company"))))))
+
+  (testing "An empty comment is not a doc"
+    (is (nil? (extract-doc "/*   */ company")))
+    (is (nil? (extract-doc "--\ncompany"))))
+
+  (testing ":end points just past the comment"
+    (let [expression "/* Active companies */ company"
+          {:keys [end]} (extract-doc expression)]
+      (is (= "/* Active companies */" (subs expression 0 end)))))
+
+  (testing "An unterminated block comment is not a doc"
+    (is (nil? (extract-doc "/* never closed\ncompany")))))
+
+(deftest test-prettify-doc-comment
+
+  (testing "A block doc survives prettify verbatim"
+    (is (= "/* Active companies */\ncompany\n | where: active = true"
+           (:result (prettify "/* Active companies */ company | where: active = true")))))
+
+  (testing "A multi-line block doc keeps its own formatting"
+    (is (= "/*\n * Active companies.\n * One row per tenant.\n */\ncompany"
+           (:result (prettify "/*\n * Active companies.\n * One row per tenant.\n */\ncompany")))))
+
+  (testing "A line-comment doc survives prettify"
+    (is (= "-- Active companies\ncompany\n | count:"
+           (:result (prettify "-- Active companies\ncompany | count:")))))
+
+  (testing "Prettify is idempotent with a doc comment"
+    (doseq [expression ["/* Active companies */ company | where: active = true"
+                        "-- Active companies\ncompany | count:"
+                        "/*\n * Two lines.\n * Here.\n */\ncompany | limit: 5"]]
+      (let [once (:result (prettify expression))]
+        (is (= once (:result (prettify once)))
+            (str "not idempotent for: " (pr-str expression))))))
+
+  (testing "Operation offsets still index the original expression"
+    (let [expression "/* Active companies */ company | count:"
+          {:keys [operations]} (prettify expression)]
+      (is (= ["company" "count:"] (mapv :expression operations)))
+      (is (= "company" (subs expression
+                             (:start (first operations))
+                             (:end (first operations)))))))
+
+  (testing "A comment between operations is still dropped"
+    (is (= "company\n | count:"
+           (:result (prettify "company | /* mid-pipe */ count:"))))))
+
+(defn- elapsed-ms [f]
+  (let [start (System/nanoTime)]
+    (f)
+    (/ (- (System/nanoTime) start) 1e6)))
+
+(deftest test-parse-time-is-linear
+  ;; Whitespace and comments used to be a repetition of small tokens, used as
+  ;; ws* and ws+, so a run of comments could be split into tokens in many
+  ;; ways. Ten block comments after a select: took 4 s; twelve ran a 2 GB
+  ;; heap out of memory. And a string literal was one parse node per
+  ;; character: 1 MB took 7.5 s.
+  (testing "block comments after a select: column"
+    (let [expression (str "user | s: id " (apply str (repeat 200 "/**/ ")))]
+      (is (:result (parse expression)))
+      (is (< (elapsed-ms #(parse expression)) 500))))
+
+  (testing "thousands of comments don't overflow the regex engine's stack"
+    (is (:result (parse (str (apply str (repeat 5000 "/**/ ")) "user"))))
+    (is (:result (parse (str "user " (apply str (repeat 5000 "-- x\n")))))))
+
+  (testing "a 1 MB string literal"
+    (let [expression (str "user | where: name = '" (apply str (repeat 1000000 "a")) "'")]
+      (is (:result (parse expression)))
+      (is (< (elapsed-ms #(parse expression)) 2000)))))
+
+(deftest test-string-apostrophes
+  (testing "an apostrophe inside a string is written twice"
+    (is (= {:type :string :value "O'Brien"}
+           (-> (p "user | where: name = 'O''Brien'") second :value last))))
+
+  (testing "an empty string is still an empty string"
+    (is (= {:type :string :value ""}
+           (-> (p "user | where: name = ''") second :value last))))
+
+  (testing "in lists, including an empty string next to doubled quotes"
+    (is (= [{:type :string :value "a"} {:type :string :value ""} {:type :string :value "b'c"}]
+           (-> (p "user | where: name in ('a', '', 'b''c')") second :value last))))
+
+  (testing "update! values"
+    (is (= {:type :string :value "it's"}
+           (-> (p "user | update! name = 'it''s'") second :value :assignments first :value))))
+
+  (testing "a date is still a date"
+    (is (= :date (-> (p "user | where: created_at > '2024-01-01'") second :value last :type)))))
+
+(deftest test-update-column-to-column
+  (testing "the right side of `update! a = b` is a typed column, not a bare map"
+    (is (= {:type :column :value [nil "country" nil]}
+           (-> (p "company | update! name = country") second :value :assignments first :value)))
+    (is (= {:type :column :value ["c" "country" nil]}
+           (-> (p "company as c | update! c.name = c.country") second :value :assignments first :value)))))
+
+(deftest test-limit-bounds
+  (testing "limit: accepts 0 to 10 000"
+    (is (= {:type :limit :value 0} (second (p "company | limit: 0"))))
+    (is (= {:type :limit :value 10000} (second (p "company | limit: 10000")))))
+
+  (testing "beyond that, a readable error instead of a NumberFormatException"
+    (doseq [n ["10001" "99999999999" "99999999999999999999999"]]
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"limit: must be between 0 and 10000"
+                            (p (str "company | limit: " n)))
+          n))))
+
+(deftest test-dates-and-times
+  (let [value #(-> (p (str "x | where: t > '" % "'")) second :value last)]
+    (testing "a date is a java.sql.Date, keeping the text it was written as"
+      (is (= {:type :date :value (java.sql.Date/valueOf "2024-01-31") :text "2024-01-31"} (value "2024-01-31"))))
+    (testing "a date and time is a timestamp, with or without seconds, with a space or a T"
+      (is (= (java.sql.Timestamp/valueOf "2024-01-01 10:00:00") (:value (value "2024-01-01 10:00"))))
+      (is (= (java.sql.Timestamp/valueOf "2024-01-01 10:00:30") (:value (value "2024-01-01T10:00:30"))))
+      (is (= (java.sql.Timestamp/valueOf "2024-01-01 10:00:30.5") (:value (value "2024-01-01 10:00:30.5")))))
+    (testing "something date-shaped that isn't a real date is a plain string, not rolled over to the next month"
+      ;; Whether that's an error depends on the column: see eval-test.
+      (is (= {:type :string :value "2024-02-31"} (value "2024-02-31")))
+      (is (= {:type :string :value "2024-01-01 25:00"} (value "2024-01-01 25:00"))))))
+
+(deftest test-readable-parse-errors
+  (let [error #(:error (parse %))]
+    (testing "a hint comes first; the position report follows it"
+      (is (re-find #"(?s)^Unknown operation `wher:`\. Did you mean `where:`\?\n\nParse error at line 1"
+                   (error "user | wher: id = 1"))))
+    (testing "the report names what was expected in words, and the docs topic"
+      (is (= (str "Parse error at line 1, column 36:\n"
+                  "company_officer | group: officerId is null as x with count\n"
+                  "                                   ^\n"
+                  "Expected: `|`, `with`, `=>`\n"
+                  "Pine docs: group")
+             (error "company_officer | group: officerId is null as x with count")))
+      (is (re-find #"\nExpected: a name, `\|`" (error "user | select: \"tenantId\"")))
+      (is (not (re-find #"#\"|Expected one of" (error "user | select: \"tenantId\""))) "no regexes")
+      (is (re-find #"\nPine docs: where$" (error "user | wher: id = 1")) "a misspelled operation's topic")
+      (is (not (re-find #"Pine docs" (error "user ? document"))) "no operation, no topic"))
+    (is (re-find #"^`\?` follows a pipe: `user \| \? document`\." (error "user ? document")))
+    (is (re-find #"^`where` needs a colon" (error "user | where id = 1")))
+    ;; These read as a table called `where` joined on a condition.
+    (is (thrown-with-msg? Exception #"^`where` needs a colon: `where:`" (p "user as u | where u.status = 'active'")))
+    (is (thrown-with-msg? Exception #"^`where` needs a colon" (p "user | where .status = 'active'")))
+    (is (thrown-with-msg? Exception #"^`select` needs a colon" (p "user | select u.id = .x")))
+    (is (thrown-with-msg? Exception #"^`where` needs a colon" (p "user | where .x is null")))
+    (is (re-find #"^A string is missing its closing quote" (error "user | where: name = 'abc")))
+    (is (re-find #"^Join conditions in one where: with `or`" (error "user | where: a = 1, b = 2")))
+    (is (re-find #"^Join conditions in one where: with `or`" (error "user | where: a = 1 and b = 2")))
+    (is (re-find #"^Unknown operation `zzzzz:`\.\n" (error "user | zzzzz: id")))
+    (is (re-find #"^This looks like SQL\. Paste it in the SQL panel" (error "SELECT *\nFROM user WHERE id = 1")))))

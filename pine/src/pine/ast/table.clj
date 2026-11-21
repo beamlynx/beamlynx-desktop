@@ -1,0 +1,535 @@
+(ns pine.ast.table
+  (:require
+   [clojure.string :as s]
+   [pine.db.references :as refs]))
+
+(defn added-column?
+  "A hidden column Pine added for the results grid, not one the user
+  selected: a table's key (:auto-id), a JSON value's type (:json-type-of),
+  or an element's position in its array (:element-index)."
+  [col]
+  (boolean (or (:auto-id col) (:json-type-of col) (:element-index col))))
+
+(defn adds-current-star?
+  "Whether a state's SQL returns every column of its current table on top
+  of the columns it selects: when the current table has no select of its
+  own and the last step isn't a select:, group: or delete!. So
+  `t | s: title | company .tenant_id` returns title and all of company.
+  Mirrors pine.eval's select-items, which writes that `current.*`."
+  [{:keys [columns current operation aliases]}]
+  (and (not (contains? #{:select :delete-action :group} (:type operation)))
+       (not-any? #(= current (:alias %)) (remove added-column? columns))
+       (not-any? #(= current (get-in % [:elements :on])) (vals aliases))))
+
+(defn column-source
+  "The real table (and schema) this column ultimately traces back to - itself
+  if selecting from a real table, or copied forward from a variable's own
+  already-resolved source for the matching column if selecting from a
+  variable. Never recomputed past this one hop: a variable is always defined
+  before it's used, so whatever it's built from has already gone through this
+  same step, and its own :columns already carry a fully-real :source."
+  [state alias raw-column]
+  (let [{:keys [table schema ast]} (get (:aliases state) alias)]
+    (if ast
+      (some #(when (= raw-column (or (:column-alias %) (:column %))) (:source %))
+            (:columns ast))
+      {:table table :schema schema})))
+
+(defn resolve-table
+  "Given a table-alias entry (as found in state's :aliases), return the real
+  source table(s) it resolves to for join purposes: itself, unchanged, if it's
+  already real; or the variable's own already-resolved :source(s) if it's a
+  variable - a multi-source variable (`s: t.id, c.id`) can resolve to more
+  than one. A variable with no explicit columns at all (`*`) implicitly
+  selects everything, so it resolves through :current instead - one hop,
+  recursing only if :current is itself another variable, since that
+  variable's own :source is already fully resolved by the time it can be
+  referenced here (see ast/select.clj's column-source).
+
+  Each entry also carries a `:rename` map ({raw-column -> exposed-column}), so
+  a column found via the real table's schema can be translated back to
+  whatever name the variable actually exposes it under - empty for a real
+  table, where no translation is ever needed. Once a variable's data is
+  sealed into a CTE, the outer query can only see what the CTE's own
+  :columns actually selected - Pine never adds an `id` on its own - but that
+  restriction is enforced per-column by translate-column at each actual use
+  site, not here: a source table is a valid join candidate regardless of
+  which of its columns survived, since most relations (e.g. an FK column
+  other than `id`) don't need `id` at all. Only the synthetic same-source
+  id=id join genuinely requires it, and that requirement is checked directly
+  where that join is built (see same-source-join below, and
+  same-source-hints/self-source-hint in ast/hints.clj)."
+  [{:keys [table schema ast]}]
+  (if ast
+    (let [columns (remove added-column? (:columns ast))]
+      (if (empty? columns)
+        (when-let [current-alias (:current ast)]
+          (resolve-table (get (:aliases ast) current-alias)))
+        (concat
+         (->> columns
+              (filter :source)
+              (group-by :source)
+              (map (fn [[source cols]]
+                     {:table (:table source)
+                      :schema (:schema source)
+                      :rename (into {} (map (fn [c] [(:column c) (or (:column-alias c) (:column c))]) cols))})))
+         ;; The current table's `*` that comes on top of the selected
+         ;; columns, as the SQL writes it.
+         (when (adds-current-star? ast)
+           (some-> (get (:aliases ast) (:current ast)) resolve-table)))))
+    [{:table table :schema schema :rename {}}]))
+
+(defn translate-column
+  "Translate a real column through a resolve-table candidate's rename map.
+  Unchanged for an unrestricted candidate - a real table, or a variable's
+  implicit `*` - where the rename map is empty and every column is fair game.
+  For a restricted candidate (a variable with explicit columns), only the
+  columns actually selected are keys in the map at all, so anything else
+  returns nil - that column was never exposed by the CTE, so this join path
+  isn't reachable through it, full stop. Without this, a variable exposing
+  only `id` could still be joined on some *other* column of its source table
+  that was never selected, referencing a column the CTE doesn't have."
+  [rename col]
+  (if (empty? rename) col (get rename col)))
+
+(defn resolution-of
+  "The confidence tag a committed join carries, from the relation it was
+  built out of. Only :foreign-key/:heuristic ever reach here - those are
+  the two kinds db/references.clj puts in the index. \"synthetic\" and
+  \"manual\" are set directly wherever such a join is fabricated (see
+  same-source-join and update-joins below), since neither corresponds to a
+  relation in the index at all."
+  [{:keys [resolution]}]
+  (case resolution
+    :foreign-key "fk"
+    :heuristic   "heuristic"))
+
+(defn- column-db-type
+  "Look up a real column's DB type straight from the indexed references -
+  same lookup as pine.data-types/get-column-type, duplicated locally to
+  avoid a cycle (that namespace already requires this one)."
+  [references schema table column]
+  (let [columns (if schema
+                  (get-in references [:schema schema :table table :columns])
+                  (get-in references [:table table :columns]))]
+    (some #(when (= (:column %) column) (:type %)) columns)))
+
+(def ^:private type-families
+  "Postgres types that already compare across each other with a plain `=` -
+  same numeric/string/temporal family, just spelled differently
+  (`integer` vs `bigint`, `character varying` vs `text`). Grouped so
+  mismatched-heuristic-types? only flags a *genuine* cross-family mismatch
+  (e.g. `character varying` vs `uuid`), not two column types that were
+  always going to join fine as-is."
+  {"smallint" :number "integer" :number "bigint" :number
+   "numeric" :number "decimal" :number "real" :number "double precision" :number
+   "character varying" :string "character" :string "text" :string
+   "date" :temporal "timestamp" :temporal
+   "timestamp without time zone" :temporal "timestamp with time zone" :temporal
+   "time" :temporal "time without time zone" :temporal "time with time zone" :temporal})
+
+(defn- type-family
+  "The comparability bucket for a DB type - falls back to the type itself
+  for anything not in type-families (uuid, boolean, jsonb, ...), so two
+  columns of the same unlisted type still count as compatible, but never
+  compatible with a *different* unlisted type."
+  [db-type]
+  (get type-families db-type db-type))
+
+(defn- mismatched-heuristic-types?
+  "A heuristic join is only a naming-convention guess, not a real FK, so
+  nothing guarantees the two sides even share a type - e.g. one table's
+  \"_id\" column stored as varchar while the other's \"id\" is a native
+  uuid. A real FK can't have this problem: Postgres requires a usable
+  equality operator between the two column types to create the constraint
+  in the first place. Compares type *families* rather than exact type
+  strings, so e.g. integer vs bigint (already comparable) isn't flagged -
+  only a genuine cross-family mismatch is. Returns false (no cast needed)
+  when either side's type is unknown, since that's not evidence of a
+  mismatch."
+  [resolution s1 t1 raw-col s2 t2 raw-f-col references]
+  (boolean
+   (and (= resolution "heuristic")
+        (let [type1 (column-db-type references s1 t1 raw-col)
+              type2 (column-db-type references s2 t2 raw-f-col)]
+          (and type1 type2 (not= (type-family type1) (type-family type2)))))))
+
+(defn- select-relation
+  "Pick the relation the user meant, out of everything connecting these two
+  tables, from the columns they named.
+
+  The columns **identify** a relation; they don't specify one. Any subset
+  that picks out a single relation is enough, and the join then uses every
+  column of that key regardless of how many were named. Naming none at all
+  is legal too - Pine is terse, and the canvas is where you see which
+  relation it settled on (docs/joins.md).
+
+  The `:via` map is keyed by the child's own columns, and a key made of
+  several columns is filed under every one of them. So the relations a
+  column could mean are the list under that column, and the relations a
+  *set* of columns could mean are the ones appearing under all of them.
+
+  A column carries more than one relation in two ways. The same table name
+  can exist in several schemas, and this lookup is by bare table name, so
+  every schema's copy lands under one key. And two different keys between
+  the same pair of tables can share a column. Entries are conj'd onto a
+  list, so reversing gives the order they were indexed in, and the first is
+  taken - which is what naming more columns lets you get past. A foreign
+  key and a heuristic never share a key: db/references.clj only adds a
+  heuristic where no foreign key already connects that same table pair and
+  column."
+  [refs columns]
+  (let [ordered (reverse (get refs (if (seq columns) (first columns) (first (keys refs)))))
+        named   (set columns)]
+    (first (filter (fn [rel]
+                     (every? (set (map :child (:columns rel))) named))
+                   ordered))))
+
+(defn- join-helper
+  "Find the relation between the tables and turn it into the join map the
+  rest of pine reads.
+
+  The lookup is always [:table t1 :referred-by t2], so t1 is the parent
+  and t2 the child, whichever direction the caller is travelling in - that
+  is how this knows which side of the relation each of its own arguments
+  is. rename1/rename2 translate t1's/t2's own column back through whatever
+  name a variable exposes it under - see translate-column. A restricted
+  candidate (non-empty rename) that fails to translate a *real* column (one
+  the relation actually names) rejects the whole join outright - that
+  relation isn't reachable through the CTE. A relation that was never found
+  at all (e.g. an invalid explicit .hint_col against a real table) is left
+  alone, unchanged from the pre-existing behavior of surfacing an
+  unresolved join rather than no join at all - which is also what naming
+  columns belonging to two different relations produces, since no single
+  relation holds them all.
+
+  The returned map's :columns holds one entry per column of the relation,
+  each already labelled by the side it belongs to - :from and :to name the
+  two aliases in pipeline order, so nothing downstream has to work out
+  which end a column came from. Every pair is translated and rendered;
+  nothing here assumes there is exactly one, even though today there
+  always is.
+
+  :cast is \"text\" only for a heuristic join whose two columns turn out to
+  have different DB types - so eval.clj can cast both sides instead of
+  handing Postgres an operator it doesn't have (e.g. `character varying =
+  uuid`). It is a property of the join, not of a pair: a cast only ever
+  applies to a heuristic guess, and a heuristic relation always has
+  exactly one column pair."
+  [references t1 t2 s1 s2 a1 a2 cs direction rename1 rename2]
+  (when-let [refs (get-in references [:table t1 :referred-by t2 :via])] ;; get relations for the tables
+    (let [rel                   (select-relation refs cs)
+
+          ;; t1 is the parent side of the relation, t2 the child side.
+          pairs                 (mapv (fn [{:keys [child parent]}]
+                                        {:raw1 parent :raw2 child
+                                         :col1 (translate-column rename1 parent)
+                                         :col2 (translate-column rename2 child)})
+                                      (:columns rel))
+          rejected?             (boolean
+                                 (some (fn [{:keys [raw1 raw2 col1 col2]}]
+                                         (or (and (some? raw1) (seq rename1) (nil? col1))
+                                             (and (some? raw2) (seq rename2) (nil? col2))))
+                                       pairs))
+                                ;; `rel` is nil when the named columns match no relation -
+                                ;; resolution-of throws on a nil/unmatched tag, so guard it
+                                ;; the same way the pairs above already tolerate being empty.
+          resolution            (when rel (resolution-of rel))
+          {:keys [raw1 raw2]}   (first pairs)
+          cast                  (when (and resolution
+                                           (mismatched-heuristic-types? resolution s1 t1 raw1 s2 t2 raw2 references))
+                                  "text")]
+      (when-not rejected?
+        (if (= direction :of)
+          {:from a2 :to a1 :parent "to"
+           :columns (mapv (fn [{:keys [col1 col2]}] {:from col2 :to col1}) pairs)
+           :resolution resolution :cast cast}
+          {:from a1 :to a2 :parent "from"
+           :columns (mapv (fn [{:keys [col1 col2]}] {:from col1 :to col2}) pairs)
+           :resolution resolution :cast cast})))))
+
+(defn- has-id-column? [references {:keys [table schema]}]
+  (let [columns (if schema
+                  (get-in references [:schema schema :table table :columns])
+                  (get-in references [:table table :columns]))]
+    (some #(= "id" (:column %)) columns)))
+
+(defn- same-source-join
+  "Fallback for two DISTINCT sides that resolve to the same real source table
+  but aren't connected by a real FK: allow a synthetic id=id join, each side
+  using its own exposed name for it. This covers two variables both wrapping
+  `customer`, and just as much a real table joined to a variable that
+  happens to trace back to that same table (e.g. `tenant | aggregate`,
+  where `aggregate` was built from `tenant` via a restricted `s: id, ...`
+  chain) - the variable case isn't special, both are just two references to
+  the same table that the schema alone can't connect.
+
+  Requires at least one side to actually be a variable, though: two RAW
+  references to the same table (`customer | customer`) still don't resolve -
+  Pine has no way yet to tell those two occurrences apart (no `t | t as t2`
+  self-aliasing), so joining them would be ambiguous about which occurrence
+  is which. A variable is never ambiguous this way - it's already a distinct,
+  named snapshot - so the same-source join is only actually meaningless when
+  NEITHER side has that identity. Also never fires for a variable joined to
+  itself (same identity on both sides) - matching Pine's general lack of
+  self-join support (see docs/named-results.md).
+
+  Each side's `id` must also actually survive translation - a restricted
+  variable that never selected `id` doesn't expose it, so translate-column
+  returns nil and that pairing is skipped, same as any other unreachable
+  column (see translate-column)."
+  [references variable1? variable2? distinct-variables? candidates1 candidates2 a1 a2]
+  (when (and (or variable1? variable2?) distinct-variables?)
+    (first
+     (for [{t1 :table rename1 :rename :as c1} candidates1
+           {t2 :table rename2 :rename} candidates2
+           :let [id1 (translate-column rename1 "id")
+                 id2 (translate-column rename2 "id")]
+           :when (and (= t1 t2) (has-id-column? references c1) id1 id2)]
+       {:from a1 :to a2 :parent "from"
+        :columns [{:from id1 :to id2}]
+        :resolution "synthetic" :cast nil}))))
+
+;; ---------------------------------------------------------------------------
+;; Joins from names given with `as`
+;; ---------------------------------------------------------------------------
+
+(defn named-values
+  "The values given a name with `as` before this step, that a join from
+  `context` can start from, newest first: a column of `select:`, `id as
+  company_id`, and the elements of `unnest: data as company_id`. A column
+  without `as`, or a computed value, is left out: only a name chosen in the
+  query says what the values are.
+
+  Each is {:name :alias :column :path :element?}. :path is nil for a plain
+  column, and the keys inside the JSON value otherwise ([] for an element
+  itself)."
+  [{:keys [columns aliases]} context]
+  (let [on-context? (fn [a] (or (= a context) (= context (get-in aliases [a :elements :on]))))]
+    (->> (concat
+          (for [{:keys [column-alias alias column path computed col-fn operation-index] :as c} columns
+                :when (and column-alias column (not computed) (not col-fn)
+                           (not (added-column? c)) (on-context? alias))]
+            {:name column-alias :alias alias :column column :path path :index operation-index})
+          (for [{:keys [alias elements index]} (vals aliases)
+                :when (and elements (on-context? alias))]
+            {:name alias :alias alias :column "value" :path [] :index index :element? true}))
+         (sort-by :index >))))
+
+(defn named-value-target
+  "How `named` leads to the table `table`, or nil. `company_id` and
+  `companyId` lead to `company` or `companies` by its `id`, the same rule the
+  index uses for column names. An element named after the table itself,
+  `unnest: companies as company`, leads to it by the element's own `id`."
+  [{:keys [name path element?] :as named} table]
+  (let [t (s/lower-case table)]
+    (cond
+      (some-> (refs/extract-table-from-column name) refs/normalize-plural (contains? t))
+      named
+
+      (and element? (contains? (refs/normalize-plural name) t))
+      (assoc named :path (conj (vec path) "id")))))
+
+(defn- named-value-join
+  "The join from a value named with `as` to the table `y`, or nil. The newest
+  name that leads to `y` wins. A join on a key inside JSON compares the key's
+  text with `id`. A join on a plain column is cast to text, as a heuristic
+  join is, when the two types differ."
+  [{:keys [references aliases] :as state} context y]
+  (when (and (not (:ast y)) (has-id-column? references y))
+    (when-let [{:keys [alias column path]} (some #(named-value-target % (:table y)) (named-values state context))]
+      (let [{s1 :schema t1 :table} (get aliases alias)]
+        ;; The value names a row of `y`, as a foreign key does: `y` is the
+        ;; parent.
+        {:from alias :to (:alias y) :parent "to"
+         :columns [(cond-> {:from column :to "id"}
+                     path (assoc :from-value-path path))]
+         :resolution "alias"
+         :cast (when (and (nil? path)
+                          (mismatched-heuristic-types? "heuristic" s1 t1 column (:schema y) (:table y) "id" references))
+                 "text")}))))
+
+;; TODO: use spec for the state value i.e. first arg
+(defn- join-tables [{:keys [references aliases]} x y columns parent]
+  (let [a1 (x :alias)
+        a2 (y :alias)
+        alias1 (aliases a1)
+        alias2 (aliases a2)
+        candidates1 (resolve-table alias1)
+        candidates2 (resolve-table alias2)
+        try-direction (fn [cs1 cs2 aa1 aa2 direction]
+                        (first
+                         (for [{t1 :table s1 :schema rename1 :rename} cs1
+                               {t2 :table s2 :schema rename2 :rename} cs2
+                               :let [result (join-helper references t1 t2 s1 s2 aa1 aa2 columns direction rename1 rename2)]
+                               :when result]
+                           result)))]
+    (or
+     ;; By default we narrow the results i.e.
+     ;; We get the children first and if a resultis not found, only
+     ;; then we look at parents
+     (if (not parent) (try-direction candidates1 candidates2 a1 a2 :has) nil)
+     (try-direction candidates2 candidates1 a2 a1 :of)
+     (same-source-join references (boolean (:ast alias1)) (boolean (:ast alias2))
+                       (not= (:table alias1) (:table alias2))
+                       candidates1 candidates2 a1 a2))))
+
+(defn- side-text [alias column]
+  (str (when alias (str alias ".")) column))
+
+(defn- pair-sides
+  "[earlier added] for one written pair: each side as {:alias :column :cast
+  :path}. A side that names an alias is that table. A bare side keeps the
+  meaning of its place: typed first, the table being added; typed second,
+  the table before it. So `b .a_id = .id` is b.a_id = a.id, and `c .b_id =
+  b.id` names only the second side.
+
+  A side on a table that a checkpoint sealed reads the checkpoint's column,
+  as where: does.
+
+  Throws when an alias isn't in the query yet, or when the pair doesn't
+  have the table being added on exactly one side."
+  [state added context {:keys [left right left-alias right-alias] :as pair}]
+  (let [unseal (requiring-resolve 'pine.ast.path/unseal-column)
+        side (fn [k a c] {:alias a :column c
+                          :cast (get pair (keyword (str k "-cast")))
+                          :path (get pair (keyword (str k "-path")))})
+        ;; Typed first: the right side. Typed second: the left side.
+        sides [(side "right" (or right-alias added) right) (side "left" (or left-alias context) left)]
+        written (str (side-text right-alias right) " = " (side-text left-alias left))]
+    (doseq [a (keep identity [right-alias left-alias])]
+      (when-not (contains? (:aliases state) a)
+        (throw (ex-info (str "`" a "` in the join `" written "` isn't a table of this query. Name a table that comes before it, or the table being joined.")
+                        {:alias a}))))
+    (let [[mine others] ((juxt filter remove) #(= added (:alias %)) sides)]
+      (when-not (= 1 (count mine))
+        (throw (ex-info (str "The join `" written "` compares " (s/join " with " (map #(side-text (:alias %) (:column %)) sides))
+                             ". It must compare a column of `" added "`, the table being joined, with a column of an earlier table."
+                             " A bare column written first is `" added "`'s, and written second is `" context "`'s."
+                             (when (empty? mine) " A condition on earlier tables goes in where:."))
+                        {:alias added})))
+      [(merge (first others) (select-keys (unseal state (first others)) [:alias :column])) (first mine)])))
+
+(defn- explicit-join
+  "The join for written column pairs. Its :from is the earlier table of the
+  first pair. A pair with another earlier table keeps that table as its own
+  :from-alias: `fd .id = av.attributeId, .tenant_id = c.tenantId`."
+  [state context current pairs]
+  (let [added (:alias current)
+        resolved (map #(pair-sides state added context %) pairs)
+        from (:alias (ffirst resolved))]
+    {:from from :to added :parent "from"
+     ;; A cast or a JSON path on one side of a pair stays with that side.
+     ;; :from and :to stay the real columns, so the access policy checks
+     ;; the JSON column a path reads.
+     :columns (mapv (fn [[earlier mine]]
+                      (cond-> {:from (:column earlier) :to (:column mine)}
+                        (not= from (:alias earlier)) (assoc :from-alias (:alias earlier))
+                        (:cast earlier) (assoc :from-cast (:cast earlier))
+                        (:cast mine) (assoc :to-cast (:cast mine))
+                        (:path earlier) (assoc :from-path (:path earlier))
+                        (:path mine) (assoc :to-path (:path mine))))
+                    resolved)
+     :resolution "manual" :cast nil}))
+
+(defn- with-join-conditions
+  "The join with the conditions written on it, `.type = 'entity'`, resolved
+  as where: resolves them: a bare column is the table being added. They
+  stay in the join's ON, which for a :left join keeps rows where: would
+  drop. pine.ast.where needs this namespace, so it is looked up here."
+  [state join conditions]
+  (if (seq conditions)
+    (let [resolve (requiring-resolve 'pine.ast.where/resolve-conditions)
+          [_ resolved] (resolve state conditions)]
+      (assoc join :conditions resolved))
+    join))
+
+(defn- update-joins
+  "Use the tables in the state to create a join between the last 2 tables. The
+  reason to get the tables from the state is that they have been assigned an
+  alias. We only use the join columns from the current value being processed."
+  [state current]
+  (let [{:keys [join-columns join-column-pairs join-conditions parent join]} current
+        from-alias                   (state :context)]
+    (cond
+      (nil? from-alias) state
+      ;; Explicit columns case. In "a | b .a_id = .id", the first column is
+      ;; b's and the second a's. A side may name its table instead. Several
+      ;; pairs join on all of them, which is the only way to write a
+      ;; multi-column join that no foreign key describes.
+      (seq join-column-pairs)
+      (let [join-result (with-join-conditions state (explicit-join state from-alias current join-column-pairs) join-conditions)]
+        (update state :joins conj (assoc join-result :type join)))
+
+      :else (let [x (-> state :aliases (get from-alias))
+                  ;; A name given with `as` is the query saying what its
+                  ;; values are, so it comes before the index. Only when no
+                  ;; join column is named: `.col` picks a relation itself.
+                  ;;
+                  ;; Nothing connects these two tables. Still a join - the
+                  ;; user wrote one - but an unresolved one, and it says so
+                  ;; with a nil :resolution rather than by being absent. One
+                  ;; spelling for "unresolved", so a client checks one thing.
+                  join-result (or (when (and (empty? join-columns) (not parent))
+                                    (named-value-join state from-alias current))
+                                  (join-tables state x current join-columns parent)
+                                  {:from (x :alias) :to (current :alias) :parent "from"
+                                   :columns [] :resolution nil :cast nil})
+                  ;; An unresolved join keeps the columns written after the
+                  ;; table, `.user_id`, for its error (describe.clj).
+                  join-result (cond-> join-result
+                                (and (empty? (:columns join-result)) (seq join-columns))
+                                (assoc :named (vec join-columns)))
+                  join-result (with-join-conditions state join-result join-conditions)]
+              (update state :joins conj (assoc join-result :type join))))))
+(defn make-alias [s]
+  (let [words (if (not-empty s) (s/split s #"_") ["x"])
+        initials (map #(subs % 0 1) words)]
+    (apply str initials)))
+
+(defn- handle-as-table [state value]
+  (let [index (state :index)
+        {:keys [table alias schema parent join-columns join-column-pairs join]} value
+        a (or alias (str (make-alias table) "_" (state :table-count)))
+        current {:schema schema :table table :alias a :parent parent
+                 :join-columns join-columns :join-column-pairs join-column-pairs
+                 :join join
+                 :index index}]
+    (-> state
+        (assoc  :context (state :current))
+        (assoc  :current a)
+        (assoc  :current-index index)
+        (update :tables conj current)
+        (update :aliases assoc a current)
+        (update-joins (assoc current :join-conditions (:join-conditions value)))
+        (update :table-count inc))))
+
+(defn- handle-as-variable [state value var-ast]
+  (let [index (state :index)
+        {:keys [table alias join-columns join-column-pairs join]} value
+        a (or alias table)
+        current {:schema nil :table table :ast var-ast :alias a
+                 :join-columns join-columns :join-column-pairs join-column-pairs
+                 :join join
+                 :index index}]
+    (-> state
+        (assoc  :context (state :current))
+        (assoc  :current a)
+        (assoc  :current-index index)
+        (update :tables conj current)
+        (update :aliases assoc a current)
+        (update-joins (assoc current :join-conditions (:join-conditions value)))
+        (update :table-count inc))))
+
+;; todo: spec for the :value for a :table
+(defn handle [state value]
+  (let [{:keys [table schema]} value
+        ;; A schema names a real table: `public.company` is never the named
+        ;; result `company`, which has no schema.
+        var-ast (when-not schema
+                  (or (get-in state [:named-results table])
+                      (get-in state [:pending-assignments table])))]
+    (if var-ast
+      (handle-as-variable state value var-ast)
+      (handle-as-table state value))))
+

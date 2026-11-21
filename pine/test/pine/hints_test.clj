@@ -1,0 +1,627 @@
+(ns pine.hints-test
+  (:require
+   [clojure.test :refer [deftest is testing]]
+   [pine.parser :as parser]
+   [pine.ast.main :as ast]))
+
+(defn- hints-with-types
+  "The hints for an expression, as the server sends them."
+  [expression cursor]
+  (-> expression
+      parser/parse
+      :result
+      (ast/generate :test expression cursor)
+      :hints))
+
+(defn- without-types
+  "The hints without each column's :type, which most tests here don't
+  check. `column hints carry the column's type` does."
+  [hints]
+  (into {} (map (fn [[k v]] [k (if (sequential? v) (mapv #(if (map? %) (dissoc % :type) %) v) v)]) hints)))
+
+(defn- gen
+  "Helper function to generate and get the relevant part in the ast"
+  ([expression]
+   (gen expression nil))
+  ([expression cursor]
+   (without-types (hints-with-types expression cursor))))
+
+(defn- gen-with-variables
+  "Evaluate expressions sequentially, threading variables. Returns :hints from the last expression."
+  [expressions]
+  (let [{:keys [last-hints]}
+        (reduce (fn [{:keys [named-results]} expr]
+                  (let [{:keys [result]} (parser/parse expr)
+                        state (ast/generate result :test expr nil named-results)]
+                    {:named-results (merge named-results (:pending-assignments state))
+                     :last-hints (:hints state)}))
+                {:named-results {} :last-hints nil}
+                expressions)]
+    last-hints))
+
+(deftest column-hints-carry-the-column-type
+  ;; A client can offer only the columns an aggregate can read: sum and avg
+  ;; a number, min and max something that sorts.
+  (is (= [{:column "id" :alias "c_0" :type "integer"} {:column "created_at" :alias "c_0" :type "timestamp"}]
+         (:select (hints-with-types "x.company | s:" nil))))
+  (is (= [{:column "id" :alias "c_0" :type "integer"}]
+         (:select (hints-with-types "x.company | s: i" nil)))))
+
+(deftest test-hints
+  (testing "Generate hints"
+    (is (= [{:schema "x", :table "company"
+             :pine "x.company"}]
+           (-> "co" gen :table)))
+
+    (is (= [{:schema "y", :table "employee" :column "company_id" :related-column "id" :parent false
+             :resolution "fk" :pine "y.employee .company_id"}
+            {:schema "z", :table "document", :column "company_id" :related-column "id", :parent false
+             :resolution "fk" :pine "z.document .company_id"}]
+           (-> "company | e" gen :table)))
+
+    (is (= [{:schema "x", :table "company" :column "id" :related-column "company_id" :parent true
+             :resolution "fk" :pine "x.company .company_id :parent"}]
+           (-> "employee | co" gen :table)))
+
+    (is (= []
+           (-> "company as c | s: id" gen :table)))
+
+;; The following shouldn't generate any hint but it does
+    ;;
+    ;; (is (= {:table []}
+    ;;        (gen "company as c")))
+    )
+
+  (testing "A table with no FK and no heuristic relation still gets a first-position hint"
+    (is (= [{:schema "public", :table "report"
+             :pine "public.report"}]
+           (-> "repo" gen :table))))
+
+  (testing "Generate hints in ambiguity"
+    (is (= [{:schema "z",
+             :table "document"
+             :column "employee_id"
+             :related-column "id"
+             :parent false
+             :resolution "fk"
+             :pine "z.document .employee_id"}
+            {:schema "z"
+             :table "document"
+             :column "created_by"
+             :related-column "id"
+             :parent false
+             :resolution "fk"
+             :pine "z.document .created_by"}]
+           (-> "employee | doc" gen :table))))
+
+  (testing "Generate hints when direction is specified"
+    (is (= [{:schema "y"
+             :table "employee"
+             :column "id"
+             :related-column "reports_to"
+             :parent true
+             :resolution "fk"
+             :pine "y.employee .reports_to :parent"}
+            {:schema "y"
+             :table "employee"
+             :column "reports_to"
+             :related-column "id"
+             :parent false
+             :resolution "fk"
+             :pine "y.employee .reports_to"}]
+           (-> "employee | employee" gen :table)))
+    (is (= [{:schema "y"
+             :table "employee"
+             :column "id"
+             :related-column "reports_to"
+             :parent true
+             :resolution "fk"
+             :pine "y.employee .reports_to :parent"}]
+           (-> "employee | employee :parent" gen :table))))
+
+  (testing "Generate `select` hints with columns specified"
+    (is (= []
+           (-> "x.company | s: does_not_exist" gen :select)))
+    (is (= [{:column "id" :alias "c_0"}]
+           (-> "x.company | s: i" gen :select)))
+    (is (= ["id" "company_id"] ;;  "reports_to" is not returned
+           (->> "y.employee | s: id" gen :select (map :column))))
+    (is (= ["id" "company_id" "reports_to"]
+           (->> "y.employee as e | s: e.*" gen :select (map :column)))))
+
+  (testing "Generate `select-partial` hints"
+    (is (= [{:column "id" :alias "c_0"} {:column "created_at" :alias "c_0"}] (->  "company    | s:"                      gen :select)))
+    (is (= [{:column "id" :alias "c_0"} {:column "created_at" :alias "c_0"}] (->  "x.company  | s:"                      gen :select)))
+    (is (= ["id" "company_id" "reports_to"]                                 (->> "y.employee | s:"                      gen :select (map :column))))
+    (is (= ["reports_to"]                                                    (->> "y.employee | s: id, company_id,"      gen :select (map :column))))
+    ;; Every table in the stage: the current one (employee) first, then
+    ;; company, without company's id, which is already selected.
+    (is (= ["e_1.id" "e_1.company_id" "e_1.reports_to" "c_0.created_at"]
+           (->> "company | s: id | employee | s: " gen :select (map #(str (:alias %) "." (:column %))))))
+    ;; `id` in employee's select is employee's id: company's id was selected too.
+    (is (= ["e_1.company_id" "e_1.reports_to" "c_0.created_at"]
+           (->> "company | s: id | employee | s: id, " gen :select (map #(str (:alias %) "." (:column %))))))
+
+    ;; A column is its alias and its name: selecting c.id leaves e.id
+    (is (= ["e.id" "e.company_id" "e.reports_to" "c.created_at"]
+           (->> "x.company as c | y.employee as e | s: c.id,"  gen :select (map #(str (:alias %) "." (:column %))))))
+
+    ;; The current table first, then the others nearest in the pipe first
+    (is (= ["d" "e" "c"]
+           (->> "x.company as c | y.employee as e | z.document as d | s: " gen :select (map :alias) distinct)))
+    ;; from: makes an earlier table the current one
+    (is (= ["c" "d" "e"]
+           (->> "x.company as c | y.employee as e | z.document as d | from: c | s: " gen :select (map :alias) distinct)))
+
+    ;; Typing a name narrows every table's columns to the ones matching it
+    (is (= ["e.id" "e.company_id" "c.id"]
+           (->> "x.company as c | y.employee as e | s: id" gen :select (map #(str (:alias %) "." (:column %))))))
+
+    ;; Alias-dot partial: s: e. should show all columns for alias e
+    (is (= ["id" "company_id" "reports_to"]
+           (->> "x.company as c | y.employee as e | s: e."  gen :select (map :column))))
+
+    ;; Alias-dot after completed column: s: id, e. should show all columns for alias e
+    (is (= ["id" "company_id" "reports_to"]
+           (->> "employee as e | company | s: id, e." gen :select (map :column))))
+
+    ;; Alias-dot excludes already-selected columns for that alias: s: e.id, e. omits id
+    (is (= ["company_id" "reports_to"]
+           (->> "x.company as c | y.employee as e | s: e.id, e." gen :select (map :column)))))
+
+  (testing "Generate `select-partial` hints after an un-sealed GROUP checkpoint"
+    ;; group: c.name hasn't been sealed into a CTE yet (no table op follows before
+    ;; s:), but the columns available for hints should be the group's own output
+    ;; (name, count), not the underlying employee table's raw schema.
+    (is (= ["name" "count"]
+           (->> "company as c | employee .company_id | group: c.name | s: " gen :select (map :column))))
+    ;; Same, with an explicit |= assign before the un-sealed s: — still same-expression,
+    ;; still not sealed into a CTE until a table op follows.
+    (is (= ["name" "count"]
+           (->> "company as c | employee .company_id | group: c.name |= x | s: " gen :select (map :column)))))
+
+  (testing "Generate `order-partial` hints"
+    (is (= [{:column "id" :alias "c_0"} {:column "created_at" :alias "c_0"}] (->  "company | o:"         gen :order)))
+    (is (= [{:column "created_at" :alias "c_0"}]                             (->  "company | o: id,"     gen :order)))
+    (is (= [{:column "id" :alias "c_0"} {:column "created_at" :alias "c_0"}] (->  "company | s: id | o:" gen :order)))
+    ;; Alias-dot partial: o: e. should show all columns for alias e
+    (is (= ["id" "company_id" "reports_to"]
+           (->> "x.company as c | y.employee as e | o: e." gen :order (map :column)))))
+
+  (testing "Generate `where-partial` hints"
+    (is (= [{:column "id" :alias "c_0"} {:column "created_at" :alias "c_0"}] (->  "company | where:"       gen :where)))
+    (is (= [{:column "id" :alias "c_0"} {:column "created_at" :alias "c_0"}] (->  "company | w:"           gen :where)))
+    (is (= ["id" "company_id" "reports_to"]                                 (->> "y.employee | w:"        gen :where (map :column))))
+    (is (= ["id" "company_id" "reports_to"]                                 (->> "y.employee | where:"    gen :where (map :column))))
+    (is (= [{:column "id" :alias "c_0"} {:column "created_at" :alias "c_0"}] (->  "company | s: id | w:"   gen :where)))
+
+    ;; Test partial column filtering
+    (is (= [{:column "id" :alias "c_0"}]     (->  "company | w: i"         gen :where)))
+    (is (= []                                (->  "company | w: xyz"       gen :where)))
+    (is (= ["id" "company_id"]               (->> "y.employee | w: id"     gen :where (map :column))))
+
+    ;; Explicit alias: w: e.col should use alias "e" for column lookup, not the current context
+    (is (= [{:column "company_id" :alias "e"}]
+           (-> "y.employee as e | x.company as c | w: e.company_id" gen :where)))
+    (is (= [{:column "id" :alias "c"}]
+           (-> "y.employee as e | x.company as c | w: c.id"         gen :where)))
+    ;; Alias-dot partial: w: e. should show all columns for alias e
+    (is (= ["id" "company_id" "reports_to"]
+           (->> "x.company as c | y.employee as e | w: e." gen :where (map :column))))
+
+    ;; Complete condition then alias-dot: w: id = 1 or e. shows all columns for alias e
+    (is (= ["id" "company_id" "reports_to"]
+           (->> "x.company as c | y.employee as e | w: id = 1 or e." gen :where (map :column))))
+    ;; Right after `or`, with or without the space, every column is a candidate again
+    (is (= [{:column "id" :alias "c_0"} {:column "created_at" :alias "c_0"}] (-> "company | w: id = 1 or "  gen :where)))
+    (is (= [{:column "id" :alias "c_0"} {:column "created_at" :alias "c_0"}] (-> "company | w: id = 1 or"   gen :where)))
+    (is (= [{:column "id" :alias "c_0"}]                                     (-> "company | w: id = 1 or i" gen :where)))
+    ;; The condition being typed after `or` is read, not dropped: e. lists
+    ;; employee's columns even though company is the current table.
+    (is (= ["id" "company_id" "reports_to"]
+           (->> "y.employee as e | x.company as c | w: id = 1 or e." gen :where (map :column))))
+
+    ;; How to auto-complete the right hand side? Values or other columns?
+    ;; Right now it shows the same hints as the left hand side
+    ;; (is (= [{:column "id" :alias "c_0"}]     (->  "company | w: id ="      gen :where)))
+    ;; (is (= ["reports_to"  "company_id" "id"] (->> "y.employee | w: id ="   gen :where (map :column))))
+    )
+
+  (testing "Generate `update-partial` hints"
+    (is (= [{:column "id" :alias "c_0"} {:column "created_at" :alias "c_0"}]
+           (-> "company | u!" gen :update)))
+    ;; Explicit alias in update: u! e.col should use alias "e" for column lookup, not current context
+    (is (= [{:column "company_id" :alias "e"}]
+           (-> "y.employee as e | x.company as c | u! e.company_id" gen :update)))
+    (is (= [{:column "created_at" :alias "c_0"}]
+           (-> "company | u! id = '1'," gen :update)))
+    (is (= [{:column "id" :alias "c_0"}]
+           (-> "company | u! i" gen :update)))
+    ;; Alias-dot partial: u! e. should show all columns for alias e
+    (is (= ["id" "company_id" "reports_to"]
+           (->> "x.company as c | y.employee as e | u! e." gen :update (map :column))))
+
+    ;; Prior assignment then alias-dot: u! id = '1', e. excludes already-assigned id
+    (is (= ["company_id" "reports_to"]
+           (->> "x.company as c | y.employee as e | u! id = '1', e." gen :update (map :column)))))
+
+  (testing "Generate hints with cursor position"
+    ;; Basic cursor truncation test - cursor at "company | s: " should show select hints for company
+    (is (= [{:column "id" :alias "c_0"} {:column "created_at" :alias "c_0"}]
+           (-> (gen "company | s: id | employee | s: " {:line 0 :character 13}) :select)))
+
+    ;; Cursor at different positions in single line expression
+    (is (= [{:column "id" :alias "c_0"}]
+           (-> (gen "company | s: id | employee | s: " {:line 0 :character 14}) :select)))
+
+    ;; Cursor at "company | s: id | employee | s:" shows every table's
+    ;; columns but company's id, which is selected
+    (is (= ["id" "company_id" "reports_to" "created_at"]
+           (->> (gen "company | s: id | employee | s: id, " {:line 0 :character 31})
+                :select
+                (map :column))))
+
+    ;; Multi-line expression with cursor on first line (should show table hints)
+    (is (= [{:schema "x" :table "company" :pine "x.company"}]
+           (-> (gen "company\n | s: id | employee | s: " {:line 0 :character 7}) :table)))
+
+    ;; Multi-line expression with cursor on second line
+    (is (= [{:column "id" :alias "c_0"} {:column "created_at" :alias "c_0"}]
+           (-> (gen "company\n | s: " {:line 1 :character 6}) :select)))
+
+    ;; Edge case: cursor at start (should show select hints for company)
+    (is (= [{:column "id" :alias "c_0"}]
+           (-> (gen "company | s: id" {:line 0 :character 14}) :select)))
+
+    ;; Edge case: cursor at end should behave like no cursor
+    (is (= ["id" "company_id" "reports_to" "created_at"]
+           (->> (gen "company | s: id | employee | s: " {:line 0 :character 100})
+                :select
+                (map :column)))))
+
+  (testing "Variable relation hints"
+    ;; mytest = employee (child); company | my should suggest mytest
+    (is (= [{:schema nil :table "mytest" :column "company_id" :related-column "id" :parent false
+             :resolution "fk" :pine "mytest .company_id"}]
+           (-> (gen-with-variables ["employee |= mytest" "company | my"])
+               :table)))
+
+    ;; mytest = company (parent); employee | my should suggest mytest
+    (is (= [{:schema nil :table "mytest" :column "id" :related-column "company_id" :parent true
+             :resolution "fk" :pine "mytest .company_id :parent"}]
+           (-> (gen-with-variables ["company |= mytest" "employee | my"])
+               :table)))
+
+    ;; same-source variables: var_x and var_y both wrap company;
+    ;; when typing "var_x | var", var_y should appear (partial match, unambiguous token).
+    ;; Both sides are always "id" for a synthetic join - no ambiguity to
+    ;; disambiguate, so the pine expression stays suffix-free.
+    (is (= [{:schema nil :table "var_y" :column "id" :related-column "id" :parent false
+             :resolution "synthetic" :pine "var_y"}]
+           (-> (gen-with-variables ["customer |= var_x" "customer |= var_y" "var_x | var"])
+               :table))))
+
+  (testing "Variable relation hints reflect an explicitly-aliased id column"
+    ;; x = company with id renamed to tmp_id; x | emp should suggest employee via
+    ;; tmp_id (x's own actual column), not the underlying raw "id".
+    (is (= [{:schema "y" :table "employee" :column "company_id" :related-column "tmp_id" :parent false
+             :resolution "fk" :pine "y.employee .company_id"}]
+           (-> (gen-with-variables ["company | s: id as tmp_id |= x" "x | emp"])
+               :table)))
+
+    ;; Reverse direction: employee already relates to company, so employee | x
+    ;; must resolve on x's own tmp_id too, not id.
+    (is (= [{:schema nil :table "x" :column "tmp_id" :related-column "company_id" :parent true
+             :resolution "fk" :pine "x .company_id :parent"}]
+           (->> (gen-with-variables ["company | s: id as tmp_id |= x" "employee | "])
+                :table
+                (filter #(= "x" (:table %)))))))
+
+  (testing "Same-source join hint also suggests the real table itself, not just other variables"
+    ;; x wraps company via an explicitly-renamed id (c_id) - company itself is
+    ;; just as valid a same-source candidate from x as another variable
+    ;; wrapping company would be, since it's the same underlying table.
+    (is (= [{:schema nil :table "company" :column "id" :related-column "c_id" :parent false
+             :resolution "synthetic" :pine "company"}]
+           (-> (gen-with-variables ["company | s: id as c_id |= x" "x | co"])
+               :table))))
+
+  (testing "A table is only a valid join source through a variable if its own id survives"
+    ;; x explicitly selects only name — Pine doesn't add an id on its own, so
+    ;; company's id is nowhere in x's actual CTE output. employee must NOT be
+    ;; suggested.
+    (is (= []
+           (-> (gen-with-variables ["company as c | s: name |= x" "x | emp"])
+               :table)))
+
+    ;; Same table, but id is explicitly selected this time — now it's present,
+    ;; and employee is correctly suggested.
+    (is (= ["employee"]
+           (->> (gen-with-variables ["company as c | s: id, name |= x" "x | emp"])
+                :table
+                (map :table))))
+
+    ;; Same rule applies to GROUP: grouping by a non-id column loses company's
+    ;; id just the same — employee must NOT be suggested.
+    (is (= []
+           (-> (gen-with-variables ["company as c | employee .company_id | group: c.name |= x" "x | doc"])
+               :table)))
+
+    ;; ...but grouping by id (alongside other columns) preserves it, same as s: id, name.
+    (is (= ["document"]
+           (->> (gen-with-variables ["company as c | employee .company_id | group: c.id, c.name |= x" "x | doc"])
+                :table
+                (map :table)))))
+
+  (testing "A checkpoint (l:/group:) that seals into an anonymous CTE still surfaces FK hints unrelated to id"
+    ;; Regression: `employee | s: company_id | l: 10 | ` used to lose ALL
+    ;; hints once l: sealed the selection into an anonymous CTE, even though
+    ;; the company FK hint only needs company_id (not id) to be reachable -
+    ;; only the synthetic self-join genuinely needs id.
+    (is (= [{:schema "x" :table "company" :column "id" :related-column "company_id" :parent true
+             :resolution "fk" :pine "x.company .company_id :parent"}]
+           (-> "employee | s: company_id | l: 10 | " gen :table)))
+
+    ;; Selecting id alongside company_id additionally unlocks the synthetic
+    ;; self-join (employee = employee), since id now actually survives -
+    ;; without collapsing the company FK hint that was already reachable.
+    (is (= [{:schema "x" :table "company" :column "id" :related-column "company_id" :parent true
+             :resolution "fk" :pine "x.company .company_id :parent"}
+            {:schema nil :table "employee" :column "id" :related-column "id" :parent false
+             :resolution "synthetic" :pine "employee"}]
+           (->> (-> "employee | s: id, company_id | l: 10 | " gen :table)
+                (filter #(or (= (:resolution %) "synthetic") (= (:table %) "company")))))))
+
+  (testing "Generate `paths` hints - direct and multi-hop joins between two tables"
+    ;; company -> document: two 2-hop routes through employee (document has
+    ;; two FKs to employee: employee_id, created_by), plus one direct FK
+    ;; (company_id) - but document.company_id is a transitively redundant
+    ;; shortcut (company -> employee -> document already reaches document),
+    ;; a denormalized copy of what the employee-mediated routes already
+    ;; give you, so it ranks last despite being the shortest - see the
+    ;; "transitively redundant" testing block below for why.
+    (is (= [{:pine "y.employee .company_id | z.document .employee_id" :length 2
+             :hops [{:schema "y" :table "employee" :column "company_id" :related-column "id"
+                     :parent false :resolution "fk" :pine "y.employee .company_id"}
+                    {:schema "z" :table "document" :column "employee_id" :related-column "id"
+                     :parent false :resolution "fk" :pine "z.document .employee_id"}]}
+            {:pine "y.employee .company_id | z.document .created_by" :length 2
+             :hops [{:schema "y" :table "employee" :column "company_id" :related-column "id"
+                     :parent false :resolution "fk" :pine "y.employee .company_id"}
+                    {:schema "z" :table "document" :column "created_by" :related-column "id"
+                     :parent false :resolution "fk" :pine "z.document .created_by"}]}
+            {:pine "z.document .company_id" :length 1
+             :hops [{:schema "z" :table "document" :column "company_id" :related-column "id"
+                     :parent false :resolution "fk" :pine "z.document .company_id"}]}]
+           (-> "company | ? document" gen :paths)))
+
+    ;; Schema-qualified target narrows to that schema only
+    (is (= 3 (count (-> "company | ? z.document" gen :paths))))
+    (is (= [] (-> "company | ? x.document" gen :paths)))
+
+    ;; Searching a table against itself always comes back empty - no
+    ;; special-casing, the source is already in its own visited set.
+    (is (= [] (-> "company | ? company" gen :paths)))
+    (is (= [] (-> "employee | ? employee" gen :paths))) ;; even with a self-referential FK (reports_to)
+
+    ;; No preceding table at all - nothing to search from.
+    (is (= [] (-> "? document" gen :paths))))
+
+  (testing "Generate `paths` hints - fewest direction-changes first, not just shortest-first"
+    ;; department -> worker: the 1-hop shortcut (lead_worker_id, a PARENT
+    ;; hop) and the 2-hop route through team (both child hops) are each
+    ;; direction-pure on their own (a single hop can't "change direction"),
+    ;; so the tiebreak is just hop count - the shortcut wins. Direction only
+    ;; matters once a route would have to CHANGE direction partway - see
+    ;; department -> shift below.
+    (is (= ["w.worker .lead_worker_id :parent"
+            "w.team .department_id | w.worker .team_id"]
+           (->> (-> "department | ? worker" gen :paths) (map :pine))))
+
+    ;; department -> shift: the shortcut now has to double back (department
+    ;; -[parent]-> worker -[child]-> shift, one direction change) to reach a
+    ;; target one hop further out than worker itself, while the "real"
+    ;; hierarchy route (department -[child]-> team -[child]-> worker
+    ;; -[child]-> shift) never changes direction. The longer, direction-pure
+    ;; route now wins despite being longer.
+    (is (= [{:pine "w.team .department_id | w.worker .team_id | w.shift .worker_id" :length 3}
+            {:pine "w.worker .lead_worker_id :parent | w.shift .worker_id" :length 2}]
+           (->> (-> "department | ? shift" gen :paths) (map #(select-keys % [:pine :length]))))))
+
+  (testing "Generate `paths` hints - transitively redundant edges (denormalized FKs) rank last"
+    ;; document.company_id duplicates what company -> employee -> document
+    ;; already reaches (transitive reduction, Aho/Garey/Ullman 1972) - a
+    ;; classic denormalized "every row also stores its tenant id" column, as
+    ;; opposed to department.lead_worker_id above, which ISN'T redundant:
+    ;; department has no OTHER same-direction route to worker at all, so
+    ;; that shortcut is a genuinely distinct relationship, not a duplicate
+    ;; of a longer chain, and keeps winning on length as already shown.
+    (is (= ["y.employee .company_id | z.document .employee_id"
+            "y.employee .company_id | z.document .created_by"
+            "z.document .company_id"]
+           (->> (-> "company | ? document" gen :paths) (map :pine))))
+
+    ;; Symmetric case, searching the other direction: company.company_id
+    ;; read backwards is still the same redundant edge, so document ->
+    ;; company ranks it last too - the same standard, not a new one, in
+    ;; either direction.
+    (is (= ["y.employee .employee_id :parent | x.company .company_id :parent"
+            "y.employee .created_by :parent | x.company .company_id :parent"
+            "x.company .company_id :parent"]
+           (->> (-> "document | ? company" gen :paths) (map :pine))))
+
+    ;; A self-referential FK (employee.reports_to) must not fool the
+    ;; redundancy check into bouncing off employee's own self-loop and
+    ;; falsely "rediscovering" a direct edge as if it had an alternate route
+    ;; - company -> employee (direct, via company_id) stays non-redundant
+    ;; and ranked first, ahead of the two longer, turn-taking routes through
+    ;; document.
+    (is (= "y.employee .company_id" (:pine (first (-> "company | ? employee" gen :paths))))))
+
+  (testing "Generate `paths` hints - tables the expression already joined are never routed back through"
+    ;; `? target` asks for a route the expression does NOT already have. A
+    ;; route that re-enters an already-joined table isn't a new route - it
+    ;; lands you in a second copy of a table you already have (Pine
+    ;; auto-aliases it, so these DO evaluate; they're just not answers to
+    ;; the question). Only the last table in the pipe used to be excluded.
+
+    ;; The target itself is already in the pipe - every route back to it
+    ;; re-enters it, so there's no answer left. Same outcome as
+    ;; `company | ? company`, now for the whole pipe rather than just the
+    ;; table the search starts from.
+    (is (= [] (-> "company | employee | document | ? company" gen :paths)))
+
+    ;; Excluded for passing THROUGH a piped table, not only for ending at
+    ;; one: searching employee -> document from `company | employee` used to
+    ;; also return `x.company .company_id :parent | z.document .company_id`,
+    ;; a detour back up through the company already joined. The two direct
+    ;; routes stay.
+    (is (= ["z.document .employee_id" "z.document .created_by"]
+           (->> (-> "company | employee | ? document" gen :paths) (map :pine))))
+
+    ;; A checkpoint seals everything before it into a CTE, so those tables
+    ;; are no longer joined by the OUTER query - joining one again out there
+    ;; is a genuinely new join, not a duplicate. The exclusion set is read
+    ;; off :tables (which seal-as-cte resets) rather than :aliases (which
+    ;; keeps every alias ever created) precisely so this keeps working:
+    ;; company is inside the CTE here, and all three routes to it survive.
+    (is (= 3 (count (-> "company | employee | l: 10 | document | ? company" gen :paths))))
+
+    ;; `from:` needs no special case - it only moves where the search
+    ;; STARTS. employee and document are still in :tables, so they're still
+    ;; excluded, and every route from company back to employee has to go
+    ;; through one of them.
+    (is (= [] (-> "company | employee | document | from: c_0 | ? employee" gen :paths)))
+
+    ;; A variable is never excluded, and neither is the real table it
+    ;; resolves to. `x` here wraps `company | employee`, so it resolves to
+    ;; employee - but employee itself was never joined by THIS expression,
+    ;; and re-joining it alongside the CTE is a supported join (the
+    ;; synthetic same-source one, docs/named-results.md). Only `document`, the
+    ;; one real table actually in this pipe, is excluded.
+    ;;
+    ;; This pins the `(remove :ast)` in piped-table-names: resolving
+    ;; variables through table/resolve-table instead would make both of
+    ;; these come back empty, silently breaking what docs/paths.md promises.
+    (is (= ["y.employee .employee_id :parent"
+            "y.employee .created_by :parent"
+            "x.company .company_id :parent | y.employee .company_id"]
+           (->> (gen-with-variables ["company as c | employee |= x" "x | document | ? employee"])
+                :paths (map :pine))))
+    (is (= 3 (count (:paths (gen-with-variables
+                             ["company as c | employee |= x" "x | document | ? company"]))))))
+
+  (testing "`? token` falls back to table-name suggestions until the token names a real table -
+            but only ones actually reachable from the current context, not every table in the
+            schema, since anything else is guaranteed to resolve to zero paths once fully typed"
+    ;; "d" substring-matches both "document" and "order" - only "document" is
+    ;; reachable from company (order has no path to/from company at all), so
+    ;; "order" is correctly excluded even though it matches the typed token.
+    (is (= [{:schema "z" :table "document" :pine "z.document"}]
+           (-> "company | ? d" gen :table)))
+    (is (= [] (-> "company | ? document" gen :table)))
+
+    ;; Empty token shows only what's reachable from company (employee,
+    ;; document) - not all 7 known tables, e.g. `report`/`order`/`user`/
+    ;; `customer` have no path to/from company and are correctly excluded.
+    (is (= #{"employee" "document"}
+           (->> (-> "company | ? " gen :table) (map :table) set)))
+
+    ;; A table already joined by the expression is dropped from the
+    ;; typeahead too, not just from the path results - otherwise `? comp`
+    ;; would offer `company`, and fully typing it would then come back with
+    ;; zero paths, the exact thing this branch exists to prevent.
+    (is (= [{:schema "x" :table "company" :pine "x.company"}]
+           (-> "employee | ? comp" gen :table)))       ;; company reachable, not piped - offered
+    (is (= [] (-> "company | employee | ? comp" gen :table)))  ;; same token, company now piped
+    (is (= [{:schema "z" :table "document" :pine "z.document"}]
+           (-> "company | employee | ? " gen :table)))
+
+    ;; No preceding table at all - nothing reachable, so nothing suggested.
+    (is (= [] (-> "? doc" gen :table)))))
+
+(deftest test-composite-foreign-key-hints
+  ;; k.case_ref (case_id, search_id) -> k.case (id, search_id) in fixtures.clj.
+  (testing "A composite key is one way to reach the table, not one per column"
+    ;; The suggestion names every column of the key. Naming one would be
+    ;; enough to resolve it, but it could not tell two keys sharing a column
+    ;; apart - see the note_ref test below.
+    ;; It used to be offered twice - `.case_id` and `.search_id` - with
+    ;; nothing to say which to pick, and picking the second silently returned
+    ;; rows belonging to other cases. There is one relation now, named by the
+    ;; first column of the key.
+    ;; :columns carries every pair, for anything that has to name the whole
+    ;; key rather than join on it. It is absent on a single-column key -
+    ;; every other hint assertion in this file is one, and none of them
+    ;; carry it.
+    (is (= [{:schema "k" :table "case_ref" :column "case_id" :related-column "id"
+             :columns [{:column "case_id" :related-column "id"}
+                       {:column "search_id" :related-column "search_id"}]
+             :parent false :resolution "fk" :pine "k.case_ref .case_id, .search_id"}]
+           (-> "k.case | " gen :table)))
+
+    ;; Same relation from the child's side.
+    (is (= [{:schema "k" :table "case" :column "id" :related-column "case_id"
+             :columns [{:column "id" :related-column "case_id"}
+                       {:column "search_id" :related-column "search_id"}]
+             :parent true :resolution "fk" :pine "k.case .case_id, .search_id :parent"}]
+           (-> "k.case_ref | " gen :table))))
+
+  (testing "A variable exposing only some of the key's columns isn't offered the join"
+    ;; join-helper would refuse to build it, so suggesting it would offer
+    ;; something that then doesn't resolve.
+    (is (= [] (->> (gen-with-variables ["k.case | s: id |= x" "x | "]) :table
+                   (filter #(= "case_ref" (:table %))))))
+    (is (= ["case_ref"]
+           (->> (gen-with-variables ["k.case | s: id, search_id |= x" "x | "]) :table
+                (filter #(= "case_ref" (:table %))) (map :table))))))
+
+(deftest test-overlapping-composite-key-hints
+  ;; k.note_ref has TWO keys to k.note, sharing note_id (fixtures.clj):
+  ;;   note_ref_primary_fkey (note_id, search_id)
+  ;;   note_ref_related_fkey (note_id, other_id)
+  (testing "Two keys sharing a column are two suggestions, spelled differently"
+    ;; They used to render as the same text - `k.note_ref .note_id` twice -
+    ;; so whichever the user picked gave the first-indexed one, and the
+    ;; second was unreachable.
+    (is (= #{"k.note_ref .note_id, .search_id" "k.note_ref .note_id, .other_id"}
+           (->> (-> "k.note | " gen :table) (map :pine) set)))))
+
+(deftest test-table-typeahead-ignores-case
+  (testing "a capitalised prefix finds the same tables as a lower-case one"
+    (let [tables #(set (map :table (:table (gen %))))]
+      (is (contains? (tables "comp") "company"))
+      (is (contains? (tables "Comp") "company"))
+      (is (contains? (tables "COMP") "company")))))
+
+(deftest test-column-hints-from-every-table
+  (let [cols (fn [hints] (map #(str (:alias %) "." (:column %)) hints))]
+    (testing "where: offers every table's columns, the current table first"
+      (is (= ["e.id" "e.company_id" "e.reports_to" "c.id" "c.created_at"]
+             (-> "x.company as c | y.employee as e | w: " gen :where cols)))
+      (is (= ["e.id" "e.company_id" "c.id"]
+             (-> "x.company as c | y.employee as e | w: id" gen :where cols)))
+      (is (= ["c.id"]
+             (-> "x.company as c | y.employee as e | w: c.i" gen :where cols)))
+      (is (= ["e.id" "e.company_id" "e.reports_to" "c.id" "c.created_at"]
+             (-> "x.company as c | y.employee as e | w: id = 1 or " gen :where cols))))
+
+    (testing "order: leaves out a column by its table, not its name"
+      (is (= ["e.company_id" "e.reports_to" "c.id" "c.created_at"]
+             (-> "x.company as c | y.employee as e | o: e.id, " gen :order cols))))
+
+    (testing "the columns after `per` come from every table"
+      (is (= ["e.id" "e.company_id" "e.reports_to" "c.created_at"]
+             (-> "x.company as c | y.employee as e | l: 3 per c.id, " gen :select cols))))
+
+    (testing "unnest: offers every table's JSON columns"
+      (is (= ["p.config" "cu.data"]
+             (-> "customer as cu | product as p | unnest: " gen :unnest cols)))
+      (is (= ["cu.data"]
+             (-> "customer as cu | product as p | unnest: cu." gen :unnest cols)))
+      (is (= ["cu.data"]
+             (-> "customer as cu | product as p | unnest: da" gen :unnest cols))))
+
+    (testing "tables a checkpoint sealed aren't offered"
+      (is (= ["c_1" "result_1"]
+             (->> "company as c | employee .company_id | l: 10 | company | s: " gen :select (map :alias) distinct))))))

@@ -1,0 +1,12 @@
+src/pine/config.*
+!src/pine/config.default
+target
+desktop/build
+.cpcache
+.clj-kondo
+.lsp
+.calva
+.nrepl-port
+scratch.clj
+# Git worktrees made by Claude Code agents. Each is its own checkout.
+.claude/worktrees/
