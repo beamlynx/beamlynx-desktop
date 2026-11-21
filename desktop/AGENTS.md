@@ -1,6 +1,27 @@
-# Agent Development Guidelines
+# The desktop app
 
-How to build and run the app is in `DEVELOPMENT.md`. How to release it is in `../RELEASING.md`.
+The Electron app. It starts the Pine server from `../pine` as a child process, shows the UI from `../ui` in a window, and keeps what the person saves. It also runs the MCP server that lets AI agents query the person's databases through the app.
+
+The rules for the whole repo, and how to run and check the app, are in `../AGENTS.md`. To see a change here, run `bin/beam dev` from the repo's root. `DEVELOPMENT.md` explains the pieces it starts. How to release is in `../RELEASING.md`.
+
+## Where things are
+
+| Path | What it does |
+|---|---|
+| `src/main/index.ts` | Start-up: the window, the menu, the Pine server, the agent server. Read this first. |
+| `src/main/server-process.ts`, `ports.ts`, `launch-secrets.ts` | Starting and stopping the Pine server: its port, and the token the UI and Pine share at each launch. |
+| `src/preload/index.ts` | What the UI can call in the app, as `window.beamlynxDesktop`. Every new call the UI needs goes here, and in `../ui/desktop.d.ts`. |
+| `src/main/credential-store.ts` | Saved connections, in `connections.json`. Passwords are encrypted with the OS keychain. |
+| `src/main/app-db.ts`, `app-db-ipc.ts` | `beamlynx.db`, the app's own SQLite file: settings, tabs, column widths, recipes, the agent call log. Migrations only add. |
+| `src/main/account.ts`, `usage-stats.ts`, `supabase/` | Sign-in and usage stats. See "Sign-in and usage stats" in `../AGENTS.md`. |
+| `src/main/deep-link.ts`, `auto-update.ts` | `beamlynx://` links, and updates from this repo's GitHub Releases. |
+| `src/main/mcp/` | The agent server. `stdio-relay.ts` is the process an agent starts (`beamlynx --mcp`). It forwards each tool call to `control-plane-server.ts` in the running app, which runs it in a tab through `render-bridge.ts`. |
+| `src/main/mcp/instructions.ts`, `format.ts`, `pine-reference/` | What agents read: the server's instructions, how results are shown to them, and the Pine docs they can ask for. |
+| `scripts/` | Build steps (staging Pine and the UI), CI checks, and dev tools such as `agent-retro.mjs`. |
+| `__tests__/` | Unit tests, in plain Node with no Electron. `npm test` runs them. |
+| `test/agent-cases/` | Questions to try through an agent before and after changing the agent server. |
+
+Code that tests can reach is kept free of `electron` imports, so it runs in plain Node. Follow that when adding to `src/main/`.
 
 ## Never store a database's address, only its hash
 
