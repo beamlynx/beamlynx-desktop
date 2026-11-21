@@ -1,59 +1,71 @@
-# Releasing beamlynx-desktop
+# Releasing Beamlynx
 
-beamlynx-desktop is versioned and released independently of `pine-lang` and
-`beamlynx-ui` — do not conflate version numbers across the three. Tag
-pattern is a plain `X.Y.Z` (no prefix) — this repo has its own tag
-namespace, so there's no collision to disambiguate against.
+One release ships everything in this repo: the desktop app, with the Pine server and the UI from the same commit inside it.
 
-Unlike `pine-lang`/`beamlynx-ui`, this repo doesn't use a PR-review release
-flow — a pushed tag directly triggers the build. Reviewing the diff before
-tagging is still worthwhile; do it on the `release/X.Y.Z` branch before
-merging, rather than via a PR.
+Only the desktop app gets a tag, a plain `X.Y.Z`. That tag starts `.github/workflows/release.yml`, and installed apps update from the GitHub Release it makes. Pine and the UI keep their own version numbers and changelogs. The UI reads its version for What's New, and checks Pine's against `RequiredVersion`. They are bumped in the same release PR, without tags of their own.
 
 ## Checklist
 
-1. Create branch `release/X.Y.Z` from `main`.
+1. **Branch.** Create `release/X.Y.Z` from `main`, where X.Y.Z is the desktop app's next version.
 
-2. **Pin `bundled-versions.json` to an exact commit SHA, not a branch name** — `git rev-parse <branch>` on each of `pine-lang` and `beamlynx-ui`. This matters: a branch pin silently bundles whatever that branch's HEAD happens to be at tag-push time, which has previously (0.1.8, 0.1.9) produced a release missing work that had already been committed to the branch but wasn't accounted for when the tag was cut. A SHA pin makes exactly what's bundled explicit and reviewable in this file's own diff. Once the pinned fixes land in a real tagged `pine-lang`/`beamlynx-ui` release, switch to that tag instead of a SHA.
+2. **What changed?** Since the last release tag, list the changes in each folder:
 
-   The pinned UI has to ship its own fonts. CI and the release both load it in Electron from `file://`, the way the app does, and fail unless every font it lists in `BUNDLED_FONTS` (`beamlynx-ui/styles/app-font.ts`) loads. The check is `scripts/check-ui-fonts.js`. A beamlynx-ui version from before it bundled its fonts (beamlynx-ui #87) fails this check.
-
-   **When `pineLangRef` moves, bring the agent's Pine reference up to date** before going on. AI agents learn Pine from `src/main/mcp/pine-reference/`, which is written by hand. Read pine-lang's `CHANGELOG.md` from the old version to the new one, and update the reference for every change an agent would write differently. Then run `scripts/check-pine-reference.sh` with pine-lang checked out at the new version: it parses every example with pine-lang's parser, and lists each example marked `-- pine-lang #N` that now parses. Remove those markers. See `src/main/mcp/pine-reference/README.md`.
-
-3. Bump `package.json` → `"version": "X.Y.Z"`, then run `mise exec node@20.20.2 -- npm install --package-lock-only` (electron-builder needs a newer Node than this machine's default) to keep `package-lock.json`'s version field in sync — don't forget this, it's easy to skip since nothing else visibly breaks if you do.
-
-4. Move the `## [Unreleased]` section in `CHANGELOG.md` into a new `## [X.Y.Z] - YYYY-MM-DD` section (today's date), leaving `## [Unreleased]` empty.
-
-5. Commit all changed files, push the branch.
-
-6. **Before merging or tagging**, watch `.github/workflows/ci.yml` run on that branch/commit and confirm it passes (`gh run watch <run-id> --exit-status`). It's a cheap unpacked-build sanity check — much faster to catch a break here than in the full 3-OS release build.
-
-7. Merge the branch to `main` (push directly — no branch protection rule observed on this repo, unlike `pine-lang`'s `master`).
-
-8. Tag `main` as `X.Y.Z` and push the tag:
+   ```sh
+   last=$(git describe --tags --abbrev=0 --match '[0-9]*.[0-9]*.[0-9]*')
+   git log --oneline "$last"..main -- pine
+   git log --oneline "$last"..main -- ui
+   git log --oneline "$last"..main -- desktop
    ```
+
+   Skip the steps for a folder with no changes.
+
+3. **Pine** (`pine/`), if it changed:
+   - Run the formatter: `clojure -M:fmt fix`.
+   - Bump `src/pine/version.clj`, and the image tag in `playground.docker-compose.yml` to match. `./scripts/check-version-sync.sh` checks they agree.
+   - Move `## [Unreleased]` in `CHANGELOG.md` into a new `## [A.B.C] - YYYY-MM-DD` section.
+
+4. **UI** (`ui/`), if it changed:
+   - Bump `package.json`'s `version`.
+   - Decide whether `RequiredVersion` in `constants.ts` has to rise to the new Pine version. Decide it from what the UI's changes call on the server. Don't add a changelog entry for it: the desktop app always bundles a matching Pine. Mention it in the release PR's description.
+   - Move `## [Unreleased]` in `CHANGELOG.md` into a dated section.
+   - In `utils/changelog.data.ts`, add the same entry to the top of `CHANGELOG`, and set `LATEST_VERSION`. The app's What's New and the bell's unread dot read this file.
+
+5. **The agent's Pine reference** (`desktop/src/main/mcp/pine-reference/`). It should already match Pine: a PR that changes Pine updates it too. CI parses every example with the Pine in this commit (`desktop/scripts/check-pine-reference.sh`). Remove any `-- pine-lang #N` markers the check lists as parsing now.
+
+6. **Desktop** (`desktop/`):
+   - Bump `package.json`'s `version` to X.Y.Z, then update the lock file: `npm install --package-lock-only` (Node 22 or later).
+   - Move `## [Unreleased]` in `CHANGELOG.md` into `## [X.Y.Z] - YYYY-MM-DD`.
+
+7. **Pull request.** Commit as `Release X.Y.Z: <short description>`, push, and open a PR into `main`. Wait for CI to pass, then merge it.
+
+8. **Tag** the merge commit on `main`:
+
+   ```sh
    git tag X.Y.Z && git push origin X.Y.Z
    ```
-   This triggers `.github/workflows/release.yml` — builds Linux/macOS/Windows installers and publishes them to a GitHub Release.
 
-   Its first job applies any new Supabase migrations to the live database (`.github/workflows/supabase-migrate.yml`). Nothing is built until that succeeds, so the database is always ahead of the app. If it fails, fix the migration in a new PR and push the tag again. See `supabase/README.md` for why a migration can never break an app that is already out there.
+   The release workflow's first job applies new Supabase migrations to the live database (`.github/workflows/supabase-migrate.yml`). Nothing is built until it succeeds. If it fails, fix the migration in a new PR and push the tag again. `desktop/supabase/README.md` explains why a migration never breaks an app that is already out there.
 
-9. Watch the release workflow through to completion (`gh run watch <run-id> --exit-status`) — it takes longer than CI (full matrix build + sequential publish job).
+9. **Watch the release** to the end: `gh run watch <run-id> --exit-status`. It builds Linux, macOS and Windows, then publishes.
 
-10. Verify the published release before announcing: `gh release view X.Y.Z` — confirm the expected assets are present: `beamlynx.AppImage` (stable, unversioned filename), `beamlynx-X.Y.Z.deb`, `beamlynx-X.Y.Z.dmg` + `.blockmap`, `beamlynx-X.Y.Z.exe` + `.blockmap`, `latest.yml`/`latest-mac.yml`/`latest-linux.yml`.
+10. **Check the Release**: `gh release view X.Y.Z`. It should have:
+    - `beamlynx.AppImage` (no version in the name), `beamlynx-X.Y.Z.deb`
+    - `beamlynx-X.Y.Z.dmg` and its `.blockmap`, the mac `.zip`
+    - `beamlynx-X.Y.Z.exe` and its `.blockmap`
+    - `latest.yml`, `latest-mac.yml`, `latest-linux.yml`
 
-11. **Update the personal Homebrew tap** (`beamlynx/homebrew-tap`, separate repo) so `brew install --cask beamlynx/tap/beamlynx` / `brew upgrade --cask` picks up this release:
-    - Compute the real dmg sha256 from the published asset (don't reuse a locally-rebuilt dmg — it won't match): `gh release download X.Y.Z -R beamlynx/beamlynx-desktop -p '*.dmg' -O /tmp/beamlynx-X.Y.Z.dmg && shasum -a 256 /tmp/beamlynx-X.Y.Z.dmg`.
-    - In `beamlynx/homebrew-tap`, edit `Casks/beamlynx.rb`: bump `version` to `X.Y.Z` and `sha256` to the hash above.
-    - Commit (e.g. `Bump to X.Y.Z`) and push directly — like this repo, the tap has no PR-review flow.
-    - This step is mandatory on every release, not just ones that touch macOS-specific code — the tap always points at the latest dmg regardless of what changed.
+11. **Update the Homebrew tap** (`beamlynx/homebrew-tap`). Do this on every release.
+    - Download the published dmg and hash it: `gh release download X.Y.Z -R beamlynx/beamlynx-desktop -p '*.dmg' -O /tmp/beamlynx-X.Y.Z.dmg && shasum -a 256 /tmp/beamlynx-X.Y.Z.dmg`.
+    - In `Casks/beamlynx.rb`, set `version` and `sha256`.
+    - Commit `Bump to X.Y.Z` and push.
 
-12. **Update the AUR package** (`beamlynx-bin`) so Arch users get this release. Follow "Publish a new version" in `packaging/README.md`: bump `pkgver`, update the checksums, test with `makepkg -si`, regenerate `.SRCINFO`, push to the AUR repo, and commit the same change here. Like the Homebrew tap, this is mandatory on every release.
+12. **The AUR package** (`beamlynx-bin`) is not published yet. When it is, follow "Publish a new version" in `desktop/packaging/README.md` on every release.
 
-## Local dev/test workflow
+## Test a release build without releasing
 
-See `DEVELOPMENT.md` for how to iterate on changes before cutting a release — it covers the fast browser-based path for most UI changes, and how to run the real Electron shell (menu, native window, bundled server) when that's what's actually being changed.
+Run the release workflow by hand on a branch: `gh workflow run release.yml --ref <branch>`. It builds every installer but publishes nothing, because publishing only happens for a tag. The Supabase step skips itself on a branch.
 
-## Code signing
+## See also
 
-See `SIGNING.md`. Builds are unsigned until the relevant secrets are configured; this doesn't block a release, just leaves Gatekeeper/SmartScreen warnings on macOS/Windows installers.
+- `desktop/DEVELOPMENT.md`: running the app from source.
+- `desktop/SIGNING.md`: code signing and notarization.

@@ -1,0 +1,639 @@
+(ns pine.api-test
+  (:require [cheshire.core :as json]
+            [clojure.test :refer [deftest is testing]]
+            [pine.access-policy :as access-policy]
+            [pine.api :as api]
+            [pine.db.connections :as connections]
+            [pine.db.main :as db]
+            [pine.db.references :as refs]))
+
+(defn- assert-clean-table [table]
+  (is (= #{:schema :table :alias} (set (keys table)))
+      "table entries must not carry :ast (a variable's own full state snapshot)"))
+
+(deftest test-api-build-empty-expression
+  (testing "an empty/blank last expression still returns table hints instead of short-circuiting"
+    ;; Regression test: api-build used to short-circuit on any blank last-expr
+    ;; (str/blank?), which also swallowed "" - even though only nil actually
+    ;; crashes the parser. That meant pressing Tab on an empty input showed
+    ;; no table hints at all.
+    (doseq [expressions [[] [""] ["   "]]]
+      (let [response (api/api-build expressions nil :test)]
+        (is (nil? (:error response)))
+        (is (seq (get-in response [:ast :hints :table]))
+            (str "expected table hints for expressions " (pr-str expressions)))))))
+
+;; These call the real public entry point (api/api-build), not the private
+;; prune-ast helper directly. Testing prune-ast in isolation only proves the
+;; helper itself behaves correctly — it proves nothing about whether api-build
+;; still routes its result through prune-ast at all, so a future edit that
+;; forgets to call it, passes the wrong state, or leaks a new field through
+;; some other path would go uncaught. Calling api-build with connection-id
+;; :test is what makes this possible: :test is a shared sentinel
+;; (pine.db.connections/test-connection-ids) that both the schema lookup
+;; (pine.db.main) and the connection-name lookup (connections.clj) recognize,
+;; so api-build's connections/get-connection-name call — which normally
+;; requires a real registered connection pool — succeeds without one.
+(deftest test-api-build-ast
+  (let [single-block  (:ast (api/api-build
+                             ["tenant as t | company .tenantId | group: t.title |= x"]
+                             nil :test))
+        chained-blocks (:ast (api/api-build
+                              ["tenant as t | company .tenantId | group: t.title |= x"
+                               "x | s: count, | o: count desc |= y"
+                               "y | s: count, |= z"
+                               "z | "]
+                              nil :test))]
+
+    (testing "ast.named-results entries are pruned like pending-assignments, not raw snapshots"
+      ;; A raw variable snapshot carries :named-results and :references from
+      ;; pre-handle/post-handle. Left unpruned, each chained |= re-embeds every
+      ;; earlier variable's own full snapshot inside the new one, growing the
+      ;; response payload superlinearly with the number of chained expressions
+      ;; instead of linearly.
+      (is (= #{"x" "y" "z"} (set (keys (:named-results chained-blocks)))))
+      (doseq [[name var-ast] (:named-results chained-blocks)]
+        (testing (str "variable " name)
+          (is (= #{:tables :selected-tables :joins :columns :where :order :group} (set (keys var-ast)))
+              "should only carry the fields VariableAst (client.ts) actually uses")
+          (is (not (contains? var-ast :named-results))
+              "must not recursively embed earlier variables' own snapshots")
+          (is (not (contains? var-ast :references))
+              "must not carry the full schema references map"))))
+
+    (testing "table entries (top-level and nested inside variables) never carry :ast"
+      ;; A variable-backed table entry carries a full :ast (the variable's own
+      ;; var-ast) for the query builder's CTE generation. Left in place, that
+      ;; recursively re-embeds the variable's entire state — and everything IT
+      ;; wraps in turn — inside every table list that references it, one level
+      ;; down from the :named-results map itself.
+      (doseq [table (:selected-tables chained-blocks)]
+        (assert-clean-table table))
+      (doseq [[_name var-ast] (:named-results chained-blocks)
+              table (concat (:tables var-ast) (:selected-tables var-ast))]
+        (assert-clean-table table)))
+
+    (testing ":group is exposed to the frontend, not pruned away entirely"
+      ;; Previously absent from prune-ast's select-keys whitelist, so `ast.group`
+      ;; was always undefined regardless of what the state actually computed -
+      ;; the frontend (canvas mode's group-by chips, client.ts's GroupColumn)
+      ;; had no way to know a `group:` clause even existed once committed.
+      (is (= [{:alias "t" :column "title"}]
+             (map #(select-keys % [:alias :column]) (:group single-block)))))
+
+    (testing "an earlier variable's own entry is unaffected by how many blocks chain after it"
+      ;; The actual bug wasn't about absolute size (which is arbitrary and brittle to
+      ;; pin to a byte count) — it was that x's entry kept growing every time another
+      ;; block chained onto it. Pruning removes the machinery (:named-results/:references/
+      ;; :ast) that let that happen, so x's pruned entry here should be byte-for-byte
+      ;; identical whether it's standing alone or three more blocks have chained onto
+      ;; it since.
+      (is (= (get-in single-block [:pending-assignments "x"])
+             (get-in chained-blocks [:named-results "x"]))))))
+
+(deftest test-api-build-doc
+  (testing "the doc comment at the top of the expression comes back on the response"
+    (let [response (api/api-build ["/* Tenants that never onboarded */ tenant"] nil :test)]
+      (is (nil? (:error response)))
+      (is (= "Tenants that never onboarded" (:doc response)))
+      ;; One field, not two: there is deliberately no per-expression
+      ;; :ast :doc alongside it.
+      (is (nil? (get-in response [:ast :doc])))))
+
+  (testing "no comment means no doc"
+    (let [response (api/api-build ["tenant"] nil :test)]
+      (is (nil? (:doc response)))))
+
+  (testing "the tab's doc is the FIRST block's, not the last block's"
+    ;; The client always sends block 0 through the active block, so the doc a
+    ;; tab was opened with stays resolvable however many blocks get added
+    ;; under it.
+    (let [response (api/api-build ["/* Active tenants */ tenant | limit: 1 |= x"
+                                   "-- second block\nx | count:"]
+                                  nil :test)]
+      (is (nil? (:error response)))
+      (is (= "Active tenants" (:doc response)))))
+
+  (testing "the prettified expression keeps the doc comment"
+    (let [response (api/api-build ["/* Active tenants */ tenant | limit: 1"] nil :test)]
+      (is (= "/* Active tenants */\ntenant\n | limit: 1"
+             (get-in response [:ast :prettified]))))))
+
+(deftest test-size-caps
+  (let [long-expression (str "company | where: name = '" (apply str (repeat 70000 "a")) "'")
+        post (fn [uri body]
+               (api/app {:request-method :post
+                         :uri uri
+                         :headers {"content-type" "application/json"}
+                         :body (java.io.ByteArrayInputStream. (.getBytes (json/generate-string body) "UTF-8"))}))
+        body-of (fn [r] (json/parse-string (:body r) true))]
+    (testing "an expression over the length cap is refused before parsing"
+      (doseq [uri ["/api/v1/build" "/api/v1/eval"]]
+        (is (= "too-long" (:error-type (body-of (post uri {:expressions [long-expression]}))))))
+      (is (= "too-long" (:error-type (body-of (post "/api/v1/sql" {:query long-expression}))))))
+
+    (testing "a body over 1 MB is refused from its Content-Length"
+      (let [r (api/app {:request-method :post
+                        :uri "/api/v1/build"
+                        :headers {"content-type" "application/json"
+                                  "content-length" (str (inc (* 1024 1024)))}
+                        :body (java.io.ByteArrayInputStream. (.getBytes "{}" "UTF-8"))})]
+        (is (= 413 (:status r)))
+        (is (= "too-large" (:error-type (body-of r))))))))
+
+(deftest test-build-reports-writes-and-keeps-hints
+  (testing "/build says whether the expression changes data"
+    (is (true? (:writes (api/api-build ["company | where: id = 1 | delete! .id"] nil :test))))
+    (is (false? (:writes (api/api-build ["company"] nil :test)))))
+
+  (testing "a refused write still returns the AST, so hints keep working while typing"
+    (let [response (api/api-build ["company | delete! .id"] nil :test)]
+      (is (nil? (:error response)))
+      (is (:ast response))
+      (is (true? (:writes response)))
+      (is (= "write-refused" (:query-error-type response)))
+      (is (re-find #"every row of `company`" (:query-error response)))
+      (is (re-find #"^/\* .* \*/$" (:query response)))))
+
+  (testing "an unresolved join still returns the AST"
+    (let [response (api/api-build ["company | company"] nil :test)]
+      (is (nil? (:error response)))
+      (is (:ast response))
+      (is (= "unresolved-join" (:query-error-type response))))))
+
+(deftest test-eval-refuses-before-running
+  ;; None of these reach the database: the :test connection has no pool.
+  (testing "a write with nothing narrowing it"
+    (let [response (api/api-eval ["company | delete! .id"] :test)]
+      (is (= "write-refused" (:error-type response)))
+      (is (re-find #"every row" (:error response)))))
+
+  (testing "a read-only caller gets the read-only refusal, not the scope one"
+    (let [response (api/api-eval ["company | delete! .id"] :test [] false)]
+      (is (= "write-refused" (:error-type response)))
+      (is (re-find #"read-only" (:error response)))))
+
+  (testing "an update! with a trailing comma"
+    (is (= "incomplete" (:error-type (api/api-eval ["company | where: id = 1 | u! name = 'x',"] :test))))))
+
+(deftest test-build-reports-the-access-policy-per-column
+  (let [rules      [{:type "column-type" :allow ["integer"]}
+                    {:type "hide" :match {:type "column-name" :equals "title"}}]
+        policy-of  (fn [response column]
+                     (:policy (some #(when (= column (:column %)) %) (get-in response [:ast :columns]))))]
+
+    (testing "enforced: masked in the SQL, and each column says why"
+      (let [response (api/api-build ["report | s: title, id"] nil :test rules false)]
+        (is (re-find #"'xxxxx' AS \"title\"" (:query response)))
+        (is (= {:hidden true :by (second rules) :table {:schema "public" :table "report"}}
+               (policy-of response "title")))
+        (is (= {:hidden false :by (first rules) :table {:schema "public" :table "report"}}
+               (policy-of response "id")))))
+
+    (testing "annotated: nothing masked or refused, the same report"
+      (let [response (api/api-build ["report | where: title = 'x' | s: title, id"] nil :test rules true)]
+        (is (nil? (:query-error response)))
+        (is (not (re-find #"xxxxx" (:query response))))
+        (is (true? (:hidden (policy-of response "title"))))))
+
+    (testing "a computed value says only whether it is hidden"
+      (is (= {:hidden true}
+             (:policy (first (get-in (api/api-build ["report | s: coalesce(title, 'x') as t"] nil :test rules true)
+                                     [:ast :columns]))))))
+
+    (testing "a column named from the result's header row, as `SELECT *` gives it, is reported too"
+      (let [state (:result (#'api/generate-state "report" nil :test {} rules))]
+        (is (= {:column "title" :alias "r_0"
+                :policy {:hidden true :by (second rules) :table {:schema "public" :table "report"}}}
+               (access-policy/annotate-column state rules {:column :title :alias "r_0"})))))
+
+    (testing "no rules, no report"
+      (is (not-any? :policy (get-in (api/api-build ["report | s: title"] nil :test) [:ast :columns]))))
+
+    (testing "only an exact \"annotate\" skips enforcing"
+      (is (true? (access-policy/annotate-mode? {:access-policy-mode "annotate"})))
+      (doseq [mode [nil "enforce" "Annotate" true]]
+        (is (false? (access-policy/annotate-mode? {:access-policy-mode mode})) (pr-str mode))))))
+
+(deftest test-eval-refusal-names-the-hidden-column
+  (testing "a query refused by the policy says which real column, and which rule hid it"
+    (let [rules    [{:type "column-type" :allow ["integer"]}
+                    {:type "hide" :match {:type "column-name" :contains "tit"}}]
+          response (api/api-eval ["report | group: title with count"] :test rules false)]
+      (is (= "policy" (:error-type response)))
+      (is (= {:alias "r_0" :column "title" :hidden true :by (second rules)
+              :table {:schema "public" :table "report"}}
+             (:hidden-column response)))))
+  (testing "hidden for lack of an Allow rule: no :by"
+    (let [response (api/api-eval ["report | group: title with count"] :test [{:type "column-type" :allow ["integer"]}] false)]
+      (is (not (contains? (:hidden-column response) :by)))
+      (is (= "title" (get-in response [:hidden-column :column]))))))
+
+(deftest test-join-refusal-names-the-hidden-column
+  (let [rules [{:type "column-type" :allow ["integer" "uuid"]}]]
+    (testing "a `::uuid` cast refused by the policy says which real column, like a group: refusal"
+      (let [response (api/api-eval ["report | customer .uuid_col = .title ::uuid"] :test rules false)]
+        (is (= "policy" (:error-type response)))
+        (is (= {:alias "r_0" :column "title" :hidden true :table {:schema "public" :table "report"}}
+               (:hidden-column response)))))
+    (testing "a column the index doesn't have is refused without a hidden column: there is nothing to allow"
+      (let [response (api/api-eval ["report | s: nickname"] :test rules false)]
+        (is (= "policy" (:error-type response)))
+        (is (not (contains? response :hidden-column)))))))
+
+(deftest test-annotate-names-the-table-as-the-index-spells-it
+  (testing "MySQL reads ORDER as order, and the report says order, which a `column` rule should name"
+    (let [rules    [{:type "column-type" :allow ["integer"]}]
+          response (api/api-build ["ORDER | s: customer_id"] nil :test-mysql rules true)
+          policy   (:policy (some #(when (= "customer_id" (:column %)) %) (get-in response [:ast :columns])))]
+      (is (= {:schema "public" :table "order"} (:table policy)))
+      (is (true? (:hidden policy))))))
+
+(defn- request
+  ([method uri] (request method uri {}))
+  ([method uri headers]
+   (api/app {:request-method method
+             :uri uri
+             :headers (merge {"content-type" "application/json"} headers)
+             :body (java.io.ByteArrayInputStream. (.getBytes "{}" "UTF-8"))})))
+
+(defmacro ^:private with-config [config & body]
+  `(let [before# @api/server-config]
+     (reset! api/server-config ~config)
+     (try ~@body (finally (reset! api/server-config before#)))))
+
+(deftest test-launch-token
+  (with-config {:token "secret" :host "127.0.0.1"}
+    (testing "without the token, every /api/ request is refused"
+      (is (= 401 (:status (request :post "/api/v1/sql"))))
+      (is (= 401 (:status (request :get "/api/v1/connections"))))
+      (is (= 401 (:status (request :post "/api/v1/sql" {"authorization" "Bearer wrong"}))))
+      (is (= 401 (:status (request :post "/api/v1/sql" {"authorization" "secret"})))))
+
+    (testing "the 401 says why, and carries CORS headers so a browser can read it"
+      (let [r (request :post "/api/v1/sql" {"origin" "https://evil.example"})]
+        (is (= "unauthorized" (:error-type (json/parse-string (:body r) true))))
+        (is (= "https://evil.example" (get-in r [:headers "Access-Control-Allow-Origin"])))))
+
+    (testing "with the token, the request reaches its handler"
+      (let [r (request :post "/api/v1/sql" {"authorization" "Bearer secret"})]
+        (is (not= 401 (:status r)))))
+
+    (testing "the CORS preflight isn't refused, so the real request can follow"
+      (let [r (request :options "/api/v1/sql" {"origin" "http://localhost:3000"
+                                               "access-control-request-method" "POST"})]
+        (is (= 200 (:status r)))
+        (is (get-in r [:headers "Access-Control-Allow-Origin"])))))
+
+  (with-config {:token nil :host "127.0.0.1"}
+    (testing "with no token configured, nothing is required"
+      (is (not= 401 (:status (request :get "/api/v1/connections")))))))
+
+(deftest test-host-check
+  (with-config {:token nil :host "127.0.0.1"}
+    (testing "a loopback-bound server refuses a request naming another host (DNS rebinding)"
+      (let [r (request :get "/api/v1/connections" {"host" "evil.example:33333"})]
+        (is (= 403 (:status r)))
+        (is (= "forbidden" (:error-type (json/parse-string (:body r) true))))))
+
+    (testing "loopback names, with or without a port, are fine"
+      (doseq [host ["localhost:33333" "127.0.0.1:33333" "[::1]:33333" "localhost" "LOCALHOST:1"]]
+        (is (not= 403 (:status (request :get "/api/v1/connections" {"host" host}))) host)))
+
+    (testing "an IPv6 literal that isn't loopback is refused, its colons not read as a port"
+      (is (= 403 (:status (request :get "/api/v1/connections" {"host" "[::2]:33333"}))))))
+
+  (with-config {:token nil :host "0.0.0.0"}
+    (testing "a server bound to every interface skips the check"
+      (is (not= 403 (:status (request :get "/api/v1/connections" {"host" "pine.example"})))))))
+
+(deftest test-origin-check
+  (with-config {:token nil :host "127.0.0.1"}
+    (testing "without a token, a page from elsewhere is refused even with a loopback Host"
+      (let [r (request :post "/api/v1/sql" {"host" "127.0.0.1:33333" "origin" "https://evil.example"})]
+        (is (= 403 (:status r)))
+        (is (re-find #"Origin not allowed" (:body r)))))
+    (testing "a page served from this machine, and a program that sends no Origin, are not"
+      (doseq [origin ["http://localhost:3000" "http://127.0.0.1:3000" "http://[::1]:3000"]]
+        (is (not= 403 (:status (request :get "/api/v1/connections" {"origin" origin}))) origin))
+      (is (not= 403 (:status (request :get "/api/v1/connections")))))
+    (testing "an origin listed in PINE_ALLOWED_ORIGINS is let through"
+      (let [before @api/allowed-origins]
+        (try
+          (reset! api/allowed-origins #{"https://app.example.com"})
+          (is (not= 403 (:status (request :get "/api/v1/connections" {"origin" "https://app.example.com"}))))
+          (finally (reset! api/allowed-origins before))))))
+  (with-config {:token "t" :host "127.0.0.1"}
+    (testing "with a token, the token decides"
+      (is (= 401 (:status (request :get "/api/v1/connections" {"origin" "https://evil.example"})))))))
+
+(deftest test-json-params-only
+  ;; A form POST is a CORS "simple request": a web page can send one without a
+  ;; preflight. The route must not read parameters from it, or from the query
+  ;; string.
+  (let [seen (atom ::not-called)]
+    (with-redefs [api/api-sql (fn [query _] (reset! seen query) {})
+                  api/connection-problem (constantly nil)]
+      (testing "a form-encoded body is not read as parameters"
+        (api/app {:request-method :post
+                  :uri "/api/v1/sql"
+                  :headers {"content-type" "application/x-www-form-urlencoded"}
+                  :body (java.io.ByteArrayInputStream. (.getBytes "query=select+1" "UTF-8"))})
+        (is (nil? @seen)))
+
+      (testing "nor is the query string"
+        (reset! seen ::not-called)
+        (api/app {:request-method :post
+                  :uri "/api/v1/sql"
+                  :query-string "query=select+1"
+                  :headers {"content-type" "application/json"}
+                  :body (java.io.ByteArrayInputStream. (.getBytes "{}" "UTF-8"))})
+        (is (nil? @seen)))
+
+      (testing "a JSON body is"
+        (reset! seen ::not-called)
+        (api/app {:request-method :post
+                  :uri "/api/v1/sql"
+                  :headers {"content-type" "application/json"}
+                  :body (java.io.ByteArrayInputStream. (.getBytes "{\"query\": \"select 1\"}" "UTF-8"))})
+        (is (= "select 1" @seen))))))
+
+(defn- post-json [uri body]
+  (let [r (api/app {:request-method :post
+                    :uri uri
+                    :headers {"content-type" "application/json"}
+                    :body (java.io.ByteArrayInputStream. (.getBytes (json/generate-string body) "UTF-8"))})]
+    (assoc r :json (try (json/parse-string (:body r) true) (catch Exception _ nil)))))
+
+(deftest test-ordinary-mistakes-are-not-500s
+  (do
+    (testing "a parameter of the wrong type is a 400 naming it"
+      (let [r (post-json "/api/v1/sql" {:query 5})]
+        (is (= 400 (:status r)))
+        (is (= "bad-request" (get-in r [:json :error-type]))))
+      (is (= 400 (:status (post-json "/api/v1/build" {:expressions 5}))))
+      (is (= 400 (:status (post-json "/api/v1/eval" {:expressions [1 2]}))))
+      (is (= 400 (:status (post-json "/api/v1/build" {:expressions ["company"] :connection-id 7}))))
+      (is (= 400 (:status (post-json "/api/v1/eval" {:expressions ["company"] :variables [1]})))))
+
+    (testing "a request that names no connection is refused, never run on another one"
+      ;; There used to be a server-wide "selected" connection that filled in
+      ;; for a request without one: another tab's database.
+      (doseq [[uri body] [["/api/v1/build" {:expressions ["company"]}]
+                          ["/api/v1/eval" {:expressions ["company"]}]
+                          ["/api/v1/sql" {:query "select 1"}]]]
+        (let [r (post-json uri body)]
+          (is (= 200 (:status r)) uri)
+          (is (= "no-connection" (get-in r [:json :error-type])) uri)))
+      (let [r (api/app {:request-method :get :uri "/api/v1/connections/nope/stats" :headers {}})]
+        (is (= 200 (:status r)))
+        (is (re-find #"no-connection" (:body r)))))
+
+    (testing "an unknown connection id is a normal error"
+      (let [r (post-json "/api/v1/build" {:expressions ["company"] :connection-id "nope"})]
+        (is (= 200 (:status r)))
+        (is (= "no-connection" (get-in r [:json :error-type])))))
+
+    (testing "the legacy route without an expression doesn't throw"
+      (is (= 200 (:status (post-json "/api/v1/build-with-params" {})))))))
+
+(deftest test-internal-errors-dont-leak
+  (with-redefs [api/api-sql (fn [& _] (throw (NullPointerException. "secret internals")))
+                api/connection-problem (constantly nil)]
+    (let [r (post-json "/api/v1/sql" {:query "select 1"})]
+      (is (= 500 (:status r)))
+      (is (= "internal" (get-in r [:json :error-type])))
+      (is (not (re-find #"secret" (:body r)))))))
+
+(deftest test-build-keeps-hints-when-the-policy-refuses
+  ;; MCP's complete_query builds under the connection's policy. A refused
+  ;; query (here, a table missing from the schema index) must still return
+  ;; the AST and hints, with the refusal in query-error.
+  (let [response (api/api-build ["secrets"] nil :test [{:type "column-type" :allow ["integer"]}])]
+    (is (nil? (:error response)))
+    (is (:ast response))
+    (is (= "policy" (:query-error-type response)))))
+
+(deftest test-cancel-route
+  (testing "a run id is required, and must be a string"
+    (is (= 400 (:status (post-json "/api/v1/cancel" {}))))
+    (is (= 400 (:status (post-json "/api/v1/cancel" {:run-id 5}))))
+    (is (= 400 (:status (post-json "/api/v1/sql" {:query "select 1" :run-id ""})))))
+  (testing "stopping a run that isn't running is not an error"
+    (let [r (post-json "/api/v1/cancel" {:run-id "api-test-not-running"})]
+      (is (= 200 (:status r)))
+      (is (= {:running false} (:json r))))
+    (pine.db.exec/finish-run! "api-test-not-running")))
+
+(deftest test-api-build-query-without-hidden
+  (testing "/build also returns the SQL without the hidden key and JSON type columns"
+    (let [{:keys [query query-without-hidden]} (api/api-build ["customer | s: data.plan"] nil :test)]
+      (is (re-find #"__c_0__id" query))
+      (is (re-find #"__type" query))
+      (is (not (re-find #"__c_0__id|__type" query-without-hidden)))
+      (is (re-find #"AS \"data.plan\"" query-without-hidden))))
+
+  (testing "Without columns of its own, the table's own columns are shown"
+    (is (re-find #"SELECT\s+\"c_0\"\.\*\s+FROM"
+                 (:query-without-hidden (api/api-build ["customer"] nil :test))))))
+
+(deftest test-api-build-parse-error-says-what-fits
+  (testing "where a name could go, the columns there are listed"
+    (is (re-find #"\nWhat fits here: `c_0\.id`, `c_0\.created_at`\nPine docs: select$"
+                 (:error (api/api-build ["company | select: \"name\""] nil :test)))))
+  (testing "where no name could go, nothing is listed"
+    (is (not (re-find #"What fits here"
+                      (:error (api/api-build ["company | where: id = 1 and name = 'x'"] nil :test))))))
+  (testing "eval says the same"
+    (is (re-find #"What fits here: `c_0\.id`"
+                 (:error (api/api-eval ["company | select: \"name\""] :test))))))
+
+(deftest test-sql-to-pine
+  (let [post (fn [body]
+               (let [r (api/app {:request-method :post
+                                 :uri "/api/v1/sql-to-pine"
+                                 :headers {"content-type" "application/json"}
+                                 :body (java.io.ByteArrayInputStream. (.getBytes (json/generate-string body) "UTF-8"))})]
+                 (assoc (json/parse-string (:body r) true) :status (:status r))))]
+    (testing "converts one SELECT"
+      (is (= {:status 200
+              :expression "company as c\n | employee as e e.company_id = c.id\n | where: name = 'Acme'"
+              :warnings []}
+             (post {:query "select e.* from company c join employee e on e.company_id = c.id where e.name = 'Acme'"}))))
+    (testing "names what Pine can't say"
+      (is (= {:status 200 :error "Line 1: OFFSET isn't in Pine." :error-type "sql-unsupported"}
+             (post {:query "select * from t offset 5"}))))
+    (testing "query is required, and must be a string"
+      (is (= 400 (:status (post {}))))
+      (is (= 400 (:status (post {:query 1})))))
+    (testing "the length cap applies"
+      (is (= "too-long" (:error-type (post {:query (str "select * from t where a = '" (apply str (repeat 70000 "a")) "'")})))))
+    (testing "a bare name takes the given connection's spelling"
+      (let [schema (refs/index-references [[] [["public" "company" "tenantId" 1 "text" nil "YES" nil]] []])
+            sql "select * from company where tenantid = 'x'"]
+        (with-redefs [api/connection-problem (constantly nil)
+                      db/init-references (fn [_] schema)]
+          (is (= "company\n | where: tenantId = 'x'" (:expression (post {:query sql :connection-id "db"}))))
+          (testing "and not without a connection: none is ever picked for it"
+            (is (= "company\n | where: tenantid = 'x'" (:expression (post {:query sql}))))))
+        (testing "and converts without it when the schema can't be read"
+          (with-redefs [api/connection-problem (constantly nil)
+                        db/init-references (fn [_] (throw (ex-info "down" {})))]
+            (is (= "company\n | where: tenantid = 'x'" (:expression (post {:query sql :connection-id "db"}))))))))))
+
+(deftest test-sql-schema
+  (let [post (fn [body]
+               (let [r (api/app {:request-method :post
+                                 :uri "/api/v1/sql-schema"
+                                 :headers {"content-type" "application/json"}
+                                 :body (java.io.ByteArrayInputStream. (.getBytes (json/generate-string body) "UTF-8"))})]
+                 (assoc (json/parse-string (:body r) true) :status (:status r))))]
+    (testing "the given connection's tables, with their columns in order"
+      (with-redefs [api/connection-problem (constantly nil)
+                    db/init-references (fn [_] (db/get-indexed-references :test))]
+        (let [{:keys [status dialect default-schema tables]} (post {:connection-id "db"})]
+          (is (= 200 status))
+          (is (= "postgres" dialect))
+          (is (= "public" default-schema))
+          (is (= {:schema "x" :table "company" :columns ["id" "created_at"]}
+                 (first (filter #(= "company" (:table %)) tables)))))))
+    (testing "no connection is an empty list, not an error"
+      (is (= {:status 200 :tables []} (post {}))))))
+
+(deftest test-sql-join-hints
+  (let [post (fn [body]
+               (let [r (api/app {:request-method :post
+                                 :uri "/api/v1/sql-join-hints"
+                                 :headers {"content-type" "application/json"}
+                                 :body (java.io.ByteArrayInputStream. (.getBytes (json/generate-string body) "UTF-8"))})]
+                 (assoc (json/parse-string (:body r) true) :status (:status r))))
+        sql "select * from company c join "]
+    (testing "joins for the given connection"
+      (with-redefs [api/connection-problem (constantly nil)
+                    connections/get-connection-name identity
+                    db/init-references (fn [_] (db/get-indexed-references :test))]
+        (is (= {:sql "y.employee e ON e.company_id = c.id" :schema "y" :table "employee" :resolution "fk"}
+               (first (:joins (post {:query sql :cursor (count sql) :connection-id "db"})))))))
+    (testing "cursor must be an offset into the query"
+      (is (= 400 (:status (post {:query sql}))))
+      (is (= 400 (:status (post {:query sql :cursor 999})))))
+    (testing "no connection is an empty list"
+      (is (= {:status 200 :joins []} (post {:query sql :cursor (count sql)}))))))
+
+(deftest test-database-unreachable
+  (let [refused (java.sql.SQLException. "Connection to localhost:5435 refused." "08001")
+        pooled (java.sql.SQLTransientConnectionException.
+                "HikariPool-1 - Connection is not available, request timed out after 10000ms." refused)]
+    (testing "a database that can't be reached is its own error type, with the innermost reason"
+      (is (= {:error-type "database-unreachable"
+              :error "Can't reach the database. Connection to localhost:5435 refused."}
+             (#'api/error-body pooled))))
+
+    (testing "a build that fails to reach the database says so, instead of returning no AST and no reason"
+      (with-redefs [db/init-references (fn [_] (throw pooled))]
+        (let [response (api/api-build ["company"] nil :test)]
+          (is (= "database-unreachable" (:error-type response)))
+          (is (nil? (:ast response))))))
+
+    (testing "connecting to a database that's down says so"
+      (with-redefs [pine.db.connections/add-connection-pool (fn [_] (throw (RuntimeException. "Failed to initialize pool" refused)))]
+        (is (= "database-unreachable" (:error-type (api/create-connection {}))))))
+
+    (testing "an error in the query itself is not that"
+      (is (nil? (:error-type (#'api/error-body (java.sql.SQLException. "column x does not exist" "42703"))))))))
+
+(deftest test-dates-and-times-in-results
+  (testing "A timestamp keeps its fraction of a second, and a whole second reads as before"
+    (is (= "\"2026-09-12T10:20:58.236047Z\"" (json/generate-string (java.sql.Timestamp/valueOf "2026-09-12 10:20:58.236047"))))
+    (is (= "\"2024-01-20T09:45:00Z\"" (json/generate-string (java.sql.Timestamp/valueOf "2024-01-20 09:45:00")))))
+  (testing "A date is a date, not midnight"
+    (is (= "\"1990-07-22\"" (json/generate-string (java.sql.Date/valueOf "1990-07-22")))))
+  (testing "A time is a time"
+    (is (= "\"10:00:05\"" (json/generate-string (java.sql.Time/valueOf "10:00:05")))))
+  ;; Pins the whole wire format, byte for byte, so a faster encoder can't
+  ;; change what the client reads.
+  (testing "Every date and time type a driver returns, in a result row"
+    (is (= "UTC" (.getID (java.util.TimeZone/getDefault))))
+    (is (= (str "[{\"ms\":\"2024-01-31T10:00:00.123Z\",\"whole\":\"2024-01-31T10:00:00Z\","
+                "\"date\":\"1990-07-22\",\"time\":\"10:15:30\",\"util\":\"2024-01-31T10:00:00Z\","
+                "\"ldt\":\"2024-01-31T10:00:00.500\",\"ld\":\"2024-01-31\",\"lt\":\"10:15:30\"}]")
+           (json/generate-string
+            [(array-map :ms (java.sql.Timestamp/valueOf "2024-01-31 10:00:00.123")
+                        :whole (java.sql.Timestamp/valueOf "2024-01-31 10:00:00")
+                        :date (java.sql.Date/valueOf "1990-07-22")
+                        :time (java.sql.Time/valueOf "10:15:30")
+                        ;; Cheshire's own encoder: no fraction of a second
+                        :util (java.util.Date. 1706695200123)
+                        :ldt (java.time.LocalDateTime/parse "2024-01-31T10:00:00.5")
+                        :ld (java.time.LocalDate/parse "2024-01-31")
+                        :lt (java.time.LocalTime/parse "10:15:30"))])))))
+
+(deftest test-describe
+  ;; The :test connection has no pool: `describe:` never reaches a database.
+  (testing "one row per column: its type, and whether it is the key, may be empty or is masked"
+    (let [{:keys [result columns error]} (api/api-eval ["company | describe:"] :test)]
+      (is (nil? error))
+      (is (= [{:column "column"} {:column "type"} {:column "key"} {:column "nullable"} {:column "masked"}] columns))
+      (is (= [["column" "type" "key" "nullable" "masked"]
+              ["id" "integer" "primary" "" ""]
+              ["created_at" "timestamp" "" "" ""]]
+             result))))
+
+  (testing "after a join, the table joined last"
+    (is (= [["id" "integer" "primary" "" ""]
+            ["company_id" "integer" "" "" ""]
+            ["reports_to" "integer" "" "" ""]]
+           (rest (:result (api/api-eval ["x.company | y.employee | describe:"] :test))))))
+
+  (testing "a named result: only the columns it exposes"
+    (is (= [["id" "integer" "primary" "" ""]]
+           (rest (:result (api/api-eval ["company | s: id |= x" "x | describe:"] :test))))))
+
+  (testing "a column the policy masks says so"
+    (let [rules [{:type "column-name" :equals "id"}]
+          {:keys [result]} (api/api-eval ["company | describe:"] :test rules)]
+      (is (= [["id" "integer" "primary" "" ""]
+              ["created_at" "timestamp" "" "" "yes"]]
+             (rest result)))))
+
+  (testing "on the owner's own tab, which only annotates, a masked column says so too"
+    (let [rules [{:type "column-name" :equals "id"}]
+          {:keys [result]} (api/api-eval ["company | describe:"] :test rules true true)]
+      (is (= [["id" "integer" "primary" "" ""]
+              ["created_at" "timestamp" "" "" "yes"]]
+             (rest result)))))
+
+  (testing "with nothing before it"
+    (is (re-find #"needs a table" (:error (api/api-eval ["describe:"] :test)))))
+
+  (testing "nothing can follow it"
+    (is (re-find #"describe: ends a query" (:error (api/api-eval ["company | describe: | where: id = 1"] :test))))))
+
+(deftest test-references
+  ;; The :test connection has no pool: `references:` never reaches a database.
+  (testing "every relation touching the table, both ways, with the Pine to follow it"
+    (let [{:keys [result columns error]} (api/api-eval ["company | references:"] :test)]
+      (is (nil? error))
+      (is (= [{:column "from"} {:column "to"} {:column "how"} {:column "pine"}] columns))
+      (is (= [["from" "to" "how" "pine"]
+              ["y.employee.company_id" "x.company.id" "foreign key" "| y.employee .company_id"]
+              ["z.document.company_id" "x.company.id" "foreign key" "| z.document .company_id"]]
+             result))))
+
+  (testing "a table that holds keys, and one that refers to itself, which shows both ways"
+    (is (= [["y.employee.company_id" "x.company.id" "foreign key" "| x.company .company_id :parent"]
+            ["y.employee.reports_to" "y.employee.id" "foreign key" "| y.employee .reports_to :parent"]
+            ["z.document.employee_id" "y.employee.id" "foreign key" "| z.document .employee_id"]
+            ["z.document.created_by" "y.employee.id" "foreign key" "| z.document .created_by"]
+            ["y.employee.reports_to" "y.employee.id" "foreign key" "| y.employee .reports_to"]]
+           (rest (:result (api/api-eval ["x.company | y.employee | references:"] :test))))))
+
+  (testing "a named result: the relations of the table behind it"
+    (is (= ["y.employee.company_id" "x.company.id" "foreign key" "| y.employee .company_id"]
+           (second (:result (api/api-eval ["company | s: id |= x" "x | references:"] :test))))))
+
+  (testing "with nothing before it"
+    (is (re-find #"needs a table" (:error (api/api-eval ["references:"] :test)))))
+
+  (testing "nothing can follow it"
+    (is (re-find #"references: ends a query" (:error (api/api-eval ["company | references: | l: 1"] :test))))))

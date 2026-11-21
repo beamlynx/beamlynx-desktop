@@ -1,0 +1,290 @@
+import { runInAction } from 'mobx';
+import { Column, HttpClient } from '../store/client';
+import { ColumnMetadata, ResultColumn, ResultSource, Row, Session } from '../store/session';
+import { EvaluateOptions, PluginInterface } from './plugin.interface';
+
+// A fresh id for each run. pine-lang keeps a stop for an id it hasn't seen
+// yet, so an id is never reused.
+const newRunId = (): string =>
+  globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+export class DefaultPlugin implements PluginInterface {
+  private readonly client: HttpClient;
+  constructor(private session: Session) {
+    this.client = new HttpClient();
+  }
+
+  public async evaluate(opts?: EvaluateOptions): Promise<Row[]> {
+    const session = this.session;
+    // Nothing runs without the tab's own connection, or while it is being
+    // changed. pine-lang refuses a request that names none, and this says
+    // why in words. A tab whose connection isn't open yet still sends its
+    // own id, which pine-lang refuses too, so only a change in progress
+    // (`connecting`) waits here, not the restored tab's first build.
+    const connectionId = session.connectionId;
+    const notReady = !connectionId
+      ? 'This tab has no database. Pick one from the connection menu first.'
+      : session.connecting
+        ? 'Still connecting to this tab’s database. Run again once it is connected.'
+        : '';
+    if (notReady) {
+      runInAction(() => {
+        session.error = notReady;
+        session.evalErrorType = 'no-connection';
+      });
+      return [];
+    }
+    runInAction(() => {
+      // session.message = '⏳ Fetching rows ...';
+      session.error = '';
+      session.evalErrorType = '';
+      session.evalHiddenColumn = null;
+      session.rowCap = null;
+      session.tableAliases = [];
+      session.loading = true;
+      // Running a query means the results pane is showing that query now, not
+      // whatever traversal was last in it. Non-null `traversal` is what makes
+      // the pane render a traversal instead of rows, so clearing it here is
+      // the whole handover.
+      session.traversal = null;
+      // One result now, in place of the sections of a Run of several blocks.
+      session.blockRuns = [];
+    });
+
+    // In SQL mode, running with text selected runs only the selection.
+    const sqlQuery = session.querySelection.trim() || session.query;
+    const runsSql = session.inputMode === 'sql' && !opts?.forcePine;
+    // Raw SQL goes to the database as it is: pine-lang can't refuse its
+    // writes or mask its columns. So it doesn't run where either applies.
+    const sqlRefused = !runsSql
+      ? ''
+      : session.isAgentSession
+        ? 'An agent’s tab runs only Pine, which can’t change data here. Run it from your own tab.'
+        : session.openedFromLink
+          ? 'A query opened from a link runs only as Pine until you dismiss its banner.'
+          : opts?.allowWrites === false
+            ? 'This run can’t change data, and raw SQL can’t be kept from doing so. Run it as Pine.'
+            : session.accessPolicyRules.length > 0
+          ? 'Data masking applies to your own queries on this connection, and raw SQL can’t be masked. Run it as Pine.'
+          : '';
+    if (sqlRefused) {
+      runInAction(() => {
+        session.error = sqlRefused;
+        session.evalErrorType = 'policy';
+        session.loading = false;
+      });
+      return [];
+    }
+    // Exactly what this run sends, taken now. The rows it returns are
+    // stamped with it (session.resultSource), so nothing typed while it
+    // runs is mistaken for the query that produced them.
+    const expressions = opts?.expressions ?? session.expressions;
+    const ranText = runsSql ? sqlQuery : session.expression;
+    const source: ResultSource = {
+      connectionId,
+      expressions: runsSql ? [sqlQuery] : expressions,
+      language: runsSql ? 'sql' : 'pine',
+    };
+    // Names this run so Stop can cancel it on the server.
+    const runId = newRunId();
+    let seq = 0;
+    runInAction(() => {
+      session.runId = runId;
+      seq = ++session.evalSeq;
+    });
+    const startedAt = performance.now();
+
+    try {
+      // Use SQL endpoint if in SQL mode, otherwise use Pine eval endpoint.
+      // Network-level failures (e.g. the server unreachable -- fetch throws
+      // a bare TypeError rather than resolving) used to escape uncaught
+      // past every one of this function's `session.loading = false` sites
+      // below, since none of them run on a thrown exception -- leaving the
+      // loading spinner stuck on indefinitely with no error shown.
+      const response = runsSql
+        ? await this.client.sql(sqlQuery, connectionId, runId)
+        : await this.client.eval(
+            expressions,
+            connectionId,
+            session.accessPolicy,
+            opts?.allowWrites,
+            // Only the MCP path passes values here; a tab's own values are
+            // written in its values blocks, which pine-lang reads.
+            opts?.variables,
+            runId,
+          );
+
+      // A newer run in this tab started while this one ran: its answer is
+      // the one to show.
+      if (session.evalSeq !== seq) return [];
+
+      if (!response) {
+        runInAction(() => {
+          session.message = '🤷 No response';
+        });
+        return [];
+      }
+
+      // pine-lang names the connection it ran on, and it is always the one
+      // asked for. If the answer names another, or the tab moved to another
+      // database while this ran, the rows aren't this tab's to show.
+      const ranOn = response['connection-id'];
+      if ((ranOn && ranOn !== connectionId) || session.connectionId !== connectionId) {
+        runInAction(() => {
+          session.message = '';
+          // Never "run it again": a write has already happened, on the
+          // database the tab had when Run was pressed.
+          session.error =
+            session.connectionId !== connectionId
+              ? 'The tab’s database changed while this ran. It ran on the database the tab had when you pressed Run, and its result isn’t shown.'
+              : 'This result came from a different database than this tab’s, so it isn’t shown.';
+          session.evalErrorType = 'no-connection';
+        });
+        return [];
+      }
+
+      // Applies regardless of response.error below - a query that parses fine
+      // but fails at the DB still deserves to show the agent's expression
+      // cleanly formatted, not whatever raw string it sent.
+      if (opts?.applyServerPrettified && response.prettified) {
+        runInAction(() => {
+          session.expression = response.prettified;
+        });
+      }
+
+      if (response.error) {
+        runInAction(() => {
+          session.message = '';
+          session.error = response.error;
+          session.evalErrorType = response['error-type'] || '';
+          session.evalHiddenColumn = response['hidden-column'] ?? null;
+        });
+        return [];
+      }
+
+      if (!response.result) {
+        return [];
+      }
+
+      const rows = response.result as Row[];
+      const result = [...rows];
+
+      // Pine mode - full metadata support
+      const columns = response.columns.map((column, index): ResultColumn => {
+        return {
+          field: index.toString(),
+          headerName: column['column-alias'] || column['column'],
+          // No width here - Result.tsx computes a fixed pixel width per
+          // column from a sample of the actual rows (column-width.util.ts).
+          editable: true,
+        };
+      });
+
+      const columnMetadata = response.columns.reduce<ColumnMetadata>(
+        (acc, column, index) => {
+          acc.colIndexToAliasLookup[index.toString()] = column['alias'];
+          // A key inside a JSON column (`data.plan`) or a date bucket
+          // (`created_at => month`) is worked out by the query. Saving it to
+          // `data` or `created_at` would overwrite the whole stored value, so
+          // it names no table column here. A key is written through
+          // colIndexToPathLookup below; a date bucket can't be edited.
+          if (!column['path'] && !column['col-fn']) {
+            acc.colIndexToColumnLookup[index.toString()] = column['column'];
+          }
+          if (column['element-index']) {
+            acc.aliasToElementIndexField[column['alias']] = index.toString();
+          }
+          if (column.policy) {
+            acc.colIndexToPolicyLookup[index.toString()] = {
+              ...column.policy,
+              column: column['column'],
+              isPath: !!column['path'],
+            };
+          }
+          // The hidden key columns pine-lang adds, not any column called
+          // `id`: a row is found by its table's primary key.
+          if (!column['auto-id']) {
+            return acc;
+          }
+          (acc.aliasToKeyLookup[column['alias']] ??= []).push({
+            column: column['column'],
+            field: index.toString(),
+          });
+          return acc;
+        },
+        {
+          colIndexToAliasLookup: {},
+          aliasToKeyLookup: {},
+          colIndexToColumnLookup: {},
+          colIndexToPathLookup: {},
+          colIndexToPolicyLookup: {},
+          aliasToElementIndexField: {},
+        },
+      );
+      // A path column whose table can be edited has a hidden type column,
+      // named after it. Together they say where an edit goes and what type
+      // to write it as. Kept apart from colIndexToColumnLookup, which means
+      // the whole column (a filter on `companies`, not on a key inside it).
+      response.columns.forEach((column, index) => {
+        const of = column['json-type-of'];
+        if (!of) return;
+        const pathIndex = response.columns.findIndex(
+          c => c.path && c.alias === column.alias && c['column-alias'] === of,
+        );
+        if (pathIndex < 0) return;
+        columnMetadata.colIndexToPathLookup[pathIndex.toString()] = {
+          column: column.column,
+          path: column.path ?? [],
+          typeField: index.toString(),
+        };
+      });
+
+      const columnVisibilityModel = response.columns.reduce(
+        (acc, column, index) => {
+          acc[index.toString()] = !column.hidden;
+          return acc;
+        },
+        {} as Record<string, boolean>,
+      );
+
+      runInAction(() => {
+        session.columns = columns;
+        session.columnVisibilityModel = columnVisibilityModel;
+        session.columnMetadata = columnMetadata;
+        session.rows = rows.slice(1).map((row, index) => {
+          return { ...row, _id: index };
+        });
+        session.expressionAtLastEval = ranText;
+        session.resultSource = source;
+        session.runMs = Math.round(performance.now() - startedAt);
+        session.rowCap = runsSql ? null : (response['row-cap'] ?? null);
+        session.tableAliases = runsSql ? [] : (response.aliases ?? []);
+
+        // session.message = pickSuccessMessage();
+        // Canvas is always mounted now (the classic node-graph widget,
+        // GraphBox, was removed) and manages its own keyboard focus - and
+        // since the Pine input often isn't even mounted (New Layout's SQL/
+        // Pine panel is opt-in), pulling focus back to it here would leave
+        // session.textInputFocused stuck true with nothing to flip it back,
+        // silently and permanently disabling every canvas keybinding (see
+        // useCanvasKeybindings.ts's textInputFocused guard) - so, unlike the
+        // classic text-first workflow this used to also serve, focus is
+        // never pulled back to the Pine input after a run finishes.
+        session.mode = 'result';
+      });
+
+      return result;
+    } catch (e) {
+      runInAction(() => {
+        session.message = '';
+        session.error = e instanceof Error ? e.message : 'Unknown error';
+      });
+      return [];
+    } finally {
+      runInAction(() => {
+        session.loading = false;
+        if (session.runId === runId) session.runId = null;
+      });
+    }
+  }
+}

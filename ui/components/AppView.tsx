@@ -1,0 +1,356 @@
+import { Box, Grid, Typography, useTheme, useMediaQuery, Link } from '@mui/material';
+import { observer } from 'mobx-react-lite';
+import { runInAction } from 'mobx';
+import { useStores } from '../store/store-container';
+import PineTabs from './PineTabs';
+import { UpgradeRequired } from './docs/UpgradeRequired';
+import Message from './Message';
+import { isDesktop, isPlayground } from '../store/util';
+import { useState, useEffect, useCallback } from 'react';
+import { getUserPreference, STORAGE_KEYS } from '../store/preferences';
+
+import CommandPalette from './CommandPalette';
+import ChangeConnectionModal from './ChangeConnectionModal';
+import SideRail from './SideRail';
+import SettingsDock from './settings/SettingsDock';
+import CollapsibleHeight from './CollapsibleHeight';
+import DevModeChip from './DevModeChip';
+import { useGlobalKeybindings } from '../hooks/useGlobalKeybindings';
+import { useFocusedPanelTracking } from '../hooks/useFocusedPanelTracking';
+import { useSettingsKeybindings } from '../hooks/useSettingsKeybindings';
+import { compare, valid } from 'semver';
+import { getKeybindingDisplayForCommand } from '../utils/keybindings';
+import dynamic from 'next/dynamic';
+import { useHasBeenTrue } from '../hooks/useHasBeenTrue';
+
+// Loaded the first time they open, not with the app. The changelog's
+// entries are the largest file the app has. Kept mounted once opened, so
+// they still animate closed.
+const AnalysisModal = dynamic(() => import('./AnalysisModal'), { ssr: false });
+const ChangelogModal = dynamic(() => import('./ChangelogModal'), { ssr: false });
+
+// The hosted playground's backend has been intentionally shut down (not a
+// bug) -- send visitors to the download page instead. The redirect is a
+// plain client-side navigation (not a Next.js route) since the destination
+// is the beamlynx.com marketing site, a different origin; the visible
+// message + link are the fallback for the moment before that runs, or if
+// it's blocked.
+const PLAYGROUND_DOWNLOAD_URL = 'https://beamlynx.com/download?playground=disabled&source=direct';
+
+const PlaygroundDisabled = () => {
+  useEffect(() => {
+    window.location.href = PLAYGROUND_DOWNLOAD_URL;
+  }, []);
+
+  return (
+    <Box
+      sx={{
+        p: 2,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 2,
+        justifyContent: 'center',
+        alignItems: 'center',
+      }}
+    >
+      <Typography className="text-primary">
+        The playground is disabled. Redirecting you to download the app...
+      </Typography>
+      <Link href={PLAYGROUND_DOWNLOAD_URL} underline="hover">
+        Click here if you&apos;re not redirected
+      </Link>
+    </Box>
+  );
+};
+
+const AppView = observer(() => {
+  const { global } = useStores();
+  const session = global.getSession(global.activeSessionId);
+  const [mounted, setMounted] = useState(false);
+  const [hasUnreadUpdates, setHasUnreadUpdates] = useState(false);
+  const analysisOpened = useHasBeenTrue(global.showAnalysis);
+  const changelogOpened = useHasBeenTrue(global.showChangelog);
+  // The docked Settings panel is a sibling of PineTabs, not part of
+  // NewLayoutView, since global.showSettings is app-wide state rather than
+  // per-session: nesting the dock inside a specific tab's own render tree
+  // meant it only showed for whichever tab happened to be active, and
+  // vanished on switching tabs instead of staying put like the rest of the
+  // app's chrome (confirmed live - reported as "settings show inside a tab,
+  // it should show on the left of all the tabs as well"). Its width and its
+  // open/close animation live in SettingsDock itself -- deliberately NOT
+  // here, since state in this component re-renders PineTabs and every open
+  // Session with it.
+
+  const handleOpenChangelog = () => {
+    global.setShowChangelog(true);
+    setHasUnreadUpdates(false);
+  };
+
+  const handleCloseChangelog = () => {
+    global.setShowChangelog(false);
+  };
+
+  // Initialize global keyboard shortcuts
+  useGlobalKeybindings({
+    session,
+    global,
+  });
+  // Which panel (Canvas/Settings/Input) currently owns bare-key input --
+  // see GlobalStore.activeKeyboardPanel's own comment.
+  useFocusedPanelTracking({ global });
+  useSettingsKeybindings({ global });
+
+  const theme = useTheme();
+  const isSmallScreen = useMediaQuery(theme.breakpoints.down('lg'));
+
+  useEffect(() => {
+    setMounted(true);
+
+    // Check for unread updates
+    // After the first paint: the version is in the changelog's own module.
+    const lastReadVersion = getUserPreference(STORAGE_KEYS.LAST_READ_VERSION, '0.0.0', v => typeof v === 'string' && valid(v) !== null);
+    let cancelled = false;
+    import('../utils/changelog.data')
+      .then(({ LATEST_VERSION }) => {
+        if (!cancelled) setHasUnreadUpdates(compare(LATEST_VERSION, lastReadVersion) > 0);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    global.handleUrlParameters();
+  }, [global]);
+
+  useEffect(() => {
+    runInAction(() => {
+      session.isSmallScreen = isSmallScreen;
+    });
+  }, [session, isSmallScreen]);
+
+  // Prevent hydration errors by ensuring the same component is rendered on server and client initial render
+  if (!mounted) {
+    return null;
+  }
+
+  // The playground marks itself; nothing else shows a user area. A dev copy
+  // shows DevModeChip instead, in the header below.
+  const UserContent = isPlayground() ? (
+    <Typography variant="caption" color="gray">
+      [Playground]
+    </Typography>
+  ) : null;
+
+  if (global.connecting)
+    return (
+      <Box sx={{ p: 2, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        <Typography className="text-primary">Connecting...</Typography>
+      </Box>
+    );
+
+  // Every other not-connected case (including a fresh install with nothing
+  // configured) falls through to the normal app shell below; there's no
+  // full-page "get started" wall (see ActiveConnection.tsx's own "Not
+  // connected to database"/"🔌 No connection to Pine server!" label for how
+  // that state is surfaced instead -- inline, not a takeover). Was previously
+  // a Docker-run-command onboarding page, which stopped being the right
+  // default once the desktop app became the primary distribution.
+  //
+  // The one exception is the hosted playground specifically: its backend is
+  // intentionally shut down (see PLAYGROUND_DOWNLOAD_URL above), so any
+  // disconnected visit there redirects to the download page instead of
+  // falling through to an app shell with nothing behind it. This used to
+  // also check `!global.canvasActive` (skipping the redirect whenever Canvas
+  // was the active graph editor, since its own empty state was "enough" to
+  // show instead) -- that distinction no longer exists now that Canvas is
+  // the only graph editor, so every disconnected playground visit redirects.
+  if (!global.pineConnected && isPlayground()) {
+    return <PlaygroundDisabled />;
+  }
+
+  if (global.getRequiresUpgrade()) {
+    return <UpgradeRequired />;
+  }
+
+  return (
+    <>
+      {analysisOpened && <AnalysisModal />}
+      {changelogOpened && <ChangelogModal open={global.showChangelog} onClose={handleCloseChangelog} />}
+      <CommandPalette />
+      <ChangeConnectionModal />
+      {/* Hidden entirely in Zen mode, not just visually de-emphasized -- Zen
+          mode's whole point is a graph-only view, and every one of these
+          (connection picker, search bar, layout switcher, gear icon) is
+          exactly the "everything else" it hides. The modals above are
+          untouched (separate components, not part of this Grid), so e.g.
+          the command palette shortcut still works to get back out. */}
+      {/* Collapsed rather than unmounted on entering Zen mode. Zen is the
+          biggest single change of shape in the app - everything but the
+          graph goes away at once - and having it happen in one frame was
+          the most jarring version of exactly what this whole pass is
+          about. The contents hold their size inside the clip while the
+          wrapper closes over them, so the header slides up out of view
+          instead of each control reflowing on its way to nothing. */}
+      {/* The sidebar runs the window's full height, beside the header and
+          the tabs: the database connection is at its top, as a workspace is
+          in Slack's. It goes with the rest of the chrome in Zen mode. */}
+      <Box sx={{ display: 'flex', flexDirection: 'row', flex: 1, minHeight: 0 }}>
+        {!global.isZenModeActive && (
+          <SideRail hasUnreadUpdates={hasUnreadUpdates} onOpenChangelog={handleOpenChangelog} />
+        )}
+        <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: 0 }}>
+          <CollapsibleHeight
+            expanded={!global.isZenModeActive}
+            transition={
+              global.isZenModeActive
+                ? 'height var(--motion-exit) var(--motion-ease-exit)'
+                : 'height var(--motion-enter) var(--motion-ease-enter)'
+            }
+            contentSx={{
+              opacity: global.isZenModeActive ? 0 : 1,
+              transition: global.isZenModeActive
+                ? 'opacity var(--motion-fast) var(--motion-ease-exit)'
+                : 'opacity var(--motion-enter) var(--motion-ease-enter)',
+            }}
+          >
+            <Grid container>
+              {/* The database connection is at the top of the sidebar now
+                  (SideRail.tsx); this keeps the search box centred. */}
+              <Grid item xs={3} />
+
+              <Grid item xs={6}>
+                <Box sx={{ m: 1, mt: 1, mb: 0, display: 'flex', justifyContent: 'center' }}>
+                  <Box
+                    onClick={() => global.setShowCommandPalette(true)}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      width: 600,
+                      maxWidth: '90vw',
+                      padding: '10px 16px',
+                      backgroundColor: 'var(--node-column-bg)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 1,
+                      cursor: 'pointer',
+                      visibility: global.showCommandPalette ? 'hidden' : 'visible',
+                      '&:hover': {
+                        borderColor: 'var(--primary-color)',
+                        backgroundColor: 'var(--background-color)',
+                      },
+                    }}
+                  >
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        color: 'var(--text-color)',
+                        opacity: 0.6,
+                        userSelect: 'none',
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      Search commands... ({getKeybindingDisplayForCommand('command-palette')})
+                    </Typography>
+                  </Box>
+                  {/* <Message /> */}
+                </Box>
+              </Grid>
+
+              <Grid item xs={3}>
+                {/* Level with the search box beside it: the icon buttons that
+                    used to sit here gave this row its height, and without them
+                    the chips were pressed against the window's top edge. */}
+                <Box
+                  sx={{
+                    m: 1,
+                    mr: 2,
+                    mb: 0,
+                    minHeight: 43,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'flex-end',
+                    gap: 1,
+                    flexWrap: 'wrap',
+                    rowGap: 0,
+                  }}
+                >
+                  {!isDesktop() && global.version && (
+                    <Typography variant="caption" color="gray" component="code">
+                      [{global.version}]
+                    </Typography>
+                  )}
+                  <DevModeChip />
+                  {UserContent}
+                </Box>
+              </Grid>
+            </Grid>
+          </CollapsibleHeight>
+          {/* mt: 1 (not 0) - the header row above and the tab row below both
+              have their own solid background now (previously neither did, so
+              zero margin was invisible); with no gap the search box's bottom
+              edge visually touched the tab row's top edge.
+
+              flex: 1, minHeight: 0 - this is what makes the tab content fill
+              exactly the rest of the viewport below the header, however tall
+              the header actually renders (font metrics, connection-name
+              wrapping, OS chrome, etc. all vary this in ways a hardcoded
+              `calc(100vh - Npx)` guess can't track - see constants.ts's
+              LAYOUT_HEIGHTS comment for the drift this used to cause).
+              Flexbox's own `flex: 1` already accounts for its own margin and
+              every sibling's natural size automatically - no pixel arithmetic
+              needed. Requires pages/index.tsx's Container to be the
+              `display:flex, flexDirection:column, height:100vh` ancestor this
+              box measures against (it is), and every box down the chain to
+              Session/NewLayoutView's own root to keep passing that sizing
+              through the same way (flex:1 for a flex child with siblings,
+              height:'100%' for a single/only child) rather than reintroducing
+              a calc(100vh - ...) guess at some new layer. This row wrapper is
+              that flex:1/minHeight:0 child now (rather than the PineTabs box
+              directly) so the docked Settings panel can be its sibling and
+              span the same full height, tab strip included.
+
+              mt/ml/mr live on the ROW itself, not on the PineTabs box below --
+              they used to live there, which put the inset only on PineTabs'
+              side. That left two bugs once Settings became this row's other
+              child: Settings had no top margin of its own, so its top sat 8px
+              above the tab strip instead of level with it: and PineTabs' own
+              8px LEFT margin added on top of the divider's own 8px gap
+              doubled the visual gap between Settings and Canvas to 16px,
+              versus the plain 8px gap every other pane boundary in New Layout
+              uses. Applying the inset once, to the row, makes Settings and
+              PineTabs start flush and top-aligned with each other, with
+              exactly the divider's own width between them -- matching every
+              other docked pane. */}
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'row',
+              flex: 1,
+              minHeight: 0,
+              mt: global.isZenModeActive ? 0 : 1,
+              // The sidebar's own margin is the gap on the left.
+              ml: 0,
+              mr: global.isZenModeActive ? 0 : 1,
+            }}
+          >
+            <SettingsDock />
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                flex: 1,
+                minWidth: 0,
+                minHeight: 0,
+              }}
+            >
+              <PineTabs></PineTabs>
+            </Box>
+          </Box>
+        </Box>
+      </Box>
+    </>
+  );
+});
+
+export default AppView;

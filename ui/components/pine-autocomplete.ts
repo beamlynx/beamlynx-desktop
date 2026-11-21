@@ -1,0 +1,350 @@
+import {
+  autocompletion,
+  Completion,
+  CompletionContext,
+  CompletionResult,
+  completionStatus,
+  currentCompletions,
+  selectedCompletion,
+  selectedCompletionIndex,
+  setSelectedCompletion,
+  startCompletion,
+} from '@codemirror/autocomplete';
+import { Extension } from '@codemirror/state';
+import { EditorView, ViewPlugin, ViewUpdate } from '@codemirror/view';
+import { panelPeekTarget } from '../store/canvas/json-peek';
+import { Ast, ColumnHint, Hints, PathHint, TableHint } from '../store/client';
+import { columnGroupName, groupRanks, qualifiedColumn } from '../store/column-groups';
+
+// Configuration constants
+const MAX_AUTOCOMPLETE_OPTIONS = 15;
+
+// Extended completion interface for Pine-specific completions
+interface PineCompletion extends Completion {
+  expression?: string;
+}
+
+interface PineCompletionContext {
+  // Live getters, read on every completion query, so the extension is made
+  // once per editor and never rebuilt when a build brings new hints. A new
+  // extension would replace the completion source, and the open list with it.
+  hints: () => Hints | null;
+  // The build the hints came from: its current table and table names, to
+  // qualify and group column hints.
+  ast?: () => Ast | null;
+  // A live getter rather than a snapshot value: reading it fresh on every
+  // completion query reflects the current build status without needing the
+  // (memoized, teardown-on-change) autocompletion extension to be rebuilt
+  // whenever loading starts/stops.
+  isLoading: () => boolean;
+}
+
+// Callback interface for autocomplete highlight events
+interface AutocompleteCallbacks {
+  onHighlight?: (completion: PineCompletion | null) => void;
+  onPipe?: (view: EditorView) => void;
+}
+
+// Helper function to extract a meaningful label from a TableHint
+function getPineCompletions(
+  context: CompletionContext,
+  pineContext: PineCompletionContext,
+  callbacks?: AutocompleteCallbacks,
+): CompletionResult | null {
+  const hints = pineContext.hints();
+  const { pos } = context;
+  const line = context.state.doc.lineAt(pos);
+  const lineText = line.text;
+  const beforeCursor = lineText.slice(0, pos - line.from);
+  const afterCursor = lineText.slice(pos - line.from);
+
+  // Find the word being typed: the name after the last dot. After `t.` it is
+  // empty, so every column of `t` is offered and the chosen one goes after
+  // the dot. Capturing the dot itself filtered out every column.
+  const wordMatch = beforeCursor.match(/[A-Za-z0-9_-]*$/);
+  const word = wordMatch ? wordMatch[0] : '';
+  const wordStart = pos - word.length;
+  // A table hint's text carries its schema (`public.tenant`), so it replaces
+  // the whole qualified name typed so far, `public.te`, not just `te`.
+  const qualifiedWordMatch = beforeCursor.match(/[A-Za-z0-9_.-]*$/);
+  const qualifiedWordStart = pos - (qualifiedWordMatch ? qualifiedWordMatch[0].length : 0);
+
+  const completions: PineCompletion[] = [];
+
+  // Check if cursor is immediately after a pipe and space
+  const afterPipeSpace = beforeCursor.trim().endsWith('|');
+
+  // Is the operation currently being typed a `? table` path search
+  // (pine-lang docs/paths.md), rather than a normal table/join? Unlike every
+  // other operation, its segment starts with a literal `?`, which the `word`
+  // regex above never captures (it's not a word character) - `wordStart`
+  // alone can only ever point at the partial table name after it, never at
+  // the `?` itself. Look at the text since the last top-level pipe instead.
+  const clauseStart = beforeCursor.lastIndexOf('|') + 1;
+  const clause = beforeCursor.slice(clauseStart);
+  const inPathsContext = clause.trimStart().startsWith('?');
+  // Absolute doc position of the `?` itself - a chosen route needs to
+  // replace the WHOLE `? partial-target` fragment, not just the partial
+  // word after it, or the `?` is left dangling in the text.
+  const qPos = inPathsContext ? line.from + clauseStart + clause.indexOf('?') : -1;
+
+  if (inPathsContext) {
+    // Once the typed target names a real table, pine-lang's search has
+    // already run (ast.hints.paths) - offer the discovered routes
+    // themselves, replacing the entire `? target` fragment (from qPos, not
+    // wordStart) with the full (possibly multi-hop) route text.
+    if (hints?.paths?.length) {
+      hints.paths.forEach((path: PathHint, index) => {
+        const lastHop = path.hops[path.hops.length - 1];
+        completions.push({
+          expression: path.pine,
+          section: 'Paths',
+          label: lastHop.table,
+          // Only set when this destination is reachable more than one way -
+          // same role as a join hint's own `info` (line ~78 below), just
+          // naming the stops along the route instead of a disambiguating FK
+          // column.
+          detail:
+            path.length > 1
+              ? `via ${path.hops
+                  .slice(0, -1)
+                  .map(h => h.table)
+                  .join(', ')}`
+              : undefined,
+          type: 'variable',
+          apply: (view: EditorView) => {
+            view.dispatch({
+              changes: { from: qPos, to: pos, insert: path.pine + '|' },
+              selection: { anchor: qPos + path.pine.length + 1 },
+            });
+            if (callbacks?.onPipe) {
+              callbacks.onPipe(view);
+            }
+          },
+          boost: hints.paths.length - index,
+        });
+      });
+    } else {
+      // Still naming the destination - offer bare table names (reachability-
+      // filtered server-side, see pine-lang's generate-path-hints), not a
+      // whole new operation: no schema prefix, no trailing pipe, since this
+      // only completes `?`'s own target, not a table op of its own.
+      hints?.table?.forEach((hint, index) => {
+        if (hint.table.toLowerCase().includes(word.toLowerCase()) || word === '') {
+          completions.push({
+            expression: hint.table,
+            section: 'Tables',
+            label: hint.table,
+            type: 'variable',
+            apply: hint.table,
+            boost: (hints.table?.length ?? 0) - index,
+          });
+        }
+      });
+    }
+  } else if (hints?.table) {
+    const getKey = (hint: TableHint) => `${hint.schema}.${hint.table}`;
+    const tableCount =
+      hints?.table?.reduce((acc, hint) => {
+        const key = getKey(hint);
+        const count = acc.get(key) || 0;
+        acc.set(key, count + 1);
+        return acc;
+      }, new Map<string, number>()) || new Map<string, number>();
+
+    // Use a boost range that accommodates all hints
+    const maxTableBoost = Math.max(hints.table.length, MAX_AUTOCOMPLETE_OPTIONS);
+
+    hints.table.forEach((hint, index) => {
+      if (hint.table.toLowerCase().includes(word.toLowerCase()) || word === '') {
+        completions.push({
+          expression: hint.pine,
+          section: 'Tables',
+          label: hint.table,
+          info: (tableCount.get(getKey(hint)) || 0) > 1 ? hint.pine : undefined,
+          type: 'variable',
+          apply: (view: EditorView, completion: PineCompletion, _from: number, to: number) => {
+            // Insert pipe
+            const from = qualifiedWordStart;
+            view.dispatch({
+              changes: { from, to, insert: hint.pine + '|' },
+              selection: { anchor: from + hint.pine.length + 1 },
+            });
+            if (callbacks?.onPipe) {
+              callbacks.onPipe(view);
+            }
+          },
+          boost: maxTableBoost - index, // Decreasing boost to maintain original order
+        });
+      }
+    });
+
+    // Column hints come from every table in the query, grouped by table:
+    // the current one first, then the others, nearest first. A column of
+    // another table needs its alias (`u.email`), unless one was typed
+    // already (`u.em`): the word then starts after the dot.
+    const ast = pineContext.ast?.();
+    const tables = ast?.['selected-tables'] ?? [];
+    const aliasTyped = beforeCursor.charAt(beforeCursor.length - word.length - 1) === '.';
+    const addColumns = (columnHints: ColumnHint[] | undefined, suffix: string) => {
+      if (!columnHints) return;
+      const ranks = groupRanks(columnHints);
+      columnHints.forEach(hint => {
+        if (!hint.column.toLowerCase().includes(word.toLowerCase()) && word !== '') return;
+        const text = aliasTyped ? hint.column : qualifiedColumn(hint, ast?.current);
+        completions.push({
+          expression: text,
+          section: { name: columnGroupName(hint.alias, tables), rank: ranks.get(hint.alias) },
+          label: text,
+          apply: `${text}${suffix}`,
+        });
+      });
+    };
+
+    addColumns(hints.select, ', ');
+    addColumns(hints.order, ' desc, ');
+    addColumns(hints.where, ' = ');
+    // The column alone after `unnest:`: the array is often a path inside it.
+    addColumns(hints.unnest, '');
+    addColumns(hints.update, ' = ');
+  }
+
+  if (completions.length === 0) {
+    const loading = pineContext.isLoading();
+    // Keys inside a JSON column aren't in the schema, so there is nothing
+    // to list after `content.`. The results pane peeks at the column instead
+    // (Session.peekAt), so "Nothing found" would only be in the way.
+    if (!loading && panelPeekTarget(context.state.doc.toString(), pos)) return null;
+    completions.push({
+      expression: '',
+      label: '',
+      detail: loading ? 'Loading...' : 'Nothing found',
+      // Marks this as a non-candidate placeholder so optionClass (below) can
+      // style it distinctly instead of inheriting the selected-candidate look.
+      type: loading ? 'pine-loading' : 'pine-empty',
+      apply: () => {},
+      boost: 100,
+    });
+  }
+  // Sort completions by boost only (preserving original order within same boost level)
+  const sortedCompletions = completions.sort((a, b) => {
+    if (a.boost === undefined || b.boost === undefined) {
+      return 0;
+    }
+    return b.boost - a.boost;
+  });
+
+  return {
+    from: wordStart,
+    options: sortedCompletions,
+    // Disable CodeMirror's internal filtering by providing empty filter
+    filter: false,
+  };
+}
+
+// The option each editor had highlighted when refreshCompletions asked for
+// new options, to highlight again once they arrive.
+const highlightToRestore = new WeakMap<EditorView, string>();
+const optionKey = (c: PineCompletion) => `${c.label}\u0000${c.expression ?? ''}`;
+
+/**
+ * Query the completion list again, if it is open, keeping it open and the
+ * same option highlighted where it is still offered. Called when a build
+ * brings new hints: the list may be showing "Loading..." or hints for text
+ * that has changed since.
+ */
+export function refreshCompletions(view: EditorView) {
+  if (!completionStatus(view.state)) return;
+  // Only a highlight the person moved. The first option is the list's own
+  // pick: Tab opens the list at once with the hints from before the last
+  // keystroke, and carrying that pick over put the highlight on whatever
+  // place the same option has in the new list, often the second.
+  const selected = selectedCompletion(view.state) as PineCompletion | null;
+  if (selected && (selectedCompletionIndex(view.state) ?? 0) > 0) highlightToRestore.set(view, optionKey(selected));
+  else highlightToRestore.delete(view);
+  startCompletion(view);
+}
+
+// ViewPlugin to detect autocomplete selection changes
+function createAutocompleteListener(callbacks?: AutocompleteCallbacks): Extension {
+  return ViewPlugin.fromClass(
+    class {
+      private lastSelectedCompletion: PineCompletion | null = null;
+
+      constructor(view: any) {
+        // Initial check
+        this.checkSelectionChange(view);
+      }
+
+      update(update: ViewUpdate) {
+        this.restoreHighlight(update.view);
+        this.checkSelectionChange(update.view);
+      }
+
+      // The refreshed options are new objects, so the list highlights its
+      // first one. Move the highlight back to the option it was on.
+      private restoreHighlight(view: EditorView) {
+        const key = highlightToRestore.get(view);
+        if (key === undefined) return;
+        const status = completionStatus(view.state);
+        if (status === 'pending') return;
+        highlightToRestore.delete(view);
+        if (status !== 'active') return;
+        const index = currentCompletions(view.state).findIndex(c => optionKey(c) === key);
+        if (index < 0 || index === selectedCompletionIndex(view.state)) return;
+        // Not during this update: CodeMirror refuses a dispatch inside one.
+        queueMicrotask(() => {
+          if (completionStatus(view.state) === 'active') {
+            view.dispatch({ effects: setSelectedCompletion(index) });
+          }
+        });
+      }
+
+      private checkSelectionChange(view: any) {
+        // Get the currently selected completion
+        const selected = selectedCompletion(view.state) as PineCompletion | null;
+
+        // Check if the selection has changed (compare by expression to handle same table names with different pine expressions)
+        if (selected?.expression !== this.lastSelectedCompletion?.expression) {
+          this.lastSelectedCompletion = selected;
+
+          // Call the onHighlight callback
+          if (callbacks?.onHighlight) {
+            callbacks.onHighlight(selected);
+          }
+        }
+      }
+    },
+  );
+}
+
+export function createPineAutocompletion(
+  pineContext: PineCompletionContext,
+  callbacks: AutocompleteCallbacks,
+): Extension {
+  return [
+    autocompletion({
+      override: [
+        (context: CompletionContext) => {
+          return getPineCompletions(context, pineContext, callbacks);
+        },
+      ],
+      closeOnBlur: true,
+      activateOnTyping: false,
+      selectOnOpen: true,
+      maxRenderedOptions: MAX_AUTOCOMPLETE_OPTIONS,
+      defaultKeymap: true,
+      tooltipClass: () => 'pine-autocomplete-tooltip',
+      optionClass: (completion: Completion) => {
+        if (completion.type === 'pine-loading')
+          return 'pine-autocomplete-option pine-autocomplete-loading';
+        if (completion.type === 'pine-empty')
+          return 'pine-autocomplete-option pine-autocomplete-empty';
+        return 'pine-autocomplete-option';
+      },
+      aboveCursor: false,
+      icons: false,
+    }),
+    createAutocompleteListener(callbacks),
+  ];
+}

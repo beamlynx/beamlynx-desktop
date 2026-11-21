@@ -1,0 +1,612 @@
+import { Edge, Node } from 'reactflow';
+
+// Canvas mode's own node/edge/picker types - deliberately not sharing
+// model.d.ts's PineNode/SelectedNodeData family (see the plan doc's file
+// list). The old graph's suggested/candidate machinery has no equivalent
+// here: this mode replaces "suggested nodes" with pickers opened from a
+// node's action bar.
+
+/**
+ * Stable id for the empty-graph "+ pick a table" node - shared between
+ * Canvas.tsx (which renders it in place of `canvasGraph.nodes` when that's
+ * empty) and CanvasStore's keyboard-focus tracking (which needs the same id
+ * to treat it as a focus target). Lives here rather than in Canvas.tsx so
+ * the store doesn't have to import a component file.
+ */
+export const START_NODE_ID = '__canvas_start__';
+
+export type CanvasHandle = { id: string; column: string; connectedNodeId: string };
+
+export type CanvasTableNodeData = {
+  alias: string;
+  table: string;
+  schema: string | null;
+  color?: string | null;
+  order: number;
+  removable: boolean;
+  selectColumns: string[];
+  /** The name each of `selectColumns` was given with `as`, or null. The same column can be selected more than once. */
+  selectNames?: (string | null)[];
+  whereChips: string[]; // display text, e.g. "id = 1"
+  orderChips: string[]; // display text, e.g. "name desc"
+  groupChips: string[]; // this alias's own contribution to the one shared group: segment
+  /**
+   * The `unnest:` steps on this table's columns, `data as e`, and what the
+   * query reads from their elements, `e.field`, shown after this table's own
+   * chips. Shown only: the chip actions edit a table's own columns.
+   */
+  unnestChips?: string[];
+  elementChips?: {
+    select: string[];
+    /** The name each of `select` was given with `as`, or null. */
+    selectNames?: (string | null)[];
+    where: string[];
+    order: string[];
+    group: string[];
+  };
+  leftHandles: CanvasHandle[];
+  rightHandles: CanvasHandle[];
+  /** Set on the table an `update!` or `delete!` changes - see CanvasWrite. */
+  write?: Omit<CanvasWrite, 'alias'>;
+  /** Set on the table a `describe:` or `references:` describes - see CanvasDescribe. */
+  describe?: CanvasDescribe['kind'];
+  /**
+   * Set when this node is a checkpoint's sealed result rather than a table:
+   * the node below a checkpoint's divider, named after the checkpoint
+   * (`alias` and `table` are both its name, exactly as pine-lang reports
+   * it). It is drawn like any table; its actions work on the sealed result -
+   * see CanvasStore.openCheckpointPicker.
+   *
+   * `expanded`: whether the stage it seals is drawn above it (see layout.ts's
+   * buildCanvasGraph - one checkpoint is expanded at a time). Its divider,
+   * with the label, × and expand toggle, is a separate node above it.
+   */
+  checkpoint?: {
+    expanded: boolean;
+    /**
+     * The last query block draws a checkpoint as a dotted line across the
+     * graph, between the stage it seals and the one after it, not as a node
+     * (beamlynx-plans #33). `width` is the line's, spanning the graph.
+     */
+    line?: { width: number };
+  };
+  /**
+   * Set when this node stands for a nested query: a checkpoint's node, or a
+   * table that uses a named result from an earlier query block (a block
+   * ending in `|= name`). It shows `label` (`limit 10`, `|= top`) and an
+   * expand toggle; expanded, a container above it holds what the nested
+   * query holds (see layout.ts's buildCanvasGraph). `limit` makes the label
+   * open the limit editor.
+   */
+  nested?: {
+    kind: 'checkpoint' | 'named';
+    name: string;
+    label: string;
+    limit?: number;
+    expanded: boolean;
+    /** A checkpoint's: what sealed it, as its line shows it (TableNode.tsx's CheckpointLine). */
+    result?: CheckpointResult;
+  };
+};
+
+/**
+ * What a checkpoint's line shows. A group: its keys, each a column of the
+ * result (`id`, from `c.id`), then its aggregates (`count`, `total`). Each
+ * is a chip a join can start from. A `limit … per`: the limit and the
+ * columns after `per`.
+ */
+export type CheckpointResult =
+  | { kind: 'group'; keys: { column: string; from: string }[]; aggregates: string[] }
+  | { kind: 'limit'; limit?: number; per: string[] };
+
+/** The result columns a checkpoint's line has a chip for: a join on one hangs from it. */
+export const resultChipColumns = (result: CheckpointResult | undefined): string[] =>
+  result?.kind === 'group' ? [...result.keys.map(k => k.column), ...result.aggregates] : [];
+
+// eslint-disable-next-line @typescript-eslint/ban-types
+export type CanvasStartNodeData = {};
+
+/**
+ * An expanded nested query's container (see layout.ts's buildCanvasGraph): a
+ * dashed box with no fill around what it holds, directly above its node,
+ * with a short connector from its bottom edge down to the node. Its label
+ * sits on its top edge. Not a pipeline slot: it isn't focusable or
+ * selectable, and only its header takes clicks.
+ */
+export type CanvasContainerNodeData = {
+  kind: 'checkpoint' | 'named';
+  /** The nested query's name - what its collapse toggle collapses. */
+  name: string;
+  /** What it is, e.g. `limit 1 per c.id`, `group t.title with count`, `|= top`. */
+  label: string;
+  width: number;
+  height: number;
+  /** The connector's x in the box: its node's centre. */
+  connectorX: number;
+  /** The connector's length, from the box's bottom edge to the node's box. 0 when the box has no node. */
+  connector: number;
+};
+
+/**
+ * One query block in the lineage strip at the top of the canvas (see
+ * layout.ts's layoutLineage): a small chip, not a table. Arrows between
+ * chips say which block is made from which; joins stay in the graph below.
+ */
+export type CanvasLineageNodeData = {
+  /** The block's index among the tab's query blocks. */
+  block: number;
+  /** `|= name`, or the block's number when it has no name. */
+  label: string;
+  name: string | null;
+  /** It ends in update! or delete!. */
+  write: boolean;
+  /** It is the block the canvas draws. */
+  active: boolean;
+  /** What a nested block ends in, when it's a checkpoint: `limit 1 per company_id`. */
+  detail?: string;
+  /** Its nested query is the one expanded on the canvas. */
+  expanded: boolean;
+  width: number;
+  height: number;
+};
+
+export type CanvasTableNode = Node<CanvasTableNodeData>;
+export type CanvasStartNode = Node<CanvasStartNodeData>;
+export type CanvasContainerNode = Node<CanvasContainerNodeData>;
+export type CanvasLineageNode = Node<CanvasLineageNodeData>;
+/** The query ends in `count:`: a dotted line under the graph, as wide as it (CountLineNode.tsx). */
+export type CanvasCountNodeData = { width: number };
+export type CanvasCountNode = Node<CanvasCountNodeData>;
+export const COUNT_NODE_ID = '__count__';
+/** The query ends in `|= name`: a line at the bottom of the graph that names its result (NameLineNode.tsx). */
+export type CanvasNameNodeData = { width: number; name: string };
+export type CanvasNameNode = Node<CanvasNameNodeData>;
+export const NAME_NODE_ID = '__name__';
+export type CanvasNode =
+  | CanvasTableNode
+  | CanvasStartNode
+  | CanvasContainerNode
+  | CanvasLineageNode
+  | CanvasCountNode
+  | CanvasNameNode;
+export type CanvasEdge = Edge & {
+  unresolved?: boolean;
+  uncertain?: boolean;
+  /** Raw wire value from a join's `type` (client.ts) - null means inner (Pine's default, no `:left`/`:right` modifier). */
+  joinType?: 'LEFT' | 'RIGHT' | null;
+  /**
+   * The alias whose own table segment carries the `:left`/`:right` modifier -
+   * always the join's own literal `to` alias, which is NOT necessarily this
+   * edge's rendered `target` (addJoins in layout.ts swaps source/target for
+   * "belongs to" relations so the FK parent renders on the left, but the
+   * modifier always lives on the table that was actually appended second in
+   * the pipeline - see pine-actions.ts's setJoinType).
+   */
+  joinTargetAlias?: string;
+  /**
+   * Set on an arrow of the lineage strip, not a join: one block reads
+   * another, as a table or after `in` (see lineage.ts).
+   */
+  derivation?: 'table' | 'in';
+};
+
+export type CanvasGraph = {
+  nodes: CanvasNode[];
+  edges: CanvasEdge[];
+  /** false once the expression stops parsing - see the plan doc's degrade behavior. */
+  parsing: boolean;
+};
+
+/**
+ * The change a query makes when it ends in `update!` or `delete!`, drawn on
+ * the node of the table it changes (`alias`). `items` are the assignments
+ * an update writes (`status = 'sent'`), or the columns a delete finds the
+ * rows by (`id`).
+ */
+export type CanvasWrite = { kind: 'update' | 'delete'; alias: string; items: string[] };
+
+/**
+ * The table a query describes when it ends in `describe:` (its columns) or
+ * `references:` (how it joins), drawn on that table's node (`alias`) like a
+ * CanvasWrite.
+ */
+export type CanvasDescribe = { kind: 'describe' | 'references'; alias: string };
+
+// --- pickers -------------------------------------------------------------
+
+export type PickerItem = {
+  id: string;
+  label: string;
+  detail?: string;
+  group?: string;
+  /** hint.pine for table/join items; bare column name for select/where/order/group items. */
+  value: string;
+  /**
+   * Set only when this join candidate's table is otherwise indistinguishable
+   * from another candidate in the same group (same schema+table, reached via
+   * a different FK column) -- see openJoinPicker's toItems. Unset for every
+   * ordinary, unambiguous candidate, so the common case renders exactly as
+   * before this field existed.
+   */
+  columnHint?: string;
+  /** A JSON column: its row has a › that starts typing a path inside it, `data.`. */
+  json?: boolean;
+  /** A column's database type, when pine-lang says: an aggregate's list keeps the columns it can read (aggregateReads). */
+  type?: string;
+  /**
+   * Set only for a path-route item (openPathRoutePicker) whose destination
+   * table is reachable more than one way - e.g. "via employee" - so two
+   * routes to the identical table (same label/detail) read as distinguishable
+   * rows. Unlike columnHint, this isn't a Pine `.column` fragment, so it
+   * renders as plain text rather than a dot-prefixed one.
+   */
+  subLabel?: string;
+  /**
+   * A column's table, for a column picker: it lists every table's columns
+   * (beamlynx-plans #28), and a pick is written for this table. Unset for
+   * table, join and path items.
+   */
+  alias?: string;
+};
+
+/**
+ * One section of a list picker. `alias` is set on a table's section of a
+ * column picker: its label is a name, `user (u)`, shown as typed. `table`
+ * is that table's name, so a filter can name it: `tenant id` (Picker.tsx).
+ */
+export type PickerGroup = { label: string; items: PickerItem[]; alias?: string; table?: string };
+
+/**
+ * One condition in the where panel. `alias` is per condition, not per panel:
+ * a hand-typed `where: c.name = 'x' or e.name = 'x'` spans two tables, and
+ * editing it from either chip must write both back as they were.
+ */
+export type WhereConditionDraft = { alias: string; column: string; operator: string; value: string };
+
+/** What the where panel is building: one condition, or several joined with `or`. */
+export type WhereDraft = {
+  conditions: WhereConditionDraft[];
+  /** Set only when reopened from an existing chip (ChipRow's onSelect) - see CanvasStore.openWhereEditor/submitWhereValue. Undefined for a brand-new condition. */
+  editIndex?: number;
+  /**
+   * The first condition's `operator` doubles as the relative-date picks -
+   * 'today' and 'in the last' are two extra entries Picker.tsx appends to
+   * the operator <select> for a brand-new, single condition on a column
+   * that looksLikeDateColumn (never while editing an existing one, and never
+   * alongside an `or` - see CanvasStore.submitWhereValue's own comment),
+   * rather than a separate mode/tab. `value` is unused for both;
+   * `rollingCount`/`rollingUnit` are unused except for 'in the last'.
+   * Always reset to '=' when the panel (re)opens - a stored condition has no
+   * record of having been built from one of these, so there's nothing to
+   * restore.
+   */
+  rollingCount: number;
+  rollingUnit: RelativeDateUnit;
+};
+
+export type PickerRequest =
+  | { kind: 'table' }
+  /** `column`: from a chip on a checkpoint's line, only the joins on that column of its result. */
+  | { kind: 'join'; alias: string; column?: string }
+  /** `only`: opened from the node itself, so it lists that table's columns alone. */
+  | { kind: 'select'; alias: string; only?: boolean }
+  /**
+   * `draft` is set when the list was opened from the where panel's own `or`
+   * button: the conditions entered so far, kept so that picking a column
+   * returns to the panel with that column appended as a new row, instead of
+   * starting over. See CanvasStore.addWhereOrCondition.
+   */
+  | { kind: 'where'; alias: string; draft?: WhereDraft; only?: boolean }
+  | { kind: 'order'; alias: string; only?: boolean }
+  /** `count`: opened from the count line, whose first key turns `count:` into a group. */
+  | { kind: 'group'; alias: string; only?: boolean; count?: boolean }
+  /**
+   * The functions an aggregate of checkpoint `alias`'s group can be. `index`
+   * is the aggregate's place after `with`; one past the end adds one.
+   */
+  | { kind: 'aggregate-fn'; alias: string; index: number }
+  /** The column `fn` reads, from the stage before the group, which `alias` ends: step 2 of an aggregate. */
+  | { kind: 'aggregate'; alias: string; name: string; index: number; fn: string }
+  // The JSON columns of `alias` an `unnest:` can read.
+  | { kind: 'unnest'; alias: string }
+  /** Step 1 of `? table` (docs/paths.md in pine-lang): pick a destination table - see CanvasStore.openPathPicker. */
+  | { kind: 'path'; alias: string }
+  /** Step 2: pick one of the discovered routes to `target` - see CanvasStore.openPathRoutePicker. */
+  | { kind: 'path-route'; alias: string; target: string; targetSchema?: string };
+
+/** Inner is Pine's default (no table modifier) - see pine-actions.ts's setJoinType/JOIN_MODIFIER_RE. */
+export type JoinType = 'inner' | 'left' | 'right';
+export const JOIN_TYPES: { type: JoinType; label: string; key: string }[] = [
+  { type: 'inner', label: 'Inner', key: 'i' },
+  { type: 'left', label: 'Left', key: 'l' },
+  { type: 'right', label: 'Right', key: 'r' },
+];
+
+export type OrderDirection = 'asc' | 'desc';
+export const ORDER_DIRECTIONS: { direction: OrderDirection; label: string; key: string }[] = [
+  { direction: 'asc', label: 'Asc', key: 'a' },
+  { direction: 'desc', label: 'Desc', key: 'd' },
+];
+
+/**
+ * One reconfigurable item on a focused table node - what CanvasStore's
+ * Left/Right config cursor (configNext/configPrev) moves between, in the
+ * same order TableNode.tsx's own action bar lists these five operations.
+ * `join-type` has no identity beyond its kind (a node has at most one
+ * incoming join). `select`/`order`/`group` identify by the column's own
+ * VALUE, not its array position - unlike `where` (whose conditions have no
+ * unique value to key on, since two conditions can name the same column),
+ * these three pickers deliberately stay open across repeat toggles
+ * (toggleSelectColumn et al never call closePicker), so a plain index
+ * captured before a toggle can point at a completely different column once
+ * the array shrinks out from under it (confirmed live: removing a select
+ * chip while it was config-cursor-highlighted moved the highlight to
+ * whatever other already-selected column happened to slide into that same
+ * numeric slot). Tracking by value instead means CanvasStore.
+ * focusedConfigItem naturally reports "nothing" once the exact item is
+ * gone, rather than silently reinterpreting a stale index as a different
+ * item still being highlighted.
+ */
+export type ConfigItem =
+  // An unnest chip, by the name of its elements.
+  | { kind: 'unnest'; name: string }
+  // The same column can be selected more than once: `occurrence` says which copy.
+  | { kind: 'select'; column: string; occurrence: number }
+  | { kind: 'join-type' }
+  | { kind: 'where'; index: number }
+  | { kind: 'order'; column: string }
+  | { kind: 'group'; column: string }
+  // The query's describe: or references:, on the table it describes. Nothing follows it.
+  | { kind: 'describe' };
+
+/** Viewport coordinates (clientX/clientY) of the action button that opened the picker - see Picker.tsx. */
+/**
+ * Where a picker opens: below and right of (x, y). With `above`, it opens
+ * upward from y instead - the operation bar's pickers, since the bar is at
+ * the bottom of the canvas (OperationBar.tsx).
+ */
+export type PickerAnchor = {
+  x: number;
+  y: number;
+  above?: boolean;
+  /** The operation bar's: a fixed width, centred on x, above y (Picker.tsx). */
+  centered?: boolean;
+};
+
+export type PickerState =
+  | { open: false }
+  | {
+      open: true;
+      mode: 'list';
+      request: PickerRequest;
+      anchor: PickerAnchor;
+      loading: boolean;
+      groups: PickerGroup[];
+      filter: string;
+      error?: string;
+      /**
+       * Pre-highlight this item (matched against PickerItem.value) once the
+       * list loads, instead of defaulting to the top row - set only when
+       * reopened from a specific already-selected chip (CanvasStore.
+       * openConfigCursor's select/order/group branch), so pressing Enter
+       * immediately toggles the SAME column back off (removes it) rather
+       * than landing on whatever's first in the list and adding a different
+       * one. Undefined for the action bar's own "select"/"order"/"group"
+       * button, which has no one chip to return to.
+       */
+      focusValue?: string;
+    }
+  | {
+      open: true;
+      mode: 'where-value';
+      /** The node the panel was opened from, and so the node its chip belongs to. */
+      alias: string;
+      anchor: PickerAnchor;
+    } & WhereDraft
+  | {
+      open: true;
+      mode: 'join-type';
+      alias: string;
+      current: JoinType;
+      anchor: PickerAnchor;
+    }
+  | {
+      open: true;
+      mode: 'order-direction';
+      alias: string;
+      column: string;
+      /** Same pipeline-order indexing as removeOrderColumnAt/setOrderDirectionAt. */
+      index: number;
+      current: OrderDirection;
+      anchor: PickerAnchor;
+    }
+  | {
+      open: true;
+      mode: 'select-name';
+      alias: string;
+      column: string;
+      /** Which copy of `column` in the select step, as in actions.occurrenceAt. */
+      occurrence: number;
+      /** `column` is read from the elements of an `unnest:`: `e.field`. */
+      element?: boolean;
+      /** The input's live text, seeded with the item's current name. */
+      value: string;
+      anchor: PickerAnchor;
+    }
+  | {
+      open: true;
+      /** The bar's "name": the query's result named with `|= name`, for a later query to use. */
+      mode: 'query-name';
+      /** The query block named (an index into the tab's query blocks). */
+      block: number;
+      /** Its name now, or null when it has none. */
+      current: string | null;
+      /** The input's live text, seeded with `current`. */
+      value: string;
+      /** Why the typed name can't be used, once save was tried. */
+      error: string | null;
+      anchor: PickerAnchor;
+    }
+  | {
+      open: true;
+      mode: 'unnest-name';
+      alias: string;
+      /** The elements' current name: `company` in `data.companies as company`. */
+      name: string;
+      /** The input's live text, seeded with `name`. */
+      value: string;
+      anchor: PickerAnchor;
+    }
+  | {
+      open: true;
+      mode: 'limit-value';
+      /** The node the gesture was opened from. The limit changed is the one ending this node's stage (see pine-actions.ts's setLimit). */
+      alias: string;
+      /** Set when opened from a checkpoint's divider label: the limit changed is that checkpoint's own. */
+      checkpoint?: string;
+      /** The pipeline's existing limit, if any - null shows no "clear" action (see Picker.tsx). Unlike `value` below, never changed after the picker opens. */
+      current: number | null;
+      /** The input's live text, seeded from `current` (CanvasStore.openLimitEditor) - a string, not a number, so a mid-edit empty/partial value doesn't need its own placeholder state. */
+      value: string;
+      /** The columns after `per`, as written (`c.id`): the first N rows of each group of rows sharing them. Empty: a plain limit. */
+      per: string[];
+      /** Columns `per` can take - every column of the stage's tables, as `alias.column`. null while loading. */
+      perOptions: string[] | null;
+      /** The text typed to filter `perOptions`. */
+      perFilter: string;
+      anchor: PickerAnchor;
+    }
+  | {
+      open: true;
+      mode: 'traverse';
+      alias: string;
+      /**
+       * Why "Delete rows..." can't be picked, when it can't. Counting is
+       * always available; deleting is only correct on a downward pipe whose
+       * last table is the current one (canDeleteTraverse in
+       * store/canvas/traversal.ts). Carried as a reason rather than a bare
+       * boolean so the entry can be shown disabled *with* its explanation -
+       * a missing menu item is a mystery, a disabled one with a sentence
+       * teaches the rule.
+       */
+      deleteBlockedReason: string | null;
+      anchor: PickerAnchor;
+    };
+
+/** The actions tucked behind a node's "+" overflow trigger - see TableNode.tsx. */
+export type MoreAction =
+  | 'order'
+  | 'group'
+  | 'path'
+  | 'limit'
+  | 'count'
+  | 'traverse'
+  | 'unnest'
+  | 'describe'
+  | 'references'
+  | 'name'
+  | 'query';
+export const MORE_ACTIONS: { action: MoreAction; label: string; key: string }[] = [
+  { action: 'order', label: 'order', key: 'o' },
+  { action: 'group', label: 'group', key: 'g' },
+  { action: 'limit', label: 'limit', key: 'l' },
+  { action: 'path', label: 'path', key: 'p' },
+  // Ends the query with `count:`: its rows, counted. The comment's key is `n`, for note.
+  { action: 'count', label: 'count', key: 'c' },
+  // Names the query's result (`|= name`), so a later query can read it.
+  { action: 'name', label: 'name', key: 'm' },
+  // Starts another query, below the others in the tab: its first table.
+  { action: 'query', label: 'new query', key: 'q' },
+  { action: 'traverse', label: 'traverse', key: 't' },
+  { action: 'unnest', label: 'unnest', key: 'u' },
+  // End the query with `describe:` (the table's columns) or `references:`
+  // (its relations, both ways). The node says so; its × takes it off.
+  { action: 'describe', label: 'describe', key: 'd' },
+  { action: 'references', label: 'references', key: 'r' },
+];
+
+/**
+ * The aggregates a group's line offers, each with the sign its chip shows.
+ * `count` takes no column; the others read one. pine-lang also has `any`
+ * and `all`, which take a condition: their chips show, but they are typed.
+ */
+export const AGGREGATE_FUNCTIONS: { fn: string; sign: string; label: string; column: boolean }[] = [
+  { fn: 'count', sign: '#', label: 'count rows', column: false },
+  { fn: 'sum', sign: 'Σ', label: 'sum of a column', column: true },
+  { fn: 'avg', sign: 'x̄', label: 'average of a column', column: true },
+  { fn: 'min', sign: '↓', label: 'smallest value', column: true },
+  { fn: 'max', sign: '↑', label: 'largest value', column: true },
+];
+
+// Database type names, lower-cased, by what an aggregate can do with them.
+// Postgres, MySQL and SQLite names; a size or `unsigned` after them is fine.
+const NUMBER_TYPE =
+  /^(smallint|integer|int|int2|int4|int8|bigint|tinyint|mediumint|serial|bigserial|smallserial|decimal|numeric|real|double|double precision|float|float4|float8|money|number)\b/;
+const UNSORTABLE_TYPE = /^(bool|boolean|json|jsonb|uuid|bytea|blob|binary|varbinary|xml|tsvector|point|line|polygon|bit)\b|\[\]$|^array/;
+
+/**
+ * Whether aggregate `fn` can read a column of this type: a number for sum
+ * and avg (and an interval, which adds up), anything that sorts for min and
+ * max. A column whose type isn't known is offered: better a list with one
+ * that fails than one missing what you wanted.
+ */
+export const aggregateReads = (fn: string, item: { type?: string; json?: boolean }): boolean => {
+  if (item.json) return false;
+  const type = item.type?.trim().toLowerCase();
+  if (!type) return true;
+  if (fn === 'sum' || fn === 'avg') return NUMBER_TYPE.test(type) || type.startsWith('interval');
+  if (fn === 'min' || fn === 'max') return !UNSORTABLE_TYPE.test(type);
+  return true;
+};
+
+/** The sign an aggregate's chip shows: `Σ` for sum, `ƒ` for one without its own. */
+export const aggregateSign = (fn: string | undefined): string =>
+  ({ any: '∃', all: '∀' } as Record<string, string>)[fn ?? ''] ??
+  AGGREGATE_FUNCTIONS.find(f => f.fn === fn)?.sign ??
+  'ƒ';
+
+
+/**
+ * What the operation bar offers for the selected node
+ * (CanvasStore.selectedNodeActions): join in the bar, the rest behind "+".
+ */
+export type NodeAction = 'join' | 'traverse' | 'describe' | 'references';
+
+/**
+ * The operations that work on the whole query, not one node: select and
+ * where in the operation bar, the rest behind its "+" (OperationBar.tsx).
+ */
+export type GlobalOperation = 'select' | 'where' | 'order' | 'group' | 'limit' | 'path' | 'unnest';
+
+/** What a traversal does at each table it reaches - see store/canvas/traversal.ts. */
+export const TRAVERSE_VERBS: { verb: 'count' | 'delete'; label: string; key: string }[] = [
+  { verb: 'count', label: 'Count rows', key: 'c' },
+  // The ellipsis is doing real work: this produces the queries and stops.
+  // Running them is a separate decision, made in the panel afterwards.
+  { verb: 'delete', label: 'Delete rows…', key: 'd' },
+];
+
+// `in`/`not in` take a list (`1, 2` or `(1, 2)`) or a list variable (`$ids`).
+export const WHERE_OPERATORS = ['=', '!=', '>', '<', 'like', 'not like', 'ilike', 'is', 'is not', 'in', 'not in'] as const;
+
+export const RELATIVE_DATE_UNITS = [
+  { value: 'day', label: 'day' },
+  { value: 'week', label: 'week' },
+  { value: 'month', label: 'month' },
+  { value: 'year', label: 'year' },
+] as const;
+export type RelativeDateUnit = (typeof RELATIVE_DATE_UNITS)[number]['value'];
+
+/**
+ * The two extra entries Picker.tsx appends to the where-value operator
+ * <select> for a date-shaped column (see PickerState's `mode: 'where-value'`
+ * doc) - picking either drives CanvasStore.submitWhereValue down the
+ * relative-date path instead of a plain comparison. Named string constants
+ * rather than inline literals so the option's `value`, the store's dispatch
+ * check, and computeDateBounds's caller all read the same source.
+ */
+export const WHERE_TODAY_OPERATOR = 'today';
+export const WHERE_ROLLING_OPERATOR = 'in the last';
+
+/** What `computeDateBounds` (relative-date.ts) turns into a `>`/`<` literal pair. */
+export type RelativeDateSelection = { kind: 'today' } | { kind: 'rolling'; count: number; unit: RelativeDateUnit };

@@ -1,0 +1,1999 @@
+(ns pine.eval-test
+  (:require [clojure.test :refer [deftest is testing]]
+            [pine.ast.main :as ast]
+            [pine.db.main :as db]
+            [pine.parser :as parser]
+            [pine.eval :as eval]
+            [pine.data-types :as dt]
+            [pine.sql.transpile :as transpile]))
+
+(defn- generate
+  "Helper function to generate the sql"
+  ([expression]
+   (generate expression []))
+  ([expression access-policy]
+   (-> expression
+       parser/parse
+       :result
+       (ast/generate :test nil nil {} access-policy)
+       eval/build-query)))
+
+(defn- generate-expressions
+  "Evaluate a list of pine expressions sequentially, threading variables.
+  Returns the SQL of the last expression."
+  ([expressions]
+   (generate-expressions expressions []))
+  ([expressions access-policy]
+   (let [{:keys [last-state]}
+         (reduce (fn [{:keys [named-results]} expr]
+                   (let [{:keys [result]} (parser/parse expr)
+                         state (ast/generate result :test nil nil named-results access-policy)]
+                     {:named-results (merge named-results (:pending-assignments state))
+                      :last-state state}))
+                 {:named-results {} :last-state nil}
+                 expressions)]
+     (eval/build-query last-state))))
+
+(defn- generate-mysql
+  "Same as generate, but resolves the MySQL dialect through the real
+  get-dialect -> :test-mysql sentinel path (not a hand-bound *dialect*
+  var), so the resolution logic itself is exercised."
+  ([expression]
+   (generate-mysql expression []))
+  ([expression access-policy]
+   (-> expression
+       parser/parse
+       :result
+       (ast/generate :test-mysql nil nil {} access-policy)
+       eval/build-query)))
+
+(defn- generate-mysql-expressions
+  "generate-expressions, against the MySQL dialect."
+  ([expressions]
+   (generate-mysql-expressions expressions []))
+  ([expressions access-policy]
+   (let [{:keys [last-state]}
+         (reduce (fn [{:keys [named-results]} expr]
+                   (let [{:keys [result]} (parser/parse expr)
+                         state (ast/generate result :test-mysql nil nil named-results access-policy)]
+                     {:named-results (merge named-results (:pending-assignments state))
+                      :last-state state}))
+                 {:named-results {} :last-state nil}
+                 expressions)]
+     (eval/build-query last-state))))
+
+(defn- generate-sqlite
+  "Same as generate, but resolves the SQLite dialect through the real
+  get-dialect -> :test-sqlite sentinel path."
+  ([expression]
+   (generate-sqlite expression []))
+  ([expression access-policy]
+   (-> expression
+       parser/parse
+       :result
+       (ast/generate :test-sqlite nil nil {} access-policy)
+       eval/build-query)))
+
+(defn- generate-sqlite-expressions
+  "generate-expressions, against the SQLite dialect."
+  [expressions]
+  (let [{:keys [last-state]}
+        (reduce (fn [{:keys [named-results]} expr]
+                  (let [{:keys [result]} (parser/parse expr)
+                        state (ast/generate result :test-sqlite nil nil named-results [])]
+                    {:named-results (merge named-results (:pending-assignments state))
+                     :last-state state}))
+                {:named-results {} :last-state nil}
+                expressions)]
+    (eval/build-query last-state)))
+
+(deftest test-build-query
+
+  (testing "qualify table"
+    (is (= "\"x\"" (eval/q "x")))
+    (is (= "\"x\".\"y\"" (eval/q "x" "y"))))
+
+  (testing "No expression"
+    (is (= {:query "",
+            :params nil}
+           (generate ""))))
+
+  (testing "Select"
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" LIMIT 250",
+            :params nil}
+           (generate "company")))
+    (is (= {:query "SELECT \"c_0\".\"id\", \"c_0\".\"id\" AS \"__c_0__id\" FROM \"company\" AS \"c_0\" LIMIT 1",
+            :params nil}
+           (generate "company | s: id, | l: 1")))
+    (is (= {:query "SELECT \"c_0\".\"id\", \"c_0\".\"id\" AS \"__c_0__id\" FROM \"company\" AS \"c_0\" LIMIT 1",
+            :params nil}
+           (generate "company | s: id | l: 1")))
+    (is (= {:query "SELECT \"c\".\"name\", \"e\".\"name\", \"c\".\"id\" AS \"__c__id\", \"e\".\"id\" AS \"__e__id\" FROM \"company\" AS \"c\" JOIN \"employee\" AS \"e\" ON \"c\".\"id\" = \"e\".\"company_id\" LIMIT 250",
+            :params nil}
+           (generate "company as c | s: name | employee as e | s: name"))))
+
+  (testing "Count"
+    (is (= {:query "WITH x AS ( SELECT \"c_0\".* FROM \"company\" AS \"c_0\" ) SELECT COUNT(*) FROM x",
+            :params nil}
+           (generate "company | count:")))
+    (is (= {:query "WITH x AS ( SELECT \"c_0\".* FROM \"company\" AS \"c_0\" LIMIT 100 ) SELECT COUNT(*) FROM x",
+            :params nil}
+           (generate "company | limit: 100 | count:"))))
+
+  (testing "Condition : ="
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"name\" = ? LIMIT 250",
+            :params (map dt/string ["Acme Inc."])}
+           (generate "company | where: name='Acme Inc.'")))
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"name\" LIKE ? AND \"c_0\".\"country\" = ? LIMIT 250",
+            :params (map dt/string ["Acme%", "PK"])}
+           (generate "company | where: name like 'Acme%' | country = 'PK'")))
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"name\" NOT LIKE ? LIMIT 250",
+            :params (map dt/string ["Acme%"])}
+           (generate "company | where: name not like 'Acme%'")))
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"name\" ILIKE ? LIMIT 250",
+            :params (map dt/string ["acme%"])}
+           (generate "company | where: name ilike 'acme%'")))
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"name\" NOT ILIKE ? LIMIT 250",
+            :params (map dt/string ["acme%"])}
+           (generate "company | where: name not ilike 'acme%'")))
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"id\" = ? LIMIT 250",
+            :params (map dt/number ["1"])}
+           (generate "company | where: id = 1")))
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"id\" != ? LIMIT 250",
+            :params (map dt/number ["1"])}
+           (generate "company | where: id != 1")))
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"id\" IS NULL LIMIT 250",
+            :params nil}
+           (generate "company | where: id is null"))))
+
+  (testing "Condition : !="
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"name\" != ? LIMIT 250",
+            :params (map dt/string ["Acme Inc."])}
+           (generate "company | where: name != 'Acme Inc.'"))))
+
+  (testing "Condition : IN"
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"country\" IN (?, ?) LIMIT 250",
+            :params (map dt/string ["PK", "DK"])}
+           (generate "company | where: country in ('PK' 'DK')"))))
+
+  (testing "Condition : IN with numbers, typed by the column"
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"id\" IN (?, ?) LIMIT 250",
+            :params (map dt/number ["1", "2"])}
+           (generate "company | where: id in (1, 2)")))
+    ;; order.customer_id is varchar in the fixtures: a number is compared as text.
+    (is (= [(dt/string "7") (dt/string "x")]
+           (:params (generate "order | where: customer_id not in (7, 'x')")))))
+
+  (testing "Condition : >= and <="
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"id\" >= ? AND \"c_0\".\"id\" <= ? LIMIT 250",
+            :params (map dt/number ["1", "9"])}
+           (generate "company | where: id >= 1 | where: id <= 9"))))
+
+  (testing "Condition : OR (conditions joined with `or` inside one where: segment)"
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE (\"c_0\".\"id\" = ? OR \"c_0\".\"id\" = ?) LIMIT 250",
+            :params (map dt/number ["1", "2"])}
+           (generate "company | where: id = 1 or id = 2")))
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE (\"c_0\".\"id\" = ? OR \"c_0\".\"id\" = ? OR \"c_0\".\"id\" = ?) LIMIT 250",
+            :params (map dt/number ["1", "2", "3"])}
+           (generate "company | where: id = 1 or id = 2 or id = 3")))
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"country\" = ? AND (\"c_0\".\"id\" = ? OR \"c_0\".\"id\" = ?) LIMIT 250",
+            :params (concat (map dt/string ["PK"]) (map dt/number ["1", "2"]))}
+           (generate "company | where: country = 'PK' | id = 1 or id = 2"))))
+
+  (testing "Condition : columns"
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"name\" = \"c_0\".\"country\" LIMIT 250",
+            :params nil}
+           (generate "company | where: name = country")))
+    (is (= {:query "SELECT \"c\".\"id\" AS \"__c__id\", \"c\".* FROM \"company\" AS \"c\" WHERE \"c\".\"name\" != \"c\".\"country\" LIMIT 250",
+            :params nil}
+           (generate "company as c | name != c.country")))
+    (is (= {:query "SELECT \"c\".\"id\" AS \"__c__id\", \"c\".* FROM \"company\" AS \"c\" WHERE \"c\".\"name\" != \"c\".\"country\" LIMIT 250",
+            :params nil}
+           (generate "company as c | c.name != c.country"))))
+
+  (testing "Condition : NULL"
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"deleted_at\" IS NULL LIMIT 250",
+            :params nil}
+           (generate "company | where: deleted_at is null")))
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"deleted_at\" IS NOT NULL LIMIT 250",
+            :params nil}
+           (generate "company | where: deleted_at is not null")))
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"deleted_at\" IS NULL LIMIT 250",
+            :params nil}
+           (generate "company | where: deleted_at = null"))))
+
+  (testing "Condition with cast"
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"name\"::text = ? LIMIT 250",
+            :params (map dt/string ["Acme Inc."])}
+           (generate "company | where: name = 'Acme Inc.' ::text")))
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"id\"::uuid = ? LIMIT 250",
+            :params (map dt/uuid ["123e4567-e89b-12d3-a456-426614174000"])}
+           (generate "company | where: id = '123e4567-e89b-12d3-a456-426614174000' ::uuid"))))
+
+  (testing "Joins"
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"e_1\".\"id\" AS \"__e_1__id\", \"e_1\".* FROM \"company\" AS \"c_0\" JOIN \"employee\" AS \"e_1\" ON \"c_0\".\"id\" = \"e_1\".\"company_id\" LIMIT 250",
+            :params nil}
+           (generate "company | employee")))
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"e_1\".\"id\" AS \"__e_1__id\", \"e_1\".* FROM \"x\".\"company\" AS \"c_0\" JOIN \"y\".\"employee\" AS \"e_1\" ON \"c_0\".\"id\" = \"e_1\".\"company_id\" LIMIT 250",
+            :params nil}
+           (generate "x.company | y.employee")))
+    (is (= {:query "SELECT \"e_0\".\"id\" AS \"__e_0__id\", \"c_1\".\"id\" AS \"__c_1__id\", \"c_1\".* FROM \"y\".\"employee\" AS \"e_0\" JOIN \"x\".\"company\" AS \"c_1\" ON \"e_0\".\"company_id\" = \"c_1\".\"id\" LIMIT 250",
+            :params nil}
+           (generate "y.employee | x.company")))
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"e_1\".\"id\" AS \"__e_1__id\", \"d_2\".\"id\" AS \"__d_2__id\", \"d_2\".* FROM \"x\".\"company\" AS \"c_0\" JOIN \"y\".\"employee\" AS \"e_1\" ON \"c_0\".\"id\" = \"e_1\".\"company_id\" JOIN \"z\".\"document\" AS \"d_2\" ON \"e_1\".\"id\" = \"d_2\".\"employee_id\" LIMIT 250",
+            :params nil}
+           (generate "x.company | y.employee | z.document"))))
+
+  (testing "Joins with join types"
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"e_1\".\"id\" AS \"__e_1__id\", \"e_1\".* FROM \"company\" AS \"c_0\" LEFT JOIN \"employee\" AS \"e_1\" ON \"c_0\".\"id\" = \"e_1\".\"company_id\" LIMIT 250",
+            :params nil}
+           (generate "company | employee :left")))
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"e_1\".\"id\" AS \"__e_1__id\", \"e_1\".* FROM \"company\" AS \"c_0\" RIGHT JOIN \"employee\" AS \"e_1\" ON \"c_0\".\"id\" = \"e_1\".\"company_id\" LIMIT 250",
+            :params nil}
+           (generate "company | employee :right")))
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"e_1\".\"id\" AS \"__e_1__id\", \"d_2\".\"id\" AS \"__d_2__id\", \"d_2\".* FROM \"x\".\"company\" AS \"c_0\" LEFT JOIN \"y\".\"employee\" AS \"e_1\" ON \"c_0\".\"id\" = \"e_1\".\"company_id\" RIGHT JOIN \"z\".\"document\" AS \"d_2\" ON \"e_1\".\"id\" = \"d_2\".\"employee_id\" LIMIT 250",
+            :params nil}
+           (generate "x.company | y.employee :left | z.document :right")))
+    ;; Self-join: :parent flips join direction (e_0 has the FK, not e_1)
+    (is (true? (clojure.string/includes?
+                (:query (generate "employee | employee :parent"))
+                "ON \"e_0\".\"reports_to\" = \"e_1\".\"id\""))))
+
+  (testing "Heuristic join between mismatched column types casts both sides to text"
+    ;; order.customer_id is varchar, customer.id is integer, and the relation
+    ;; is only found by naming convention (no real FK) - without the cast,
+    ;; Postgres would reject the join outright: operator does not exist.
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"o_1\".\"id\" AS \"__o_1__id\", \"o_1\".* FROM \"customer\" AS \"c_0\" JOIN \"order\" AS \"o_1\" ON \"c_0\".\"id\"::text = \"o_1\".\"customer_id\"::text LIMIT 250",
+            :params nil}
+           (generate "customer | order"))))
+
+  (testing "Joins with explicit columns"
+    ;; Basic explicit join (tables a, b, c don't exist in schema so no auto-id columns)
+    (is (= {:query "SELECT \"b_1\".* FROM \"a\" AS \"a_0\" JOIN \"b\" AS \"b_1\" ON \"a_0\".\"id\" = \"b_1\".\"a_id\" LIMIT 250",
+            :params nil}
+           (generate "a | b .a_id = .id")))
+
+    ;; With real tables
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"e_1\".\"id\" AS \"__e_1__id\", \"e_1\".* FROM \"company\" AS \"c_0\" JOIN \"employee\" AS \"e_1\" ON \"c_0\".\"id\" = \"e_1\".\"company_id\" LIMIT 250",
+            :params nil}
+           (generate "company | employee .company_id = .id")))
+
+    ;; With different column names (tables don't exist in schema)
+    (is (= {:query "SELECT \"b_1\".* FROM \"a\" AS \"a_0\" JOIN \"b\" AS \"b_1\" ON \"a_0\".\"custom_id\" = \"b_1\".\"foreign_id\" LIMIT 250",
+            :params nil}
+           (generate "a | b .foreign_id = .custom_id")))
+
+    ;; With LEFT JOIN
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"e_1\".\"id\" AS \"__e_1__id\", \"e_1\".* FROM \"company\" AS \"c_0\" LEFT JOIN \"employee\" AS \"e_1\" ON \"c_0\".\"id\" = \"e_1\".\"company_id\" LIMIT 250",
+            :params nil}
+           (generate "company | employee .company_id = .id :left")))
+
+    ;; With RIGHT JOIN
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"e_1\".\"id\" AS \"__e_1__id\", \"e_1\".* FROM \"company\" AS \"c_0\" RIGHT JOIN \"employee\" AS \"e_1\" ON \"c_0\".\"id\" = \"e_1\".\"company_id\" LIMIT 250",
+            :params nil}
+           (generate "company | employee .company_id = .id :right")))
+
+    ;; With schema-qualified tables
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"e_1\".\"id\" AS \"__e_1__id\", \"e_1\".* FROM \"x\".\"company\" AS \"c_0\" JOIN \"y\".\"employee\" AS \"e_1\" ON \"c_0\".\"id\" = \"e_1\".\"company_id\" LIMIT 250",
+            :params nil}
+           (generate "x.company | y.employee .company_id = .id")))
+
+    ;; Multiple joins with explicit columns (tables don't exist in schema)
+    (is (= {:query "SELECT \"c_2\".* FROM \"a\" AS \"a_0\" JOIN \"b\" AS \"b_1\" ON \"a_0\".\"id\" = \"b_1\".\"a_id\" JOIN \"c\" AS \"c_2\" ON \"b_1\".\"id\" = \"c_2\".\"b_id\" LIMIT 250",
+            :params nil}
+           (generate "a | b .a_id = .id | c .b_id = .id"))))
+
+  (testing "Join sides that name their table"
+    (let [two-tables "SELECT \"b\".* FROM \"a\" AS \"a\" JOIN \"b\" AS \"b\" ON \"a\".\"id\" = \"b\".\"a_id\" LIMIT 250"]
+      ;; Named sides in either order. A bare side keeps its place's
+      ;; meaning: first, the table being added; second, the table before.
+      (is (= two-tables (:query (generate "a as a | b as b b.a_id = a.id"))))
+      (is (= two-tables (:query (generate "a as a | b as b a.id = b.a_id"))))
+      (is (= two-tables (:query (generate "a as a | b as b .a_id = a.id"))))
+      (is (= two-tables (:query (generate "a as a | b as b b.a_id = .id")))))
+    (is (thrown-with-msg? Exception #"compares a.id with a.a_id\. It must compare a column of `b`.*written second is `a`'s"
+                          (generate "a as a | b as b a.id = .a_id")))
+
+    ;; A pair may compare with a table before the one before.
+    (is (= {:query "SELECT \"c\".* FROM \"a\" AS \"a\" JOIN \"b\" AS \"b\" ON \"a\".\"id\" = \"b\".\"a_id\" JOIN \"c\" AS \"c\" ON \"b\".\"id\" = \"c\".\"b_id\" AND \"a\".\"tenant_id\" = \"c\".\"tenant_id\" LIMIT 250"
+            :params nil}
+           (generate "a as a | b as b .a_id = .id | c as c .b_id = b.id, .tenant_id = a.tenant_id")))
+
+    ;; The join is to the table its first pair names, without from:.
+    (is (= {:query "SELECT \"c\".* FROM \"a\" AS \"a\" JOIN \"b\" AS \"b\" ON \"a\".\"id\" = \"b\".\"a_id\" JOIN \"c\" AS \"c\" ON \"a\".\"id\" = \"c\".\"a_id\" LIMIT 250"
+            :params nil}
+           (generate "a as a | b as b .a_id = .id | c as c .a_id = a.id")))
+
+    (is (thrown-with-msg? Exception #"`x` in the join `c.a_id = x.id` isn't a table of this query"
+                          (generate "a as a | b as b .a_id = .id | c as c c.a_id = x.id")))
+    (is (thrown-with-msg? Exception #"must compare a column of `c`, the table being joined.*goes in where:"
+                          (generate "a as a | b as b .a_id = .id | c as c a.id = b.a_id")))
+    (is (thrown-with-msg? Exception #"compares c.x with c.y\. It must compare a column of `c`"
+                          (generate "a as a | b as b .a_id = .id | c as c c.x = c.y")))
+    ;; A table a checkpoint sealed is read through the checkpoint, as in where:.
+    (is (= "WITH \"result_1\" AS ( SELECT \"c\".\"id\", COUNT(1) AS \"count\" FROM \"company\" AS \"c\" JOIN \"employee\" AS \"e_1\" ON \"c\".\"id\" = \"e_1\".\"company_id\" GROUP BY \"c\".\"id\" ) SELECT \"result_1\".\"id\", \"d_1\".\"id\" AS \"__d_1__id\", \"d_1\".* FROM \"result_1\" AS \"result_1\" JOIN \"document\" AS \"d_1\" ON \"result_1\".\"id\" = \"d_1\".\"company_id\" LIMIT 250"
+           (:query (generate "company as c | employee .company_id | group: c.id | s: c.id | document .company_id = c.id")))))
+
+  (testing "Conditions on a join"
+    ;; A value stays in the ON, so a left join keeps rows where: would drop.
+    (is (= {:query "SELECT \"b_1\".* FROM \"a\" AS \"a_0\" LEFT JOIN \"b\" AS \"b_1\" ON \"a_0\".\"id\" = \"b_1\".\"a_id\" AND \"b_1\".\"status\" = ? LIMIT 250"
+            :params [(dt/string "paid")]}
+           (generate "a | b :left .a_id = .id, .status = 'paid'")))
+    (is (= "SELECT \"b_1\".* FROM \"a\" AS \"a_0\" JOIN \"b\" AS \"b_1\" ON \"a_0\".\"id\" = \"b_1\".\"a_id\" AND \"b_1\".\"n\" = ? AND \"b_1\".\"live\" = true LIMIT 250"
+           (:query (generate "a | b .a_id = .id, .n = 3, .live = true"))))
+    ;; On an earlier table.
+    (is (= {:query "SELECT \"b\".* FROM \"a\" AS \"a\" JOIN \"b\" AS \"b\" ON \"a\".\"id\" = \"b\".\"a_id\" AND \"a\".\"type\" = ? LIMIT 250"
+            :params [(dt/string "entity")]}
+           (generate "a as a | b as b .a_id = .id, a.type = 'entity'")))
+    ;; With a join Pine finds itself.
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"e_1\".\"id\" AS \"__e_1__id\", \"e_1\".* FROM \"company\" AS \"c_0\" JOIN \"employee\" AS \"e_1\" ON \"c_0\".\"id\" = \"e_1\".\"company_id\" AND \"e_1\".\"type\" = ? LIMIT 250"
+            :params [(dt/string "x")]}
+           (generate "company | employee .type = 'x'")))
+    (is (= "SELECT \"b_1\".* FROM \"a\" AS \"a_0\" LEFT JOIN \"b\" AS \"b_1\" ON \"a_0\".\"id\" = \"b_1\".\"a_id\" AND \"b_1\".\"deleted_at\" IS NULL AND \"a_0\".\"x\" IS NOT NULL LIMIT 250"
+           (:query (generate "a | b :left .a_id = .id, .deleted_at is null, a_0.x is not null"))))
+    (is (thrown-with-msg? Exception #"A join's `is null` can't use \[\*\]"
+                          (generate "a | b .a_id = .id, .data[*].k is null")))
+    (is (thrown-with-msg? Exception #"A join on a value can't use \[\*\]"
+                          (generate "a | b .a_id = .id, .data[*].k = 'x'"))))
+
+  (testing "Joins with a context"
+    (is (= {:query "SELECT \"c\".\"id\" AS \"__c__id\", \"e_1\".\"id\" AS \"__e_1__id\", \"d_2\".\"id\" AS \"__d_2__id\", \"d_2\".* FROM \"x\".\"company\" AS \"c\" JOIN \"y\".\"employee\" AS \"e_1\" ON \"c\".\"id\" = \"e_1\".\"company_id\" JOIN \"z\".\"document\" AS \"d_2\" ON \"c\".\"id\" = \"d_2\".\"company_id\" LIMIT 250",
+            :params nil}
+           (generate "x.company as c | y.employee | from: c | z.document"))))
+
+  (testing "order"
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" ORDER BY \"c_0\".\"country\" DESC LIMIT 250",
+            :params nil}
+           (generate "company | order: country")))
+    ;; Test aliased order columns
+    (is (= {:query "SELECT \"e\".\"id\" AS \"__e__id\", \"e\".* FROM \"employee\" AS \"e\" ORDER BY \"e\".\"name\" DESC LIMIT 250",
+            :params nil}
+           (generate "employee as e | order: e.name")))
+    (is (= {:query "SELECT \"e\".\"id\" AS \"__e__id\", \"e\".* FROM \"employee\" AS \"e\" ORDER BY \"e\".\"name\" ASC LIMIT 250",
+            :params nil}
+           (generate "employee as e | order: e.name asc")))
+    (is (= {:query "SELECT \"e\".\"id\" AS \"__e__id\", \"e\".* FROM \"employee\" AS \"e\" ORDER BY \"e\".\"name\" DESC, \"e\".\"created_at\" ASC LIMIT 250",
+            :params nil}
+           (generate "employee as e | order: e.name, e.created_at asc")))
+
+    ;; Test mixed aliased and non-aliased order columns
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" ORDER BY \"c_0\".\"name\" DESC, \"c_0\".\"age\" DESC LIMIT 250",
+            :params nil}
+           (generate "company | order: name desc, age desc")))
+    (is (= {:query "SELECT \"e\".\"id\" AS \"__e__id\", \"d_1\".\"id\" AS \"__d_1__id\", \"d_1\".* FROM \"employee\" AS \"e\" JOIN \"document\" AS \"d_1\" ON \"e\".\"id\" = \"d_1\".\"employee_id\" ORDER BY \"e\".\"name\" DESC, \"d_1\".\"title\" ASC LIMIT 250",
+            :params nil}
+           (generate "employee as e | document | order: e.name desc, title asc")))
+
+    (testing "with nulls first or last"
+      (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" ORDER BY \"c_0\".\"country\" ASC NULLS FIRST, \"c_0\".\"name\" DESC NULLS LAST LIMIT 250",
+              :params nil}
+             (generate "company | order: country asc nulls first, name nulls last")))
+      (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" ORDER BY \"c_0\".\"country\" ASC NULLS FIRST LIMIT 250",
+              :params nil}
+             (generate-sqlite "company | order: country asc nulls first")))
+      ;; MySQL has no NULLS FIRST: it sorts by whether the value is NULL first.
+      (is (= {:query "SELECT `c_0`.`id` AS `__c_0__id`, `c_0`.* FROM `company` AS `c_0` ORDER BY `c_0`.`country` IS NULL DESC, `c_0`.`country` ASC, `c_0`.`name` IS NULL ASC, `c_0`.`name` DESC LIMIT 250",
+              :params nil}
+             (generate-mysql "company | order: country asc nulls first, name desc nulls last")))))
+
+  (testing "columns"
+    (is (= {:query "SELECT \"c\".\"id\", \"c\".\"id\" AS \"__c__id\" FROM \"company\" AS \"c\" LIMIT 250",
+            :params nil}
+           (generate "company as c | select: id")))
+    (is (= {:query "SELECT \"c_0\".\"id\", \"c_0\".\"id\" AS \"__c_0__id\" FROM \"company\" AS \"c_0\" LIMIT 250",
+            :params nil}
+           (generate "company | select: id")))
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"c_id\", \"c_0\".\"id\" AS \"__c_0__id\" FROM \"company\" AS \"c_0\" LIMIT 250",
+            :params nil}
+           (generate "company | select: id as c_id")))
+    (is (= {:query "SELECT \"c_0\".\"id\", \"c_0\".\"id\" AS \"__c_0__id\", \"e_1\".\"id\" AS \"__e_1__id\", \"e_1\".* FROM \"company\" AS \"c_0\" JOIN \"employee\" AS \"e_1\" ON \"c_0\".\"id\" = \"e_1\".\"company_id\" LIMIT 250",
+            :params nil}
+           (generate "company | select: id | employee")))
+    (is (= {:query "SELECT \"c_0\".\"id\", \"e_1\".\"id\", \"c_0\".\"id\" AS \"__c_0__id\", \"e_1\".\"id\" AS \"__e_1__id\" FROM \"company\" AS \"c_0\" JOIN \"employee\" AS \"e_1\" ON \"c_0\".\"id\" = \"e_1\".\"company_id\" LIMIT 250",
+            :params nil}
+           (generate "company | s: id | employee | s: id")))
+    (is (= {:query "SELECT \"c\".\"id\", \"e\".*, \"c\".\"id\" AS \"__c__id\", \"e\".\"id\" AS \"__e__id\" FROM \"company\" AS \"c\" JOIN \"employee\" AS \"e\" ON \"c\".\"id\" = \"e\".\"company_id\" LIMIT 250",
+            :params nil}
+           (generate "company as c | employee as e | s: c.id, e.*"))))
+
+  (testing "group"
+    (is (= {:query "WITH \"x_1\" AS ( SELECT \"e_0\".\"status\" AS \"status\" FROM \"email\" AS \"e_0\" ) SELECT \"x_1\".\"status\", COUNT(1) AS \"count\" FROM \"x_1\" GROUP BY \"x_1\".\"status\" LIMIT 10000",
+            :params nil}
+           (generate "email | group: status with count")))
+    (testing "with no keys, one group: the whole table, and no GROUP BY"
+      (is (= {:query "WITH \"x_1\" AS ( SELECT 1 FROM \"email\" AS \"e_0\" ) SELECT COUNT(1) AS \"n\" FROM \"x_1\"  LIMIT 10000"
+              :params nil}
+             (generate "email | group: with count as n")))))
+
+  (testing "date extraction functions"
+    ;; Year extraction
+    (is (= {:query "SELECT TO_CHAR(DATE_TRUNC('year', \"e_0\".\"created_at\"), 'YYYY') AS \"year\", \"e_0\".\"id\" AS \"__e_0__id\" FROM \"employee\" AS \"e_0\" LIMIT 250",
+            :params nil}
+           (generate "employee | select: created_at => year")))
+
+    ;; Month extraction
+    (is (= {:query "SELECT TO_CHAR(DATE_TRUNC('month', \"e_0\".\"created_at\"), 'YYYY-MM') AS \"month\", \"e_0\".\"id\" AS \"__e_0__id\" FROM \"employee\" AS \"e_0\" LIMIT 250",
+            :params nil}
+           (generate "employee | select: created_at => month")))
+
+    ;; Day extraction
+    (is (= {:query "SELECT TO_CHAR(DATE_TRUNC('day', \"e_0\".\"created_at\"), 'YYYY-MM-DD') AS \"day\", \"e_0\".\"id\" AS \"__e_0__id\" FROM \"employee\" AS \"e_0\" LIMIT 250",
+            :params nil}
+           (generate "employee | select: created_at => day")))
+
+    ;; Week extraction
+    (is (= {:query "SELECT TO_CHAR(DATE_TRUNC('week', \"e_0\".\"created_at\"), 'YYYY-MM-DD') AS \"week\", \"e_0\".\"id\" AS \"__e_0__id\" FROM \"employee\" AS \"e_0\" LIMIT 250",
+            :params nil}
+           (generate "employee | select: created_at => week")))
+
+    ;; Hour extraction (uses timestamp)
+    (is (= {:query "SELECT TO_CHAR(DATE_TRUNC('hour', \"e_0\".\"created_at\"), 'YYYY-MM-DD HH24') AS \"hour\", \"e_0\".\"id\" AS \"__e_0__id\" FROM \"employee\" AS \"e_0\" LIMIT 250",
+            :params nil}
+           (generate "employee | select: created_at => hour")))
+
+    ;; With table alias
+    (is (= {:query "SELECT TO_CHAR(DATE_TRUNC('month', \"e\".\"created_at\"), 'YYYY-MM') AS \"month\", \"e\".\"id\" AS \"__e__id\" FROM \"employee\" AS \"e\" LIMIT 250",
+            :params nil}
+           (generate "employee as e | select: e.created_at => month")))
+
+    ;; With custom column alias
+    (is (= {:query "SELECT TO_CHAR(DATE_TRUNC('month', \"e_0\".\"created_at\"), 'YYYY-MM') AS \"created_at_month\", \"e_0\".\"id\" AS \"__e_0__id\" FROM \"employee\" AS \"e_0\" LIMIT 250",
+            :params nil}
+           (generate "employee | select: created_at => month as created_at_month")))
+
+    ;; Mixed with regular columns
+    (is (= {:query "SELECT \"e_0\".\"name\", TO_CHAR(DATE_TRUNC('year', \"e_0\".\"created_at\"), 'YYYY') AS \"year\", \"e_0\".\"id\" AS \"__e_0__id\" FROM \"employee\" AS \"e_0\" LIMIT 250",
+            :params nil}
+           (generate "employee | select: name, created_at => year"))))
+
+  (testing "date extraction with grouping"
+    ;; Group by name AND month extraction (both specified in group)
+    (is (= {:query "WITH \"x_2\" AS ( SELECT \"e_0\".\"name\" AS \"name\", TO_CHAR(DATE_TRUNC('month', \"e_0\".\"created_at\"), 'YYYY-MM') AS \"month\" FROM \"employee\" AS \"e_0\" ) SELECT \"x_2\".\"name\", \"x_2\".\"month\", COUNT(1) AS \"count\" FROM \"x_2\" GROUP BY \"x_2\".\"name\", \"x_2\".\"month\" LIMIT 10000",
+            :params nil}
+           (generate "employee | select: name, created_at => month | group: name, created_at with count")))
+
+    ;; Group by just the extracted date (only month in group, month also selected)
+    (is (= {:query "WITH \"x_2\" AS ( SELECT TO_CHAR(DATE_TRUNC('month', \"e_0\".\"created_at\"), 'YYYY-MM') AS \"month\" FROM \"employee\" AS \"e_0\" ) SELECT \"x_2\".\"month\", COUNT(1) AS \"count\" FROM \"x_2\" GROUP BY \"x_2\".\"month\" LIMIT 10000",
+            :params nil}
+           (generate "employee | select: created_at => month | group: created_at with count")))
+
+    ;; Select multiple columns but group by only one (month)
+    (is (= {:query "WITH \"x_2\" AS ( SELECT TO_CHAR(DATE_TRUNC('month', \"e_0\".\"created_at\"), 'YYYY-MM') AS \"month\" FROM \"employee\" AS \"e_0\" ) SELECT \"x_2\".\"month\", COUNT(1) AS \"count\" FROM \"x_2\" GROUP BY \"x_2\".\"month\" LIMIT 10000",
+            :params nil}
+           (generate "employee | select: name, created_at => month | group: month with count"))))
+
+  (testing "delete action"
+    ;; The where: on the deleted table is also on the DELETE's own row, so
+    ;; Postgres checks it again on a row another transaction changed first.
+    (is (= {:query "DELETE FROM \"company\" WHERE \"company\".\"id\" = ? AND \"id\" IN ( SELECT \"c_0\".\"id\" FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"id\" = ? )",
+            :params (list (dt/number "1") (dt/number "1"))}
+           (generate "company | where: id = 1 | delete! .id")))
+    (is (= {:query "DELETE FROM \"company\" WHERE \"id\" IN ( SELECT \"c_0\".\"id\" FROM \"company\" AS \"c_0\" LIMIT 10 )",
+            :params nil}
+           (generate "company | limit: 10 | delete! .id")))
+    ;; A limit: sealed into a checkpoint CTE still scopes the rows: the
+    ;; employees of ten companies, not every employee.
+    (is (= {:query "DELETE FROM \"employee\" WHERE \"id\" IN ( WITH \"result_1\" AS ( SELECT \"c_0\".* FROM \"company\" AS \"c_0\" LIMIT 10 ) SELECT \"e_1\".\"id\" FROM \"result_1\" AS \"result_1\" JOIN \"employee\" AS \"e_1\" ON \"result_1\".\"id\" = \"e_1\".\"company_id\" )",
+            :params nil}
+           (generate "company | l: 10 | employee | delete! .id"))))
+
+  (testing "a write on a named result changes its table's rows, the ones the named result holds"
+    (is (= {:queries [{:table "company"
+                       :query "UPDATE \"company\" SET \"name\" = ? WHERE \"id\" IN ( WITH \"x\" AS ( SELECT \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"id\" = ? ) SELECT \"x\".\"id\" FROM \"x\" AS \"x\" )"
+                       :params [(dt/string "a") (dt/number "1")]}]}
+           (generate-expressions ["company | where: id = 1 |= x" "x | update! name = 'a'"])))
+    (is (= {:query "DELETE FROM \"company\" WHERE \"id\" IN ( WITH \"x\" AS ( SELECT \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"id\" = ? ) SELECT \"x\".\"id\" FROM \"x\" AS \"x\" WHERE \"x\".\"id\" = ? )"
+            :params [(dt/number "1") (dt/number "2")]}
+           (generate-expressions ["company | where: id = 1 |= x" "x | where: id = 2 | delete! .id"])))
+    (testing "through a named result built on another"
+      (is (= "UPDATE \"company\" SET \"name\" = ? WHERE \"id\" IN ( WITH \"x\" AS ( SELECT \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"id\" = ? ), \"y\" AS ( SELECT \"x\".* FROM \"x\" AS \"x\" ) SELECT \"y\".\"id\" FROM \"y\" AS \"y\" )"
+             (-> (generate-expressions ["company | where: id = 1 |= x" "x |= y" "y | update! name = 'a'"]) :queries first :query))))
+    (testing "one that selects its columns, the key among them"
+      (is (= "UPDATE \"company\" SET \"name\" = ? WHERE \"id\" IN ( WITH \"x\" AS ( SELECT \"c_0\".\"id\", \"c_0\".\"name\" FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"id\" = ? ) SELECT \"x\".\"id\" FROM \"x\" AS \"x\" )"
+             (-> (generate-expressions ["company | where: id = 1 | s: id, name |= x" "x | update! name = 'a'"]) :queries first :query)))))
+
+  (testing "writes that would act on more than can have been meant are refused"
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Refusing to change every row of `company`"
+                          (generate "company | delete! .id")))
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Refusing to change every row of `company`"
+                          (generate "company | update! name = 'x'")))
+    (is (= "write-refused"
+           (try (generate "company | delete! .id") nil
+                (catch clojure.lang.ExceptionInfo e (:error-type (ex-data e))))))
+    ;; An unscoped named result is no scope at all.
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"every row of `employee`"
+                          (generate-expressions ["company |= x" "x | employee | delete! .id"])))
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"after group:"
+                          (generate "company | where: id = 1 | g: name | delete! .id")))
+    ;; A named result whose rows can't be found in its table.
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"update! can't change the named result `x`: it is grouped"
+                          (generate-expressions ["company | where: id = 1 | g: name |= x" "x | update! name = 'a'"])))
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"update! can't change the named result `x`: it doesn't select id, which finds its rows in `company`"
+                          (generate-expressions ["company | where: id = 1 | s: name |= x" "x | update! name = 'a'"])))
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Refusing to change every row of `x`"
+                          (generate-expressions ["company |= x" "x | update! name = 'a'"])))
+    ;; Unresolved joins are refused for every operation, writes included.
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"No relation between `company` and `company`"
+                          (generate "company | where: id = 1 | company | delete! .id"))))
+
+  (testing "a terminal group: returns at most 10 000 groups; one sealed into a checkpoint keeps them all"
+    (is (clojure.string/ends-with? (:query (generate "email | group: status with count")) " LIMIT 10000"))
+    (is (not (re-find #"LIMIT 10000" (:query (generate "x.company | group: id with count | employee"))))))
+
+  (testing "a date and time binds as a timestamp"
+    (is (= {:query "SELECT \"e_0\".\"id\" AS \"__e_0__id\", \"e_0\".* FROM \"employee\" AS \"e_0\" WHERE \"e_0\".\"created_at\" > ?::timestamp LIMIT 250"
+            :params [{:type :date :value (java.sql.Timestamp/valueOf "2024-01-01 10:00:00") :text "2024-01-01 10:00"}]}
+           (update (generate "employee | where: created_at > '2024-01-01 10:00'") :params vec))))
+
+  (testing "every comparison takes a column on the right"
+    (is (re-find #"WHERE \"c_0\"\.\"created_at\" < \"c_0\"\.\"updated_at\" "
+                 (:query (generate "company | where: created_at < updated_at"))))
+    (is (re-find #"WHERE \"e_1\"\.\"name\" >= \"c\"\.\"name\" "
+                 (:query (generate "company as c | employee | where: name >= c.name"))))
+    (is (re-find #"WHERE \"c_0\"\.\"name\" LIKE \"c_0\"\.\"country\" "
+                 (:query (generate "company | where: name like country"))))
+    (is (re-find #"WHERE \"c_0\"\.\"name\" NOT ILIKE \"c_0\"\.\"country\" "
+                 (:query (generate "company | where: name not ilike country"))))
+    (is (re-find #"WHERE \(\"c_0\"\.\"name\" < \"c_0\"\.\"country\" OR \"c_0\"\.\"name\" = \?\)"
+                 (:query (generate "company | where: name < country or name = 'x'")))))
+
+  (testing "`is` with a column says it takes null"
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"`is` takes null, not a column"
+                          (generate "company | where: name is country")))
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"`is not` takes null, not a column"
+                          (generate "company | where: name is not country"))))
+
+  (testing "a column on the right of a comparison is qualified with the current table, as the left one is"
+    (is (re-find #"WHERE \"e_1\"\.\"name\" = \"e_1\"\.\"country\""
+                 (:query (generate "company | employee | where: name = country")))))
+
+  (testing "a date-shaped value against a text column stays exactly as written"
+    ;; report.title is character varying. The parsed timestamp would print
+    ;; as '2024-01-01 10:00:00.0'.
+    (is (= [{:type :string :value "2024-01-01 10:00"}]
+           (vec (:params (generate "report | where: title = '2024-01-01 10:00'")))))
+    (is (= [{:type :string :value "2024-02-31"}]
+           (vec (:params (generate "report | where: title = '2024-02-31'")))))
+    (is (= {:type :string :value "2024-01-01 10:00"}
+           (first (:params (first (:queries (generate "report | where: id = 1 | update! title = '2024-01-01 10:00'"))))))))
+
+  (testing "against a date or time column, a value that isn't a real date is an error"
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"'2024-02-31' isn't a valid date"
+                          (generate "x.company | where: created_at > '2024-02-31'"))))
+
+  (testing "NULL stays NULL whatever the column's type"
+    (doseq [db-type ["varchar" "text" "jsonb" "boolean" "uuid" "integer" "timestamp"]]
+      (is (= {:type :symbol :value "NULL"} (dt/convert-value-to-db-type {:type :symbol :value "NULL"} db-type)) db-type))
+    (is (re-find #"SET \"title\" = NULL" (:query (first (:queries (generate "report | where: id = 1 | update! title = null")))))))
+
+  (testing "a number given for a text column is compared as text"
+    (is (= {:type :string :value "7"} (dt/convert-value-to-db-type (dt/number "7") "text")))
+    (is (= {:type :string :value "7"} (dt/convert-value-to-db-type {:type :number :value 7} "varchar"))))
+
+  (testing "a string given for a numeric column is a number, as the results grid writes one"
+    (doseq [db-type ["numeric" "decimal" "real" "float8" "double precision" "double"]]
+      (is (= {:type :number :value 343M} (dt/convert-value-to-db-type (dt/string "343") db-type)) db-type))
+    (is (= {:type :number :value 12.50M} (dt/convert-value-to-db-type (dt/string "12.50") "numeric")))
+    (testing "a string that isn't a number is left for the database to refuse"
+      (is (= (dt/string "abc") (dt/convert-value-to-db-type (dt/string "abc") "numeric")))))
+
+  (testing "an update! still being typed (trailing comma) builds nothing"
+    (is (= {:query "" :params nil}
+           (generate "company | where: id = 1 | u! name = 'x',"))))
+
+  (testing "update action"
+    ;; The where: on the changed table is also on the UPDATE's own row (see
+    ;; "delete action").
+    (is (= {:queries [{:table "company"
+                       :query "UPDATE \"company\" SET \"name\" = ? WHERE \"company\".\"id\" = ? AND \"id\" IN ( SELECT \"c_0\".\"id\" FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"id\" = ? )"
+                       :params (list (dt/string "John Doe") (dt/number "1") (dt/number "1"))}]}
+           (generate "company | where: id = 1 | update! name = 'John Doe'")))
+    (is (= {:queries [{:table "company"
+                       :query "UPDATE \"company\" SET \"name\" = ?, \"age\" = ? WHERE \"company\".\"id\" = ? AND \"id\" IN ( SELECT \"c_0\".\"id\" FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"id\" = ? )"
+                       :params (list (dt/string "John") (dt/number "30") (dt/number "1") (dt/number "1"))}]}
+           (generate "company | where: id = 1 | update! name = 'John', age = 30")))
+    (is (= {:queries [{:table "company"
+                       :query "UPDATE \"company\" SET \"active\" = true WHERE \"company\".\"id\" = ? AND \"id\" IN ( SELECT \"c_0\".\"id\" FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"id\" = ? )"
+                       :params (list (dt/number "1") (dt/number "1"))}]}
+           (generate "company | where: id = 1 | update! active = true")))
+    (is (= {:queries [{:table "company"
+                       :query "UPDATE \"company\" SET \"deleted_at\" = NULL WHERE \"company\".\"id\" = ? AND \"id\" IN ( SELECT \"c_0\".\"id\" FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"id\" = ? )"
+                       :params (list (dt/number "1") (dt/number "1"))}]}
+           (generate "company | where: id = 1 | update! deleted_at = null")))
+
+    ;; Test JSONB type conversion
+    (is (= {:queries [{:table "customer"
+                       :query "UPDATE \"customer\" SET \"data\" = ?::jsonb WHERE \"customer\".\"id\" = ? AND \"id\" IN ( SELECT \"c_0\".\"id\" FROM \"customer\" AS \"c_0\" WHERE \"c_0\".\"id\" = ? )"
+                       :params (list (dt/jsonb "{\"test\": 1}") (dt/number "1") (dt/number "1"))}]}
+           (generate "customer | where: id = 1 | update! data = '{\"test\": 1}'")))
+
+    ;; Test update with explicit table alias (disambiguates when multiple tables in context)
+    (is (= {:queries [{:table "company"
+                       :query "UPDATE \"company\" SET \"x\" = ? WHERE \"company\".\"id\" = ? AND \"id\" IN ( SELECT \"c\".\"id\" FROM \"company\" AS \"c\" JOIN \"document\" AS \"d_1\" ON \"c\".\"id\" = \"d_1\".\"company_id\" WHERE \"c\".\"id\" = ? )"
+                       :params (list (dt/string "y") (dt/number "1") (dt/number "1"))}]}
+           (generate "company as c | where: id = 1 | document | update! c.x = 'y'")))
+
+    ;; Test multi-table update (runs multiple queries, one per table)
+    (let [result (generate "company as c | w: id = 1 | document as d | w: type = 'invoice' | update! c.deleted_at = '2026-01-01', d.deleted_at = '2026-01-01'")]
+      (is (= 2 (count (:queries result))))
+      (is (= #{"company" "document"} (set (map :table (:queries result))))))
+
+    ;; Column-to-column: the right side is a column, written bare because
+    ;; UPDATE has no alias in scope. It used to be a `?` bound to NULL.
+    (is (= {:queries [{:table "company"
+                       :query "UPDATE \"company\" SET \"name\" = \"country\" WHERE \"company\".\"id\" = ? AND \"id\" IN ( SELECT \"c_0\".\"id\" FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"id\" = ? )"
+                       :params (list (dt/number "1") (dt/number "1"))}]}
+           (generate "company | where: id = 1 | update! name = country")))
+    (is (= {:queries [{:table "company"
+                       :query "UPDATE \"company\" SET \"name\" = \"country\" WHERE \"company\".\"id\" = ? AND \"id\" IN ( SELECT \"c\".\"id\" FROM \"company\" AS \"c\" WHERE \"c\".\"id\" = ? )"
+                       :params (list (dt/number "1") (dt/number "1"))}]}
+           (generate "company as c | where: id = 1 | update! c.name = c.country")))
+    ;; A column of another table of the pipe: the pipe's rows are read once,
+    ;; and joined to the changed table by its key. The guard finds a row the
+    ;; pipe gives more than one value.
+    (let [source "SELECT \"c\".\"id\" AS \"__pine_key_1__\", \"d\".\"title\" AS \"__pine_value_1__\" FROM \"company\" AS \"c\" JOIN \"document\" AS \"d\" ON \"c\".\"id\" = \"d\".\"company_id\" WHERE \"c\".\"id\" = ?"]
+      (is (= {:queries [{:table "company"
+                         :query (str "UPDATE \"company\" SET \"name\" = \"__pine_source__\".\"__pine_value_1__\", \"updated_at\" = NOW() "
+                                     "FROM ( " source " ) AS \"__pine_source__\" "
+                                     "WHERE \"company\".\"id\" = ? AND \"__pine_source__\".\"__pine_key_1__\" = \"company\".\"id\"")
+                         :params (list (dt/number "1") (dt/number "1"))
+                         :guard {:query (str "SELECT \"__pine_key_1__\" FROM ( SELECT DISTINCT \"__pine_key_1__\", \"__pine_value_1__\" FROM ( " source " ) AS \"__pine_source__\" ) AS \"__pine_values__\" GROUP BY \"__pine_key_1__\" HAVING COUNT(*) > 1")
+                                 :params (list (dt/number "1"))
+                                 :message "update! found more than one value for some rows of `company`: the pipe reaches them more than once, with different values. Narrow it with where: so each row is reached once."}}]}
+             (generate "company as c | where: id = 1 | document as d | update! c.name = d.title, c.updated_at = now()"))))
+    (testing "a computed value mixes the changed table's columns, written bare, with another table's"
+      (is (re-find #"SET \"title\" = COALESCE\(\"__pine_source__\".\"__pine_value_1__\", \"title\"\) FROM \( "
+                   (-> (generate "document as d | where: id = 1 | company as c | from: d | update! title = coalesce(c.name, title)") :queries first :query))))
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"update! can't read `d.title` while it changes `d` too"
+                          (generate "company as c | where: id = 1 | document as d | update! c.name = d.title, d.title = c.name")))
+    (testing "only a where: that reads nothing but the changed table is also on its row"
+      ;; Another table's column, on either side of the condition or in an
+      ;; or, stays in the pipe only. So does a named result.
+      (is (= "UPDATE \"employee\" SET \"salary\" = ? WHERE \"id\" IN ( SELECT \"e_1\".\"id\" FROM \"company\" AS \"c\" JOIN \"employee\" AS \"e_1\" ON \"c\".\"id\" = \"e_1\".\"company_id\" WHERE \"c\".\"name\" = ? AND \"e_1\".\"name\" = \"c\".\"name\" )"
+             (-> (generate "company as c | where: name = 'x' | employee | where: name = c.name | update! salary = 1") :queries first :query)))
+      (is (= "UPDATE \"company\" SET \"name\" = ? WHERE (\"company\".\"id\" = ? OR \"company\".\"name\" = ?) AND \"id\" IN ( SELECT \"c\".\"id\" FROM \"company\" AS \"c\" JOIN \"employee\" AS \"e\" ON \"c\".\"id\" = \"e\".\"company_id\" WHERE (\"c\".\"id\" = ? OR \"c\".\"name\" = ?) AND (\"e\".\"name\" = ? OR \"c\".\"name\" = ?) )"
+             (-> (generate "company as c | where: id = 1 or name = 'x' | employee as e | where: e.name = 'a' or c.name = 'b' | from: c | update! name = 'y'") :queries first :query)))
+      (is (= "UPDATE \"company\" SET \"name\" = ? WHERE \"company\".\"name\" = ? AND \"id\" IN ( WITH \"x\" AS ( SELECT \"c_0\".\"id\" FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"id\" = ? ) SELECT \"c_0\".\"id\" FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"id\" IN ( SELECT \"id\" FROM \"x\" ) AND \"c_0\".\"name\" = ? )"
+             (-> (generate-expressions ["company | where: id = 1 | s: id |= x" "company | where: id in x | where: name = 'b' | update! name = 'a'"]) :queries first :query)))))
+
+  ;; Schema "p" in the fixtures: tables not keyed on `id`.
+  (testing "update! finds rows by the table's primary key"
+    (testing "a key of two columns is matched as a row"
+      (is (= {:queries [{:table "p.membership"
+                         :query "UPDATE \"p\".\"membership\" SET \"role\" = ? WHERE \"membership\".\"role\" = ? AND (\"group_code\", \"member_code\") IN ( SELECT \"m_0\".\"group_code\", \"m_0\".\"member_code\" FROM \"p\".\"membership\" AS \"m_0\" WHERE \"m_0\".\"role\" = ? )"
+                         :params (list (dt/string "b") (dt/string "a") (dt/string "a"))}]}
+             (generate "p.membership | where: role = 'a' | update! role = 'b'"))))
+    (testing "a key that isn't `id` is used even when the table has an `id` column"
+      (is (= {:queries [{:table "p.legacy"
+                         :query "UPDATE \"p\".\"legacy\" SET \"name\" = ? WHERE \"legacy\".\"id\" = ? AND \"code\" IN ( SELECT \"l_0\".\"code\" FROM \"p\".\"legacy\" AS \"l_0\" WHERE \"l_0\".\"id\" = ? )"
+                         :params (list (dt/string "b") (dt/number "1") (dt/number "1"))}]}
+             (generate "p.legacy | where: id = 1 | update! name = 'b'"))))
+    (testing "a table without a primary key is refused, even with an `id` column"
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"update! can't change `p.log_entry`: it has no primary key"
+                            (generate "p.log_entry | where: id = 1 | update! message = 'x'")))
+      (is (= "write-refused"
+             (try (generate "p.log_entry | where: id = 1 | update! message = 'x'")
+                  (catch clojure.lang.ExceptionInfo e (:error-type (ex-data e))))))))
+
+  (testing "under an access policy, a table whose key it hides gets no hidden key columns"
+    ;; A rule that matches no column: every column but `id` is hidden.
+    (let [nothing [{:type "column-name" :suffix "_matches_nothing"}]
+          hidden-columns #(set (re-seq #"__[a-z]+_0__[a-z_]+" (:query %)))]
+      (is (= #{} (hidden-columns (generate "p.legacy" nothing)))
+          "the key `code` is hidden, so its value isn't sent as __l_0__code")
+      (is (= #{"__c_0__id"} (hidden-columns (generate "company" nothing)))
+          "`id` is never hidden")
+      (is (= #{"__m_0__group_code" "__m_0__member_code"}
+             (hidden-columns (generate "p.membership" [{:type "column-name" :suffix "_code"}])))
+          "a key the policy shows keeps its hidden columns")
+      (is (= #{} (hidden-columns (generate "p.membership" [{:type "column-name" :suffix "group_code"}])))
+          "hiding one column of a composite key leaves out the whole key")))
+
+  (testing "hidden key columns follow the primary key"
+    (is (= {:query "SELECT \"m_0\".\"group_code\" AS \"__m_0__group_code\", \"m_0\".\"member_code\" AS \"__m_0__member_code\", \"m_0\".* FROM \"p\".\"membership\" AS \"m_0\" LIMIT 250"
+            :params nil}
+           (generate "p.membership")))
+    (is (= {:query "SELECT \"l_0\".\"code\" AS \"__l_0__code\", \"l_0\".* FROM \"p\".\"legacy\" AS \"l_0\" LIMIT 250"
+            :params nil}
+           (generate "p.legacy")))
+    (testing "a table without a primary key gets none"
+      (is (= {:query "SELECT \"le_0\".* FROM \"p\".\"log_entry\" AS \"le_0\" LIMIT 250"
+              :params nil}
+             (generate "p.log_entry")))))
+
+  (testing "paths"
+    ;; :paths only generates candidate pine expressions (hints.paths) - it
+    ;; never builds a runnable query of its own.
+    (is (= {:query " /* No SQL. Pick a path from hints.paths and build that expression instead */ "}
+           (generate "company | ? document"))))
+
+  (testing "delete: is gone"
+    ;; It parsed into an operation that built no SQL, purely so a client could
+    ;; see the marker and run its own recursive-delete routine. That routine is
+    ;; a client-side traversal now (beamlynx-ui), and it composes operations
+    ;; that already exist - count:, a join, delete! - so there is nothing left
+    ;; for the marker to mark. `delete!` is untouched.
+    (doseq [expression ["company | delete:" "company | d:"]]
+      (is (:error (parser/parse expression))
+          (str expression " must no longer parse")))
+    (is (nil? (:error (parser/parse "company | where: id = 1 | delete! .id")))
+        "delete! must still parse")))
+
+(deftest test-action-operations
+  (testing "Action operations should use different query execution path"
+    ;; Test that update-action operations are identified correctly
+    (let [state (-> "company | where: id = 1 | update! name = 'John'"
+                    parser/parse
+                    :result
+                    (ast/generate :test))]
+      (is (= :update-action (-> state :operation :type))))
+
+    ;; Test that delete-action operations are identified correctly  
+    (let [state (-> "company | delete! .id"
+                    parser/parse
+                    :result
+                    (ast/generate :test))]
+      (is (= :delete-action (-> state :operation :type))))))
+
+(deftest test-format-query
+  (testing "string"
+    (is (= "\nSELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"name\" = 'Acme Inc.' LIMIT 250;\n"
+           (-> "company | where: name='Acme Inc.'" generate eval/formatted-query))))
+
+  (testing "Condition : date"
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"created_at\" = ?::timestamp LIMIT 250",
+            :params (list (dt/date "2025-01-01"))}
+           (generate "company | where: created_at = '2025-01-01'")))
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"created_at\" != ?::timestamp LIMIT 250",
+            :params (list (dt/date "2025-01-01"))}
+           (generate "company | where: created_at != '2025-01-01'")))
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"created_at\" > ?::timestamp LIMIT 250",
+            :params (list (dt/date "2025-01-01"))}
+           (generate "company | where: created_at > '2025-01-01'")))
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"created_at\" < ?::timestamp LIMIT 250",
+            :params (list (dt/date "2025-01-01"))}
+           (generate "company | where: created_at < '2025-01-01'"))))
+
+  (testing "Casting placement - explicit vs automatic"
+    ;; Test that explicit casts work on column side
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"customer\" AS \"c_0\" WHERE \"c_0\".\"uuid_col\"::uuid = ? LIMIT 250",
+            :params (list (dt/uuid "1c50ee25-4938-4b77-b831-bc41a0ee3d0c"))}
+           (generate "customer | where: uuid_col = '1c50ee25-4938-4b77-b831-bc41a0ee3d0c' ::uuid")))
+
+    ;; Test that automatic casting works on value side without explicit cast
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"customer\" AS \"c_0\" WHERE \"c_0\".\"uuid_col\" = ?::uuid LIMIT 250",
+            :params (list (dt/uuid "1c50ee25-4938-4b77-b831-bc41a0ee3d0c"))}
+           (generate "customer | where: uuid_col = '1c50ee25-4938-4b77-b831-bc41a0ee3d0c'")))))
+
+(testing "SQL generation with comments"
+  (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" LIMIT 250",
+          :params nil}
+         (generate "-- select companies\ncompany")))
+  (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"name\" = ? LIMIT 250",
+          :params (map dt/string ["Acme"])}
+         (generate "company /* get by name */ | where: name = 'Acme' -- exact match")))
+  (is (= {:query "SELECT \"c_0\".\"id\", \"e_1\".\"name\", \"c_0\".\"id\" AS \"__c_0__id\", \"e_1\".\"id\" AS \"__e_1__id\" FROM \"company\" AS \"c_0\" JOIN \"employee\" AS \"e_1\" ON \"c_0\".\"id\" = \"e_1\".\"company_id\" LIMIT 250",
+          :params nil}
+         (generate "-- companies and employees\ncompany | s: id /* company id */ | employee | s: name -- employee name"))))
+
+(deftest test-variables
+  (testing "Single expression with |= produces normal SQL (assign is metadata)"
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" LIMIT 250"
+            :params nil}
+           (generate-expressions ["company |= active_companies"]))))
+
+  (testing "Variable used as table generates CTE"
+    (is (= {:query "WITH \"active_companies\" AS ( SELECT \"c_0\".* FROM \"company\" AS \"c_0\" ) SELECT \"active_companies\".* FROM \"active_companies\" AS \"active_companies\" LIMIT 250"
+            :params nil}
+           (generate-expressions ["company |= active_companies"
+                                  "active_companies"]))))
+
+  (testing "Variable with WHERE filter generates filtered CTE"
+    (is (= {:query "WITH \"active_companies\" AS ( SELECT \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"name\" = ? ) SELECT \"active_companies\".* FROM \"active_companies\" AS \"active_companies\" LIMIT 250"
+            :params (map dt/string ["Acme"])}
+           (generate-expressions ["company | where: name = 'Acme' |= active_companies"
+                                  "active_companies"]))))
+
+  (testing "Join through a variable resolves correctly"
+    (is (= {:query "WITH \"active_companies\" AS ( SELECT \"c_0\".* FROM \"company\" AS \"c_0\" ) SELECT \"e_1\".\"id\" AS \"__e_1__id\", \"e_1\".* FROM \"active_companies\" AS \"active_companies\" JOIN \"employee\" AS \"e_1\" ON \"active_companies\".\"id\" = \"e_1\".\"company_id\" LIMIT 250"
+            :params nil}
+           (generate-expressions ["company |= active_companies"
+                                  "active_companies | employee"]))))
+
+  (testing "Composed variables (variable of variable) generates flat CTEs"
+    (is (= {:query "WITH \"active_companies\" AS ( SELECT \"c_0\".* FROM \"company\" AS \"c_0\" ), \"small_active\" AS ( SELECT \"active_companies\".* FROM \"active_companies\" AS \"active_companies\" LIMIT 10 ) SELECT \"small_active\".* FROM \"small_active\" AS \"small_active\" LIMIT 250"
+            :params nil}
+           (generate-expressions ["company |= active_companies"
+                                  "active_companies | l: 10 |= small_active"
+                                  "small_active"]))))
+
+  (testing "Reverse join: child table navigates to variable wrapping its parent"
+    ;; employee.company_id -> company.id
+    ;; mytest = company (parent); employee | mytest should join employee to the CTE
+    (is (= {:query "WITH \"mytest\" AS ( SELECT \"c_0\".* FROM \"company\" AS \"c_0\" ) SELECT \"e_0\".\"id\" AS \"__e_0__id\", \"mytest\".* FROM \"employee\" AS \"e_0\" JOIN \"mytest\" AS \"mytest\" ON \"e_0\".\"company_id\" = \"mytest\".\"id\" LIMIT 250"
+            :params nil}
+           (generate-expressions ["company |= mytest"
+                                  "employee | mytest"]))))
+
+  (testing "Reverse join: parent table navigates to variable wrapping its child"
+    ;; employee.company_id -> company.id
+    ;; mytest = employee (child); company | mytest should join company to the CTE
+    (is (= {:query "WITH \"mytest\" AS ( SELECT \"e_0\".* FROM \"employee\" AS \"e_0\" ) SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"mytest\".* FROM \"company\" AS \"c_0\" JOIN \"mytest\" AS \"mytest\" ON \"c_0\".\"id\" = \"mytest\".\"company_id\" LIMIT 250"
+            :params nil}
+           (generate-expressions ["employee |= mytest"
+                                  "company | mytest"]))))
+
+  (testing "Join through a variable whose id column was explicitly aliased"
+    ;; The CTE only ever exposes the aliased name (tmp_id) - joining on the raw
+    ;; "id" would reference a column that doesn't exist in the CTE at all.
+    (is (= {:query "WITH \"x\" AS ( SELECT \"c_0\".\"id\" AS \"tmp_id\" FROM \"company\" AS \"c_0\" ) SELECT \"e_1\".\"id\" AS \"__e_1__id\", \"e_1\".* FROM \"x\" AS \"x\" JOIN \"employee\" AS \"e_1\" ON \"x\".\"tmp_id\" = \"e_1\".\"company_id\" LIMIT 250"
+            :params nil}
+           (generate-expressions ["company | s: id as tmp_id |= x"
+                                  "x | employee"])))
+
+    ;; Same fix, reverse direction: a real table already relating to company
+    ;; navigates to the variable - must still land on tmp_id, not id.
+    (is (= {:query "WITH \"x\" AS ( SELECT \"c_0\".\"id\" AS \"tmp_id\" FROM \"company\" AS \"c_0\" ) SELECT \"e_0\".\"id\" AS \"__e_0__id\", \"x\".* FROM \"employee\" AS \"e_0\" JOIN \"x\" AS \"x\" ON \"e_0\".\"company_id\" = \"x\".\"tmp_id\" LIMIT 250"
+            :params nil}
+           (generate-expressions ["company | s: id as tmp_id |= x"
+                                  "employee | x"])))
+
+    ;; Same-source variable pair, only one side renamed: each side of the
+    ;; synthetic id=id join must use its own variable's actual column name.
+    (is (= {:query "WITH \"x\" AS ( SELECT \"c_0\".\"id\" AS \"tmp_id\" FROM \"company\" AS \"c_0\" ), \"y\" AS ( SELECT \"c_0\".* FROM \"company\" AS \"c_0\" ) SELECT \"y\".* FROM \"x\" AS \"x\" JOIN \"y\" AS \"y\" ON \"x\".\"tmp_id\" = \"y\".\"id\" LIMIT 250"
+            :params nil}
+           (generate-expressions ["company | s: id as tmp_id |= x"
+                                  "company |= y"
+                                  "x | y"])))
+
+    ;; Renaming must be table-scoped, not a blind string substitution: x wraps
+    ;; employee, selecting both id (renamed to tmp_id) and its own unrenamed
+    ;; company_id - employee's real, unrelated "id" (via company_id -> id)
+    ;; must NOT also get rewritten to "tmp_id" just because the raw column
+    ;; names happen to collide.
+    (is (= {:query "WITH \"x\" AS ( SELECT \"e_0\".\"id\" AS \"tmp_id\", \"e_0\".\"company_id\" FROM \"employee\" AS \"e_0\" ) SELECT \"c_1\".\"id\" AS \"__c_1__id\", \"c_1\".* FROM \"x\" AS \"x\" JOIN \"company\" AS \"c_1\" ON \"x\".\"company_id\" = \"c_1\".\"id\" LIMIT 250"
+            :params nil}
+           (generate-expressions ["employee | s: id as tmp_id, company_id |= x"
+                                  "x | company"])))
+
+    ;; The bug this session actually reported: x wraps company, selecting only
+    ;; id (renamed c_id) - company's own OTHER real relationships (e.g. its
+    ;; outgoing FK to some other parent) must not be reachable through x at
+    ;; all, since that column was never selected into the CTE. Reproduced with
+    ;; employee/company here: x only exposes c_id, not company's own other
+    ;; columns, so navigating from x to anything other than via id must fail.
+    (is (clojure.string/includes?
+         (:query (generate-expressions ["company | s: id as c_id |= x" "x | employee"]))
+         "\"x\".\"c_id\" = \"e_1\".\"company_id\""))
+    ;; An unresolved join is an error naming both tables. It used to render
+    ;; with no ON clause: a syntax error on Postgres, a cross join on MySQL.
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"No relation between `x` and `company`"
+                          (generate-expressions ["employee | s: id as tmp_id |= x" "x | company"]))))
+
+  (testing "Mid-pipeline assign: expression continues after |="
+    ;; The assign snapshots the state at that point; subsequent ops still apply
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" LIMIT 10"
+            :params nil}
+           (generate-expressions ["company |= x | l: 10"])))
+    ;; x is the unfiltered snapshot (no limit) — CTE body has no LIMIT
+    (is (= {:query "WITH \"x\" AS ( SELECT \"c_0\".* FROM \"company\" AS \"c_0\" ) SELECT \"x\".* FROM \"x\" AS \"x\" LIMIT 250"
+            :params nil}
+           (generate-expressions ["company |= x | l: 10"
+                                  "x"]))))
+
+  (testing "Column reference via variable name resolves to the real SQL alias"
+    ;; Within-expression: |= c still routes through pending-assignments → real table alias c_0
+    (is (= {:query "SELECT \"e_1\".\"id\", \"c_0\".\"id\", \"c_0\".\"id\" AS \"__c_0__id\", \"e_1\".\"id\" AS \"__e_1__id\" FROM \"company\" AS \"c_0\" JOIN \"employee\" AS \"e_1\" ON \"c_0\".\"id\" = \"e_1\".\"company_id\" LIMIT 250"
+            :params nil}
+           (generate-expressions ["company |= c | employee | s: id, c.id"])))
+    (is (true? (clojure.string/includes?
+                (:query (generate-expressions ["company |= c | employee | w: c.id = 1"]))
+                "WHERE \"c_0\".\"id\" = ?")))
+    (is (true? (clojure.string/includes?
+                (:query (generate-expressions ["company |= c | employee | o: c.id"]))
+                "ORDER BY \"c_0\".\"id\"")))
+
+    ;; Cross-expression: CTE alias = variable name, so x.id resolves to "x"."id"
+    (is (true? (clojure.string/includes?
+                (:query (generate-expressions ["company |= x"
+                                               "x | w: x.id = 1"]))
+                "WHERE \"x\".\"id\" = ?")))
+    (is (true? (clojure.string/includes?
+                (:query (generate-expressions ["company |= x"
+                                               "x | o: x.id"]))
+                "ORDER BY \"x\".\"id\""))))
+
+  (testing "Re-aliasing a variable name via 'as' takes precedence over the |= snapshot"
+    ;; x is bound to company via |=, then re-aliased to employee via `as x`.
+    ;; The live alias should win: x.id must mean employee.id (the most recent,
+    ;; explicit binding), not the stale company snapshot captured at the |= point.
+    (is (true? (clojure.string/includes?
+                (:query (generate-expressions ["company |= x | employee as x | w: x.id = 1"]))
+                "WHERE \"x\".\"id\" = ?")))
+    (is (false? (clojure.string/includes?
+                 (:query (generate-expressions ["company |= x | employee as x | w: x.id = 1"]))
+                 "WHERE \"c_0\".\"id\" = ?"))))
+
+  (testing "Same-source variables: two variables wrapping the same table join on id"
+    (is (= {:query "WITH \"c1\" AS ( SELECT \"c_0\".* FROM \"company\" AS \"c_0\" ), \"c2\" AS ( SELECT \"c_0\".* FROM \"company\" AS \"c_0\" ) SELECT \"c2\".* FROM \"c1\" AS \"c1\" JOIN \"c2\" AS \"c2\" ON \"c1\".\"id\" = \"c2\".\"id\" LIMIT 250"
+            :params nil}
+           (generate-expressions ["company |= c1"
+                                  "company |= c2"
+                                  "c1 | c2"])))
+    (is (= {:query "WITH \"c2\" AS ( SELECT \"c_0\".* FROM \"company\" AS \"c_0\" ), \"c1\" AS ( SELECT \"c_0\".* FROM \"company\" AS \"c_0\" ) SELECT \"c1\".* FROM \"c2\" AS \"c2\" JOIN \"c1\" AS \"c1\" ON \"c2\".\"id\" = \"c1\".\"id\" LIMIT 250"
+            :params nil}
+           (generate-expressions ["company |= c1"
+                                  "company |= c2"
+                                  "c2 | c1"]))))
+
+  (testing "Same-source join also works between a real table and a variable wrapping it"
+    ;; The same-source fallback isn't variable-specific - a real table joined
+    ;; to a variable that traces back to that same table is exactly the same
+    ;; situation (two references to one table, no real FK connecting them),
+    ;; just with one side not sealed into a CTE.
+    (is (= {:query "WITH \"x\" AS ( SELECT \"c_0\".\"id\" AS \"c_id\" FROM \"company\" AS \"c_0\" ) SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"x\".* FROM \"company\" AS \"c_0\" JOIN \"x\" AS \"x\" ON \"c_0\".\"id\" = \"x\".\"c_id\" LIMIT 250"
+            :params nil}
+           (generate-expressions ["company | s: id as c_id |= x"
+                                  "company | x"])))
+    (is (= {:query "WITH \"x\" AS ( SELECT \"c_0\".\"id\" AS \"c_id\" FROM \"company\" AS \"c_0\" ) SELECT \"c_1\".\"id\" AS \"__c_1__id\", \"c_1\".* FROM \"x\" AS \"x\" JOIN \"company\" AS \"c_1\" ON \"x\".\"c_id\" = \"c_1\".\"id\" LIMIT 250"
+            :params nil}
+           (generate-expressions ["company | s: id as c_id |= x"
+                                  "x | company"])))
+    ;; But two RAW references to the same table still don't resolve - Pine has
+    ;; no way yet to distinguish which occurrence is which (no `t | t as t2`
+    ;; self-aliasing), so this stays unsupported (see docs/named-results.md).
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"No relation between `company` and `company`"
+                          (generate "company | company"))))
+
+  (testing "A table is a join source through a variable only if its id is present"
+    ;; `s: name` alone has no id anywhere in x's snapshot — Pine doesn't add
+    ;; one, so company is not a valid join source.
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"No relation between `x` and `employee`"
+                          (generate-expressions ["company as c | s: name |= x" "x | employee"])))
+
+    ;; `s: id, name` includes it explicitly, so the join resolves.
+    (is (clojure.string/includes?
+         (:query (generate-expressions ["company as c | s: id, name |= x" "x | employee"]))
+         "\"x\".\"id\" = \"e_1\".\"company_id\""))
+
+    ;; Same for GROUP: grouping by a non-id column has no id anywhere, so
+    ;; company is not a valid join source.
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"No relation between `x` and `employee`"
+                          (generate-expressions ["company as c | employee .company_id | group: c.name |= x" "x | employee"]))))
+
+  (testing "WHERE value coercion through a variable resolves the real column's type"
+    ;; A variable's pre-seeded column list never carried type information, so
+    ;; filtering by a UUID column exposed through a variable silently dropped
+    ;; the ::uuid cast entirely - confirmed broken before this session's
+    ;; refactor. It must now match what filtering the real table directly
+    ;; already produces.
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"customer\" AS \"c_0\" WHERE \"c_0\".\"uuid_col\" = ?::uuid LIMIT 250"
+            :params (list (dt/uuid "1c50ee25-4938-4b77-b831-bc41a0ee3d0c"))}
+           (generate "customer | where: uuid_col = '1c50ee25-4938-4b77-b831-bc41a0ee3d0c'")))
+
+    (is (= {:query "WITH \"x\" AS ( SELECT \"c_0\".\"id\", \"c_0\".\"uuid_col\" AS \"u\" FROM \"customer\" AS \"c_0\" ) SELECT \"x\".* FROM \"x\" AS \"x\" WHERE \"x\".\"u\" = ?::uuid LIMIT 250"
+            :params (list (dt/uuid "1c50ee25-4938-4b77-b831-bc41a0ee3d0c"))}
+           (generate-expressions ["customer | s: id, uuid_col as u |= x"
+                                  "x | where: u = '1c50ee25-4938-4b77-b831-bc41a0ee3d0c'"])))))
+
+(deftest test-checkpoints
+  (testing "LIMIT checkpoint: auto-CTE when a table op follows limit"
+    (is (= {:query "WITH \"result_1\" AS ( SELECT \"c_0\".* FROM \"x\".\"company\" AS \"c_0\" LIMIT 10 ) SELECT \"e_1\".\"id\" AS \"__e_1__id\", \"e_1\".* FROM \"result_1\" AS \"result_1\" JOIN \"employee\" AS \"e_1\" ON \"result_1\".\"id\" = \"e_1\".\"company_id\" LIMIT 250"
+            :params nil}
+           (generate "x.company | l: 10 | employee"))))
+
+  (testing "LIMIT checkpoint with explicit user-named CTE via |="
+    (is (= {:query "WITH \"pg\" AS ( SELECT \"c_0\".* FROM \"x\".\"company\" AS \"c_0\" LIMIT 10 ) SELECT \"e_1\".\"id\" AS \"__e_1__id\", \"e_1\".* FROM \"pg\" AS \"pg\" JOIN \"employee\" AS \"e_1\" ON \"pg\".\"id\" = \"e_1\".\"company_id\" LIMIT 250"
+            :params nil}
+           (generate "x.company | l: 10 |= pg | employee"))))
+
+  (testing "GROUP checkpoint: auto-CTE when a table op follows group"
+    (is (= {:query "WITH \"result_1\" AS ( SELECT \"c_0\".\"id\", COUNT(1) AS \"count\" FROM \"x\".\"company\" AS \"c_0\" GROUP BY \"c_0\".\"id\" ) SELECT \"e_1\".\"id\" AS \"__e_1__id\", \"e_1\".* FROM \"result_1\" AS \"result_1\" JOIN \"employee\" AS \"e_1\" ON \"result_1\".\"id\" = \"e_1\".\"company_id\" LIMIT 250"
+            :params nil}
+           (generate "x.company | group: id with count | employee"))))
+
+  (testing "Checkpoint does not fire for non-table ops after limit"
+    ;; LIMIT followed by COUNT: checkpoint holds, COUNT builds its own wrapper CTE
+    (is (= {:query "WITH x AS ( SELECT \"c_0\".* FROM \"company\" AS \"c_0\" LIMIT 100 ) SELECT COUNT(*) FROM x"
+            :params nil}
+           (generate "company | limit: 100 | count:"))))
+
+  (testing "Standalone GROUP without following table still uses build-group-query"
+    ;; Existing behaviour must not regress: the GROUP dispatch path is unaffected
+    (is (clojure.string/includes?
+         (:query (generate "x.company | group: id with count"))
+         "GROUP BY")))
+
+  (testing "GROUP followed by LIMIT seals group as CTE, applies limit to outer"
+    ;; All three forms should produce equivalent SQL (modulo CTE name)
+    (let [expected-cte-body "SELECT \"c_0\".\"id\", COUNT(1) AS \"count\" FROM \"x\".\"company\" AS \"c_0\" GROUP BY \"c_0\".\"id\""
+          ;; Auto-named
+          q1 (:query (generate "x.company | group: id with count | l: 1"))
+          ;; User-named via |=
+          q2 (:query (generate "x.company | group: id with count |= grp | l: 1"))]
+      ;; Both contain the same GROUP CTE body
+      (is (clojure.string/includes? q1 expected-cte-body))
+      (is (clojure.string/includes? q2 expected-cte-body))
+      ;; Both apply LIMIT 1 on the outer query
+      (is (clojure.string/ends-with? q1 "LIMIT 1"))
+      (is (clojure.string/ends-with? q2 "LIMIT 1"))
+      ;; Auto-named CTE uses generated name; user-named uses "grp"
+      (is (clojure.string/includes? q1 "\"result_1\""))
+      (is (clojure.string/includes? q2 "\"grp\""))))
+
+  (testing "GROUP + LIMIT cross-expression baseline matches same-expression form"
+    ;; x | l: 1 in a separate expression should produce the same structure
+    (let [q-cross (:query (generate-expressions ["x.company | group: id with count |= grp"
+                                                 "grp | l: 1"]))
+          q-same  (:query (generate "x.company | group: id with count |= grp | l: 1"))]
+      (is (= q-cross q-same))))
+
+  (testing "GROUP followed by a complete select: matches the sealed cross-expression form"
+    ;; select:/where:/order: after GROUP were not checkpoint-firing ops (unlike
+    ;; table/group/limit), so the group was never sealed into a CTE — build-query
+    ;; then dispatched on the trailing op's type instead of :group, silently using
+    ;; the plain-select builder against a group-shaped state (wrong SQL: raw table
+    ;; columns leaking in, stale pre-group alias in WHERE/ORDER BY). The correctly
+    ;; sealed cross-expression form is the oracle: same GROUP, split so the second
+    ;; expression references the CTE by name, should equal the inline form exactly.
+    (let [q-cross (:query (generate-expressions ["x.company | group: id with count |= grp"
+                                                 "grp | s: id"]))
+          q-same  (:query (generate "x.company | group: id with count |= grp | s: id"))]
+      (is (= q-cross q-same))))
+
+  (testing "GROUP followed by a complete where: matches the sealed cross-expression form"
+    (let [q-cross (:query (generate-expressions ["company as c | employee .company_id | group: c.name |= grp"
+                                                 "grp | w: name = 'Acme'"]))
+          q-same  (:query (generate "company as c | employee .company_id | group: c.name |= grp | w: name = 'Acme'"))]
+      (is (= q-cross q-same))))
+
+  (testing "GROUP followed by a complete order: matches the sealed cross-expression form"
+    (let [q-cross (:query (generate-expressions ["company as c | employee .company_id | group: c.name |= grp"
+                                                 "grp | o: name desc"]))
+          q-same  (:query (generate "company as c | employee .company_id | group: c.name |= grp | o: name desc"))]
+      (is (= q-cross q-same))))
+
+  (testing "GROUP followed by an order-partial (trailing comma) matches the sealed cross-expression form"
+    ;; order-partial with a non-empty value (e.g. a dangling trailing comma after a
+    ;; fully-typed column) is not meaningfully different from a complete order: here —
+    ;; the already-typed column should seal and resolve exactly the same way.
+    (let [q-cross (:query (generate-expressions ["company as c | employee .company_id | group: c.name |= grp"
+                                                 "grp | o: name desc,"]))
+          q-same  (:query (generate "company as c | employee .company_id | group: c.name |= grp | o: name desc,"))]
+      (is (= q-cross q-same))))
+
+  (testing "GROUP followed by a complete select: auto-named CTE also seals correctly (no |=)"
+    ;; Without an explicit |=, the checkpoint still seals — just with a generated
+    ;; name instead of a user-given one.
+    (is (= "WITH \"result_1\" AS ( SELECT \"c_0\".\"id\", COUNT(1) AS \"count\" FROM \"x\".\"company\" AS \"c_0\" GROUP BY \"c_0\".\"id\" ) SELECT \"result_1\".\"id\" FROM \"result_1\" AS \"result_1\" LIMIT 250"
+           (:query (generate "x.company | group: id with count | s: id")))))
+
+  (testing "A from: naming a checkpoint, with nothing after it, reads the checkpoint's result"
+    (let [expected "WITH \"result_1\" AS ( SELECT \"c\".* FROM \"x\".\"company\" AS \"c\" LIMIT 1 ) SELECT \"result_1\".* FROM \"result_1\" AS \"result_1\" LIMIT 250"]
+      (is (= expected (:query (generate "x.company as c | limit: 1 |= result_1 | from: result_1"))))
+      (is (= expected (:query (generate "x.company as c | limit: 1 | from: result_1"))))))
+
+  (testing "Checkpoint feeding a terminal GROUP nests its own CTE (user-named via |=)"
+    ;; build-group-query is a separate rendering path from build-select-query
+    ;; and used to skip collect-ctes entirely, so a checkpoint's CTE was never
+    ;; emitted when the pipeline's *last* op was :group - the group's own
+    ;; wrapper CTE ended up referencing the checkpoint's name (e.g. "pg") as a
+    ;; bare relation that was never defined anywhere, a dangling reference
+    ;; that would fail at execution time.
+    (is (= {:query "WITH \"pg\" AS ( SELECT \"c_0\".* FROM \"x\".\"company\" AS \"c_0\" LIMIT 10 ), \"x_4\" AS ( SELECT \"pg\".\"name\" AS \"name\" FROM \"pg\" AS \"pg\" ) SELECT \"x_4\".\"name\", COUNT(1) AS \"count\" FROM \"x_4\" GROUP BY \"x_4\".\"name\" LIMIT 10000"
+            :params nil}
+           (generate "x.company | l: 10 |= pg | s: name | g: name with count"))))
+
+  (testing "Checkpoint feeding a terminal GROUP nests its own CTE (auto-named, no |=)"
+    (is (= {:query "WITH \"result_1\" AS ( SELECT \"c_0\".* FROM \"x\".\"company\" AS \"c_0\" LIMIT 10 ), \"x_3\" AS ( SELECT \"result_1\".\"name\" AS \"name\" FROM \"result_1\" AS \"result_1\" ) SELECT \"x_3\".\"name\", COUNT(1) AS \"count\" FROM \"x_3\" GROUP BY \"x_3\".\"name\" LIMIT 10000"
+            :params nil}
+           (generate "x.company | l: 10 | s: name | g: name with count"))))
+
+  (testing "Auto-named checkpoints across separate expressions don't collide"
+    ;; Each expression starts from a fresh state. If each one picked its
+    ;; auto-names without looking at earlier ones, two expressions that each
+    ;; auto-name one checkpoint would both land on "result_1": two different
+    ;; CTEs sharing one name. collect-ctes (eval.clj) dedupes by name, so the
+    ;; second one used to be silently dropped, leaving both named results
+    ;; reading from the first CTE.
+    (let [query (:query (generate-expressions
+                         ["company as c | employee .company_id | group: c.id with count | s: id, count as emp_count |= x"
+                          "company as c | employee .company_id | group: c.id with count | s: id, count as emp_count2 |= y"
+                          "x | s: emp_count, | y | s: emp_count2,"]))
+          x-name (second (re-find #"\"x\" AS \( SELECT \"(result_\d+)\"" query))
+          y-name (second (re-find #"\"y\" AS \( SELECT \"(result_\d+)\"" query))]
+      (is (some? x-name))
+      (is (some? y-name))
+      ;; The actual regression: x and y must not have been folded onto the
+      ;; same auto-generated checkpoint.
+      (is (not= x-name y-name))
+      ;; Each one's own checkpoint must still carry the right GROUP BY body.
+      (is (clojure.string/includes? query (str "\"" x-name "\" AS ( SELECT \"c\".\"id\", COUNT(1) AS \"count\"")))
+      (is (clojure.string/includes? query (str "\"" y-name "\" AS ( SELECT \"c\".\"id\", COUNT(1) AS \"count\"")))
+      ;; The exact names: the first expression has no named results yet, so
+      ;; it gets result_1; the second skips x and result_1, which are known.
+      (is (= ["result_1" "result_2"] [x-name y-name]))))
+
+  (testing "First auto-name is result_1 even when other named results exist"
+    ;; The old scheme seeded its counter from the number of named results,
+    ;; so this used to be __pine_2__.
+    (is (clojure.string/starts-with?
+         (:query (generate-expressions ["company |= a"
+                                        "employee |= b"
+                                        "x.company | l: 10 | employee"]))
+         "WITH \"result_1\" AS ( SELECT \"c_0\".* FROM \"x\".\"company\" AS \"c_0\" LIMIT 10 )")))
+
+  (testing "Two checkpoints in one expression are result_1, then result_2"
+    (is (= {:query "WITH \"result_1\" AS ( SELECT \"c_0\".* FROM \"x\".\"company\" AS \"c_0\" LIMIT 10 ), \"result_2\" AS ( SELECT \"e_1\".* FROM \"result_1\" AS \"result_1\" JOIN \"employee\" AS \"e_1\" ON \"result_1\".\"id\" = \"e_1\".\"company_id\" LIMIT 5 ) SELECT \"result_2\".\"id\" FROM \"result_2\" AS \"result_2\" LIMIT 250"
+            :params nil}
+           (generate "x.company | l: 10 | employee | l: 5 | s: id"))))
+
+  (testing "Auto-name skips a name taken by |= in an earlier expression"
+    (is (clojure.string/starts-with?
+         (:query (generate-expressions ["company |= result_1"
+                                        "x.company | l: 10 | employee"]))
+         "WITH \"result_2\" AS (")))
+
+  (testing "Auto-name skips a name taken by |= later in the same expression"
+    (let [q (:query (generate "x.company | l: 10 | employee | l: 5 |= result_1 | s: id"))]
+      (is (clojure.string/starts-with? q "WITH \"result_2\" AS ( SELECT \"c_0\".* FROM \"x\".\"company\" AS \"c_0\" LIMIT 10 ), \"result_1\" AS ("))))
+
+  (testing "Auto-name skips a table alias named result_1, even one after the checkpoint"
+    (let [q (:query (generate "x.company | l: 10 | employee as result_1"))]
+      (is (clojure.string/starts-with? q "WITH \"result_2\" AS ("))
+      (is (clojure.string/includes? q "JOIN \"employee\" AS \"result_1\" ON \"result_2\".\"id\" = \"result_1\".\"company_id\""))))
+
+  (testing "Auto-name skips a real table named result_1 in the schema index"
+    ;; A CTE named result_1 would shadow that table for unqualified reads.
+    (let [refs (db/init-references :test)]
+      (with-redefs [db/init-references
+                    (fn [_id]
+                      (-> refs
+                          (assoc-in [:table "result_1" :columns] [])
+                          (assoc-in [:schema "other" :table "Result_2" :columns] [])))]
+        (is (clojure.string/starts-with?
+             (:query (generate "x.company | l: 10 | employee"))
+             "WITH \"result_3\" AS (")))))
+
+  (testing "Without a schema index, the table check is skipped"
+    (is (= "result_1"
+           (ast/next-auto-cte-name {:named-results {} :pending-assignments {}
+                                    :aliases {} :references nil})))))
+
+(def ^:private column-type-rule
+  ;; Mirrors the values beamlynx-desktop seeds a new connection's default
+  ;; policy with (DEFAULT_ACCESS_POLICY_RULES, credential-store.ts) -- this
+  ;; module itself carries no default of its own, so tests construct their
+  ;; own rule vectors explicitly rather than reaching for a shared default.
+  {:type "column-type"
+   :allow ["uuid" "boolean" "bool"
+           "smallint" "integer" "bigint" "int2" "int4" "int8"
+           "numeric" "decimal" "real" "double precision" "float4" "float8" "money"
+           "date" "time" "time without time zone" "time with time zone"
+           "timestamp" "timestamp without time zone" "timestamp with time zone" "timestamptz"
+           "USER-DEFINED"]})
+
+(deftest test-access-policy
+  ;; `report` (fixtures.clj) has a "character varying" column (title) alongside
+  ;; an "integer" id - a real non-allow-listed type next to an allowed one.
+  ;; `order` has a "character varying" customer_id that's a heuristic (not a
+  ;; real FK) join source - fixtures.clj deliberately types it that way to
+  ;; test the same cross-family-type join casting elsewhere in this file.
+
+  (testing "Policy off (default, empty/absent rules): unaffected, even for a table with a text column"
+    (is (= "SELECT \"r_0\".\"id\" AS \"__r_0__id\", \"r_0\".* FROM \"report\" AS \"r_0\" LIMIT 1"
+           (:query (generate "report | limit: 1")))))
+
+  (testing "column-type rule: implicit `.*` is expanded and the text column is redacted"
+    (is (= "SELECT \"r_0\".\"id\" AS \"__r_0__id\", \"r_0\".\"id\", 'xxxxx' AS \"title\" FROM \"report\" AS \"r_0\" LIMIT 1"
+           (:query (generate "report | limit: 1" [column-type-rule])))))
+
+  (testing "column-type rule: an explicitly selected text column is redacted, its name preserved"
+    (is (= "SELECT 'xxxxx' AS \"title\", \"r_0\".\"id\", \"r_0\".\"id\" AS \"__r_0__id\" FROM \"report\" AS \"r_0\" LIMIT 250"
+           (:query (generate "report | select: title, id" [column-type-rule])))))
+
+  (testing "column-type rule: allowed types (uuid, integer) pass through untouched; jsonb does not"
+    (is (= "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".\"id\", 'xxxxx' AS \"data\", \"c_0\".\"uuid_col\" FROM \"customer\" AS \"c_0\" LIMIT 1"
+           (:query (generate "customer | limit: 1" [column-type-rule])))))
+
+  (testing "column-type rule: a table with no sensitive columns renders exactly as it would unrestricted, apart from being expanded"
+    (is (= "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".\"id\", \"c_0\".\"created_at\" FROM \"company\" AS \"c_0\" LIMIT 1"
+           (:query (generate "company | limit: 1" [column-type-rule])))))
+
+  (testing "column-type rule: a varchar-typed FK-shaped column stays redacted -- type is the only signal this rule has"
+    (is (= "SELECT \"o_0\".\"id\" AS \"__o_0__id\", \"o_0\".\"id\", 'xxxxx' AS \"customer_id\", \"o_0\".\"user_id\" FROM \"order\" AS \"o_0\" LIMIT 1"
+           (:query (generate "order | limit: 1" [column-type-rule])))))
+
+  (testing "foreign-key rule: unmasks that same column once added, real FK or heuristic relation alike"
+    (is (= "SELECT \"o_0\".\"id\" AS \"__o_0__id\", \"o_0\".\"id\", \"o_0\".\"customer_id\", \"o_0\".\"user_id\" FROM \"order\" AS \"o_0\" LIMIT 1"
+           (:query (generate "order | limit: 1" [column-type-rule {:type "foreign-key"}])))))
+
+  (testing "column-name rule: unmasks the same column by suffix alone, with no foreign-key rule present -- the weaker, opt-in signal"
+    (is (= "SELECT \"o_0\".\"id\" AS \"__o_0__id\", \"o_0\".\"id\", \"o_0\".\"customer_id\", \"o_0\".\"user_id\" FROM \"order\" AS \"o_0\" LIMIT 1"
+           (:query (generate "order | limit: 1" [column-type-rule {:type "column-name" :suffix "_id"}])))))
+
+  (testing "An unrecognized rule type matches nothing -- fail-closed and forward-compatible, not an error"
+    (is (= "SELECT \"r_0\".\"id\" AS \"__r_0__id\", 'xxxxx' AS \"id\", 'xxxxx' AS \"title\" FROM \"report\" AS \"r_0\" LIMIT 1"
+           (:query (generate "report | limit: 1" [{:type "some-future-rule-type" :whatever "x"}])))))
+
+  (testing "information_schema/pg_catalog are structurally exempt, regardless of rules -- catalog metadata, not application data. The MCP tool surface's own docs tell an agent to query information_schema.* directly for schema discovery; redacting it would silently defeat that."
+    (is (= "SELECT \"c_0\".\"table_name\", \"c_0\".\"column_name\" FROM \"information_schema\".\"columns\" AS \"c_0\" LIMIT 250"
+           (:query (generate "information_schema.columns | select: table_name, column_name" [{:type "column-name" :suffix "-never-matches"}]))))
+    (is (= "SELECT \"pt_0\".\"typname\" FROM \"pg_catalog\".\"pg_type\" AS \"pt_0\" LIMIT 250"
+           (:query (generate "pg_catalog.pg_type | select: typname" [{:type "column-name" :suffix "-never-matches"}])))))
+
+  (testing "column-type rule: an explicit per-alias star (`select: alias.*`, distinct from the implicit current-table default) is expanded and redacted too"
+    (is (= "SELECT \"r\".\"id\", 'xxxxx' AS \"title\", \"r\".\"id\" AS \"__r__id\" FROM \"report\" AS \"r\" LIMIT 250"
+           (:query (generate "report as r | s: r.*" [column-type-rule])))))
+
+  (testing "column-type rule: a variable's own CTE body redacts at its source; the outer `.*` re-selects the already-safe result"
+    (let [query (:query (generate-expressions ["report |= r" "r | limit: 1"] [column-type-rule]))]
+      (is (clojure.string/includes? query "\"r\" AS ( SELECT \"r_0\".\"id\", 'xxxxx' AS \"title\" FROM \"report\" AS \"r_0\" )"))
+      (is (clojure.string/includes? query "SELECT \"r\".* FROM \"r\" AS \"r\""))))
+
+  (testing "a masked column can be filtered and sorted on: the policy masks what comes back, not what is asked"
+    (doseq [e ["report | where: title like 'a%' | s: id"
+               "report | where: title = 'x' | count:"
+               "report | o: title | s: id"
+               "report | where: id = 1 or title = 'x'"]]
+      (is (:query (generate e [column-type-rule])) e))
+    (is (:query (generate-expressions ["report | where: title = 'x' |= x" "x"] [column-type-rule]))))
+
+  (testing "a masked column can't be a group: key: the key is a column of the result"
+    ;; GROUP BY used to run and collapse every group to the placeholder. A
+    ;; group sealed into a checkpoint grouped by the real column and showed
+    ;; it, so a key is refused rather than masked.
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"`r_0.title` is a masked column, so it can't be a `group:` key"
+                          (generate "report | group: title with count" [column-type-rule])))
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"is a masked column"
+                          (generate-expressions ["report | group: title with count |= x" "x"] [column-type-rule]))))
+
+  (testing "the id column and allowed columns can still be filtered on"
+    (is (re-find #"WHERE \"r_0\".\"id\" = \?" (:query (generate "report | where: id = 1" [column-type-rule]))))
+    (is (re-find #"COUNT" (:query (generate "report | where: id = 1 | count:" [column-type-rule])))))
+
+  (testing "a named result's columns are already redacted at its source, so filtering on them reveals nothing"
+    (is (:query (generate-expressions ["report |= r" "r | where: title = 'x'"] [column-type-rule]))))
+
+  (testing "a table missing from the schema index is refused, not returned unredacted"
+    ;; It used to fall back to `alias.*`: a table created after indexing, a
+    ;; MySQL table in another database, a catalog relation not listed.
+    (doseq [e ["secrets" "secrets as s | select: s.*" "pg_catalog.pg_stat_activity" "pg_catalog.pg_shadow"]]
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"isn't in the schema index" (generate e [column-type-rule])) e))
+    (is (= "policy" (try (generate "secrets" [column-type-rule]) nil
+                         (catch clojure.lang.ExceptionInfo e (:error-type (ex-data e)))))))
+
+  (testing "the catalog relations schema discovery needs stay exempt"
+    (is (= "SELECT \"pc_0\".* FROM \"pg_catalog\".\"pg_class\" AS \"pc_0\" LIMIT 250"
+           (:query (generate "pg_catalog.pg_class" [column-type-rule]))))
+    (is (= "SELECT \"c_0\".* FROM \"information_schema\".\"columns\" AS \"c_0\" LIMIT 250"
+           (:query (generate "information_schema.columns" [column-type-rule]))))))
+
+(deftest test-access-policy-hide-rules
+  (let [hide (fn [match] {:type "hide" :match match})]
+
+    (testing "a hide rule beats every show rule that matches the same column"
+      (is (= "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".\"id\", 'xxxxx' AS \"data\", 'xxxxx' AS \"uuid_col\" FROM \"customer\" AS \"c_0\" LIMIT 1"
+             (:query (generate "customer | limit: 1" [column-type-rule (hide {:type "column-name" :contains "uuid"})]))))
+      (is (= "SELECT \"o_0\".\"id\" AS \"__o_0__id\", \"o_0\".\"id\", 'xxxxx' AS \"customer_id\", \"o_0\".\"user_id\" FROM \"order\" AS \"o_0\" LIMIT 1"
+             (:query (generate "order | limit: 1" [column-type-rule {:type "foreign-key"}
+                                                   {:type "column" :table "order" :column "customer_id"}
+                                                   (hide {:type "column" :schema "public" :table "order" :column "customer_id"})])))))
+
+    (testing "names match ignoring case"
+      (is (re-find #"'xxxxx' AS \"uuid_col\""
+                   (:query (generate "customer | limit: 1" [column-type-rule (hide {:type "column-name" :contains "UUID"})]))))
+      (is (re-find #"'xxxxx' AS \"uuid_col\""
+                   (:query (generate "customer | limit: 1" [column-type-rule (hide {:type "column-name" :equals "Uuid_Col"})])))))
+
+    (testing "a column a hide rule masks can be filtered and sorted on, but not grouped on"
+      (doseq [e ["customer | where: uuid_col is null | s: id"
+                 "customer | o: uuid_col | s: id"]]
+        (is (:query (generate e [column-type-rule (hide {:type "column-name" :suffix "_col"})])) e))
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"`c_0.uuid_col` is a masked column"
+                            (generate "customer | group: uuid_col with count"
+                                      [column-type-rule (hide {:type "column-name" :suffix "_col"})]))))
+
+    (testing "a computed value reading a hidden column is hidden"
+      (is (re-find #"'xxxxx' AS \"u\""
+                   (:query (generate "customer | s: coalesce(uuid_col, uuid_col) as u"
+                                     [column-type-rule (hide {:type "column-name" :contains "uuid"})])))))
+
+    (testing "a hide rule covers the `id` column too, which is otherwise always shown"
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"`r_0.id` is a masked column"
+                            (generate "report | group: id with count" [column-type-rule (hide {:type "column-name" :equals "id"})]))))
+
+    (testing "a hide rule with a matcher this version doesn't know hides every column, the key column included"
+      (is (= "SELECT 'xxxxx' AS \"id\", 'xxxxx' AS \"title\" FROM \"report\" AS \"r_0\" LIMIT 1"
+             (:query (generate "report | limit: 1" [column-type-rule (hide {:type "some-future-matcher"})]))))
+      (is (re-find #"'xxxxx' AS \"id\""
+                   (:query (generate "report | limit: 1" [column-type-rule {:type "hide"}])))))
+
+    (testing "catalog relations stay exempt from hide rules: they hold names, not values"
+      (is (= "SELECT \"c_0\".\"table_name\", \"c_0\".\"column_name\" FROM \"information_schema\".\"columns\" AS \"c_0\" LIMIT 250"
+             (:query (generate "information_schema.columns | select: table_name, column_name"
+                               [(hide {:type "column-name" :contains "name"})])))))
+
+    (testing "a `column` show rule names one column of one table, in one schema when it says so"
+      (is (re-find #"\"r_0\".\"title\""
+                   (:query (generate "report | s: title" [{:type "column" :table "report" :column "title"}]))))
+      (is (re-find #"\"r_0\".\"title\""
+                   (:query (generate "report | s: title" [{:type "column" :schema "public" :table "report" :column "title"}]))))
+      (is (re-find #"'xxxxx' AS \"title\""
+                   (:query (generate "report | s: title" [{:type "column" :schema "other" :table "report" :column "title"}]))))
+      (is (re-find #"'xxxxx' AS \"title\""
+                   (:query (generate "report | s: title" [{:type "column" :table "customer" :column "title"}])))))))
+
+(deftest test-access-policy-joins
+  (let [hide (fn [match] {:type "hide" :match match})]
+
+    (testing "a join on a masked column runs: the policy masks what comes back, and a join returns no value"
+      (doseq [e ["report | customer .id ::text = .title"
+                 "report :left | customer .uuid_col = .title | s: c_1.id"
+                 "report | customer .uuid_col = .title | count:"
+                 "report | customer .uuid_col = .title | group: c_1.id with count"
+                 "report | customer .uuid_col = .title | limit: 1 per c_1.id"
+                 "order | customer"
+                 "company | employee"]]
+        (is (:query (generate e [column-type-rule])) e))
+      (is (:query (generate-expressions ["report | s: coalesce('alice@example.com', 'x') as g | limit: 1 |= guesses"
+                                         "guesses | report .title = .g | s: r_1.id"]
+                                        [column-type-rule])))
+      (is (:query (generate "company | employee" [column-type-rule (hide {:type "column" :table "employee" :column "company_id"})]))))
+
+    (testing "a masked column joined to a shown one stays masked in the result"
+      (is (re-find #"'xxxxx' AS \"title\""
+                   (:query (generate "report | customer .uuid_col = .title | s: r_0.title, c_1.id" [column-type-rule])))))
+
+    (testing "a `::uuid` cast of a masked column is refused: Postgres's error would print the value"
+      (doseq [e ["report | customer .uuid_col = .title ::uuid"
+                 "report | where: title = 'x' ::uuid"
+                 "report | where: coalesce(title::uuid, title::uuid) is null"]]
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                              #"`r_0.title` is a masked column, so it can't be cast with `::uuid`"
+                              (generate e [column-type-rule]))
+            e))
+      (let [{:keys [expression]} (transpile/sql->pine "SELECT c.id FROM report r JOIN customer c ON c.uuid_col = r.title::uuid")]
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo #"`r.title` is a masked column, so it can't be cast with `::uuid`"
+                              (generate expression [column-type-rule])))))
+
+    (testing "on Postgres, a masked column passed to a JSON function is refused: the jsonb cast's error would print the value"
+      (doseq [e ["report | where: jsonb_typeof(title) = 'string'"
+                 "report | where: jsonb_array_length(title) = 1"
+                 "report | where: jsonb_typeof(if id = 1 then title else title) = 'string'"
+                 "report | where: jsonb_typeof(if id = 1 then 'x' else if id = 2 then 'y' else title) = 'string'"]]
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                              #"`r_0.title` is a masked column, so it can't be passed to a JSON function"
+                              (generate e [column-type-rule]))
+            e))
+      (testing "but not a value that isn't cast: Postgres's error for it names the function, not the value"
+        (is (:query (generate "report | where: jsonb_typeof(coalesce(title, title)) = 'string'" [column-type-rule]))))
+      (testing "but not on MySQL or SQLite, whose errors don't print it"
+        (is (:query (generate-sqlite "report | where: jsonb_typeof(title) = 'string'" [column-type-rule])))))
+
+    (testing "a `::uuid` cast of a shown column, and a `::text` cast of a masked one, run"
+      (is (:query (generate "report | customer .uuid_col ::uuid = .id" [column-type-rule])))
+      (is (:query (generate "report | where: title = 'x' ::text" [column-type-rule]))))))
+
+(deftest test-access-policy-names-and-case
+  (let [rules [column-type-rule
+               {:type "column-name" :suffix "_id"}
+               {:type "hide" :match {:type "column" :table "order" :column "customer_id"}}]]
+
+    (testing "MySQL and SQLite ignore case, so a rule covers every spelling of the name"
+      (doseq [[dialect gen] [["mysql" generate-mysql] ["sqlite" generate-sqlite]]
+              e ["order | s: CUSTOMER_ID" "order | s: Customer_Id" "ORDER | s: customer_id"]]
+        (is (re-find #"'xxxxx' AS ." (:query (gen e rules))) (str dialect ": " e)))
+      (doseq [[dialect gen] [["mysql" generate-mysql] ["sqlite" generate-sqlite]]]
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo #"`o_0.CUSTOMER_ID` is a masked column"
+                              (gen "order | group: CUSTOMER_ID with count" rules))
+            dialect)))
+
+    (testing "Postgres matches a quoted name exactly: another spelling isn't the column, and is refused"
+      (doseq [e ["order | s: CUSTOMER_ID" "order | where: CUSTOMER_ID = 'x' | s: id" "order | o: Customer_Id"]]
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo #"`o_0.(CUSTOMER_ID|Customer_Id)` isn't a column of `order`, .* Did you mean `customer_id`\?$"
+                              (generate e rules))
+            e))
+      (is (re-find #"'xxxxx' AS \"customer_id\"" (:query (generate "order | s: customer_id" rules)))))
+
+    (testing "a column the index doesn't have is refused under a policy, wherever it is named"
+      (doseq [e ["report | s: nickname" "report | where: nickname = 'x'" "report | customer .uuid_col = .nickname"]]
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo #"`r_0.nickname` isn't a column of `report`" (generate e [column-type-rule])) e))
+      (is (= "policy" (try (generate "report | s: nickname" [column-type-rule]) nil
+                           (catch clojure.lang.ExceptionInfo e (:error-type (ex-data e)))))))
+
+    (testing "a mistyped column suggests the closest ones, and offers re-indexing only when none is close"
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Did you mean `customer_id`\?$"
+                            (generate "order | s: customerId" rules)))
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Did you mean `customer_id`\?$"
+                            (generate "order | s: custmer_id" rules)))
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"re-index the connection if the column is new\.$"
+                            (generate "report | s: nickname" [column-type-rule]))))
+
+    (testing "without a policy, nothing changes"
+      (is (re-find #"\"o_0\".\"CUSTOMER_ID\"" (:query (generate "order | s: CUSTOMER_ID")))))))
+
+(deftest test-access-policy-record-keys
+  (let [rules [{:type "column-type" :allow ["uuid"]}]]
+    (testing "a primary key called `id` can be filtered on, as it is shown in every result"
+      (is (:query (generate "report | where: id = 1" rules)))
+      (is (:query (generate-expressions ["report | where: id = 1 |= x" "x"] rules))))
+
+    (testing "an `id` that isn't a primary key is checked like any other column"
+      ;; p.log_entry has an integer id and no primary key.
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"`le_0.id` is a masked column"
+                            (generate "log_entry | group: id with count" rules)))
+      (is (:query (generate "log_entry | group: id with count" [column-type-rule]))))))
+
+(deftest test-build-query-mysql
+  ;; Every Postgres assertion above must stay byte-identical through this
+  ;; whole file - that's the regression guard for the refactor this MySQL
+  ;; support was built on top of. This deftest is the MySQL side: same
+  ;; fixtures, same expressions where possible, routed through the real
+  ;; :test-mysql -> get-dialect -> :mysql path (not a hand-bound *dialect*
+  ;; var), so dialect resolution itself is exercised end to end.
+
+  (testing "qualify table: backtick quoting, not double-quote"
+    ;; The one case that can't go through generate-mysql: q is asserted
+    ;; standalone, with no state/connection-id to resolve a dialect from.
+    (is (= "`x`" (binding [eval/*dialect* :mysql] (eval/q "x"))))
+    (is (= "`x`.`y`" (binding [eval/*dialect* :mysql] (eval/q "x" "y")))))
+
+  (testing "Select"
+    (is (= {:query "SELECT `c_0`.`id` AS `__c_0__id`, `c_0`.* FROM `company` AS `c_0` LIMIT 250"
+            :params nil}
+           (generate-mysql "company"))))
+
+  (testing "FK join"
+    (is (= {:query "SELECT `c_0`.`id` AS `__c_0__id`, `e_1`.`id` AS `__e_1__id`, `e_1`.* FROM `company` AS `c_0` JOIN `employee` AS `e_1` ON `c_0`.`id` = `e_1`.`company_id` LIMIT 250"
+            :params nil}
+           (generate-mysql "company | employee"))))
+
+  (testing "Heuristic join between mismatched column types casts both sides via CAST(... AS CHAR), not ::text"
+    (is (= {:query "SELECT `c_0`.`id` AS `__c_0__id`, `o_1`.`id` AS `__o_1__id`, `o_1`.* FROM `customer` AS `c_0` JOIN `order` AS `o_1` ON CAST(`c_0`.`id` AS CHAR) = CAST(`o_1`.`customer_id` AS CHAR) LIMIT 250"
+            :params nil}
+           (generate-mysql "customer | order"))))
+
+  (testing "WHERE: ILIKE/NOT ILIKE map to LIKE/NOT LIKE - MySQL has no ILIKE"
+    (is (= "SELECT `c_0`.`id` AS `__c_0__id`, `c_0`.* FROM `company` AS `c_0` WHERE `c_0`.`name` LIKE ? LIMIT 250"
+           (:query (generate-mysql "company | where: name ilike 'acme%'"))))
+    (is (= "SELECT `c_0`.`id` AS `__c_0__id`, `c_0`.* FROM `company` AS `c_0` WHERE `c_0`.`name` NOT LIKE ? LIMIT 250"
+           (:query (generate-mysql "company | where: name not ilike 'acme%'")))))
+
+  (testing "WHERE: explicit ::cast renders as CAST(expr AS TYPE), not expr::type"
+    (is (= "SELECT `c_0`.`id` AS `__c_0__id`, `c_0`.* FROM `company` AS `c_0` WHERE CAST(`c_0`.`name` AS CHAR) = ? LIMIT 250"
+           (:query (generate-mysql "company | where: name = 'Acme Inc.' ::text"))))
+    (is (= "SELECT `c_0`.`id` AS `__c_0__id`, `c_0`.* FROM `company` AS `c_0` WHERE CAST(`c_0`.`id` AS CHAR(36)) = ? LIMIT 250"
+           (:query (generate-mysql "company | where: id = '123e4567-e89b-12d3-a456-426614174000' ::uuid")))))
+
+  (testing "WHERE: automatic (schema-driven) casts are minimal - uuid and date stay a bare `?`, jsonb still needs CAST(? AS JSON)"
+    (is (= {:query "SELECT `c_0`.`id` AS `__c_0__id`, `c_0`.* FROM `customer` AS `c_0` WHERE `c_0`.`uuid_col` = ? LIMIT 250"
+            :params (list (dt/uuid "1c50ee25-4938-4b77-b831-bc41a0ee3d0c"))}
+           (generate-mysql "customer | where: uuid_col = '1c50ee25-4938-4b77-b831-bc41a0ee3d0c'")))
+    (is (= {:query "SELECT `c_0`.`id` AS `__c_0__id`, `c_0`.* FROM `company` AS `c_0` WHERE `c_0`.`created_at` = ? LIMIT 250"
+            :params (list (dt/date "2025-01-01"))}
+           (generate-mysql "company | where: created_at = '2025-01-01'")))
+    (is (= {:query "SELECT `c_0`.`id` AS `__c_0__id`, `c_0`.* FROM `customer` AS `c_0` WHERE `c_0`.`data` = CAST(? AS JSON) LIMIT 250"
+            :params (list (dt/jsonb "{\"a\": 1}"))}
+           (generate-mysql "customer | where: data = '{\"a\": 1}'"))))
+
+  (testing "Date bucketing: DATE_FORMAT, not TO_CHAR(DATE_TRUNC(...))"
+    (is (= {:query "SELECT DATE_FORMAT(`e_0`.`created_at`, '%Y') AS `year`, `e_0`.`id` AS `__e_0__id` FROM `employee` AS `e_0` LIMIT 250"
+            :params nil}
+           (generate-mysql "employee | select: created_at => year")))
+    (is (= {:query "SELECT DATE_FORMAT(`e_0`.`created_at`, '%Y-%m') AS `month`, `e_0`.`id` AS `__e_0__id` FROM `employee` AS `e_0` LIMIT 250"
+            :params nil}
+           (generate-mysql "employee | select: created_at => month")))
+    (is (= {:query "SELECT DATE_FORMAT(`e_0`.`created_at`, '%Y-%m-%d') AS `day`, `e_0`.`id` AS `__e_0__id` FROM `employee` AS `e_0` LIMIT 250"
+            :params nil}
+           (generate-mysql "employee | select: created_at => day")))
+    ;; week: no DATE_TRUNC equivalent in MySQL - DATE_SUB/WEEKDAY instead.
+    ;; WEEKDAY() returns 0 for Monday, matching Postgres's week boundary.
+    (is (= {:query "SELECT DATE_FORMAT(DATE_SUB(`e_0`.`created_at`, INTERVAL WEEKDAY(`e_0`.`created_at`) DAY), '%Y-%m-%d') AS `week`, `e_0`.`id` AS `__e_0__id` FROM `employee` AS `e_0` LIMIT 250"
+            :params nil}
+           (generate-mysql "employee | select: created_at => week")))
+    (is (= {:query "SELECT DATE_FORMAT(`e_0`.`created_at`, '%Y-%m-%d %H') AS `hour`, `e_0`.`id` AS `__e_0__id` FROM `employee` AS `e_0` LIMIT 250"
+            :params nil}
+           (generate-mysql "employee | select: created_at => hour")))
+    (is (= {:query "SELECT DATE_FORMAT(`e_0`.`created_at`, '%Y-%m-%d %H:%i') AS `minute`, `e_0`.`id` AS `__e_0__id` FROM `employee` AS `e_0` LIMIT 250"
+            :params nil}
+           (generate-mysql "employee | select: created_at => minute"))))
+
+  (testing "Count"
+    (is (= {:query "WITH x AS ( SELECT `c_0`.* FROM `company` AS `c_0` ) SELECT COUNT(*) FROM x"
+            :params nil}
+           (generate-mysql "company | count:"))))
+
+  (testing "Group"
+    (is (= {:query "WITH `x_1` AS ( SELECT `e_0`.`status` AS `status` FROM `email` AS `e_0` ) SELECT `x_1`.`status`, COUNT(1) AS `count` FROM `x_1` GROUP BY `x_1`.`status` LIMIT 10000"
+            :params nil}
+           (generate-mysql "email | group: status with count"))))
+
+  (testing "Variable used as table generates a CTE"
+    (is (= {:query "WITH `active_companies` AS ( SELECT `c_0`.* FROM `company` AS `c_0` ) SELECT `active_companies`.* FROM `active_companies` AS `active_companies` LIMIT 250"
+            :params nil}
+           (generate-mysql-expressions ["company |= active_companies"
+                                        "active_companies"]))))
+
+  (testing "data_types.clj: tinyint maps to the integer branch, not boolean"
+    ;; If tinyint had landed in the boolean branch instead, `= 1` would come
+    ;; back wrapped as dt/pine-boolean rather than dt/number - the exact
+    ;; wrong-results bug this mapping choice exists to avoid (see
+    ;; data_types.clj: a bare `true` would otherwise get rewritten into the
+    ;; string "true", which MySQL coerces to 0, silently matching the wrong rows).
+    (is (= {:query "SELECT `p_0`.`id` AS `__p_0__id`, `p_0`.* FROM `product` AS `p_0` WHERE `p_0`.`active` = ? LIMIT 250"
+            :params (map dt/number ["1"])}
+           (generate-mysql "product | where: active = 1"))))
+
+  (testing "data_types.clj: datetime maps to the date branch, but MySQL's auto-cast for it is a bare `?` (unlike Postgres's ?::timestamp)"
+    (is (= {:query "SELECT `p_0`.`id` AS `__p_0__id`, `p_0`.* FROM `product` AS `p_0` WHERE `p_0`.`released` = ? LIMIT 250"
+            :params (list (dt/date "2025-01-01"))}
+           (generate-mysql "product | where: released = '2025-01-01'"))))
+
+  (testing "delete!/update! wrap the inner SELECT in a derived table (MySQL error 1093/1235) - identity for Postgres, already asserted above"
+    (is (= {:query "DELETE FROM `company` WHERE `company`.`id` = ? AND `id` IN ( SELECT * FROM ( SELECT `c_0`.`id` FROM `company` AS `c_0` WHERE `c_0`.`id` = ? ) AS `pine_sub` )"
+            :params (list (dt/number "1") (dt/number "1"))}
+           (generate-mysql "company | where: id = 1 | delete! .id")))
+
+    ;; The error-1235 case specifically: LIMIT inside an IN subquery. Must
+    ;; land inside the derived-table wrap (`... c_0\" LIMIT 5 ) AS`), not
+    ;; escape out to the DELETE's own IN clause.
+    (is (= {:query "DELETE FROM `company` WHERE `id` IN ( SELECT * FROM ( SELECT `c_0`.`id` FROM `company` AS `c_0` LIMIT 5 ) AS `pine_sub` )"
+            :params nil}
+           (generate-mysql "company | limit: 5 | delete! .id")))
+
+    (is (= {:queries [{:table "company"
+                       :query "UPDATE `company` SET `name` = ? WHERE `company`.`id` = ? AND `id` IN ( SELECT * FROM ( SELECT `c_0`.`id` FROM `company` AS `c_0` WHERE `c_0`.`id` = ? ) AS `pine_sub` )"
+                       :params (list (dt/string "John Doe") (dt/number "1") (dt/number "1"))}]}
+           (generate-mysql "company | where: id = 1 | update! name = 'John Doe'")))
+
+    ;; Same case as the jsonb auto-cast test above, but through the
+    ;; update path: both the CAST(? AS JSON) auto-cast and the derived-table
+    ;; wrap have to hold together in one query.
+    (is (= {:queries [{:table "customer"
+                       :query "UPDATE `customer` SET `data` = CAST(? AS JSON) WHERE `customer`.`id` = ? AND `id` IN ( SELECT * FROM ( SELECT `c_0`.`id` FROM `customer` AS `c_0` WHERE `c_0`.`id` = ? ) AS `pine_sub` )"
+                       :params (list (dt/jsonb "{\"test\": 1}") (dt/number "1") (dt/number "1"))}]}
+           (generate-mysql "customer | where: id = 1 | update! data = '{\"test\": 1}'")))
+
+    (is (= {:queries [{:table "p.membership"
+                       :query "UPDATE `p`.`membership` SET `role` = ? WHERE `membership`.`role` = ? AND (`group_code`, `member_code`) IN ( SELECT * FROM ( SELECT `m_0`.`group_code`, `m_0`.`member_code` FROM `p`.`membership` AS `m_0` WHERE `m_0`.`role` = ? ) AS `pine_sub` )"
+                       :params (list (dt/string "b") (dt/string "a") (dt/string "a"))}]}
+           (generate-mysql "p.membership | where: role = 'a' | update! role = 'b'")))))
+
+(deftest test-build-query-sqlite
+  ;; Routed through the real :test-sqlite -> get-dialect -> :sqlite path, as
+  ;; the MySQL test above is. The fixtures are Postgres-shaped (schema
+  ;; "public"); what is under test is the SQL SQLite is given.
+
+  (testing "qualify table: double quotes, as Postgres"
+    (is (= "\"x\"" (binding [eval/*dialect* :sqlite] (eval/q "x"))))
+    (is (= "\"x\".\"y\"" (binding [eval/*dialect* :sqlite] (eval/q "x" "y")))))
+
+  (testing "Select and FK join"
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" LIMIT 250"
+            :params nil}
+           (generate-sqlite "company")))
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"e_1\".\"id\" AS \"__e_1__id\", \"e_1\".* FROM \"company\" AS \"c_0\" JOIN \"employee\" AS \"e_1\" ON \"c_0\".\"id\" = \"e_1\".\"company_id\" LIMIT 250"
+            :params nil}
+           (generate-sqlite "company | employee"))))
+
+  (testing "Heuristic join between mismatched column types casts both sides via CAST(... AS TEXT), not ::text"
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"o_1\".\"id\" AS \"__o_1__id\", \"o_1\".* FROM \"customer\" AS \"c_0\" JOIN \"order\" AS \"o_1\" ON CAST(\"c_0\".\"id\" AS TEXT) = CAST(\"o_1\".\"customer_id\" AS TEXT) LIMIT 250"
+            :params nil}
+           (generate-sqlite "customer | order"))))
+
+  (testing "WHERE: ILIKE/NOT ILIKE map to LIKE/NOT LIKE - SQLite has no ILIKE"
+    (is (= "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"name\" LIKE ? LIMIT 250"
+           (:query (generate-sqlite "company | where: name ilike 'acme%'"))))
+    (is (= "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"name\" NOT LIKE ? LIMIT 250"
+           (:query (generate-sqlite "company | where: name not ilike 'acme%'")))))
+
+  (testing "WHERE: explicit ::cast renders as CAST(expr AS TYPE); uuid is TEXT, which SQLite stores it as"
+    (is (= "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE CAST(\"c_0\".\"name\" AS TEXT) = ? LIMIT 250"
+           (:query (generate-sqlite "company | where: name = 'Acme Inc.' ::text"))))
+    (is (= "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE CAST(\"c_0\".\"id\" AS TEXT) = ? LIMIT 250"
+           (:query (generate-sqlite "company | where: id = '123e4567-e89b-12d3-a456-426614174000' ::uuid")))))
+
+  (testing "WHERE: no automatic casts - uuid, date and jsonb values are all a bare `?`"
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"customer\" AS \"c_0\" WHERE \"c_0\".\"uuid_col\" = ? LIMIT 250"
+            :params (list (dt/uuid "1c50ee25-4938-4b77-b831-bc41a0ee3d0c"))}
+           (generate-sqlite "customer | where: uuid_col = '1c50ee25-4938-4b77-b831-bc41a0ee3d0c'")))
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"created_at\" = ? LIMIT 250"
+            :params (list (dt/date "2025-01-01"))}
+           (generate-sqlite "company | where: created_at = '2025-01-01'")))
+    (is (= {:query "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"customer\" AS \"c_0\" WHERE \"c_0\".\"data\" = ? LIMIT 250"
+            :params (list (dt/jsonb "{\"a\": 1}"))}
+           (generate-sqlite "customer | where: data = '{\"a\": 1}'"))))
+
+  (testing "Date bucketing: strftime, over the text SQLite stores a date as"
+    (is (= "SELECT strftime('%Y', \"e_0\".\"created_at\") AS \"year\", \"e_0\".\"id\" AS \"__e_0__id\" FROM \"employee\" AS \"e_0\" LIMIT 250"
+           (:query (generate-sqlite "employee | select: created_at => year"))))
+    (is (= "SELECT strftime('%Y-%m', \"e_0\".\"created_at\") AS \"month\", \"e_0\".\"id\" AS \"__e_0__id\" FROM \"employee\" AS \"e_0\" LIMIT 250"
+           (:query (generate-sqlite "employee | select: created_at => month"))))
+    (is (= "SELECT strftime('%Y-%m-%d', \"e_0\".\"created_at\") AS \"day\", \"e_0\".\"id\" AS \"__e_0__id\" FROM \"employee\" AS \"e_0\" LIMIT 250"
+           (:query (generate-sqlite "employee | select: created_at => day"))))
+    ;; week: back up to Monday - %w counts Sunday as 0, so (%w + 6) % 7 days.
+    (is (= "SELECT strftime('%Y-%m-%d', \"e_0\".\"created_at\", '-' || ((CAST(strftime('%w', \"e_0\".\"created_at\") AS INTEGER) + 6) % 7) || ' days') AS \"week\", \"e_0\".\"id\" AS \"__e_0__id\" FROM \"employee\" AS \"e_0\" LIMIT 250"
+           (:query (generate-sqlite "employee | select: created_at => week"))))
+    (is (= "SELECT strftime('%Y-%m-%d %H', \"e_0\".\"created_at\") AS \"hour\", \"e_0\".\"id\" AS \"__e_0__id\" FROM \"employee\" AS \"e_0\" LIMIT 250"
+           (:query (generate-sqlite "employee | select: created_at => hour"))))
+    (is (= "SELECT strftime('%Y-%m-%d %H:%M', \"e_0\".\"created_at\") AS \"minute\", \"e_0\".\"id\" AS \"__e_0__id\" FROM \"employee\" AS \"e_0\" LIMIT 250"
+           (:query (generate-sqlite "employee | select: created_at => minute")))))
+
+  (testing "Count and group"
+    (is (= {:query "WITH x AS ( SELECT \"c_0\".* FROM \"company\" AS \"c_0\" ) SELECT COUNT(*) FROM x"
+            :params nil}
+           (generate-sqlite "company | count:")))
+    (is (= {:query "WITH \"x_1\" AS ( SELECT \"e_0\".\"status\" AS \"status\" FROM \"email\" AS \"e_0\" ) SELECT \"x_1\".\"status\", COUNT(1) AS \"count\" FROM \"x_1\" GROUP BY \"x_1\".\"status\" LIMIT 10000"
+            :params nil}
+           (generate-sqlite "email | group: status with count"))))
+
+  (testing "Variable used as table generates a CTE"
+    (is (= {:query "WITH \"active_companies\" AS ( SELECT \"c_0\".* FROM \"company\" AS \"c_0\" ) SELECT \"active_companies\".* FROM \"active_companies\" AS \"active_companies\" LIMIT 250"
+            :params nil}
+           (generate-sqlite-expressions ["company |= active_companies"
+                                         "active_companies"]))))
+
+  (testing "delete!/update! need no derived-table wrap - SQLite allows the target table in its own subquery, and a LIMIT in it"
+    (is (= {:query "DELETE FROM \"company\" WHERE \"company\".\"id\" = ? AND \"id\" IN ( SELECT \"c_0\".\"id\" FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"id\" = ? )"
+            :params (list (dt/number "1") (dt/number "1"))}
+           (generate-sqlite "company | where: id = 1 | delete! .id")))
+    (is (= {:query "DELETE FROM \"company\" WHERE \"id\" IN ( SELECT \"c_0\".\"id\" FROM \"company\" AS \"c_0\" LIMIT 5 )"
+            :params nil}
+           (generate-sqlite "company | limit: 5 | delete! .id")))
+    (is (= {:queries [{:table "company"
+                       :query "UPDATE \"company\" SET \"name\" = ? WHERE \"company\".\"id\" = ? AND \"id\" IN ( SELECT \"c_0\".\"id\" FROM \"company\" AS \"c_0\" WHERE \"c_0\".\"id\" = ? )"
+                       :params (list (dt/string "John Doe") (dt/number "1") (dt/number "1"))}]}
+           (generate-sqlite "company | where: id = 1 | update! name = 'John Doe'"))))
+
+  (testing "a composite primary key: row values, which SQLite supports in IN"
+    (is (= {:queries [{:table "p.membership"
+                       :query "UPDATE \"p\".\"membership\" SET \"role\" = ? WHERE \"membership\".\"role\" = ? AND (\"group_code\", \"member_code\") IN ( SELECT \"m_0\".\"group_code\", \"m_0\".\"member_code\" FROM \"p\".\"membership\" AS \"m_0\" WHERE \"m_0\".\"role\" = ? )"
+                       :params (list (dt/string "b") (dt/string "a") (dt/string "a"))}]}
+           (generate-sqlite "p.membership | where: role = 'a' | update! role = 'b'"))))
+
+  (testing "JSON paths: json_extract with one path parameter, as for MySQL"
+    (is (= {:query "SELECT \"c_0\".\"name\", \"c_0\".\"id\" AS \"__c_0__id\" FROM \"customer\" AS \"c_0\" WHERE json_extract(\"c_0\".\"data\", ?) = json_extract(?, '$') LIMIT 250"
+            :params (list (dt/string "$.\"country\"") (assoc (dt/jsonb "\"SE\"") :json-type "string"))}
+           (generate-sqlite "customer | where: data.country = 'SE' | select: name")))
+    ;; < and > only compare values of the literal's own type; typeof names the
+    ;; SQL type json_extract produced.
+    (is (= "SELECT \"c_0\".\"id\" AS \"__c_0__id\", \"c_0\".* FROM \"customer\" AS \"c_0\" WHERE (typeof(json_extract(\"c_0\".\"data\", ?)) IN ('integer', 'real') AND json_extract(\"c_0\".\"data\", ?) > json_extract(?, '$')) LIMIT 250"
+           (:query (generate-sqlite "customer | where: data.seats > 10"))))
+    (is (= {:query (str "SELECT \"c_0\".\"name\", json_extract(\"c_0\".\"data\", ?) AS \"data.address.city\", json_extract(\"c_0\".\"data\", ?) AS \"data.tags[0]\", \"c_0\".\"id\" AS \"__c_0__id\", "
+                        "CASE json_type(\"c_0\".\"data\", ?) WHEN 'true' THEN 'boolean' WHEN 'false' THEN 'boolean' WHEN 'integer' THEN 'number' WHEN 'real' THEN 'number' WHEN 'text' THEN 'string' ELSE json_type(\"c_0\".\"data\", ?) END AS \"__c_0__data.address.city__type\", "
+                        "CASE json_type(\"c_0\".\"data\", ?) WHEN 'true' THEN 'boolean' WHEN 'false' THEN 'boolean' WHEN 'integer' THEN 'number' WHEN 'real' THEN 'number' WHEN 'text' THEN 'string' ELSE json_type(\"c_0\".\"data\", ?) END AS \"__c_0__data.tags[0]__type\" "
+                        "FROM \"customer\" AS \"c_0\" LIMIT 250")
+            :params (map dt/string ["$.\"address\".\"city\"" "$.\"tags\"[0]" "$.\"address\".\"city\"" "$.\"address\".\"city\"" "$.\"tags\"[0]" "$.\"tags\"[0]"])}
+           (generate-sqlite "customer | select: name, data.address.city, data.tags[0]")))))
+
+;; ---------------------------------------------------------------------------
+;; Composite foreign keys
+;; ---------------------------------------------------------------------------
+
+;; k.case_ref (case_id, search_id) -> k.case (id, search_id) in fixtures.clj.
+;; Matching on case_id alone happens to be right there (case.id is unique on
+;; its own); matching on search_id alone is not, and used to return rows
+;; belonging to other cases without saying so.
+
+(deftest test-named-result-keeps-the-last-tables-columns
+  ;; `s: created_at` names only company's column. employee, joined after it
+  ;; with no select of its own, still comes back whole (`"e_1".*`), so a
+  ;; later query can join on its company_id.
+  (testing "A select before a join leaves the joined table's columns in the result"
+    (is (clojure.string/includes?
+         (:query (generate-expressions ["company as c | s: created_at | employee .company_id |= a"
+                                        "company |= b"
+                                        "b | a .company_id"]))
+         "JOIN \"a\" AS \"a\" ON \"b\".\"id\" = \"a\".\"company_id\"")))
+
+  (testing "The same after a limit"
+    (is (clojure.string/includes?
+         (:query (generate-expressions ["company as c | s: created_at | employee .company_id | l: 1 |= a"
+                                        "company |= b"
+                                        "b | a .company_id"]))
+         "JOIN \"a\" AS \"a\" ON \"b\".\"id\" = \"a\".\"company_id\"")))
+
+  (testing "A select that ends the query returns only what it names"
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"`company_id` isn't a column of `b` or `a`"
+                          (generate-expressions ["company as c | employee .company_id | s: c.created_at |= a"
+                                                 "company |= b"
+                                                 "b | a .company_id"])))))
+
+(deftest test-composite-foreign-key
+  (testing "Every column of the key lands in the ON clause"
+    (is (clojure.string/includes?
+         (:query (generate "k.case | k.case_ref"))
+         "ON \"c_0\".\"id\" = \"cr_1\".\"case_id\" AND \"c_0\".\"search_id\" = \"cr_1\".\"search_id\"")))
+
+  (testing "Naming any column of the key joins on the whole key"
+    ;; Which of the two a user picked out of the hints used to decide whether
+    ;; the query was right. It no longer does - both spell the same join.
+    (is (= (:query (generate "k.case | k.case_ref .case_id"))
+           (:query (generate "k.case | k.case_ref .search_id"))
+           (:query (generate "k.case | k.case_ref")))))
+
+  (testing "Both pipe orders qualify each column with the alias that owns it"
+    ;; Child-first swaps which alias is `from`, and every pair has to swap
+    ;; with it. A mirrored splice that leaves a parent column on the child's
+    ;; alias is what this catches.
+    (is (clojure.string/includes?
+         (:query (generate "k.case_ref | k.case :parent"))
+         "ON \"cr_0\".\"case_id\" = \"c_1\".\"id\" AND \"cr_0\".\"search_id\" = \"c_1\".\"search_id\"")))
+
+  (testing "A write scopes its subquery with every column of the key"
+    (is (= {:query (str "DELETE FROM \"k\".\"case_ref\" WHERE \"case_ref\".\"case_id\" = ? AND \"id\" IN ( "
+                        "SELECT \"cr_1\".\"id\" FROM \"k\".\"case\" AS \"c_0\" "
+                        "JOIN \"k\".\"case_ref\" AS \"cr_1\" "
+                        "ON \"c_0\".\"id\" = \"cr_1\".\"case_id\" "
+                        "AND \"c_0\".\"search_id\" = \"cr_1\".\"search_id\" "
+                        "WHERE \"cr_1\".\"case_id\" = ? )")
+            :params (list (dt/number "1") (dt/number "1"))}
+           (generate "k.case | k.case_ref | where: case_id = 1 | delete! .id")))
+
+    (is (clojure.string/includes?
+         (:query (first (:queries (generate "k.case | k.case_ref | where: case_id = 1 | update! id = 1"))))
+         "ON \"c_0\".\"id\" = \"cr_1\".\"case_id\" AND \"c_0\".\"search_id\" = \"cr_1\".\"search_id\"")))
+
+  (testing "A variable exposing only some of the key's columns can't serve the join"
+    ;; x exposes case.id and nothing else, so the second pair has no column to
+    ;; translate to - the whole relation is unreachable through the CTE,
+    ;; exactly as one unexposed column already rejects a single-pair join.
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"No relation between `x` and `k.case_ref`"
+                          (generate-expressions ["k.case | s: id |= x" "x | k.case_ref"])))
+
+    ;; Exposing both does serve it.
+    (is (clojure.string/includes?
+         (:query (generate-expressions ["k.case | s: id, search_id |= x" "x | k.case_ref"]))
+         "ON \"x\".\"id\" = \"cr_1\".\"case_id\" AND \"x\".\"search_id\" = \"cr_1\".\"search_id\"")))
+
+  (testing "A delete can be scoped by every column of the key it was reached by"
+    ;; Deleting on one column of a composite key at a time over-matches, and
+    ;; the over-match is silent: `WHERE search_id IN (...)` alone also takes
+    ;; out case_ref rows belonging to a different case that happens to share
+    ;; a search id. Naming both columns matches them as a row.
+    (is (= {:query (str "DELETE FROM \"k\".\"case_ref\" WHERE (\"case_id\", \"search_id\") IN ( "
+                        "SELECT \"cr_1\".\"case_id\", \"cr_1\".\"search_id\" "
+                        "FROM \"k\".\"case\" AS \"c_0\" "
+                        "JOIN \"k\".\"case_ref\" AS \"cr_1\" "
+                        "ON \"c_0\".\"id\" = \"cr_1\".\"case_id\" "
+                        "AND \"c_0\".\"search_id\" = \"cr_1\".\"search_id\" "
+                        "WHERE \"c_0\".\"id\" = ? )")
+            :params (list (dt/number "1"))}
+           (generate "k.case | where: id = 1 | k.case_ref | delete! .case_id, .search_id")))
+
+    ;; MySQL wraps the inner SELECT in a derived table (error 1093/1235). The
+    ;; wrap has to pass both columns through for the row comparison to work.
+    (is (= {:query (str "DELETE FROM `k`.`case_ref` WHERE `case_ref`.`case_id` = ? AND (`case_id`, `search_id`) IN ( "
+                        "SELECT * FROM ( SELECT `cr_1`.`case_id`, `cr_1`.`search_id` "
+                        "FROM `k`.`case` AS `c_0` "
+                        "JOIN `k`.`case_ref` AS `cr_1` "
+                        "ON `c_0`.`id` = `cr_1`.`case_id` "
+                        "AND `c_0`.`search_id` = `cr_1`.`search_id` "
+                        "WHERE `cr_1`.`case_id` = ? ) AS `pine_sub` )")
+            :params (list (dt/number "1") (dt/number "1"))}
+           (generate-mysql "k.case | k.case_ref | where: case_id = 1 | delete! .case_id, .search_id"))))
+
+  (testing "A foreign key with no constraint name is still its own relation"
+    ;; w.department.lead_worker_id has no constraint name in the fixtures - a
+    ;; dialect that doesn't report one must keep indexing row by row rather
+    ;; than grouping a table's every key into one invented composite.
+    (is (clojure.string/includes?
+         (:query (generate "w.worker | w.department"))
+         "ON \"w_0\".\"id\" = \"d_1\".\"lead_worker_id\""))))
+
+;; ---------------------------------------------------------------------------
+;; Naming which relation you mean
+;; ---------------------------------------------------------------------------
+
+;; k.note_ref has two keys to k.note, sharing note_id (fixtures.clj):
+;;   note_ref_primary_fkey (note_id, search_id)
+;;   note_ref_related_fkey (note_id, other_id)
+;;
+;; The columns after a table IDENTIFY a relation - any subset that picks out
+;; one is enough, and the join uses every column of that key regardless of how
+;; many were named.
+
+(defn- join-clause [expression]
+  (second (re-find #"(JOIN .*?)(?: LIMIT|$)" (:query (generate expression)))))
+
+(def ^:private primary
+  (str "JOIN \"k\".\"note_ref\" AS \"nr_1\" "
+       "ON \"n_0\".\"id\" = \"nr_1\".\"note_id\" "
+       "AND \"n_0\".\"search_id\" = \"nr_1\".\"search_id\""))
+
+(def ^:private related
+  (str "JOIN \"k\".\"note_ref\" AS \"nr_1\" "
+       "ON \"n_0\".\"id\" = \"nr_1\".\"note_id\" "
+       "AND \"n_0\".\"other_id\" = \"nr_1\".\"other_id\""))
+
+(deftest test-naming-a-relation
+  (testing "Naming nothing picks the first relation indexed"
+    ;; Pine is terse: you are not made to be explicit, and the canvas is
+    ;; where you see which relation it settled on.
+    (is (= primary (join-clause "k.note | k.note_ref"))))
+
+  (testing "A column shared by two relations still picks the first indexed"
+    (is (= primary (join-clause "k.note | k.note_ref .note_id"))))
+
+  (testing "A second column is how you ask for the other relation"
+    ;; This is the join the language could not express at all before: every
+    ;; spelling reachable with one column resolved to the primary key.
+    (is (= primary (join-clause "k.note | k.note_ref .note_id, .search_id")))
+    (is (= related (join-clause "k.note | k.note_ref .note_id, .other_id"))))
+
+  (testing "Order of the named columns doesn't matter"
+    (is (= related (join-clause "k.note | k.note_ref .other_id, .note_id"))))
+
+  (testing "Columns belonging to different relations name none of them"
+    ;; search_id is only in the primary key and other_id only in the related
+    ;; one, so no single relation holds both. Unresolved, rather than
+    ;; silently picking one.
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"No relation between `k.note` and `k.note_ref`"
+                          (join-clause "k.note | k.note_ref .search_id, .other_id"))))
+
+  (testing "Explicit columns take more than one pair"
+    ;; The only way to write a multi-column join no foreign key describes -
+    ;; and, the other way round, to join on part of a key on purpose.
+    (is (= (str "JOIN \"k\".\"note_ref\" AS \"nr_1\" "
+                "ON \"n_0\".\"id\" = \"nr_1\".\"note_id\" "
+                "AND \"n_0\".\"other_id\" = \"nr_1\".\"search_id\"")
+           (join-clause "k.note | k.note_ref .note_id = .id, .search_id = .other_id")))
+
+    ;; One pair is unchanged, including the deliberately-partial case.
+    (is (= "JOIN \"k\".\"note_ref\" AS \"nr_1\" ON \"n_0\".\"id\" = \"nr_1\".\"note_id\""
+           (join-clause "k.note | k.note_ref .note_id = .id")))))
+
+(deftest test-review-fixes
+  (testing "a schema-qualified table is never a named result of the same name"
+    (let [{:keys [query]} (generate-expressions ["company | where: id = 2 |= company"
+                                                 "x.company as c | where: id = 1"])]
+      (is (re-find #"FROM \"x\".\"company\" AS \"c\"" query))
+      (is (not (re-find #"WITH" query))))
+    (let [{:keys [queries]} (generate-expressions ["company | where: id = 2 |= company"
+                                                   "x.company | where: id = 1 | update! id = 3"])]
+      (is (re-find #"^UPDATE \"x\".\"company\"" (:query (first queries))))))
+
+  (testing "a terminal group's CTE doesn't take a named result's name"
+    (let [{:keys [query]} (generate-expressions ["company | select: id |= x_1"
+                                                 "x_1 | group: id with count"])]
+      (is (re-find #"WITH \"x_1\" AS .*, \"x_1_2\" AS" query))
+      (is (re-find #"FROM \"x_1_2\"" query))))
+
+  (testing "a cast column takes a value of the cast's type"
+    (is (= (list (dt/string "1"))
+           (:params (generate "company | where: id = '1' ::text"))))
+    (is (= (list (dt/string "1") (dt/string "2"))
+           (:params (generate "company | where: id in ('1', 2) ::text")))))
+
+  (testing "true and false for a boolean column are booleans, so the driver binds a boolean"
+    (is (= (dt/pine-boolean false) (dt/convert-value-to-db-type (dt/pine-symbol "false") "bool")))
+    (is (= (dt/pine-boolean true) (dt/convert-value-to-db-type (dt/pine-symbol "TRUE") "boolean"))))
+
+  (testing "the shown SQL writes a number unquoted, as it is bound"
+    (is (re-find #"\"id\" = 2\.5 "
+                 (-> "company | where: id = 2.5" generate eval/formatted-query)))
+    (is (re-find #"\"id\" = 1 "
+                 (-> "company | where: id = 1" generate eval/formatted-query)))
+    (is (re-find #"\"id\" IN \(-1, 2\.5\)"
+                 (-> "company | where: id in (-1, 2.5)" generate eval/formatted-query)))))
+
+(deftest test-enum-columns
+  ;; attachment.type is a Postgres enum, public.attachment_type (see fixtures).
+  ;; Postgres has no `=` between an enum and the varchar a string is bound as:
+  ;; `operator does not exist: attachment_type = character varying`.
+  (let [enum-string #(assoc (dt/string %) :enum ["public" "attachment_type"])]
+    (testing "a string compared with an enum column is cast to the enum's type"
+      (is (= {:query "SELECT \"a_0\".\"id\" AS \"__a_0__id\", \"a_0\".* FROM \"attachment\" AS \"a_0\" WHERE \"a_0\".\"type\" = ?::\"public\".\"attachment_type\" LIMIT 250"
+              :params (list (enum-string "sharepoint"))}
+             (generate "attachment | where: type = 'sharepoint'")))
+      (is (= {:query "SELECT \"a_0\".\"id\" AS \"__a_0__id\", \"a_0\".* FROM \"attachment\" AS \"a_0\" WHERE \"a_0\".\"type\" != ?::\"public\".\"attachment_type\" LIMIT 250"
+              :params (list (enum-string "sharepoint"))}
+             (generate "attachment | where: type != 'sharepoint'"))))
+
+    (testing "each value of an `in` list is cast"
+      (is (= {:query "SELECT \"a_0\".\"id\" AS \"__a_0__id\", \"a_0\".* FROM \"attachment\" AS \"a_0\" WHERE \"a_0\".\"type\" IN (?::\"public\".\"attachment_type\", ?::\"public\".\"attachment_type\") LIMIT 250"
+              :params (list (enum-string "sharepoint") (enum-string "upload"))}
+             (generate "attachment | where: type in ('sharepoint', 'upload')")))
+      (is (= {:query "SELECT \"a_0\".\"id\" AS \"__a_0__id\", \"a_0\".* FROM \"attachment\" AS \"a_0\" WHERE \"a_0\".\"type\" NOT IN (?::\"public\".\"attachment_type\") LIMIT 250"
+              :params (list (enum-string "upload"))}
+             (generate "attachment | where: type not in ('upload')"))))
+
+    (testing "like compares the enum as text: Postgres has no LIKE for an enum"
+      (is (= {:query "SELECT \"a_0\".\"id\" AS \"__a_0__id\", \"a_0\".* FROM \"attachment\" AS \"a_0\" WHERE \"a_0\".\"type\"::text LIKE ? LIMIT 250"
+              :params (list (enum-string "share%"))}
+             (generate "attachment | where: type like 'share%'")))
+      (is (= {:query "SELECT \"a_0\".\"id\" AS \"__a_0__id\", \"a_0\".* FROM \"attachment\" AS \"a_0\" WHERE \"a_0\".\"type\"::text NOT ILIKE ? LIMIT 250"
+              :params (list (enum-string "SHARE%"))}
+             (generate "attachment | where: type not ilike 'SHARE%'"))))
+
+    (testing "an explicit cast still wins, and null needs no cast"
+      (is (= "SELECT \"a_0\".\"id\" AS \"__a_0__id\", \"a_0\".* FROM \"attachment\" AS \"a_0\" WHERE \"a_0\".\"type\"::text = ? LIMIT 250"
+             (:query (generate "attachment | where: type = 'sharepoint' ::text"))))
+      (is (= "SELECT \"a_0\".\"id\" AS \"__a_0__id\", \"a_0\".* FROM \"attachment\" AS \"a_0\" WHERE \"a_0\".\"type\" IS NULL LIMIT 250"
+             (:query (generate "attachment | where: type is null")))))
+
+    (testing "a string written to an enum column by update! is cast too"
+      (is (= {:queries [{:table "attachment"
+                         :query "UPDATE \"attachment\" SET \"type\" = ?::\"public\".\"attachment_type\" WHERE \"attachment\".\"type\" = ?::\"public\".\"attachment_type\" AND \"id\" IN ( SELECT \"a_0\".\"id\" FROM \"attachment\" AS \"a_0\" WHERE \"a_0\".\"type\" = ?::\"public\".\"attachment_type\" )"
+                         :params (list (enum-string "upload") (enum-string "sharepoint") (enum-string "sharepoint"))}]}
+             (generate "attachment | where: type = 'sharepoint' | update! type = 'upload'"))))
+
+    (testing "MySQL compares its ENUM columns with strings as they are"
+      (is (= "SELECT `a_0`.`id` AS `__a_0__id`, `a_0`.* FROM `attachment` AS `a_0` WHERE `a_0`.`type` = ? LIMIT 250"
+             (:query (generate-mysql "attachment | where: type = 'sharepoint'"))))
+      (is (= "SELECT `a_0`.`id` AS `__a_0__id`, `a_0`.* FROM `attachment` AS `a_0` WHERE `a_0`.`type` LIKE ? LIMIT 250"
+             (:query (generate-mysql "attachment | where: type like 'share%'")))))
+
+    (testing "SQLite has no enums"
+      (is (= "SELECT \"a_0\".\"id\" AS \"__a_0__id\", \"a_0\".* FROM \"attachment\" AS \"a_0\" WHERE \"a_0\".\"type\" IN (?, ?) LIMIT 250"
+             (:query (generate-sqlite "attachment | where: type in ('sharepoint', 'upload')")))))))
+
+(defn- row-cap [expression]
+  (-> expression parser/parse :result (ast/generate :test nil nil {} []) eval/row-cap))
+
+(deftest test-row-cap
+  (testing "Pine caps a result with no limit: of its own, and says by how much"
+    (is (= 250 (row-cap "company")))
+    (is (= 250 (row-cap "company | where: id = 1 | s: id")))
+    (is (= 250 (row-cap "employee | o: created_at desc | l: 1 per company_id")))
+    (is (= 10000 (row-cap "company | g: name with count"))))
+
+  (testing "No cap when the expression's own limit: decides, or no table rows come back"
+    (is (nil? (row-cap "company | l: 10")))
+    (is (nil? (row-cap "company | count:")))
+    (is (nil? (row-cap "company | describe:")))
+    (is (nil? (row-cap "company | references:")))
+    (is (nil? (row-cap "company | where: id = 1 | delete! .id")))))
+
+(defn- table-aliases [expression]
+  (-> expression parser/parse :result (ast/generate :test nil nil {} []) eval/table-aliases))
+
+(deftest test-table-aliases
+  (testing "each table the query reads, with its alias, in order"
+    (is (= [{:alias "c_0" :schema nil :table "company"}
+            {:alias "e_1" :schema nil :table "employee"}
+            {:alias "d_2" :schema nil :table "document"}]
+           (table-aliases "company | employee .company_id | document .employee_id")))
+    (is (= [{:alias "c" :schema "x" :table "company"}]
+           (table-aliases "x.company as c"))))
+
+  (testing "after a group: that something follows, the checkpoint by its own name"
+    (is (= [{:alias "c_0" :schema nil :table "company"}]
+           (table-aliases "company | group: id with count")))
+    (is (= [{:alias "result_1" :schema nil :table "result_1"}]
+           (table-aliases "company | group: id with count | where: count > 1")))))
+
+(deftest test-alias-errors-list-the-aliases
+  (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                        #"^`e_2` is neither an alias nor a column of `document`\. Aliases: c_0 = company, e_1 = employee, d_2 = document\.$"
+                        (generate "company | employee .company_id | document .employee_id | select: e_2.id")))
+  (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                        #"Aliases: c_0 = company, e_1 = employee\.$"
+                        (generate "company | employee .company_id | select: company.id"))))
+
+(deftest test-unresolved-join-errors
+  (testing "a join column that isn't a column of either table is named, with the closest ones"
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                          #"^No relation between `employee` and `company`\. `compnyId` isn't a column of `employee` or `company`\. Did you mean `company_id`\? "
+                          (generate "employee | company .compnyId :parent"))))
+
+  (testing "a join column that exists but holds no key between the tables says so"
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                          #"`id` is a column, but no key between the two tables uses it\."
+                          (generate "employee | company .id"))))
+
+  (testing "the joins that do exist are listed, with the Pine to type after the pipe"
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                          #"Joins that exist: `\| x\.company \.company_id :parent` \(foreign key\)\.$"
+                          (generate "employee | company .id")))
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                          #"Joins that exist: `\| z\.document \.employee_id` \(foreign key\), `\| z\.document \.created_by` \(foreign key\)\.$"
+                          (generate "employee | document .id"))))
+
+  (testing "tables nothing connects say how to name a column of each"
+    ;; `company .x = .y` after report is company.x = report.y: the column
+    ;; before `=` is the new table's (see ast_test's explicit columns).
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                          #"Nothing in the schema connects them\. Name a column of each table: `company \.x = \.y` joins `company`'s x to `report`'s y\.$"
+                          (generate "report | company")))))

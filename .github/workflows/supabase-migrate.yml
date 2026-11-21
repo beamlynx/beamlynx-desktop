@@ -20,7 +20,7 @@ name: Supabase migrations
 on:
   push:
     branches: [main]
-    paths: ['supabase/migrations/**']
+    paths: ['desktop/supabase/migrations/**']
   workflow_dispatch:
   workflow_call:
     secrets:
@@ -75,10 +75,12 @@ jobs:
       # Again here, because a PR can merge with the CI guard failing.
       - name: Migrations only add
         if: steps.secrets.outputs.ready == 'true'
+        working-directory: desktop
         run: node scripts/check-supabase-migrations.js
 
       - name: Apply new migrations
         if: steps.secrets.outputs.ready == 'true'
+        working-directory: desktop
         run: |
           npx -y supabase@2.120.0 link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
           npx -y supabase@2.120.0 db push --password "$SUPABASE_DB_PASSWORD" --yes

@@ -1,0 +1,462 @@
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import { Portal } from '@mui/material';
+import ReactFlow, {
+  Background,
+  BackgroundVariant,
+  ConnectionLineType,
+  Node,
+  NodeTypes,
+  PanOnScrollMode,
+  ReactFlowProvider,
+  useNodesState,
+  useReactFlow,
+} from 'reactflow';
+import 'reactflow/dist/style.css';
+import { observer } from 'mobx-react-lite';
+import { useStores } from '../../store/store-container';
+import { CanvasStore } from '../../store/canvas/canvas.store';
+import {
+  CanvasContainerNodeData,
+  CanvasLineageNodeData,
+  CanvasNode,
+  CanvasStartNodeData,
+  CanvasTableNodeData,
+  START_NODE_ID,
+} from '../../store/canvas/canvas.model';
+import { useCanvasKeybindings } from '../../hooks/useCanvasKeybindings';
+import { useRoomForBarList } from './useRoomForBarList';
+import { focusIntoView } from './focus-into-view';
+import { CanvasStoreContext } from './canvas-context';
+import TableNode from './nodes/TableNode';
+import StartNode from './nodes/StartNode';
+import NestedContainerNode from './nodes/NestedContainerNode';
+import TraceEdge from './edges/TraceEdge';
+import Picker from './Picker';
+import MultiSelectToolbar from './MultiSelectToolbar';
+import OperationBar, { operationBarSpace } from './OperationBar';
+import CanvasToolbar, { CanvasToolbarExtraAction } from './CanvasToolbar';
+import PineDoc from '../PineDoc';
+import CanvasVariables from './CanvasVariables';
+import LineageNode from './nodes/LineageNode';
+import CountLineNode from './nodes/CountLineNode';
+import NameLineNode from './nodes/NameLineNode';
+import LineageEdge from './edges/LineageEdge';
+
+const nodeTypes: NodeTypes = {
+  'table-node': TableNode,
+  'start-node': StartNode,
+  'nested-container': NestedContainerNode,
+  'lineage-node': LineageNode,
+  'count-line': CountLineNode,
+  'name-line': NameLineNode,
+};
+
+const edgeTypes = { trace: TraceEdge, lineage: LineageEdge };
+
+// How long a nested query's expand/collapse animation runs - the same as
+// the `canvas-entering`/`canvas-exiting` animations in styles/globals.css.
+const NESTED_MOTION_MS = 250;
+
+// 'info' (connecting/loading - nothing wrong, just not ready yet) reuses the
+// same neutral accent the rest of canvas mode already uses for "in
+// progress" (--canvas-trace, the trace/pin color), rather than the warning
+// red - a session waiting on its first build isn't an error, and badging it
+// like one read as broken/stuck rather than "give it a moment".
+const Banner = ({ children, variant = 'warn' }: { children: React.ReactNode; variant?: 'warn' | 'info' }) => (
+  <div
+    style={{
+      position: 'absolute',
+      top: 8,
+      right: 8,
+      zIndex: 15,
+      padding: '4px 10px',
+      borderRadius: 3,
+      fontSize: 'calc(13px * var(--text-scale, 1))',
+      fontFamily: 'var(--canvas-font)',
+      background: variant === 'warn' ? 'var(--canvas-warn)' : 'var(--canvas-trace)',
+      color: 'var(--canvas-accent-text)',
+    }}
+  >
+    {children}
+  </div>
+);
+
+const MIN_ZOOM = 0.5;
+// Between the strip and a new query's start node, as layout.ts leaves between the strip and the tables.
+const STRIP_GAP = 36;
+
+const Flow: React.FC<{
+  canvasStore: CanvasStore;
+  toolbarExtraAction?: CanvasToolbarExtraAction;
+  recenterRequestCount?: number;
+}> = observer(({ canvasStore, toolbarExtraAction, recenterRequestCount }) => {
+  const reactFlowInstance = useReactFlow();
+  const { canvasGraph } = canvasStore;
+  const graphArea = useRef<HTMLDivElement>(null);
+  const room = useRoomForBarList(canvasStore, reactFlowInstance, graphArea, MIN_ZOOM);
+
+  // An empty query shows the start node, whose click picks the first table.
+  // A query of a tab with several (a new one is only a comment) has the
+  // strip above it: the start node goes under the strip.
+  const derivedNodes: CanvasNode[] = useMemo(() => {
+    const strip = canvasGraph.nodes.filter(n => n.type === 'lineage-node');
+    if (strip.length < canvasGraph.nodes.length) return canvasGraph.nodes;
+    const below = strip.length
+      ? Math.max(...strip.map(n => n.position.y + (n.data as CanvasLineageNodeData).height)) + STRIP_GAP
+      : 0;
+    const left = strip.length ? Math.min(...strip.map(n => n.position.x)) : 0;
+    return [
+      ...canvasGraph.nodes,
+      { id: START_NODE_ID, type: 'start-node', position: { x: left, y: below }, data: {} } as CanvasNode,
+    ];
+  }, [canvasGraph.nodes]);
+
+  // ReactFlow's `nodes` prop is "controlled", but that doesn't mean it can
+  // be handed a fresh MobX-derived array directly on every render - without
+  // an `onNodesChange` to consume, ReactFlow has no path to apply its own
+  // drag/selection changes anywhere, so they got silently discarded the
+  // next time anything re-rendered (confirmed live: neither node dragging
+  // nor rubber-band selection persisted). `useNodesState` (the same hook
+  // the classic graph already uses in Graph.box.tsx) gives ReactFlow local,
+  // React-owned state it's allowed to mutate; the effect below is what
+  // keeps that state in sync with the MobX-derived graph whenever *that*
+  // actually changes, mirroring Graph.box.tsx's layoutedNodes -> setNodes
+  // pattern exactly.
+  const [nodes, setNodes, onNodesChange] = useNodesState<
+    CanvasTableNodeData | CanvasStartNodeData | CanvasContainerNodeData | CanvasLineageNodeData
+  >([]);
+
+  // Expanding or collapsing a nested query animates (styles/globals.css): a
+  // node that appears grows in (`canvas-entering`), and one that goes is
+  // kept for the length of the animation to shrink out (`canvas-exiting`),
+  // so a container visibly collapses into its node while another opens.
+  // Nodes that stay just move, by a CSS transition on their position.
+  const previous = useRef<CanvasNode[] | null>(null);
+  useEffect(() => {
+    const before = previous.current;
+    previous.current = derivedNodes;
+    // The first graph, and a switch between tabs or connections, just appear.
+    if (!before || before.length === 0) {
+      setNodes(derivedNodes);
+      return;
+    }
+    const now = new Set(derivedNodes.map(n => n.id));
+    const was = new Set(before.map(n => n.id));
+    const leaving = before
+      .filter(n => !now.has(n.id))
+      .map(n => ({
+        ...n,
+        className: 'canvas-exiting',
+        draggable: false,
+        selectable: false,
+        style: { ...n.style, pointerEvents: 'none' as const },
+      }));
+    setNodes([...leaving, ...derivedNodes.map(n => (was.has(n.id) ? n : { ...n, className: 'canvas-entering' }))]);
+    if (leaving.length === 0) return;
+    const t = setTimeout(() => setNodes(ns => ns.filter(n => n.className !== 'canvas-exiting')), NESTED_MOTION_MS);
+    return () => clearTimeout(t);
+  }, [derivedNodes, setNodes]);
+
+  // A new graph fits the view to it. A view the user moved to themselves
+  // stays, like a dragged table: the graph then only pans the table the
+  // keyboard is on (often the one just added) into it. Reset layout forgets
+  // the user's view and fits again.
+  const lastBlock = useRef(canvasStore.mainBlock);
+  useEffect(() => {
+    if (derivedNodes.length === 0) return;
+    const switched = lastBlock.current !== canvasStore.mainBlock;
+    lastBlock.current = canvasStore.mainBlock;
+    const t = setTimeout(() => {
+      // Under an open bar list, the graph keeps clear of it instead (useRoomForBarList).
+      if (room.listOpen) return room.makeRoom();
+      const view = canvasStore.userView;
+      if (!view) return reactFlowInstance.fitView({ duration: 200 });
+      // Back on a block, its own view comes back.
+      const from = switched ? view : reactFlowInstance.getViewport();
+      const next = focusIntoView(reactFlowInstance, canvasStore, graphArea, from) ?? (switched ? from : null);
+      if (next) reactFlowInstance.setViewport(next, { duration: 200 });
+    }, 50);
+    return () => clearTimeout(t);
+    // Switching to another query block refits too, whatever its node count.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [derivedNodes.length, canvasGraph.edges.length, recenterRequestCount, canvasStore.layoutResets, canvasStore.mainBlock]);
+
+  // The table the keyboard is on stays in view: moving between tables walks
+  // the view along with them, panning as little as it takes, at the same
+  // zoom (into-view.ts). Under an open bar list, useRoomForBarList decides.
+  const focused = canvasStore.focusedAlias;
+  useEffect(() => {
+    if (room.listOpen) return;
+    const next = focusIntoView(reactFlowInstance, canvasStore, graphArea);
+    if (next) reactFlowInstance.setViewport(next, { duration: 200 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focused]);
+
+  // A pan or zoom of the user's own (it has an event; the canvas's own moves
+  // don't) is kept, like a dragged table.
+  const onMoveEnd = useCallback(
+    (event: unknown, viewport: { x: number; y: number; zoom: number }) => {
+      if (event) canvasStore.setUserView(viewport);
+    },
+    [canvasStore],
+  );
+
+  const onNodeDragStop = (_e: React.MouseEvent, node: CanvasNode) => {
+    if (node.type === 'table-node' || node.type === 'lineage-node') {
+      canvasStore.setNodePosition(node.id, node.position);
+    }
+  };
+
+  // Left click selects (and, held over empty canvas, rubber-band selects) -
+  // right click is reserved for panning (see the ReactFlow props below,
+  // Miro-style: the primary button never fights between "move the view" and
+  // "select/interact with a node").
+  const onSelectionChange = useCallback(
+    ({ nodes }: { nodes: Node[] }) => {
+      // A checkpoint's node isn't a table: the multi-select toolbar's bulk
+      // actions don't apply to it.
+      canvasStore.setSelectedAliases(
+        nodes.filter(n => n.type === 'table-node' && !(n.data as CanvasTableNodeData).checkpoint).map(n => n.id),
+      );
+    },
+    [canvasStore],
+  );
+
+  // Right-click is a pan gesture now, not a context-menu trigger - suppress
+  // the browser's native menu so it doesn't pop up mid-drag/on release.
+  const suppressContextMenu = (e: React.MouseEvent) => e.preventDefault();
+
+  // Orthogonal "trace" routing (sharp right-angle bends, no curve) instead
+  // of ReactFlow's default bezier - the signature move of the schematic
+  // redesign: a database's tables and joins are discrete, structured
+  // things, not an organic flow, so the edges read that way too. The
+  // square pins on TableNode (RelationDots) are where these traces
+  // "solder" onto a node, the same visual idea carried through both.
+  // `unresolved` (relation === null - pipeline.md) gets its own distinct
+  // color from `uncertain` (a heuristic/synthetic-resolved join - a real,
+  // working join that just isn't backed by a real FK constraint) - these
+  // are different kinds of "not quite right" (one is broken, one is just a
+  // guess worth double-checking) and
+  // sharing a color would blur that. A plain, fully-resolved join is
+  // deliberately NOT drawn in the accent color, unlike those two - the
+  // accent is reserved for TraceEdge.tsx's own join-type icon now (see its
+  // comment), so an ordinary working join reads as quiet structure (same
+  // neutral tone as a node's own border) and only something worth a
+  // second look (broken, or a guess) or something clickable (the icon)
+  // draws the eye.
+  // Memoized on the graph's edges: the list is new only when the graph is.
+  const edges = useMemo(() => canvasGraph.edges.map(e => {
+    // The lineage strip's arrows: one block is made from another. A curve
+    // with an arrowhead, dashed in the nested-query colour, so it never
+    // reads as a join's square trace (see LineageEdge.tsx).
+    if (e.derivation) {
+      return { ...e, selectable: false, focusable: false, type: 'lineage', data: { use: e.derivation } };
+    }
+    // Edges are a derived, read-only rendering of the joins in ast.joins -
+    // there's no gesture that does anything with a ReactFlow-*selected*
+    // edge, so letting them be clickable/selectable at all was just a way to
+    // end up with an inert highlighted edge and no idea why. The join-type
+    // pill (TraceEdge.tsx's own EdgeLabelRenderer overlay) still opens a
+    // picker on click - that's handled entirely on the overlay's own
+    // onClick, bypassing ReactFlow's selection machinery altogether, so it
+    // doesn't need selectable/focusable to be true.
+    const base = {
+      ...e,
+      selectable: false,
+      focusable: false,
+      type: 'trace',
+      style: { stroke: 'var(--canvas-node-border)', strokeWidth: 1.5 },
+      // ReactFlow only forwards an edge's own recognized fields (id/source/
+      // target/style/markerEnd/...) to its custom edge component - the rest
+      // of `...e` above (joinType, joinTargetAlias, unresolved, uncertain)
+      // never reaches TraceEdge.tsx as props. `unresolved`/`uncertain` never
+      // needed to (only the style computed below does); joinType/
+      // joinTargetAlias do, via the one field ReactFlow does pass through.
+      data: { joinType: e.joinType, joinTargetAlias: e.joinTargetAlias },
+    };
+    if (e.unresolved) {
+      return {
+        ...base,
+        style: { ...base.style, stroke: 'var(--canvas-trace-unresolved)', strokeDasharray: '4 4' },
+      };
+    }
+    if (e.uncertain) {
+      return {
+        ...base,
+        style: { ...base.style, stroke: 'var(--canvas-trace-uncertain)', strokeDasharray: '4 4' },
+      };
+    }
+    return base;
+  }), [canvasGraph.edges]);
+
+  return (
+    <div
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        background: 'var(--canvas-bg)',
+      }}
+    >
+      {!canvasGraph.parsing && canvasStore.isConnecting && (
+        <Banner variant="info">Connecting…</Banner>
+      )}
+      {/* No banner while the database can't be reached: nothing is wrong
+          with the expression, and the band above the results says why, once
+          (ErrorMessage.tsx). */}
+      {!canvasGraph.parsing &&
+        !canvasStore.isConnecting &&
+        !canvasStore.session.databaseUnreachable && <Banner>Not parsing - showing last valid graph</Banner>}
+      {/* What this query is for, in the author's own words - see PineDoc.tsx.
+          Outside the graph wrapper below on purpose, so it stays legible at
+          full opacity even while the graph is dimmed for a parse failure:
+          that is exactly when knowing what the query was meant to do is
+          worth most. */}
+      <PineDoc canvasStore={canvasStore} />
+      <CanvasVariables canvasStore={canvasStore} />
+      <div
+        ref={graphArea}
+        style={{
+          width: '100%',
+          // The graph ends above the operation bar, so the bar never covers a node.
+          height: canvasStore.operationAnchor ? `calc(100% - ${operationBarSpace}px)` : '100%',
+          opacity: canvasGraph.parsing ? 1 : 0.4,
+          pointerEvents: canvasGraph.parsing ? 'auto' : 'none',
+        }}
+      >
+        <ReactFlow
+          className="canvas-flow"
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          onNodesChange={onNodesChange}
+          onNodeDragStop={onNodeDragStop}
+          onMoveStart={room.onMoveStart}
+          onMoveEnd={onMoveEnd}
+          onSelectionChange={onSelectionChange}
+          onPaneContextMenu={suppressContextMenu}
+          onNodeContextMenu={suppressContextMenu}
+          connectionLineType={ConnectionLineType.Bezier}
+          nodesConnectable={false}
+          elementsSelectable={true}
+          deleteKeyCode={null}
+          // The new keyboard-focus/navigation layer (useCanvasKeybindings)
+          // replaces reactflow's own native keyboard handling rather than
+          // living alongside it - the same call this app already made for
+          // the classic graph view (see session.ts's tabCycleRequestCount
+          // comment: "React Flow makes every node/edge natively tabbable,
+          // which is what this replaces"). Confirmed in reactflow's own
+          // source (@reactflow/core's arrowKeyDiffs handling): with
+          // `nodesFocusable` at its true default, an arrow key fired at a
+          // node that's both draggable and (box-)selected nudges its x/y -
+          // a real collision with j/k/arrow-driven focus navigation, not a
+          // hypothetical one. `disableKeyboardA11y` turns off the matching
+          // pane-level arrow-key handling for the same reason.
+          nodesFocusable={false}
+          disableKeyboardA11y
+          minZoom={MIN_ZOOM}
+          maxZoom={1.2}
+          // Two-finger trackpad scroll pans (Miro/Figma convention) instead
+          // of zooming - without `panOnScroll`, ReactFlow's raw wheel handler
+          // treats every wheel event, trackpad scroll included, as a zoom.
+          // `zoomOnPinch` (left at its default `true`) still zooms on an
+          // actual pinch gesture, which the OS reports as a wheel event with
+          // `ctrlKey: true`, distinct from plain scroll.
+          panOnScroll
+          panOnScrollMode={PanOnScrollMode.Free}
+          zoomOnScroll={false}
+          // Miro-style split: right button drags the canvas; left button is
+          // free for clicking/dragging a node, or rubber-band-selecting
+          // several by dragging over empty space - no modifier needed for
+          // either, matching Miro's own convention rather than requiring
+          // Shift.
+          // `selectionOnDrag` was previously suspected of conflicting with
+          // node dragging (nodes stopped being draggable at all with it on)
+          // and was left out in an earlier pass, falling back to ReactFlow's
+          // Shift+drag default for multi-select instead. That diagnosis was
+          // wrong - the actual cause was `onNodesChange` not being wired at
+          // all (see the comment on `useNodesState` above): without it,
+          // ReactFlow had no path to apply *any* of its own node changes,
+          // drag or selection alike, so nothing worked regardless of this
+          // prop. Confirmed live once onNodesChange was fixed: dragging and
+          // plain-left-drag rubber-band selection both work fine together.
+          panOnDrag={[2]}
+          selectionOnDrag
+          // Handles the initial fit on mount - ReactFlow does this itself
+          // once node dimensions are actually measured, which is more
+          // reliable than the manual setTimeout-based fitView below for the
+          // "just switched back to this view, nothing's been measured yet"
+          // case (confirmed: switching away and back left the graph pinned
+          // at the top-left instead of centered - a fresh mount, with a
+          // graph already restored from the session's expression, is
+          // exactly the case the effect's fixed 50ms delay was too early
+          // for). The effect still does the work for later node/edge count
+          // changes, where dimensions are already known.
+          fitView
+          proOptions={{ hideAttribution: true }}
+        >
+          {/* The blueprint grid - a faint dot lattice, the backdrop every
+              schematic is drawn on. Dots (not lines/cross) read as graph
+              paper rather than a spreadsheet or literal ruled page. */}
+          <Background
+            variant={BackgroundVariant.Dots}
+            gap={16}
+            size={1}
+            color="var(--canvas-grid-dot)"
+          />
+        </ReactFlow>
+      </div>
+      {/* In a portal on <body>: the canvas pane clips what overflows it, so
+          a popover opened near its edge was cut off. Context still reaches
+          it through the portal. */}
+      <Portal>
+        <Picker />
+      </Portal>
+      <CanvasToolbar canvasStore={canvasStore} extraAction={toolbarExtraAction} />
+      <OperationBar canvasStore={canvasStore} />
+      <MultiSelectToolbar canvasStore={canvasStore} />
+    </div>
+  );
+});
+
+interface CanvasProps {
+  sessionId: string;
+  /** An extra icon appended to the top-left toolbar, past undo/redo -
+   * currently only ever NewLayoutView's orientation toggle. Optional since
+   * Canvas itself doesn't otherwise know anything about the layout using
+   * it. */
+  toolbarExtraAction?: CanvasToolbarExtraAction;
+  /**
+   * Bump this (any change, not the value itself, is what matters - same
+   * convention as session.tabCycleRequestCount) to force a re-fit/re-center
+   * of the graph, e.g. after New Layout's orientation toggle resizes the
+   * canvas pane's container. ReactFlow doesn't re-center on its own when its
+   * container's size changes - only on node/edge count changes (see the
+   * effect below) - so a pane resize otherwise leaves the graph off-center
+   * or partly cut off until the next edit.
+   */
+  recenterRequestCount?: number;
+}
+
+const Canvas: React.FC<CanvasProps> = observer(({ sessionId, toolbarExtraAction, recenterRequestCount }) => {
+  const { global } = useStores();
+  const session = global.getSession(sessionId);
+  const canvasStore = useMemo(() => session.getCanvasStore(), [session]);
+  useEffect(() => canvasStore.start(), [canvasStore]);
+  useCanvasKeybindings({ canvasStore, session, global });
+
+  return (
+    <CanvasStoreContext.Provider value={canvasStore}>
+      <ReactFlowProvider>
+        <Flow
+          canvasStore={canvasStore}
+          toolbarExtraAction={toolbarExtraAction}
+          recenterRequestCount={recenterRequestCount}
+        />
+      </ReactFlowProvider>
+    </CanvasStoreContext.Provider>
+  );
+});
+
+export default Canvas;

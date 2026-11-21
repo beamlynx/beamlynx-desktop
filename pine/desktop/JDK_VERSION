@@ -1,0 +1,10 @@
+# Pinned JDK major version for the desktop jpackage/jlink runtime image.
+#
+# 21 (LTS). Re-verified against a real Temurin 21 build (not just the JDK
+# 26 that happened to be on the original dev machine) -- module list came
+# out identical, and the full M1 live-query gate was re-run against a
+# jlink/jpackage build made with this exact JDK. jdeps/jpackage output is
+# JDK-version sensitive in general, so this file and modules.list must
+# always be regenerated/re-verified together, against the same JDK,
+# whenever either changes.
+21

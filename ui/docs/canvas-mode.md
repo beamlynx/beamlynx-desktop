@@ -1,0 +1,724 @@
+# Canvas Mode
+
+A graph editor for building a Pine expression by directly manipulating table
+nodes instead of typing pipe syntax. It is the only graph editor there is.
+
+Historical note, because the rest of this page keeps comparing against it:
+there used to be a second one, a read-only diagram called the classic graph
+(`components/Graph.box.tsx`), reachable by a toggle in a second page layout
+called Legacy Layout. Both are gone. Where this page says "the classic graph"
+it is explaining why canvas mode works the way it does, not describing
+something you can still switch to.
+
+## Why
+
+The classic graph (`Graph.box.tsx`, `store/graph.util.ts`) is a *read-only*
+visualization of whatever's already been typed into the input, plus a set of
+suggested/candidate nodes you tab through — it shows you the query, it doesn't
+let you build one by clicking. Canvas mode inverts that: every click, pick, or
+chip-remove on a node is itself the edit. There is no separate "apply" step and
+no parallel in-memory graph model to keep in sync with the text — the graph is
+always a direct rendering of the current Pine expression's AST, and every
+gesture works by splicing that expression's text and letting the normal
+build/AST pipeline re-derive the graph from the result.
+
+This buys correctness for free: canvas mode can never drift from what the
+expression actually says, because it has no state of its own to drift. The
+cost is that every gesture is asynchronous (edit text → build → re-render),
+never a synchronous local mutation.
+
+## Enabling it
+
+Nothing to enable. `components/NewLayoutView.tsx` renders `<Canvas>`
+unconditionally, and there is no toggle, preference or command for it — the
+`canvasModeEnabled` flag and its `InteractiveViewToggle` went with the classic
+graph.
+
+## Auto-run
+
+Whenever a canvas gesture commits a new expression (`CanvasStore.applyExpression`/
+`undo`/`redo`), the session automatically re-runs the query 150ms later
+(`Session.notifyCanvasCommit`/`autoRunTrigger`, `store/session.ts`) — this is
+safe specifically because every canvas commit is already backend-confirmed
+valid via `probeBuild` before it's applied (see "How it works" below), unlike
+hand-typed Pine text, which can be mid-typing/invalid. The 150ms debounce
+exists only to collapse a burst of rapid picks (e.g. a still-open
+multi-select picker) into one run — the query itself typically runs in a
+handful of milliseconds once fired, confirmed live by profiling the network
+calls around a single canvas commit. Toggle: `GlobalStore.autoRunEnabled`
+(`toggle-auto-run` command / Settings / the bolt icon in the canvas
+toolbar — `CanvasToolbar.tsx`, lit when on), default on. Gated on
+`session.inputMode === 'pine'` — auto-run stays off while a session is
+mid-hand-edit of raw SQL, so it never runs stale SQL left over from before a
+mode switch.
+
+## The Pine/SQL panel
+
+New Layout can show an editable Pine or SQL text panel alongside the canvas —
+reuses `Input.tsx` unmodified (same PINE/SQL toggle and editors it's always
+had), so hand-editing and point-and-click editing stay in sync automatically
+through the same `session.expression`/`session.ast`.
+
+There is exactly one panel, not two — "Pine panel" and "SQL panel" are two
+different *modes* of opening it (`GlobalStore.togglePinePanel`/
+`toggleSqlPanel`, `store/global.store.ts`), so only one can ever be visible at
+a time by construction, not by an extra mutual-exclusion check. Toggling the
+mode that's already open closes the panel; toggling the other mode while the
+panel is open just switches modes without closing it. Reachable from the
+canvas toolbar's PINE/SQL buttons (`CanvasToolbar.tsx`, lit when that mode is
+the one currently open). From the keyboard, `:` on the canvas gives the Pine
+panel the keyboard, and the command palette has "Focus on Pine Panel" and
+"Focus on SQL Panel"; these open the panel but never close it.
+`Ctrl`/`Cmd`+`.` toggles Zen mode (the results pane hides). The panel and its divider (drag to resize, persisted per
+`STORAGE_KEYS.NEW_LAYOUT_PANEL_WIDTH`/`NEW_LAYOUT_PANEL_HEIGHT`) live in
+`components/NewLayoutView.tsx`'s `LeftPane`, not under `components/canvas/` —
+canvas mode itself has no notion of this panel; it only reads/writes
+`session.expression` the same as any other gesture.
+
+Hiding the panel while a session's `inputMode` is `'sql'` force-switches it
+back to `'pine'` (`GlobalStore.hideNewLayoutPanel`) — otherwise that session's
+auto-run would stay silently off (see Auto-run above) with no visible editor
+left on screen to explain why.
+
+**The canvas keeps working while the panel is in SQL mode.** `session.ts`'s
+build reaction (the one thing that populates `session.ast`, which canvas
+mode's whole graph is derived from — see "How it works" below) used to skip
+outright whenever `inputMode === 'sql'`, from before canvas mode existed: SQL
+mode meant "no Pine editor on screen, nothing to build for." Canvas mode
+breaks that assumption — it renders a graph regardless of which text panel is
+open next to it, and needs a fresh `ast` after every gesture just the same.
+The guard now also checks `GlobalStore.canvasActive`, so it only actually
+skips when there is no canvas to keep in sync. Without this, a canvas edit made while the SQL panel was open
+silently went nowhere — the graph and the SQL panel's own text both stayed on
+whatever they showed before the edit — and a session restored with
+`inputMode` already `'sql'` from a previous visit got stuck on the
+"Connecting…" banner forever, since nothing else was left to trigger a build.
+
+## How the canvas is used
+
+There are two ways to work on the canvas, and each has its own place where
+things open. Check every change to the canvas against these rules.
+
+- **Every action is in the bar.** Tables have no buttons of their own. A
+  key runs the bar's action, and its list opens from the bar at the bottom.
+  Where the mouse happens to rest doesn't matter. While the Pine panel has
+  the keyboard, the bar fades out; its space stays, so the graph doesn't
+  move.
+- **Selecting a table changes what the bar offers.** Select a table with
+  the keys (j/k) or a click, and the bar shows the actions that fit it.
+  When the bar is open, it slides to its new size, that table's actions
+  come in again, and one the last table didn't have glows for a moment, so
+  the change is seen.
+- **The bar works on what is selected.** With a table selected, select,
+  where and order list its columns first and go into its own part of the
+  query, even above a group's or limit's line (before the line). With a
+  group's or limit's line selected, they list what that line returns and
+  go after it. With nothing chosen, the selection is on the query's last
+  step: the line it ends in, or else its newest table
+  (`CanvasStore.focusedAlias`, `operationAnchor`).
+- **A table above a line takes no group, limit, unnest or join.** Those end
+  a stage, which the line already does. The bar leaves group, limit and
+  unnest out, and its join starts from where the query goes on instead
+  (the newest table below the last line, or the result itself when nothing
+  follows it). Count, name, new query and path are for the whole query
+  whatever is selected.
+- **The bar shows what you are doing.** A key for an action in the bar's
+  folded part (`o`, `g`, `l`, `p`) shows only that action's button in the
+  bar for as long as its list is open, not the whole folded part. When the
+  list closes, the bar folds again (`CanvasStore.barOnly`).
+- **A list never covers the graph.** While a list from the bar is open, the
+  graph moves up above it, and zooms out if it doesn't fit there
+  (`room-for-list.ts`, `useRoomForBarList.ts`). When the list closes, the
+  view goes back. The view is the user's: if they pan or zoom while the list
+  is open, theirs stays.
+- **The table the keyboard is on is always in view.** Moving between tables
+  with the keys pans the view along with them, by as little as it takes,
+  and never changes the zoom (`into-view.ts`).
+- **A view the user moved to stays, like a dragged table.** A new table
+  fits the view to the graph only until the user pans or zooms. After that,
+  a new table is panned into their view instead. Reset layout forgets it
+  (`CanvasStore.views`).
+
+## Interaction model
+
+- **Pick a first table** — an empty session shows a single dashed "+ pick a
+  table" start node (`nodes/StartNode.tsx`); clicking it opens the table
+  picker and overwrites the session's expression wholesale.
+- **Join** lists candidate tables split into "has" (other tables that
+  reference this one) and "belongs to" (this table references another),
+  mirroring the classic graph's join-direction convention.
+- **Select / where / order / group** pickers list column hints; `select` and
+  `order` toggle membership and stay open for repeated picks; `where` walks
+  into a second step (column → operator/value) before committing; `group`
+  toggles this table's contribution to the pipeline's one shared `group:`
+  segment.
+- **Delete** — an "×" badge on a node. Any table can be removed, not just the
+  last one (see Constraints for what happens to joins that depended on it).
+- **Multi-select** — box/shift-selecting 2+ nodes shows a floating toolbar
+  (`MultiSelectToolbar.tsx`) above the canvas. Only `limit` (a pipeline-wide
+  `limit: N`, unrelated to which nodes are selected) is wired; `assign` is
+  shown but inert pending a decision on `|=` semantics for canvas mode.
+- **Banners** — a small corner banner reports non-nominal states: "Canvas
+  mode only supports a single expression block" (multi-block expressions
+  aren't modeled at all), "Connecting…" (no build has completed yet for this
+  session — e.g. right after a restore, before the backend responds), or "Not
+  parsing - showing last valid graph" (a genuine syntax error; the last good
+  graph stays on screen, dimmed).
+
+## What sits in which corner
+
+Every persistent thing on the canvas is an absolutely-positioned overlay over
+the ReactFlow surface, at the same 8px gutter. There are only so many corners,
+so this is the map to check before adding another one — the alternative is
+grepping for `position: 'absolute'` and hoping.
+
+```
+ ┌─ toolbar ──────────┬─ multi-select ─┬──────── banners ─────────┐
+ │ ⟲ ⟳ ⚡ ▤ PINE SQL   │  (2+ selected) │ "Not parsing…"           │
+ │ ┌────────────────┐ │                │ "Connecting…"            │
+ │ │ the comment    │ │                │ "…single expression      │
+ │ └────────────────┘ │                │    block"                │
+ │                    │                │                          │
+ │                    │                │                          │
+ ├─ mode indicator ───┴────────────────┴───────────── free ───────┤
+ │ ■ NORMAL · s w o g p + i x                                     │
+ └────────────────────────────────────────────────────────────────┘
+```
+
+| Corner | Owner | Always there? |
+| --- | --- | --- |
+| Top left | `CanvasToolbar`, and the comment directly under it (`PineDoc.tsx`) | Toolbar always; comment when there is one |
+| Top centre | `MultiSelectToolbar` | Only with 2+ nodes selected |
+| Top right | The banners in `Canvas.tsx` | Only in a non-nominal state |
+| Bottom left | `CanvasModeIndicator` | Always |
+| Bottom right | — | Free |
+
+The comment is top-left, under the toolbar, for three reasons. It is the
+premise for everything else on the canvas, so it belongs where reading starts.
+It shares a column with the control that writes it (the toolbar's own comment
+button). And the only other free-at-the-top corner is the banners', which
+fill exactly when the graph is degraded — the moment the comment is worth most,
+so a persistent block there would either collide or have to dodge.
+
+Overlays share the toolbar's `left: 8` and the same 8px gutter between them.
+Sharing that edge is what makes the toolbar and the comment read as one column
+rather than as a block that happened to land near a toolbar; an earlier version
+was 3px off and read as exactly that.
+
+## Keybindings
+
+Canvas mode is built around a vim-style modal keyboard layer
+(`hooks/useCanvasKeybindings.ts`) so a whole query can be built without
+touching the mouse — click once to focus a node, then everything after that
+is a bare letter. It's a single `keydown` listener, separate from the app's
+shared modifier-combo registry (`utils/keybindings.ts`'s `KEYBINDINGS`, used
+for things like `Ctrl`+`K`/`Ctrl`+`.`): these are single, bare letters
+(`s`, `w`, `i`, …), which only make sense to interpret while canvas mode is
+the active view and nothing else on the page wants keystrokes — folding that
+into the shared registry would mean threading canvas-only state through a
+registry every other consumer has nothing to do with.
+
+**Two modes**, exactly like vim's:
+- **Normal mode** — the default. Letters are commands (open a picker, delete
+  a node, undo). This is the only mode any of the shortcuts below fire in.
+- **Insert mode** — a picker is open. Every keystroke goes to *it*
+  (`Picker.tsx`'s own listeners), not the canvas — see "Inside a picker"
+  below. `canvasStore.mode` is derived straight from `picker.open`, so there's
+  no separate flag to fall out of sync.
+
+The operation bar at the bottom centre of the canvas (`OperationBar.tsx`)
+shows the keys: while the canvas has the keyboard, each button's key
+letter is bold. Its `›` (key `>`, or `+`) grows the bar to show the rest,
+each with its key: the query's actions past a divider, then the selected
+table's under its name. Where they don't fit on one row, they open
+upward, in rows above the bar. `‹`, `<` or Escape closes them.
+
+**Moving focus** (normal mode only):
+
+| Key | Action |
+| --- | --- |
+| `j` / `↓` | Focus the next node in pipeline order |
+| `k` / `↑` | Focus the previous node |
+| `Shift`+`J` / `Shift`+`K` | Walk every stop one at a time: a node, then its join, select, where, order and group chips |
+| `Shift`+`←` / `Shift`+`→` | On a select or group chip: move it one place in its row, and the result's columns with it (`CanvasStore.moveFocusedChip`). Dragging a chip onto another does the same, and on a group's line it reorders the keys or the aggregates |
+
+Focus order is the pipeline's own sequence, top to bottom
+(`CanvasStore.orderedFocusTargets`): each stage's tables, then the node of the
+checkpoint that seals it, then the next stage's tables. A container is not a
+stop, and a node hidden in a collapsed one isn't either. There's no second navigation axis (no left/right), since the
+pipeline is a single strict sequence, not a 2D graph to roam.
+
+**Acting on the focused node** (normal mode only):
+
+| Key | Action |
+| --- | --- |
+| `i` or `\|` | The bar's join: a new table onto the focused one, or, above a line, onto where the query goes on below it. The list opens from the bar (`\|` doubles as `i` since a join is "pipe a new table on" — Pine's own mental model). On the empty-canvas start node, opens the first-table picker instead. |
+| `s` | Open the select-columns picker |
+| `w` | Open the where-condition picker |
+| `o` | Open the order-by picker |
+| `m` | Name the query's result (`\|= name`), so a later query can read it |
+| `q` | Start a new query below the others, on a blank canvas |
+| `g` | Open the group-by picker (not offered on a checkpoint node — grouping an already-grouped result is a different question, not implemented) |
+| `e` | On a nested query's node (a checkpoint, or a table using a named block): expand or collapse its container |
+| `x` | Delete the focused node — a table if `removable`, or, on a checkpoint's node, the checkpoint (as the × on its node does; the tables it sealed stay). On the count line it removes the count, and on the name line, the last stop, the name |
+| `c` | Count the query's rows: ends it with `count:`, drawn as a group's line with no keys, `all rows with # count` (`CountLineNode`). Adding a key or an aggregate there, or picking another function, writes it out as that group (`CanvasStore.countToGroup`) |
+| `u` | Undo the last canvas gesture |
+| `n` | Write (or edit) the note: the comment at the top of the expression — see "The comment" below |
+| `Shift`+`U` | Redo |
+| `Ctrl`/`Cmd`+`Z` | Undo (same action as `u` — the combo most people already reach for) |
+| `Ctrl`/`Cmd`+`Shift`+`Z`, `Ctrl`+`Y` | Redo (same action as `Shift`+`U`) |
+
+`n`, `u` and `Shift`+`U` are the canvas-scoped ones: they need no focused
+node and work on the empty-canvas start node too. Each has a button in the
+toolbar at the top of the canvas, whose tooltip names its key.
+
+A checkpoint's node routes `s`/`w`/`o`/`p`/`i` through
+`openCheckpointPicker` instead of the per-table picker methods, but the same
+letters apply. `x` is unavailable on a table with
+`removable: false` (the tables inside a sealed checkpoint — see Constraints)
+and simply does nothing if pressed.
+
+For a keyboard-opened picker, there's no click position to anchor its dropdown
+to — `useCanvasKeybindings.ts`'s `anchorFor` reads the focused node's own
+rendered `getBoundingClientRect()` instead, so the picker still opens right
+next to the node whether it was triggered by mouse or keyboard.
+
+**Inside a picker** (insert mode) — `Picker.tsx` takes over completely:
+
+| Key | Action |
+| --- | --- |
+| `↓` or `Tab` | Next item in the (filtered, grouped) list |
+| `↑` or `Shift`+`Tab` | Previous item |
+| `Enter` or `,` | Select the highlighted item — `,` lets a comma-separated list of columns (select/order/group) go in without a keypress between each one |
+| `Escape` | Close the picker, discarding anything not yet committed, and return to normal mode |
+| any other character | Filters the list as you type |
+
+**Why keystrokes don't leak.** Every keydown first checks
+`session.textInputFocused` (a flag the Pine/SQL CodeMirror editors and the
+picker's own filter input maintain on focus/blur) and whether the event
+target is inside an `input`/`textarea`/`contenteditable` element — so typing
+a column name into a filter box, or hand-editing Pine/SQL in the panel, never
+triggers a single-letter canvas action by accident. The whole layer is also a
+no-op unless `global.canvasActive` is true and `canvasStore.mode === 'normal'` — a picker being open is
+enough on its own to suspend every letter shortcut above until it closes.
+
+## How it works
+
+There is nothing keeping the graph and the expression in sync, because there
+is nothing to sync: the expression is the only state, and the graph is derived
+from it. Every gesture goes the long way round rather than touching a node.
+
+```
+                  ┌───────────────────────────────┐
+        ┌────────▶│      session.expression       │─────────┐
+        │         │  /* why */ company | employee │         │
+        │         └───────────────────────────────┘         │
+        │                                                   │ debounced
+ splice │                                                   ▼  build
+   text │                                        ┌──────────────────────┐
+        │                                        │  pine-lang /build    │
+        │                                        │  → ast (ranges, doc) │
+        │                                        └──────────────────────┘
+        │                                                   │
+ ┌──────┴────────────┐                          ┌───────────▼──────────┐
+ │  pine-actions.ts  │                          │  buildCanvasGraph()  │
+ │  segments → text  │                          │  ast → nodes + edges │
+ └───────────────────┘                          └──────────────────────┘
+        ▲                                                   │
+        │ gesture: pick a column, drop a                    │ render
+        │ node, type a comment                              ▼
+        └───────────────────────  the canvas  ◀─────────────┘
+```
+
+The graph cannot drift from the query, because it is not a second model of
+the query. That is the whole trade: every gesture is asynchronous (edit text →
+build → re-render), never a synchronous local mutation.
+
+**Text splice, not graph mutation.** Canvas mode never parses Pine itself and
+never edits `ast` or any node/edge array directly. Every gesture:
+
+1. Re-slices the current expression into `Segment`s using the server's own
+   `ast.ranges` offsets (`store/canvas/pine-text.ts`'s `segmentsFromAst`) —
+   canvas mode trusts pine-lang's own parse for segment *boundaries*, and only
+   redoes attribution of which table alias "owns" each segment
+   (`assignOwners`), since `ranges[].alias` itself becomes unreliable once
+   `from:` is in play.
+2. Computes a new segment list (insert/replace/remove) via a pure function in
+   `pine-actions.ts`.
+3. Joins the segments back into one string (`toText`) and assigns it to
+   `session.expression`.
+4. Lets the session's own existing debounced build pipeline (`store/session.ts`)
+   fetch a fresh AST for that string.
+5. Re-derives the whole graph from that AST (`store/canvas/layout.ts`'s
+   `buildCanvasGraph`), via a MobX reaction owned by `CanvasStore`
+   (`canvas.store.ts`).
+
+### The comment
+
+**It is the same loop, one layer out.** The block in the canvas's top-left
+corner (`components/PineDoc.tsx`) is a comment at the top of the expression,
+nothing more. Writing one goes through the same round trip as any other
+gesture, just with a simpler splice: `CanvasStore.setDoc` calls
+`pine-text.ts`'s `replaceDoc` to swap the leading comment in the expression
+text, and the rendered comment comes back on the rebuilt expression's own
+build response as `doc` (pine-lang computes it — see that repo's
+`docs/comments.md`).
+Canvas holds no copy of the text; `docEditing` is a boolean, not a draft.
+
+Two differences from a segment gesture, both because a comment can't change
+what the query returns: no `probeBuild` first (there is nothing to confirm —
+a comment cannot make an expression stop parsing), and no auto-run after.
+
+The doc also has to be carried *through* every other gesture. A gesture
+rebuilds the expression from `ast.ranges`' operation spans, and a leading
+comment is inside none of them — so `toText` drops it. `applyExpression` is
+the single place a gesture writes `session.expression`, so it re-attaches the
+previous expression's comment there (`withDoc`). `setDoc` is the one caller
+that opts out, via `preserveDoc: false`; without that, deleting a comment
+would be impossible.
+
+**How it looks, and why.** The canvas is a schematic: nodes are IC packages
+with square pins and a pin-1 notch (`nodes/TableNode.tsx`), operations are set
+in the clipped, letter-spaced style of a drawing's printed annotations, and
+the surface under it all is a dot grid. So the comment is drawn as a drawing's
+title block — cleared board, hairline rules, square corners, the left rule in
+the trace colour. It is opaque and ruled on all four sides because a node can
+pan underneath it, and without an edge that overlap read as the node being
+clipped rather than as the comment sitting over it. The first version was a
+rounded card with a filled accent bar and a drop shadow, which belongs to a
+different system entirely.
+
+Two things the text itself needs. A block comment is hard-wrapped by whoever
+typed it to fit their editor, so keeping those breaks and re-wrapping at this
+much narrower measure gives a ragged column of half-lines — `asProse` re-wraps
+it (single newline → space, blank line → paragraph). And the block is bounded
+by the pane, not the viewport, or a long comment in a short canvas pane runs
+off the bottom into the mode indicator in the opposite corner.
+
+**Writing one.** `n` (note) from the canvas, the toolbar's comment button, or a click
+on an existing comment. When there is none, a dim "Add a comment" stands in
+its place — the toolbar button alone was not findable, and an empty canvas
+gives no hint that a comment is even possible. `Cmd`/`Ctrl`+`Enter` or
+clicking away commits, `Escape` cancels.
+
+**Ownership.** `assignOwners` walks segments left to right: a table segment
+sets the "current" alias to its own (from an explicit `as <alias>`, falling
+back to the corresponding entry in `pipelineTables(ast)`); a `from: X`
+segment resets the current alias to `X`; a `group:`/`limit:` belongs to the
+checkpoint's own name (from `ast.checkpoints`), and so does everything after
+it up to the next table; every other segment inherits whatever alias is
+current.
+
+**Checkpoints split the pipeline into stages.** `group:` and `limit:` are
+pine-lang "checkpoint" operations (see pine-lang's own `docs/checkpoints.md`).
+Each seals what came before it into a CTE named `result_1`, `result_2`, ...
+(or the `|= name` after it), and the steps after it work on that sealed
+result. pine-lang lists them in `ast.checkpoints`, in pipe order, with each
+one's name, kind, limit/`per` or group columns, and result columns.
+
+The canvas draws the pipeline as stages stacked top to bottom
+(`layout.ts`'s `buildCanvasGraph`):
+
+- Within a stage, tables keep the left-to-right layout, each drawn once.
+- A checkpoint is a node named after it, exactly as pine-lang reports it,
+  drawn like any table node (`TableNode` with `data.checkpoint` and
+  `data.nested` set). Under its name it says what produced it: an expand
+  toggle (▸), the operation (`limit 10`, `limit 1 per c.id`,
+  `group t.title → count`) and ×. A limit's label opens the limit editor
+  for that checkpoint's own number and `per`. The × removes the checkpoint.
+  Its actions go through `openCheckpointPicker`. Tables joined after the
+  checkpoint are in its stage, with an edge from it.
+- A group's line edits the group in place (`CheckpointLine` in
+  `nodes/TableNode.tsx`). A key chip, or the + after the keys, opens the
+  group's column list for the stage before it (`openGroupKeyPicker`). An
+  aggregate chip opens its functions (`openAggregatePicker`, request kind
+  `aggregate-fn`); one that reads a column opens the column list next
+  (`aggregate`). An aggregate keeps its column's name when a later step
+  uses it (`pine-actions.ts`'s `withAggregate`). Each chip's × removes it.
+  To join a table on a key, use the bar's join: after a group, it lists
+  the joins from the group's result.
+- **Collapsed** (the default), that node is all there is. **Expanded**, a
+  container is drawn directly above it (`nodes/NestedContainerNode.tsx`):
+  a dashed box with no fill around the stage the checkpoint seals, with the
+  operation on its top edge and a short connector from its bottom edge to
+  the node. The tables inside stay fully interactive. The box's header
+  collapses it.
+- **One container is open at a time** (`CanvasStore.expandedNested`, UI-only,
+  not saved). Checkpoints form a chain - each one's node sits in the stage
+  the next one seals - so expanding one keeps the ones below it open too,
+  and their containers nest. Collapsing one hands the expansion to the next
+  checkpoint down, or to none for the last. The toggle and `e` expand or
+  collapse. Keyboard focus only visits drawn nodes.
+- **Animation.** Expanding or collapsing animates (`Canvas.tsx`, and the
+  `canvas-flow` rules in `styles/globals.css`): nodes that stay move to
+  their new place, a node that appears grows in, and one that goes is kept
+  for the animation and shrinks out, so a container visibly collapses into
+  its node while another opens. A dragged node has no transition, and
+  `prefers-reduced-motion` turns it all off.
+- **After a gesture adds a checkpoint**, focus moves to its node, collapsed -
+  as focus follows a newly joined table (`CanvasStore.runCommit`, via
+  `layout.ts`'s `newCheckpointName`).
+
+A sealed checkpoint's stage is drawn from its snapshot in
+`ast['pending-assignments'][name]`, which carries its tables, joins, columns,
+`where`, `order` and `group`. The stage after the last checkpoint comes from
+the live AST.
+
+Because a checkpoint's own segment belongs to its name, a gesture on a table
+lands in that table's stage: "after the last segment this table owns" is
+always before the checkpoint that seals it. A new join or `group:`
+goes at the end of the stage it belongs to (`stageEnd` in `pine-text.ts`).
+Building a picker's hint probe (`CanvasStore.buildProbeExpression`) stops at
+the end of the target's stage, for the same reason: probing after a
+checkpoint reflects the sealed output's shape, not the real table the
+gesture is about.
+
+**Naming a result and starting another query.** Two of the bar's query
+actions work across blocks:
+
+- `name` (key `m`) names the drawn query's result with `|= name` at its end
+  (`tab-blocks.ts`'s `nameBlock`), or renames it. It refuses a name Pine
+  can't read, one another block has, and a rename while a later block still
+  reads the old name. The name shows on a dotted line under the graph (and
+  under its count line), `|= name ×` (`NameLineNode.tsx`). It is the last
+  keyboard stop: Enter or a click renames, and `x` or its × takes the name
+  off (`CanvasStore.removeQueryName`), refused while a later query reads
+  it. A `result_N` at the end is the name Pine gives a group or limit
+  itself, written in when a list opens on its line, so it gets no line.
+  The strip at the top shows only for two queries or more.
+- `new query` (key `q`) adds a block at the end of the tab and draws it: the
+  editor's cursor moves into it, and the canvas is blank but for the strip
+  and "+ pick a table". A block needs some text to exist, so it starts as the
+  comment `-- new query`; picking the first table replaces it. The table list
+  is built after the blocks above, so the names of earlier results are
+  listed too. Nothing runs until the query has a table. Undo takes the block
+  off.
+
+**Earlier query blocks.** A tab can have several query blocks. The canvas
+draws the last one; each earlier one must end in `|= name` (`tab-blocks.ts`),
+or the canvas shows a banner instead. Such a block is a nested query of the
+last one, with the same one-expanded-at-a-time rule as checkpoints:
+
+- The table in the last block that uses `name` says so under its name
+  (`|= name`, or `limit 20 |= name` when the block ends in a checkpoint),
+  with an expand toggle. Expanding it draws the block above it, in a
+  container.
+- A block nothing joins is a standalone node beside the graph, with no
+  actions. When a `where: ... in name` uses it, it says so.
+- Nodes drawn from an earlier block have its prefix in their id (`b0/c`).
+  `CanvasStore.scopeOf` turns an id into the block and its alias in that
+  block, so a gesture on one edits that block's own text, and its probes
+  build it with the blocks above it (`contextFor`).
+- In such a tab the canvas builds every block itself (`refreshBlockAsts`):
+  the session builds only the block under the editor's cursor.
+
+**The limit editor's `per`.** Besides N, the limit editor has an optional
+`per` field: the first N rows of each group of rows sharing those columns.
+It offers every column of the tables in the stage the limit ends. Opened
+from a checkpoint node's label, both fields show what the checkpoint has.
+
+**Variables in the where editor.** A value starting with `$` is a variable
+(`status = $status`, `id in $ids`); the tab's variables are offered as you
+type. A new name gets a `$name = ` line in the values block in the same step,
+and the Variables list asks for its value. On an existing condition, "make
+variable" turns `status = 'shipped'` into `status = $status` and moves
+`'shipped'` into the values block, picking `$status_2` if `$status` is taken.
+
+**Checkpoint names.** The canvas never makes a name up. Before any gesture,
+`getPinnedBase` writes each unnamed checkpoint's name into the text as `|=
+result_1`, using the name pine-lang reports (`ensureExplicitCheckpointName`).
+An auto name can change when the rest of the expression does, so steps
+written against it need it pinned. Removing a checkpoint's last `limit:` or
+`group:` also removes its pinned name, when that name is an auto name and
+nothing follows it.
+
+**`group:` is a single shared segment per stage.** Unlike `select:`/`order:`
+(one segment per owning table) or `where:` (one segment per *condition* - see
+below), grouping on two different nodes of a stage doesn't produce two
+`group:` segments — it's one segment that each contributing table's columns
+are merged into (`getGroupColumns`/`setGroupColumns` in `pine-actions.ts`).
+
+**`where:` is one segment per condition, not a shared comma list.** A second
+filter on the same table appends a new `where:` step (`appendOwnedSegment` in
+`pine-text.ts`) rather than growing one segment's comma-separated body -
+pine-lang ANDs every `where:` step together regardless of which table it's
+on, so this needs nothing more than appending. `removeWhereConditionAt`
+(`pine-actions.ts`) removes the target segment outright; its `index` is this
+alias's conditions in pipeline order, matching the order `ast.where` reports
+them (see layout.ts's `whereChips`), since a new condition always lands right
+after this alias's existing segments.
+
+**Alias pinning.** Before computing any gesture, `pine-actions.ts`'s
+`getPinnedBase` ensures every table in the expression has an explicit `as
+<alias>` — auto-generated aliases are pinned to short, stable ones
+(`ensureExplicitAliases`/`makeAlias` in `pine-text.ts`), and every reference to
+a renamed alias elsewhere in the expression is rewritten to match. This is a
+no-op once everything is already pinned (true after a session's first canvas
+gesture). A caller holding an alias captured before this pinning ran (e.g. a
+click handler's closure) must resolve it through the returned `aliasMap`
+(`resolveAlias`) rather than use it directly, since the node it names may have
+just been renamed as a side effect of computing this same base.
+
+**Commit serialization.** `CanvasStore.commit()` chains onto a private
+promise (`commitChain`) so two gestures fired in quick succession (e.g. two
+picks in the same still-open multi-select picker) never compute their
+mutation against the same stale starting text — each one's `pinnedBase()`
+call re-probes the *current* expression before mutating.
+
+**Rendering.** `CanvasStore` holds `canvasGraph`, recomputed by a `reaction`
+on `[session.expression, session.ast]` (started from `Canvas.tsx`'s
+`useEffect`, not the constructor, to survive React 18 StrictMode's
+mount/unmount/remount double-invoke in dev). It's `fireImmediately: true`,
+since a restored session's own build can already be in flight (or complete)
+before this reaction subscribes — without it, a session loaded with a
+pre-existing expression could render an empty graph until the next edit.
+`CanvasStore.isConnecting` (`session.ast === null`) distinguishes "no build
+has completed yet" from a genuine parse failure, which still returns a real
+(if largely null) `ast` object — this is what selects the "Connecting…" banner
+over "Not parsing" right after a session restore, before the backend has
+responded to the first build.
+
+**Layout.** `store/canvas/layout.ts` splits the AST into stages
+(`stagesOf`), derives each stage's nodes/edges (`deriveStage`) and lays each
+stage out with dagre (`layoutStage`), overriding dagre's own y-coordinate
+with strict pipeline-sequence order (`sequenceYByAlias`) so node 2 always
+sits below node 1 regardless of which rank dagre's crossing-minimization puts
+it on. Stages are stacked, and an expanded checkpoint's stage gets a
+container above its node. It's a
+smaller, independent model from the classic graph's
+`store/graph.util.ts`/`store/node-layout.ts` — no suggested/candidate nodes.
+
+## Constraints
+
+- **Removing an interior node can leave a dangling join.** Deleting a table
+  that a later table's join implicitly depended on (no explicit `from:`, just
+  "whatever's current") re-splices the expression and lets whatever's left
+  become the new implicit target — pine-lang itself decides whether that's
+  meaningful. If it isn't (the join no longer has a real column to connect
+  on), pine-lang returns a "hint-less" relation (non-null, but with no
+  columns and no resolution — see `join-helper`'s own comment in pine-lang's
+  `src/pine/ast/table.clj`) rather than failing outright, and `layout.ts`'s
+  `addJoins` renders that the same as any other unresolved join (dashed,
+  warning-colored, no column labels) rather than a plain solid line.
+- **Tables inside a sealed checkpoint can't be removed.** Removing one could
+  break the checkpoint's own `group:` or joins in ways a segment removal
+  doesn't account for. Tables after the last checkpoint, or sealed by a
+  checkpoint still pending at the end, can be.
+- **No grouping a checkpoint's result from its node.** `group` isn't offered
+  on a checkpoint's node: grouping an already-grouped result is a different
+  question.
+- **No `update!`/`delete!` support.** Canvas mode only models read pipelines.
+- **Multi-select `assign` is inert.** Shown in the toolbar but not wired to
+  any mutation. To name a query's result, use the bar's `name`.
+- **Column-function forms are lossy on toggle.** Select/order chips are always
+  written as plain `alias.column`; toggling a column that was hand-typed with
+  a function form (e.g. `created_at => month`) replaces it with the plain
+  column reference.
+- **Bare where-conditions aren't chips.** A hand-typed condition with no
+  `where:`/`w:` prefix (legal Pine, e.g. `a = 1` right after a table) is
+  correctly attributed to its owning table but doesn't render as an editable
+  chip — canvas-generated Pine always writes the explicit prefix, so this only
+  affects hand-typed expressions.
+
+---
+
+## Implementation
+
+### Segment/splice core (`store/canvas/pine-text.ts`)
+
+- `Segment`/`SegmentKind` — one pipe segment (`text`, character offsets into
+  the original expression, its classified `kind`, and its `owner` alias).
+- `segmentsFromAst` — segments the expression using `ast.ranges`, then calls
+  `assignOwners` to attribute each one to a table alias by a left-to-right
+  walk. Returns `null` when the expression doesn't currently parse.
+- `pipelineTables` — every real table in the pipeline, across all stages;
+  `ast['selected-tables']` only has the last stage's.
+- `upsertOwnedSegment` — insert/replace/remove the one segment of a given
+  `kind` owned by a given alias (a table's alias or a checkpoint's name);
+  used for `select:`/`order:`.
+- `appendOwnedSegment` — the multi-segment counterpart: inserts a NEW segment
+  of a given `kind` without touching any existing one of that kind. Used for
+  `where:`, where each condition is its own step (see above).
+- `appendTableSegment` — inserts a new table (optionally preceded by a
+  `from:` reset) at the end of the stage of the node it joins from.
+- `stageEnd` — where an alias's stage ends: the next `group:`/`limit:` after
+  the last segment it owns. Shared by joins, `setGroupColumns` and
+  `CanvasStore.buildProbeExpression`.
+- `ensureExplicitCheckpointName` — pins `|= name` on every unnamed
+  checkpoint, using the name pine-lang reports.
+- `ensureExplicitAliases` — pins an explicit alias onto every table lacking
+  one and rewrites every qualified reference to match; returns
+  `{expression, changed, aliasMap}`.
+- `isRemovableNode`/`removeNode` — last-table-only removal (see Constraints).
+- `makeAlias` — short, pine-style alias generation (table initials, numeric
+  suffix on collision).
+
+### Gesture functions (`store/canvas/pine-actions.ts`)
+
+Pure functions, each taking a `PinnedBase` (`{expression, ast, segments,
+aliasMap}`, from `getPinnedBase`) and returning the next expression string:
+`join`, `setSelectColumns`/`getSelectColumns`, `addWhereCondition`/
+`removeWhereConditionAt`, `addOrderColumn`/`removeOrderColumnAt`/
+`getOrderColumns`, `deleteNode`, `deleteCheckpoint`, `setLimit`,
+`getGroupColumns`/`setGroupColumns`. `resolveAlias` looks up a possibly-stale
+alias through `PinnedBase.aliasMap`.
+
+### Store (`store/canvas/canvas.store.ts`)
+
+`CanvasStore` (one per session, held in a `CanvasStoreContext`): owns
+`canvasGraph`, `picker` state, node `positions`, and `selectedAliases`. Its
+`commit*` methods (`commitJoin`, `commitSelectColumns`, `toggleSelectColumn`,
+`commitWhere`, `toggleOrderColumn`, `toggleGroupColumn`, `deleteNode`,
+`commitLimit`, …) each compute a `PinnedBase`, call the matching
+`pine-actions.ts` function, and assign the result — prettified via a probe
+build — back onto `session.expression`. `openTablePicker`/`openJoinPicker`/
+`openColumnPicker` populate `picker` from speculative builds
+(`store/canvas/probe.ts`'s `probeBuild`, a dedicated stateless `HttpClient`
+that never touches `session.expression`/`session.ast`).
+
+### Layout (`store/canvas/layout.ts`)
+
+`stagesOf` (AST → stages), `deriveStage` (one stage → nodes/edges, with the
+checkpoint's node first), `checkpointLabel` (what a checkpoint's node and
+container say) and `buildCanvasGraph` (lays out each stage, stacks them, and
+adds a container around each expanded nested query).
+
+### Types (`store/canvas/canvas.model.ts`)
+
+`CanvasTableNodeData` (with `checkpoint` set for a checkpoint's node),
+`CanvasStartNodeData`, `CanvasDividerNodeData`, `CanvasGraph`, `PickerRequest`
+(`table`/`join`/`select`/`where`/`order`/`group`), `PickerState`
+(`list`/`where-value` modes). Deliberately independent of `model.d.ts`'s
+`PineNode`/`SelectedNodeData` family used by the classic graph.
+
+### Components (`components/canvas/`)
+
+- `Canvas.tsx` — `Flow` (ReactFlow instance) and `Canvas` (creates the
+  `CanvasStore`, provides it via context, starts its reaction). Renders the
+  start node when the graph is empty, the banners described above, and
+  delegates node/edge rendering to `nodes/TableNode.tsx`/`nodes/StartNode.tsx`
+  and `edges/TraceEdge.tsx`.
+- `nodes/TableNode.tsx` — action bar, chip rows (`sel`/`where`/`order`/
+  `group`), delete button (last node only), join-direction handles.
+- `nodes/StartNode.tsx` — the empty-graph "+ pick a table" node.
+- `nodes/NestedContainerNode.tsx` — an expanded nested query's dashed
+  container, its label and collapse toggle on the top edge, and the
+  connector down to its node.
+- `Picker.tsx` — the dropdown for both list-mode (table/join/select/where/
+  order/group) and the where-value two-step flow; keyboard nav, click-outside
+  close, filter-as-you-type. `,` doubles as `Enter` on the list.
+- `MultiSelectToolbar.tsx` — the floating toolbar shown for 2+ selected
+  nodes; only `limit` is wired.
+- `CanvasToolbar.tsx` — the **canvas toolbar** (informally "the icon bar"),
+  pinned top-left: undo, redo, auto-run (a bolt icon; lit when on), the
+  comment button, a PINE/SQL panel toggle (see "The Pine/SQL panel" below),
+  plus one optional caller-supplied extra action (the orientation toggle).
+  Same file also exports `CanvasModeIndicator`, the bottom-left
+  normal/insert status line with the focused node's armed-key legend.
+
+### Integration points
+
+- `store/session.ts` is otherwise unmodified for canvas mode — it owns
+  `expression`/`ast`/the debounced build reaction regardless of which graph
+  view is active; canvas mode only reads those fields and writes
+  `session.expression`.

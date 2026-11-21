@@ -1,0 +1,472 @@
+(ns pine.ast-test
+  (:require [clojure.test :refer [deftest is testing]]
+            [pine.parser :as parser]
+            [pine.ast.main :as ast]
+            [pine.data-types :as dt]))
+
+(defn- condition
+  "One condition as :where stores it."
+  [alias column cast operator value]
+  {:alias alias :column column :cast cast :operator operator :value value})
+
+(defn- generate
+  "Helper function to generate and get the relevant part in the ast"
+  ([expression]
+   (generate identity expression))
+  ([type expression]
+   (let [ast (-> expression
+                 parser/parse
+                 :result
+                 (ast/generate :test))]
+     (if (sequential? type)
+       (mapv #(get ast %) type)
+       (get ast type)))))
+
+(defn- gen-with-variables
+  "Evaluate expressions sequentially, threading variables forward. Returns the
+  final :named-results map, so an individual variable's own var-ast (:columns,
+  :source, etc.) can be inspected directly."
+  [expressions]
+  (:named-results
+   (reduce (fn [{:keys [named-results]} expr]
+             (let [{:keys [result]} (parser/parse expr)
+                   state (ast/generate result :test expr nil named-results)]
+               {:named-results (merge named-results (:pending-assignments state))}))
+           {:named-results {}}
+           expressions)))
+
+(deftest test-ast
+
+  (testing "Generate ast for `tables`"
+    (is (= [{:schema nil :table "company" :alias "c" :parent nil :join-columns nil :join-column-pairs nil :join nil :index 0}]
+           (generate :tables "company as c")))
+    (is (= [{:schema nil :table "user" :alias "u_0" :parent nil  :join-columns nil :join-column-pairs nil :join nil :index 0}]
+           (generate :tables "user")))
+    (is (= [{:schema "public" :table "user" :alias "u_0" :parent nil  :join-columns nil :join-column-pairs nil :join nil :index 0}]
+           (generate :tables "public.user")))
+    (is (= [{:schema "public" :table "user" :alias "u_0" :parent true  :join-columns nil :join-column-pairs nil :join nil :index 0}]
+           (generate :tables "public.user :parent"))))
+
+  (testing "Generate ast for `tables` with join types"
+    (is (= [{:schema nil :table "user" :alias "u_0" :parent nil :join-columns nil :join-column-pairs nil :join "LEFT" :index 0}]
+           (generate :tables "user :left")))
+    (is (= [{:schema nil :table "user" :alias "u_0" :parent nil :join-columns nil :join-column-pairs nil :join "RIGHT" :index 0}]
+           (generate :tables "user :right")))
+    (is (= [{:schema "public" :table "user" :alias "u_0" :parent nil :join-columns nil :join-column-pairs nil :join "LEFT" :index 0}]
+           (generate :tables "public.user :left")))
+    (is (= [{:schema "public" :table "user" :alias "u_0" :parent nil :join-columns nil :join-column-pairs nil :join "RIGHT" :index 0}]
+           (generate :tables "public.user :right"))))
+
+  (testing "Generate ast for `from`"
+    (is (= "c"
+           (generate :context "company as c | user | from: c | ")))
+    (is (= "c"
+           (generate :context "company as c | user | from: c | 1"))))
+
+  (testing "Generate ast for `select`"
+    (is (= [{:alias "c_0" :column "id" :source {:table "company" :schema nil} :operation-index 1} {:alias "c_0" :column "id" :column-alias "__c_0__id" :operation-index 2 :auto-id true :hidden true}]
+           (generate :columns "company | s: id")))
+    (is (= [{:alias "c_0" :column "id" :column-alias "c_id" :source {:table "company" :schema nil} :operation-index 1} {:alias "c_0" :column "id" :column-alias "__c_0__id" :operation-index 2 :auto-id true :hidden true}]
+           (generate :columns "company | s: id as c_id")))
+    (is (= [{:alias "c_0" :column "id" :source {:table "company" :schema nil} :operation-index 1} {:alias "e_1" :column "id" :source {:table "employee" :schema nil} :operation-index 3}
+            {:alias "c_0" :column "id" :column-alias "__c_0__id" :operation-index 4 :auto-id true :hidden true}
+            {:alias "e_1" :column "id" :column-alias "__e_1__id" :operation-index 5 :auto-id true :hidden true}]
+           (generate :columns "company | s: id | employee | s: id")))
+    (is (= [{:alias "c" :column "id" :source {:table "company" :schema nil} :operation-index 1} {:alias "c" :column "id" :column-alias "__c__id" :operation-index 2 :auto-id true :hidden true}]
+           (generate :columns "company as c | s: id")))
+    (is (= [{:alias "u_0" :column "id" :column-alias "__u_0__id" :operation-index 1 :auto-id true :hidden true}]
+           (generate :columns "user")))
+    (is (= [{:alias "u" :column "id" :source {:table "user" :schema nil} :operation-index 1} {:alias "u" :column "id" :column-alias "__u__id" :operation-index 3 :auto-id true :hidden true}]
+           (generate :columns "user as u | s: id | limit: 1")))
+    (is (= [{:alias "c" :column "id" :source {:table "customer" :schema nil} :operation-index 1}
+            {:alias "u" :column "id" :source {:table "user" :schema nil} :operation-index 3}
+            {:alias "c" :column "id" :column-alias "__c__id" :operation-index 5 :auto-id true :hidden true}
+            {:alias "u" :column "id" :column-alias "__u__id" :operation-index 6 :auto-id true :hidden true}]
+           (generate :columns "customer as c | s: id | user as u | s: id | limit: 1")))
+    (is (= [{:alias "u" :column "" :symbol "*" :source {:table "user" :schema nil} :operation-index 1} {:alias "u" :column "id" :column-alias "__u__id" :operation-index 2 :auto-id true :hidden true}]
+           (generate :columns "user as u | s: u.*"))))
+
+  (testing "Column :source tracks the real table, including through variables"
+    ;; Multi-source select: each column keeps its own, independently-resolved
+    ;; :source rather than sharing one for the whole variable.
+    (let [vars (gen-with-variables ["company as c | employee as e | s: c.id, e.id |= m"])]
+      (is (= [{:table "company" :schema nil} {:table "employee" :schema nil}]
+             (map :source (remove :auto-id (:columns (get vars "m")))))))
+
+    ;; Variable-of-variable: b is built by selecting from a, which itself
+    ;; wraps company. b's own column must trace all the way back to company -
+    ;; not to "a", the intermediate variable's own name - with no recursion
+    ;; needed at read time, since a's :source was already fully resolved when
+    ;; a itself was built.
+    (let [vars (gen-with-variables ["company | s: id as tmp_id |= a"
+                                    "a | s: tmp_id as tmp_id2 |= b"])]
+      (is (= {:table "company" :schema nil}
+             (:source (first (:columns (get vars "b"))))))))
+
+  (testing "Generate ast for `order`"
+    (is (= [{:alias "c_0" :column "country" :direction "DESC" :operation-index 1}]
+           (generate :order "company | o: country")))
+    (is (= [{:alias "c_0" :column "country" :direction "DESC" :operation-index 1}
+            {:alias "c_0" :column "created_at" :direction "DESC" :operation-index 1}]
+           (generate :order "company | o: country, created_at")))
+    ;; Test aliased order columns
+    (is (= [{:alias "e" :column "name" :direction "DESC" :operation-index 1}]
+           (generate :order "employee as e | o: e.name")))
+    (is (= [{:alias "e" :column "name" :direction "ASC" :operation-index 1}]
+           (generate :order "employee as e | o: e.name asc")))
+    (is (= [{:alias "e" :column "name" :direction "DESC" :operation-index 1}
+            {:alias "e" :column "created_at" :direction "ASC" :operation-index 1}]
+           (generate :order "employee as e | o: e.name, e.created_at asc")))
+
+    ;; Test mixed aliased and non-aliased order columns
+    (is (= [{:alias "c_0" :column "name" :direction "DESC" :operation-index 1}
+            {:alias "c_0" :column "age" :direction "DESC" :operation-index 1}]
+           (generate :order "company | o: name desc, age desc")))
+    (is (= [{:alias "e" :column "name" :direction "DESC" :operation-index 2}
+            {:alias "d_1" :column "title" :direction "ASC" :operation-index 2}]
+           (generate :order "employee as e | document | o: e.name desc, title asc"))))
+
+  (testing "Generate ast for `limit`"
+    (is (= 10
+           (generate :limit "limit: 10")))
+    (is (= 1
+           (generate :limit "l: 1"))))
+
+  (testing "Generate ast for `where`"
+    (is (= [(condition nil "name" nil "=" (dt/string "Acme"))]
+           (generate :where "name = 'Acme'")))
+    (is (= [(condition nil "id" nil "=" (dt/number "1"))]
+           (generate :where "id = 1")))
+    (is (= [(condition "c_0" "name" nil "=" (dt/string "Acme"))]
+           (generate :where "company | name = 'Acme'")))
+    (is (= [(condition "c_0" "name" "text" "=" (dt/string "Acme"))]
+           (generate :where "company | name = 'Acme' ::text")))
+    (is (= [(condition "c_0" "id" "uuid" "=" (dt/uuid "123e4567-e89b-12d3-a456-426614174000"))]
+           (generate :where "company | id = '123e4567-e89b-12d3-a456-426614174000' ::uuid")))
+    (is (= [(condition "c" "name" nil "=" (dt/string "Acme"))]
+           (generate :where "company as c | name = 'Acme'")))
+    (is (= [(condition "c" "name" nil "=" (dt/string "Acme")) (condition "c" "country" nil "=" (dt/string "PK"))]
+           (generate :where "company as c | name = 'Acme' | country = 'PK'")))
+    (is (= [(condition "c" "country" nil "IN" [(dt/string "PK") (dt/string "DK")])]
+           (generate :where "company as c | country in ('PK', 'DK')")))
+    (is (= [(condition nil "name" nil "LIKE" (dt/string "Acme%"))]
+           (generate :where "name like 'Acme%'")))
+    (is (= [(condition nil "name" nil "NOT LIKE" (dt/string "Acme%"))]
+           (generate :where "name not like 'Acme%'")))
+    (is (= [(condition nil "name" nil "ILIKE" (dt/string "acme%"))]
+           (generate :where "name ilike 'acme%'")))
+    (is (= [(condition nil "name" nil "NOT ILIKE" (dt/string "acme%"))]
+           (generate :where "name not ilike 'acme%'"))))
+
+  (testing "Generate ast for `where` `or` conditions (`or` inside one where: segment)"
+    (is (= [{:or [(condition "c" "name" nil "=" (dt/string "Acme"))
+                  (condition "c" "country" nil "=" (dt/string "PK"))]}]
+           (generate :where "company as c | name = 'Acme' or country = 'PK'")))
+    (is (= [(condition "c" "name" nil "=" (dt/string "Acme"))
+            {:or [(condition "c" "country" nil "=" (dt/string "PK"))
+                  (condition "c" "country" nil "=" (dt/string "DK"))]}]
+           (generate :where "company as c | name = 'Acme' | country = 'PK' or country = 'DK'"))))
+
+  (testing "Generate ast for `where` with dates"
+    (is (= [(condition nil "created_at" nil "=" (dt/date "2025-01-01"))]
+           (generate :where "created_at = '2025-01-01'")))
+    (is (= [(condition nil "created_at" nil "!=" (dt/date "2025-01-01"))]
+           (generate :where "created_at != '2025-01-01'")))
+    (is (= [(condition nil "created_at" nil ">" (dt/date "2025-01-01"))]
+           (generate :where "created_at > '2025-01-01'")))
+    (is (= [(condition nil "created_at" nil "<" (dt/date "2025-01-01"))]
+           (generate :where "created_at < '2025-01-01'"))))
+
+  ;; A join is a map, not a positional tuple: :from/:to are the two aliases
+  ;; in pipeline order, :parent says which of the two owns the key being
+  ;; pointed at, and :columns is the list of column pairs the ON clause is
+  ;; built from - each already labelled by the side it belongs to. The list
+  ;; holds one pair today, but nothing reading it may assume that.
+  (testing "Generate ast for `join` where there is no relation"
+    ;; Nothing connects these two tables, so the join is unresolved - which
+    ;; it says with a nil :resolution and no column pairs, rather than by
+    ;; being absent. One spelling for unresolved, so a client checks once.
+    (is (= [{:from "a_0" :to "b_1" :parent "from" :columns []
+             :resolution nil :cast nil :type nil}]
+           (generate :joins "a | b")))
+    ;; It keeps the columns written after the table, for its error.
+    (is (= [{:from "a_0" :to "b_1" :parent "from" :columns []
+             :resolution nil :cast nil :named ["a_id"] :type nil}]
+           (generate :joins "a | b .a_id")))
+
+    ;; Explicit join columns
+    (is (= [{:from "a_0" :to "b_1" :parent "from"
+             :columns [{:from "id" :to "a_id"}]
+             :resolution "manual" :cast nil :type nil}]
+           (generate :joins "a | b .a_id = .id"))))
+
+  (testing "Generate ast for `join` where there is a relation"
+    (is (= [{:from "c_0" :to "e_1" :parent "from"
+             :columns [{:from "id" :to "company_id"}]
+             :resolution "fk" :cast nil :type nil}]
+           (generate :joins "company | employee")))
+    (is (= [{:from "c_0" :to "e_1" :parent "from"
+             :columns [{:from "id" :to "company_id"}]
+             :resolution "fk" :cast nil :type nil}]
+           (generate :joins "company | employee .company_id")))
+    ;; Trying with an incorrect id: no relation matches that column, so this
+    ;; is unresolved in exactly the same way as two unrelated tables above.
+    (is (= [{:from "c_0" :to "e_1" :parent "from" :columns []
+             :resolution nil :cast nil :named ["employee_id"] :type nil}]
+           (generate :joins "company | employee .employee_id"))))
+
+  (testing "Generate ast for `join` where there is ambiguity"
+    (is (= [{:from "e_0" :to "d_1" :parent "from"
+             :columns [{:from "id" :to "created_by"}]
+             :resolution "fk" :cast nil :type nil}]
+           (generate :joins "employee | document .created_by")))
+    (is (= [{:from "e_0" :to "d_1" :parent "from"
+             :columns [{:from "id" :to "employee_id"}]
+             :resolution "fk" :cast nil :type nil}]
+           (generate :joins "employee | document .employee_id"))))
+
+  (testing "Generate ast for `join` where a heuristic relation's two sides have different DB types"
+    ;; `order` has no real FK to `customer` (see fixtures.clj) - the relation
+    ;; is only found heuristically, and order.customer_id (varchar) doesn't
+    ;; match customer.id (integer). :cast is "text" here, but nil for every
+    ;; real FK relation above, since a FK guarantees the two columns already
+    ;; share a compatible type.
+    (is (= [{:from "c_0" :to "o_1" :parent "from"
+             :columns [{:from "id" :to "customer_id"}]
+             :resolution "heuristic" :cast "text" :type nil}]
+           (generate :joins "customer | order"))))
+
+  (testing "Generate ast for `join` where a heuristic relation's two sides are different spellings of the same type family"
+    ;; order.user_id is bigint against user.id's integer - a different type
+    ;; string, but already comparable with a plain `=` since both are
+    ;; numeric. :cast must stay nil here, unlike the varchar/integer case
+    ;; above - otherwise every heuristic join between, say, int and bigint id
+    ;; columns would get an unnecessary (and index-defeating) cast.
+    (is (= [{:from "u_0" :to "o_1" :parent "from"
+             :columns [{:from "id" :to "user_id"}]
+             :resolution "heuristic" :cast nil :type nil}]
+           (generate :joins "user | order"))))
+
+  (testing "Generate ast for `join` using self join"
+    ;; By default, we narrow the results
+    ;; i.e. we join with the child
+    (is (= [{:from "e_0" :to "e_1" :parent "from"
+             :columns [{:from "id" :to "reports_to"}]
+             :resolution "fk" :cast nil :type nil}]
+           (generate :joins "employee | employee")))
+    (is (= [{:from "e_0" :to "e_1" :parent "from"
+             :columns [{:from "id" :to "reports_to"}]
+             :resolution "fk" :cast nil :type nil}]
+           (generate :joins "employee | employee .reports_to")))
+
+    ;; However, we can exlicitly saw that the table is a parent using the `^` character
+    ;; - and then it is the `to` side that owns the key.
+    (is (= [{:from "e_0" :to "e_1" :parent "to"
+             :columns [{:from "reports_to" :to "id"}]
+             :resolution "fk" :cast nil :type nil}]
+           (generate :joins "employee | employee :parent")))
+    (is (= [{:from "e_0" :to "e_1" :parent "to"
+             :columns [{:from "reports_to" :to "id"}]
+             :resolution "fk" :cast nil :type nil}]
+           (generate :joins "employee | employee :parent .reports_to"))))
+
+  (testing "Generate ast for `join` with explicit columns"
+    ;; Basic explicit columns with real tables
+    (is (= [{:from "c_0" :to "e_1" :parent "from"
+             :columns [{:from "id" :to "company_id"}]
+             :resolution "manual" :cast nil :type nil}]
+           (generate :joins "company | employee .company_id = .id")))
+
+    ;; Explicit columns with different column names
+    (is (= [{:from "a_0" :to "b_1" :parent "from"
+             :columns [{:from "custom_id" :to "foreign_id"}]
+             :resolution "manual" :cast nil :type nil}]
+           (generate :joins "a | b .foreign_id = .custom_id")))
+
+    ;; Explicit columns with join type
+    (is (= [{:from "c_0" :to "e_1" :parent "from"
+             :columns [{:from "id" :to "company_id"}]
+             :resolution "manual" :cast nil :type "LEFT"}]
+           (generate :joins "company | employee .company_id = .id :left")))
+
+    (is (= [{:from "c_0" :to "e_1" :parent "from"
+             :columns [{:from "id" :to "company_id"}]
+             :resolution "manual" :cast nil :type "RIGHT"}]
+           (generate :joins "company | employee .company_id = .id :right")))
+
+    ;; The join is to the table of its first pair. A pair with another
+    ;; earlier table keeps that table as :from-alias.
+    (is (= [{:from "a" :to "b" :parent "from" :columns [{:from "id" :to "a_id"}] :resolution "manual" :cast nil :type nil}
+            {:from "b" :to "c" :parent "from"
+             :columns [{:from "id" :to "b_id"} {:from "tenant_id" :to "tenant_id" :from-alias "a"}]
+             :resolution "manual" :cast nil :type nil}]
+           (generate :joins "a as a | b as b .a_id = .id | c as c c.b_id = b.id, .tenant_id = a.tenant_id")))
+
+    ;; Conditions on a join are resolved as where: resolves them.
+    (is (= [{:alias "e_1" :column "type" :cast nil :operator "=" :value (dt/string "x")}]
+           (-> (generate :joins "company | employee :left .type = 'x'") first :conditions))))
+
+  (testing "Generate ast for `count`"
+    (is (= {:column "*"} (generate :count "company | count:"))))
+
+  (testing "Generate ast for `delete`"
+    (is (= {:columns ["id"]} (generate :delete "company | delete! .id")))
+    (is (= {:columns ["case_id" "search_id"]}
+           (generate :delete "k.case_ref | delete! .case_id, .search_id"))))
+
+  (testing "Generate ast for `update`"
+    (is (= {:assignments [{:column {:alias nil :column "name"} :value (dt/string "John Doe")}]}
+           (generate :update "company | update! name = 'John Doe'")))
+    (is (= {:assignments [{:column {:alias nil :column "name"} :value (dt/string "John")}
+                          {:column {:alias nil :column "age"} :value (dt/number "30")}]}
+           (generate :update "company | update! name = 'John', age = 30"))))
+
+  (testing "Generate ast for `group`"
+    (is (= [[{:alias "c" :column "status" :source {:table "company" :schema nil} :operation-index 1} {:symbol "COUNT(1)" :column-alias "count"}]
+            [{:alias "c" :column "status" :source {:table "company" :schema nil} :operation-index 1}]]
+           (generate [:columns :group] "company as c | group: c.status with count"))))
+
+  (testing "Generate ast for date extraction functions"
+    ;; Helper to filter out auto-id columns
+    (let [non-auto #(filter (fn [c] (not (:auto-id c))) %)]
+      ;; Year extraction creates 1 column with col-fn
+      (is (= [{:column "created_at" :alias "e_0" :column-alias "year"
+               :col-fn "year" :source {:table "employee" :schema nil} :operation-index 1}]
+             (non-auto (generate :columns "employee | select: created_at => year"))))
+
+      ;; Month extraction creates 1 column with col-fn
+      (is (= [{:column "created_at" :alias "e_0" :column-alias "month"
+               :col-fn "month" :source {:table "employee" :schema nil} :operation-index 1}]
+             (non-auto (generate :columns "employee | select: created_at => month"))))
+
+      ;; Day extraction creates 1 column with col-fn
+      (is (= [{:column "created_at" :alias "e_0" :column-alias "day"
+               :col-fn "day" :source {:table "employee" :schema nil} :operation-index 1}]
+             (non-auto (generate :columns "employee | select: created_at => day"))))
+
+      ;; Week extraction creates 1 column with col-fn
+      (is (= [{:column "created_at" :alias "e_0" :column-alias "week"
+               :col-fn "week" :source {:table "employee" :schema nil} :operation-index 1}]
+             (non-auto (generate :columns "employee | select: created_at => week"))))
+
+      ;; Hour extraction creates 1 column with col-fn
+      (is (= [{:column "created_at" :alias "e_0" :column-alias "hour"
+               :col-fn "hour" :source {:table "employee" :schema nil} :operation-index 1}]
+             (non-auto (generate :columns "employee | select: created_at => hour"))))
+
+      ;; Minute extraction creates 1 column with col-fn
+      (is (= [{:column "created_at" :alias "e_0" :column-alias "minute"
+               :col-fn "minute" :source {:table "employee" :schema nil} :operation-index 1}]
+             (non-auto (generate :columns "employee | select: created_at => minute"))))
+
+      ;; With alias
+      (is (= [{:column "created_at" :alias "e" :column-alias "month"
+               :col-fn "month" :source {:table "employee" :schema nil} :operation-index 1}]
+             (non-auto (generate :columns "employee as e | select: e.created_at => month"))))
+
+      ;; Mixed with regular columns (excluding auto-id)
+      (let [cols (non-auto (generate :columns "employee | select: name, created_at => year"))]
+        (is (= 2 (count cols)))
+        (is (= "name" (:column (first cols))))
+        (is (= "created_at" (:column (second cols))))
+        (is (= "year" (:col-fn (second cols)))))))
+
+  (testing "Generate ast for `where-partial`"
+    ;; Empty where-partial should have no conditions in :where
+    (is (= []
+           (generate :where "company | w:")))
+
+    ;; Just partial column should have no conditions in :where  
+    (is (= []
+           (generate :where "company | w: i")))
+
+    ;; Column + operator should have no conditions in :where
+    (is (= []
+           (generate :where "company | w: id =")))
+
+    ;; Verify the operation structure for different where-partial cases
+    (is (= {:type :where-partial
+            :value {:complete-conditions [] :partial-condition nil}}
+           (generate :operation "company | w:")))
+
+    (is (= {:type :where-partial
+            :value {:complete-conditions [] :partial-condition {:column "id"}}}
+           (generate :operation "company | w: id")))
+
+    (is (= {:type :where-partial
+            :value {:complete-conditions [] :partial-condition {:alias "c" :column "name"}}}
+           (generate :operation "company as c | w: c.name")))
+
+    (is (= {:type :where-partial
+            :value {:complete-conditions [] :partial-condition {:column "id" :operator :equals}}}
+           (generate :operation "company | w: id =")))
+
+    (is (= {:type :where-partial
+            :value {:complete-conditions [] :partial-condition {:column "name" :operator :like}}}
+           (generate :operation "company | w: name like")))
+
+    ;; The complete conditions before a half-typed one are stored as one OR
+    ;; group, the same as when the whole where: is complete.
+    (is (= [(condition "c_0" "id" nil "=" (dt/number "1"))]
+           (generate :where "company | w: id = 1 or i")))
+    (is (= [{:or [(condition "c_0" "id" nil "=" (dt/number "1"))
+                  (condition "c_0" "id" nil "=" (dt/number "2"))]}]
+           (generate :where "company | w: id = 1 or id = 2 or i")))
+    (is (= (generate :where "company | w: id = 1 or id = 2")
+           (generate :where "company | w: id = 1 or id = 2 or "))))
+
+  (testing "Schema-based type conversion in UPDATE operations"
+    ;; Test that JSONB column gets proper type conversion
+    (is (= {:assignments [{:column {:alias nil :column "data"}
+                           :value (dt/jsonb "{\"test\": 1}")}]}
+           (generate :update "customer | update! data = '{\"test\": 1}'")))
+
+    ;; Test that string column remains string - need to add name column to customer in fixtures
+    ;; (is (= {:assignments [{:column {:alias nil :column "name"} 
+    ;;                       :value (dt/string "John")}]}
+    ;;        (generate :update "customer | update! name = 'John'")))
+    )
+
+  (testing "Generate ast for `assign`"
+    ;; The snapshot captures the current table alias at the point of |=
+    (is (= "c_0"
+           (get-in (generate :pending-assignments "company |= x")
+                   ["x" :current])))
+    ;; Mid-pipeline: snapshot is taken at |=, not at the end of the expression
+    (is (= "c_0"
+           (get-in (generate :pending-assignments "company |= x | employee")
+                   ["x" :current]))))
+
+  (testing "Schema-based type conversion in WHERE operations"
+    ;; Test that JSONB column gets proper type conversion in WHERE clause
+    (let [where-result (generate :where "customer | w: data = '{\"key\": \"value\"}'")]
+      (is (= 1 (count where-result)))
+      (let [{alias :alias col :column :keys [operator value]} (first where-result)]
+        (is (= alias "c_0"))
+        (is (= col "data"))
+        (is (= operator "="))
+        (is (= (:type value) :jsonb))
+        (is (= (:value value) "{\"key\": \"value\"}"))))))
+
+(testing "AST generation with comments"
+  (is (= [{:schema nil :table "company" :alias "c_0" :parent nil :join-columns nil :join-column-pairs nil :join nil :index 0}]
+         (generate :tables "-- get all companies\ncompany")))
+  (is (= [(condition nil "name" nil "=" (dt/string "Acme"))]
+         (generate :where "/* filter by name */ name = 'Acme'")))
+  (is (= 10
+         (generate :limit "limit: 10 -- max results"))))
+(deftest test-describe
+  (testing "`describe:` keeps the table the pipe left off at as current, and adds nothing"
+    (is (= [{:type :describe :value {}} "e_1" 2]
+           (generate [:operation :current :table-count] "x.company | y.employee | describe:"))))
+
+  (testing "it builds no query"
+    (is (= [] (generate :joins "x.company | describe:")))))
+
+(deftest test-references
+  (testing "`references:` keeps the table the pipe left off at as current, and adds nothing"
+    (is (= [{:type :references :value {}} "e_1" 2]
+           (generate [:operation :current :table-count] "x.company | y.employee | references:"))))
+
+  (testing "it builds no query"
+    (is (= [] (generate :joins "x.company | references:")))))

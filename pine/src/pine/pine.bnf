@@ -1,0 +1,224 @@
+OPERATIONS := <ws*> OPERATION <ws*> (<"|"> <ws*> OPERATION <ws*>)*
+ASSIGN     := <"="> <ws*> symbol
+
+OPERATION    := SELECT-PARTIAL | SELECT | WHERE-PARTIAL | WHERE | LIMIT-PARTIAL | LIMIT | FROM | ORDER-PARTIAL | ORDER | COUNT | DESCRIBE | REFERENCES | DELETE-ACTION | UPDATE-PARTIAL | UPDATE-ACTION | GROUP | ASSIGN | PATHS | UNNEST-PARTIAL | UNNEST | TABLE
+
+
+TABLE             := table table-mods
+PATHS             := <"?"> <ws*> table
+(* `unnest: a.data as e`: one row for each element of the JSON array at the
+   path, joined to the row it came from. `e.status` is a key of the element,
+   and `e` the element itself. With `:left`, a row with no elements stays,
+   with `e` empty. See docs/json-paths.md. *)
+UNNEST            := <unnest-op> symbol json-step* (<ws+> as-alias)? (<ws+> unnest-left)?
+unnest-left       := <":left">
+(* While the array is typed: `unnest: ` or `unnest: a.`. *)
+UNNEST-PARTIAL    := <unnest-op> partial-alias?
+
+SELECT-PARTIAL    := <select-op> aliased-columns <","> <ws*> partial-alias | <select-op> partial-alias | <select-op> (aliased-columns <",">)?
+SELECT            := <select-op> aliased-columns
+
+WHERE-PARTIAL     := <where-op>         conditions <or-op> partial-condition  |  <where-op> conditions <ws+> <"or"> <ws*>  |  <where-op> partial-condition  |  <where-op>
+WHERE             := <where-op>         conditions     |     conditions
+(* `limit: 1 per customer_id` keeps the first row of each customer_id: see
+   docs/limit-per.md. `per` needs whitespace on both sides, so a column like
+   `perimeter` never reads as it. *)
+LIMIT             := <limit-op>         integer (<per-op> columns)?  |  integer
+(* While the columns after `per` are typed: `l: 1 per`, `l: 1 per a, ` or `l: 1 per c.`. *)
+LIMIT-PARTIAL     := <limit-op> integer <per-op> columns <","> <ws*> partial-alias  |  <limit-op> integer <per-op> partial-alias  |  <limit-op> integer <per-op> columns <ws*> <",">  |  <limit-op> integer <ws+> <"per">
+FROM              := <from-op>          alias
+
+ORDER-PARTIAL     := <order-op> order-columns <","> <ws*> partial-alias | <order-op> partial-alias | <order-op> (order-columns <",">)?
+ORDER             := <order-op>         order-columns
+
+DELETE-ACTION     := <delete-action-op> delete-columns
+<delete-columns>  := hint-column (<","> <ws*> hint-column)*
+UPDATE-PARTIAL    := <update-action-op> update-assignments <","> <ws*> partial-update-column  |  <update-action-op> partial-update-column  |  <update-action-op> (update-assignments <",">)?
+UPDATE-ACTION     := <update-action-op> update-assignments
+COUNT             := <count-op>
+(* `describe:`: the current table's columns, from the schema Pine read. *)
+DESCRIBE          := <describe-op>
+(* `references:`: the relations that touch the current table, both ways. *)
+REFERENCES        := <references-op>
+
+GROUP             := <group-op>         (total-args / group-args / legacy-group-args)
+
+select-op         := (<"select:"> | <"s:">) <ws*>
+where-op          := (<"where:">  | <"w:">) <ws*>
+limit-op          := (<"limit:">  | <"l:">) <ws*>
+from-op           := (<"from:">   | <"f:">) <ws*>
+order-op          := (<"order:">  | <"o:">) <ws*>
+group-op          := (<"group:">  | <"g:">) <ws*>
+delete-action-op  := (<"delete!"> | <"d!">) <ws*>
+update-action-op  := (<"update!"> | <"u!">) <ws*>
+count-op          := <"count:">
+describe-op       := <"describe:">
+references-op     := <"references:">
+unnest-op         := <"unnest:"> <ws*>
+per-op            := <ws+> <"per"> <ws+>
+
+<table>           := symbol* | symbol* <"."> symbol*
+table-mods        := (<ws+> table-mod)*
+table-mod         := <":"> ("parent"|"child"|"left"|"right") | as-alias | hint-columns
+
+(* The keys, then `with` and the aggregates: `group: status with count, total => max`.
+   Without `with`, each group is counted. *)
+group-args          := columns (<ws+> <"with"> <ws+> aggregate-functions)?
+(* No keys: one group, the whole table. `group: with count as n, total => sum`.
+   Tried first, so `with` is never read as a column of that name. *)
+total-args          := <"with"> <ws+> aggregate-functions
+(* `=>` used to divide the keys from the aggregates. Read only to say so. *)
+legacy-group-args   := columns <ws*> <"=>"> <ws*> aggregate-functions
+aggregate-functions := aggregate-function (<","> <ws*> aggregate-function)*
+(* `count`, or a value whose outermost function is an aggregate: min(a.id),
+   a.id => min, any(a.type = 'x'). Any of them may take a filter,
+   `a.id => min where a.type = 'x'`, and a name, `as first_id`. Which
+   functions are aggregates is pine.computed's function table. See
+   docs/computed-values.md. *)
+aggregate-function  := operand (<ws+> <"where"> <ws+> conditions)? (<ws+> as-alias)?
+
+update-assignments := update-assignment (<","> <ws*> update-assignment)*
+update-assignment  := column <ws*> <"="> <ws*> (column|string|number|boolean|null|date|variable|call)
+partial-update-column := partial-alias | column
+
+conditions          := condition (<or-op> condition)*
+(* Whitespace on both sides, so `color` and `order_id` never read as containing `or`. *)
+<or-op>             := <ws+> <"or"> <ws+>
+condition           := condition-left <ws*> (condition-default|condition-in) (<ws*> cast)?
+(* A column, or a function of one: `jsonb_typeof(data) = 'array'`, `data => jsonb_typeof = 'array'`.
+   The arrow binds tighter than the comparison. *)
+<condition-left>    := column | call | arrow-value
+
+(* `name = $` while the variable's name is still being typed reads as `name =`. *)
+partial-condition   := partial-alias | column <ws*> operator <ws*> <"$">? | column
+(* `c.` names an alias. `c.data.` and `data.'k'.` stop inside a JSON path. *)
+partial-alias       := alias <"."> | alias <"."> symbol json-step* <"."> | symbol json-start json-step* <".">
+<condition-default> := operator <ws*> (column|string|number|boolean|null|date|variable|call)
+<condition-in>      := (in  | not-in) <ws*>  (<"("> in-items* <")"> | variable | named-result)
+(* A named result defined with `|= name`, used as the set of values its one column returns. *)
+named-result        := symbol
+cast                := <"::"> ("text"|"uuid")
+(* Strings or numbers: `in ('a', 'b')`, `in (1, 2)`. Each is typed by the column. *)
+<in-items>          := <ws*> (string | number) <ws*> <",">?
+
+aliased-columns := aliased-column (<","> <ws*> aliased-column)*
+(* A keyword literal is never read as a column: `s: true as t` is the value true. *)
+aliased-column  := (!literal-word column <ws*> | !literal-word column <ws+> as-alias <ws*> | alias <"."> star | bucket-column (<ws+> as-alias)? <ws*>) / computed-column
+(* A date bucket on a column, named after the bucket unless named with as:
+   `created_at => month`. Other values need `as`, so this one is read first. *)
+bucket-column   := !literal-word qualified-symbol <ws*> <"=>"> <ws*> column-function
+column-function := "minute" | "hour" | "day" | "week" | "month" | "year"
+
+(* ---------------
+   Computed values
+   ---------------
+   A value that isn't just a column: `coalesce(a, b) as k`, `id in edited as
+   was_edited`, `if x is null then 'a' else 'b' as k`. In select: it must
+   have a name. See docs/computed-values.md. *)
+computed-column  := (if-value | condition-value | arrow-value | call | literal | variable | cast-column | paren-value) <ws+> as-alias <ws*>
+<value>          := if-value | condition-value | operand
+<operand>        := arrow-value | arrow-base
+(* `x => f` is f(x), and `x => f(a, b)` is f(x, a, b): the value on the left
+   is the first argument. Steps chain: `name => coalesce('x') => concat('!')`.
+   A condition goes in parentheses first: `(type = 'x') => any`. *)
+arrow-value      := arrow-base (<ws*> <"=>"> <ws*> arrow-step)+
+<arrow-base>     := call | literal | variable | value-column | paren-value
+<arrow-step>     := call | function-name
+function-name    := symbol
+(* `then` takes no bare if, so an `else` always belongs to the nearest if.
+   An if there is written in parentheses. *)
+if-value         := <"if"> <ws+> conditions <ws+> <"then"> <ws+> (condition-value | operand) (<ws+> <"else"> <ws+> value)?
+condition-value  := conditions
+paren-value      := <"("> <ws*> value <ws*> <")">
+(* A function call. Any name parses; pine.computed's table says which
+   exist. A cast after it applies to its result. *)
+call             := symbol <"("> <ws*> (value (<ws*> <","> <ws*> value)*)? <ws*> <")"> (<ws*> cast)?
+value-column     := !keyword column (<ws*> cast)?
+cast-column      := column <ws*> cast
+literal          := date | !date string | number | boolean | null
+literal-word     := #"(?:true|false|null)(?![A-Za-z0-9_-])"
+keyword          := #"(?:true|false|null|if|then|else)(?![A-Za-z0-9_-])"
+<as-alias>         := <"as"> <ws+> alias
+
+order-columns := order-column (<","> <ws*> order-column)*
+(* `o: a asc nulls first` puts the rows whose `a` is NULL first. Without
+   `nulls`, each database puts them where it does by default. *)
+order-column  := column (<ws+> ("desc"|"asc"))? (<ws+> nulls-order)?
+nulls-order   := <"nulls"> <ws+> ("first"|"last")
+
+hint-column     := <"."> symbol
+
+hint-columns       := hint-column-list | explicit-columns
+<hint-column-list> := hint-column (<","> <ws*> hint-column)*
+explicit-columns   := explicit-pair (<","> <ws*> explicit-pair)*
+(* A cast on either side: `.resourceableId = .id ::text`. Either side may
+   be a path into a JSON array, `.id = .officers[*].id`: the row joins each
+   element that holds its value. See docs/joins.md. *)
+(* A side may name its table's alias, `fd.id = av.attributeId`, so a join
+   can compare with any table before it. A bare side keeps the meaning of
+   its place: written first, the table being added; written second, the
+   table before it. The second side may instead be a value, `.type =
+   'entity'`, or the test may be `.deleted_at is null`. Either keeps the
+   condition on the join: for a :left join it means something else in
+   where:. See docs/joins.md. *)
+explicit-pair      := join-side (<ws*> cast)? <ws*> <"="> <ws*> (join-side (<ws*> cast)? | join-value)
+                    | join-side <ws+> join-null
+join-null          := <"is"> <ws+> ("not" <ws+>)? <"null">
+join-side          := (alias | <"">) <"."> symbol (json-step | json-any)*
+join-value         := string | number | boolean
+json-any           := <"[*]">
+
+columns            := column (<","> <ws*> column)*
+column             := qualified-symbol
+(* A column, optionally followed by a path into its JSON value:
+   c.data.plan, data.tags[0], data.'home address'. The grammar doesn't know
+   what an alias is, so `a.b` always parses as alias and column, and
+   pine.ast.path decides what it names. After a bare name, a path starts with
+   a quoted key or an index, so every name has exactly one parse. *)
+<qualified-symbol> := symbol | symbol json-start json-step* | alias <"."> symbol json-step*
+<json-start>       := <"."> json-quoted-key | json-index
+<json-step>        := <"."> json-key | json-index
+json-key           := symbol | string
+json-quoted-key    := string
+json-index         := <"["> integer <"]">
+
+alias    := symbol
+
+symbol   := #"[A-Za-z_][A-Za-z0-9_-]*"
+(* A value supplied with the request, not written in the expression: see docs/variables.md. *)
+variable := <"$"> #"[A-Za-z_][A-Za-z0-9_]*"
+(* One token, so a long literal is one parse node rather than one per
+   character. An apostrophe inside is written twice, as in SQL: 'O''Brien'. *)
+string   := <"'"> #"(?:[^']|'')*+" <"'">
+(* A date, or a date and time: '2024-01-01', '2024-01-01 10:00', '2024-01-01T10:00:00'. *)
+date     := <"'"> #"[0-9]{4}-[0-9]{2}-[0-9]{2}(?:[ T][0-9]{2}:[0-9]{2}(?::[0-9]{2}(?:\.[0-9]{1,9})?)?)?" <"'">
+number   := #"-?[0-9]+(\.[0-9]+)?"
+integer  := #"[0-9]+"
+(* A whole run of spaces and comments is one token. It used to be a repetition
+   of smaller tokens, used as ws* and ws+, so a run of comments could be split
+   into ws tokens in many ways. After a select: column twelve block comments
+   ran a 2 GB heap out of memory. As one regex there is exactly one way to
+   read a run. The quantifiers are possessive (++, *+) because Java's regex
+   engine otherwise recurses once per repetition, and a few thousand comments
+   overflowed the stack. The string regex above is possessive for the same
+   reason. *)
+ws              := #"(?s)(?:[ \t\r\n]++|--[^\r\n]*+|/\*.*?\*/)++"
+
+<operator>     := like | not-like | ilike | not-ilike | does-not-equal | equals | is | is-not | greater-than-equal | less-than-equal | greater-than | less-than
+like           := <"like">
+not-like       := <"not"> <ws*> <"like">
+ilike          := <"ilike">
+not-ilike      := <"not"> <ws*> <"ilike">
+does-not-equal := <"!"> <ws*> <"=">
+equals         := <"=">
+greater-than   := <">">
+less-than      := <"<">
+greater-than-equal := <">=">
+less-than-equal    := <"<=">
+is             := <"is">
+is-not         := <"is"> <ws*> <"not">
+in             := <"in">
+not-in         := <"not"> <ws*> <"in">
+null           := <"null">
+boolean        := "true" | "false"
+star           := "*"

@@ -1,0 +1,374 @@
+import React, { useState, useEffect } from 'react';
+import { Button, Typography, Box, Paper, Tabs, Tab } from '@mui/material';
+import ModalSurface from './ModalSurface';
+import {
+  CHANGELOG,
+  ChangelogItem,
+  ChangelogVersion,
+  LATEST_VERSION,
+} from '../utils/changelog.data';
+import { getUserPreference, setUserPreference, STORAGE_KEYS } from '../store/preferences';
+import { compare, valid } from 'semver';
+
+// Helper function to format relative dates
+const getRelativeDate = (dateString: string): string => {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffInMs = now.getTime() - date.getTime();
+  const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+
+  if (diffInDays <= 0) {
+    return 'Today';
+  } else if (diffInDays === 1) {
+    return 'Yesterday';
+  } else if (diffInDays < 7) {
+    return `${diffInDays} days ago`;
+  } else if (diffInDays < 30) {
+    const weeks = Math.floor(diffInDays / 7);
+    return weeks === 1 ? '1 week ago' : `${weeks} weeks ago`;
+  } else if (diffInDays < 365) {
+    const months = Math.floor(diffInDays / 30);
+    return months === 1 ? '1 month ago' : `${months} months ago`;
+  } else {
+    const years = Math.floor(diffInDays / 365);
+    return years === 1 ? '1 year ago' : `${years} years ago`;
+  }
+};
+
+interface ChangelogModalProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+const ChangelogModal: React.FC<ChangelogModalProps> = ({ open, onClose }) => {
+  const [lastReadVersion, setLastReadVersion] = useState('0.30.0');
+  const [activeTab, setActiveTab] = useState(0);
+
+  useEffect(() => {
+    if (open) {
+      const stored = getUserPreference(STORAGE_KEYS.LAST_READ_VERSION, '0.30.0', v => typeof v === 'string' && valid(v) !== null);
+      setLastReadVersion(stored);
+
+      // Determine which tab to show by default
+      const newVersions = CHANGELOG.filter(version => compare(version.version, stored) > 0);
+      // If there are new updates, show "New" tab (0), otherwise show "Past" tab (1)
+      setActiveTab(newVersions.length > 0 ? 0 : 1);
+    }
+  }, [open]);
+
+  const handleClose = () => {
+    // Mark the latest version as read
+    setUserPreference(STORAGE_KEYS.LAST_READ_VERSION, LATEST_VERSION);
+    onClose();
+  };
+
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setActiveTab(newValue);
+  };
+
+  // Separate new updates from past updates
+  const newUpdates = CHANGELOG.filter(version => compare(version.version, lastReadVersion) > 0);
+  const pastUpdates = CHANGELOG.filter(version => compare(version.version, lastReadVersion) <= 0);
+
+  const hasNewUpdates = newUpdates.length > 0;
+
+  // Determine which updates to show based on active tab
+  const displayUpdates = activeTab === 0 ? newUpdates : pastUpdates;
+
+  const getSectionTitle = (section: string) => {
+    switch (section) {
+      case 'added':
+        return 'Added';
+      case 'changed':
+        return 'Changed';
+      case 'removed':
+        return 'Removed';
+      case 'fixed':
+        return 'Fixed';
+      case 'security':
+        return 'Security';
+      case 'breaking':
+        return 'Breaking';
+      default:
+        return section;
+    }
+  };
+
+  const getSectionColor = (section: string) => {
+    switch (section) {
+      case 'added':
+        return '#4caf50'; // Green - universal "addition" meaning, left alone
+      case 'changed':
+        return 'var(--canvas-trace)';
+      case 'removed':
+        return 'var(--canvas-text-dim)';
+      case 'fixed':
+        return 'var(--canvas-trace-unresolved)';
+      case 'security':
+        return 'var(--node-variable-border)'; // Same violet as the classic graph's checkpoint nodes - both read as "a distinct, special category"
+      case 'breaking':
+        return 'var(--canvas-warn)';
+      default:
+        return 'var(--text-color)';
+    }
+  };
+
+  // A title is the thing a skimming eye is meant to catch; the description
+  // (when there is one) is deliberately quieter -- smaller, dimmer, and
+  // indented under the title rather than run into the same line -- so
+  // scanning down the list reads as a list of headings first, with detail
+  // only a glance away. The dot uses the section's own color, the same
+  // "a colored dot names what kind of thing this is" language as the
+  // connection picker/canvas node dots elsewhere in the app.
+  const renderChangelogItem = (item: ChangelogItem, sectionColor: string, index: number) => (
+    <Box key={index} sx={{ display: 'flex', gap: 1.25, mb: 1.75 }}>
+      <Box
+        sx={{
+          width: 6,
+          height: 6,
+          mt: '7px',
+          borderRadius: '50%',
+          backgroundColor: sectionColor,
+          flexShrink: 0,
+        }}
+      />
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Typography
+          sx={{
+            color: 'var(--text-color)',
+            fontWeight: 600,
+            fontSize: '0.85rem',
+            lineHeight: 1.45,
+          }}
+        >
+          {item.title}
+        </Typography>
+        {item.description && (
+          <Typography
+            sx={{
+              color: 'var(--text-color)',
+              opacity: 0.62,
+              fontSize: '0.78rem',
+              lineHeight: 1.55,
+              mt: 0.4,
+            }}
+          >
+            {item.description}
+          </Typography>
+        )}
+        {item.example && (
+          <Paper
+            elevation={0}
+            sx={{
+              p: 1.5,
+              mt: 1,
+              backgroundColor: 'var(--background-color)',
+              border: '1px solid var(--border-color)',
+              fontFamily: 'var(--canvas-font)',
+              fontSize: '0.8rem',
+              whiteSpace: 'pre-wrap',
+              overflow: 'auto',
+              color: 'var(--text-color)',
+              borderRadius: 1,
+            }}
+          >
+            {item.example}
+          </Paper>
+        )}
+      </Box>
+    </Box>
+  );
+
+  const renderVersion = (version: ChangelogVersion, index: number) => {
+    const sections = ['added', 'changed', 'removed', 'fixed', 'security', 'breaking'] as const;
+
+    return (
+      <Box key={version.version}>
+        {index > 0 && (
+          <Box
+            sx={{
+              height: '1px',
+              bgcolor: 'var(--border-color)',
+              opacity: 0.3,
+              my: 4,
+            }}
+          />
+        )}
+
+        <Box sx={{ mb: 3 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'baseline',
+              mb: 2.5,
+              gap: 2,
+            }}
+          >
+            <Typography
+              variant="h6"
+              sx={{
+                color: 'var(--text-color)',
+                fontWeight: 600,
+                fontSize: '1.05rem',
+              }}
+            >
+              {getRelativeDate(version.date)}
+            </Typography>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'var(--text-color)',
+                opacity: 0.4,
+                fontFamily: 'var(--canvas-font)',
+                fontSize: '0.8rem',
+              }}
+            >
+              {version.version}
+            </Typography>
+          </Box>
+
+          {sections.map(section => {
+            const items = version[section];
+            if (!items || items.length === 0) return null;
+            const color = getSectionColor(section);
+
+            return (
+              <Box key={section} sx={{ mb: 2.5 }}>
+                <Typography
+                  component="span"
+                  sx={{
+                    display: 'inline-block',
+                    mb: 1.25,
+                    px: 1,
+                    py: 0.2,
+                    borderRadius: 999,
+                    color,
+                    backgroundColor: `color-mix(in srgb, ${color} 16%, transparent)`,
+                    fontFamily: 'var(--canvas-font)',
+                    fontWeight: 700,
+                    fontSize: '0.65rem',
+                    letterSpacing: '0.07em',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  {getSectionTitle(section)}
+                </Typography>
+                {items.map((item, idx) => renderChangelogItem(item, color, idx))}
+              </Box>
+            );
+          })}
+        </Box>
+      </Box>
+    );
+  };
+
+  return (
+    <ModalSurface
+      open={open}
+      onClose={handleClose}
+      aria-labelledby="updates-modal-title"
+      surfaceSx={{
+        width: '90vw',
+        maxWidth: 800,
+        height: '85vh',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      <Box sx={{ p: 3, borderBottom: '1px solid var(--border-color)' }}>
+        <Typography variant="h6" component="h2" gutterBottom sx={{ color: 'var(--text-color)' }}>
+          Updates
+        </Typography>
+      </Box>
+
+      <Tabs
+        value={activeTab}
+        onChange={handleTabChange}
+        sx={{
+          borderBottom: '1px solid var(--border-color)',
+          px: 2,
+          '& .MuiTab-root': {
+            color: 'var(--text-color)',
+            textTransform: 'none',
+            minHeight: 48,
+            fontSize: '0.95rem',
+            fontWeight: 500,
+            opacity: 0.6,
+          },
+          '& .Mui-selected': {
+            color: 'var(--primary-color)',
+            opacity: 1,
+            fontWeight: 600,
+          },
+          '& .MuiTabs-indicator': {
+            backgroundColor: 'var(--primary-color)',
+            height: 3,
+          },
+        }}
+      >
+        <Tab label={`New ${newUpdates.length > 0 ? `(${newUpdates.length})` : ''}`} />
+        <Tab label="Past" />
+      </Tabs>
+
+      <Box
+        sx={{
+          flex: 1,
+          overflowY: 'auto',
+          px: 4,
+          py: 3,
+          '&::-webkit-scrollbar': {
+            width: '8px',
+          },
+          '&::-webkit-scrollbar-track': {
+            background: 'transparent',
+          },
+          '&::-webkit-scrollbar-thumb': {
+            background: 'var(--border-color)',
+            borderRadius: '4px',
+          },
+          '&::-webkit-scrollbar-thumb:hover': {
+            background: 'var(--text-color)',
+            opacity: 0.5,
+          },
+        }}
+      >
+        {displayUpdates.length === 0 ? (
+          <Box sx={{ textAlign: 'center', py: 6 }}>
+            <Typography variant="body2" sx={{ color: 'var(--text-color)', opacity: 0.5 }}>
+              No updates to show
+            </Typography>
+          </Box>
+        ) : (
+          displayUpdates.map((version, index) => renderVersion(version, index))
+        )}
+      </Box>
+
+      <Box
+        sx={{
+          borderTop: '1px solid var(--border-color)',
+          p: 2,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'flex-end',
+        }}
+      >
+        <Button
+          variant="contained"
+          onClick={handleClose}
+          sx={{
+            backgroundColor: 'var(--primary-color)',
+            color: 'var(--primary-text-color)',
+            textTransform: 'none',
+            '&:hover': {
+              backgroundColor: 'var(--primary-color-hover)',
+            },
+          }}
+        >
+          Close
+        </Button>
+      </Box>
+    </ModalSurface>
+  );
+};
+
+export default ChangelogModal;

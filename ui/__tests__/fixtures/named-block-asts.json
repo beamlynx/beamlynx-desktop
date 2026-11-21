@@ -1,0 +1,170 @@
+{
+  "block" : {
+    "where" : [ {
+      "alias" : "c",
+      "column" : "id",
+      "cast" : null,
+      "operator" : "=",
+      "value" : {
+        "type" : "number",
+        "value" : 1
+      }
+    } ],
+    "selected-tables" : [ {
+      "schema" : null,
+      "table" : "company",
+      "alias" : "c"
+    } ],
+    "group" : [ ],
+    "columns" : [ {
+      "column" : "id",
+      "alias" : "c",
+      "column-alias" : "__c__id",
+      "hidden" : true,
+      "auto-id" : true,
+      "operation-index" : 4
+    } ],
+    "operation" : {
+      "type" : "limit",
+      "value" : 10
+    },
+    "joins" : [ ],
+    "checkpoints" : [ {
+      "name" : "top",
+      "sealed" : false,
+      "index" : 2,
+      "kind" : "limit",
+      "tables" : [ "c" ],
+      "columns" : [ "id", "created_at" ],
+      "limit" : 10
+    } ],
+    "pending-assignments" : {
+      "top" : {
+        "tables" : [ {
+          "schema" : null,
+          "table" : "company",
+          "alias" : "c"
+        } ],
+        "selected-tables" : [ ],
+        "joins" : [ ],
+        "columns" : [ ],
+        "where" : [ {
+          "alias" : "c",
+          "column" : "id",
+          "cast" : null,
+          "operator" : "=",
+          "value" : {
+            "type" : "number",
+            "value" : 1
+          }
+        } ],
+        "order" : [ ],
+        "group" : [ ]
+      }
+    },
+    "current" : "c",
+    "order" : [ ],
+    "ranges" : [ {
+      "alias" : "c",
+      "start" : {
+        "line" : 0,
+        "character" : 0
+      },
+      "end" : {
+        "line" : 0,
+        "character" : 12
+      }
+    }, {
+      "alias" : "c",
+      "start" : {
+        "line" : 0,
+        "character" : 15
+      },
+      "end" : {
+        "line" : 0,
+        "character" : 28
+      }
+    }, {
+      "alias" : "c",
+      "start" : {
+        "line" : 0,
+        "character" : 31
+      },
+      "end" : {
+        "line" : 0,
+        "character" : 40
+      }
+    }, {
+      "alias" : "c",
+      "start" : {
+        "line" : 0,
+        "character" : 42
+      },
+      "end" : {
+        "line" : 0,
+        "character" : 47
+      }
+    } ]
+  },
+  "main" : {
+    "where" : [ ],
+    "selected-tables" : [ {
+      "schema" : null,
+      "table" : "top",
+      "alias" : "top"
+    } ],
+    "group" : [ ],
+    "columns" : [ {
+      "column" : "id",
+      "alias" : "e",
+      "column-alias" : "__e__id",
+      "hidden" : true,
+      "auto-id" : true,
+      "operation-index" : 2
+    } ],
+    "operation" : {
+      "type" : "table",
+      "value" : {
+        "table" : "employee",
+        "alias" : "e"
+      }
+    },
+    "joins" : [ {
+      "from" : "top",
+      "to" : "e",
+      "parent" : "from",
+      "columns" : [ {
+        "from" : "id",
+        "to" : "company_id"
+      } ],
+      "resolution" : "fk",
+      "cast" : null,
+      "type" : null
+    } ],
+    "checkpoints" : [ ],
+    "pending-assignments" : { },
+    "current" : "e",
+    "order" : [ ],
+    "ranges" : [ {
+      "alias" : "top",
+      "start" : {
+        "line" : 0,
+        "character" : 0
+      },
+      "end" : {
+        "line" : 0,
+        "character" : 3
+      }
+    }, {
+      "alias" : "top",
+      "start" : {
+        "line" : 0,
+        "character" : 6
+      },
+      "end" : {
+        "line" : 0,
+        "character" : 19
+      }
+    } ]
+  }
+}

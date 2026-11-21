@@ -1,0 +1,402 @@
+(ns pine.ast.path
+  "What a dotted name means. The grammar reads `a.b` as alias `a` and column
+  `b`, because it doesn't know the aliases. This decides, once the aliases
+  are known:
+
+  - `a` is an alias in scope: column `b` of that alias. Anything after `b`
+    is a path into its JSON value.
+  - Otherwise `a` is a column of the current table, and `b` and the rest
+    are a path into its JSON value: `data.address.city`.
+
+  When `a` is both, the alias wins. A migration that adds a column then
+  can't change what an existing expression means, and the column is still
+  reachable through its own table's alias: `e.data.plan`. See
+  docs/json-paths.md."
+  (:require [clojure.string :as s]
+            [pine.ast.table :as table]
+            [pine.data-types :as dt]
+            [pine.db.connections :as connections]))
+
+(defn- in-scope?
+  "An alias of a table in the expression, or a named result."
+  [state a]
+  (or (contains? (:aliases state) a)
+      (contains? (:pending-assignments state) a)))
+
+(defn- resolve-alias
+  "A live alias (e.g. re-bound via `as`) always wins over a stale |= snapshot."
+  [state a]
+  (if (contains? (:aliases state) a) a (or (get-in state [:pending-assignments a :current]) a)))
+
+(defn- column-type [state alias column]
+  (dt/get-column-type (:references state) alias column (get (:aliases state) alias)))
+
+(defn- json-type? [db-type]
+  (contains? #{"json" "jsonb"} (some-> db-type s/lower-case)))
+
+(defn json-column?
+  "Whether the schema says `alias.column` is JSON."
+  [state alias column]
+  (json-type? (column-type state alias column)))
+
+(defn may-hold-json?
+  "Whether `alias.column` can hold JSON. A JSON column can. On SQLite, which
+  has no JSON type and usually keeps JSON in text, so can a text column, one
+  of a type SQLite reads as text, and one with no declared type."
+  [state alias column]
+  (let [db-type (column-type state alias column)]
+    (or (json-type? db-type)
+        (and (= :sqlite (connections/get-dialect (:connection-id state)))
+             (or (nil? db-type) (contains? #{"text" "string" "json"} (s/lower-case db-type)))))))
+
+(defn- table-label [state alias]
+  (or (get-in state [:aliases alias :table]) alias))
+
+(defn- step-text [step]
+  (cond
+    (= :* step) "[*]"
+    (integer? step) (str "[" step "]")
+    (re-matches #"[A-Za-z_][A-Za-z0-9_-]*" step) (str "." step)
+    :else (str ".'" (s/replace step "'" "''") "'")))
+
+(defn path-text
+  "A path as it would be typed, without the alias: `data.address.city`,
+  `data.tags[0]`, `data.'home address'`. A path column is named this."
+  [column path]
+  (apply str column (map step-text path)))
+
+(defn- refuse-non-json [state {:keys [alias column path]}]
+  (when (seq path)
+    (let [db-type (column-type state alias column)]
+      ;; An unknown type (a column of a named result Pine can't trace) is let
+      ;; through: the database reports it if it isn't JSON.
+      (when (and db-type (not (json-type? db-type)))
+        (throw (ex-info (str "`" column "` is not a JSON column, so `" (path-text column path) "` has no keys.")
+                        {}))))))
+
+(defn check-array-column
+  "Refuses `unnest: col` when the schema says `col` isn't JSON: it has no
+  elements. An element's own value, `unnest: e`, is JSON."
+  [state {:keys [alias column path]}]
+  (let [db-type (column-type state alias column)]
+    (when (and db-type (not (may-hold-json? state alias column)))
+      (throw (ex-info (str "`" column "` is not a JSON column, so `unnest: " (path-text column path) "` has no elements.")
+                      {})))))
+
+(defn- join-side-error
+  "Why one side of a join pair can't read the JSON path it names, or nil.
+  A pair reads `.<new table's column> = .<previous table's column>`, so a
+  path typed on the wrong side names a column of the wrong table. When the
+  other table has that JSON column, the message shows the pair turned round."
+  [state {:keys [from to from-path to-path]} [alias column path cast] other-alias]
+  (let [n (count (filter #{:*} path))
+        db-type (column-type state alias column)
+        other-type (column-type state other-alias column)
+        text (path-text column path)]
+    (cond
+      cast (str "A cast can't follow a JSON path in a join: `" text " ::" cast "`.")
+      (zero? n) (str "`" text "` needs `[*]` to join on: `.id = ." column "[*]` joins each element of the array.")
+      (< 1 n) (str "`" text "` has more than one `[*]`. A join reads one array.")
+      (some integer? (rest (drop-while #(not= :* %) path)))
+      (str "`" text "` has an index after `[*]`. Keys only can follow it.")
+
+      (and (not (json-type? db-type)) (json-type? other-type))
+      (str "`" (table-label state alias) "` has no JSON column `" column "`; `" (table-label state other-alias)
+           "` does. The first column of a join is the new table's: write `."
+           (path-text from from-path) " = ." (path-text to to-path) "`.")
+
+      (and db-type (not (json-type? db-type)))
+      (str "`" column "` is not a JSON column, so `" text "` has no elements."))))
+
+(defn check-join-paths
+  "Refuses a join pair whose JSON path can't be read: see join-side-error.
+  Only the join the table just added is checked, after table/handle."
+  [state]
+  (let [{:keys [from to columns]} (last (:joins state))]
+    (when (= to (:current state))
+      (doseq [{:keys [from-path to-path] :as pair} columns]
+        (when (and from-path to-path)
+          (throw (ex-info "Only one side of a join can be a path into JSON." {})))
+        (when-let [message (cond
+                             from-path (join-side-error state pair [(or (:from-alias pair) from) (:from pair) from-path (:from-cast pair)] to)
+                             to-path (join-side-error state pair [to (:to pair) to-path (:to-cast pair)] from))]
+          (throw (ex-info message {}))))))
+  state)
+
+(defn element-alias?
+  "Whether `a` is the alias of an elements step, `unnest: a.data as e` (see
+  pine.ast.elements)."
+  [state a]
+  (boolean (and a (get-in state [:aliases a :elements]))))
+
+(defn- element-column
+  "A name that reads an element of an elements step, as a path into its
+  `value` column, named as written unless `as` names it:
+
+  - `e.status.code`: the key `status.code` of each element of `e`;
+  - `e`, `e[0]`: the element itself, or a path into it.
+
+  A bare name stays a column of the table the pipe is on. Any other name
+  unchanged."
+  [state {:keys [alias column path] :as col}]
+  (cond
+    (element-alias? state alias)
+    (cond-> (assoc col :column "value" :path (into [column] path))
+      (not (:column-alias col)) (assoc :column-alias (path-text column path)))
+
+    (and (nil? alias) (element-alias? state column))
+    (cond-> (assoc col :alias column :column "value" :path (vec path))
+      (not (:column-alias col)) (assoc :column-alias (path-text column path)))
+
+    :else col))
+
+(defn- named-result-column
+  "A named result names a selected path after the path: after
+  `customer | s: data.plan |= p`, `p` has a column called `data.plan`. Read
+  `p | s: data.plan` as that column, not as a path into a `data` column `p`
+  doesn't have."
+  [state {:keys [alias column path] :as col}]
+  (let [ast (get-in state [:aliases alias :ast])
+        named (path-text column path)]
+    (if (and ast (seq path)
+             (some #(= named (or (:column-alias %) (:column %))) (remove table/added-column? (:columns ast))))
+      (-> col (assoc :column named) (dissoc :path :column-alias))
+      col)))
+
+(defn alias-map
+  "\"c_0 = company, e_1 = employee\": the aliases of the tables the pipe is
+  on, in order, with the table each stands for. Auto-aliases are hard to
+  guess when several tables start with the same letter."
+  [state]
+  (->> (:tables state)
+       (map :alias)
+       (distinct)
+       (map #(str % " = " (let [{:keys [schema table]} (get-in state [:aliases %])]
+                            (if (and schema table) (str schema "." table) (or table %)))))
+       (s/join ", ")))
+
+(defn- unknown-name [state alias]
+  (let [current (:current state)
+        table-alias (some (fn [[a {:keys [table]}]] (when (= table alias) a)) (:aliases state))
+        aliases (alias-map state)]
+    (ex-info (str (if table-alias
+                    (str "`" alias "` is a table. Name it by its alias, `" table-alias "`, like `" table-alias ".id`.")
+                    (str "`" alias "` is neither an alias nor a column of `" (table-label state current) "`."))
+                  (when (seq aliases) (str " Aliases: " aliases ".")))
+             {})))
+
+;; ---------------------------------------------------------------------------
+;; Aliases sealed into a checkpoint
+;; ---------------------------------------------------------------------------
+;;
+;; A checkpoint seals the tables before it into a CTE, and the pipe goes on
+;; from that CTE. The sealed tables' aliases stay in :aliases (auto-naming,
+;; hints and named results read them), but they are no longer in the query.
+;; `company as c | employee .company_id | l: 10 | s: c.id` must read `c.id`
+;; as the column of result_1 that came from c.id, not as "c"."id", which
+;; the outer query doesn't have.
+
+(defn- live-aliases [state]
+  (set (map :alias (:tables state))))
+
+(defn- sealed-alias?
+  "An alias of a table that a checkpoint sealed: known, but not one of the
+  tables the pipe is on now."
+  [state a]
+  (and a
+       (contains? (:aliases state) a)
+       (not (contains? (live-aliases state) a))))
+
+(defn- output-name [col]
+  (or (:column-alias col) (:column col)))
+
+(defn- explicit-columns [snapshot]
+  (remove table/added-column? (:columns snapshot)))
+
+(defn- exposed
+  "How `snapshot`'s result names the column `alias.column` (with `path`)
+  of one of its own tables: [name remaining-path], or nil when its result
+  doesn't have that column. A path selected as a column (`s: data.plan`)
+  is used by its name; otherwise the path goes on from the column."
+  [snapshot alias column path]
+  (let [explicit (explicit-columns snapshot)]
+    (if (seq explicit)
+      (or (some #(when (and (= alias (:alias %)) (= column (:column %)) (seq path) (= path (:path %)))
+                   [(output-name %) nil])
+                explicit)
+          (some #(when (and (= alias (:alias %)) (= column (:column %)) (empty? (:path %))
+                            (not (:col-fn %)))
+                   [(output-name %) path])
+                explicit)
+          ;; `s: c.*`
+          (some #(when (and (= alias (:alias %)) (s/blank? (:column %)) (= "*" (:symbol %)))
+                   [column path])
+                explicit))
+      ;; No select: the result is every column of its current table.
+      (when (= alias (:current snapshot))
+        [column path]))))
+
+(defn- snapshot-of [state a]
+  (get-in state [:aliases a :ast]))
+
+(defn- unseal-in
+  "[name path] of `alias.column` in the result of `snapshot`, looking
+  through the checkpoints inside it, or nil."
+  [snapshot alias column path]
+  (let [tables (set (map :alias (:tables snapshot)))]
+    (if (contains? tables alias)
+      (exposed snapshot alias column path)
+      (some (fn [t]
+              (when-let [inner (snapshot-of snapshot t)]
+                (when-let [[n p] (unseal-in inner alias column path)]
+                  (exposed snapshot t n p))))
+            tables))))
+
+(defn- seals?
+  "Whether the snapshot, or a checkpoint inside it, has `alias` as a table."
+  [snapshot alias]
+  (let [tables (map :alias (:tables snapshot))]
+    (boolean (or (some #{alias} tables)
+                 (some #(some-> (snapshot-of snapshot %) (seals? alias)) tables)))))
+
+(defn- checkpoint-step [state cte]
+  (case (:kind (some #(when (= cte (:name %)) %) (:checkpoints state)))
+    "group" "the group:"
+    "limit" "the limit:"
+    "the step"))
+
+(defn- refuse-ambiguous
+  "A name that is two columns of a named result or checkpoint can't pick
+  either: the database would refuse it as ambiguous."
+  [state cte n written]
+  (when-let [snapshot (snapshot-of state cte)]
+    (when (< 1 (count (filter #{n} (map output-name (explicit-columns snapshot)))))
+      (throw (ex-info (str "`" cte "` has two columns named `" n "`, so `" written "` can't pick one. "
+                           "Name them apart with `as` before " (checkpoint-step state cte)
+                           ", like `s: c.id as c_id, id`.")
+                      {:error-type "ambiguous-column" :alias cte :column n})))))
+
+(defn- unseal
+  "Read a column written with a sealed alias as the column of the
+  checkpoint that kept it. Throws when the checkpoint didn't keep it."
+  [state {:keys [alias column path] :as col}]
+  (let [cte (some #(when (some-> (snapshot-of state %) (seals? alias)) %) (map :alias (:tables state)))
+        written (str alias "." column)]
+    (if-not cte
+      col
+      (if-let [[n p] (unseal-in (snapshot-of state cte) alias column path)]
+        (do (refuse-ambiguous state cte n written)
+            (cond-> (-> col (assoc :alias cte :column n) (dissoc :path))
+              (seq p) (assoc :path p)))
+        (let [kept (->> (:checkpoints state) (some #(when (= cte (:name %)) %)) :columns)]
+          (throw (ex-info (str "`" written "` isn't a column of `" cte "`. " (s/capitalize (checkpoint-step state cte))
+                               " before sealed `" alias "` into it"
+                               (if (seq kept) (str ", and it keeps " (s/join ", " kept) ". ") ". ")
+                               "To use `" written "` after " (checkpoint-step state cte) ", select it before: `s: "
+                               written " as " alias "_" column ", ...`.")
+                          {:error-type "sealed-column" :alias alias :column column :checkpoint cte})))))))
+
+(defn- refuse-missing-bare
+  "A bare name after a group: or limit: sealed the pipe into a checkpoint
+  has to be a column the checkpoint kept. Anything else, often a column of
+  an earlier table, would reach the database as `result_1.name` and fail
+  there with a message about SQL nobody wrote."
+  [state {:keys [alias column]}]
+  (when (and (nil? alias) (not (s/blank? column)))
+    (let [current (:current state)
+          {:keys [columns tables] :as checkpoint} (some #(when (and (:sealed %) (= current (:name %))) %) (:checkpoints state))
+          snapshot (snapshot-of state current)
+          ;; Refused only when the schema shows the name is a column of a
+          ;; table the checkpoint sealed. A name the schema doesn't know is
+          ;; left for the database to judge, as before.
+          owner (when (and checkpoint snapshot (seq columns) (not (some #{column} columns)))
+                  (some #(when (dt/get-column-type (:references state) % column (get-in snapshot [:aliases %])) %)
+                        tables))]
+      (when owner
+        (let [step (checkpoint-step state current)]
+          (throw (ex-info (str "`" column "` isn't a column of `" current "`. " (s/capitalize step)
+                               " before keeps " (s/join ", " columns) ". "
+                               "`" column "` is a column of `" owner "`. To use it after " step
+                               ", select it there first: `s: " owner "." column ", ...` before " step)
+                          {:error-type "sealed-column" :column column :checkpoint current})))))))
+
+(defn unseal-column
+  "A column of a sealed table, as the checkpoint column that kept it;
+  any other column unchanged. For a column that doesn't go through
+  resolve-column, such as one on the right of a where: comparison."
+  [state col]
+  (if (sealed-alias? state (:alias col))
+    (unseal state col)
+    col))
+
+(declare resolve-column* computed-column)
+
+(defn resolve-column
+  "Resolve the alias of a column descriptor ({:alias :column :path}) and,
+  when the name goes into a JSON value, name the column after its path with
+  :column-alias (unless `as` already named it). Two paths into the same
+  column then keep apart wherever columns are told apart by name.
+
+  A column of a table a checkpoint sealed is read as the checkpoint's
+  column that kept it (see unseal). A bare name that is two columns of the
+  named result the pipe is on is refused.
+
+  An alias that hides a JSON column of the current table is marked
+  :alias-hides-column, so the canvas can show which one was read.
+
+  A name that reads an element of `unnest: a.data as e` is a path into the
+  element (see element-column)."
+  [state col]
+  (if (or (element-alias? state (:alias col))
+          (and (nil? (:alias col)) (element-alias? state (:column col))))
+    (unseal-column state (element-column state col))
+    (resolve-column* state col)))
+
+(defn- resolve-column*
+  [state col]
+  (let [{:keys [alias column path] :as col} (unseal-column state col)
+        current (:current state)
+        _ (when (nil? alias) (refuse-ambiguous state current column column))
+        _ (when-not (computed-column state column) (refuse-missing-bare state col))
+        resolved (cond
+                   (nil? alias)
+                   (assoc col :alias current)
+
+                   (in-scope? state alias)
+                   (cond-> (assoc col :alias (resolve-alias state alias))
+                     (and (not= alias current) (json-type? (column-type state current alias)))
+                     (assoc :alias-hides-column true))
+
+                   (column-type state current alias)
+                   (assoc col :alias current :column alias :path (into [column] path))
+
+                   :else
+                   (throw (unknown-name state alias)))
+        resolved (named-result-column state resolved)]
+    (refuse-non-json state resolved)
+    (cond-> resolved
+      (and (seq (:path resolved)) (not (:column-alias resolved)))
+      (assoc :column-alias (path-text (:column resolved) (:path resolved))))))
+
+;; ---------------------------------------------------------------------------
+;; Computed names
+;; ---------------------------------------------------------------------------
+
+(defn computed-column
+  "The computed column of the select: steps so far named `n`, or nil."
+  [state n]
+  (when n
+    (some #(when (and (:computed %) (= n (:column-alias %))) %) (:columns state))))
+
+(defn computed-ref
+  "A bare name that is a computed column of an earlier select: step, as that
+  column's value, to inline where the name is used: SQL can't use a SELECT
+  list name in WHERE, PARTITION BY or GROUP BY. The name wins over a table
+  column with the same name, which is still reachable with its alias.
+  nil for any other column. See docs/computed-values.md."
+  [state {:keys [alias column path] :as col}]
+  (when (and (nil? alias) (empty? path))
+    (when-let [c (computed-column state column)]
+      (-> col
+          (assoc :alias (:current state) :computed (:computed c))
+          (dissoc :path)))))

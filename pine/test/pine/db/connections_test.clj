@@ -1,0 +1,402 @@
+(ns pine.db.connections-test
+  (:require
+   [clojure.test :refer [deftest is testing]]
+   [pine.db.connections :as connections]
+   [pine.db.main :as db]
+   [pine.db.references :as refs])
+  (:import (com.zaxxer.hikari HikariDataSource)))
+
+(defn- fake-pool [closed?]
+  (reify java.io.Closeable
+    (close [_] (reset! closed? true))))
+
+(deftest test-remove-connection-pool
+  (testing "removes an existing pool and closes it"
+    (let [closed? (atom false)]
+      (swap! connections/pools assoc "conn-remove-1" (fake-pool closed?))
+      (connections/remove-connection-pool "conn-remove-1")
+      (is @closed? "pool should be closed")
+      (is (not (contains? @connections/pools "conn-remove-1")))))
+
+  (testing "throws for an unknown id"
+    (is (thrown? Exception (connections/remove-connection-pool "conn-does-not-exist")))))
+
+(deftest test-forget-connection
+  (let [original @db/references]
+    (try
+      (reset! db/references {"conn-a" {:a 1} "conn-b" {:b 1}})
+      (db/forget-connection "conn-a")
+      (is (= {"conn-b" {:b 1}} @db/references) "drops only that connection's schema")
+      (finally
+        (reset! db/references original)))))
+
+(deftest test-reindex-references
+  (testing "re-runs the indexer even when a value is already cached"
+    (let [calls (atom 0)]
+      (with-redefs [db/get-indexed-references (fn [_id] (swap! calls inc) {:call @calls})]
+        (is (= "conn-reindex" (db/reindex-references "conn-reindex")))
+        (is (= {:call 1} (@db/references "conn-reindex")))
+        (db/reindex-references "conn-reindex")
+        (is (= {:call 2} (@db/references "conn-reindex")))))))
+
+(deftest test-schema-belongs-to-its-pool
+  ;; A connection removed and opened again under the same id can be another
+  ;; database. Its old schema must never be served for the new one.
+  (let [first-pool (fake-pool (atom false))
+        second-pool (fake-pool (atom false))]
+    (try
+      (testing "a schema read while the pool was swapped is refused, not cached"
+        (swap! connections/pools assoc "conn-swap" first-pool)
+        (with-redefs [db/get-indexed-references
+                      (fn [_] (swap! connections/pools assoc "conn-swap" second-pool) {:db "first"})]
+          (is (thrown-with-msg? clojure.lang.ExceptionInfo #"changed while its schema was read"
+                                (db/init-references "conn-swap"))))
+        (is (not (contains? @db/references "conn-swap"))))
+      (testing "a cached schema is read again once another pool has the id"
+        (with-redefs [db/get-indexed-references (fn [_] {:db "second"})]
+          (is (= {:db "second"} (db/init-references "conn-swap"))))
+        (swap! connections/pools assoc "conn-swap" first-pool)
+        (with-redefs [db/get-indexed-references (fn [_] {:db "first"})]
+          (is (= {:db "first"} (db/init-references "conn-swap")))))
+      (finally
+        (swap! connections/pools dissoc "conn-swap")
+        (db/forget-connection "conn-swap")))))
+
+;; A real HikariDataSource subclass, not a reify: add-connection-pool has to
+;; distinguish a realized pool from the lazy thunk get-connection-pool also
+;; accepts, so it checks `instance? HikariDataSource`. The no-arg
+;; constructor is the "configure later" mode and starts no pool, so nothing
+;; here touches a database.
+(defn- fake-hikari [url user closed?]
+  (proxy [HikariDataSource] []
+    (getJdbcUrl [] url)
+    (getUsername [] user)
+    (close [] (reset! closed? true))))
+
+(deftest test-add-connection-pool-does-not-leak
+  (testing "re-registering the same database reuses the pool instead of stacking a new one"
+    ;; The regression this guards: the id is derived from the pool's own
+    ;; host:port:dbname, so this always lands on the same key. A bare
+    ;; `swap! pools assoc` overwrote the entry and left the previous
+    ;; HikariDataSource open and unreferenced -- and since the pool config
+    ;; sets minimumIdle 1, each orphan held a real Postgres connection for
+    ;; the life of the process.
+    (let [first-closed? (atom false)
+          second-closed? (atom false)
+          url "jdbc:postgresql://leak-test:5432/app"]
+      (try
+        (with-redefs [connections/create-pool (fn [_] (fake-hikari url "app_user" first-closed?))]
+          (is (= "app_user@leak-test:5432:app" (connections/add-connection-pool {:host "leak-test"}))))
+        (with-redefs [connections/create-pool (fn [_] (fake-hikari url "app_user" second-closed?))]
+          (is (= "app_user@leak-test:5432:app" (connections/add-connection-pool {:host "leak-test"}))))
+
+        (is (not @first-closed?) "the pool still in the registry must stay open")
+        (is @second-closed? "the redundant second pool must be closed, not leaked")
+        (is (= 1 (count (filter #(= "app_user@leak-test:5432:app" %) (keys @connections/pools)))))
+        (finally
+          (swap! connections/pools dissoc "app_user@leak-test:5432:app")))))
+
+  (testing "a different database on the same host:port registers as a separate pool"
+    ;; The id now folds dbname in (host:port:dbname), so two databases on one
+    ;; server land on distinct keys and can coexist -- this is the whole
+    ;; point of the multi-database-per-server feature. Both stay open; there
+    ;; is nothing here to reject or close.
+    (let [one-closed? (atom false)
+          two-closed? (atom false)]
+      (try
+        (with-redefs [connections/create-pool
+                      (fn [_] (fake-hikari "jdbc:postgresql://swap-test:5432/one" "u1" one-closed?))]
+          (is (= "u1@swap-test:5432:one" (connections/add-connection-pool {:host "swap-test"}))))
+        (with-redefs [connections/create-pool
+                      (fn [_] (fake-hikari "jdbc:postgresql://swap-test:5432/two" "u1" two-closed?))]
+          (is (= "u1@swap-test:5432:two" (connections/add-connection-pool {:host "swap-test"}))))
+
+        (is (not @one-closed?) "the first database's pool must stay open")
+        (is (not @two-closed?) "the second database's pool must stay open too")
+        (is (= "jdbc:postgresql://swap-test:5432/one"
+               (.getJdbcUrl (@connections/pools "u1@swap-test:5432:one"))))
+        (is (= "jdbc:postgresql://swap-test:5432/two"
+               (.getJdbcUrl (@connections/pools "u1@swap-test:5432:two"))))
+        (finally
+          (swap! connections/pools dissoc "u1@swap-test:5432:one" "u1@swap-test:5432:two")))))
+
+  (testing "the same database as a different user registers as a separate pool"
+    (let [reader-closed? (atom false)
+          writer-closed? (atom false)
+          url "jdbc:postgresql://user-test:5432/app"]
+      (try
+        (with-redefs [connections/create-pool (fn [_] (fake-hikari url "reader" reader-closed?))]
+          (is (= "reader@user-test:5432:app" (connections/add-connection-pool {:host "user-test"}))))
+        (with-redefs [connections/create-pool (fn [_] (fake-hikari url "writer" writer-closed?))]
+          (is (= "writer@user-test:5432:app" (connections/add-connection-pool {:host "user-test"}))))
+
+        (is (not @reader-closed?) "the first user's pool must stay open")
+        (is (not @writer-closed?) "the second user's pool must stay open too")
+        (is (= "reader" (.getUsername (@connections/pools "reader@user-test:5432:app"))))
+        (is (= "writer" (.getUsername (@connections/pools "writer@user-test:5432:app"))))
+        (finally
+          (swap! connections/pools dissoc "reader@user-test:5432:app" "writer@user-test:5432:app")))))
+
+  (testing "a pool without a user keeps the id without one"
+    (let [closed? (atom false)]
+      (try
+        (with-redefs [connections/create-pool
+                      (fn [_] (fake-hikari "jdbc:postgresql://nouser-test:5432/app" nil closed?))]
+          (is (= "nouser-test:5432:app" (connections/add-connection-pool {:host "nouser-test"}))))
+        (finally
+          (swap! connections/pools dissoc "nouser-test:5432:app")))))
+
+  (testing "the same id with different connection options is rejected"
+    (let [old-closed? (atom false)
+          new-closed? (atom false)]
+      (try
+        (with-redefs [connections/create-pool
+                      (fn [_] (fake-hikari "jdbc:postgresql://opts-test:5432/app" "u" old-closed?))]
+          (connections/add-connection-pool {:host "opts-test"}))
+        (with-redefs [connections/create-pool
+                      (fn [_] (fake-hikari "jdbc:postgresql://opts-test:5432/app?ssl=true" "u" new-closed?))]
+          (is (thrown-with-msg? clojure.lang.ExceptionInfo #"different settings"
+                                (connections/add-connection-pool {:host "opts-test"}))))
+
+        (is (not @old-closed?) "different settings must not silently take over the existing pool")
+        (is @new-closed? "the rejected pool must be closed, not leaked")
+        (finally
+          (swap! connections/pools dissoc "u@opts-test:5432:app"))))))
+
+(deftest test-add-connection-pool-with-the-clients-id
+  (testing "two ids for one address get a pool each"
+    ;; The desktop app sends each saved connection's own id. Two saved
+    ;; connections to localhost:5432 (local Docker, and a tunnel to another
+    ;; server) must never share a pool, or a tab of one runs on the other.
+    (let [url "jdbc:postgresql://localhost:5432/app"
+          local-closed? (atom false)
+          tunnel-closed? (atom false)]
+      (try
+        (with-redefs [connections/create-pool (fn [_] (fake-hikari url "u" local-closed?))]
+          (is (= "local-id" (connections/add-connection-pool {:id "local-id"}))))
+        (with-redefs [connections/create-pool (fn [_] (fake-hikari url "u" tunnel-closed?))]
+          (is (= "tunnel-id" (connections/add-connection-pool {:id "tunnel-id"}))))
+        (is (not @local-closed?))
+        (is (not @tunnel-closed?))
+        (is (not (identical? (@connections/pools "local-id") (@connections/pools "tunnel-id"))))
+        (testing "and a response names each by its own id"
+          (is (= "local-id" (connections/get-connection-name "local-id")))
+          (is (= "tunnel-id" (connections/get-connection-name "tunnel-id"))))
+        (finally
+          (swap! connections/pools dissoc "local-id" "tunnel-id")))))
+
+  (testing "the same id again reuses its pool"
+    (let [url "jdbc:postgresql://again:5432/app"
+          second-closed? (atom false)]
+      (try
+        (with-redefs [connections/create-pool (fn [_] (fake-hikari url "u" (atom false)))]
+          (connections/add-connection-pool {:id "again-id"}))
+        (with-redefs [connections/create-pool (fn [_] (fake-hikari url "u" second-closed?))]
+          (is (= "again-id" (connections/add-connection-pool {:id "again-id"}))))
+        (is @second-closed?)
+        (finally
+          (swap! connections/pools dissoc "again-id")))))
+
+  (testing "the same id for a different database is refused"
+    (try
+      (with-redefs [connections/create-pool
+                    (fn [_] (fake-hikari "jdbc:postgresql://one:5432/app" "u" (atom false)))]
+        (connections/add-connection-pool {:id "moved-id"}))
+      (with-redefs [connections/create-pool
+                    (fn [_] (fake-hikari "jdbc:postgresql://two:5432/app" "u" (atom false)))]
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo #"different settings"
+                              (connections/add-connection-pool {:id "moved-id"}))))
+      (finally
+        (swap! connections/pools dissoc "moved-id"))))
+
+  (testing "an id that isn't a plain name is refused before any pool opens"
+    (let [opened? (atom false)]
+      (with-redefs [connections/create-pool (fn [_] (reset! opened? true))]
+        (doseq [id ["a/b" "" "a b" 5 (apply str (repeat 101 "a"))]]
+          (is (thrown-with-msg? clojure.lang.ExceptionInfo #"connection id"
+                                (connections/add-connection-pool {:id id}))
+              (pr-str id))))
+      (is (not @opened?))))
+
+  (testing "an id with no pool has no name"
+    (is (thrown? clojure.lang.ExceptionInfo (connections/get-connection-name "no-such-id")))))
+
+(deftest test-jdbc-url
+  (testing "Postgres: dbtype defaults, port defaults to 5432"
+    (is (= "jdbc:postgresql://h:5432/d" (connections/jdbc-url {:host "h" :dbname "d"})))
+    (is (= "jdbc:postgresql://h:5433/d" (connections/jdbc-url {:host "h" :port 5433 :dbname "d"}))))
+
+  (testing "MySQL: port defaults to 3306, plus the fixed connection params"
+    (is (= (str "jdbc:mysql://h:3306/d?connectionTimeZone=SERVER&forceConnectionTimeZoneToSession=false"
+                "&preserveInstants=false&allowPublicKeyRetrieval=true"
+                "&zeroDateTimeBehavior=CONVERT_TO_NULL&tinyInt1isBit=false&characterEncoding=UTF-8"
+                "&allowLoadLocalInfile=false&allowUrlInLocalInfile=false")
+           (connections/jdbc-url {:dbtype "mysql" :host "h" :dbname "d"})))
+    (is (clojure.string/starts-with? (connections/jdbc-url {:dbtype "mysql" :host "h" :port 3307 :dbname "d"})
+                                     "jdbc:mysql://h:3307/d?"))))
+
+(deftest test-jdbc-url-sqlite
+  (testing "SQLite: the file path is the whole address; no host, port or options"
+    (is (= "jdbc:sqlite:/data/app.db" (connections/jdbc-url {:dbtype "sqlite" :dbname "/data/app.db"})))
+    (is (nil? (connections/default-port "sqlite")))))
+
+(deftest test-jdbc-url->label
+  (testing "Postgres URL, no query string"
+    (is (= "h:5432 · d" (connections/jdbc-url->label "jdbc:postgresql://h:5432/d"))))
+
+  (testing "MySQL URL with a ?params suffix - regression test for the naive (s/split url #\"/\") parse, which took the ?params-corrupted segment as the dbname"
+    (is (= "h:3306 · pine"
+           (connections/jdbc-url->label
+            (connections/jdbc-url {:dbtype "mysql" :host "h" :dbname "pine"}))))))
+
+(deftest test-sqlite-label-and-id
+  (let [url "jdbc:sqlite:/data/my files/app.db"
+        id (fn [url] (connections/make-connection-id (fake-hikari url nil (atom false))))]
+    (testing "the label is the file name, then its folder"
+      (is (= "app.db · /data/my files" (connections/jdbc-url->label url))))
+
+    (testing "the id has no `/` (it is a route segment) and no spaces"
+      (is (re-matches #"sqlite:app\.db:[0-9a-f]{10}" (id "jdbc:sqlite:/data/a/app.db")))
+      (is (re-matches #"sqlite:my_file\.db:[0-9a-f]{10}" (id "jdbc:sqlite:/data/my file.db"))))
+
+    (testing "same file name in two folders: two ids; the same path: the same id"
+      (is (not= (id "jdbc:sqlite:/a/app.db") (id "jdbc:sqlite:/b/app.db")))
+      (is (= (id "jdbc:sqlite:/a/app.db") (id "jdbc:sqlite:/a/app.db"))))))
+
+(deftest test-get-dialect
+  (testing "sentinel test connection ids resolve without touching any pool"
+    (is (= :postgres (connections/get-dialect :test)))
+    (is (= :mysql (connections/get-dialect :test-mysql)))
+    (is (= :sqlite (connections/get-dialect :test-sqlite))))
+
+  (testing "a registered HikariDataSource's own JDBC URL scheme wins"
+    (try
+      (swap! connections/pools assoc "dialect-mysql" (fake-hikari "jdbc:mysql://h:3306/d" "u" (atom false)))
+      (swap! connections/pools assoc "dialect-pg" (fake-hikari "jdbc:postgresql://h:5432/d" "u" (atom false)))
+      (swap! connections/pools assoc "dialect-sqlite" (fake-hikari "jdbc:sqlite:/data/app.db" nil (atom false)))
+      (is (= :mysql (connections/get-dialect "dialect-mysql")))
+      (is (= :postgres (connections/get-dialect "dialect-pg")))
+      (is (= :sqlite (connections/get-dialect "dialect-sqlite")))
+      (finally
+        (swap! connections/pools dissoc "dialect-mysql" "dialect-pg" "dialect-sqlite"))))
+
+  (testing "defaults to :postgres for anything else - an unregistered id, or a non-HikariDataSource pool"
+    (is (= :postgres (connections/get-dialect "no-such-connection")))
+    (try
+      (swap! connections/pools assoc "dialect-fake" (fake-pool (atom false)))
+      (is (= :postgres (connections/get-dialect "dialect-fake")))
+      (finally
+        (swap! connections/pools dissoc "dialect-fake")))))
+
+(def ^:private ok {:host "db.example" :dbname "app" :user "u" :password "p"})
+
+(defn- problem [config]
+  (try (connections/validate-connection config) nil
+       (catch clojure.lang.ExceptionInfo e
+         [(.getMessage e) (ex-data e)])))
+
+(deftest test-validate-connection
+  (testing "values that would add options to the JDBC URL are refused"
+    (doseq [config [(assoc ok :dbname "app?allowLoadLocalInfile=true")
+                    (assoc ok :dbname "app?socketFactory=x&socketFactoryArg=y")
+                    (assoc ok :host "h:1/x?loggerFile=/tmp/x&q=")
+                    (assoc ok :host "h/x")
+                    (assoc ok :schema "public;x")]]
+      (is (= "bad-connection" (:error-type (second (problem config)))) (pr-str config))))
+
+  (testing "bad ports and types are refused"
+    (is (problem (assoc ok :port 0)))
+    (is (problem (assoc ok :port 70000)))
+    (is (problem (assoc ok :port "abc")))
+    (is (problem (assoc ok :dbtype "oracle")))
+    (is (problem (dissoc ok :password)))
+    (is (problem (assoc ok :user 5))))
+
+  (testing "the password never appears in the error"
+    (let [[message data] (problem (assoc ok :dbname "a?b" :password "hunter2"))]
+      (is (not (re-find #"hunter2" (str message data))))))
+
+  (testing "ordinary values pass, with the port as a number"
+    (is (= 5432 (:port (connections/validate-connection (assoc ok :port "5432")))))
+    (is (nil? (:port (connections/validate-connection (assoc ok :port "")))))
+    (is (connections/validate-connection (assoc ok :host "[::1]" :dbname "db_1")))
+    (is (connections/validate-connection (assoc ok :host "sample_db" :dbname "my-db" :schema "public")))
+    (is (connections/validate-connection (assoc ok :host "10.0.0.5" :dbname "app$1" :dbtype "mysql")))))
+
+(deftest test-mysql-url-refuses-local-files
+  (is (re-find #"allowLoadLocalInfile=false" (connections/jdbc-url {:dbtype "mysql" :host "h" :dbname "d"}))))
+
+(deftest test-concurrent-registration-keeps-one-pool
+  ;; Two registrations of the same database at once (a double click, a
+  ;; retry) used to both see no pool, and the second assoc orphaned the
+  ;; first, still open. The decision now happens inside the atom.
+  (let [url "jdbc:postgresql://race-test:5432/app"
+        n 16
+        closed (vec (repeatedly n #(atom false)))
+        start (java.util.concurrent.CountDownLatch. 1)
+        counter (atom -1)]
+    (try
+      (with-redefs [connections/create-pool (fn [_] (fake-hikari url "u" (closed (swap! counter inc))))]
+        (let [futures (doall (for [_ (range n)]
+                               (future (.await start) (connections/add-connection-pool {:host "race-test"}))))]
+          (.countDown start)
+          (is (every? #(= "u@race-test:5432:app" @%) futures))))
+      (is (= 1 (count (remove deref closed))) "exactly one pool stays open; every other one is closed")
+      (finally
+        (swap! connections/pools dissoc "u@race-test:5432:app")))))
+
+(deftest test-unqualified-table-uses-one-schema
+  ;; [schema table column position type length nullable default]
+  (let [index #(refs/index-references [[] %])
+        columns-of (fn [references table] (map (juxt :column :type) (get-in references [:table table :columns])))]
+    (testing "a table in one schema: that schema's columns"
+      (is (= [["id" "integer"]] (columns-of (index [["app" "user" "id" 1 "integer" nil "NO" nil]]) "user"))))
+    (testing "the same table in public and another schema: public's columns, not both merged"
+      (is (= [["id" "integer"] ["email" "text"]]
+             (columns-of (index [["audit" "user" "id" 1 "uuid" nil "NO" nil]
+                                 ["audit" "user" "seen_at" 2 "timestamp" nil "NO" nil]
+                                 ["public" "user" "id" 1 "integer" nil "NO" nil]
+                                 ["public" "user" "email" 2 "text" nil "NO" nil]])
+                         "user"))))
+    (testing "several schemas, none of them public: still merged, since nothing says which"
+      (is (= 2 (count (columns-of (index [["a" "t" "x" 1 "text" nil "NO" nil]
+                                          ["b" "t" "y" 1 "text" nil "NO" nil]])
+                                  "t")))))))
+
+(deftest test-unqualified-table-uses-its-schemas-primary-key
+  ;; columns: [schema table column position type length nullable default]
+  ;; primary keys: [schema table column position]
+  (let [index (fn [columns primary-keys] (refs/index-references [[] columns primary-keys]))
+        user-columns [["audit" "user" "id" 1 "uuid" nil "NO" nil]
+                      ["audit" "user" "seen_at" 2 "timestamp" nil "NO" nil]
+                      ["public" "user" "id" 1 "integer" nil "NO" nil]
+                      ["public" "user" "email" 2 "text" nil "NO" nil]]]
+    (testing "key columns come back in key order, not the order they arrived in"
+      (is (= ["b" "a"] (refs/primary-key (index [["s" "t" "a" 1 "int4" nil "NO" nil]
+                                                 ["s" "t" "b" 2 "int4" nil "NO" nil]]
+                                                [["s" "t" "a" 2] ["s" "t" "b" 1]])
+                                         "s" "t"))))
+    (testing "an unqualified table uses the key of the schema it resolves to"
+      (is (= ["id"] (refs/primary-key (index user-columns [["public" "user" "id" 1]
+                                                           ["audit" "user" "seen_at" 1]])
+                                      nil "user")))
+      (is (= ["seen_at"] (refs/primary-key (index user-columns [["public" "user" "id" 1]
+                                                                ["audit" "user" "seen_at" 1]])
+                                           "audit" "user"))))
+    (testing "no key when the schema it resolves to has none"
+      (is (nil? (refs/primary-key (index user-columns [["audit" "user" "seen_at" 1]]) nil "user"))))
+    (testing "no key when several schemas have the table and none is public"
+      (is (nil? (refs/primary-key (index [["a" "t" "x" 1 "text" nil "NO" nil]
+                                          ["b" "t" "x" 1 "text" nil "NO" nil]]
+                                         [["a" "t" "x" 1] ["b" "t" "x" 1]])
+                                  nil "t"))))))
+
+(deftest test-enum-column-type
+  ;; [schema table column position type length nullable default enum-schema]
+  (let [references (refs/index-references [[] [["app" "attachment" "id" 1 "int4" nil "NO" nil nil]
+                                               ["app" "attachment" "type" 2 "attachment_type" nil "NO" nil "types"]]])
+        columns (get-in references [:schema "app" :table "attachment" :columns])]
+    (testing "an enum column records its type as [schema name]"
+      (is (= ["types" "attachment_type"] (:enum (second columns)))))
+    (testing "any other column has none"
+      (is (not (contains? (first columns) :enum))))))

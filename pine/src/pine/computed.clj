@@ -1,0 +1,404 @@
+(ns pine.computed
+  "Computed values: a value that isn't just a column. `coalesce(a, b)`,
+  `id in edited`, `if x is null then 'a' else 'b'`, and the aggregates of
+  group:, `min(a.id) where a.type = 'x'`. See docs/computed-values.md.
+
+  A computed value is a tree of nodes, each a map with a :kind:
+
+    {:kind :column :alias \"a\" :column \"id\" :path [...] :cast \"text\"}
+    {:kind :literal :value <a pine.data-types value>}  ; string, number, true, $variable ...
+    {:kind :call :fn \"coalesce\" :args [<node> ...] :cast \"text\"}
+    {:kind :condition :conditions [<where: condition> ...]}  ; joined with or
+    {:kind :if :when <condition node> :then <node> :else <node or nil>}
+    {:kind :aggregate :fn \"min\" :arg <node or nil> :filter <condition node or nil>}
+
+  The parser builds the tree with conditions as [column operator value]
+  triples; pine.ast.value resolves it, after which conditions are the same
+  maps pine.ast.where stores in :where.
+
+  This namespace has no dependencies on the rest of Pine, so the parser, the
+  AST, the evaluator and the access policy can all use it. It holds the one
+  table of functions, the walk that finds the columns a value reads, and the
+  printer that writes a value back as Pine text."
+  (:require [clojure.string :as s]))
+
+;; ---------
+;; FUNCTIONS
+;; ---------
+;;
+;; One entry per function. Adding a function is adding an entry: the grammar
+;; accepts any name before `(`, and the parser, the AST and the evaluator all
+;; read this table.
+;;
+;; - :arity      [min max], max nil for no limit
+;; - :aggregate  true for a function only group: takes
+;; - :render     (fn [dialect args]) for a function, where args are the
+;;               arguments' SQL; (fn [dialect arg filter]) for an
+;;               aggregate, where arg and filter are SQL or nil
+;; - :json-args  true for a function that reads JSON: each argument is
+;;               rendered as a JSON value, not as text, and :render gets
+;;               [sql params] pairs and returns [sql params], so it can
+;;               write an argument twice
+
+(defn- concat-sql
+  "NULL when any argument is NULL, like SQL's `||`, on every database.
+  Postgres's and SQLite's concat() skip NULLs instead, so they aren't used.
+  MySQL's CONCAT() is NULL on a NULL argument already, and its `||` means
+  OR. Postgres has no `||` for two non-text values, such as two integers, so
+  each argument is cast to text there."
+  [dialect args]
+  (case dialect
+    :mysql (str "CONCAT(" (s/join ", " args) ")")
+    :sqlite (str "(" (s/join " || " args) ")")
+    (str "(" (s/join " || " (map #(str "(" % ")::text") args)) ")")))
+
+(defn- filtered
+  "An aggregate over `arg`, counting only the rows where `filter` is true.
+  Postgres and SQLite have FILTER (WHERE ...). MySQL doesn't: the value is
+  NULL on the other rows instead, which every aggregate skips."
+  [dialect sql-fn arg filter]
+  (cond
+    (nil? filter) (str sql-fn "(" arg ")")
+    (= dialect :mysql) (str sql-fn "(CASE WHEN " filter " THEN " arg " END)")
+    :else (str sql-fn "(" arg ") FILTER (WHERE " filter ")")))
+
+(defn- twice
+  "[sql params] for `f` of the SQL `x`, where `f` writes `x` twice: `x`'s
+  parameters are bound twice, in the order its `?`s appear."
+  [[x params] f]
+  [(f x) (concat params params)])
+
+(defn- json-typeof-sql
+  "Postgres's names for a JSON value's type, on every database: object,
+  array, string, number, boolean or null. NULL when there is no value."
+  [dialect [arg]]
+  (case dialect
+    :mysql (twice arg (fn [x] (str "CASE JSON_TYPE(" x ") WHEN 'INTEGER' THEN 'number' WHEN 'UNSIGNED INTEGER' THEN 'number'"
+                                   " WHEN 'DOUBLE' THEN 'number' WHEN 'DECIMAL' THEN 'number' ELSE LOWER(JSON_TYPE(" x ")) END")))
+    :sqlite (twice arg (fn [x] (str "CASE json_type(" x ") WHEN 'true' THEN 'boolean' WHEN 'false' THEN 'boolean'"
+                                    " WHEN 'integer' THEN 'number' WHEN 'real' THEN 'number' WHEN 'text' THEN 'string'"
+                                    " ELSE json_type(" x ") END")))
+    (let [[x params] arg] [(str "jsonb_typeof(" x ")") params])))
+
+(defn- json-array-length-sql
+  "The number of items in a JSON array. Postgres refuses a value that
+  isn't an array. MySQL's JSON_LENGTH counts an object's keys and SQLite's
+  json_array_length gives 0, so there the value is NULL instead."
+  [dialect [arg]]
+  (case dialect
+    :mysql (twice arg (fn [x] (str "CASE WHEN JSON_TYPE(" x ") = 'ARRAY' THEN JSON_LENGTH(" x ") END")))
+    :sqlite (twice arg (fn [x] (str "CASE WHEN json_type(" x ") = 'array' THEN json_array_length(" x ") END")))
+    (let [[x params] arg] [(str "jsonb_array_length(" x ")") params])))
+
+(defn- aggregate [sql-fn]
+  {:arity [1 1] :aggregate true
+   :render (fn [dialect arg filter] (filtered dialect sql-fn arg filter))})
+
+;; Date buckets: a date as text, cut to its year, month, ... `created_at =>
+;; month` is `'2024-05'`.
+
+(defn- col-fn-format
+  "Map column function names to TO_CHAR format strings"
+  [col-fn]
+  (case col-fn
+    "year"   "YYYY"
+    "month"  "YYYY-MM"
+    "day"    "YYYY-MM-DD"
+    "week"   "YYYY-MM-DD"
+    "hour"   "YYYY-MM-DD HH24"
+    "minute" "YYYY-MM-DD HH24:MI"))
+
+(defn bucket-sql
+  "A date bucket's SQL: `created_at => month`, or `month(created_at)`.
+  MySQL's shape isn't just a different format string like Postgres's TO_CHAR(DATE_TRUNC(...)) - week in particular needs its own
+  DATE_SUB/WEEKDAY expression, since MySQL has no DATE_TRUNC. WEEKDAY()
+  returns 0 for Monday, matching Postgres's DATE_TRUNC('week') boundary."
+  [dialect col-fn col-ref]
+  (case dialect
+    :mysql (case col-fn
+             "year"   (str "DATE_FORMAT(" col-ref ", '%Y')")
+             "month"  (str "DATE_FORMAT(" col-ref ", '%Y-%m')")
+             "day"    (str "DATE_FORMAT(" col-ref ", '%Y-%m-%d')")
+             "week"   (str "DATE_FORMAT(DATE_SUB(" col-ref ", INTERVAL WEEKDAY(" col-ref ") DAY), '%Y-%m-%d')")
+             "hour"   (str "DATE_FORMAT(" col-ref ", '%Y-%m-%d %H')")
+             "minute" (str "DATE_FORMAT(" col-ref ", '%Y-%m-%d %H:%i')"))
+    ;; SQLite has no date type: a date is text (`2024-01-31 10:00:00`), which
+    ;; strftime reads. %w counts Sunday as 0, so (%w + 6) % 7 is the days
+    ;; since Monday - the boundary Postgres's DATE_TRUNC('week') uses.
+    :sqlite (case col-fn
+              "year"   (str "strftime('%Y', " col-ref ")")
+              "month"  (str "strftime('%Y-%m', " col-ref ")")
+              "day"    (str "strftime('%Y-%m-%d', " col-ref ")")
+              "week"   (str "strftime('%Y-%m-%d', " col-ref ", '-' || ((CAST(strftime('%w', " col-ref ") AS INTEGER) + 6) % 7) || ' days')")
+              "hour"   (str "strftime('%Y-%m-%d %H', " col-ref ")")
+              "minute" (str "strftime('%Y-%m-%d %H:%M', " col-ref ")"))
+    (str "TO_CHAR(DATE_TRUNC('" col-fn "', " col-ref "), '" (col-fn-format col-fn) "')")))
+
+(defn period-bounds
+  "[start end] SQL for a period of days: the first day in it, and the first
+  day after it. A comparison with a period compares with this range (see
+  pine.eval's render-period-condition), so `created_at = today()` holds all
+  day, whatever the time. The day is the database's: its session time zone
+  on Postgres and MySQL, UTC on SQLite. A week starts on Monday, as
+  `week` does in bucket-sql.
+
+  SQLite has no date type. Its dates are text, `2024-01-31 10:00:00`, and
+  compare in order with a day's `2024-01-31`."
+  [dialect period]
+  (case dialect
+    :mysql
+    (let [week (str "(CURDATE() - INTERVAL WEEKDAY(CURDATE()) DAY)")
+          month (str "(CURDATE() - INTERVAL (DAYOFMONTH(CURDATE()) - 1) DAY)")]
+      (case period
+        "today"      ["CURDATE()" "(CURDATE() + INTERVAL 1 DAY)"]
+        "yesterday"  ["(CURDATE() - INTERVAL 1 DAY)" "CURDATE()"]
+        "tomorrow"   ["(CURDATE() + INTERVAL 1 DAY)" "(CURDATE() + INTERVAL 2 DAY)"]
+        "this_week"  [week (str "(" week " + INTERVAL 7 DAY)")]
+        "this_month" [month (str "(" month " + INTERVAL 1 MONTH)")]))
+
+    :sqlite
+    (let [monday "'-' || ((CAST(strftime('%w', 'now') AS INTEGER) + 6) % 7) || ' days'"]
+      (case period
+        "today"      ["date('now')" "date('now', '+1 day')"]
+        "yesterday"  ["date('now', '-1 day')" "date('now')"]
+        "tomorrow"   ["date('now', '+1 day')" "date('now', '+2 days')"]
+        "this_week"  [(str "date('now', " monday ")") (str "date('now', " monday ", '+7 days')")]
+        "this_month" ["date('now', 'start of month')" "date('now', 'start of month', '+1 month')"]))
+
+    (case period
+      "today"      ["CURRENT_DATE" "(CURRENT_DATE + 1)"]
+      "yesterday"  ["(CURRENT_DATE - 1)" "CURRENT_DATE"]
+      "tomorrow"   ["(CURRENT_DATE + 1)" "(CURRENT_DATE + 2)"]
+      "this_week"  ["CAST(DATE_TRUNC('week', CURRENT_DATE) AS DATE)" "(CAST(DATE_TRUNC('week', CURRENT_DATE) AS DATE) + 7)"]
+      "this_month" ["CAST(DATE_TRUNC('month', CURRENT_DATE) AS DATE)"
+                    "CAST(DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month' AS DATE)"])))
+
+(defn- period
+  "A period of days, `today()`. Compared with, it is its whole range; as a
+  value anywhere else, such as `update! due = tomorrow()`, its first day."
+  [name]
+  {:arity [0 0]
+   :period true
+   :render (fn [dialect _] (first (period-bounds dialect name)))})
+
+(defn- bucket [unit]
+  {:arity [1 1]
+   :render (fn [dialect [arg]] (bucket-sql dialect unit arg))})
+
+(def functions
+  {"coalesce" {:arity [2 nil]
+               :render (fn [_ args] (str "COALESCE(" (s/join ", " args) ")"))}
+   "concat"   {:arity [2 nil] :render concat-sql}
+   ;; SQLite has no NOW().
+   "now"      {:arity [0 0]
+               :render (fn [dialect _] (if (= dialect :sqlite) "CURRENT_TIMESTAMP" "NOW()"))}
+   ;; Periods of days: `where: created_at = today()` holds all day.
+   "today"      (period "today")
+   "yesterday"  (period "yesterday")
+   "tomorrow"   (period "tomorrow")
+   "this_week"  (period "this_week")
+   "this_month" (period "this_month")
+   ;; Named after Postgres's own: SQL written for Postgres converts as it is.
+   "jsonb_typeof"       {:arity [1 1] :json-args true :render json-typeof-sql}
+   "jsonb_array_length" {:arity [1 1] :json-args true :render json-array-length-sql}
+   "minute"   (bucket "minute")
+   "hour"     (bucket "hour")
+   "day"      (bucket "day")
+   "week"     (bucket "week")
+   "month"    (bucket "month")
+   "year"     (bucket "year")
+
+   ;; `count` is written bare: `group: a with count`.
+   "count"    {:arity [0 0] :aggregate true
+               :render (fn [dialect _ filter]
+                         (if (and filter (= dialect :mysql))
+                           (str "COUNT(CASE WHEN " filter " THEN 1 END)")
+                           (filtered dialect "COUNT" "1" filter)))}
+   "min"      (aggregate "MIN")
+   "max"      (aggregate "MAX")
+   "sum"      (aggregate "SUM")
+   "avg"      (aggregate "AVG")
+   ;; True when the condition is true for any row. MySQL and SQLite have no
+   ;; BOOL_OR; a condition there is 1, 0 or NULL, so MAX is the same, NULL
+   ;; over only NULLs included.
+   "any"      {:arity [1 1] :aggregate true
+               :render (fn [dialect arg filter]
+                         (filtered dialect (if (= dialect :postgres) "BOOL_OR" "MAX") arg filter))}
+   "all"      {:arity [1 1] :aggregate true
+               :render (fn [dialect arg filter]
+                         (filtered dialect (if (= dialect :postgres) "BOOL_AND" "MIN") arg filter))}})
+
+(defn period?
+  "Whether a resolved computed value is a call to a period, `today()`."
+  [node]
+  (boolean (and (= :call (:kind node)) (:period (get functions (:fn node))))))
+
+(defn function-names
+  "The names of the functions, aggregates or not, for messages."
+  [aggregate?]
+  (sort (keep (fn [[n {a :aggregate}]] (when (= (boolean a) aggregate?) n)) functions)))
+
+(defn check-call
+  "Throws when a call names no function, or the wrong number of arguments.
+  `aggregates?` is whether aggregates are allowed where the call is."
+  [fn-name n-args aggregates?]
+  (let [{[lo hi] :arity aggregate? :aggregate :as f} (get functions (s/lower-case fn-name))]
+    (cond
+      (nil? f)
+      (throw (ex-info (str "`" fn-name "()` isn't a Pine function. There are " (s/join ", " (map #(str % "()") (function-names false)))
+                           ", and in group: " (s/join ", " (function-names true)) ".")
+                      {:error-type "unknown-function" :function fn-name}))
+
+      (and aggregate? (not aggregates?))
+      (throw (ex-info (str "`" fn-name "()` is an aggregate. Use it after `with` in group:, like `group: a with b => "
+                           fn-name " as " fn-name "_b`.")
+                      {:error-type "aggregate-outside-group" :function fn-name}))
+
+      (and (not aggregate?) aggregates?)
+      (throw (ex-info (str "`" fn-name "()` isn't an aggregate. After `with` in group: come "
+                           (s/join ", " (function-names true)) ".")
+                      {:error-type "not-an-aggregate" :function fn-name}))
+
+      (or (< n-args lo) (and hi (> n-args hi)))
+      (throw (ex-info (str "`" fn-name "()` takes "
+                           (cond (= lo hi) (str lo (if (= 1 lo) " argument" " arguments"))
+                                 (nil? hi) (str lo " or more arguments")
+                                 :else (str lo " to " hi " arguments"))
+                           ", not " n-args ".")
+                      {:error-type "arity" :function fn-name})))))
+
+;; -------
+;; COLUMNS
+;; -------
+
+(declare columns)
+
+(defn- condition-columns
+  "{:alias :column ...} for each column a resolved where: condition reads."
+  [{:keys [alias column value] :as condition}]
+  (concat
+   (cond
+     (:computed condition) (columns (:computed condition))
+     (seq column) [(select-keys condition [:alias :column :path :source])])
+   (case (:type value)
+     :column (let [[a c] (:value value)] [{:alias a :column c}])
+     :computed (columns (:node value))
+     nil)))
+
+(defn columns
+  "Every column a resolved computed value reads, as {:alias :column} maps
+  (with :path and :source when known), in the order they're written."
+  [node]
+  (case (:kind node)
+    :column [(select-keys node [:alias :column :path :source])]
+    :call (mapcat columns (:args node))
+    :condition (mapcat (fn [c] (if-let [group (:or c)] (mapcat condition-columns group) (condition-columns c)))
+                       (:conditions node))
+    :if (concat (columns (:when node)) (columns (:then node)) (some-> (:else node) columns))
+    :aggregate (concat (some-> (:arg node) columns) (some-> (:filter node) columns))
+    nil))
+
+(defn uses
+  "The distinct {:alias :column} pairs a computed value reads: what the
+  canvas draws it from."
+  [node]
+  (vec (distinct (map #(select-keys % [:alias :column]) (columns node)))))
+
+;; -------
+;; PRINTER
+;; -------
+;;
+;; A resolved value written back as Pine. /build sends it to the client as a
+;; computed column's `text`.
+;;
+;; A function of one value is written with the arrow, `created_at => month`,
+;; `a.id => min`: nothing about its argument can be misread, and it is how a
+;; person appends a step. Anything else is a call: `coalesce(a, b)` keeps
+;; every argument in order, and `any(type = 'x')` keeps a condition whole.
+
+(defn- quote-string [x]
+  (str "'" (s/replace (str x) "'" "''") "'"))
+
+(defn- step-text [step]
+  (cond
+    (integer? step) (str "[" step "]")
+    (re-matches #"[A-Za-z_][A-Za-z0-9_-]*" step) (str "." step)
+    :else (str ".'" (s/replace step "'" "''") "'")))
+
+(defn- column-text [alias column path]
+  (str (when alias (str alias ".")) column (apply str (map step-text path))))
+
+(defn- literal-text [{:keys [type value text list] :as v}]
+  (case type
+    :string (quote-string value)
+    :date (quote-string (or text value))
+    :number (str value)
+    :boolean (str value)
+    :symbol (s/lower-case (str value))
+    :variable (str "$" value)
+    :uuid (quote-string value)
+    ;; A bound `in $ids` becomes a list of literals.
+    (if (sequential? v) (str "(" (s/join ", " (map literal-text v)) ")")
+        (if list (str "$" value) (quote-string value)))))
+
+(def ^:private operator-text
+  {"=" "=" "!=" "!=" ">" ">" "<" "<" ">=" ">=" "<=" "<=" "LIKE" "like" "NOT LIKE" "not like"
+   "ILIKE" "ilike" "NOT ILIKE" "not ilike" "IN" "in" "NOT IN" "not in" "IS" "is" "IS NOT" "is not"})
+
+(declare text call-text)
+
+(defn- value-text [value]
+  (cond
+    (sequential? value) (str "(" (s/join ", " (map literal-text value)) ")")
+    (= :column (:type value)) (let [[a c] (:value value)] (column-text a c nil))
+    (= :named-result (:type value)) (:value value)
+    (= :computed (:type value)) (text (:node value))
+    (= :jsonb (:type value)) (:value value)
+    :else (literal-text value)))
+
+(defn- condition-text [{:keys [alias column path cast operator value] :as condition}]
+  (str (if-let [node (:computed condition)] (call-text node) (column-text alias column path))
+       " " (get operator-text operator (s/lower-case operator)) " "
+       (value-text value)
+       (when cast (str " ::" cast))))
+
+(defn- conditions-text [conditions]
+  (s/join " or " (map (fn [c] (if-let [group (:or c)] (s/join " or " (map condition-text group)) (condition-text c)))
+                      conditions)))
+
+(defn- cast-text [cast] (when cast (str "::" cast)))
+
+(defn- arrow?
+  "Whether a function of `args` is written with the arrow: one argument,
+  which is neither a condition nor an if."
+  [args]
+  (and (= 1 (count args)) (not (#{:condition :if} (:kind (first args))))))
+
+(defn call-text
+  "A value as Pine text, with a function of one value written as a call:
+  `jsonb_typeof(data)`, not `data => jsonb_typeof`. On the left of a
+  comparison, so the text never depends on how tightly the arrow binds."
+  [node]
+  (if (and (= :call (:kind node)) (arrow? (:args node)))
+    (str (:fn node) "(" (text (first (:args node))) ")" (cast-text (:cast node)))
+    (text node)))
+
+(defn text
+  "A resolved computed value as Pine text."
+  [node]
+  (case (:kind node)
+    :column (str (column-text (:alias node) (:column node) (:path node)) (cast-text (:cast node)))
+    :literal (literal-text (:value node))
+    :call (if (and (arrow? (:args node)) (not (:cast node)))
+            (str (text (first (:args node))) " => " (:fn node))
+            (str (:fn node) "(" (s/join ", " (map text (:args node))) ")" (cast-text (:cast node))))
+    :condition (conditions-text (:conditions node))
+    :if (str "if " (text (:when node)) " then "
+             (let [t (text (:then node))] (if (= :if (:kind (:then node))) (str "(" t ")") t))
+             (when-let [e (:else node)] (str " else " (text e))))
+    :aggregate (str (cond
+                      (nil? (:arg node)) (:fn node)
+                      (arrow? [(:arg node)]) (str (text (:arg node)) " => " (:fn node))
+                      :else (str (:fn node) "(" (text (:arg node)) ")"))
+                    (when-let [f (:filter node)] (str " where " (text f))))
+    ""))

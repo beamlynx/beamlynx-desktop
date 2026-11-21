@@ -1,0 +1,266 @@
+import { Box, Divider } from '@mui/material';
+import {
+  MIN_NEW_LAYOUT_PANE_SIZE,
+  MIN_NEW_LAYOUT_PANEL_SIZE,
+  MIN_SETTINGS_PANEL_WIDTH,
+  NEW_LAYOUT_GUTTER,
+} from '../constants';
+import { useResizeDrag } from '../hooks/useResizeDrag';
+import { STORAGE_KEYS } from '../store/preferences';
+
+export const NewLayoutPaneDivider = ({
+  paneWidth,
+  setPaneWidth,
+}: {
+  paneWidth: number;
+  setPaneWidth: (width: number) => void;
+}) => {
+  const onMouseDown = useResizeDrag({
+    value: paneWidth,
+    setValue: setPaneWidth,
+    min: MIN_NEW_LAYOUT_PANE_SIZE,
+    max: () => window.innerWidth * 0.75,
+    storageKey: STORAGE_KEYS.NEW_LAYOUT_PANE_WIDTH,
+    axis: 'x',
+  });
+
+  return (
+    <Divider
+      orientation="vertical"
+      flexItem
+      sx={{
+        width: `${NEW_LAYOUT_GUTTER}px`,
+        flexShrink: 0,
+        cursor: 'col-resize',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: 0,
+        '&:hover': {
+          backgroundColor: 'action.hover',
+          transition: 'background-color 0.2s',
+          opacity: 1,
+        },
+      }}
+      onMouseDown={onMouseDown}
+    >
+      <Box
+        sx={{
+          width: '4px',
+          height: '24px',
+          backgroundColor: 'var(--divider-color)',
+          borderRadius: '2px',
+        }}
+      />
+    </Divider>
+  );
+};
+
+export const NewLayoutHorizontalPaneDivider = ({
+  paneHeight,
+  setPaneHeight,
+}: {
+  paneHeight: number;
+  setPaneHeight: (height: number) => void;
+}) => {
+  const onMouseDown = useResizeDrag({
+    value: paneHeight,
+    setValue: setPaneHeight,
+    min: MIN_NEW_LAYOUT_PANE_SIZE,
+    max: () => window.innerHeight * 0.75,
+    storageKey: STORAGE_KEYS.NEW_LAYOUT_PANE_HEIGHT,
+    axis: 'y',
+  });
+
+  return (
+    <Divider
+      orientation="horizontal"
+      sx={{
+        height: `${NEW_LAYOUT_GUTTER}px`,
+        flexShrink: 0,
+        cursor: 'row-resize',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: 0,
+        '&:hover': {
+          backgroundColor: 'action.hover',
+          transition: 'background-color 0.2s',
+          opacity: 1,
+        },
+      }}
+      onMouseDown={onMouseDown}
+    >
+      <Box
+        sx={{
+          width: '24px',
+          height: '4px',
+          backgroundColor: 'var(--divider-color)',
+          borderRadius: '2px',
+        }}
+      />
+    </Divider>
+  );
+};
+
+/**
+ * The Pine/SQL panel's own resize dividers - separate from the two pane
+ * dividers above, which govern the Canvas|Results split. Same duplication
+ * trade-off as that pair (own storage key, own bounds) rather than threading
+ * conditional props through one shared component.
+ */
+export const NewLayoutPanelDivider = ({
+  panelWidth,
+  setPanelWidth,
+}: {
+  panelWidth: number;
+  setPanelWidth: (width: number) => void;
+}) => {
+  const onMouseDown = useResizeDrag({
+    value: panelWidth,
+    setValue: setPanelWidth,
+    min: MIN_NEW_LAYOUT_PANEL_SIZE,
+    max: () => window.innerWidth * 0.6,
+    storageKey: STORAGE_KEYS.NEW_LAYOUT_PANEL_WIDTH,
+    axis: 'x',
+    // Unlike the other x-axis dividers, the panel this one resizes sits to
+    // the right of the divider (Canvas | divider | Panel in top/bottom
+    // orientation - see NewLayoutView.tsx's LeftPane), not the left, so the
+    // natural drag direction is reversed.
+    invert: true,
+  });
+
+  return (
+    <Divider
+      orientation="vertical"
+      flexItem
+      sx={{
+        width: '10px',
+        flexShrink: 0,
+        cursor: 'col-resize',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: 0,
+        '&:hover': {
+          backgroundColor: 'action.hover',
+          transition: 'background-color 0.2s',
+          opacity: 1,
+        },
+      }}
+      onMouseDown={onMouseDown}
+    >
+      <Box
+        sx={{
+          width: '4px',
+          height: '24px',
+          backgroundColor: 'var(--divider-color)',
+          borderRadius: '2px',
+        }}
+      />
+    </Divider>
+  );
+};
+
+/**
+ * The docked Settings panel's own divider - a third sibling alongside the
+ * Canvas|Results split above, not part of it, so it gets its own storage key
+ * and bounds rather than reusing NewLayoutPaneDivider's. Always vertical:
+ * unlike Canvas|Results, the Settings dock doesn't have a top/bottom
+ * orientation to toggle between (see NewLayoutView.tsx's own comment on why
+ * it always sits on the right regardless of the Canvas|Results orientation).
+ */
+export const NewLayoutSettingsPanelDivider = ({
+  settingsPanelWidth,
+  setSettingsPanelWidth,
+}: {
+  settingsPanelWidth: number;
+  setSettingsPanelWidth: (width: number) => void;
+}) => {
+  const onMouseDown = useResizeDrag({
+    value: settingsPanelWidth,
+    setValue: setSettingsPanelWidth,
+    min: MIN_SETTINGS_PANEL_WIDTH,
+    max: () => window.innerWidth * 0.6,
+    storageKey: STORAGE_KEYS.SETTINGS_PANEL_WIDTH,
+    axis: 'x',
+  });
+
+  return (
+    <Divider
+      orientation="vertical"
+      flexItem
+      sx={{
+        width: `${NEW_LAYOUT_GUTTER}px`,
+        flexShrink: 0,
+        cursor: 'col-resize',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: 0,
+        '&:hover': {
+          backgroundColor: 'action.hover',
+          transition: 'background-color 0.2s',
+          opacity: 1,
+        },
+      }}
+      onMouseDown={onMouseDown}
+    >
+      <Box
+        sx={{
+          width: '4px',
+          height: '24px',
+          backgroundColor: 'var(--divider-color)',
+          borderRadius: '2px',
+        }}
+      />
+    </Divider>
+  );
+};
+
+export const NewLayoutHorizontalPanelDivider = ({
+  panelHeight,
+  setPanelHeight,
+}: {
+  panelHeight: number;
+  setPanelHeight: (height: number) => void;
+}) => {
+  const onMouseDown = useResizeDrag({
+    value: panelHeight,
+    setValue: setPanelHeight,
+    min: MIN_NEW_LAYOUT_PANEL_SIZE,
+    max: () => window.innerHeight * 0.6,
+    storageKey: STORAGE_KEYS.NEW_LAYOUT_PANEL_HEIGHT,
+    axis: 'y',
+  });
+
+  return (
+    <Divider
+      orientation="horizontal"
+      sx={{
+        height: '10px',
+        flexShrink: 0,
+        cursor: 'row-resize',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: 0,
+        '&:hover': {
+          backgroundColor: 'action.hover',
+          transition: 'background-color 0.2s',
+          opacity: 1,
+        },
+      }}
+      onMouseDown={onMouseDown}
+    >
+      <Box
+        sx={{
+          width: '24px',
+          height: '4px',
+          backgroundColor: 'var(--divider-color)',
+          borderRadius: '2px',
+        }}
+      />
+    </Divider>
+  );
+};

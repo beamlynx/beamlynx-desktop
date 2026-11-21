@@ -1,11 +1,10 @@
 name: Release
 
-# Builds and packages beamlynx-desktop for Linux, macOS, and Windows.
-# Unsigned for now (code signing/notarization is a separate, later
-# milestone) -- installers will show Gatekeeper/SmartScreen warnings until
-# then. Triggered by a plain semver tag (matching pine-lang/beamlynx-ui's own
-# tag convention -- no prefix needed, since each lives in its own repo with
-# its own tag namespace) or manually via workflow_dispatch for test runs.
+# Builds the desktop app for Linux, macOS and Windows, with the pine/ and
+# ui/ of the same commit inside it. Started by a plain X.Y.Z tag, which is
+# the desktop app's version, or by hand (workflow_dispatch) for a test run.
+# A test run builds everything but publishes nothing: publish-release only
+# runs for a tag.
 
 on:
   push:
@@ -20,32 +19,15 @@ jobs:
     uses: ./.github/workflows/supabase-migrate.yml
     secrets: inherit
 
-  read-pins:
+  build-jar:
     needs: migrate
     runs-on: ubuntu-latest
-    outputs:
-      pine_ref: ${{ steps.pins.outputs.pine_ref }}
-      ui_ref: ${{ steps.pins.outputs.ui_ref }}
     steps:
       - uses: actions/checkout@v4
-      - id: pins
-        run: |
-          echo "pine_ref=$(jq -r .pineLangRef bundled-versions.json)" >> "$GITHUB_OUTPUT"
-          echo "ui_ref=$(jq -r .beamlynxUiRef bundled-versions.json)" >> "$GITHUB_OUTPUT"
-
-  build-jar:
-    needs: read-pins
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: beamlynx/pine-lang
-          ref: ${{ needs.read-pins.outputs.pine_ref }}
-          path: pine-lang
 
       - name: Read pinned JDK version
         id: jdk
-        run: echo "version=$(grep -v '^#' pine-lang/desktop/JDK_VERSION | grep -v '^\s*$')" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(grep -v '^#' pine/desktop/JDK_VERSION | grep -v '^\s*$')" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-java@v4
         with:
@@ -57,56 +39,49 @@ jobs:
           cli: 1.11.3.1463
 
       - name: Build uberjar
-        working-directory: pine-lang
+        working-directory: pine
         run: clojure -T:build uber
 
       - uses: actions/upload-artifact@v4
         with:
           name: pine-standalone-jar
-          path: pine-lang/target/pine-standalone.jar
+          path: pine/target/pine-standalone.jar
 
   build-ui:
-    needs: read-pins
+    needs: migrate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          path: beamlynx-desktop
-      - uses: actions/checkout@v4
-        with:
-          repository: beamlynx/beamlynx-ui
-          ref: ${{ needs.read-pins.outputs.ui_ref }}
-          path: beamlynx-ui
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      - name: Install beamlynx-ui deps
-        working-directory: beamlynx-ui
+      - name: Install UI deps
+        working-directory: ui
         run: npm ci
 
       - name: Build UI export
-        working-directory: beamlynx-desktop
+        working-directory: desktop
         run: ./scripts/build-ui-export.sh
 
       # No release ships a UI that draws its fonts from whatever the user
       # happens to have installed. See scripts/check-ui-fonts.js.
-      - name: Install beamlynx-desktop deps
-        working-directory: beamlynx-desktop
+      - name: Install desktop deps
+        working-directory: desktop
         run: npm ci
 
       - name: Check the UI's fonts load in Electron
-        working-directory: beamlynx-desktop
-        run: xvfb-run -a npx electron --no-sandbox scripts/check-ui-fonts.js ../beamlynx-ui
+        working-directory: desktop
+        run: xvfb-run -a npx electron --no-sandbox scripts/check-ui-fonts.js ../ui
 
       - uses: actions/upload-artifact@v4
         with:
           name: ui-export
-          path: beamlynx-desktop/resources/ui
+          path: desktop/resources/ui
 
   package:
-    needs: [read-pins, build-jar, build-ui]
+    needs: [build-jar, build-ui]
     strategy:
       fail-fast: false
       matrix:
@@ -129,24 +104,17 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          path: beamlynx-desktop
-      - uses: actions/checkout@v4
-        with:
-          repository: beamlynx/pine-lang
-          ref: ${{ needs.read-pins.outputs.pine_ref }}
-          path: pine-lang
 
       - name: Download shared jar
         uses: actions/download-artifact@v4
         with:
           name: pine-standalone-jar
-          path: pine-lang/target
+          path: pine/target
 
       - name: Read pinned JDK version
         id: jdk
         shell: bash
-        run: echo "version=$(grep -v '^#' pine-lang/desktop/JDK_VERSION | grep -v '^\s*$')" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(grep -v '^#' pine/desktop/JDK_VERSION | grep -v '^\s*$')" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-java@v4
         with:
@@ -155,23 +123,23 @@ jobs:
 
       - name: Build app-image for this OS/arch
         shell: bash
-        working-directory: pine-lang
+        working-directory: pine
         run: ./desktop/build-app-image.sh
 
       - name: Download UI export
         uses: actions/download-artifact@v4
         with:
           name: ui-export
-          path: beamlynx-desktop/resources/ui
+          path: desktop/resources/ui
 
       - name: Stage server
         shell: bash
-        working-directory: beamlynx-desktop
+        working-directory: desktop
         run: ./scripts/stage-server.sh
 
       - name: Stage Pine docs
         shell: bash
-        working-directory: beamlynx-desktop
+        working-directory: desktop
         run: ./scripts/stage-docs.sh
 
       - uses: actions/setup-node@v4
@@ -180,12 +148,12 @@ jobs:
 
       - name: Install beamlynx-desktop deps
         shell: bash
-        working-directory: beamlynx-desktop
+        working-directory: desktop
         run: npm ci
 
       - name: TypeScript build
         shell: bash
-        working-directory: beamlynx-desktop
+        working-directory: desktop
         run: npm run build
 
       # Where usage stats and sign-in go (src/main/service-config.ts). These
@@ -193,7 +161,7 @@ jobs:
       # them the build has no usage stats and no sign-in.
       - name: Write service config
         shell: bash
-        working-directory: beamlynx-desktop
+        working-directory: desktop
         run: node scripts/write-service-config.js
         env:
           BEAMLYNX_POSTHOG_KEY: ${{ vars.BEAMLYNX_POSTHOG_KEY }}
@@ -203,7 +171,7 @@ jobs:
 
       - name: Package with electron-builder
         shell: bash
-        working-directory: beamlynx-desktop
+        working-directory: desktop
         # Always --publish=never here -- letting each OS in the matrix
         # publish directly to the same GitHub Release in parallel is racy:
         # electron-builder's GitHub publisher does a non-atomic
@@ -274,17 +242,17 @@ jobs:
 
       - name: Check built-in SQLite in the packaged app
         shell: bash
-        working-directory: beamlynx-desktop
+        working-directory: desktop
         run: ./scripts/check-builtin-sqlite.sh
 
       - uses: actions/upload-artifact@v4
         with:
           name: beamlynx-desktop-${{ matrix.os }}
           path: |
-            beamlynx-desktop/release/*.AppImage
-            beamlynx-desktop/release/*.deb
-            beamlynx-desktop/release/*.dmg
-            beamlynx-desktop/release/*.exe
+            desktop/release/*.AppImage
+            desktop/release/*.deb
+            desktop/release/*.dmg
+            desktop/release/*.exe
             # electron-builder.yml's mac target list includes zip (see its
             # own comment) so MacUpdater has a payload it'll actually accept
             # -- without this line, 0.9.0 built and blockmap'd a .zip that
@@ -292,9 +260,9 @@ jobs:
             # it silently never reached the release at all. *.blockmap
             # below matched the zip's own blockmap file, which is why that
             # one part of it did show up, masking the miss.
-            beamlynx-desktop/release/*.zip
-            beamlynx-desktop/release/*.blockmap
-            beamlynx-desktop/release/latest*.yml
+            desktop/release/*.zip
+            desktop/release/*.blockmap
+            desktop/release/latest*.yml
           if-no-files-found: error
 
   publish-release:

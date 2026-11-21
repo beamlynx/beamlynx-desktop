@@ -1,0 +1,432 @@
+import { runInAction } from 'mobx';
+import { GlobalStore } from '../store/global.store';
+import { Session } from '../store/session';
+import { getSchemaColor } from '../store/graph.util';
+
+export type CommandCategory = 'View' | 'Query' | 'Preferences' | 'Experimental' | 'Help';
+
+/** Helper constant for commands that are always enabled */
+export const recipesAvailable = () => typeof window !== 'undefined' && !!window.beamlynxDesktop?.recipes;
+
+const ALWAYS_ENABLED = (_global: GlobalStore, _session: Session) => true;
+
+/**
+ * Represents a selectable option in a two-stage command.
+ * Used when a command needs to show dynamic choices (e.g., table selection).
+ */
+export interface CommandOption {
+  id: string;
+  label: string;
+  /** Secondary info (e.g., "public.users" for disambiguation) */
+  detail?: string;
+  /** Schema name for table options */
+  schema?: string;
+  /** Color for the schema chip */
+  schemaColor?: string;
+  handler: (global: GlobalStore, session: Session) => void;
+}
+
+export interface Command {
+  id: string;
+  label: string;
+  category: CommandCategory;
+  /**
+   * Command handler that can either:
+   * - Execute immediately (return void) - single-stage command
+   * - Return options for user selection (return Promise<CommandOption[]>) - two-stage command
+   * - Execute async operation (return Promise) - single-stage async command
+   */
+  handler: (global: GlobalStore, session: Session) => void | Promise<any>;
+  /** If true, this command will not be shown in the command palette UI */
+  hidden?: boolean;
+  /** Function that determines if this command can currently execute */
+  isEnabled: (global: GlobalStore, session: Session) => boolean;
+}
+
+/**
+ * All available commands for the application.
+ * This is the single source of truth for commands.
+ * Commands are defined once and receive global/session at execution time.
+ */
+const COMMANDS: Command[] = [
+  // Preferences Category
+  {
+    id: 'toggle-theme',
+    label: 'Toggle Theme',
+    category: 'Preferences',
+    handler: global => global.toggleTheme(),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'toggle-vim-mode',
+    label: 'Toggle Vim Mode',
+    category: 'Preferences',
+    handler: global => global.toggleVimMode(),
+    isEnabled: ALWAYS_ENABLED,
+  },
+
+  // View Category
+  {
+    id: 'new-tab',
+    label: 'New Tab',
+    category: 'View',
+    handler: global => global.addTab(),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'close-tab',
+    label: 'Close Tab',
+    category: 'View',
+    handler: (global, session) => global.closeTab(session.id),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'next-tab',
+    label: 'Next Tab',
+    category: 'View',
+    handler: global => global.activateAdjacentTab(1),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'previous-tab',
+    label: 'Previous Tab',
+    category: 'View',
+    handler: global => global.activateAdjacentTab(-1),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'open-settings',
+    // Kept as open-settings so the palette's recent commands still find it.
+    label: 'Toggle Sidebar Panel',
+    category: 'View',
+    // Ctrl+, (keybindings.ts): closes Settings or the Library, whichever is
+    // open beside the sidebar, or brings back the one open last, at the
+    // section it was on (toggleSidebarPanel).
+    handler: global => global.toggleSidebarPanel(),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'open-app-data-file',
+    label: "Open Beamlynx's data file",
+    category: 'View',
+    handler: global => global.openAppDataFile(),
+    // Desktop only, and only when the desktop app can say where the file is.
+    isEnabled: () => typeof window !== 'undefined' && !!window.beamlynxDesktop?.appDb?.path,
+  },
+  {
+    id: 'switch-connection',
+    label: 'Switch Connection',
+    category: 'View',
+    // Lists the connections; picking one switches the active tab to it, as
+    // the sidebar's connection menu does (switchActiveTabConnection).
+    handler: async global => {
+      if (!global.connectionsLoaded) await global.refreshConnections();
+      const current = global.activeConnectionId;
+      return global.connections.map(c => ({
+        id: c.id,
+        label: c.id === current ? `${c.label} (this tab)` : c.label,
+        detail: c.dbName && c.dbName !== c.label ? c.dbName : undefined,
+        handler: (g: GlobalStore) => void g.switchActiveTabConnection(c.id),
+      }));
+    },
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'cycle-zen-mode',
+    label: 'Zen Mode: Next View',
+    category: 'View',
+    handler: global => global.cycleZenMode(),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'exit-zen-mode',
+    label: 'Leave Zen Mode',
+    category: 'View',
+    handler: global => global.exitZenMode(),
+    isEnabled: global => global.isZenModeActive,
+  },
+  {
+    id: 'open-appearance',
+    label: 'Open Appearance Settings',
+    category: 'View',
+    handler: global => global.setShowSettings(true, 'theme'),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'list-connections',
+    label: 'List Database Connections',
+    category: 'View',
+    handler: global => global.setShowSettings(true, 'connections'),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'new-connection',
+    label: 'New Database Connection',
+    category: 'View',
+    handler: global => global.openAddConnection(),
+    isEnabled: ALWAYS_ENABLED,
+  },
+
+  // Query Category
+  {
+    id: 'run-query',
+    label: 'Run Query',
+    category: 'Query',
+    handler: (_global, session) => session.run(),
+    isEnabled: (_global, session) => !!(session.expression || session.query) && !session.loading,
+  },
+  {
+    id: 'format-pine',
+    label: 'Format Pine',
+    category: 'Query',
+    handler: (_global, session) => session.format(),
+    isEnabled: (_global, session) => session.inputMode === 'pine' && session.expression.trim() !== '',
+  },
+  {
+    id: 'stop-query',
+    label: 'Stop Query',
+    category: 'Query',
+    handler: (_global, session) => session.stop(),
+    isEnabled: (_global, session) => session.loading && !!session.runId,
+  },
+  {
+    id: 'copy-pine-expression',
+    label: 'Copy Pine Expression',
+    category: 'Query',
+    handler: (global, session) => {
+      const text = session.expression;
+      navigator.clipboard.writeText(text).then(() => {
+        global.setCopiedMessage(session.id, text);
+      });
+    },
+    isEnabled: (_global, session) => session.expression.trim() !== '',
+  },
+  {
+    id: 'copy-sql-expression',
+    label: 'Copy SQL Expression',
+    category: 'Query',
+    handler: (global, session) => {
+      const text = session.getSqlClipboardText();
+      navigator.clipboard.writeText(text).then(() => {
+        global.setCopiedMessage(session.id, text);
+      });
+    },
+    isEnabled: (_global, session) => session.query.trim() !== '',
+  },
+  {
+    id: 'copy-result',
+    label: 'Copy Result',
+    category: 'Query',
+    handler: (global, session) => {
+      const text = session.getResultClipboardText();
+      navigator.clipboard.writeText(text).then(() => {
+        const count = session.rows.length;
+        global.setCopiedMessage(session.id, `${count} row${count === 1 ? '' : 's'}`);
+      });
+    },
+    isEnabled: (_global, session) => session.columns.length > 0 && session.rows.length > 0,
+  },
+  // Recipes are stored by the desktop app, so both are off in the browser.
+  {
+    id: 'save-recipe',
+    label: 'Save as Recipe',
+    category: 'Query',
+    handler: global => global.setShowSaveRecipe(true),
+    isEnabled: (_global, session) => recipesAvailable() && session.expression.trim() !== '',
+  },
+  {
+    id: 'use-recipe',
+    label: 'Use a Recipe',
+    category: 'Query',
+    // The Library, with its search focused: the one place to find a recipe.
+    handler: global => global.findRecipe(),
+    isEnabled: () => recipesAvailable(),
+  },
+
+  // Hidden commands
+  {
+    id: 'select-table',
+    hidden: true, // Temporarily hiding it until the functionality is full implemented
+    label: 'Select Table',
+    category: 'Query',
+    handler: async (global, session) => {
+      // A build only, on this tab's own connection: nothing runs.
+      const ast = await session.build(session.expression);
+      const tableHints = ast.hints.table;
+
+      // Get theme for schema colors
+      const isDark = global.theme === 'dark';
+
+      // Create options from table hints
+      return tableHints.map(hint => {
+        const { color } = getSchemaColor(hint.schema, isDark);
+        return {
+          id: hint.pine,
+          label: hint.table, // Show table name
+          schema: hint.schema, // Include schema for chip
+          schemaColor: color, // Include color for chip
+          handler: (global: GlobalStore, session: Session) => {
+            // Insert table as first expression
+            session.appendAndUpdateExpression(hint.pine);
+            // session.expression = `${hint.pine}`;
+            // session.prettify(true);
+            // session.focusTextInput();
+          },
+        };
+      });
+    },
+    isEnabled: (_global, session) => session.expression.trim() === '',
+  },
+  {
+    id: 'command-palette',
+    label: 'Open Command Palette',
+    category: 'Preferences',
+    handler: global => global.setShowCommandPalette(true),
+    hidden: true,
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'toggle-table-colors',
+    label: 'Toggle Table Colors',
+    category: 'Preferences',
+    handler: global => global.togglePineTableColors(),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'toggle-auto-format',
+    label: 'Toggle Format Pine as You Type',
+    category: 'Preferences',
+    handler: global => global.toggleAutoFormat(),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'toggle-hidden-sql-columns',
+    label: 'Toggle Hidden Columns in SQL',
+    category: 'Preferences',
+    handler: global => global.toggleShowHiddenSqlColumns(),
+    isEnabled: ALWAYS_ENABLED,
+  },
+
+  // Experimental Category
+  {
+    id: 'toggle-connection-monitor',
+    label: 'Toggle Connection Monitor',
+    category: 'Experimental',
+    handler: (_global, session) => {
+      runInAction(() => {
+        session.mode = session.mode === 'monitor' ? 'graph' : 'monitor';
+      });
+    },
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'open-analysis',
+    label: 'Open Analysis',
+    category: 'Experimental',
+    handler: global => global.setShowAnalysis(true),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'toggle-auto-run',
+    label: 'Toggle Auto-Run on Canvas Edit',
+    category: 'Experimental',
+    handler: global => global.toggleAutoRunEnabled(),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'toggle-pine-panel',
+    label: 'Toggle Pine Panel',
+    category: 'View',
+    handler: (global, session) => global.togglePinePanel(session),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'toggle-sql-panel',
+    label: 'Toggle SQL Panel',
+    category: 'View',
+    handler: (global, session) => global.toggleSqlPanel(session),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    // The same as `:` on the canvas: opens the panel if it is closed, never closes it.
+    id: 'focus-pine-panel',
+    label: 'Focus on Pine Panel',
+    category: 'View',
+    handler: (global, session) => global.focusPinePanel(session),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'focus-sql-panel',
+    label: 'Focus on SQL Panel',
+    category: 'View',
+    handler: (global, session) => global.focusSqlPanel(session),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'toggle-orientation',
+    label: 'Toggle Layout Orientation (Side by Side / Top and Bottom)',
+    category: 'View',
+    handler: global => global.toggleNewLayoutOrientation(),
+    isEnabled: ALWAYS_ENABLED,
+  },
+  {
+    id: 'toggle-tab-orientation',
+    label: 'Toggle Tab Orientation (Horizontal / Vertical)',
+    category: 'View',
+    handler: global => global.toggleTabOrientation(),
+    isEnabled: ALWAYS_ENABLED,
+  },
+
+  // Help Category
+  {
+    id: 'show-changelog',
+    label: 'Show Changelog',
+    category: 'Help',
+    handler: global => global.setShowChangelog(true),
+    isEnabled: ALWAYS_ENABLED,
+  },
+];
+
+/**
+ * Pre-indexed map of commands by ID for O(1) lookup
+ */
+const COMMANDS_MAP = new Map<string, Command>(COMMANDS.map(cmd => [cmd.id, cmd]));
+
+/**
+ * Get all available commands for the application.
+ * Returns the same array every time (no recreation).
+ */
+export function getAllCommands(): Command[] {
+  return COMMANDS;
+}
+
+/**
+ * Get a single command by its ID.
+ * O(1) lookup using pre-indexed map.
+ *
+ * @param commandId The unique identifier of the command
+ * @returns The command if found, undefined otherwise
+ */
+export function getCommandById(commandId: string): Command | undefined {
+  return COMMANDS_MAP.get(commandId);
+}
+
+/**
+ * Get commands grouped by category
+ */
+export function getCommandsByCategory(): Record<CommandCategory, Command[]> {
+  const allCommands = getAllCommands();
+  const grouped: Record<CommandCategory, Command[]> = {
+    View: [],
+    Query: [],
+    Preferences: [],
+    Experimental: [],
+    Help: [],
+  };
+
+  allCommands.forEach(cmd => {
+    grouped[cmd.category].push(cmd);
+  });
+
+  return grouped;
+}

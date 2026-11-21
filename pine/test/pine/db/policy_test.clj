@@ -1,0 +1,70 @@
+(ns pine.db.policy-test
+  "The masking policy on real SQLite, MySQL and Postgres databases: a masked
+  column's contents never come back, and a query may still filter on it.
+  How SQLite's own types and case meet the policy is in
+  pine.db.engines.sqlite-test. See pine.db.engines."
+  (:require [clojure.test :refer [deftest is testing]]
+            [pine.db.engines :as e]))
+
+(def ^:private fixture
+  ["CREATE TABLE customer (id INTEGER PRIMARY KEY, name {text}, email {text}, data {json})"
+   (str "INSERT INTO customer VALUES (1, 'Ann', 'ann@example.com', '{\"ssn\": \"123\"}'), "
+        "(2, 'Bob', 'bob@example.com', '{\"ssn\": \"456\"}')")])
+
+(def ^:private hide-email-and-data
+  [{:type "column-name" :suffix "name"}
+   {:type "hide" :match {:type "column" :table "customer" :column "email"}}])
+
+(defn- masked [db expression]
+  (let [{:keys [rows columns error]} (e/pine db expression {:policy hide-email-and-data})
+        shown (keep-indexed (fn [i c] (when-not (:hidden c) i)) columns)]
+    {:error error :rows (mapv (fn [row] (mapv #(nth row %) shown)) rows)}))
+
+(deftest test-masking
+  (e/on-every-engine
+   fixture
+   (fn [db]
+     (testing "a masked column comes back as xxxxx, and one the policy shows as it is"
+       (is (= {:error nil :rows [["Ann" "xxxxx"] ["Bob" "xxxxx"]]}
+              (masked db "customer | s: name, email | o: id asc"))))
+
+     (testing "a key inside a masked JSON column is masked too"
+       (is (= [["xxxxx"] ["xxxxx"]] (:rows (masked db "customer | s: data.ssn | o: id asc")))))
+
+     (testing "a query may filter on a masked column with a value it already has"
+       (is (= {:error nil :rows [["Bob"]]}
+              (masked db "customer | where: email = 'bob@example.com' | s: name"))))
+
+     (testing "but not group on it, which would return its values"
+       (is (re-find #"masked column" (str (:error (masked db "customer | group: email with count"))))))
+
+     (testing "a count reads no column, so it is shown, and a filter on it compares numbers"
+       (is (= {:error nil :rows [["Ann" 1] ["Bob" 1]]}
+              (masked db "customer | group: name with count | o: name asc")))
+       (is (= {:error nil :rows [["Ann" 1] ["Bob" 1]]}
+              (masked db "customer | group: name with count | where: count >= 1 | o: name asc")))
+       (is (= {:error nil :rows []}
+              (masked db "customer | group: name with count as n | where: n >= 2"))))
+
+     (testing "an aggregate of a masked column is masked, and refused in a later where: or order:"
+       (is (= {:error nil :rows [["Ann" "xxxxx"] ["Bob" "xxxxx"]]}
+              (masked db "customer | group: name with min(email) as m | o: name asc")))
+       (doseq [e ["customer | group: name with min(email) as m | where: m = 'x'"
+                  "customer | group: name with min(email) as m | where: m >= 1"
+                  "customer | group: name with min(email) as m | o: m asc"]]
+         (is (re-find #"^`m` is masked in `result_1`" (str (:error (masked db e)))) e)))
+
+     (testing "a join may compare a masked column with a value, as where: may"
+       (is (= {:error nil :rows [["Ann" nil] ["Bob" "Bob"]]}
+              (masked db "customer as a | customer as b :left b.id = a.id, b.email = 'bob@example.com' | s: a.name, b.name | o: a.id asc"))))
+
+     (testing "but not cast it to uuid there, which would print its value in the error"
+       (is (re-find #"masked column, so it can't be cast with `::uuid`"
+                    (str (:error (masked db "customer as a | customer as b b.id = a.id, b.email ::uuid = 'x'"))))))
+
+     (testing "a pair's own table is checked, not the join's"
+       (is (re-find #"`a.nope` isn't a column of `customer`"
+                    (str (:error (masked db "customer as a | customer as b b.id = a.id | customer as c c.id = b.id, c.name = a.nope"))))))
+     (testing "a value on a join is checked against its table too"
+       (is (re-find #"`a.nope` isn't a column of `customer`"
+                    (str (:error (masked db "customer as a | customer as b b.id = a.id, a.nope = 'x'")))))))))
