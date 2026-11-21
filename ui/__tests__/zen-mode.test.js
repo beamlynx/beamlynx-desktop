@@ -13,15 +13,17 @@ const view = s => ({
   results: !s.zenHidesResults,
 });
 
-test('each press shows the next view, and the fourth goes back to the canvas alone', () => {
+test('each press shows the next view, and the fourth leaves Zen mode', () => {
   const s = new GlobalStore();
-  runInAction(() => (s.newLayoutPanelVisible = true));
+  runInAction(() => (s.newLayoutPanelVisible = false));
   s.cycleZenMode();
   assert.deepEqual(view(s), { zen: true, panel: false, results: false });
   s.cycleZenMode();
   assert.deepEqual(view(s), { zen: true, panel: true, results: false });
   s.cycleZenMode();
   assert.deepEqual(view(s), { zen: true, panel: true, results: true });
+  s.cycleZenMode();
+  assert.deepEqual(view(s), { zen: false, panel: false, results: true });
   s.cycleZenMode();
   assert.deepEqual(view(s), { zen: true, panel: false, results: false });
 });
@@ -50,6 +52,9 @@ test('auto-run pauses while the results are hidden, and leaving puts everything 
   s.cycleZenMode();
   assert.equal(s.autoRunEnabled, false);
   s.cycleZenMode();
+  assert.equal(s.autoRunEnabled, true);
+  s.cycleZenMode();
+  assert.deepEqual(view(s), { zen: false, panel: false, results: true });
   assert.equal(s.autoRunEnabled, true);
   s.cycleZenMode();
   assert.equal(s.autoRunEnabled, false);
