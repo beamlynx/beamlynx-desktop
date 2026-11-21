@@ -118,7 +118,7 @@ jpackage-built JVM app) via `extraResources` -- a nested executable that
 Apple's notarization service checks independently of the main Electron
 binary, raising a theoretical concern that it might need its own signature
 (`jpackage`'s `--mac-sign`/`--mac-signing-key-user-name`, not currently
-used in `pine-lang/desktop/build-app-image.sh`). 0.2.2 is the first release
+used in `pine/desktop/build-app-image.sh`). 0.2.2 is the first release
 to actually exercise notarization end-to-end, and it succeeded
 (`notarization successful` in the `package (macos-latest)` job log) without
 `pine-server` having its own signature -- so this wasn't a real problem in

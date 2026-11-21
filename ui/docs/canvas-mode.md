@@ -339,7 +339,7 @@ never edits `ast` or any node/edge array directly. Every gesture:
 
 1. Re-slices the current expression into `Segment`s using the server's own
    `ast.ranges` offsets (`store/canvas/pine-text.ts`'s `segmentsFromAst`) —
-   canvas mode trusts pine-lang's own parse for segment *boundaries*, and only
+   canvas mode trusts Pine's own parse for segment *boundaries*, and only
    redoes attribution of which table alias "owns" each segment
    (`assignOwners`), since `ranges[].alias` itself becomes unreliable once
    `from:` is in play.
@@ -361,8 +361,8 @@ nothing more. Writing one goes through the same round trip as any other
 gesture, just with a simpler splice: `CanvasStore.setDoc` calls
 `pine-text.ts`'s `replaceDoc` to swap the leading comment in the expression
 text, and the rendered comment comes back on the rebuilt expression's own
-build response as `doc` (pine-lang computes it — see that repo's
-`docs/comments.md`).
+build response as `doc` (Pine computes it — see
+`../pine/docs/comments.md`).
 Canvas holds no copy of the text; `docEditing` is a boolean, not a draft.
 
 Two differences from a segment gesture, both because a comment can't change
@@ -410,7 +410,7 @@ it up to the next table; every other segment inherits whatever alias is
 current.
 
 **Checkpoints split the pipeline into stages.** `group:` and `limit:` are
-pine-lang "checkpoint" operations (see pine-lang's own `docs/checkpoints.md`).
+Pine "checkpoint" operations (see `../pine/docs/checkpoints.md`).
 Each seals what came before it into a CTE named `result_1`, `result_2`, ...
 (or the `|= name` after it), and the steps after it work on that sealed
 result. pine-lang lists them in `ast.checkpoints`, in pipe order, with each

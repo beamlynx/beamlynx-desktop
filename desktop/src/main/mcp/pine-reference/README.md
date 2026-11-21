@@ -6,8 +6,7 @@ inline by `../format.ts` whenever an expression fails to parse, and pulled on de
 that's `docs/` at the repo root.
 
 **These files contain no SQL, deliberately.** Pine is the translation layer between an agent and
-the database, and the only place query restrictions can be enforced (see
-`beamlynx-plans/completed/2026-08-15-mcp-server-and-url-scheme.md`). An agent shown SQL starts
+the database, and the only place query restrictions can be enforced. An agent shown SQL starts
 reasoning in SQL and trying to send it, which makes that layer meaningless — so no tool output
 and no doc here shows a `SELECT`. Examples describe what an expression *does* in words instead of
 showing an equivalent query.
@@ -16,7 +15,7 @@ That is the main way these diverge from [beamlynx.com](https://github.com/beamly
 documentation pages (`src/pages/documentation/*.tsx`), which do show SQL translations — the right
 call for a human evaluating whether to adopt Pine, the wrong one here. The overlap is fine, not a
 bug to fix: the two serve different audiences and are allowed to drift in wording.
-`pine-lang/docs/*.md` is a third, separate thing again — aimed at pine-lang's own contributors,
+`../pine/docs/*.md` is a third, separate thing again — aimed at Pine's own contributors,
 and mixed with internal implementation notes these files intentionally leave out.
 
 **These files are written by hand, not generated.** They follow the Pine in `../pine` of the same

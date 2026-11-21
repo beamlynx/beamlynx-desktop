@@ -43,7 +43,7 @@ Supabase calls `public.custom_access_token_hook` before it signs any token. The 
 - `github_id`: GitHub's numeric user ID, as text. It never changes, even when someone renames their GitHub account.
 - `github_login`: their GitHub username, for showing. It can change.
 
-A Beamlynx server will check a token's signature and then use `github_id` to know who is asking (`beamlynx-plans/plans/008-server-mode-and-identity.md`). The hook reads both values from `auth.identities`, which only Supabase writes. It never reads `user_metadata`, because a signed-in person can edit that themselves. A person with no GitHub sign-in gets neither claim.
+A Beamlynx server will check a token's signature and then use `github_id` to know who is asking. Server mode isn't built yet. The hook reads both values from `auth.identities`, which only Supabase writes. It never reads `user_metadata`, because a signed-in person can edit that themselves. A person with no GitHub sign-in gets neither claim.
 
 Three rules keep it safe:
 

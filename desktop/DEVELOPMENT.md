@@ -12,7 +12,7 @@ workflows. Commands below run from this folder unless they `cd`.
 Most UI changes -- including anything gated by `isDesktop()`
 (`store/util.ts`) like the hidden version chip or the desktop-only
 keybindings (`utils/keybindings.ts`) -- don't need Electron at all. Run
-beamlynx-ui's normal dev server with the desktop runtime flag set, and test
+the UI's normal dev server with the desktop runtime flag set, and test
 in a regular browser tab with full hot-reload:
 
 ```sh
@@ -46,8 +46,8 @@ pieces. `stage-server.sh` needs pine's app-image built first, with
 `../pine/desktop/build-app-image.sh` run from `../pine`:
 
 ```sh
-./scripts/stage-server.sh              # copies pine-lang's jpackage output into resources/server/
-./scripts/build-ui-export.sh           # builds beamlynx-ui's static export into resources/ui/
+./scripts/stage-server.sh              # copies Pine's jpackage output into resources/server/
+./scripts/build-ui-export.sh           # builds the UI's static export into resources/ui/
 ./scripts/stage-docs.sh                # copies src/main/mcp/pine-reference/*.md (hand-maintained, see its README.md) into resources/docs/, for the MCP server's get_pine_doc tool and the docs it pushes inline on a parse error
 ```
 
@@ -59,7 +59,7 @@ npm start        # tsc build + `electron .`
 ```
 
 `build-ui-export.sh` is a full static Next build -- rerun it after every
-beamlynx-ui change you want reflected, which is slow for iteration. To skip
+UI change you want reflected, which is slow for iteration. To skip
 that, point the Electron window at a live `next dev` server instead of the
 staged static export:
 
@@ -99,9 +99,10 @@ data folder is separate. That includes localStorage, so open tabs and
 preferences don't carry over.
 
 The dev build passes its port to the server as `PINE_PORT`. A pine-server
-staged from a pine-lang older than that variable ignores it and never
-answers on 43333. If startup times out, rebuild pine-lang's app-image and
-re-run `./scripts/stage-server.sh`.
+staged from a Pine older than that variable ignores it and never answers on
+43333. If startup times out, rebuild Pine's app-image and re-run
+`./scripts/stage-server.sh`. `bin/beam dev` does both when `../pine` is newer
+than the staged server.
 
 To let an AI agent use the dev build, register it as its own MCP server.
 Settings > MCP in the dev build shows the exact command, under the name

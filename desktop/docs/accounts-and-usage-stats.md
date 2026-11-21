@@ -1,6 +1,6 @@
 # Accounts and usage stats
 
-The app counts a few events and lets people sign in once, with GitHub or Google. This page is how to set up the services behind that, and how to try it from a dev build. The reasons are in `beamlynx-plans/plans/012-know-who-uses-beamlynx.md`.
+The app counts a few events and lets people sign in once, with GitHub or Google. This page is how to set up the services behind that, and how to try it from a dev build. What it's for is in "Sign-in and usage stats" in the repo's `AGENTS.md`.
 
 ## What the app does
 
