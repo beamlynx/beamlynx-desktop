@@ -21,7 +21,7 @@ Only the desktop app gets a tag, a plain `X.Y.Z`. That tag starts `.github/workf
 
 3. **Pine** (`pine/`), if it changed:
    - Run the formatter: `clojure -M:fmt fix`.
-   - Bump `src/pine/version.clj`, and the image tag in `playground.docker-compose.yml` to match. `./scripts/check-version-sync.sh` checks they agree.
+   - Bump `src/pine/version.clj`.
    - Move `## [Unreleased]` in `CHANGELOG.md` into a new `## [A.B.C] - YYYY-MM-DD` section.
 
 4. **UI** (`ui/`), if it changed:
