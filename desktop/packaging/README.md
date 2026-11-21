@@ -7,8 +7,8 @@ macOS and an AUR package for Arch Linux.
 
 Live, not a draft -- see the separate `beamlynx/homebrew-tap` repo
 (`Casks/beamlynx.rb`). Install with `brew install --cask
-beamlynx/tap/beamlynx`. Bumping it per release is part of this repo's own
-`RELEASING.md` checklist now (step 11), not covered here.
+beamlynx/tap/beamlynx`. Bumping it per release is step 11 of the repo's
+`RELEASING.md`.
 
 ## Arch Linux / AUR
 
@@ -26,7 +26,7 @@ these files into it and pushing. Nothing in CI does this.
 
 ### Publish a new version
 
-`RELEASING.md` step 12 runs this after every release.
+Step 12 of the repo's `RELEASING.md` runs this after every release, once the package is published.
 
 1. In `aur/PKGBUILD`, set `pkgver` to the new version and `pkgrel=1`.
 2. Update both `sha256sums`: the `.deb` from the release, and the `LICENSE`

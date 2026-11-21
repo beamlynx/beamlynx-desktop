@@ -1,6 +1,6 @@
 # Agent Development Guidelines
 
-How to build and run the app is in `DEVELOPMENT.md`. How to release it is in `RELEASING.md`.
+How to build and run the app is in `DEVELOPMENT.md`. How to release it is in `../RELEASING.md`.
 
 ## Never store a database's address, only its hash
 

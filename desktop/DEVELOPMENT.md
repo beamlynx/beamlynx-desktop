@@ -1,9 +1,9 @@
 # Developing beamlynx-desktop
 
-This repo just wires together a bundled pine-lang server and a static
-beamlynx-ui export inside Electron -- there's no source code of its own to
-iterate on beyond `src/main/`. Two different things you might be testing
-call for two different workflows.
+This folder wires together the Pine server (`../pine`) and a static
+export of the UI (`../ui`) inside Electron. Its own code is in `src/main/`.
+Two different things you might be testing call for two different
+workflows. Commands below run from this folder unless they `cd`.
 
 ## Iterating on beamlynx-ui behavior (fast path)
 
@@ -14,7 +14,7 @@ beamlynx-ui's normal dev server with the desktop runtime flag set, and test
 in a regular browser tab with full hot-reload:
 
 ```sh
-cd beamlynx-ui
+cd ../ui
 NEXT_PUBLIC_DESKTOP=1 npm run dev
 ```
 
@@ -39,8 +39,9 @@ install itself with Node 20. Since Electron 42, `npm install` no longer
 downloads the Electron binary. The first `npm start` downloads it, or run
 `npx install-electron --no` to get it up front.
 
-One-time (or after a `pine-lang`/`beamlynx-ui` pull), stage both bundled
-pieces:
+One-time (or after a change in `../pine` or `../ui`), stage both bundled
+pieces. `stage-server.sh` needs pine's app-image built first, with
+`../pine/desktop/build-app-image.sh` run from `../pine`:
 
 ```sh
 ./scripts/stage-server.sh              # copies pine-lang's jpackage output into resources/server/
@@ -62,10 +63,10 @@ staged static export:
 
 ```sh
 # terminal 1
-cd beamlynx-ui && NEXT_PUBLIC_DESKTOP=1 npm run dev
+cd ui && NEXT_PUBLIC_DESKTOP=1 npm run dev
 
 # terminal 2 (still needs resources/server staged once, from above)
-cd beamlynx-desktop
+cd desktop
 BEAMLYNX_DEV_UI_URL=http://localhost:3000 npm start
 ```
 

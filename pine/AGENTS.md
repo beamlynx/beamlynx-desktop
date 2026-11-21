@@ -92,7 +92,7 @@ clj -M:fmt fix
 
 ## Changelog
 
-Every fix/feat PR must add its own entry under `## [Unreleased]` in `CHANGELOG.md` — don't leave it empty and defer the writeup to the later release PR. The release checklist (`RELEASING.md`) only moves an already-written `Unreleased` section into a dated one; it doesn't author the content.
+Every fix/feat PR must add its own entry under `## [Unreleased]` in `CHANGELOG.md` — don't leave it empty and defer the writeup to the later release PR. The release checklist (`../RELEASING.md`) only moves an already-written `Unreleased` section into a dated one; it doesn't author the content.
 
 ---
 

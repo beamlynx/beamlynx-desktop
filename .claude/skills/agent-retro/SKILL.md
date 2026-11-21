@@ -14,7 +14,7 @@ Beamlynx saves every MCP tool call an agent makes in its `beamlynx.db` (`src/mai
 
 ## 1. Get the report
 
-From `beamlynx-desktop`, with Node 22 or later:
+From the repo's `desktop/` folder, with Node 22 or later:
 
 ```
 npm run build

@@ -4,8 +4,8 @@
 // a parse error that points at a topic with no file, a topic the overview
 // doesn't list, a topic with no example, or SQL creeping into a doc.
 //
-// Whether the examples still parse is checked against pine-lang itself,
-// when the bundled pine-lang changes. See RELEASING.md.
+// Whether the examples still parse is checked against the Pine in ../pine,
+// by scripts/check-pine-reference.sh in CI.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
