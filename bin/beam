@@ -48,25 +48,35 @@ Logs: $LOGS
 EOF
 }
 
-# Installs a folder's npm packages the first time.
+# Installs a folder's npm packages when they are missing, or older than its
+# package-lock.json (after a pull that changed them). npm writes
+# node_modules/.package-lock.json on every install.
 ensure_npm() {
-  if [ ! -d "$1/node_modules" ]; then
-    log "Installing the npm packages in ${1#$ROOT/}/ (first run only)"
+  local installed="$1/node_modules/.package-lock.json"
+  if [ ! -f "$installed" ] || [ "$1/package-lock.json" -nt "$installed" ]; then
+    log "Installing the npm packages in ${1#$ROOT/}/"
     (cd "$1" && npm ci)
   fi
 }
 
-# The UI pins its Node version in ui/.nvmrc, and CI uses that one. An older
-# Node often works, but when something fails oddly, this is the first
-# thing to rule out.
+# The UI pins its Node version in ui/.nvmrc, and CI uses that one. If this
+# shell's Node is older and mise has the right one installed, use that.
+# Otherwise say so: an older Node often works, but when something fails
+# oddly, it is the first thing to rule out.
 check_node() {
-  local want have
+  local want have dir
   want=$(tr -dc '0-9' < "$UI/.nvmrc")
-  # From ui/, so a version manager that reads ui/.nvmrc picks the right Node.
-  have=$(cd "$UI" && node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)
-  if [ "$have" -lt "$want" ]; then
-    log "Note: ui/.nvmrc asks for Node $want, and this shell has Node $have. If something fails oddly, switch (mise use node@$want, or nvm use in ui/)."
+  have=$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)
+  [ "$have" -ge "$want" ] && return 0
+  if command -v mise >/dev/null 2>&1; then
+    dir=$(mise where "node@$want" 2>/dev/null || true)
+    if [ -n "$dir" ] && [ -x "$dir/bin/node" ]; then
+      export PATH="$dir/bin:$PATH"
+      log "Using Node $want from mise (this shell has Node $have)"
+      return 0
+    fi
   fi
+  log "Note: ui/.nvmrc asks for Node $want, and this shell has Node $have. If something fails oddly, switch (mise install node@$want, or nvm use in ui/)."
 }
 
 # Ports: the installed Beamlynx app runs its Pine server on 33333 (and its
@@ -326,6 +336,11 @@ cmd_dev() {
   # In the foreground: when the app quits, cleanup stops the dev server.
   BEAM_DEV=1 cmd_desktop
 }
+
+# Every command that runs Node picks its version first.
+case "$1" in
+  dev|web|desktop|ui|sample-db|check) check_node ;;
+esac
 
 case "$1" in
   dev) cmd_dev ;;
