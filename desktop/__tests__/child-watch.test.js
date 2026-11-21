@@ -39,7 +39,10 @@ test('readiness wins when it comes first', { skip: process.platform === 'win32' 
 test('isPineServerProcess tells a pine server from an unrelated process with a reused PID', { skip: process.platform === 'win32' }, async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pine-pid-'));
   const fake = path.join(dir, 'pine-server');
-  fs.copyFileSync(fs.realpathSync('/bin/sleep'), fake);
+  // A script, not a copy of sleep: on Ubuntu sleep is part of one coreutils
+  // program that picks its tool by the name it was started under, so a copy
+  // named pine-server exits at once.
+  fs.writeFileSync(fake, '#!/bin/sh\nsleep "$1"\n');
   fs.chmodSync(fake, 0o755);
   const pine = spawn(fake, ['5']);
   const other = spawn('sleep', ['5']);
