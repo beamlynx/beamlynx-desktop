@@ -1,5 +1,0 @@
-{
-  "_comment": "Exact git refs (tag or SHA) of pine-lang and beamlynx-ui bundled into this desktop build. Checked out directly by CI via these refs -- update deliberately as part of a release, per RELEASING.md. pine-lang bumped to its tagged 0.58.0 (update! from another table, EXISTS with several ties, writes recheck their where:, whole numbers unquoted in shown SQL); beamlynx-ui bumped to its tagged 0.79.0 (SQL panel follows the canvas, named queries run inside the ones that read them, three Zen views). beamlynx-ui 0.79.0 needs pine-lang 0.57 (its RequiredVersion).",
-  "pineLangRef": "0.58.0",
-  "beamlynxUiRef": "0.79.0"
-}

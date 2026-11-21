@@ -9,7 +9,7 @@ set -e
 
 cd "$(dirname "$0")/.."
 
-PINE_LANG_DIR="../pine-lang"
+PINE_LANG_DIR="../pine"
 APP_IMAGE_BASE="$PINE_LANG_DIR/desktop/build/app-image"
 DEST="resources/server"
 

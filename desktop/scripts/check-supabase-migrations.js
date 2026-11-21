@@ -60,17 +60,30 @@ function main() {
     base = git('merge-base', 'origin/main', 'HEAD');
     if (base === git('rev-parse', 'HEAD')) base = 'HEAD~1';
   }
-  const changes = git('diff', '--name-status', '--no-renames', `${base}...HEAD`, '--', DIR)
+  // --relative: paths come out relative to this folder, as DIR is.
+  const changes = git('diff', '--name-status', '--no-renames', '--relative', `${base}...HEAD`, '--', DIR)
     .split('\n')
     .filter(Boolean)
     .map(line => line.split('\t'));
 
+  // A migration that only moved to another folder isn't new. The repo's
+  // folders moved once: this one was at the repo's root until pine-lang and
+  // beamlynx-ui moved in. Merged migrations by file name, with their content.
+  const merged = new Map(
+    git('ls-tree', '-r', '--full-tree', base)
+      .split('\n')
+      .filter(line => /(^|\/)supabase\/migrations\/[^/]+$/.test(line.split('\t')[1] || ''))
+      .map(line => [line.split('\t')[1].split('/').pop(), line.split(/\s+/)[2]]),
+  );
+
   const failures = [];
   for (const [status, file] of changes) {
-    if (status !== 'A') {
+    const before = merged.get(file.split('/').pop());
+    if (status !== 'A' || (before && before !== git('hash-object', file))) {
       failures.push(`${file}: a merged migration was changed or removed. Add a new migration instead.`);
       continue;
     }
+    if (before) continue;
     for (const problem of checkMigrationSql(fs.readFileSync(file, 'utf8'))) {
       failures.push(`${file}: ${problem}`);
     }

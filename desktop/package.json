@@ -8,6 +8,7 @@
     "email": "ahmad@avallone.io"
   },
   "license": "PolyForm-Noncommercial-1.0.0",
+  "homepage": "https://beamlynx.com",
   "main": "dist/main/index.js",
   "engines": {
     "node": ">=22"

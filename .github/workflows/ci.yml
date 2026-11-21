@@ -13,13 +13,16 @@ on:
 
 jobs:
   # The live database is shared by every released app, so a migration must
-  # never break one. See supabase/README.md.
+  # never break one. See desktop/supabase/README.md.
   #
   # This check is required to merge into main. It always runs, because a
   # required check that never reports blocks the PR for good. When nothing
   # about the database changed since main, it passes in seconds.
   supabase:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,7 +32,7 @@ jobs:
         id: changed
         run: |
           base=$(git merge-base origin/main HEAD)
-          if git diff --quiet "$base" HEAD -- supabase scripts/check-supabase-migrations.js scripts/test-supabase-compat.sh scripts/test-supabase-token-claims.sh .github/workflows/ci.yml; then
+          if git diff --quiet "$base" HEAD -- supabase scripts/check-supabase-migrations.js scripts/test-supabase-compat.sh scripts/test-supabase-token-claims.sh ../.github/workflows/ci.yml; then
             echo "::notice::No database changes since main, so the database checks were skipped."
             echo "run=false" >> "$GITHUB_OUTPUT"
           else
@@ -60,35 +63,11 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout beamlynx-desktop
-        uses: actions/checkout@v4
-        with:
-          path: beamlynx-desktop
-
-      - name: Read bundled version pins
-        id: pins
-        working-directory: beamlynx-desktop
-        run: |
-          echo "pine_ref=$(jq -r .pineLangRef bundled-versions.json)" >> "$GITHUB_OUTPUT"
-          echo "ui_ref=$(jq -r .beamlynxUiRef bundled-versions.json)" >> "$GITHUB_OUTPUT"
-
-      - name: Checkout pine-lang
-        uses: actions/checkout@v4
-        with:
-          repository: beamlynx/pine-lang
-          ref: ${{ steps.pins.outputs.pine_ref }}
-          path: pine-lang
-
-      - name: Checkout beamlynx-ui
-        uses: actions/checkout@v4
-        with:
-          repository: beamlynx/beamlynx-ui
-          ref: ${{ steps.pins.outputs.ui_ref }}
-          path: beamlynx-ui
+      - uses: actions/checkout@v4
 
       - name: Read pinned JDK version
         id: jdk
-        run: echo "version=$(grep -v '^#' pine-lang/desktop/JDK_VERSION | grep -v '^\s*$')" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(grep -v '^#' pine/desktop/JDK_VERSION | grep -v '^\s*$')" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-java@v4
         with:
@@ -104,50 +83,50 @@ jobs:
           node-version: '22'
 
       - name: Build pine-lang app-image
-        working-directory: pine-lang
+        working-directory: pine
         run: ./desktop/build-app-image.sh
 
-      - name: Install beamlynx-ui deps
-        working-directory: beamlynx-ui
+      - name: Install UI deps
+        working-directory: ui
         run: npm ci
 
       - name: Build UI export
-        working-directory: beamlynx-desktop
+        working-directory: desktop
         run: ./scripts/build-ui-export.sh
 
       - name: Stage server
-        working-directory: beamlynx-desktop
+        working-directory: desktop
         run: ./scripts/stage-server.sh
 
       - name: Stage Pine docs
-        working-directory: beamlynx-desktop
+        working-directory: desktop
         run: ./scripts/stage-docs.sh
 
       # The agent's Pine reference is written by hand. Every example in it
       # has to parse with the pine-lang this build bundles.
       - name: Check Pine reference examples
-        working-directory: beamlynx-desktop
+        working-directory: desktop
         run: ./scripts/check-pine-reference.sh
 
       - name: Install beamlynx-desktop deps
-        working-directory: beamlynx-desktop
+        working-directory: desktop
         run: npm ci
 
       # The staged UI must load every font it ships, in Electron, from
       # file:// - how the packaged app loads it. A UI that bundles no fonts
       # fails too. See scripts/check-ui-fonts.js.
       - name: Check the UI's fonts load in Electron
-        working-directory: beamlynx-desktop
-        run: xvfb-run -a npx electron --no-sandbox scripts/check-ui-fonts.js ../beamlynx-ui
+        working-directory: desktop
+        run: xvfb-run -a npx electron --no-sandbox scripts/check-ui-fonts.js ../ui
 
       - name: TypeScript build
-        working-directory: beamlynx-desktop
+        working-directory: desktop
         run: npm run build
 
       - name: electron-builder config sanity check (unpacked dir, no installer)
-        working-directory: beamlynx-desktop
+        working-directory: desktop
         run: npx electron-builder --linux dir --config electron-builder.yml
 
       - name: Check built-in SQLite in the packaged app
-        working-directory: beamlynx-desktop
+        working-directory: desktop
         run: ./scripts/check-builtin-sqlite.sh

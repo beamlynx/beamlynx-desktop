@@ -13,7 +13,7 @@ set -e
 
 cd "$(dirname "$0")/.."
 
-UI_SRC="../beamlynx-ui"
+UI_SRC="../ui"
 STAGE_DIR="build/ui-stage"
 
 rm -rf "$STAGE_DIR"
