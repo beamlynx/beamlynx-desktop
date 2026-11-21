@@ -307,8 +307,8 @@ export const KEYBINDINGS: KeybindingConfig[] = [
     // panels have no keys of their own: `:` on the canvas goes to the Pine
     // panel, and the palette has "Focus on Pine Panel" and "Focus on SQL
     // Panel". Each press is the next Zen view: canvas, canvas + panel,
-    // canvas + panel + results, then the canvas alone again
-    // (GlobalStore.cycleZenMode). "Leave Zen Mode" is in the palette.
+    // canvas + panel + results, then out of Zen mode
+    // (GlobalStore.cycleZenMode). "Leave Zen Mode" is in the palette too.
     name: 'cycle-zen-mode',
     description: 'Zen Mode: Next View',
     display: createKeybindingDisplay(['ctrl'], '.'),

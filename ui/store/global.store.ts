@@ -593,7 +593,7 @@ export class GlobalStore {
   //   1  the canvas alone
   //   2  the canvas and the Pine/SQL panel (whichever mode it is in)
   //   3  the canvas, the panel and the results
-  // Ctrl/Cmd+. walks 1 → 2 → 3 → 1 (cycleZenMode). Transient, not persisted:
+  // Ctrl/Cmd+. walks 0 → 1 → 2 → 3 → 0 (cycleZenMode). Transient, not persisted:
   // it is a view for the current sitting, so it always starts off on reload.
   // Read the getters below, not this field, at render sites.
   zenStage: 0 | 1 | 2 | 3 = 0;
@@ -1418,13 +1418,18 @@ export class GlobalStore {
 
   /**
    * Ctrl/Cmd+.: the next Zen stage. From outside Zen mode it starts at the
-   * canvas alone; after the last stage it goes back to the canvas alone.
-   * Each stage sets the panel itself, so a panel opened with `:` in stage 1
-   * doesn't change where the cycle goes next.
+   * canvas alone; after the last stage it leaves Zen mode, so the presses
+   * cycle through the three Zen views and the normal view. Each stage sets
+   * the panel itself, so a panel opened with `:` in stage 1 doesn't change
+   * where the cycle goes next.
    */
   public cycleZenMode() {
+    if (this.zenStage === 3) {
+      this.exitZenMode();
+      return;
+    }
     if (this.zenStage === 0) this._panelBeforeZenMode = this.newLayoutPanelVisible;
-    this.setZenStage(this.zenStage === 0 || this.zenStage === 3 ? 1 : this.zenStage === 1 ? 2 : 3);
+    this.setZenStage(this.zenStage === 0 ? 1 : this.zenStage === 1 ? 2 : 3);
   }
 
   public exitZenMode() {

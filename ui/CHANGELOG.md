@@ -6,6 +6,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ## [Unreleased]
 ### Changed
 - **Beamlynx is open source.** It is now under the GNU AGPL-3.0, and Settings → About says so. A commercial license is available for those who need one.
+- **The fourth press of `Ctrl`/`Cmd`+`.` leaves Zen mode.** It used to go back to the canvas alone, and leaving took the command palette. Now the presses cycle through the three Zen views and the normal view.
 
 ## [0.79.0] - 2026-11-20
 ### Added
