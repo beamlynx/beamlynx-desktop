@@ -17,5 +17,3 @@
 A fork you distribute needs its own name and logo. Remove the Beamlynx logo and the app icons in `desktop/icons/` and `desktop/assets/`.
 
 Questions, or a request for permission: contact@grephyte.com.
-
-*This policy has not yet been reviewed by a lawyer.*
