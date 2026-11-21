@@ -75,6 +75,20 @@ The desktop app has an optional sign-in. It asks at each launch until the person
 - **The Supabase schema** is in `desktop/supabase/`. Every released app keeps using it, so read `desktop/supabase/README.md` before changing it. CI's required `supabase` check guards it.
 - **The web build** has no sign-in.
 
+## Never store a database's address, only its hash
+
+A database's address is its type, host, port and name, such as `postgres://localhost:5432/shop`. The code calls it the database key. It tells anyone who reads a file where someone's databases are.
+
+- **Anything that needs to remember a database stores the key's SHA-256 hash** (`databaseKeyHash`): recipes, column widths, links, logs.
+- **Never write the key, a host, a port or Pine's connection id** (`host:port:dbname`) to local storage, beamlynx.db, a log, usage stats, or anything sent off the machine.
+- **One file keeps addresses:** the desktop's saved connections (`desktop/src/main/credential-store.ts`). It needs them to connect.
+
+Why a hash: two people with the same database get the same hash. So a recipe can be shared for that database without showing where it is. A saved connection's id is random and local to one install: it shows nothing, but it can't be matched across installs.
+
+A hash hides the address from someone reading the file. It is not a secret: anyone who guesses the address can hash it and compare. So never use the hash as a credential.
+
+How each part applies it: `desktop/AGENTS.md` and `ui/AGENTS.md`.
+
 ## How to write
 
 This applies to documentation, commit messages, changelog entries and pull request descriptions.

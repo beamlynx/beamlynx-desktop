@@ -1,6 +1,6 @@
 # Agent cases
 
-Real kinds of questions agents ask, on a small database, so a change to the MCP tools or their instructions can be tried on the same questions before and after. See beamlynx-plans/plans/024-agents-work-in-pine.md, part E.
+Real kinds of questions agents ask, on a small database, so a change to the MCP tools or their instructions can be tried on the same questions before and after.
 
 Nothing here runs an agent on its own. A person runs a case through Claude Code (or another harness) and compares.
 

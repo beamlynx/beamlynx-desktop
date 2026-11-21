@@ -54,7 +54,7 @@ skipped, never an error. With a connection:
   doesn't build is an `internal` error, never a conversion that fails later.
 - On MySQL, `||` is refused: there it means OR. `CONCAT()` converts instead.
 
-AI agents use it too. beamlynx-desktop's MCP tool `run_sql_as_pine` accepts SQL, which beamlynx-ui
+AI agents use it too. The desktop app's MCP tool `run_sql_as_pine` accepts SQL, which the UI
 converts here and then runs as Pine through `/eval`, with the connection's access policy and writes
 refused. SQL never runs, so every query still passes the AST, where the policy applies. The agent
 gets the Pine back, not SQL.
@@ -871,7 +871,7 @@ decided once, at the end.
 
 ## Later
 
-Planned in `beamlynx-plans/pending/2026-10-08-sql-to-pine.md`:
+Planned:
 
 - With a connection: resolve an unqualified column in a join from the schema, and write a join that
   matches a foreign key as `.column` instead of explicit pairs. Names already take the database's
