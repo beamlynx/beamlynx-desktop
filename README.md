@@ -18,7 +18,17 @@ Until November 2026 these were three repos: `beamlynx-desktop`, `beamlynx/pine-l
 
 ## Working on it
 
-- Running the app from source: [`desktop/DEVELOPMENT.md`](desktop/DEVELOPMENT.md)
+Run the app from source with one command:
+
+```sh
+bin/beam dev
+```
+
+It starts the UI's dev server, then the desktop app against it, with hot reload. It first rebuilds the bundled Pine server if `pine/` changed. Quitting the app stops everything. `bin/beam` with no command lists the others: the UI alone in a browser, the Pine server alone, the test databases, and cleaning up stray dev processes.
+
+You need Node 22 or later, the Clojure CLI, and JDK 21 (`mise install java@temurin-21` works).
+
+- More on running from source: [`desktop/DEVELOPMENT.md`](desktop/DEVELOPMENT.md)
 - Pine's grammar, tests and formatting: [`pine/AGENTS.md`](pine/AGENTS.md)
 - The UI's conventions: [`ui/AGENTS.md`](ui/AGENTS.md)
 - Releasing: [`RELEASING.md`](RELEASING.md)
