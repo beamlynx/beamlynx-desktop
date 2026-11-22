@@ -58,7 +58,7 @@ const AboutSection = () => {
 
       <Box className="styled-scrollbar" sx={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Beamlynx is a visual database client.
+          A visual database client that knows your schema, built for working safely with AI agents.
         </Typography>
 
         <InfoRow label="Website">
@@ -82,6 +82,23 @@ const AboutSection = () => {
             contact@grephyte.com
           </Link>
           .
+        </InfoRow>
+
+        <InfoRow label="Source code">
+          <Link
+            href="https://github.com/beamlynx/beamlynx-desktop"
+            target="_blank"
+            rel="noopener noreferrer"
+            underline="hover"
+          >
+            github.com/beamlynx/beamlynx-desktop
+          </Link>
+        </InfoRow>
+
+        <InfoRow label="Privacy">
+          <Link href="https://beamlynx.com/privacy" target="_blank" rel="noopener noreferrer" underline="hover">
+            What the app sends, and what it never does
+          </Link>
         </InfoRow>
 
         {isDesktop() && appVersion && <InfoRow label="App version">{appVersion}</InfoRow>}
