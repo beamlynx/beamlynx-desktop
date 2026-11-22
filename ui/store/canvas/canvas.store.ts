@@ -1424,6 +1424,12 @@ export class CanvasStore {
    * above the drawn one, so the names of their results are tables too.
    */
   openTablePicker(anchor: PickerAnchor = CanvasStore.defaultAnchor) {
+    // No database, so no tables to list: the tab needs a connection first,
+    // and Settings -> Connections is where it gets one.
+    if (!this.session.connectionId) {
+      this.session.globalStore?.showSettingsSection('connections');
+      return;
+    }
     const request: PickerRequest = { kind: 'table' };
     void this.openListPicker(request, anchor, async () => {
       const ast = await probeBuild('', this.session.connectionId, contextFor(this.tab, this.mainBlock));

@@ -137,6 +137,10 @@ export const INVESTIGATION_IDLE_MS = 30 * 60_000;
 // The desktop app's MCP bridge, or undefined: in the browser, in tests, and
 // before the preload ran.
 const desktopMcp = () => (typeof window === 'undefined' ? undefined : window.beamlynxDesktop?.mcp);
+// The first query on the sample database: customers and their orders,
+// joined, which shows the canvas drawing a join.
+const SAMPLE_DATABASE_QUERY = 'customers | orders';
+
 type ConnectionParams = {
   dbHost: string;
   dbPort: string;
@@ -1290,6 +1294,38 @@ export class GlobalStore {
       this.settingsSection = 'connections';
       this.settingsConnectionsAdding = true;
     });
+  };
+
+  /**
+   * Connects the active tab to the sample database, a small shop the
+   * desktop app builds in its data folder (desktop's sample-database.ts),
+   * and runs a first query on it, so the canvas and the results have
+   * something to show straight away. Saved as a connection like any other.
+   *
+   * Throws when the connection fails. Desktop only.
+   */
+  connectSampleDatabase = async (): Promise<void> => {
+    const desktop = typeof window === 'undefined' ? undefined : window.beamlynxDesktop;
+    if (!desktop) throw new Error('The sample database needs the desktop app.');
+    // The tab, taken now: switching tabs while it connects mustn't put the
+    // query into another one.
+    const target = this.sessions[this.activeSessionId];
+    const dbName = await desktop.credentials.prepareSampleDatabase();
+    const id = await this.connect({
+      dbHost: '',
+      dbPort: '',
+      dbName,
+      dbUser: '',
+      dbPassword: '',
+      dbType: 'sqlite',
+      label: 'Sample shop',
+    });
+    if (!target || this.sessions[target.id] !== target || target.connectionId !== id) return;
+    if (!target.expression.trim()) {
+      const query = SAMPLE_DATABASE_QUERY;
+      target.setExpressionWithSelection(query, { anchor: query.length, head: query.length });
+    }
+    await target.run();
   };
 
   loadCredentialsStatus = async () => {

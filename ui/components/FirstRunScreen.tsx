@@ -9,11 +9,10 @@ import { PRIVACY_URL, SignInButtons, TERMS_URL } from './settings/AccountSection
  * person signs in: sign in with GitHub, or skip until the next launch.
  * Settings -> Account can sign in at any time.
  *
- * It also says what usage stats the app sends, before any are sent (the
- * desktop app holds them until this choice is made). Launches and who is
- * signed in are always sent. The switch for the detailed stats is in
- * Settings -> Account, not here: the screen tells people about them without
- * inviting them to turn them off.
+ * Kept to the sign-in itself, and one line at the bottom saying that usage
+ * counts are sent, with links to the privacy policy and terms. The desktop
+ * app holds stats until this choice is made. The details, and the switch for
+ * the detailed stats, are in Settings -> Account and the privacy policy.
  *
  * Not shown offline (sign-in can't work), in a browser, in a desktop build
  * without the sign-in service, or by a desktop app older than sign-in.
@@ -57,12 +56,9 @@ const FirstRunScreen = () => {
         id="first-run-title"
         variant="h6"
         component="h2"
-        sx={{ color: 'var(--text-color)', fontWeight: 500, textAlign: 'center', mb: 1 }}
+        sx={{ color: 'var(--text-color)', fontWeight: 500, textAlign: 'center', mb: 3 }}
       >
         Welcome to Beamlynx
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mb: 3 }}>
-        Sign in so we know who uses Beamlynx. It changes nothing in the app.
       </Typography>
 
       <SignInButtons />
@@ -80,22 +76,16 @@ const FirstRunScreen = () => {
         </Link>
       </Box>
 
-      <Box sx={{ mt: 3, pt: 2, borderTop: '1px solid var(--border-color)' }}>
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-          Beamlynx counts each launch, with the app version and who is signed in. It also counts
-          how often queries run, which you can turn off in Settings → Account. Never your queries,
-          connections or data.
-        </Typography>
-        <Typography variant="caption" sx={{ display: 'block', mt: 1 }}>
-          <Link href={PRIVACY_URL} target="_blank" rel="noreferrer">
-            Privacy policy
-          </Link>
-          {' · '}
-          <Link href={TERMS_URL} target="_blank" rel="noreferrer">
-            Terms
-          </Link>
-        </Typography>
-      </Box>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mt: 3 }}>
+        Beamlynx sends usage counts, never your queries or data.{' '}
+        <Link href={PRIVACY_URL} target="_blank" rel="noreferrer" color="inherit" underline="hover">
+          Privacy
+        </Link>
+        {' · '}
+        <Link href={TERMS_URL} target="_blank" rel="noreferrer" color="inherit" underline="hover">
+          Terms
+        </Link>
+      </Typography>
     </ModalSurface>
   );
 };

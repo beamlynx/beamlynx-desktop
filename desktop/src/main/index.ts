@@ -8,6 +8,7 @@ import { getUsageStats, onAppStarted, registerAccountIpc, shutdownAccount } from
 import { DOWNLOAD_PAGE_URL, getAutoUpdater, initAutoUpdater } from './auto-update';
 import { closeAppDb, registerAppDbIpc } from './app-db-ipc';
 import { registerCredentialIpc } from './credential-store';
+import { ensureSampleDatabase, SAMPLE_DATABASE_FILE } from './sample-database';
 import { useSeparateDevDataDir } from './data-dir';
 import { startControlPlaneServer } from './mcp/control-plane-server';
 import { registerInvestigationIpc } from './mcp/investigations';
@@ -404,7 +405,16 @@ function watchServer(handle: ServerHandle): void {
 async function main(): Promise<void> {
   mark('ready');
   Menu.setApplicationMenu(buildMenu());
-  registerCredentialIpc(dbType => getUsageStats().capture('connection_added', { database_type: dbType }));
+  // The sample database counts as its own type, so it doesn't swell the
+  // number of people who connect a SQLite file of their own.
+  const samplePath = path.join(app.getPath('userData'), SAMPLE_DATABASE_FILE);
+  registerCredentialIpc((dbType, input) =>
+    getUsageStats().capture('connection_added', {
+      database_type: dbType === 'sqlite' && input.dbName === samplePath ? 'sample' : dbType,
+    }),
+  );
+  // The path of the sample database (sample-database.ts), built on first use.
+  ipcMain.handle('sample-database:prepare', () => ensureSampleDatabase(app.getPath('userData')));
   registerInvestigationIpc();
   registerAppDbIpc();
   registerAccountIpc();

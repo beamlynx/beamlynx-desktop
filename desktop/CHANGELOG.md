@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- **A sample database to try Beamlynx on.** Until you add a connection, a new tab offers two choices: try the sample shop, or connect your own database. The sample is a small outdoor-gear shop with customers, orders, products, reviews and support tickets. One click opens it and runs a first query. Settings → Connections offers it too while the list is empty.
+
+### Changed
+- **The welcome screen only asks you to sign in.** It has the sign-in button, Skip for now, and one line saying the app sends usage counts, never your queries or data, with links to the privacy policy and terms. The details are in Settings → Account.
+
+### Fixed
+- **Clicking "+ pick a table" on a tab with no database opens your connections** instead of showing an error. The button says "+ pick a database" until the tab has one.
 
 ## [0.35.0] - 2026-11-22
 ### Added

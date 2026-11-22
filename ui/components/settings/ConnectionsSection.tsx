@@ -94,6 +94,40 @@ const SecurityNotice = ({ persistenceAvailable }: { persistenceAvailable?: boole
 };
 
 /**
+ * Connects the active tab to the sample shop (GlobalStore.connectSampleDatabase).
+ * Offered while there are no connections, beside Add connection.
+ */
+const SampleDatabaseButton = observer(() => {
+  const { global } = useStores();
+  const [opening, setOpening] = useState(false);
+  const [error, setError] = useState('');
+  const open = async () => {
+    if (opening) return;
+    setOpening(true);
+    setError('');
+    try {
+      await global.connectSampleDatabase();
+    } catch (e) {
+      setError((e as Error)?.message ?? 'The sample database could not be opened.');
+    } finally {
+      setOpening(false);
+    }
+  };
+  return (
+    <>
+      <Button size="small" onClick={open} disabled={opening || !global.pineConnected} sx={actionSx}>
+        {opening ? 'Opening…' : 'Try the sample shop'}
+      </Button>
+      {error && (
+        <Typography variant="caption" sx={{ color: 'var(--text-warning-color)', flexBasis: '100%' }}>
+          {error}
+        </Typography>
+      )}
+    </>
+  );
+});
+
+/**
  * Add-a-connection form -- was the entirety of pages/settings.tsx, now the
  * "add" sub-view of the Connections settings section. ConnectionsSection
  * below opens it with `reconnectHint` when a saved profile's password failed
@@ -1197,14 +1231,17 @@ const ConnectionsSection = () => {
             <Typography variant="body2" sx={{ color: 'var(--text-color)' }}>
               No connections yet. Add a database to start querying it.
             </Typography>
-            <Button
-              variant="contained"
-              size="small"
-              onClick={() => openForm(null)}
-              sx={{ textTransform: 'none', bgcolor: 'var(--primary-color)', color: '#fff', '&:hover': { bgcolor: 'var(--primary-color)', opacity: 0.9 } }}
-            >
-              Add connection
-            </Button>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+              <Button
+                variant="contained"
+                size="small"
+                onClick={() => openForm(null)}
+                sx={{ textTransform: 'none', bgcolor: 'var(--primary-color)', color: '#fff', '&:hover': { bgcolor: 'var(--primary-color)', opacity: 0.9 } }}
+              >
+                Add connection
+              </Button>
+              {isDesktop() && <SampleDatabaseButton />}
+            </Box>
           </Box>
         )}
         {global.connections.map(

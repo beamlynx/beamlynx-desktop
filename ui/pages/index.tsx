@@ -43,6 +43,10 @@ const Home: NextPage = () => {
     });
     if (isDesktop()) {
       global.loadCredentialsStatus();
+      // The desktop app keeps the saved connections, so they can be listed
+      // while Pine is still starting. A first launch then shows how to get a
+      // database (GetStarted) from the start, not an empty canvas.
+      void global.refreshConnections();
     }
 
     // Setup a reaction to manage polling based on connection status

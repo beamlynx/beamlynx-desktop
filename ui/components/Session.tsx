@@ -5,6 +5,7 @@ import NewLayoutView from './NewLayoutView';
 import LinkOpenedBanner from './LinkOpenedBanner';
 import SaveRecipeBar from './recipes/SaveRecipeBar';
 import InvestigationPanel from './InvestigationPanel';
+import GetStarted from './GetStarted';
 
 interface SessionProps {
   sessionId: string;
@@ -14,6 +15,17 @@ const Session: React.FC<SessionProps> = observer(({ sessionId }) => {
   const { global } = useStores();
   const session = global.getSession(sessionId);
   const investigation = global.investigationForSession(sessionId);
+  // No database to query yet: the tab offers the ways to get one instead of
+  // an empty canvas. Not on an agent's tab, which has its own connection.
+  if (
+    global.connectionsLoaded &&
+    global.connections.length === 0 &&
+    !session.connectionId &&
+    !investigation &&
+    !global.agentSessionIds.includes(sessionId)
+  ) {
+    return <GetStarted />;
+  }
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0 }}>
       {/* A beamlynx://run link put an expression here without running it. */}

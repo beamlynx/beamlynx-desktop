@@ -261,6 +261,10 @@ interface BeamlynxDesktopApi {
     // chosen absolute path, or null if the user cancels. Absent in a desktop
     // build that predates SQLite, so callers hide their Browse button then.
     pickSqliteFile?: () => Promise<string | null>;
+    // The sample database's absolute path: a small shop, as a SQLite file in
+    // the app's data folder. Built the first time it's asked for; kept, with
+    // any changes, after that.
+    prepareSampleDatabase: () => Promise<string>;
   };
   // Access policies: each connection's own (with its connectionId), and the
   // templates. The rule calls work on both; create and delete are for

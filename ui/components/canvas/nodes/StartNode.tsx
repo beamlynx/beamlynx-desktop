@@ -17,6 +17,9 @@ const StartNode: React.FC<NodeProps<CanvasStartNodeData>> = observer(() => {
   // current-node treatment without eagerly touching the AST itself.
   const isFocusTarget = canvasStore.focusedAlias === START_NODE_ID;
   const showKeyHint = isFocusTarget && canvasStore.mode === 'normal';
+  // Without a database there are no tables to pick: a click opens the
+  // connections instead (CanvasStore.openTablePicker).
+  const hasConnection = !!canvasStore.session.connectionId;
 
   return (
     <div
@@ -44,7 +47,9 @@ const StartNode: React.FC<NodeProps<CanvasStartNodeData>> = observer(() => {
         cursor: 'pointer',
       }}
     >
-      {showKeyHint ? (
+      {!hasConnection ? (
+        '+ pick a database'
+      ) : showKeyHint ? (
         <>
           +&nbsp;<span style={{ fontWeight: 800 }}>I</span>
           <span style={{ color: 'var(--canvas-text-dim)' }}>nsert</span>
