@@ -125,6 +125,8 @@ contextBridge.exposeInMainWorld('beamlynxDesktop', {
     status: (): Promise<CredentialsStatus> => ipcRenderer.invoke('credentials:status'),
     list: (): Promise<SavedConnectionMeta[]> => ipcRenderer.invoke('credentials:list'),
     pickSqliteFile: (): Promise<string | null> => ipcRenderer.invoke('credentials:pick-sqlite-file'),
+    // The sample database's file path. Builds the file the first time.
+    prepareSampleDatabase: (): Promise<string> => ipcRenderer.invoke('sample-database:prepare'),
     save: (input: SaveConnectionInput): Promise<SaveConnectionResult> =>
       ipcRenderer.invoke('credentials:save', input),
     get: (id: string): Promise<GetConnectionResult> => ipcRenderer.invoke('credentials:get', id),

@@ -1026,7 +1026,7 @@ export function getMcpAccessStatus(id: string): McpAccessStatus {
 
 // onConnectionAdded is told the database type of each connection that is new
 // to the list (not an update of one already saved), for usage stats.
-export function registerCredentialIpc(onConnectionAdded?: (dbType: DbType) => void): void {
+export function registerCredentialIpc(onConnectionAdded?: (dbType: DbType, input: SaveConnectionInput) => void): void {
   console.log(`[credentials] registerCredentialIpc: store path = ${getStorePath()}`);
   ipcMain.handle('credentials:status', () => getCredentialsStatus());
   ipcMain.handle('credentials:list', () => listConnections());
@@ -1046,7 +1046,7 @@ export function registerCredentialIpc(onConnectionAdded?: (dbType: DbType) => vo
   ipcMain.handle('credentials:save', (_event, input: SaveConnectionInput) => {
     const before = listConnections().length;
     const result = saveConnection(input);
-    if (result.persisted && listConnections().length > before) onConnectionAdded?.(input.dbType ?? 'postgres');
+    if (result.persisted && listConnections().length > before) onConnectionAdded?.(input.dbType ?? 'postgres', input);
     return result;
   });
   ipcMain.handle('credentials:get', (_event, id: string) => {
