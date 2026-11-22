@@ -7,6 +7,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Changed
 - **Beamlynx is open source.** The app, its query language and its interface are now under the GNU AGPL-3.0, in one repo: [github.com/beamlynx/beamlynx-desktop](https://github.com/beamlynx/beamlynx-desktop). A commercial license is available for those who need one.
 
+### Security
+- **Updated the libraries the app is built on to versions with published security fixes.** This includes Next.js, the HTTP client the app uses to reach the internet, and the library that checks agent requests.
+
 ## [0.34.0] - 2026-11-20
 ### Added
 - **The SQL panel follows the query you pick on the canvas.** On a tab with several queries, it shows the SQL that runs, with each named query inside it as a `WITH` query. Picking a query in the strip at the top of the canvas highlights its part and scrolls to it. When the panel shows one statement, you can edit it. (bundled beamlynx-ui 0.79.0)
