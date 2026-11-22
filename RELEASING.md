@@ -61,6 +61,31 @@ Only the desktop app gets a tag, a plain `X.Y.Z`. That tag starts `.github/workf
 
 12. **The AUR package** (`beamlynx-bin`) is not published yet. When it is, follow "Publish a new version" in `desktop/packaging/README.md` on every release.
 
+## Make everyone update
+
+An app older than the **minimum version** can't be used: it shows a screen that only lets the person update. Raise the minimum only when an old version must stop being used, for example after a security fix. A release doesn't raise it.
+
+1. Publish the release first, and check it as in step 10.
+2. Open a PR that sets the version in `desktop/minimum-version.json`, and say in it why:
+
+   ```json
+   {
+     "minimum_version": "X.Y.Z"
+   }
+   ```
+
+   To remove the minimum again, set it to `null`.
+3. Merge it. Apps read the file from `main`, so it takes effect within about 20 minutes: GitHub caches the file for up to 5, and apps check every 15.
+
+What an older app then does:
+
+- **It can update itself:** it downloads the update, then asks for a restart, and nothing else can be done until then.
+- **It can't update itself:** it asks the person to download version X.Y.Z from beamlynx.com/download.
+
+An app never blocks when it can't read the file, when the file is broken, or when no published version is new enough. So a minimum set too early blocks nobody, and neither does a broken file. CI also checks that the file reads correctly.
+
+Only apps from 0.35.0 on read the minimum. Older ones never block.
+
 ## Test a release build without releasing
 
 Run the release workflow by hand on a branch: `gh workflow run release.yml --ref <branch>`. It builds every installer but publishes nothing, because publishing only happens for a tag. The Supabase step skips itself on a branch.

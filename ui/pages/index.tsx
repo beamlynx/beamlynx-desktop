@@ -3,7 +3,7 @@ import type { NextPage } from 'next';
 import { useEffect } from 'react';
 import { reaction, runInAction } from 'mobx';
 import AppView from '../components/AppView';
-import DesktopUpdateBanner from '../components/DesktopUpdateBanner';
+import RequiredUpdateScreen from '../components/RequiredUpdateScreen';
 import ConnectionErrorSnackbar from '../components/ConnectionErrorSnackbar';
 import McpBridge from '../components/McpBridge';
 import DeepLinkHandler from '../components/DeepLinkHandler';
@@ -77,7 +77,7 @@ const Home: NextPage = () => {
       }}
     >
       <AppView />
-      <DesktopUpdateBanner />
+      <RequiredUpdateScreen />
       <ConnectionErrorSnackbar />
       <McpBridge />
       <DeepLinkHandler />

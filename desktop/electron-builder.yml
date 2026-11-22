@@ -85,9 +85,9 @@ linux:
 # Without this override, a user who symlinks e.g. ~/bin/beamlynx ->
 # beamlynx-0.1.5.AppImage finds the symlink dangling after the app updates
 # itself to beamlynx-0.1.6.AppImage. Scoped to appImage only (not the top-
-# level artifactName) -- .deb doesn't self-update via electron-updater at
-# all (expected to go through apt instead), so a version in its filename
-# doesn't have this problem.
+# level artifactName) -- the .deb updates through electron-updater's
+# DebUpdater, which installs the new package with dpkg instead of replacing
+# a file, so a version in its filename doesn't have this problem.
 appImage:
   artifactName: '${productName}.${ext}'
 

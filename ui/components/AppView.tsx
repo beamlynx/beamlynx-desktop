@@ -15,6 +15,7 @@ import SideRail from './SideRail';
 import SettingsDock from './settings/SettingsDock';
 import CollapsibleHeight from './CollapsibleHeight';
 import DevModeChip from './DevModeChip';
+import UpdateChip from './UpdateChip';
 import { useGlobalKeybindings } from '../hooks/useGlobalKeybindings';
 import { useFocusedPanelTracking } from '../hooks/useFocusedPanelTracking';
 import { useSettingsKeybindings } from '../hooks/useSettingsKeybindings';
@@ -280,6 +281,7 @@ const AppView = observer(() => {
                       [{global.version}]
                     </Typography>
                   )}
+                  <UpdateChip />
                   <DevModeChip />
                   {UserContent}
                 </Box>

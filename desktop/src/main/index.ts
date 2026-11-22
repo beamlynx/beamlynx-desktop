@@ -5,7 +5,7 @@ import * as http from 'http';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { getUsageStats, onAppStarted, registerAccountIpc, shutdownAccount } from './account';
-import { getAutoUpdater, initAutoUpdater } from './auto-update';
+import { DOWNLOAD_PAGE_URL, getAutoUpdater, initAutoUpdater } from './auto-update';
 import { closeAppDb, registerAppDbIpc } from './app-db-ipc';
 import { registerCredentialIpc } from './credential-store';
 import { useSeparateDevDataDir } from './data-dir';
@@ -608,7 +608,7 @@ function runDesktopApp(): void {
   ipcMain.handle('app:get-version', () => app.getVersion());
 
   // Triggered by the renderer's "Restart to install" button (see
-  // beamlynx-ui's DesktopUpdateBanner). Stops the server and marks
+  // ui/components/UpdateChip.tsx and RequiredUpdateScreen.tsx). Stops the server and marks
   // `quitting` ourselves first, same as a normal quit -- so that by the
   // time quitAndInstall() gets to firing its own 'before-quit', our handler
   // below just no-ops instead of calling event.preventDefault() and
@@ -624,6 +624,10 @@ function runDesktopApp(): void {
     }
     getAutoUpdater().quitAndInstall();
   });
+
+  // The "Download" button, shown when this copy can't update itself. The
+  // address is fixed here, so the window can't open anything else this way.
+  ipcMain.on('open-download-page', () => openExternalIfSafe(DOWNLOAD_PAGE_URL));
 
   app.on('ready', main);
 
