@@ -7,13 +7,15 @@ import type { Recipe, SaveRecipeInput } from './utils/recipes';
 import type { AccessPolicy, AccessPolicyModule, AccessPolicyRule } from './store/client';
 import type { DbType } from './utils/dbType';
 
+// Matches beamlynx-desktop's src/main/update-decision.ts UpdateStatus.
+// `required`: this version is older than the oldest one allowed, so the
+// window blocks everything until the person updates.
 type DesktopUpdateStatus =
-  | { state: 'checking' }
-  | { state: 'available'; version: string }
-  | { state: 'not-available' }
-  | { state: 'downloading'; percent: number }
-  | { state: 'downloaded'; version: string }
-  | { state: 'error'; message: string };
+  | { state: 'none' }
+  | { state: 'downloading'; version: string; percent: number; required: boolean }
+  | { state: 'downloaded'; version: string; required: boolean }
+  // The app can't update itself: the person downloads the new version.
+  | { state: 'download-yourself'; version: string; required: boolean };
 
 type SavedConnectionMeta = {
   id: string;
@@ -202,6 +204,8 @@ interface BeamlynxDesktopApi {
   isDevBuild: boolean;
   onUpdateStatus: (callback: (status: DesktopUpdateStatus) => void) => () => void;
   restartToUpdate: () => void;
+  // Opens beamlynx.com/download in the browser.
+  openDownloadPage: () => void;
   // Backs the Settings About section's "App version" row -- reads the
   // installed desktop app's own version, same value `beamlynx --app-version`
   // prints from the CLI. Distinct from beamlynx-ui's own version (this

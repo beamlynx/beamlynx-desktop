@@ -10,7 +10,7 @@ import type { McpQueryRequest } from '../desktop';
  * src/main/mcp/control-plane-server.ts). The renderer is the only place
  * that can actually run a query into a visible tab -- main process code has
  * no access to Session/MobX state. window.beamlynxDesktop only exists
- * inside the real Electron shell, same guard as DesktopUpdateBanner.
+ * inside the real Electron shell, same guard as useDesktopUpdateStatus.
  *
  * One effect, so notifyBridgeReady comes after every subscription: until
  * it, the desktop app answers requests that need this window with 503, and

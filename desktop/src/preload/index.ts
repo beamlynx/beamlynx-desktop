@@ -70,6 +70,7 @@ contextBridge.exposeInMainWorld('beamlynxDesktop', {
     return () => ipcRenderer.removeListener('update-status', listener);
   },
   restartToUpdate: () => ipcRenderer.send('restart-to-update'),
+  openDownloadPage: () => ipcRenderer.send('open-download-page'),
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:get-version'),
   // The app's own data in SQLite (src/main/app-db.ts). Preference values are
   // the JSON text the renderer would otherwise put in localStorage.

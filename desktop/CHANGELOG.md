@@ -4,7 +4,12 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- **When the app can't update itself, it says so.** If an update fails to download, or downloads but doesn't install, an "Update to X" button at the top right opens beamlynx.com/download. Before, nothing showed and the app stayed on the old version.
+- **A version that is no longer supported asks you to update before you go on.** It downloads the update and asks for a restart, or, if it can't update itself, links to the download.
+
 ### Changed
+- **A downloaded update shows as "Restart to update" at the top right,** instead of a note at the bottom right. The download itself no longer shows a note.
 - **Beamlynx is open source.** The app, its query language and its interface are now under the GNU AGPL-3.0, in one repo: [github.com/beamlynx/beamlynx-desktop](https://github.com/beamlynx/beamlynx-desktop). A commercial license is available for those who need one.
 
 ## [0.34.0] - 2026-11-20
