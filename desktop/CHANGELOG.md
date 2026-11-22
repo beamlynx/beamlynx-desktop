@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.35.0] - 2026-11-22
 ### Added
 - **When the app can't update itself, it says so.** If an update fails to download, or downloads but doesn't install, an "Update to X" button at the top right opens beamlynx.com/download. Before, nothing showed and the app stayed on the old version.
 - **A version that is no longer supported asks you to update before you go on.** It downloads the update and asks for a restart, or, if it can't update itself, links to the download.
