@@ -8,6 +8,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **Beamlynx is open source.** It is now under the GNU AGPL-3.0, and Settings → About says so. A commercial license is available for those who need one.
 - **The fourth press of `Ctrl`/`Cmd`+`.` leaves Zen mode.** It used to go back to the canvas alone, and leaving took the command palette. Now the presses cycle through the three Zen views and the normal view.
 
+### Security
+- **Updated Next.js and other libraries to versions with published security fixes.**
+
 ## [0.79.0] - 2026-11-20
 ### Added
 - **The SQL panel follows the query you pick on the canvas.** On a tab with several queries, it shows the SQL that runs, with each named query inside it as a `WITH` query. Picking a query in the strip at the top of the canvas highlights its part and scrolls to it. A named query that nothing below reads shows its own SQL. When the panel shows one statement, you can edit it.
