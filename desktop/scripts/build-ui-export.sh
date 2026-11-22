@@ -16,6 +16,11 @@ cd "$(dirname "$0")/.."
 UI_SRC="../ui"
 STAGE_DIR="build/ui-stage"
 
+# What's New's entries come from ../desktop/CHANGELOG.md, which the staged
+# copy can't see. Generate them in the real tree, so the copy takes them
+# along (ui/scripts/build-changelog.ts).
+(cd "$UI_SRC" && npm run changelog)
+
 rm -rf "$STAGE_DIR"
 mkdir -p "$STAGE_DIR"
 

@@ -10,7 +10,10 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ### Changed
 - **A downloaded update shows as "Restart to update" at the top right,** instead of a note at the bottom right. The download itself no longer shows a note.
-- **Beamlynx is open source.** The app, its query language and its interface are now under the GNU AGPL-3.0, in one repo: [github.com/beamlynx/beamlynx-desktop](https://github.com/beamlynx/beamlynx-desktop). A commercial license is available for those who need one.
+- **Beamlynx is open source.** The app, its query language and its interface are now under the GNU AGPL-3.0, in one repo: [github.com/beamlynx/beamlynx-desktop](https://github.com/beamlynx/beamlynx-desktop). Settings → About says so. A commercial license is available for those who need one.
+- **What's New lists the app's own versions,** the ones you install, such as 0.35.0. It used to list the interface's version numbers, and missed changes to the query language.
+- **Settings → About no longer shows a "UI version".** The interface ships inside the app, so the app version covers it.
+- **The fourth press of `Ctrl`/`Cmd`+`.` leaves Zen mode.** It used to go back to the canvas alone, and leaving took the command palette. Now the presses cycle through the three Zen views and the normal view.
 
 ### Security
 - **Updated the libraries the app is built on to versions with published security fixes.** This includes Next.js, the HTTP client the app uses to reach the internet, and the library that checks agent requests.

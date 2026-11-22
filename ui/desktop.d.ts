@@ -208,10 +208,9 @@ interface BeamlynxDesktopApi {
   openDownloadPage: () => void;
   // Backs the Settings About section's "App version" row -- reads the
   // installed desktop app's own version, same value `beamlynx --app-version`
-  // prints from the CLI. Distinct from beamlynx-ui's own version (this
-  // build's package.json) and from the connected server's version
-  // (GlobalStore.version) -- three separate things that happen to often
-  // move together but aren't the same number.
+  // prints from the CLI. Distinct from the connected server's version
+  // (GlobalStore.version), which is Pine's own number. The interface has no
+  // version of its own: it ships inside the app.
   getAppVersion: () => Promise<string>;
   // Saved recipes. Matches beamlynx-desktop's src/preload/index.ts. Optional
   // because a desktop app older than 0.19 doesn't have them.

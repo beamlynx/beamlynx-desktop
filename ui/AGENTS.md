@@ -17,7 +17,7 @@ The rules for the whole repo, and how to run and check the app, are in `../AGENT
 | `components/settings/`, `components/recipes/` | Settings, and the Library of saved queries. |
 | `store/mcp-query.ts`, `components/McpBridge.tsx` | Where an AI agent's tool calls run, in a tab the person can watch. |
 | `store/preferences.ts` | Saved preferences: local storage, and `beamlynx.db` on desktop. |
-| `utils/changelog.data.ts` | What's New in the app. It mirrors `CHANGELOG.md`, and is updated at a release. |
+| `utils/changelog.data.ts` | What's New in the app. Its entries are generated from `../desktop/CHANGELOG.md` before every dev run, build, type check and test (`scripts/build-changelog.ts`). Edit the changelog, never the generated file. |
 | `desktop.d.ts` | The calls the desktop app offers, as `window.beamlynxDesktop`. Matches `../desktop/src/preload/index.ts`. |
 | `__tests__/` | Unit tests. `npm test` runs them. They test stores and utilities, not rendered components. |
 
@@ -91,7 +91,7 @@ The results grid draws Text cells only. `next.config.js` aliases `marked` and `r
 
 ## Crediting Contributors
 
-When updating the changelog (CHANGELOG.md and utils/changelog.data.ts), contributors should be credited in the changelog entries themselves. The format is:
+When writing a changelog entry (in `../desktop/CHANGELOG.md`), credit contributors in the entry itself. The format is:
 
 - Add contributor attribution at the end of each changelog entry in parentheses, e.g.:
   - `- Resizable sidebar functionality. The sidebar width can now be adjusted by dragging the divider. (by @username)`

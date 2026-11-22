@@ -15,6 +15,9 @@
 # production
 /build
 
+# What's New, generated from ../desktop/CHANGELOG.md (scripts/build-changelog.ts)
+/utils/changelog.generated.json
+
 # misc
 .DS_Store
 *.pem

@@ -55,7 +55,10 @@ CI also builds the app, and parses every example in the agents' Pine docs.
 - **A change that spans folders is one PR.** For example, a Pine feature, the UI that uses it, and the agent docs for it land together.
 - **The three parts always ship together.** A release builds them from one commit, so the UI never meets an older Pine. Prefer the right shape for what the UI and Pine send each other over keeping the old one working.
 - **Agent docs follow Pine in the same PR.** AI agents learn Pine from `desktop/src/main/mcp/pine-reference/`. A Pine change that an agent would write differently updates those files too. CI parses every example there with the Pine in `pine/`.
-- **Every fix or feature gets a changelog entry**, under `## [Unreleased]` in the `CHANGELOG.md` of each folder it changes. Write for someone who knows the app only from the outside: what they notice, in one or two sentences. The release only moves these entries; it doesn't write them. A contributor may leave it out: the maintainer writes or rewrites it when merging.
+- **Every fix or feature gets a changelog entry**, under `## [Unreleased]`. A release only moves these entries; it doesn't write them. A contributor may leave it out: the maintainer writes or rewrites it when merging. There are two changelogs:
+  - **`desktop/CHANGELOG.md` is the app's changelog,** for every change someone notices in the app, whichever folder it is in. The app's What's New is generated from it. Write for someone who knows the app only from the outside: what they notice, in one or two sentences, starting with a bold title.
+  - **`pine/CHANGELOG.md` is the language's changelog,** for every Pine change, described in Pine's terms. A Pine change that someone would notice in the app gets an entry in both.
+  - `ui/CHANGELOG.md` ended at 0.79.0. Don't add to it.
 - **A PR shows what it does.** For a visible change, a screenshot or a short video. For a Pine change, a query and its result, before and after.
 - **Suggest changes to the `AGENTS.md` files; don't make them on your own.** If you learn something the next person should know, say so in the PR description. Edit an `AGENTS.md` only when the change is asked for.
 - **Never change these in `desktop/`:**
