@@ -7,6 +7,9 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 ### Added
 - **A sample database to try Beamlynx on.** Until you add a connection, a new tab offers two choices: try the sample shop, or connect your own database. The sample is a small outdoor-gear shop with customers, orders, products, reviews and support tickets. One click opens it and runs a first query. Settings → Connections offers it too while the list is empty.
 
+### Changed
+- **The welcome screen only asks you to sign in.** It has the sign-in button, Skip for now, and one line saying the app sends usage counts, never your queries or data, with links to the privacy policy and terms. The details are in Settings → Account.
+
 ## [0.35.0] - 2026-11-22
 ### Added
 - **When the app can't update itself, it says so.** If an update fails to download, or downloads but doesn't install, an "Update to X" button at the top right opens beamlynx.com/download. Before, nothing showed and the app stayed on the old version.
