@@ -7,12 +7,17 @@
     "node": "24.x"
   },
   "scripts": {
+    "changelog": "node -r tsx/cjs scripts/build-changelog.ts",
+    "predev": "npm run changelog",
     "dev": "NODE_OPTIONS='--inspect' next dev",
+    "prebuild": "npm run changelog",
     "build": "next build && node scripts/check-bundle-assets.mjs",
     "start": "next start",
     "lint": "next lint",
     "lint:fix": "next lint --fix",
+    "pretype-check": "npm run changelog",
     "type-check": "tsc --noEmit",
+    "pretest": "npm run changelog",
     "test": "node -r tsx/cjs --test __tests__/*.test.js",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

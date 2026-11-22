@@ -15,7 +15,11 @@ export const STORAGE_KEYS = {
   // Whether typing `|` at the end of a query formats it (PineInput.tsx).
   AUTO_FORMAT: 'pine-auto-format',
   PINE_TABLE_COLORS: 'pine-table-colors',
-  LAST_READ_VERSION: 'pine-last-read-version',
+  // The newest What's New version the person has seen. These are the app's
+  // versions (0.35.0). The old key, 'pine-last-read-version', held the
+  // interface's own (0.79.0), which would hide every app version: it is
+  // left unread.
+  LAST_READ_VERSION: 'beamlynx-last-read-app-version',
   COMMAND_HISTORY: 'pine-command-history',
   CONNECTION_COLORS: 'pine-connection-colors',
   SESSIONS: 'pine-sessions',

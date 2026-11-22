@@ -1,19 +1,8 @@
 # Change Log
 
-All notable changes to this project will be documented in this file. This change
-log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
+**This changelog ends at 0.79.0.** The interface now ships only inside the desktop app, so its changes are in the app's changelog, [`../desktop/CHANGELOG.md`](../desktop/CHANGELOG.md), which is also what the app's What's New shows.
 
-## [Unreleased]
-### Added
-- **The desktop app shows when it can't update itself,** with an "Update to X" button at the top right that opens the download page. A version that is no longer supported shows a screen that only lets you update.
-
-### Changed
-- **A downloaded update shows as "Restart to update" at the top right,** instead of a note at the bottom right. The download itself no longer shows a note.
-- **Beamlynx is open source.** It is now under the GNU AGPL-3.0, and Settings → About says so. A commercial license is available for those who need one.
-- **The fourth press of `Ctrl`/`Cmd`+`.` leaves Zen mode.** It used to go back to the canvas alone, and leaving took the command palette. Now the presses cycle through the three Zen views and the normal view.
-
-### Security
-- **Updated Next.js and other libraries to versions with published security fixes.**
+What follows is the interface's history up to then. It follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [0.79.0] - 2026-11-20
 ### Added

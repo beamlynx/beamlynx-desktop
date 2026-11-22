@@ -40,13 +40,17 @@ interface ChangelogModalProps {
   onClose: () => void;
 }
 
+// Someone who has never opened What's New sees only the latest version as
+// new, not the whole history.
+const NEVER_READ = CHANGELOG[1]?.version ?? '0.0.0';
+
 const ChangelogModal: React.FC<ChangelogModalProps> = ({ open, onClose }) => {
-  const [lastReadVersion, setLastReadVersion] = useState('0.30.0');
+  const [lastReadVersion, setLastReadVersion] = useState(NEVER_READ);
   const [activeTab, setActiveTab] = useState(0);
 
   useEffect(() => {
     if (open) {
-      const stored = getUserPreference(STORAGE_KEYS.LAST_READ_VERSION, '0.30.0', v => typeof v === 'string' && valid(v) !== null);
+      const stored = getUserPreference(STORAGE_KEYS.LAST_READ_VERSION, NEVER_READ, v => typeof v === 'string' && valid(v) !== null);
       setLastReadVersion(stored);
 
       // Determine which tab to show by default
