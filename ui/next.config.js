@@ -27,13 +27,7 @@ function setCssExtractPublicPath(rules, publicPath) {
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // Backs the Settings About section's "UI version" row -- inlined at build
-  // time from this build's own package.json, since there's no server to ask
-  // (unlike GlobalStore.version, which comes from the connected pine-lang
-  // server) and no Electron main process to ask (unlike the desktop app's
-  // own version, see desktop.d.ts's getAppVersion).
   env: {
-    NEXT_PUBLIC_APP_VERSION: require('./package.json').version,
     ...(pineProxyUrl ? { NEXT_PUBLIC_PINE_SAME_ORIGIN: '1' } : {}),
   },
   ...(pineProxyUrl

@@ -2,7 +2,7 @@
 
 One release ships everything in this repo: the desktop app, with the Pine server and the UI from the same commit inside it.
 
-Only the desktop app gets a tag, a plain `X.Y.Z`. That tag starts `.github/workflows/release.yml`, and installed apps update from the GitHub Release it makes. Pine and the UI keep their own version numbers. The UI checks Pine's against `RequiredVersion`. They are bumped in the same release PR, without tags of their own.
+Only the desktop app gets a tag, a plain `X.Y.Z`. That tag starts `.github/workflows/release.yml`, and installed apps update from the GitHub Release it makes. Pine keeps its own version number, bumped in the same release PR without a tag of its own. The UI checks it against `RequiredVersion`. The UI has no version of its own.
 
 There are two changelogs. `desktop/CHANGELOG.md` is the app's: the app's What's New is generated from it at build time. `pine/CHANGELOG.md` is the language's. `ui/CHANGELOG.md` ended at 0.79.0.
 
@@ -28,7 +28,6 @@ There are two changelogs. `desktop/CHANGELOG.md` is the app's: the app's What's 
    - Read those entries. Each one that someone would notice in the app must also be in `desktop/CHANGELOG.md`, written as what they notice. Add any that are missing.
 
 4. **UI** (`ui/`), if it changed:
-   - Bump `package.json`'s `version`.
    - Decide whether `RequiredVersion` in `constants.ts` has to rise to the new Pine version. Decide it from what the UI's changes call on the server. Don't add a changelog entry for it: the desktop app always bundles a matching Pine. Mention it in the release PR's description.
 
 5. **The agent's Pine reference** (`desktop/src/main/mcp/pine-reference/`). It should already match Pine: a PR that changes Pine updates it too. CI parses every example with the Pine in this commit (`desktop/scripts/check-pine-reference.sh`). Remove any `-- pine-lang #N` markers the check lists as parsing now.

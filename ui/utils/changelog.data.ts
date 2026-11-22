@@ -29,8 +29,8 @@ export interface ChangelogVersion {
   breaking?: ChangelogItem[];
 }
 
-// Newest first, as in the changelog. Versions are the app's own (0.35.0),
-// not the interface's package.json version.
+// Newest first, as in the changelog. Versions are the app's (0.35.0): the
+// interface has none of its own.
 export const CHANGELOG: ChangelogVersion[] = generated as ChangelogVersion[];
 
 export const LATEST_VERSION = CHANGELOG[0]?.version ?? '0.0.0';

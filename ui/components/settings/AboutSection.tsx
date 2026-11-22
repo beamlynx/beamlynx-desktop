@@ -85,9 +85,6 @@ const AboutSection = () => {
         </InfoRow>
 
         {isDesktop() && appVersion && <InfoRow label="App version">{appVersion}</InfoRow>}
-        {process.env.NEXT_PUBLIC_APP_VERSION && (
-          <InfoRow label="UI version">{process.env.NEXT_PUBLIC_APP_VERSION}</InfoRow>
-        )}
         {global.version && <InfoRow label="Server version">{global.version}</InfoRow>}
       </Box>
     </Box>
