@@ -224,6 +224,8 @@ const AppView = observer(() => {
               <Grid item xs={6}>
                 <Box sx={{ m: 1, mt: 1, mb: 0, display: 'flex', justifyContent: 'center' }}>
                   <Box
+                    // CommandPalette measures this box and opens on top of it.
+                    data-command-palette-anchor
                     onClick={() => global.setShowCommandPalette(true)}
                     sx={{
                       display: 'flex',

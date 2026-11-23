@@ -19,6 +19,13 @@ const CommandPalette = observer(() => {
   const [commandOptions, setCommandOptions] = useState<CommandOption[] | null>(null);
   const [parentCommand, setParentCommand] = useState<Command | null>(null);
 
+  // The palette opens exactly over the header's search box, at its width.
+  // That box sits in the header's middle column, beside the sidebar, and
+  // shrinks with the window. So a fixed width centred on the window put the
+  // palette wider than the box and off to one side. Without the box (Zen
+  // mode hides the header), the palette keeps its own width, centred.
+  const [anchor, setAnchor] = useState<{ left: number; top: number; width: number } | null>(null);
+
   // Get all commands and filter out hidden ones
   const allCommands = getAllCommands().filter(cmd => !cmd.hidden);
 
@@ -80,6 +87,12 @@ const CommandPalette = observer(() => {
       setSelectedIndex(0);
       setCommandOptions(null);
       setParentCommand(null);
+
+      const box = document.querySelector('[data-command-palette-anchor]');
+      const rect = box?.getBoundingClientRect();
+      setAnchor(
+        rect && rect.width > 0 ? { left: rect.left, top: rect.top, width: rect.width } : null,
+      );
 
       // Focus the search input when modal opens
       requestAnimationFrame(() => {
@@ -192,7 +205,15 @@ const CommandPalette = observer(() => {
       onClose={handleClose}
       align="top"
       aria-labelledby="command-palette-title"
-      sx={{ paddingTop: '8px' }}
+      sx={
+        anchor
+          ? {
+              justifyContent: 'flex-start',
+              paddingTop: `${anchor.top}px`,
+              paddingLeft: `${anchor.left}px`,
+            }
+          : { paddingTop: '8px' }
+      }
       slotProps={{
         backdrop: {
           sx: {
@@ -201,7 +222,7 @@ const CommandPalette = observer(() => {
         },
       }}
       surfaceSx={{
-        width: 600,
+        width: anchor ? anchor.width : 600,
         maxWidth: '90vw',
         boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
         borderRadius: 1, // Match search box (4px)
