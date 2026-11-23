@@ -6,8 +6,13 @@ import { useDesktopUpdateStatus } from '../hooks/useDesktopUpdateStatus';
 // - the update has downloaded: RESTART TO UPDATE restarts the app;
 // - the app can't update itself: UPDATE TO X opens the download page.
 // While an update downloads, nothing shows. A version below the minimum
-// gets RequiredUpdateScreen instead. Same shape as DevModeChip, in the
-// theme's primary color, and a button.
+// gets RequiredUpdateScreen instead. Same shape and amber as DevModeChip,
+// and a button. Amber (--notification-color) is the app's "something is
+// waiting for you" color, as on the agent's badge; the primary color it
+// used to have is the active pane's accent, so the chip blended in. The
+// near-black text is DevModeChip's: white on the light themes' amber is
+// too faint to read. A dev build never updates itself, so the two chips
+// don't show side by side.
 const UpdateChip = () => {
   const status = useDesktopUpdateStatus();
   if (!status || status.state === 'none' || status.state === 'downloading' || status.required) {
@@ -40,9 +45,9 @@ const UpdateChip = () => {
           px: 1,
           border: 'none',
           borderRadius: 999,
-          backgroundColor: 'var(--primary-color)',
-          color: '#fff',
-          boxShadow: '0 0 0 3px color-mix(in srgb, var(--primary-color) 22%, transparent)',
+          backgroundColor: 'var(--notification-color)',
+          color: '#1a1b26',
+          boxShadow: '0 0 0 3px color-mix(in srgb, var(--notification-color) 22%, transparent)',
           fontFamily: 'var(--code-font)',
           fontSize: '0.7rem',
           fontWeight: 700,
