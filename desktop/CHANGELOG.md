@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Fixed
+- **The command search opens exactly over the search box at the top.** Pressing Ctrl+K used to open a wider box, off to one side of it.
 
 ## [0.36.1] - 2026-11-23
 ### Changed
