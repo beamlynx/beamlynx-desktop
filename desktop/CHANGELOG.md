@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- **Shift+Down and Shift+Up step through a query's settings on the canvas,** the same as Shift+J and Shift+K: its select, where and order entries one at a time. Plain Down and Up still jump from table to table.
+
 ### Changed
 - **"Restart to update" is amber,** so it stands out at the top right. So is "Update to X" when the app can't update itself.
 

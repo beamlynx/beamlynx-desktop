@@ -173,15 +173,19 @@ export const useCanvasKeybindings = ({ canvasStore, session, global }: CanvasKey
 
       // Arrow-key navigation always works, vim mode or not - it's plain
       // directional navigation, not a vim convention, so there's no reason
-      // to gate it on global.vimMode the way j/k below are.
+      // to gate it on global.vimMode the way j/k below are. With Shift, the
+      // arrows step through each setting, as Shift+J/Shift+K below do: the
+      // same pair as plain Down/Up and j/k.
       switch (e.key) {
         case 'ArrowDown':
           e.preventDefault();
-          canvasStore.focusNext();
+          if (e.shiftKey) canvasStore.configNext();
+          else canvasStore.focusNext();
           return;
         case 'ArrowUp':
           e.preventDefault();
-          canvasStore.focusPrev();
+          if (e.shiftKey) canvasStore.configPrev();
+          else canvasStore.focusPrev();
           return;
       }
 
