@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Changed
+- **"Restart to update" is amber,** so it stands out at the top right. So is "Update to X" when the app can't update itself.
+
 ### Fixed
 - **The command search opens exactly over the search box at the top.** Pressing Ctrl+K used to open a wider box, off to one side of it.
 
