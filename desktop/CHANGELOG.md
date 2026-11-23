@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.36.1] - 2026-11-23
 ### Changed
 - **The welcome screen says first what Beamlynx doesn't collect.** Its line now reads "Beamlynx never collects your queries or data. Only usage counts."
 
