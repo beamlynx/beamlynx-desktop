@@ -9,8 +9,8 @@ import { PRIVACY_URL, SignInButtons, TERMS_URL } from './settings/AccountSection
  * person signs in: sign in with GitHub, or skip until the next launch.
  * Settings -> Account can sign in at any time.
  *
- * Kept to the sign-in itself, and one line at the bottom saying that usage
- * counts are sent, with links to the privacy policy and terms. The desktop
+ * Kept to the sign-in itself, and one line at the bottom saying that queries
+ * and data are never collected, only usage counts, with links to the privacy policy and terms. The desktop
  * app holds stats until this choice is made. The details, and the switch for
  * the detailed stats, are in Settings -> Account and the privacy policy.
  *
@@ -77,7 +77,7 @@ const FirstRunScreen = () => {
       </Box>
 
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mt: 3 }}>
-        Beamlynx sends usage counts, never your queries or data.{' '}
+        Beamlynx never collects your queries or data. Only usage counts.{' '}
         <Link href={PRIVACY_URL} target="_blank" rel="noreferrer" color="inherit" underline="hover">
           Privacy
         </Link>
