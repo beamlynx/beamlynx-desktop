@@ -21,7 +21,7 @@ One JSON file per question:
 ## Running a case
 
 1. Build the database: `node scripts/agent-case-db.mjs /tmp/agent-cases.db` (Node 22 or later).
-2. In Beamlynx, add it as a SQLite connection, and turn it on for agents on the Agent page.
+2. In Beamlynx, add it as a SQLite connection, then open it in Database Connections and switch on "AI agents can use this database".
 3. In a new Claude Code session with the Beamlynx MCP server, ask the case's `question`. Add "Use the agent-cases.db connection." so it doesn't pick another database.
 4. Check the answer against `expect`.
 5. Run the retro on what the agent did: `npm run build && node scripts/agent-retro.mjs --days 1` (add `--dev` for a dev build). It shows how many calls it took, which failed, and why.

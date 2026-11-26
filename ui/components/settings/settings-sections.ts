@@ -15,7 +15,8 @@ export const RAIL_ITEMS: { id: SettingsSection; label: string }[] = [
   { id: 'preferences', label: 'Preferences' },
   // No 'mcp' item: the Agent page opens from the sidebar's Agent item
   // (SideRail.tsx), where agents' work shows too. It holds connecting an
-  // agent, the databases it can use, and their data masking: masking only
+  // agent and the rule sets masking starts from. Which databases agents can
+  // use is set on each database in Database Connections. Masking only
   // matters once an agent is involved, so it has no item of its own.
   { id: 'account', label: 'Account' },
   { id: 'about', label: 'About' },

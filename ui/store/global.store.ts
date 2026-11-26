@@ -254,7 +254,7 @@ export class GlobalStore {
   // getter reads this same shared array, so an edit here is visible to
   // every open tab on its next read.
   accessPolicies: AccessPolicy[] = [];
-  // Which database the Agent page should open at, and which of its data
+  // Which database Database Connections should open at, and which of its data
   // masking rules to pick out. See openAgentDatabase.
   agentDatabaseFocus: { connectionId: string; ruleId?: string } | null = null;
   credentialsStatus: CredentialsStatus | null = null;
@@ -1254,16 +1254,17 @@ export class GlobalStore {
   };
 
   /**
-   * Opens the Agent page at one database, with its data masking open and
-   * one of its rules picked out when `ruleId` is given. Where the results
-   * grid and Database Connections send someone to change what agents see.
+   * Opens Database Connections at one database, with its settings open,
+   * where agents are turned on and its data masking is edited. One of its
+   * rules is picked out when `ruleId` is given. Where the results grid
+   * and the Agent page send someone to change what agents see.
    */
   openAgentDatabase = (connectionId: string, ruleId?: string) => {
     this.agentDatabaseFocus = { connectionId, ruleId };
     // No attention flash (showSettingsSection): the page already shows
     // what changed, by opening that database's line. The flash's left
     // edge also didn't show on the owner's screen (beamlynx-plans #22).
-    this.setShowSettings(true, 'mcp');
+    this.setShowSettings(true, 'connections');
   };
 
   clearAgentDatabaseFocus = () => {
@@ -2050,7 +2051,7 @@ export class GlobalStore {
     await this.refreshPolicyState();
     const policy = this.accessPolicies.find(p => p.id === step.proposal.policyId);
     if (!policy || (step.after && !sameRules(policy.rules, step.after))) {
-      throw new Error('The data masking has changed since this was applied. Undo it on the Agent page instead.');
+      throw new Error('The data masking has changed since this was applied. Undo it in Database Connections instead.');
     }
     if (!(await this.setAccessPolicyRules(step.proposal.policyId, step.before))) return false;
     this.investigations.find(i => i.id === investigationId)!.setProposal(proposalId, 'undone');
