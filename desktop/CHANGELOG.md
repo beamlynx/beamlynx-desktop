@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. This change
 log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [0.37.0] - 2026-11-27
 ### Added
 - **Shift+Down and Shift+Up step through a query's settings on the canvas,** the same as Shift+J and Shift+K: its select, where and order entries one at a time. Plain Down and Up still jump from table to table.
 
