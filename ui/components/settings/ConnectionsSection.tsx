@@ -827,15 +827,10 @@ const ConnectionRow = observer(
               ))}
             </Popover>
           )}
-          {/* Name (or its rename field), Connect and the agent icon share this flexible
-              region, rather than the chip sitting in the fixed trailing
-              cluster below -- a chip that came and went between the pencil
-              and the chevron dragged the pencil sideways with it (the name
-              box next to it is flex:1, so it resized to compensate),
-              misaligning the pencil across rows depending on which ones
-              happened to have MCP on (reported directly). Here, the name
-              simply truncates a little further to make room instead, and
-              the trailing action icons never move. */}
+          {/* Name (or its rename field) and Connect share this flexible
+              region. Everything after it (the robot, the pencil, the
+              chevron) is on every row, so those icons line up in the same
+              columns on every row. The name truncates to make room. */}
           <Box sx={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 1 }}>
             {desktop && renaming ? (
               <TextField
@@ -886,8 +881,10 @@ const ConnectionRow = observer(
                 title={isActive ? 'Active connection' : label}
                 sx={{
                   // A fixed share of the row, so Connect after it forms a
-                  // column; a longer name truncates.
-                  flex: '0 0 55%',
+                  // column; a longer name truncates. It may shrink below
+                  // that share when the panel is narrow, so the row never
+                  // overflows into the icons on the right.
+                  flex: '0 1 55%',
                   minWidth: 0,
                   fontFamily: 'var(--canvas-font)',
                   overflow: 'hidden',
@@ -917,37 +914,38 @@ const ConnectionRow = observer(
                 Connect
               </Button>
             )}
-            <Box sx={{ flex: 1 }} />
-            {/* What agents can do here: the sidebar's robot, on every row.
-                Faint and hollow when agents can't use it, solid when they
-                can, in the warning colour when nothing is masked. It opens
-                this row's settings, where that is set. */}
-            {desktop && (
-              <Tooltip title={`${agentSummary}. Click to change.`}>
-                <IconButton
-                  size="small"
-                  onClick={e => {
-                    e.stopPropagation();
-                    setExpanded(true);
-                  }}
-                  onKeyDown={e => e.stopPropagation()}
-                  aria-label={`${label}: ${agentSummary}. Open its settings.`}
-                  sx={{ p: 0.25, flexShrink: 0 }}
-                >
-                  {access === 'off' ? (
-                    <SmartToyOutlined sx={{ fontSize: 16, color: 'var(--icon-color)', opacity: 0.35 }} />
-                  ) : (
-                    <SmartToy
-                      sx={{
-                        fontSize: 16,
-                        color: access === 'every-column' ? 'var(--text-warning-color)' : 'var(--primary-color)',
-                      }}
-                    />
-                  )}
-                </IconButton>
-              </Tooltip>
-            )}
           </Box>
+          {/* What agents can do here: the sidebar's robot, on every row.
+              Faint and hollow when agents can't use it, solid when they
+              can, in the warning colour when nothing is masked. It opens
+              this row's settings, where that is set. It is on every row,
+              so it sits with the fixed icons on the right and never
+              crowds the name or the pencil. */}
+          {desktop && (
+            <Tooltip title={`${agentSummary}. Click to change.`}>
+              <IconButton
+                size="small"
+                onClick={e => {
+                  e.stopPropagation();
+                  setExpanded(true);
+                }}
+                onKeyDown={e => e.stopPropagation()}
+                aria-label={`${label}: ${agentSummary}. Open its settings.`}
+                sx={{ p: 0.25, flexShrink: 0 }}
+              >
+                {access === 'off' ? (
+                  <SmartToyOutlined sx={{ fontSize: 16, color: 'var(--icon-color)', opacity: 0.35 }} />
+                ) : (
+                  <SmartToy
+                    sx={{
+                      fontSize: 16,
+                      color: access === 'every-column' ? 'var(--text-warning-color)' : 'var(--primary-color)',
+                    }}
+                  />
+                )}
+              </IconButton>
+            </Tooltip>
+          )}
           {desktop && (
             // Always mounted (hidden via visibility, not conditionally
             // unmounted) while renaming -- unmounting it freed up its own
