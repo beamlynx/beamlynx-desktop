@@ -14,8 +14,9 @@ const describe = () =>
     : 'Running from next dev.';
 
 // Header badge, so a dev copy can't be mistaken for the real one when both
-// are open side by side. Amber (--notification-color) reads as "caution"
-// without looking like an error.
+// are open side by side. It is a label, not a call to act, so it is a quiet
+// outline. Amber (--notification-color) is kept for UpdateChip, which does
+// ask the person to do something.
 const DevModeChip = () => {
   if (!isDevMode()) return null;
   return (
@@ -29,11 +30,8 @@ const DevModeChip = () => {
           height: 22,
           px: 1,
           borderRadius: 999,
-          backgroundColor: 'var(--notification-color)',
-          // Near-black in every theme: the light themes' background color on
-          // their amber is only ~3.3:1, this is 4.8:1 or better.
-          color: '#1a1b26',
-          boxShadow: '0 0 0 3px color-mix(in srgb, var(--notification-color) 22%, transparent)',
+          border: '1px solid var(--border-color)',
+          color: 'var(--icon-color)',
           fontFamily: 'var(--code-font)',
           fontSize: '0.7rem',
           fontWeight: 700,
