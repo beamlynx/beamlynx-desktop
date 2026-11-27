@@ -4,6 +4,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SecurityIcon from '@mui/icons-material/Security';
+import SmartToy from '@mui/icons-material/SmartToy';
 import SmartToyOutlined from '@mui/icons-material/SmartToyOutlined';
 import BoltIcon from '@mui/icons-material/Bolt';
 import AddIcon from '@mui/icons-material/Add';
@@ -31,6 +32,7 @@ import type { GlobalStore } from '../../store/global.store';
 import { buildConnectionString, parseConnectionString } from '../../utils/connectionString';
 import ConfirmDialog from '../ConfirmDialog';
 import { agentAccessOf } from '../../store/client';
+import AgentAccessSettings from './AgentAccessSettings';
 
 // Every action that is a text button: in the accent colour, so it reads as
 // something to click, with its standard icon before the label where it has
@@ -563,13 +565,14 @@ const AddConnectionForm = ({
 
 /**
  * One saved connection: a collapsed row (switch active, recolor, rename,
- * and the agent's robot when agents can use it) plus, for desktop only, an
- * expandable panel with refresh and delete.
+ * and the robot that says whether agents can use it) plus, for desktop
+ * only, an expandable panel: what AI agents may do on it, then refresh and
+ * delete.
  *
- * What agents can do on a database, and its data masking, is not set here.
- * It is on the Agent page (McpSection.tsx): masking only matters once an
- * agent is involved, and one place to set it is clearer than two. The
- * robot opens that page at this database.
+ * This is the only place a database's agent access and data masking are
+ * set (AgentAccessSettings). The Agent page holds connecting an agent and
+ * the rule sets masking starts from, but no list of databases: one list
+ * of databases in the app is easier to find than two.
  *
  * Browser mode has no agents, so it keeps the flat row (color, name,
  * refresh, delete) with nothing to expand.
@@ -578,27 +581,32 @@ const ConnectionRow = observer(
   ({
     id,
     label,
-    mcpEnabled,
-    policyId,
-    applyPolicyToOwnQueries,
     isActive,
     isLive,
     switchDisabled,
     onSwitch,
+    focus,
   }: {
     id: string;
     label: string;
-    mcpEnabled?: boolean;
-    policyId?: string | null;
-    applyPolicyToOwnQueries?: boolean;
     isActive: boolean;
     isLive: boolean;
     switchDisabled: boolean;
     onSwitch: () => void;
+    // Set when something asked to open this database's settings
+    // (openAgentDatabase). `n` changes with every request, so asking again
+    // opens it again.
+    focus?: { n: number; ruleId?: string };
   }) => {
     const { global } = useStores();
     const desktop = isDesktop();
     const [expanded, setExpanded] = useState(false);
+    const rowRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+      if (!focus) return;
+      setExpanded(true);
+      rowRef.current?.scrollIntoView({ block: 'nearest' });
+    }, [focus?.n]); // eslint-disable-line react-hooks/exhaustive-deps
     const [confirmingRemove, setConfirmingRemove] = useState(false);
     const [removing, setRemoving] = useState(false);
     const [reindexing, setReindexing] = useState(false);
@@ -670,14 +678,22 @@ const ConnectionRow = observer(
     };
 
     // What agents can do here, shown as the robot after the name. It is set
-    // on the Agent page (McpSection.tsx), which the robot opens.
+    // in this row's settings, which the robot opens.
+    const connection = global.connections.find(c => c.id === id);
     const ownPolicy = global.connectionPolicy(id);
     const rulesOn = ownPolicy?.rules.filter(m => m.enabled).length ?? 0;
-    const access = agentAccessOf(global.connections.find(c => c.id === id));
+    const access = agentAccessOf(connection);
+    const agentSummary =
+      access === 'off'
+        ? "AI agents can't use this database"
+        : access === 'every-column'
+          ? 'AI agents can use this database and read every column, unmasked'
+          : `AI agents can use this database, with masking (${rulesOn} rule${rulesOn === 1 ? '' : 's'} on)`;
     const disabledWhileBusy = switchDisabled || removing;
 
     return (
       <Box
+        ref={rowRef}
         sx={{
           minWidth: 0,
           borderBottom: '1px solid var(--border-color)',
@@ -902,38 +918,32 @@ const ConnectionRow = observer(
               </Button>
             )}
             <Box sx={{ flex: 1 }} />
-            {/* What agents can do here: the sidebar's robot, dim when
-                masked, in the warning colour when agents read every column,
-                absent when off. It opens the Agent page at this database,
-                where that is set. */}
-            {desktop && access !== 'off' && (
-              <Tooltip
-                title={
-                  access === 'every-column'
-                    ? 'Agents read every column, unmasked. Change it on the Agent page.'
-                    : `Agents: data masking, ${rulesOn} rule${rulesOn === 1 ? '' : 's'} on. Change it on the Agent page.`
-                }
-              >
+            {/* What agents can do here: the sidebar's robot, on every row.
+                Faint and hollow when agents can't use it, solid when they
+                can, in the warning colour when nothing is masked. It opens
+                this row's settings, where that is set. */}
+            {desktop && (
+              <Tooltip title={`${agentSummary}. Click to change.`}>
                 <IconButton
                   size="small"
                   onClick={e => {
                     e.stopPropagation();
-                    global.openAgentDatabase(id);
+                    setExpanded(true);
                   }}
                   onKeyDown={e => e.stopPropagation()}
-                  aria-label={
-                    access === 'every-column'
-                      ? `Agents read every column of ${label}: open the Agent page`
-                      : `Agents use ${label} with data masking: open the Agent page`
-                  }
+                  aria-label={`${label}: ${agentSummary}. Open its settings.`}
                   sx={{ p: 0.25, flexShrink: 0 }}
                 >
-                  <SmartToyOutlined
-                    sx={{
-                      fontSize: 16,
-                      color: access === 'every-column' ? 'var(--text-warning-color)' : 'var(--canvas-text-dim)',
-                    }}
-                  />
+                  {access === 'off' ? (
+                    <SmartToyOutlined sx={{ fontSize: 16, color: 'var(--icon-color)', opacity: 0.35 }} />
+                  ) : (
+                    <SmartToy
+                      sx={{
+                        fontSize: 16,
+                        color: access === 'every-column' ? 'var(--text-warning-color)' : 'var(--primary-color)',
+                      }}
+                    />
+                  )}
                 </IconButton>
               </Tooltip>
             )}
@@ -1040,7 +1050,7 @@ const ConnectionRow = observer(
               boxSizing: 'border-box',
               width: '100%',
               px: 1.5,
-              pt: 2.5,
+              pt: 1,
               pb: 2,
               pl: 3.5,
               display: 'flex',
@@ -1059,6 +1069,7 @@ const ConnectionRow = observer(
               <p>Its saved details and its data masking are deleted. This can&apos;t be undone.</p>
             </ConfirmDialog>
 
+            {connection && <AgentAccessSettings connection={connection} focusedRuleId={focus?.ruleId} />}
 
             {/* The row's other actions. Delete opens a dialog, hence the
                 ellipsis; its red lives there, next to the consequence. */}
@@ -1133,6 +1144,18 @@ const ConnectionsSection = () => {
     setForm(prev => ({ key: (prev?.key ?? 0) + 1, hint }));
   }, [addRequested, global]);
   const [switchingConnection, setSwitchingConnection] = useState(false);
+
+  // A request to open one database's settings (openAgentDatabase), from
+  // the results grid or the Agent page. Watched like the add form's, since
+  // this section stays mounted. It closes the add form if that is open.
+  const [focus, setFocus] = useState<{ n: number; connectionId: string; ruleId?: string } | null>(null);
+  const focusRequested = global.agentDatabaseFocus;
+  useEffect(() => {
+    if (!focusRequested) return;
+    setForm(null);
+    setFocus(prev => ({ n: (prev?.n ?? 0) + 1, ...focusRequested }));
+    global.clearAgentDatabaseFocus();
+  }, [focusRequested, global]);
 
   const activeSession = global.sessions[global.activeSessionId];
 
@@ -1245,7 +1268,7 @@ const ConnectionsSection = () => {
           </Box>
         )}
         {global.connections.map(
-          ({ id, label, mcpEnabled, policyId, applyPolicyToOwnQueries }) => {
+          ({ id, label }) => {
             const isActive = id === activeSession?.connectionId;
             const isLive = global.isConnectionLive(id);
             return (
@@ -1253,9 +1276,7 @@ const ConnectionsSection = () => {
                 key={id}
                 id={id}
                 label={label}
-                mcpEnabled={mcpEnabled}
-                policyId={policyId}
-                applyPolicyToOwnQueries={applyPolicyToOwnQueries}
+                focus={focus?.connectionId === id ? focus : undefined}
                 isActive={isActive}
                 isLive={isLive}
                 switchDisabled={switchingConnection}

@@ -452,7 +452,7 @@ test('list_connections exposes only the id and label, not stored credentials', (
 });
 
 test('list_connections explains how to enable one when there are none', () => {
-  assert.match(formatConnections([]), /Enable for MCP access/);
+  assert.match(formatConnections([]), /AI agents can use this database/);
 });
 
 test('a cell longer than MAX_CELL_CHARS is cut, saying how much was left out', () => {

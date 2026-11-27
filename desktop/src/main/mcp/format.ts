@@ -556,8 +556,9 @@ function formatRowsOnly(response: EvalResponse): string {
 export function formatConnections(connections: ConnectionRecord[]): string {
   if (!connections.length) {
     return (
-      'No connections are enabled for MCP access yet. Ask the user to toggle "Enable for MCP access" on a ' +
-      'connection in Beamlynx Settings.'
+      'No database is open to agents yet. Ask the user to turn agents on for one in Beamlynx: ' +
+      'Database Connections, click the database, then switch on "AI agents can use this database". ' +
+      'Then call list_connections again.'
     );
   }
   return [

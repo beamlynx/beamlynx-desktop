@@ -11,7 +11,7 @@ import ToggleRow from './ToggleRow';
 
 
 /**
- * Data masking rules, edited on the Agent page (McpSection.tsx): a
+ * Data masking rules, edited in Database Connections (AgentAccessSettings.tsx): a
  * database's own, or a rule set's on the Masking tab. Each connection has
  * its own policy, copied from a rule set (see beamlynx-desktop's
  * credential-store.ts).

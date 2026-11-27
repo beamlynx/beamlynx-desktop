@@ -70,11 +70,11 @@ test('templates list the built-in Default first, then your own', () => {
   assert.deepEqual(store.policyTemplates.map(p => p.name), ['Default', 'Mine']);
 });
 
-test('opening a database on the Agent page opens that page, at that database and rule', () => {
+test("opening a database's agent settings opens Database Connections, at that database and rule", () => {
   const store = new GlobalStore();
   store.openAgentDatabase('p1', 'r1');
   assert.equal(store.showSettings, true);
-  assert.equal(store.settingsSection, 'mcp');
+  assert.equal(store.settingsSection, 'connections');
   assert.deepEqual(store.agentDatabaseFocus, { connectionId: 'p1', ruleId: 'r1' });
   store.clearAgentDatabaseFocus();
   assert.equal(store.agentDatabaseFocus, null);

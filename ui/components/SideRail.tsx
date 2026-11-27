@@ -181,7 +181,7 @@ const SideRail = observer(({ hasUnreadUpdates, onOpenChangelog }: { hasUnreadUpd
       ? `Agent: waiting for your answer`
       : global.investigations.length > 0
         ? 'Open the agent’s investigation'
-        : 'Agent: connect one, and choose its databases';
+        : 'Agent: connect one to Beamlynx';
   // One item for agents: with no investigation yet it opens the setup, and
   // after that the agent's work, which links to the setup again.
   const setupOpen = global.showSettings && global.settingsSection === 'mcp';

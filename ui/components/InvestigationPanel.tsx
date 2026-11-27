@@ -764,7 +764,7 @@ const InvestigationPanel = observer(({ investigation }: { investigation: Investi
             size="small"
             onClick={() => global.showSettingsSection('mcp')}
             aria-label="Agent settings"
-            title="Agent settings: connect an agent, choose its databases, and data masking"
+            title="Agent settings: connect an agent, and the rule sets data masking starts from"
             sx={{ color: dim, mt: '-2px', mr: '-6px', '&:hover': { color: 'var(--text-color)' } }}
           >
             <SettingsOutlined sx={{ fontSize: 17 }} />

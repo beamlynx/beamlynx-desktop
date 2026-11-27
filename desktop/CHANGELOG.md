@@ -8,6 +8,7 @@ log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 - **Shift+Down and Shift+Up step through a query's settings on the canvas,** the same as Shift+J and Shift+K: its select, where and order entries one at a time. Plain Down and Up still jump from table to table.
 
 ### Changed
+- **Turn AI agents on where your databases are.** In Database Connections, click a database: its first switch lets agents use it, and a second one masks sensitive columns, on by default. A robot on every row shows at a glance whether agents can use that database. The Agent page no longer lists databases. It keeps the setup steps and the masking rule sets, and links to Database Connections.
 - **"Restart to update" is amber,** so it stands out at the top right. So is "Update to X" when the app can't update itself.
 
 ### Fixed
